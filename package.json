@@ -1,0 +1,13 @@
+{
+  "name": "dsh-notes-plugin",
+  "version": "1.0.0",
+  "description": "Session-aware local Markdown notes with Agent read/write tools, floating draggable+resizable semi-transparent panel, cross-platform soft delete, Chinese UI, tooltips, and help bubble.",
+  "main": "host.js",
+  "client": "client.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node check.js"
+  },
+  "keywords": ["dsh", "notes", "markdown", "plugin"],
+  "license": "MIT"
+}

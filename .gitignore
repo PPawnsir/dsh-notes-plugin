@@ -1,0 +1,12 @@
+# 用户笔记数据（本地资产，不进版本库）
+notes/
+
+# 运行时产物
+.last-host-load
+perf-report.json
+debug.log
+
+# 依赖与系统
+node_modules/
+.DS_Store
+Thumbs.db
