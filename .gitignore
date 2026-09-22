@@ -1,5 +1,6 @@
 # 用户笔记数据（本地资产，不进版本库）
 notes/
+notes-backup-*/
 
 # 运行时产物
 .last-host-load

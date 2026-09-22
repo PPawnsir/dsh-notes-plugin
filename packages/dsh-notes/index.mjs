@@ -1,8 +1,67 @@
-return {
-  inject: ['fs', 'sandboxPolicy'],
-  apply(ctx) {
+/* global harness */
+// dsh-notes — host 端（ESM 静态包，发布版）
+//
+// 本文件是 bootstrap 开发版 host-impl.js 的**迁移**（不是重写）：apply 体内的功能逻辑逐段保留
+// （19 个 RPC + 3 个工具 + 约定注入 + 派发 + LLM 分类 + 缓存/归档/软删除 + 性能遥测）。
+// 与开发版的三点结构性差异：
+//   1. 形式：`return { inject, apply }`（被 new Function 执行）→ ESM `export name/inject/apply`
+//      （package.json 已声明 "type": "module"、"main": "./index.mjs"）
+//   2. 路径：PLUGIN_DIR/notes → ~/.dsh/notes（os.homedir()/.dsh/notes）。开发版目录仅保留两处用途：
+//      (a) 一次性数据迁移源；(b) styles.css / client-impl.js 等开发资产的回退读取路径。
+//   3. RPC/工具注册：主通道仍是全局 Builtin `harness`（`harness.handle` / `harness.defineTool` /
+//      `harness.registerTool`，与 host-impl.js 的 `function handle(name,fn){ return harness.handle(...) }`
+//      和 `harness.defineTool(def)` + `harness.registerTool(ctx, tool)` 姿势一致，原样保留）。
+//      额外的兜底：若某部署没有 harness（例如真实 Cordis row 里没有沙箱注入的 Builtin），则同一批
+//      handler 退到 `ctx.webServer.register({kind:'exact', path:'/dsh-notes'})`、工具退到 `ctx.tools.register`
+//      （已发布范例 task-board-plugin/packages/dsh-agent-board/index.mjs 用的就是这条服务路径）。
+//      两条通道互斥（工具不会重复注册）；RPC 表始终维护，供 webServer 路由消费。
+import os from 'node:os'
+import path from 'node:path'
+import fsNode from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+export const name = 'dsh-notes'
+// 硬依赖只有 fs（笔记读写）与 sandboxPolicy（写策略）；harness 是全局 Builtin 不进 inject，
+// webServer / tools 只在 harness 缺失时作为兜底通道，按需 ctx.get。
+export const inject = ['fs', 'sandboxPolicy']
+
+// ---- 路径锚点（模块级常量，import 时求值，无副作用）----
+const PKG_DIR = path.dirname(fileURLToPath(import.meta.url))     // packages/dsh-notes
+const NOTES_ROOT = path.join(os.homedir(), '.dsh', 'notes')      // 发布版存储根
+// 开发版目录：只用于 (a) 首次启动的一次性数据迁移 (b) 开发资产回退读取。发布环境不存在这些文件时静默跳过。
+const LEGACY_PLUGIN_DIR = 'D:\\deepseek-work\\dsh-notes-plugin'
+const LEGACY_NOTES_DIR = path.join(LEGACY_PLUGIN_DIR, 'notes')
+// 样式/源码候选路径：包内 lib/styles.css 优先（P3 会把 styles.css 放那里），再包根，最后开发版回退
+const CSS_CANDIDATES = [
+  path.join(PKG_DIR, 'lib', 'styles.css'),
+  path.join(PKG_DIR, 'styles.css'),
+  path.join(LEGACY_PLUGIN_DIR, 'styles.css'),
+]
+const RPC_PATH = '/dsh-notes'
+
+// 零外部依赖：link: 安装的包从真实路径解析，裸 import '@deepseek-ai/dsh-tools' 会 ERR_MODULE_NOT_FOUND。
+// defineTool 本体只是 校验+包装 出 {name, description, parameters, output, execute} 普通对象，
+// 这里内联等价实现（与 task-board index.mjs 相同）；parameters 已是完整 JSON Schema，原样透传。
+function defineTool(options) {
+  var userExecute = options.execute
+  var userRender = options.output && options.output.render
+  return {
+    name: options.name,
+    description: options.description,
+    parameters: options.parameters,
+    output: {
+      schema: options.output.schema,
+      render: userRender ? function (args, value) { return userRender(args, value) } : undefined,
+    },
+    execute: function (args, exec) { return userExecute(args, exec) },
+  }
+}
+
+export function apply(ctx) {
     const fs = ctx.fs
     const sp = ctx.sandboxPolicy
+    const tools = ctx.tools || ctx.get('tools')
+    const webServer = ctx.webServer || ctx.get('webServer')
     const agents = ctx.get('agents')
     const llm = ctx.get('llm')
     const adm = ctx.get('agentDefaultModel')
@@ -11,11 +70,11 @@ return {
     const workspaceRegistry = ctx.get('workspaceRegistry')
     const sessionTitle = ctx.get('sessionTitle')
     const sessionQuery = ctx.get('sessionQuery')
-    // 插件目录由 host 引导壳通过 new Function('harness','pluginDir',...) 注入；缺失时回退（单测/直跑场景）
-    const PLUGIN_DIR = typeof pluginDir !== 'undefined' && pluginDir ? pluginDir : 'D:\\deepseek-work\\dsh-notes-plugin'
-    const NOTES_DIR = PLUGIN_DIR + '\\notes'
-    const CSS_PATH = PLUGIN_DIR + '\\styles.css'
+    const NOTES_DIR = NOTES_ROOT
     const disposers = []
+    // 动态沙箱 Builtin：harness 是「dynamic Host half」的符号（cordis-host-runner 用 node:vm 注入），
+    // 静态包（真实 Cordis row）里通常不存在；存在时作为兼容通道使用（见 RPC 桥 / regTool 回退）。
+    const harnessRef = typeof harness !== 'undefined' ? harness : undefined
 
     function genId() {
       return 'n-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
@@ -184,9 +243,11 @@ return {
       }
     }
 
+    function noteFile(id) { return path.join(NOTES_ROOT, id + '.md') }
+
     async function readNoteFile(id) {
       perfStats.diskReads++
-      const ft = await fs.resolve(NOTES_DIR + '\\' + id + '.md')
+      const ft = await fs.resolve(noteFile(id))
       const c = await fs.readText(ft)
       const note = noteFromParsed(id, parseFM(c))
       cache.set(note.id, note)
@@ -211,7 +272,7 @@ return {
         archivedAt: n.archivedAt || '', deleted: n.deleted ? 'true' : 'false'
       }
       const content = buildFM(meta) + (n.body || '')
-      const ft = await fs.resolve(NOTES_DIR + '\\' + n.id + '.md')
+      const ft = await fs.resolve(noteFile(n.id))
       await fs.writeText(ft, content, undefined, undefined, getPolicy())
       cache.set(n.id, Object.assign({}, n))
     }
@@ -257,6 +318,8 @@ return {
 
     async function _list(tag, kind) {
       try {
+        // 首次启动的一次性迁移（开发版 notes → ~/.dsh/notes）可能与首个 RPC 竞态，这里等一下
+        try { await migrationDone } catch (e) {}
         const dirTarget = await fs.resolve(NOTES_DIR)
         const info = await fs.stat(dirTarget)
         if (!info) return []
@@ -514,8 +577,8 @@ return {
         // 归档前先备份原笔记（.bak 后缀，_list 不会读到）
         for (const n of members) {
           try {
-            const src = await fs.resolve(NOTES_DIR + '\\' + n.id + '.md')
-            const dst = await fs.resolve(NOTES_DIR + '\\' + n.id + '.md.bak')
+            const src = await fs.resolve(noteFile(n.id))
+            const dst = await fs.resolve(noteFile(n.id) + '.bak')
             const c = await fs.readText(src)
             await fs.writeText(dst, c, undefined, undefined, getPolicy())
           } catch (e) {}
@@ -705,6 +768,7 @@ return {
 
     // ---- 性能遥测：RPC 计数/耗时 + 缓存命中 + client 推送快照，节流写盘供诊断 ----
     const perfStats = { started: new Date().toISOString(), rpc: {}, rpcMs: {}, classify: 0, classifyMs: 0, cacheReads: 0, diskReads: 0, diskWrites: 0, client: null }
+    const PERF_PATH = path.join(NOTES_ROOT, 'perf-report.json')
     let lastPerfWrite = 0
     function writePerfReport() {
       const t = Date.now()
@@ -712,30 +776,49 @@ return {
       lastPerfWrite = t
       ;(async () => {
         try {
-          const ft = await fs.resolve(PLUGIN_DIR + '\\perf-report.json')
+          const ft = await fs.resolve(PERF_PATH)
           await fs.writeText(ft, JSON.stringify({ writtenAt: new Date().toISOString(), host: perfStats }, null, 2), undefined, undefined, getPolicy())
         } catch (e) {}
       })()
     }
+
+    // ---- client ↔ host RPC ----
+    // 主通道：全局 Builtin `harness.handle`（原 host-impl.js 的 helper 姿势原样保留，只是补了 handler 表）。
+    // 兜底通道：harness 缺失时同一批 handler 由 ctx.webServer.register 的 exact 路由承载。
+    const handlers = {}
     function handle(name, fn) {
-      return harness.handle(name, async (args) => {
+      const wrapped = async (args) => {
         const t0 = Date.now()
         try { return await fn(args) }
         finally { perfStats.rpc[name] = (perfStats.rpc[name] || 0) + 1; perfStats.rpcMs[name] = (perfStats.rpcMs[name] || 0) + (Date.now() - t0); writePerfReport() }
-      })
+      }
+      handlers[name] = wrapped   // handler 表始终维护：webServer 兜底路由据此分发
+      if (harnessRef && typeof harnessRef.handle === 'function') return harnessRef.handle(name, wrapped)
+      return () => { delete handlers[name] }
     }
     disposers.push(handle('notes-perf', async (args) => { if (args && args.perf) perfStats.client = args.perf; return { ok: true } }))
     disposers.push(handle('notes-list', async (args) => ({ notes: (await _list(args && args.tag, args && args.kind)).map(slim) })))
-    // 样式文件按需下发：避免 client 内嵌超长 CSS 字符串在 define 传输中被截断
+    // 样式文件按需下发：避免 client 内嵌超长 CSS 字符串（包内 styles.css 优先，开发版目录回退）
     disposers.push(handle('notes-css', async () => {
-      try { const ft = await fs.resolve(CSS_PATH); return { css: await fs.readText(ft) } } catch (e) { return { error: String(e.message || e) } }
+      try {
+        for (const p of CSS_CANDIDATES) {
+          try { if (fsNode.existsSync(p)) return { css: fsNode.readFileSync(p, 'utf8') } } catch (e) {}
+        }
+        throw new Error('styles.css not found in: ' + CSS_CANDIDATES.join(' | '))
+      } catch (e) { return { error: String(e.message || e) } }
     }))
-    // client 实现源码下发：bootstrap 壳通过它加载真正的 client-impl.js（同理避免 define 传大字符串）
+    // client 实现源码下发：开发版 bootstrap 壳通过它加载 client-impl.js（同理避免 define 传大字符串）。
+    // 发布版候选：开发版目录的 client-impl.js / host-impl.js，包内的 lib/client.js / index.mjs。
     disposers.push(handle('notes-src', async (args) => {
       try {
-        const which = args && args.which === 'client' ? 'client-impl.js' : 'host-impl.js'
-        const ft = await fs.resolve(PLUGIN_DIR + '\\' + which)
-        return { src: await fs.readText(ft) }
+        const which = args && args.which === 'client' ? 'client' : 'host'
+        const candidates = which === 'client'
+          ? [path.join(LEGACY_PLUGIN_DIR, 'client-impl.js'), path.join(PKG_DIR, 'lib', 'client.js')]
+          : [path.join(LEGACY_PLUGIN_DIR, 'host-impl.js'), path.join(PKG_DIR, 'index.mjs')]
+        for (const p of candidates) {
+          try { if (fsNode.existsSync(p)) return { src: fsNode.readFileSync(p, 'utf8') } } catch (e) {}
+        }
+        throw new Error(which + ' source not found in: ' + candidates.join(' | '))
       } catch (e) { return { error: String(e.message || e) } }
     }))
     disposers.push(handle('notes-get', async (args) => {
@@ -796,10 +879,51 @@ return {
     disposers.push(handle('notes-dispatch-done', async (args) => {
       try { return await _dispatchDone(args.id, args.dispatchIndex) } catch (e) { return { error: String(e.message || e) } }
     }))
+    // POC 存活探测（P1 骨架遗留，包内 lib/client.js 的「笔记POC」按钮消费；非 host-impl 的 19 个 RPC 之一）
+    disposers.push(handle('notes-ping', async (args) => ({ ok: true, pong: Date.now(), echo: (args && typeof args === 'object') ? args : null })))
 
+    // ---- RPC 兜底路由（harness 缺失时生效；harness 存在时它是无副作用的第二传送门）----
+    function readBody(req, limit) {
+      return new Promise(function (resolve, reject) {
+        var chunks = [], size = 0
+        req.on('data', function (c) { size += c.length; if (size > limit) { reject(new Error('payload too large')); try { req.destroy() } catch (_) {} return }; chunks.push(c) })
+        req.on('end', function () { resolve(Buffer.concat(chunks).toString('utf8')) })
+        req.on('error', reject)
+      })
+    }
+    if (webServer && typeof webServer.register === 'function') {
+      disposers.push(webServer.register({
+        kind: 'exact',
+        path: RPC_PATH,
+        handler: async function (req, res) {
+          res.setHeader('Content-Type', 'application/json')
+          res.setHeader('Cache-Control', 'no-store')
+          if (req.method !== 'POST') { res.writeHead(405); res.end(JSON.stringify({ ok: false, message: 'method not allowed' })); return }
+          var payload = null
+          try { payload = JSON.parse(await readBody(req, 4 * 1024 * 1024)) } catch (e) { res.writeHead(400); res.end(JSON.stringify({ ok: false, message: 'bad request' })); return }
+          var fn = payload && handlers[payload.method]
+          if (!fn) { res.writeHead(404); res.end(JSON.stringify({ ok: false, message: 'unknown method: ' + payload.method })); return }
+          try { var out = await fn(payload.args); res.writeHead(200); res.end(JSON.stringify(out === undefined ? null : out)) } catch (e) { res.writeHead(500); res.end(JSON.stringify({ ok: false, message: String(e) })) }
+        },
+      }))
+    } else if (!(harnessRef && typeof harnessRef.handle === 'function')) {
+      console.error('notes: harness 与 ctx.webServer 均不可用，RPC 未注册')
+    }
+
+    // 工具注册：主通道 = 全局 Builtin harness.defineTool + harness.registerTool（原 host-impl.js 姿势原样保留）；
+    // 仅在 harness 缺失时回退到 ctx.tools.register（task-board 的服务路径）。两通道互斥，不会重复注册。
     function regTool(def) {
-      const tool = harness.defineTool(def)
-      if (tool) disposers.push(harness.registerTool(ctx, tool))
+      if (harnessRef && typeof harnessRef.defineTool === 'function' && typeof harnessRef.registerTool === 'function') {
+        const tool = harnessRef.defineTool(def)
+        if (tool) { const d = harnessRef.registerTool(ctx, tool); if (typeof d === 'function') disposers.push(d) }
+        return
+      }
+      if (tools && typeof tools.register === 'function') {
+        const d = tools.register(defineTool(def))
+        if (typeof d === 'function') disposers.push(d)
+        return
+      }
+      console.error('notes: 无可用工具注册通道（harness / ctx.tools），工具未注册：' + (def && def.name))
     }
 
     const outSchema = { type: 'object', additionalProperties: true }
@@ -808,7 +932,7 @@ return {
     }
 
     // ---- 工具层：合并 9 个细粒度工具为 3 个（note_search / note_get / note_manage）
-    // RPC 层保持 12 个 handler 不变（client panel 仍在用）；工具只面向 Agent，瘦身 schema。
+    // RPC 层保持 handler 不变（client panel 仍在用）；工具只面向 Agent，瘦身 schema。
     regTool({
       name: 'note_search',
       description: 'Search local notes by free-text query (matches title/body/topic/tags), with optional tag, topic, and kind filters. Returns slim notes (no body) for fast triage — call note_get for the full body of a specific id.',
@@ -979,11 +1103,47 @@ return {
       }
     })
 
+    // ---- 一次性数据迁移：开发版 D:\...\dsh-notes-plugin\notes → ~/.dsh/notes ----
+    // 触发：目标目录缺失该 .md 时逐文件复制（幂等、不覆盖已存在的目标文件、不删除源目录）。
+    // 走 ctx.fs 服务（而非 node:fs），保证写盘受 sandboxPolicy 管束，单测里也只落在内存 mock。
+    async function listMd(dir) {
+      try {
+        const target = await fs.resolve(dir)
+        const info = await fs.stat(target)
+        if (!info) return []
+        const entries = await fs.listDir(target)
+        return (entries || []).map(e => e && e.name).filter(n => n && /\.md$/i.test(n))
+      } catch (e) { return [] }
+    }
+    async function migrateLegacyNotes() {
+      try {
+        const legacyNames = await listMd(LEGACY_NOTES_DIR)
+        if (legacyNames.length === 0) return { migrated: 0, skipped: 'no-legacy-notes' }
+        const existing = {}
+        for (const n of await listMd(NOTES_ROOT)) existing[n] = true
+        let migrated = 0
+        for (const name of legacyNames) {
+          if (existing[name]) continue
+          try {
+            const src = await fs.resolve(path.join(LEGACY_NOTES_DIR, name))
+            const dst = await fs.resolve(path.join(NOTES_ROOT, name))
+            const content = await fs.readText(src)
+            await fs.writeText(dst, content, undefined, undefined, getPolicy())
+            migrated++
+          } catch (e) { console.error('notes: migrate failed', name, e) }
+        }
+        if (migrated > 0) console.log('notes: migrated ' + migrated + ' legacy note(s) → ' + NOTES_ROOT)
+        return { migrated: migrated, total: legacyNames.length }
+      } catch (e) {
+        console.error('notes: legacy migration error', e)
+        return { migrated: 0, error: String(e && e.message || e) }
+      }
+    }
+    let migrationDone = migrateLegacyNotes()
+
     ctx.effect(() => () => {
       for (const d of disposers) { try { d() } catch (e) {} }
     })
-    console.log('notes plugin: host ready, dir =', NOTES_DIR, ', llm =', !!llm, ', adm =', !!adm)
-    // 心跳文件：自检验证 impl 真正加载成功（bootstrap 架构下 apply 异步完成）
-    ;(async () => { try { const ft = await fs.resolve(PLUGIN_DIR + '\\.last-host-load'); await fs.writeText(ft, new Date().toISOString(), undefined, undefined, getPolicy()) } catch (e) {} })()
-  }
+    // 发布版不再写 .last-host-load 开发心跳（静态包 import 即就绪，无需引导壳自检）
+    console.log('notes plugin: host ready (static pkg), notes dir =', NOTES_ROOT, ', llm =', !!llm, ', adm =', !!adm, ', rpc =', RPC_PATH)
 }

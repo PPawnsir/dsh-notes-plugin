@@ -1,0 +1,45 @@
+name: Publish to npm
+
+# 打 release tag（v*）自动发布 packages/dsh-notes 到 npm 官方 registry。
+# 前置：仓库 Settings → Secrets → Actions 里配置 NPM_TOKEN
+# （npm granular access token：bypass 2FA + direct publish 权限）。
+
+on:
+  # 路径 1：命令行推 tag（git push --follow-tags）
+  push:
+    tags:
+      - 'v*'
+  # 路径 2：GitHub 网页 Draft a new release（页面建的 tag 触发的是 release 事件，不是 push）
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: 校验 tag 与 package.json 版本一致
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./packages/dsh-notes/package.json').version")
+          echo "tag=$TAG package=$PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag v$TAG 与 package.json version $PKG 不一致，先 npm version 对齐再打 tag"
+            exit 1
+          fi
+
+      - name: 语法自检（prepublishOnly 也会再跑一次）
+        working-directory: packages/dsh-notes
+        run: npm run check
+
+      - name: 发布到 npm（prepublishOnly 自动跑语法检查，挂了拒发）
+        working-directory: packages/dsh-notes
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

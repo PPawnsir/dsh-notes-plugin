@@ -1,0 +1,57 @@
+{
+  "name": "dsh-notes",
+  "description": "DeepSeek Harness 会话感知本地笔记：把会话里的决策与约定沉淀成本地 Markdown 笔记，自动注入系统提示、可派发给活跃会话，解决「聊完就丢」的上下文断层",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./index.mjs",
+  "scripts": {
+    "check": "node --check index.mjs && node --check lib/client.js",
+    "prepublishOnly": "node --check index.mjs && node --check lib/client.js"
+  },
+  "exports": {
+    ".": "./index.mjs",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "index.mjs",
+    "lib/client.js",
+    "styles.css",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "notes",
+    "markdown"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PPawnsir/dsh-notes-plugin.git",
+    "directory": "packages/dsh-notes"
+  },
+  "homepage": "https://github.com/PPawnsir/dsh-notes-plugin#readme",
+  "bugs": "https://github.com/PPawnsir/dsh-notes-plugin/issues",
+  "engines": {
+    "node": ">=22"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "@deepseek-ai/dsh": ">=0.1.5-rc.1 <0.2.0-0"
+  },
+  "license": "MIT"
+}

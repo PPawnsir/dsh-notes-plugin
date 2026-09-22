@@ -2,23 +2,23 @@
 /* 由 host 通过 notes-css RPC 提供给 client 注入 */
 /* tooltip 必须作用域隔离（.dsh-nt）：全局 [data-tooltip] 选择器会污染整个 DSH 页面导致卡顿 */
 
-/* ===== 设计令牌（Light / Dark） ===== */
-.dsh-notes-floating{
+/* ===== 设计令牌（映射 DSH 主题 token，明暗随 DSH 主题自动切换；缺失时回退浅色兜底） ===== */
+.dsh-notes-floating,.dsh-notes-fab{
   /* 背景 */
-  --nbg:#ffffff;          /* 面板主背景 */
-  --nsf:#fbfbfd;          /* 列表区背景（极浅灰） */
-  --nbg-hover:#f2f2f7;    /* 列表项 hover */
-  --nbg-sel:#e5e5ea;      /* 列表项选中（macOS 选中灰） */
-  --nbd:#e5e5ea;          /* 边框/分隔线 */
-  --nbd-soft:#ececf0;     /* 更柔和的分隔 */
+  --nbg:var(--dsw-alias-bg-overlay, #ffffff);          /* 面板主背景 */
+  --nsf:var(--dsw-alias-bg-layer-1, #fbfbfd);          /* 列表区背景（极浅灰） */
+  --nbg-hover:var(--dsw-alias-bg-layer-2, #f2f2f7);    /* 列表项 hover */
+  --nbg-sel:var(--dsw-alias-bg-layer-2, #e5e5ea);      /* 列表项选中（macOS 选中灰） */
+  --nbd:var(--dsw-alias-border-l1, #e5e5ea);           /* 边框/分隔线 */
+  --nbd-soft:var(--dsw-alias-border-l1, #ececf0);      /* 更柔和的分隔 */
   /* 文字 */
-  --ntx:#1c1c1e;          /* 主文字 */
-  --nt2:#6c6c70;          /* 次要文字（时间/来源） */
-  --nt3:#aeaeb2;          /* 弱化（placeholder/图标） */
+  --ntx:var(--dsw-alias-label-primary, #1c1c1e);       /* 主文字 */
+  --nt2:var(--dsw-alias-label-secondary, #6c6c70);     /* 次要文字（时间/来源） */
+  --nt3:var(--dsw-alias-label-secondary, #aeaeb2);     /* 弱化（placeholder/图标） */
   /* 强调 */
-  --nacc:#0a84ff;         /* 蓝（交互/选中） */
+  --nacc:var(--dsw-alias-brand-primary, #0a84ff);      /* 蓝（交互/选中） */
   --nacc-soft:rgba(10,132,255,.12);
-  /* kind 强调色（灰阶为主，kind 用低调色） */
+  /* kind 强调色（灰阶为主，kind 用低调色；深浅通用，保留原值） */
   --nkind-note:#8e8e93;
   --nkind-decision:#0a84ff;
   --nkind-todo:#34c759;
@@ -32,26 +32,24 @@
   /* 阴影（极淡，仅面板） */
   --nshadow:0 18px 50px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06);
 }
-@media (prefers-color-scheme: dark){
-  .dsh-notes-floating{
-    --nbg:#1c1c1e;--nsf:#2c2c2e;--nbg-hover:#2c2c2e;--nbg-sel:#3a3a3c;
-    --nbd:#38383a;--nbd-soft:#2c2c2e;
-    --ntx:#f5f5f7;--nt2:#98989d;--nt3:#6e6e73;
-    --nacc:#0a84ff;--nacc-soft:rgba(10,132,255,.2);
-    --nshadow:0 18px 50px rgba(0,0,0,.5),0 2px 8px rgba(0,0,0,.3);
-  }
-}
 
 /* ===== tooltip（作用域隔离） ===== */
 .dsh-nt{position:relative}
 .dsh-nt[data-tooltip]::after{content:attr(data-tooltip);position:fixed;background:rgba(28,28,30,.95);color:#fff;padding:5px 9px;border-radius:6px;font-size:11px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .12s;z-index:2147483646;font-family:var(--nfont)}
 .dsh-nt[data-tooltip]:hover::after{opacity:1}
 
-/* ===== 会话头部入口按钮 ===== */
-.dsh-notes-hdr-btn{display:inline-flex;align-items:center;gap:4px;padding:5px 9px;margin:0 2px;cursor:pointer;border-radius:6px;font-size:12px;line-height:1;color:var(--color-text-secondary,#999);background:transparent;border:none;transition:background .15s,color .15s;white-space:nowrap;vertical-align:middle;font-weight:500;font-family:var(--nfont)}
+/* ===== 会话头部入口按钮（简约图标，无文字无数量 badge） ===== */
+.dsh-notes-hdr-btn{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;margin:0 2px;cursor:pointer;border-radius:6px;font-size:12px;line-height:1.4;color:var(--color-text-secondary,#999);background:transparent;border:1px solid var(--nbd);transition:background .15s,color .15s,border-color .15s;white-space:nowrap;vertical-align:middle;font-family:inherit}
 .dsh-notes-hdr-btn:hover{background:var(--color-surface-hover,rgba(128,128,128,.15));color:var(--color-text-primary,#eee)}
-.dsh-notes-hdr-btn.active{color:var(--color-accent,#0a84ff)}
-.dsh-notes-hdr-btn-badge{font-size:10px;background:var(--color-accent,#0a84ff);color:#fff;border-radius:8px;padding:1px 5px;line-height:1;font-weight:600;margin-left:2px}
+.dsh-notes-hdr-btn.active{color:var(--color-accent,#0a84ff);border-color:var(--color-accent,#0a84ff)}
+.dsh-notes-hdr-ic{font-size:13px;line-height:1;display:inline-flex;align-items:center;pointer-events:none}
+
+/* ===== 悬浮气泡入口（圆形固定定位、可拖拽、点击展开面板） ===== */
+.dsh-notes-fab{position:fixed;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;margin:0;cursor:grab;background:var(--nbg);border:1px solid var(--nbd);box-shadow:0 4px 14px rgba(0,0,0,.18),0 1px 4px rgba(0,0,0,.1);color:var(--ntx);font-family:var(--nfont);z-index:2147483646;transition:box-shadow .15s,transform .12s,color .15s,border-color .15s;user-select:none;-webkit-user-select:none;touch-action:none}
+.dsh-notes-fab:hover{box-shadow:0 6px 20px rgba(0,0,0,.22),0 2px 6px rgba(0,0,0,.12);border-color:var(--nacc);color:var(--nacc)}
+.dsh-notes-fab:active{cursor:grabbing}
+.dsh-notes-fab.active{color:var(--nacc);border-color:var(--nacc);box-shadow:0 6px 20px rgba(10,132,255,.25),0 2px 6px rgba(0,0,0,.12)}
+.dsh-notes-fab-ic{font-size:18px;line-height:1;display:inline-block;transform:translateY(-1px);pointer-events:none}
 
 /* ===== 浮空面板 ===== */
 .dsh-notes-floating{position:fixed;background:var(--nbg);border:1px solid var(--nbd);border-radius:12px;box-shadow:var(--nshadow);display:flex;flex-direction:column;font-family:var(--nfont);color:var(--ntx);box-sizing:border-box;overflow:hidden;z-index:2147483647;-webkit-font-smoothing:antialiased}
@@ -74,11 +72,20 @@
 .dsh-notes-search-icon{color:var(--nt3);font-size:13px;flex-shrink:0;line-height:1}
 .dsh-notes-search-input{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--ntx);font-size:13px;font-family:var(--nfont);padding:0}
 .dsh-notes-search-input::placeholder{color:var(--nt3)}
-.dsh-notes-new-btn{background:transparent;border:1px solid var(--nbd);border-radius:var(--nr-md);color:var(--nt2);width:32px;height:32px;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0;transition:all .15s;display:flex;align-items:center;justify-content:center}
-.dsh-notes-new-btn:hover{border-color:var(--nacc);color:var(--nacc);background:var(--nacc-soft)}
 
-/* ===== kind 筛选 chips ===== */
-.dsh-notes-kinds{display:flex;align-items:center;gap:6px;padding:8px 14px 10px;flex-shrink:0;border-bottom:1px solid var(--nbd-soft);overflow-x:auto}
+/* ===== 顶栏：图标工具栏（单行，搜索/新建内联展开） ===== */
+.dsh-notes-toolbar{display:flex;align-items:center;gap:6px;padding:8px 14px;flex-shrink:0;border-bottom:1px solid var(--nbd-soft)}
+.dsh-notes-tool-btn{background:transparent;border:1px solid var(--nbd);border-radius:var(--nr-md);color:var(--nt2);width:30px;height:30px;cursor:pointer;font-size:15px;line-height:1;flex-shrink:0;transition:all .15s;display:flex;align-items:center;justify-content:center;padding:0;font-family:var(--nfont)}
+.dsh-notes-tool-btn:hover{border-color:var(--nacc);color:var(--nacc);background:var(--nacc-soft)}
+.dsh-notes-tool-btn.on{background:var(--nacc-soft);border-color:var(--nacc);color:var(--nacc)}
+/* 展开态输入行（搜索/记录框内联伸缩，不用时收成一行图标） */
+.dsh-notes-expand{animation:dsh-notes-expand-in .14s ease}
+@keyframes dsh-notes-expand-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.dsh-notes-expand-close{background:transparent;border:none;color:var(--nt3);font-size:16px;cursor:pointer;padding:4px 7px;border-radius:6px;line-height:1;flex-shrink:0;transition:color .15s,background .15s}
+.dsh-notes-expand-close:hover{color:var(--ntx);background:var(--nbg-hover)}
+
+/* ===== kind 筛选 chips（内联进工具栏，可横向滚动） ===== */
+.dsh-notes-kinds{flex:1;display:flex;align-items:center;gap:6px;overflow-x:auto;padding:0;border-bottom:none}
 .dsh-notes-kind-chip{background:transparent;border:1px solid var(--nbd);border-radius:13px;color:var(--nt2);font-size:11px;padding:3px 11px;cursor:pointer;transition:all .15s;white-space:nowrap;font-weight:500}
 .dsh-notes-kind-chip:hover{border-color:var(--nt3);color:var(--ntx)}
 .dsh-notes-kind-chip.on{background:var(--ntx);border-color:var(--ntx);color:var(--nbg)}
@@ -178,14 +185,41 @@
 .dsh-notes-scope-group{margin-bottom:2px}
 .dsh-notes-scope-ws{font-size:10px;color:var(--nt2);padding:5px 9px 2px;font-weight:600}
 .dsh-notes-scope-sess{padding-left:20px}
-/* 派发浮层（详情区操作按钮旁） */
-.dsh-notes-ed-dispatch-wrap{position:relative}
-.dsh-notes-dispatch-panel{position:absolute;bottom:calc(100% + 6px);right:0;min-width:220px;max-width:280px;max-height:260px;overflow-y:auto;background:var(--nbg);border:1px solid var(--nbd);border-radius:10px;box-shadow:var(--nshadow);padding:5px;z-index:30;font-family:var(--nfont)}
-.dsh-notes-dispatch-empty{padding:16px;font-size:12px;color:var(--nt3);text-align:center}
-.dsh-notes-dispatch-item{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;background:transparent;border:none;border-radius:7px;padding:7px 10px;font-size:12px;color:var(--ntx);cursor:pointer;text-align:left;transition:background .12s;font-family:var(--nfont);box-sizing:border-box}
-.dsh-notes-dispatch-item:hover{background:var(--nbg-hover)}
-.dsh-notes-dispatch-name{font-weight:500;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dsh-notes-dispatch-ws{font-size:10px;color:var(--nt3)}
+/* ===== 派发对话框（modal） ===== */
+.dsh-notes-dispatch-mask{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:60;display:flex;align-items:center;justify-content:center}
+.dsh-notes-dispatch-modal{width:340px;max-width:90%;background:var(--nbg);border:1px solid var(--nbd);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:16px;font-family:var(--nfont);max-height:80vh;overflow-y:auto}
+.dsh-notes-dispatch-modal-t{font-size:14px;font-weight:700;color:var(--ntx);margin-bottom:10px}
+.dsh-notes-dispatch-todo{background:var(--nbg-soft);border:1px solid var(--nbd-soft);border-radius:8px;padding:9px 11px;margin-bottom:10px}
+.dsh-notes-dispatch-todo-t{font-size:12px;font-weight:600;color:var(--ntx);margin-bottom:3px}
+.dsh-notes-dispatch-todo-b{font-size:11px;color:var(--nt3);line-height:1.5;max-height:60px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.dsh-notes-dispatch-instr{width:100%;box-sizing:border-box;background:var(--nbg);border:1px solid var(--nbd);border-radius:8px;color:var(--ntx);font-size:12px;padding:8px 10px;resize:vertical;font-family:var(--nfont);margin-bottom:10px;outline:none}
+.dsh-notes-dispatch-instr:focus{border-color:var(--nacc)}
+.dsh-notes-dispatch-modes{display:flex;gap:6px;margin-bottom:10px}
+.dsh-notes-dispatch-mode{flex:1;background:transparent;border:1px solid var(--nbd);border-radius:7px;color:var(--nt2);font-size:12px;padding:6px;cursor:pointer;transition:all .15s;font-family:var(--nfont)}
+.dsh-notes-dispatch-mode:hover{border-color:var(--nacc)}
+.dsh-notes-dispatch-mode.on{background:var(--nacc-soft);border-color:var(--nacc);color:var(--nacc);font-weight:600}
+.dsh-notes-dispatch-select{width:100%;box-sizing:border-box;background:var(--nbg);border:1px solid var(--nbd);border-radius:7px;color:var(--ntx);font-size:12px;padding:6px 8px;margin-bottom:8px;font-family:var(--nfont);outline:none}
+.dsh-notes-dispatch-select:focus{border-color:var(--nacc)}
+.dsh-notes-dispatch-select:disabled{opacity:.5;cursor:not-allowed}
+.dsh-notes-dispatch-err{font-size:11px;color:var(--nkind-todo);margin-bottom:8px}
+.dsh-notes-dispatch-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.dsh-notes-dispatch-cancel{background:transparent;border:1px solid var(--nbd);border-radius:7px;color:var(--nt2);font-size:12px;padding:6px 16px;cursor:pointer;font-family:var(--nfont)}
+.dsh-notes-dispatch-cancel:hover{border-color:var(--nt3);color:var(--ntx)}
+.dsh-notes-dispatch-ok{background:var(--nacc);border:none;border-radius:7px;color:#fff;font-size:12px;font-weight:600;padding:6px 16px;cursor:pointer;font-family:var(--nfont)}
+.dsh-notes-dispatch-ok:hover{filter:brightness(1.08)}
+.dsh-notes-dispatch-ok:disabled{opacity:.5;cursor:not-allowed}
+/* ===== 派发历史（详情区） ===== */
+.dsh-notes-dispatch-history{margin-top:10px;padding-top:10px;border-top:1px dashed var(--nbd-soft)}
+.dsh-notes-dispatch-history-t{font-size:11px;font-weight:600;color:var(--nt2);margin-bottom:6px}
+.dsh-notes-dispatch-rec{padding:5px 8px;border-radius:6px;background:var(--nbg-soft);margin-bottom:4px}
+.dsh-notes-dispatch-rec-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.dsh-notes-dispatch-rec-t{font-size:11px;font-weight:600;color:var(--nacc)}
+.dsh-notes-dispatch-rec-m{font-size:10px;color:var(--nt3);flex-shrink:0}
+.dsh-notes-dispatch-rec-i{font-size:10px;color:var(--nt2);margin-top:2px;line-height:1.4}
+.dsh-notes-dispatch-rec.done{opacity:.55}
+.dsh-notes-dispatch-rec.done .dsh-notes-dispatch-rec-t{color:var(--nt3)}
+.dsh-notes-dispatch-done-btn{margin-top:4px;background:transparent;border:1px solid var(--nbd);border-radius:5px;color:var(--nkind-note);font-size:10px;padding:1px 8px;cursor:pointer;font-family:var(--nfont);transition:all .15s}
+.dsh-notes-dispatch-done-btn:hover{border-color:var(--nkind-note);background:rgba(52,199,89,.1)}
 
 /* 详情操作按钮（右上角 icon） */
 .dsh-notes-ed-action{background:transparent;border:1px solid var(--nbd);border-radius:6px;color:var(--nt2);font-size:12px;cursor:pointer;padding:4px 10px;line-height:1;transition:all .15s;font-family:var(--nfont)}
@@ -212,9 +246,8 @@
 .dsh-notes-empty-s{font-size:12px;color:var(--nt3);line-height:1.6;max-width:220px}
 .dsh-notes-empty-btn{margin-top:10px;background:var(--nacc);color:#fff;border:none;border-radius:var(--nr-md);padding:7px 18px;font-size:12px;font-weight:500;cursor:pointer;transition:filter .15s;font-family:var(--nfont)}
 .dsh-notes-empty-btn:hover{filter:brightness(1.06)}
-/* 搜索高亮（暗色适配） */
+/* 搜索高亮（琥珀色，深浅通用；明暗随 DSH 主题，不再用系统级 prefers-color-scheme） */
 .dsh-notes-mark{background:rgba(255,213,79,.35);color:inherit;border-radius:2px;padding:0 1px}
-@media (prefers-color-scheme: dark){.dsh-notes-mark{background:rgba(255,214,10,.28);color:#ffd60a}}
 .dsh-notes-more{padding:10px 14px;color:var(--nt3);font-size:11px;text-align:center;user-select:none}
 .dsh-notes-error{padding:10px 16px;color:#ff3b30;font-size:12px}
 .dsh-notes-toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:2147483646;background:rgba(28,28,30,.96);color:#fff;border-radius:8px;padding:9px 16px;font-size:12px;box-shadow:0 8px 30px rgba(0,0,0,.3);opacity:0;transition:opacity .2s;pointer-events:none;font-family:var(--nfont)}
@@ -233,6 +266,31 @@
 /* 注意：此按钮 position:fixed 且不在 .dsh-notes-floating 内，拿不到面板的设计令牌变量，必须用具体颜色值 */
 .dsh-notes-sel-btn{position:fixed;z-index:2147483646;background:#0a84ff;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(10,132,255,.5),0 1px 3px rgba(0,0,0,.2);line-height:1;white-space:nowrap;transition:filter .15s,transform .1s;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
 .dsh-notes-sel-btn:hover{filter:brightness(1.08);transform:translateY(-1px)}
+
+/* ===== T3 选区指令框（划选后弹出：预览 + 备注输入 + 记录/取消） ===== */
+/* 浮层 position:fixed 不在 .dsh-notes-floating 内，故在此声明 --n* 令牌（映射 DSH 主题 token，明暗自动切换；缺失回退浅色） */
+.dsh-notes-instruct-box{
+  --nbg:var(--dsw-alias-bg-overlay,#ffffff);
+  --nbd:var(--dsw-alias-border-l1,#e5e5ea);
+  --ntx:var(--dsw-alias-label-primary,#1c1c1e);
+  --nt2:var(--dsw-alias-label-secondary,#6c6c70);
+  --nt3:var(--dsw-alias-label-secondary,#aeaeb2);
+  --nacc:var(--dsw-alias-brand-primary,#0a84ff);
+  --nbg-hover:var(--dsw-alias-bg-layer-2,#f2f2f7);
+  --nr-md:8px;
+  --nfont:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  position:fixed;z-index:2147483646;width:320px;background:var(--nbg);border:1px solid var(--nbd);border-radius:12px;
+  box-shadow:0 18px 50px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06);box-sizing:border-box;font-family:var(--nfont);color:var(--ntx);overflow:hidden;padding:0
+}
+.dsh-notes-instruct-preview{font-size:12px;line-height:1.45;color:var(--nt2);background:var(--nbg-hover);padding:8px 11px;max-height:60px;overflow:hidden;white-space:normal;word-break:break-word;border-bottom:1px solid var(--nbd)}
+.dsh-notes-instruct-input{width:100%;box-sizing:border-box;background:var(--nbg);border:none;border-bottom:1px solid var(--nbd);color:var(--ntx);padding:9px 11px;font-size:13px;font-family:var(--nfont);outline:none;line-height:1.5}
+.dsh-notes-instruct-input::placeholder{color:var(--nt3)}
+.dsh-notes-instruct-input:focus{background:var(--nbg-hover)}
+.dsh-notes-instruct-actions{display:flex;gap:8px;padding:8px 11px;justify-content:flex-end}
+.dsh-notes-instruct-btn{background:transparent;border:1px solid var(--nbd);border-radius:var(--nr-md);color:var(--nt2);padding:6px 14px;cursor:pointer;font-size:12px;font-weight:500;font-family:var(--nfont);line-height:1;transition:all .15s}
+.dsh-notes-instruct-btn:hover{border-color:var(--nt3);color:var(--ntx)}
+.dsh-notes-instruct-btn.primary{background:var(--nacc);color:#fff;border-color:var(--nacc)}
+.dsh-notes-instruct-btn.primary:hover{filter:brightness(1.06);color:#fff}
 
 /* ===== 旧类名兼容（已废弃，保留避免渲染期报错；后续清理 client 引用） ===== */
 .dsh-notes-capture{padding:10px 14px;border-bottom:1px solid var(--nbd-soft);display:flex;gap:8px;background:var(--nbg);flex-shrink:0;align-items:flex-end}

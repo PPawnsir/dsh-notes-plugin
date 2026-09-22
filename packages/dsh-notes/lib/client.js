@@ -1,11 +1,32 @@
-return {
-  inject: ['timer', 'sessions', 'workspaces'],
-  apply(ctx) {
-    const timer = ctx.timer
-    const sessions = ctx.sessions
-    const workspaces = ctx.workspaces
+/* global window, document, fetch, localStorage, performance, PerformanceObserver, console */
+// dsh-notes — Browser 侧 bundle（CJS 工厂，供 dsh web 客户端 ModuleLoader 注入）。
+//
+// 本文件是发布版静态包的 **最终源码**（P3）：由 scripts/build-dist.cjs 从开发版 client-impl.js
+// 机械转换而来，转换规则见 task-board-plugin/docs/PACKAGING.md 第 4 节：
+//   · React        ：require('react')（静态包无全局 React）
+//   · RPC          ：fetch('/dsh-notes', POST {method, args}) —— index.mjs 的 webServer exact 路由
+//                    （动态插件的 host 调用桥在静态包中不存在）
+//   · 样式         ：fetch notes-css + document.createElement('style') 注入（doc 级，进程单例）
+//                    （动态插件的 styles 服务在静态包中不存在）
+//   · 定时器        ：动态插件的 ctx.interval 快捷方式不存在，用 ctx.get('timer') + ctx.effect
+//   · inject       ：只声明硬依赖 slots；timer/sessions/workspaces 全部 ctx.get + 守卫
+//
+// 要改 client 行为：改开发版 client-impl.js，然后 `node scripts/build-dist.cjs` 重新生成。
+window.__ModuleLoader__.load({
+  id: 'dsh-notes',
+  factory: (require) => {
+    var module = { exports: {} }
+    var exports = module.exports
+    'use strict'
+    const React = require('react')
+
+    function apply(ctx) {
     const slots = ctx.get('slots')
-    if (!slots) { console.error('notes plugin: slots unavailable'); return }
+    if (!slots) { console.error('[dsh-notes] slots service unavailable'); return }
+    const timer = ctx.get('timer')
+    if (!timer) { console.error('[dsh-notes] timer service unavailable'); return }
+    const sessions = ctx.get('sessions')
+    const workspaces = ctx.get('workspaces')
     const disposers = []
     const listeners = new Set()
     const noteRefreshListeners = new Set()
@@ -43,10 +64,21 @@ return {
     const now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now()
     const perf = { selChange: 0, selCollapsedSkip: 0, selChangeMs: 0, selShowEval: 0, selShowMs: 0, mousemoveTracked: 0, hostCall: 0, hostCallMs: 0, panelRender: 0, selRender: 0, hdrRender: 0, longTasks: 0, longTaskMs: 0, worstTaskMs: 0 }
     try { window.__dshNotesPerf = perf } catch (e2) {}
-    try {
-      const origCall = host.call.bind(host)
-      host.call = (m, a) => { perf.hostCall++; const t0 = now(); return origCall(m, a).then(r => { perf.hostCallMs += now() - t0; return r }, err => { perf.hostCallMs += now() - t0; throw err }) }
-    } catch (e2) {}
+    // client → host RPC：静态包走 webServer exact 路由（PACKAGING.md 第 4 节），
+    // 与 index.mjs 的 RPC_PATH = '/dsh-notes' 对应。
+    function rpc(method, args) {
+      perf.hostCall++
+      var t0 = now()
+      return fetch('/dsh-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: method, args: args || {} })
+      }).then(
+        function (r) { perf.hostCallMs += now() - t0; return r.json() },
+        function (err) { perf.hostCallMs += now() - t0; throw err }
+      )
+    }
+    // 性能计数器在 rpc() helper 内部累加（hostCall/hostCallMs），不再改写全局 host 桥
     // 长任务观察器：主线程阻塞（>50ms）的直接证据
     try {
       if (typeof PerformanceObserver !== 'undefined') {
@@ -58,18 +90,29 @@ return {
         disposers.push(() => po.disconnect())
       }
     } catch (e2) {}
-    // 每 30s 把计数器推给 host，汇总写入 perf-report.json
-    try { const pd = timer.interval(() => { try { host.call('notes-perf', { perf: JSON.parse(JSON.stringify(perf)) }) } catch (e2) {} }, 30000); disposers.push(pd) } catch (e2) {}
-    // 样式从 host 拉取（styles.css 独立文件）：避免内嵌超长 CSS 字符串在 define 传输中被截断
+    // 每 30s 把计数器推给 host，汇总写入 perf-report.json（timer 经 ctx.get + ctx.effect）
+    try {
+      var pd = typeof timer.interval === 'function' ? timer.interval(function () { try { rpc('notes-perf', { perf: JSON.parse(JSON.stringify(perf)) }) } catch (e2) {} }, 30000) : null
+      if (typeof pd === 'function') ctx.effect(function () { return pd })
+    } catch (e2) {}
+    // 样式从 host 拉取（doc 级 <style> 注入，替代动态插件的 styles 服务）
+    // PACKAGING.md 坑5：args 里不能出现值为 undefined 的字段，故 notes-css 不传参
     let cssLoaded = false
     let cssTries = 0
     function loadCss() {
-      host.call('notes-css').then(res => {
-        if (res && res.css) { cssLoaded = true; const d = styles.insert(res.css); if (typeof d === 'function') disposers.push(d) }
-        else scheduleCssRetry()
+      rpc('notes-css').then(function (res) {
+        if (res && res.css) {
+          cssLoaded = true
+          // 进程单例：样式注入 document.head 一次，卸载时移除
+          var tag = document.createElement('style')
+          tag.dataset.dshNotes = '1'
+          tag.textContent = res.css
+          document.head.append(tag)
+          disposers.push(function () { try { tag.remove() } catch (e2) {} })
+        } else scheduleCssRetry()
       }).catch(scheduleCssRetry)
     }
-    function scheduleCssRetry() { if (!cssLoaded && ++cssTries <= 10) { const d = timer.timeout(loadCss, 1200); disposers.push(d) } }
+    function scheduleCssRetry() { if (!cssLoaded && ++cssTries <= 10) { var d = timer.timeout(loadCss, 1200); disposers.push(d) } }
     loadCss()
     // 通用拖拽：move(ev) 在 mousemove 时调用，done() 在 mouseup 时调用
     function drag(move, done) {
@@ -224,7 +267,7 @@ return {
         function saveState() { try { localStorage.setItem('dsh-notes-panel-state', JSON.stringify({ x: pos.x, y: pos.y, width: size.width, height: size.height, listWidth })) } catch (err) {} }
         React.useEffect(() => { const fn = (s) => { if (s.panelOpen !== undefined) setOpen(s.panelOpen) }; listeners.add(fn); return () => listeners.delete(fn) }, [])
         // 注入范围下拉的会话列表：面板打开时 + 笔记数变化时刷新（新会话可能出现）
-        React.useEffect(() => { if (!open) return; host.call('notes-sessions', {}).then(res => { if (res && res.sessions) setSessList(res.sessions) }).catch(() => {}) }, [open, notes.length])
+        React.useEffect(() => { if (!open) return; rpc('notes-sessions', {}).then(res => { if (res && res.sessions) setSessList(res.sessions) }).catch(() => {}) }, [open, notes.length])
         // 范围浮层：点击外部关闭
         React.useEffect(() => {
           if (!scopeOpen) return
@@ -244,7 +287,7 @@ return {
           const d = timer.debounce(() => {
             const qq = searchRef.current.trim()
             if (!qq) { setSearchIds(null); return }
-            host.call('notes-search', { query: qq }).then(res => setSearchIds((res.notes || []).map(n => n.id))).catch(() => {})
+            rpc('notes-search', { query: qq }).then(res => setSearchIds((res.notes || []).map(n => n.id))).catch(() => {})
           }, 250)
           searchDebRef.current = d
           return () => { if (d && d.dispose) d.dispose() }
@@ -314,7 +357,7 @@ return {
           drag((ev2) => setListWidth(Math.max(170, Math.min(400, sw + ev2.clientX - sx))), saveState)
         }
         // silent=true 时不显 loading（后台静默刷新，避免闪烁）
-        async function loadNotes(silent) { if (!silent) setLoading(true); setError(''); let list = []; try { const res = await host.call('notes-list'); list = res.notes || []; setNotes(list) } catch (err) { setError(String(err.message || err)) } if (!silent) setLoading(false); return list }
+        async function loadNotes(silent) { if (!silent) setLoading(true); setError(''); let list = []; try { const res = await rpc('notes-list'); list = res.notes || []; setNotes(list) } catch (err) { setError(String(err.message || err)) } if (!silent) setLoading(false); return list }
         function selectNote(n) {
           setSelected(n.id); setFocusId(n.id); setEdTitle(n.title); setEdTopic(n.topic && n.topic !== '分类中' ? n.topic : '')
           keepQuickRef.current = (n.tags || []).indexOf('quick') >= 0
@@ -323,7 +366,7 @@ return {
           setEdBody(''); setTopicPickFor(null)
           // 列表是瘦身数据，正文按需加载
           const id = n.id
-          host.call('notes-get', { id: id }).then(res => { if (res && res.note && selectedRef.current === id) setEdBody(res.note.body || '') }).catch(() => {})
+          rpc('notes-get', { id: id }).then(res => { if (res && res.note && selectedRef.current === id) setEdBody(res.note.body || '') }).catch(() => {})
         }
         function syncTopicLater(id) {
           const check = async () => { const list = await loadNotes(true); const n = list.find(x => x.id === id); if (n && n.topic && n.topic !== '分类中') setEdTopic(prev => (prev === '' && selectedRef.current === id) ? n.topic : prev) }
@@ -335,7 +378,7 @@ return {
           if (!text || capPending) return
           setCapPending(true); setError('')
           try {
-            const res = await host.call('notes-quick', { text: text, sessionId: currentSessionId })
+            const res = await rpc('notes-quick', { text: text, sessionId: currentSessionId })
             if (res && res.error) { setError(res.error); return }
             setCapText('')
             if (capRef.current) { capRef.current.style.height = '38px'; capRef.current.focus() }
@@ -356,7 +399,7 @@ return {
           const upd = { id: id, title: edTitleRef.current, tags: tags, body: edBodyRef.current, kind: edKindRef.current, status: edStatusRef.current, inject: edInjectRef.current, injectTo: edScopeRef.current }
           if ((edTopicRef.current || '').trim()) upd.topic = edTopicRef.current.trim()
           try {
-            const res = await host.call('notes-update', upd)
+            const res = await rpc('notes-update', upd)
             if (res && res.error) { setError(res.error); return }
             setSavedAt(Date.now())
             await loadNotes(true); notifyNotesChanged()
@@ -366,7 +409,7 @@ return {
           if (!id) return
           setError('')
           try {
-            const res = await host.call('notes-delete', { id: id })
+            const res = await rpc('notes-delete', { id: id })
             if (res.error) { setError(res.error); return }
             if (selected === id) { setSelected(null); setEdTitle(''); setEdTopic(''); setEdTags(''); setEdBody('') }
             showToast('已删除（可由 Agent 恢复）')
@@ -376,7 +419,7 @@ return {
         async function pickTopic(id, topic) {
           setTopicPickFor(null); setError('')
           try {
-            const res = await host.call('notes-update', { id: id, topic: topic })
+            const res = await rpc('notes-update', { id: id, topic: topic })
             if (res && res.error) { setError(res.error); return }
             if (selectedRef.current === id) setEdTopic(topic)
             await loadNotes(true)
@@ -402,10 +445,10 @@ return {
         }
         // 任务派发：加载活跃会话/工作区 + 打开对话框 + 确认派发
         async function loadActiveSessions() {
-          try { const res = await host.call('notes-active-sessions', {}); if (res && res.sessions) setActiveSessions(res.sessions) } catch (e) {}
+          try { const res = await rpc('notes-active-sessions', {}); if (res && res.sessions) setActiveSessions(res.sessions) } catch (e) {}
         }
         async function loadWorkspaces() {
-          try { const res = await host.call('notes-workspaces', {}); if (res && res.workspaces) setWsList(res.workspaces) } catch (e) {}
+          try { const res = await rpc('notes-workspaces', {}); if (res && res.workspaces) setWsList(res.workspaces) } catch (e) {}
         }
         function openDispatch() {
           setDispatchInstr(''); setDispatchSessId(''); setDispatchSessWs(''); setDispatchWsId(''); setDispatchMode('existing'); setError('')
@@ -421,7 +464,7 @@ return {
               if (!workspaces || !workspaces.connectWorkspace) { setError('workspaces 服务不可用'); setDispatching(false); return }
               const ws = wsList.find(w => w.id === dispatchWsId)
               const newSid = await workspaces.connectWorkspace(dispatchWsId)
-              const res = await host.call('notes-dispatch', { id: selected, sessionId: newSid, sessionName: (ws ? ws.title : '新会话'), workspace: ws ? ws.title : '', mode: 'new', instruction: dispatchInstr })
+              const res = await rpc('notes-dispatch', { id: selected, sessionId: newSid, sessionName: (ws ? ws.title : '新会话'), workspace: ws ? ws.title : '', mode: 'new', instruction: dispatchInstr })
               if (res && res.error) { setError(res.error); setDispatching(false); return }
               if (sessions && newSid) { try { sessions.open(newSid) } catch (e) {} }
               showToast('已新建会话，待办已注入并开始处理')
@@ -434,24 +477,24 @@ return {
                 try { sessions.open(sess.id) } catch (e) {}
                 await timer.timeout(1200)
               }
-              const res = await host.call('notes-dispatch', { id: selected, sessionId: dispatchSessId, sessionName: sess ? sess.name : '', workspace: sess ? sess.workspace : '', mode: 'existing', instruction: dispatchInstr })
+              const res = await rpc('notes-dispatch', { id: selected, sessionId: dispatchSessId, sessionName: sess ? sess.name : '', workspace: sess ? sess.workspace : '', mode: 'existing', instruction: dispatchInstr })
               if (res && res.error) { setError(res.error); setDispatching(false); return }
               showToast((sess && !sess.live ? '已打开并派发待办到「' : '已派发待办到「') + (sess ? sess.name : '') + '」（开始处理）')
             }
             setDispatchOpen(false); setDispatchInstr('')
-            const g = await host.call('notes-get', { id: selected }); if (g && g.note) setEdBody(g.note.body || '')
+            const g = await rpc('notes-get', { id: selected }); if (g && g.note) setEdBody(g.note.body || '')
             await loadNotes(true); notifyNotesChanged()
           } catch (err) { setError(String(err.message || err)) } finally { setDispatching(false) }
         }
         // 标记一条派发待办为完成（停止注入目标会话系统提示）
         async function doDispatchDone(origIndex) {
           try {
-            const r = await host.call('notes-dispatch-done', { id: selected, dispatchIndex: origIndex })
+            const r = await rpc('notes-dispatch-done', { id: selected, dispatchIndex: origIndex })
             if (r && r.error) { setError(r.error); return }
             showToast('已标记完成'); await loadNotes(true); notifyNotesChanged()
           } catch (err) { setError(String(err.message || err)) }
         }
-        async function doArchive() { setError(''); try { const res = await host.call('notes-archive'); if (res.error) { setError(res.error); return } showToast('归档完成：合并 ' + (res.merged || 0) + ' 组'); await loadNotes(true); notifyNotesChanged() } catch (err) { setError(String(err.message || err)) } }
+        async function doArchive() { setError(''); try { const res = await rpc('notes-archive'); if (res.error) { setError(res.error); return } showToast('归档完成：合并 ' + (res.merged || 0) + ' 组'); await loadNotes(true); notifyNotesChanged() } catch (err) { setError(String(err.message || err)) } }
         // 同步键盘导航所需 ref（keydown 监听挂一次，每次渲染刷新最新值）
         openRef.current = open
         focusIdRef.current = focusId
@@ -792,12 +835,12 @@ return {
           try {
             if (!note) {
               // 备注为空 → 现有逻辑（行为不变）
-              const res = await host.call('notes-quick', { text: text, sessionId: currentSessionId, kind: 'quote' })
+              const res = await rpc('notes-quick', { text: text, sessionId: currentSessionId, kind: 'quote' })
               if (res.error) { setToast('记录失败：' + res.error) }
               else { setToast(res.merged ? '已合并到本次速记' : '已记录，正在识别主题…'); notifyNotesChanged() }
             } else {
               // 备注非空 → LLM 提取元数据，按返回结果 toast
-              const res = await host.call('notes-quick-instruct', { text: text, note: note, sessionId: currentSessionId })
+              const res = await rpc('notes-quick-instruct', { text: text, note: note, sessionId: currentSessionId })
               if (res.error) { setToast('记录失败：' + res.error) }
               else if (res.ok && res.applied) {
                 const a = res.applied
@@ -828,5 +871,12 @@ return {
     if (typeof d4 === 'function') disposers.push(d4)
     ctx.effect(() => () => { for (const d of disposers) { try { d() } catch (e2) {} } })
     console.log('notes plugin: client ready')
+    }
+
+    // 动态版 inject 为 ['timer','sessions','workspaces']；静态包按 PACKAGING.md 第 4 节保守处理：
+    // 只声明硬依赖 slots（没它就完全没有 UI），其余服务在 apply 内 ctx.get + 守卫，
+    // 避免服务未就绪时插件永远不启动。
+    module.exports = { name: 'dsh-notes', inject: ['slots'], apply: apply }
+    return module.exports
   }
-}
+})

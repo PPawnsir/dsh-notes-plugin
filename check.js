@@ -4,13 +4,18 @@
 // 不触碰真实笔记目录。
 const fsNative = require('fs')
 const path = require('path')
+const osNative = require('os')
 const assert = require('assert')
+const { pathToFileURL } = require('url')
 
 const DIR = 'D:\\deepseek-work\\dsh-notes-plugin'
 const bootHostSrc = fsNative.readFileSync(path.join(DIR, 'host.js'), 'utf8')
 const bootClientSrc = fsNative.readFileSync(path.join(DIR, 'client.js'), 'utf8')
 const hostSrc = fsNative.readFileSync(path.join(DIR, 'host-impl.js'), 'utf8')
 const clientSrc = fsNative.readFileSync(path.join(DIR, 'client-impl.js'), 'utf8')
+// P2：发布版静态包 host（ESM）。开发版 host-impl.js 之上的回归照旧，这里额外覆盖静态包。
+const INDEX_PATH = path.join(DIR, 'packages', 'dsh-notes', 'index.mjs')
+const indexSrc = fsNative.readFileSync(INDEX_PATH, 'utf8')
 
 let passed = 0, failed = 0
 // 必须 await fn()：大量测试是 async 的，不 await 会导致 promise 内断言未执行就 passed++（假通过）
@@ -46,6 +51,62 @@ async function main() {
     const m = hostSrc.match(/regTool\(\{\s*name:\s*'([^']+)'/g) || []
     const names = m.map(s => s.match(/'([^']+)'/)[1])
     assert.deepStrictEqual(names.sort(), ['note_get', 'note_manage', 'note_search'], '已注册工具必须是 3 个：note_get / note_manage / note_search（实得：' + JSON.stringify(names) + '）')
+  })
+
+  // ===== 1.2 P2 静态包 index.mjs 静态校验 =====
+  section('1.2 P2 静态包 host（packages/dsh-notes/index.mjs）静态校验')
+  await t('index.mjs 存在', () => assert(fsNative.existsSync(INDEX_PATH), INDEX_PATH + ' 必须存在'))
+  await t('index.mjs 是 ESM（export name/inject/apply，无 bootstrap return）', () => {
+    assert(/export const name\s*=\s*'dsh-notes'/.test(indexSrc), "应 export const name = 'dsh-notes'")
+    assert(/export const inject\s*=\s*\['fs',\s*'sandboxPolicy'\]/.test(indexSrc), "inject 必须是 ['fs','sandboxPolicy']（harness 是全局 Builtin，不进 inject）")
+    assert(/export function apply\(ctx\)/.test(indexSrc), 'export function apply(ctx)')
+    assert(!/^return\s*\{/m.test(indexSrc), '不应再有 bootstrap 的顶层 return { inject, apply } 形式')
+    assert(!/new Function\s*\(/.test(indexSrc), '不应再依赖 new Function 引导壳（注释中提及历史形式不算）')
+  })
+  await t('index.mjs 顶部 import node 内置模块', () => {
+    assert(indexSrc.indexOf("from 'node:os'") >= 0, 'import node:os')
+    assert(indexSrc.indexOf("from 'node:path'") >= 0, 'import node:path')
+    assert(indexSrc.indexOf("from 'node:fs'") >= 0, 'import node:fs')
+  })
+  await t('index.mjs 存储路径为 ~/.dsh/notes（不再从插件目录派生）', () => {
+    assert(/path\.join\(os\.homedir\(\),\s*'\.dsh',\s*'notes'\)/.test(indexSrc), "NOTES_ROOT = path.join(os.homedir(), '.dsh', 'notes')")
+    assert(indexSrc.indexOf('PLUGIN_DIR + ') < 0 && indexSrc.indexOf('PLUGIN_DIR +') < 0, '不应再用 PLUGIN_DIR 拼接路径')
+  })
+  await t('index.mjs 含一次性数据迁移逻辑（只复制不删除）', () => {
+    assert(indexSrc.indexOf('migrateLegacyNotes') >= 0, 'migrateLegacyNotes 存在')
+    assert(indexSrc.indexOf('LEGACY_NOTES_DIR') >= 0, 'LEGACY_NOTES_DIR 迁移源存在')
+    assert(indexSrc.indexOf('legacyNames') >= 0 && indexSrc.indexOf('existing[name]') >= 0, '逐文件按需复制（已存在则跳过）')
+  })
+  await t('index.mjs RPC 主通道 harness.handle + 兜底 webServer 路由', () => {
+    assert(indexSrc.indexOf("function handle(name, fn)") >= 0, 'handle(name,fn) helper 保留')
+    assert(indexSrc.indexOf('harnessRef.handle(name, wrapped)') >= 0, 'handle helper 内部调用 harness.handle（原姿势）')
+    assert(indexSrc.indexOf('webServer.register(') >= 0, '兜底：ctx.webServer.register 路由')
+    assert(/kind:\s*'exact'/.test(indexSrc), "路由 kind: 'exact'（参照 task-board）")
+    assert(indexSrc.indexOf("RPC_PATH = '/dsh-notes'") >= 0, "RPC 路径 '/dsh-notes'")
+  })
+  await t('index.mjs 工具走 harness.defineTool/registerTool（保留内联 defineTool 兜底）', () => {
+    assert(indexSrc.indexOf('harnessRef.defineTool(def)') >= 0 && indexSrc.indexOf('harnessRef.registerTool(ctx, tool)') >= 0, 'harness.defineTool + harness.registerTool 原姿势保留')
+    assert(indexSrc.indexOf('tools.register(defineTool(def))') >= 0, 'ctx.tools 兜底通道')
+    assert(indexSrc.indexOf('function defineTool(options)') >= 0, '内联 defineTool（零外部依赖）')
+    assert(indexSrc.indexOf("/* global harness */") >= 0, '顶部 /* global harness */ 保留')
+  })
+  await t('index.mjs 发布版不再写 .last-host-load 开发心跳', () => {
+    assert(indexSrc.indexOf('.last-host-load') < 0 || /发布版不再写/.test(indexSrc), '心跳写入段已删除')
+    assert(indexSrc.indexOf('PERF_PATH = path.join(NOTES_ROOT') >= 0, 'perf-report.json 落在 ~/.dsh/notes')
+  })
+  await t('index.mjs 保留 19 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类', () => {
+    const m = indexSrc.match(/handle\('([^']+)'/g) || []
+    const names = m.map(s => s.match(/'([^']+)'/)[1])
+    const expected = ['notes-perf', 'notes-list', 'notes-css', 'notes-src', 'notes-get', 'notes-create', 'notes-update', 'notes-quick', 'notes-quick-instruct', 'notes-delete', 'notes-restore', 'notes-archive', 'notes-search', 'notes-conventions', 'notes-sessions', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done']
+    for (const e of expected) assert(names.indexOf(e) >= 0, '缺少 RPC：' + e + '（实得 ' + names.length + ' 个：' + names.join(',') + '）')
+    assert(names.length === expected.length + 1, '应为 19 个迁移 RPC + 1 个 P1 存活探测（notes-ping），实得 ' + names.length)
+    const tm = indexSrc.match(/regTool\(\{\s*name:\s*'([^']+)'/g) || []
+    const tnames = tm.map(s => s.match(/'([^']+)'/)[1])
+    assert.deepStrictEqual(tnames.sort(), ['note_get', 'note_manage', 'note_search'], '静态包工具必须是 3 个（实得：' + JSON.stringify(tnames) + '）')
+    assert(indexSrc.indexOf("name: 'notes:workspace-conventions'") >= 0 && /order:\s*130/.test(indexSrc), 'systemPrompt 约定注入 order 130')
+    assert(indexSrc.indexOf('classifyTopic') >= 0 && indexSrc.indexOf('extractInstruction') >= 0, 'LLM 分类 + 指令元数据提取保留')
+    assert(indexSrc.indexOf('form: \'recall\'') >= 0, '派发消息保留 form:recall 标记')
+    assert(indexSrc.indexOf('function migrationDone') >= 0 || indexSrc.indexOf('let migrationDone') >= 0, '_list 与迁移的竞态等待存在')
   })
 
   // ===== 1.5 T1.2 列表懒加载分页（client 逻辑层验证）=====
@@ -117,6 +178,14 @@ async function main() {
     assert(clientSrc.indexOf('本工作区') >= 0 && clientSrc.indexOf('全局') >= 0, '范围含 本工作区/全局')
     assert(clientSrc.indexOf('sessList') >= 0 && clientSrc.indexOf('notes-sessions') >= 0, '会话名列表 sessList 来自 notes-sessions RPC')
   })
+  await t('client-impl 派发对话框（已有/新建会话）', () => {
+    assert(/dsh-notes-dispatch-modal/.test(clientSrc), '派发对话框 modal')
+    assert(/openDispatch/.test(clientSrc) && /doDispatchConfirm/.test(clientSrc), '打开对话框+确认派发')
+    assert(/dispatchMode/.test(clientSrc) && clientSrc.indexOf('新建会话') >= 0 && clientSrc.indexOf('已有会话') >= 0, '两种派发模式')
+    assert(/connectWorkspace/.test(clientSrc), '新建会话用 connectWorkspace')
+    assert(/dsh-notes-dispatch-history/.test(clientSrc), '详情区派发历史展示')
+    assert(/notes-workspaces/.test(clientSrc) && /notes-active-sessions/.test(clientSrc), '工作区+活跃会话下拉数据源')
+  })
   await t('client-impl 列表项含注入徽章', () => {
     assert(clientSrc.indexOf('dsh-note-inject') >= 0, '列表项注入徽章 class')
     assert(clientSrc.indexOf('injectScopeLabel') >= 0, '注入范围文字函数')
@@ -145,7 +214,19 @@ async function main() {
     readText: async (p) => { reads++; if (!store.has(p)) throw new Error('ENOENT: ' + p); return store.get(p) },
     writeText: async (p, c) => { writes++; store.set(p, c) },
   }
-  const llmMock = { stream: async function* () { yield { type: 'text-delta', text: '开发' }; yield { type: 'finish' } } }
+  const llmMock = {
+    stream: async function* (req) {
+      const sys = (req && req.system) || ''
+      // T3 指令元数据提取：返回固定 JSON（断言原文不变 + 元数据应用）
+      if (sys.indexOf('元数据') >= 0) {
+        yield { type: 'text-delta', text: '{"tags":["重要","bug"],"titleHint":"登录崩溃修复","kind":"todo","inject":true}' }
+        yield { type: 'finish' }
+      } else {
+        yield { type: 'text-delta', text: '开发' }
+        yield { type: 'finish' }
+      }
+    }
+  }
   const admMock = { currentSelection: () => ({ provider: 'p', model: 'm' }) }
   const handlers = {}
   const registeredTools = []
@@ -168,17 +249,36 @@ async function main() {
   const registeredContexts = []
   const systemPromptMock = { context: (c) => { registeredContexts.push(c); return () => {} } }
   const sessionPersistenceMock = {
+    // 返回 SessionPersistenceSnapshot 结构（{header, revision}），模拟 DSH 新版 list() 返回
     list: async () => [
-      { id: 'session-abc12345-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T01:00:00.000Z' },
-      { id: 'session-sub9900000-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T02:00:00.000Z', origin: 'subagent' },
-      { id: 'session-arch00000-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T03:00:00.000Z' }
+      { header: { id: 'session-abc12345-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T01:00:00.000Z' }, revision: 'r1' },
+      { header: { id: 'session-sub9900000-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T02:00:00.000Z', origin: 'subagent' }, revision: 'r2' },
+      { header: { id: 'session-arch00000-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T03:00:00.000Z' }, revision: 'r3' }
     ],
     inspect: async (id) => ({ meta: { id: id, cwd: 'D:\\deepseek-work' }, events: [{ type: 'session/title', data: { title: '开发会话' } }] })
   }
-  const workspaceRegistryMock = { archivedSessionIds: ['session-arch00000-0000-0000-0000-000000000000'] }
+  const workspaceRegistryMock = {
+    archivedSessionIds: ['session-arch00000-0000-0000-0000-000000000000'],
+    // 工作区（含 sessionIds，= 左侧列表有效会话数据源）
+    list: () => [
+      { id: 'ws1', title: 'deepseek-work', path: 'D:\\deepseek-work', sessionIds: ['session-abc12345-0000-0000-0000-000000000000', 'session-sub9900000-0000-0000-0000-000000000000', 'session-arch00000-0000-0000-0000-000000000000'] }
+    ]
+  }
+  const sessionTitleMock = { get: (session) => ({ title: '开发会话' }) }
+  const sessionQueryMock = {
+    // 批量读 title + header（origin/cwd/createdAt）
+    readTitleSnapshots: async (sids) => (sids || []).map(sid => ({
+      sessionId: sid,
+      status: 'fulfilled',
+      value: {
+        session: { id: sid, cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T01:00:00.000Z', origin: sid.indexOf('sub99') >= 0 ? 'subagent' : undefined },
+        title: { title: '开发会话' }
+      }
+    }))
+  }
   const ctx = {
     fs: fsMock, sandboxPolicy: { resolve: () => ({}) },
-    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: systemPromptMock, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock })[name],
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: systemPromptMock, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
     effect: () => {},
   }
   const plugin = new Function('harness', 'pluginDir', hostSrc)(global.harness, DIR)
@@ -265,7 +365,7 @@ async function main() {
 
   // ===== 9. 启动加载与遥测 =====
   section('9. 启动 + 遥测')
-  await t('host-impl 应用成功（16 RPC handlers）', () => assert.strictEqual(Object.keys(handlers).length, 16))
+  await t('host-impl 应用成功（19 RPC handlers）', () => assert.strictEqual(Object.keys(handlers).length, 19))
   await t('notes-src handler 可用', () => assert(typeof handlers['notes-src'] === 'function'))
   await t('notes-css handler 可用', () => assert(typeof handlers['notes-css'] === 'function'))
   await t('notes-perf handler 可用', () => assert(typeof handlers['notes-perf'] === 'function'))
@@ -460,48 +560,528 @@ async function main() {
     assert(r.sessions.find(s => s.short === 'abc12345'), '未归档的主会话应保留')
   })
 
-  // ===== 15. 任务派发（待办 → 活跃 session） =====
-  section('15. 任务派发（待办 → 活跃 session）')
+  // ===== 15. 任务派发（系统提示注入形式：登记 dispatches + 目标会话系统提示注入待办） =====
+  section('15. 任务派发（系统提示注入形式）')
   await t('notes-active-sessions 返回活跃主会话', async () => {
     const r = await handlers['notes-active-sessions']({})
     assert(Array.isArray(r.sessions), '返回 sessions 数组')
     assert(r.sessions.length === 1, 'mock 只有 1 个活跃主会话')
     assert.strictEqual(r.sessions[0].short, 'abc12345')
   })
-  await t('notes-dispatch 派发成功（消息进 inbox）', async () => {
+  await t('notes-dispatch 注入上下文+触发工作（agent.send）', async () => {
     const c = await handlers['notes-create']({ title: '待办A', body: '重构 X 模块', kind: 'todo' })
     const before = sentMessages.length
-    const r = await handlers['notes-dispatch']({ id: c.id, sessionId: 'session-abc12345-0000-0000-0000-000000000000', sessionName: '开发会话' })
+    const r = await handlers['notes-dispatch']({ id: c.id, sessionId: 'session-abc12345-0000-0000-0000-000000000000', sessionName: '开发会话', workspace: 'deepseek-work', mode: 'existing', instruction: '重点处理性能瓶颈' })
     assert(r.ok === true, '派发应成功')
-    assert(sentMessages.length === before + 1, '应向目标 agent 注入一条消息')
+    assert.strictEqual(sentMessages.length, before + 1, '应 agent.send 注入上下文并触发工作')
     const m = sentMessages[sentMessages.length - 1]
-    assert.strictEqual(m.target, 'next-turn')
-    assert.strictEqual(m.wakeup, true)
-    assert(m.msg.role === 'user' && m.msg.content[0].text.indexOf('重构 X 模块') >= 0, '消息内容含待办')
-  })
-  await t('notes-dispatch 派发后笔记记录已派发', async () => {
-    const c = await handlers['notes-create']({ title: '待办B', body: '写文档', kind: 'todo' })
-    await handlers['notes-dispatch']({ id: c.id, sessionId: 'session-abc12345-0000-0000-0000-000000000000', sessionName: '开发会话' })
+    assert.strictEqual(m.target, 'next-turn'); assert.strictEqual(m.wakeup, true, 'wakeup=true 触发 agent 开始工作')
+    assert(m.msg.source && m.msg.source.kind === 'plugin' && m.msg.source.form === 'recall', 'source 应标记为 plugin + form=recall（召回上下文，非用户指令）')
+    assert(m.msg.content[0].text.indexOf('重构 X 模块') >= 0, '消息含 todo 上下文')
+    assert(m.msg.content[0].text.indexOf('重点处理性能瓶颈') >= 0, '消息含派发方补充要求')
     const g = await handlers['notes-get']({ id: c.id })
-    assert(g.note.body.indexOf('已派发到') >= 0 && g.note.body.indexOf('开发会话') >= 0, '正文应追加已派发记录')
+    assert(Array.isArray(g.note.dispatches) && g.note.dispatches.length === 1, 'dispatches 属性应有 1 条记录')
+    const d = g.note.dispatches[0]
+    assert.strictEqual(d.sessionName, '开发会话'); assert.strictEqual(d.instruction, '重点处理性能瓶颈'); assert.strictEqual(d.done, false, '新派发为待处理 done=false')
+    assert(g.note.body.indexOf('已派发到') < 0, '派发记录不应写进正文')
   })
-  await t('notes-dispatch 目标不活跃返回错误', async () => {
+  await t('notes-dispatch 目标未打开返回 needOpen', async () => {
+    const c = await handlers['notes-create']({ title: '待办B2', body: 'x', kind: 'todo' })
+    const r = await handlers['notes-dispatch']({ id: c.id, sessionId: 'session-notlive-0000' })
+    assert(r.error && r.needOpen === true, '目标不 live 应返回 needOpen 提示')
+  })
+  await t('notes-dispatch-done 标记完成停止注入', async () => {
+    const c = await handlers['notes-create']({ title: '待办-done', body: 'x', kind: 'todo' })
+    await handlers['notes-dispatch']({ id: c.id, sessionId: 'session-abc12345-0000-0000-0000-000000000000', sessionName: '开发会话' })
+    const r = await handlers['notes-dispatch-done']({ id: c.id, dispatchIndex: 0 })
+    assert(r.ok === true, '标记完成应成功')
+    const g = await handlers['notes-get']({ id: c.id })
+    assert(g.note.dispatches[0].done === true && g.note.dispatches[0].doneAt, 'dispatch 应标记 done + doneAt')
+  })
+  await t('notes-dispatch 缺少目标会话报错', async () => {
     const c = await handlers['notes-create']({ title: '待办C', body: 'x', kind: 'todo' })
-    const r = await handlers['notes-dispatch']({ id: c.id, sessionId: 'session-nonexistent-0000' })
-    assert(r.error && r.error.indexOf('不在活跃状态') >= 0, '目标不活跃应返回错误')
+    const r = await handlers['notes-dispatch']({ id: c.id })
+    assert(r.error && r.error.indexOf('缺少目标会话') >= 0, '缺 sessionId 应报错')
+  })
+  await t('dispatches 字段 front-matter 往返', async () => {
+    const c = await handlers['notes-create']({ title: '待办D2', body: 'x', kind: 'todo' })
+    await handlers['notes-dispatch']({ id: c.id, sessionId: 'session-abc12345-0000-0000-0000-000000000000', sessionName: '开发会话', instruction: '含,逗号"引号' })
+    const r = await handlers['notes-get']({ id: c.id })
+    assert(r.note.dispatches.length === 1 && r.note.dispatches[0].instruction === '含,逗号"引号', 'dispatches 应正确序列化/反序列化（含特殊字符）')
   })
   await t('note_manage dispatch 无目标时列出活跃会话', async () => {
     const c = await noteManage.execute({ action: 'create', title: '待办D', body: 'x', kind: 'todo' })
     const r = await noteManage.execute({ action: 'dispatch', id: c.id })
     assert(r.needTarget === true && Array.isArray(r.activeSessions), '无目标时应返回活跃会话列表')
     assert(r.activeSessions.find(s => s.short === 'abc12345'), '列表应含当前活跃会话')
+    assert(r.activeSessions[0].name, '活跃会话应带名字')
   })
-  await t('note_manage dispatch 派发到目标会话', async () => {
+  await t('note_manage dispatch 注入上下文+触发工作', async () => {
     const c = await noteManage.execute({ action: 'create', title: '待办E', body: '做E事', kind: 'todo' })
     const before = sentMessages.length
-    const r = await noteManage.execute({ action: 'dispatch', id: c.id, targetSessionId: 'session-abc12345-0000-0000-0000-000000000000', targetSessionName: '开发会话' })
+    const r = await noteManage.execute({ action: 'dispatch', id: c.id, targetSessionId: 'session-abc12345-0000-0000-0000-000000000000', targetSessionName: '开发会话', instruction: '按要求做' })
     assert(r.action === 'dispatch' && !r.error, '派发应成功')
-    assert(sentMessages.length === before + 1, '应注入一条消息')
+    assert.strictEqual(sentMessages.length, before + 1, '应 agent.send 触发工作')
+    assert(sentMessages[sentMessages.length - 1].msg.content[0].text.indexOf('按要求做') >= 0, '消息含 instruction')
+    const g = await handlers['notes-get']({ id: c.id })
+    assert(g.note.dispatches.length === 1 && g.note.dispatches[0].instruction === '按要求做', 'dispatches 记录含 instruction')
+  })
+
+  // ===== 16. T3 选区指令记录（notes-quick-instruct） =====
+  section('16. T3 选区指令记录（notes-quick-instruct）')
+  await t('notes-quick-instruct handler 已注册', () => assert(typeof handlers['notes-quick-instruct'] === 'function', 'handler 存在'))
+  const qi = await handlers['notes-quick-instruct']({ text: '选区原文内容abc', note: '这是待办，标记为重要 bug，记住这个', sessionId: 'sess-instruct-1', cwd: 'D:\\deepseek-work' })
+  await t('notes-quick-instruct 返回 ok + applied', () => {
+    assert(qi.ok === true && qi.id, '应返回 ok + id')
+    assert.deepStrictEqual(qi.applied.tags, ['重要', 'bug'], 'applied.tags = LLM 提取的标签')
+    assert.strictEqual(qi.applied.kind, 'todo', 'applied.kind = todo')
+    assert.strictEqual(qi.applied.inject, true, 'applied.inject = true')
+    assert.strictEqual(qi.applied.titleHint, '登录崩溃修复', 'applied.titleHint 透传')
+  })
+  const qiGet = await handlers['notes-get']({ id: qi.id })
+  await t('notes-quick-instruct 选区原文原样为 body', () => {
+    assert.strictEqual(qiGet.note.body, '选区原文内容abc\n', 'body = 选区原文（不变）')
+  })
+  await t('notes-quick-instruct 备注不进笔记 body', () => {
+    assert(qiGet.note.body.indexOf('待办') < 0, '备注不应进 body')
+    assert(qiGet.note.body.indexOf('记住这个') < 0, '备注不应进 body')
+  })
+  await t('notes-quick-instruct 元数据应用到笔记', () => {
+    assert(qiGet.note.tags.indexOf('重要') >= 0 && qiGet.note.tags.indexOf('bug') >= 0, 'tags 合并到笔记')
+    assert(qiGet.note.tags.indexOf('quick') >= 0, '保留 quick 默认标签')
+    assert.strictEqual(qiGet.note.kind, 'todo', 'kind 应用为 todo')
+    assert.strictEqual(qiGet.note.inject, true, 'inject 应用为约定')
+    assert.strictEqual(qiGet.note.topic, '登录崩溃修复', 'titleHint 引导 topic')
+  })
+  await t('notes-quick-instruct 不走合并窗口（独立笔记）', () => {
+    assert(!qi.merged, '指令记录是独立意图，不合并')
+  })
+  await t('notes-quick-instruct 空备注走 notes-quick 逻辑', async () => {
+    const r = await handlers['notes-quick-instruct']({ text: '空备注原文xyz', note: '', sessionId: 'sess-instruct-empty', cwd: 'D:\\deepseek-work' })
+    assert(r.ok === true && r.id, '空备注应返回 ok + id')
+    assert.deepStrictEqual(r.applied.tags, [], '空备注 applied.tags 为空')
+    assert.strictEqual(r.applied.inject, false, '空备注 applied.inject 为 false')
+    const g = await handlers['notes-get']({ id: r.id })
+    assert(g.note.body.indexOf('空备注原文xyz') >= 0, '空备注 body = 选区原文')
+  })
+  await t('notes-quick-instruct LLM 解析失败回退等价 notes-quick', async () => {
+    // 临时替换 llmMock.stream 返回非 JSON，验证容错回退（原文不变，等价 notes-quick）
+    const origStream = llmMock.stream
+    llmMock.stream = async function* () { yield { type: 'text-delta', text: '这不是JSON' }; yield { type: 'finish' } }
+    try {
+      const r = await handlers['notes-quick-instruct']({ text: '容错回退原文', note: '有备注但LLM返回非JSON', sessionId: 'sess-instruct-fb', cwd: 'D:\\deepseek-work' })
+      assert(r.ok === true && r.id, '容错回退应返回 ok + id')
+      assert(r.fallback === true, '应标记 fallback=true')
+      assert.deepStrictEqual(r.applied.tags, [], '回退 applied.tags 为空')
+      const g = await handlers['notes-get']({ id: r.id })
+      assert(g.note.body.indexOf('容错回退原文') >= 0, '回退 body = 选区原文')
+      assert(g.note.body.indexOf('有备注但LLM返回非JSON') < 0, '回退时备注不进 body')
+    } finally {
+      llmMock.stream = origStream
+    }
+  })
+
+  // ===== 17. P2 静态包 host 全链路（ESM import + webServer RPC 路由 + tools） =====
+  section('17. P2 静态包 host 全链路（ESM import + webServer RPC 路由）')
+  const NOTES_ROOT_STATIC = path.join(osNative.homedir(), '.dsh', 'notes')
+  const LEGACY_NOTES_STATIC = path.join('D:\\deepseek-work\\dsh-notes-plugin', 'notes')
+  const store2 = new Map()
+  const fsMock2 = {
+    resolve: async (p) => p,
+    stat: async (p) => ((p === NOTES_ROOT_STATIC || p === LEGACY_NOTES_STATIC) ? { dir: true } : (store2.has(p) ? { file: true } : null)),
+    listDir: async (p) => {
+      const prefix = p + '\\'
+      const out = []
+      for (const k of store2.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+      return out
+    },
+    readText: async (p) => { if (!store2.has(p)) throw new Error('ENOENT: ' + p); return store2.get(p) },
+    writeText: async (p, c) => { store2.set(p, c) },
+  }
+  // 迁移源：预置一条开发版笔记（apply 时应被复制到 ~/.dsh/notes，且原目录保留）
+  const legacyIdP2 = 'n-legacy-p2'
+  const legacySrcPath = path.join(LEGACY_NOTES_STATIC, legacyIdP2 + '.md')
+  store2.set(legacySrcPath, '---\nid: ' + legacyIdP2 + '\ntitle: 迁移前旧笔记\ntopic: 调用约定\nworkspace: deepseek-work\nstatus: active\ninject: true\ncreatedAt: 2026-09-17T00:00:00.000Z\nupdatedAt: 2026-09-17T00:00:00.000Z\n---\n\n旧笔记正文\n')
+  const routes2 = []
+  const tools2 = []
+  const contexts2 = []
+  const ctx2 = {
+    fs: fsMock2,
+    sandboxPolicy: { resolve: () => ({}) },
+    webServer: { register: (r) => { routes2.push(r); return () => {} } },
+    tools: { register: (d) => { tools2.push(d); return () => {} } },
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: (c) => { contexts2.push(c); return () => {} } }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    effect: () => {},
+  }
+  // 真实静态包环境没有动态沙箱的 harness Builtin —— 临时摘掉 mock 的 global.harness 还原真实条件
+  const harnessBackup = global.harness
+  delete global.harness
+  let modIndex = null
+  await t('index.mjs 可被 ESM import（语法 + 顶层无副作用）', async () => {
+    modIndex = await import(pathToFileURL(INDEX_PATH).href)
+    assert.strictEqual(modIndex.name, 'dsh-notes', 'name 导出')
+    assert(Array.isArray(modIndex.inject) && modIndex.inject.indexOf('fs') >= 0 && modIndex.inject.indexOf('sandboxPolicy') >= 0, 'inject 含 fs/sandboxPolicy')
+    assert(typeof modIndex.apply === 'function', 'apply 导出')
+  })
+  await t('harness 缺失时兜底：1 条 exact RPC 路由 + ctx.tools 3 工具 + 约定注入 order130', () => {
+    modIndex.apply(ctx2)
+    assert.strictEqual(routes2.length, 1, '应注册 1 条 RPC 路由')
+    assert.strictEqual(routes2[0].kind, 'exact', "路由 kind='exact'")
+    assert.strictEqual(routes2[0].path, '/dsh-notes', "路由 path='/dsh-notes'")
+    assert.strictEqual(typeof routes2[0].handler, 'function', 'handler 是函数')
+    assert.deepStrictEqual(tools2.map(x => x.name).sort(), ['note_get', 'note_manage', 'note_search'], '注册 3 个工具')
+    assert.strictEqual(contexts2.length, 1, '注册 1 个 systemPrompt context')
+    assert.strictEqual(contexts2[0].order, 130, '约定注入 order=130')
+  })
+  // 走真实 HTTP handler 形态调用 RPC（等价 client 侧 fetch POST /dsh-notes）
+  function rpc2(method, args) {
+    return new Promise((resolve, reject) => {
+      const body = Buffer.from(JSON.stringify({ method: method, args: args }))
+      const req = { method: 'POST', on: (ev, cb) => { if (ev === 'data') cb(body); else if (ev === 'end') cb(); return req }, destroy: () => {} }
+      const res = { statusCode: 0, setHeader: () => {}, writeHead: (c) => { res.statusCode = c }, end: (s) => { let b; try { b = JSON.parse(s) } catch (e) { b = s } resolve({ status: res.statusCode, body: b }) } }
+      Promise.resolve(routes2[0].handler(req, res)).catch(reject)
+    })
+  }
+  const listP2 = await rpc2('notes-list', {})
+  await t('RPC 200 + 首次启动迁移开发版笔记到 ~/.dsh/notes', () => {
+    assert.strictEqual(listP2.status, 200, 'HTTP 200')
+    const ids = listP2.body.notes.map(n => n.id)
+    assert(ids.indexOf(legacyIdP2) >= 0, '迁移后的旧笔记应出现在列表（实得：' + JSON.stringify(ids) + '）')
+    assert.strictEqual(listP2.body.notes.find(n => n.id === legacyIdP2).title, '迁移前旧笔记', '迁移保留标题')
+    assert(store2.has(path.join(NOTES_ROOT_STATIC, legacyIdP2 + '.md')), '目标目录出现迁移副本')
+    assert(store2.has(legacySrcPath), '迁移不删除开发版原目录')
+  })
+  const cr2 = await rpc2('notes-create', { title: '静态包笔记', body: '正文P2', tags: ['p2'], topic: '开发' })
+  await t('notes-create 走静态包 RPC', () => assert(cr2.body.id, '返回 id（实得 ' + JSON.stringify(cr2.body) + '）'))
+  const get2 = await rpc2('notes-get', { id: cr2.body.id })
+  await t('notes-get 返回正文', () => assert.strictEqual(get2.body.note.body, '正文P2', 'body 原样'))
+  await t('notes-update 生效', async () => {
+    const up = await rpc2('notes-update', { id: cr2.body.id, topic: '运维' })
+    assert.strictEqual(up.body.id, cr2.body.id, 'update 返回 id')
+    const g = await rpc2('notes-get', { id: cr2.body.id })
+    assert.strictEqual(g.body.note.topic, '运维', 'topic 更新为 运维')
+  })
+  await t('notes-quick 合并窗口 + 异步分类回填', async () => {
+    const q1 = await rpc2('notes-quick', { text: '速记P2第一条', sessionId: 'sess-p2-1' })
+    assert(q1.body.id && q1.body.merged === false, '首条新建')
+    const q2 = await rpc2('notes-quick', { text: '速记P2第二条', sessionId: 'sess-p2-1' })
+    assert.strictEqual(q2.body.id, q1.body.id, '10 分钟内同会话合并')
+    const g = await rpc2('notes-get', { id: q1.body.id })
+    assert(g.body.note.body.indexOf('速记P2第二条') >= 0, '合并正文含第二条')
+  })
+  await t('notes-search 命中', async () => {
+    const s = await rpc2('notes-search', { query: '速记P2第二' })
+    assert.strictEqual(s.body.notes.length, 1, '命中 1 条')
+  })
+  await t('notes-delete / notes-restore 软删除往返', async () => {
+    await rpc2('notes-delete', { id: cr2.body.id })
+    const l1 = await rpc2('notes-list', {})
+    assert(l1.body.notes.every(n => n.id !== cr2.body.id), '软删除后不在列表')
+    await rpc2('notes-restore', { id: cr2.body.id })
+    const l2 = await rpc2('notes-list', {})
+    assert(l2.body.notes.some(n => n.id === cr2.body.id), '恢复后回到列表')
+  })
+  await t('notes-conventions 读到迁移笔记的 inject 约定', async () => {
+    const c = await rpc2('notes-conventions', {})
+    assert(c.body.text.indexOf('迁移前旧笔记') >= 0, 'inject=true 且 workspace 匹配时应注入（实得：' + c.body.text + '）')
+    assert(c.body.text.indexOf('旧笔记正文') >= 0, '注入正文')
+  })
+  await t('notes-sessions / notes-active-sessions / notes-workspaces 可用', async () => {
+    const s1 = await rpc2('notes-sessions', {})
+    assert(Array.isArray(s1.body.sessions), 'sessions 数组')
+    assert(s1.body.sessions.some(x => x.id === 'session-abc12345-0000-0000-0000-000000000000'), '含有效会话')
+    assert(!s1.body.sessions.some(x => String(x.id).indexOf('arch') >= 0), '排除已归档会话')
+    assert(!s1.body.sessions.some(x => String(x.id).indexOf('sub99') >= 0), '排除子 agent')
+    const s2 = await rpc2('notes-active-sessions', {})
+    assert(Array.isArray(s2.body.sessions), 'active-sessions 数组')
+    const s3 = await rpc2('notes-workspaces', {})
+    assert(s3.body.workspaces.length === 1 && s3.body.workspaces[0].cwd === 'D:\\deepseek-work', 'workspaces 映射')
+  })
+  await t('notes-dispatch 派发到 live 会话 + 记录 dispatches', async () => {
+    const before = sentMessages.length
+    const d = await rpc2('notes-dispatch', { id: cr2.body.id, sessionId: 'session-abc12345-0000-0000-0000-000000000000', sessionName: '开发会话', instruction: '静态包派发要求' })
+    assert(d.body.ok === true, '派发成功（实得 ' + JSON.stringify(d.body) + '）')
+    assert.strictEqual(sentMessages.length, before + 1, 'agent.send 触发一次')
+    assert.strictEqual(sentMessages[sentMessages.length - 1].msg.source.form, 'recall', "source.form='recall'")
+    const g = await rpc2('notes-get', { id: cr2.body.id })
+    assert(g.body.note.dispatches.length >= 1 && g.body.note.dispatches[g.body.note.dispatches.length - 1].instruction === '静态包派发要求', 'dispatches 记录')
+    const idx = g.body.note.dispatches.length - 1
+    const dn = await rpc2('notes-dispatch-done', { id: cr2.body.id, dispatchIndex: idx })
+    assert(dn.body.ok === true, 'dispatch-done 成功')
+  })
+  await t('notes-archive / notes-perf / notes-ping 可用', async () => {
+    await rpc2('notes-create', { title: '归档A', body: 'a', tags: ['arc2'], topic: '其他' })
+    await rpc2('notes-create', { title: '归档B', body: 'b', tags: ['arc2'], topic: '其他' })
+    const ar = await rpc2('notes-archive', {})
+    assert(ar.body.merged >= 1, '按标签合并（实得 ' + JSON.stringify(ar.body) + '）')
+    const pf = await rpc2('notes-perf', { perf: { hostCall: 1 } })
+    assert(pf.body.ok === true, 'notes-perf ok')
+    const pg = await rpc2('notes-ping', { t: 1 })
+    assert(pg.body.ok === true && pg.body.echo.t === 1, 'P1 存活探测保留')
+  })
+  await t('notes-src / notes-css handler 保留（静态资产可回退读取）', async () => {
+    const src = await rpc2('notes-src', { which: 'host' })
+    assert(typeof src.body.src === 'string' && src.body.src.length > 1000, 'host 源码可下发')
+    const src2 = await rpc2('notes-src', { which: 'client' })
+    assert(typeof src2.body.src === 'string' && src2.body.src.length > 1000, 'client 源码可下发')
+    const err = await rpc2('no-such-method', {})
+    assert.strictEqual(err.status, 404, '未知方法 404')
+  })
+  await t('notes-css 从候选路径读到真实 styles.css', async () => {
+    const css = await rpc2('notes-css', {})
+    assert(typeof css.body.css === 'string' && css.body.css.indexOf('.dsh-notes-capture-input') >= 0, 'css 下发成功（实得：' + JSON.stringify(css.body).slice(0, 120) + '）')
+  })
+  await t('静态包 3 工具可执行（note_search / note_get / note_manage）', async () => {
+    const tSearch = tools2.find(x => x.name === 'note_search')
+    const tGet = tools2.find(x => x.name === 'note_get')
+    const tMgr = tools2.find(x => x.name === 'note_manage')
+    const s = await tSearch.execute({ query: '静态包笔记' })
+    assert(s.count >= 1, 'note_search 命中')
+    const g = await tGet.execute({ id: cr2.body.id })
+    assert(g.note && g.note.id === cr2.body.id, 'note_get 返回笔记')
+    const l = await tMgr.execute({ action: 'list' })
+    assert(l.action === 'list' && l.count >= 1, 'note_manage.list 可用')
+    const c = await tMgr.execute({ action: 'create', title: '工具建笔记', body: '工具正文' })
+    assert(c.action === 'create' && c.id, 'note_manage.create 可用')
+    const d = await tMgr.execute({ action: 'delete', id: c.id })
+    assert(d.action === 'delete', 'note_manage.delete 可用')
+    assert(typeof tSearch.output.render === 'function', 'output.render 保留')
+  })
+  await t('harness 主通道：handle 经 harness.handle 注册（host.call 链路可用）', async () => {
+    global.harness = harnessBackup
+    try {
+      const modBridge = await import(pathToFileURL(INDEX_PATH).href + '?bridge=1')
+      modBridge.apply(ctx2)
+      assert.strictEqual(routes2.length, 2, '兜底路由仍在')
+      assert.strictEqual(typeof handlers['notes-list'], 'function', 'notes-list 经 harness.handle 注册')
+      assert.strictEqual((await handlers['notes-ping']({ t: 2 })).ok, true, 'P1 notes-ping 经 harness.handle 可调用')
+    } finally {
+      delete global.harness
+    }
+  })
+
+  await t('harness 存在时工具走 harness.defineTool/registerTool（不回退 ctx.tools，无重复注册）', async () => {
+    global.harness = harnessBackup
+    try {
+      const modPrimary = await import(pathToFileURL(INDEX_PATH).href + '?primary=1')
+      const tools5 = []
+      const beforeTools = registeredTools.length
+      modPrimary.apply({ fs: fsMock2, sandboxPolicy: { resolve: () => ({}) }, webServer: { register: () => () => {} }, tools: { register: (d) => { tools5.push(d); return () => {} } }, get: () => undefined, effect: () => {} })
+      const added = registeredTools.slice(beforeTools).map(x => x.name).sort()
+      assert.deepStrictEqual(added, ['note_get', 'note_manage', 'note_search'], 'harness.defineTool/registerTool 注册 3 个工具（实得：' + JSON.stringify(added) + '）')
+      assert.strictEqual(tools5.length, 0, '两通道互斥：不应重复走 ctx.tools')
+    } finally {
+      delete global.harness
+    }
+  })
+
+  // ===== 18. P3 静态包 client（packages/dsh-notes/lib/client.js） =====
+  // 开发版 client-impl.js 仍是「动态插件」形态（全局 React/styles/host + styles.insert），
+  // 发布版 lib/client.js 是机械转换产物：require('react') + fetch('/dsh-notes') + <style> 注入。
+  // 本节验证发布包自身的形态与功能面，不改动上面针对开发版的既有断言。
+  section('18. P3 静态包 client（packages/dsh-notes/lib/client.js）')
+  const CLIENT_PATH = path.join(DIR, 'packages', 'dsh-notes', 'lib', 'client.js')
+  const clientPkgSrc = fsNative.readFileSync(CLIENT_PATH, 'utf8')
+  // 注释剥离：避免文档性注释里的字符串影响"无残留"判定
+  const clientPkgCode = clientPkgSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+
+  // --- P3 测试脚手架：在 Node 里以浏览器模拟方式加载发布版 client 包 ---
+  // client.js 是「CJS 工厂 + __ModuleLoader__.load」，不是 ESM，所以用 new Function 执行并捕获
+  // 模块加载器登记项，再用可替换的 createElement 构建一次真实 React 元素树（无 JSX）。
+  function makeMockReact(onCreateElement) {
+    return {
+      createElement: function (type, props) {
+        const children = Array.prototype.slice.call(arguments, 2)
+        if (onCreateElement) onCreateElement(type, props, children)
+        return { $$typeof: Symbol.for('react.element'), type: type, props: props || {}, children: children }
+      },
+      useState: function (init) { return [typeof init === 'function' ? init() : init, function () {}] },
+      useEffect: function (fn) { try { const d = fn(); if (typeof d === 'function') d() } catch (e) {} },
+      useRef: function (init) { return { current: init } },
+      Fragment: Symbol.for('react.fragment')
+    }
+  }
+  // 最小 document 模拟：样式注入路径会用到 createElement('style') / head.append
+  function makeMockDocument() {
+    return {
+      createElement: function () { return { dataset: {}, textContent: '', remove: function () {} } },
+      head: { append: function () {} },
+      addEventListener: function () {}, removeEventListener: function () {},
+      querySelector: function () { return null }
+    }
+  }
+  // 加载发布包并执行 apply。
+  // services：{ slots, timer, sessions, workspaces }——键**缺失**=用内置 mock，显式传 null=该服务不可用（走守卫分支）。
+  // opts：{ react, fetch } 覆盖 React mock 与 fetch mock。
+  function loadClientPackage(services, opts) {
+    const svc = services || {}
+    const o = opts || {}
+    const ReactMock = o.react || makeMockReact()
+    const slots = {
+      injections: [],
+      registered: [],
+      disposed: 0,
+      inject: function (name, fn) {
+        slots.injections.push(name)
+        fn()
+        return function () { slots.disposed++ }
+      },
+      register: function (def, render) { slots.registered.push({ id: def.id, render: render }) }
+    }
+    const timer = {
+      interval: function () { return function () {} },
+      timeout: function () { return function () {} },
+      debounce: function (fn) { return Object.assign(function () { return fn() }, { dispose: function () {} }) }
+    }
+    // 默认 fetch mock 返回真实 CSS，让「fetch CSS → <style> 注入」完整路径被跑到
+    const fetchMock = o.fetch || function () {
+      return Promise.resolve({ json: function () { return Promise.resolve({ css: '.dsh-notes-mock{}' }) } })
+    }
+    const effects = []
+    const ctx = {
+      get: function (name) {
+        if (name === 'slots') return ('slots' in svc) ? (svc.slots || undefined) : slots
+        if (name === 'timer') return ('timer' in svc) ? (svc.timer || undefined) : timer
+        if (name === 'sessions') return svc.sessions
+        if (name === 'workspaces') return svc.workspaces
+        return undefined
+      },
+      effect: function (fn) { effects.push(fn); return function () {} }
+    }
+    let captured = null
+    const prevWindow = global.window
+    const prevFetch = global.fetch
+    global.window = {
+      __ModuleLoader__: { load: function (def) { captured = def } },
+      addEventListener: function () {}, removeEventListener: function () {}, innerWidth: 1280, innerHeight: 800
+    }
+    global.fetch = fetchMock
+    let moduleExports = null
+    try {
+      // eslint-disable-next-line no-new-func
+      new Function('window', 'document', 'fetch', 'console', clientPkgSrc)(
+        global.window, makeMockDocument(), fetchMock, console
+      )
+      if (!captured) throw new Error('未捕获 __ModuleLoader__.load 登记项')
+      assert.strictEqual(captured.id, 'dsh-notes', 'load id 必须是 dsh-notes')
+      moduleExports = captured.factory(function (name) {
+        if (name === 'react') return ReactMock
+        throw new Error('unknown require: ' + name)
+      })
+    } finally {
+      if (prevWindow === undefined) delete global.window; else global.window = prevWindow
+      if (prevFetch === undefined) delete global.fetch; else global.fetch = prevFetch
+    }
+    if (!moduleExports || typeof moduleExports.apply !== 'function') throw new Error('factory 未返回 { apply }')
+    moduleExports.apply(ctx)
+    return {
+      module: moduleExports,
+      slots: slots,
+      applied: slots.injections.length > 0,
+      effects: effects,
+      effectsCleaned: 0,
+      cleanup: function () {
+        for (const fn of effects) {
+          try { const d = fn(); if (typeof d === 'function') d() } catch (e) {}
+        }
+        this.effectsCleaned = effects.length
+      }
+    }
+  }
+
+  await t('lib/client.js 存在且是 __ModuleLoader__ CJS 工厂形态', () => {
+    assert(clientPkgSrc.indexOf('window.__ModuleLoader__.load(') >= 0, 'window.__ModuleLoader__.load(...) 包装')
+    assert(/id:\s*'dsh-notes'/.test(clientPkgSrc), "id: 'dsh-notes'")
+    assert(/factory:\s*\(require\)\s*=>/.test(clientPkgSrc), 'factory: (require) =>')
+    assert(clientPkgSrc.indexOf('return module.exports') >= 0, 'return module.exports')
+    assert(clientPkgSrc.indexOf('new Function') < 0, '发布包不应再用 new Function 引导壳')
+  })
+  await t('lib/client.js 用 require(\'react\') 取 React（无全局 React 依赖）', () => {
+    assert(/const React = require\('react'\)/.test(clientPkgSrc), "const React = require('react')")
+    assert(/const e = React\.createElement/.test(clientPkgSrc), 'e = React.createElement 保留')
+    assert(!/typeof React !== 'undefined'/.test(clientPkgCode), '不应再靠全局 React 兜底')
+  })
+  await t('lib/client.js RPC 走 fetch(\'/dsh-notes\')（与 index.mjs RPC_PATH 一致）', () => {
+    assert(clientPkgCode.indexOf("fetch('/dsh-notes'") >= 0, "fetch('/dsh-notes')")
+    assert(/method:\s*'POST'/.test(clientPkgCode), "method: 'POST'")
+    assert(/Content-Type':\s*'application\/json'/.test(clientPkgCode), 'JSON Content-Type')
+    assert(/JSON\.stringify\(\{\s*method:\s*method,\s*args:\s*args\s*\|\|\s*\{\}\s*\}\)/.test(clientPkgCode), 'body = {method, args}')
+    assert(clientPkgCode.indexOf('rpc(') >= 0, 'rpc helper 已注入')
+    assert(!/host\.call\s*\(/.test(clientPkgCode), '代码中无 host.call( 残留')
+  })
+  await t('lib/client.js 样式用 document.createElement(\'style\') 注入（无 styles.insert）', () => {
+    assert(clientPkgCode.indexOf("document.createElement('style')") >= 0, "document.createElement('style')")
+    assert(clientPkgCode.indexOf('notes-css') >= 0, 'notes-css RPC 取 CSS')
+    assert(/document\.head\.append\(/.test(clientPkgCode), '注入 document.head')
+    assert(!/styles\.insert\s*\(/.test(clientPkgCode), '代码中无 styles.insert( 残留')
+  })
+  await t('lib/client.js 定时器走 ctx.get(\'timer\') + ctx.effect（无 ctx.interval 快捷方式）', () => {
+    assert(/const timer = ctx\.get\('timer'\)/.test(clientPkgSrc), "timer = ctx.get('timer')")
+    assert(/ctx\.effect\(function \(\) \{ return pd \}\)/.test(clientPkgSrc), 'perf 定时器经 ctx.effect 注册清理')
+    assert(/disposers\.push\(function \(\) \{ try \{ tag\.remove\(\) \}/.test(clientPkgSrc), 'style 标签有移除 disposer')
+    assert(!/\bctx\.(interval|timeout|debounce)\s*\(/.test(clientPkgCode), '无 ctx.interval/timeout/debounce 快捷方式')
+    assert(!/ctx\.timer\b/.test(clientPkgCode), '无 ctx.timer 直接访问')
+  })
+  await t('lib/client.js 服务获取全部 ctx.get + 守卫（inject 只声明 slots）', () => {
+    assert(/inject:\s*\['slots'\]/.test(clientPkgSrc), "module.exports.inject = ['slots']")
+    assert(/const sessions = ctx\.get\('sessions'\)/.test(clientPkgSrc), 'sessions 经 ctx.get')
+    assert(/const workspaces = ctx\.get\('workspaces'\)/.test(clientPkgSrc), 'workspaces 经 ctx.get')
+    assert(!/ctx\.sessions\b/.test(clientPkgCode) && !/ctx\.workspaces\b/.test(clientPkgCode), '无 ctx.sessions / ctx.workspaces 直接属性访问')
+    assert(clientPkgSrc.indexOf('if (!slots)') >= 0 && clientPkgSrc.indexOf('if (!timer)') >= 0, 'slots / timer 存在性守卫')
+    // 服务缺失时优雅退出而不是抛错
+    const modNoSlots = loadClientPackage({ slots: undefined })
+    assert.strictEqual(modNoSlots.applied, false, 'slots 缺失时 apply 直接返回')
+    const modNoTimer = loadClientPackage({ slots: {}, timer: undefined })
+    assert.strictEqual(modNoTimer.applied, false, 'timer 缺失时 apply 直接返回')
+  })
+  await t('lib/client.js 功能面完整（UI 全保留）', () => {
+    const need = [
+      'conversation.session.header.actions', 'shell.overlay',      // 三个 Slot 注册点
+      'dsh-notes-hdr-btn', 'dsh-notes-fab', 'dsh-notes-floating',  // 头部按钮 / 悬浮气泡 / 浮窗面板
+      'dsh-notes-titlebar', 'dsh-notes-search-input', 'dsh-notes-capture-input',
+      'dsh-notes-kind-chip', 'dsh-notes-pin-toggle', 'dsh-note-item', 'dsh-note-inject',
+      'dsh-notes-editor-body', 'dsh-notes-scope-panel', 'dsh-notes-dispatch-modal',
+      'dsh-notes-dispatch-history', 'dsh-notes-instruct-box', 'dsh-notes-toast',
+      'dsh-notes-resize-handle', 'dsh-notes-topic-header', 'dsh-notes-empty-state'
+    ]
+    const missing = need.filter(x => clientPkgSrc.indexOf(x) < 0)
+    assert.strictEqual(missing.length, 0, '缺少 UI 标记：' + JSON.stringify(missing))
+    // RPC 方法面（与 index.mjs 的 handler 名一致）
+    const rpcs = ['notes-css', 'notes-list', 'notes-get', 'notes-sessions', 'notes-search', 'notes-quick', 'notes-quick-instruct', 'notes-update', 'notes-delete', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-archive', 'notes-perf']
+    const missRpc = rpcs.filter(x => clientPkgSrc.indexOf(x) < 0)
+    assert.strictEqual(missRpc.length, 0, '缺少 RPC 调用：' + JSON.stringify(missRpc))
+    // 交互能力：拖拽 / 快捷键 / 自动保存 / 入口双模式 / 性能遥测
+    for (const k of ['drag(', 'keydown', 'dsh-notes-entry', 'dsh-notes-panel-state', 'connectWorkspace', '__dshNotesPerf', 'PerformanceObserver', 'localStorage']) {
+      assert(clientPkgSrc.indexOf(k) >= 0, '缺少能力：' + k)
+    }
+  })
+  await t('lib/client.js React 树可构建（createElement 递归渲染，无 JSX）', () => {
+    let elCount = 0
+    const mockReact = makeMockReact(() => { elCount++ })
+    const loaded = loadClientPackage({}, { react: mockReact })
+    assert.strictEqual(loaded.applied, true, 'apply 应执行到结束（slots/timer 就绪）')
+    assert.strictEqual(loaded.module.name, 'dsh-notes', 'name = dsh-notes')
+    assert.deepStrictEqual(loaded.module.inject, ['slots'], "inject = ['slots']")
+    // 4 个 Slot 注入点（header / fab / panel / selection）
+    assert.strictEqual(loaded.slots.injections.length, 4, '应注册 4 个 Slot 注入点（实得 ' + loaded.slots.injections.length + '）')
+    assert.deepStrictEqual(loaded.slots.registered.map(r => r.id).sort(), ['dsh-notes-btn', 'dsh-notes-fab', 'dsh-notes-panel', 'dsh-notes-selection'], '4 个注册 id')
+    // 渲染 HeaderBtn：React.createElement 树必须能构建（含 hook 调用）
+    const headerRegister = loaded.slots.registered.find(r => r.id === 'dsh-notes-btn')
+    const tree = headerRegister.render({ sessionId: 'session-abcdefgh-0000' })
+    assert(tree && tree.type, 'HeaderBtn 渲染出元素树')
+    assert(elCount > 0, 'createElement 被调用（实得 ' + elCount + '）')
+    // 卸载：fiber effect cleanup 应把 4 个 slots.inject 全部释放
+    assert.strictEqual(loaded.slots.disposed, 0, '卸载前未释放')
+    loaded.cleanup()
+    assert.strictEqual(loaded.slots.disposed, 4, '卸载时释放 4 个 slots.inject（实得 ' + loaded.slots.disposed + '）')
+    assert(loaded.effectsCleaned >= 1, 'ctx.effect 清理执行（实得 ' + loaded.effectsCleaned + '）')
+  })
+  await t('lib/client.js 是 scripts/build-dist.cjs 的产物且可复现', () => {
+    assert(fsNative.existsSync(path.join(DIR, 'scripts', 'build-dist.cjs')), 'build-dist.cjs 存在')
+    assert(/build-dist\.cjs/.test(clientPkgSrc), '产物头部标注了构建来源')
+    const buildSrc = fsNative.readFileSync(path.join(DIR, 'scripts', 'build-dist.cjs'), 'utf8')
+    assert(/RPC_PATH = '\/dsh-notes'/.test(buildSrc), 'build 脚本 RPC 路径与 host 的 RPC_PATH 一致')
+    assert((buildSrc.match(/counts\[/g) || []).length >= 4, 'build 带转换计数断言（漏改会中止而不是产出坏包）')
   })
 
   // ===== 总结 =====

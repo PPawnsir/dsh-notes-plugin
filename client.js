@@ -2,7 +2,7 @@
 // React/styles/host 由加载器注入为全局，显式捕获后以参数形式传给 new Function（两种注入方式都兼容）
 // host 实现异步加载需要时间，失败会按 800ms 间隔重试（最多 15 次）
 return {
-  inject: ['timer', 'sessions'],
+  inject: ['timer', 'sessions', 'workspaces'],
   apply(ctx) {
     const timer = ctx.timer
     const ReactRef = typeof React !== 'undefined' ? React : undefined

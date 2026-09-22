@@ -12,6 +12,35 @@
 | `client-impl.js` | Client 真正实现：面板 UI、选区记录、键盘流、注入/派发交互 |
 | `styles.css` | 全部样式（经 `notes-css` RPC 下发），Apple Notes 设计令牌 + 暗色适配 |
 | `check.js` | 回归测试套件（内存 mock，不碰真实笔记目录） |
+| `scripts/build-dist.cjs` | **P3 发布构建**：把开发版 `client-impl.js` 机械转换为发布版 `packages/dsh-notes/lib/client.js`（带计数断言，漏改即中止） |
+| `packages/dsh-notes/` | **发布版静态包**（`dsh plugin add` 用）：`index.mjs`(host) / `lib/client.js`(client) / `package.json` / `cordis.patch.yml`；`styles.css` 与开发版共用同一份（host 经 `notes-css` 下发） |
+
+## 发布版静态包（P3）
+
+开发版（bootstrap 壳）与发布版（静态包）是**两份形态、同一份业务逻辑**：静态包由脚本从开发版生成，不手改产物。
+
+```bash
+node scripts/build-dist.cjs     # 改完 client-impl.js 后刷新 packages/dsh-notes/lib/client.js
+node --check packages/dsh-notes/lib/client.js
+node check.js
+```
+
+转换规则（详见 `task-board-plugin/docs/PACKAGING.md` 第 4 节，脚本里有对应的计数断言）：
+
+| 动态插件（`client-impl.js`） | 静态包（`lib/client.js`） |
+|---|---|
+| `return { inject, apply }` + `new Function` 执行 | `window.__ModuleLoader__.load({ id, factory })`，`module.exports` 返回 `{name, inject, apply}` |
+| 全局 `React` | `require('react')`（factory 顶部） |
+| `host.call('notes-xxx', args)` | `rpc('notes-xxx', args)` → `fetch('/dsh-notes', {method:'POST', body:{method,args}})` |
+| `styles.insert(css)` | `fetch` 取 `notes-css` + `document.createElement('style')` 注入 `document.head` |
+| `ctx.interval/timeout/debounce` 快捷方式 | `ctx.get('timer')` + `ctx.effect` |
+| `inject: ['timer','sessions','workspaces']` | `inject: ['slots']`，其余服务 `ctx.get` + 守卫（服务未就绪时优雅退出） |
+
+> ⚠️ **进程单例**：静态包 client 全进程一个实例（动态插件是每会话一个）。`panelOpen`/`entryMode`/`fabPos`/`toastEmit` 是进程级 UI 状态（面板本身是 `shell.overlay` 单实例，语义正确）；`currentSessionId` 仍由 Slot props 更新；`listeners`/`noteRefreshListeners` 是所有会话渲染实例共用的通知集合。新增会话级状态时必须按 `sessionId` 分桶。
+>
+> ⚠️ **RPC payload 不能含 `undefined` 字段**（PACKAGING.md 坑 5）：条件组装，别固定传全字段。
+>
+> ⚠️ 发布包里**任何位置**（含注释）都不许出现 `host.call` / `styles.insert` 字样——纯文本验收会误判成没迁干净，构建脚本对此有硬断言。
 
 ## Bootstrap 壳架构（为什么）
 
@@ -71,7 +100,7 @@
 node check.js
 ```
 
-内存 mock（`fs`/`llm`/`agents`/`sessionPersistence`/`workspaceRegistry`/`systemPrompt`），不触碰真实笔记。覆盖：语法、host 全链路（create/list/缓存/update/quick 合并+异步分类/跨 session/search/delete/restore/archive）、注入范围（global/workspace/会话/旧文件兼容）、会话名与子 agent/归档过滤、任务派发、工具 schema、client 结构断言。
+内存 mock（`fs`/`llm`/`agents`/`sessionPersistence`/`workspaceRegistry`/`systemPrompt`），不触碰真实笔记。覆盖：语法、host 全链路（create/list/缓存/update/quick 合并+异步分类/跨 session/search/delete/restore/archive）、注入范围（global/workspace/会话/旧文件兼容）、会话名与子 agent/归档过滤、任务派发、工具 schema、client 结构断言；第 17 节覆盖发布版 host（`packages/dsh-notes/index.mjs`），第 18 节覆盖发布版 client（`lib/client.js`：形态/API 面/UI 功能面/4 个 Slot 注册/React 树可构建/卸载清理/构建可复现）。
 
 > ⚠️ 关键：`t(name, fn)` 必须 `await fn()`——曾不同步导致 async 断言未执行就 passed++（假通过）。修复后暴露并修正了 5 个假通过。
 
