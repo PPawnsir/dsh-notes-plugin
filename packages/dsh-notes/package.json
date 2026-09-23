@@ -28,7 +28,7 @@
   "files": [
     "index.mjs",
     "lib/client.js",
-    "styles.css",
+    "lib/styles.css",
     "cordis.patch.yml",
     "README.md"
   ],
