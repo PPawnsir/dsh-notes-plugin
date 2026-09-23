@@ -876,7 +876,7 @@ window.__ModuleLoader__.load({
     // 动态版 inject 为 ['timer','sessions','workspaces']；静态包按 PACKAGING.md 第 4 节保守处理：
     // 只声明硬依赖 slots（没它就完全没有 UI），其余服务在 apply 内 ctx.get + 守卫，
     // 避免服务未就绪时插件永远不启动。
-    module.exports = { name: 'dsh-notes', inject: ['slots'], apply: apply }
+    module.exports = { name: 'dsh-notes', inject: ['slots', 'timer', 'sessions', 'workspaces'], apply: apply }
     return module.exports
   }
 })

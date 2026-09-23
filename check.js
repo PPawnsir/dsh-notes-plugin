@@ -58,7 +58,7 @@ async function main() {
   await t('index.mjs 存在', () => assert(fsNative.existsSync(INDEX_PATH), INDEX_PATH + ' 必须存在'))
   await t('index.mjs 是 ESM（export name/inject/apply，无 bootstrap return）', () => {
     assert(/export const name\s*=\s*'dsh-notes'/.test(indexSrc), "应 export const name = 'dsh-notes'")
-    assert(/export const inject\s*=\s*\['fs',\s*'sandboxPolicy'\]/.test(indexSrc), "inject 必须是 ['fs','sandboxPolicy']（harness 是全局 Builtin，不进 inject）")
+    assert(/export const inject\s*=\s*\[[^\]]*'fs'[^\]]*'sandboxPolicy'[^\]]*'webServer'[^\]]*'tools'[^\]]*\]/.test(indexSrc), "inject 必须含 fs/sandboxPolicy/webServer/tools（静态包硬依赖，harness 是动态插件 Builtin 不进 inject）")
     assert(/export function apply\(ctx\)/.test(indexSrc), 'export function apply(ctx)')
     assert(!/^return\s*\{/m.test(indexSrc), '不应再有 bootstrap 的顶层 return { inject, apply } 形式')
     assert(!/new Function\s*\(/.test(indexSrc), '不应再依赖 new Function 引导壳（注释中提及历史形式不算）')
@@ -1023,7 +1023,7 @@ async function main() {
     assert(!/ctx\.timer\b/.test(clientPkgCode), '无 ctx.timer 直接访问')
   })
   await t('lib/client.js 服务获取全部 ctx.get + 守卫（inject 只声明 slots）', () => {
-    assert(/inject:\s*\['slots'\]/.test(clientPkgSrc), "module.exports.inject = ['slots']")
+    assert(/inject:\s*\['slots',\s*'timer',\s*'sessions',\s*'workspaces'\]/.test(clientPkgSrc), "module.exports.inject 应声明 apply 用到的全部服务（slots/timer/sessions/workspaces，保证就绪后才 apply）")
     assert(/const sessions = ctx\.get\('sessions'\)/.test(clientPkgSrc), 'sessions 经 ctx.get')
     assert(/const workspaces = ctx\.get\('workspaces'\)/.test(clientPkgSrc), 'workspaces 经 ctx.get')
     assert(!/ctx\.sessions\b/.test(clientPkgCode) && !/ctx\.workspaces\b/.test(clientPkgCode), '无 ctx.sessions / ctx.workspaces 直接属性访问')
@@ -1061,7 +1061,7 @@ async function main() {
     const loaded = loadClientPackage({}, { react: mockReact })
     assert.strictEqual(loaded.applied, true, 'apply 应执行到结束（slots/timer 就绪）')
     assert.strictEqual(loaded.module.name, 'dsh-notes', 'name = dsh-notes')
-    assert.deepStrictEqual(loaded.module.inject, ['slots'], "inject = ['slots']")
+    assert.deepStrictEqual(loaded.module.inject, ['slots', 'timer', 'sessions', 'workspaces'], "inject = ['slots','timer','sessions','workspaces']")
     // 4 个 Slot 注入点（header / fab / panel / selection）
     assert.strictEqual(loaded.slots.injections.length, 4, '应注册 4 个 Slot 注入点（实得 ' + loaded.slots.injections.length + '）')
     assert.deepStrictEqual(loaded.slots.registered.map(r => r.id).sort(), ['dsh-notes-btn', 'dsh-notes-fab', 'dsh-notes-panel', 'dsh-notes-selection'], '4 个注册 id')

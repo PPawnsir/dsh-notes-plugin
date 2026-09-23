@@ -21,9 +21,9 @@ import fsNode from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 export const name = 'dsh-notes'
-// 硬依赖只有 fs（笔记读写）与 sandboxPolicy（写策略）；harness 是全局 Builtin 不进 inject，
-// webServer / tools 只在 harness 缺失时作为兜底通道，按需 ctx.get。
-export const inject = ['fs', 'sandboxPolicy']
+// 硬依赖：fs（笔记读写）+ sandboxPolicy（写策略）+ webServer（静态包 RPC 路由）+ tools（静态包工具注册）。
+// 注意：harness 是动态插件的全局 Builtin，静态包里不存在（PACKAGING.md）——静态包必须 inject webServer/tools 走 ctx 服务通道。
+export const inject = ['fs', 'sandboxPolicy', 'webServer', 'tools']
 
 // ---- 路径锚点（模块级常量，import 时求值，无副作用）----
 const PKG_DIR = path.dirname(fileURLToPath(import.meta.url))     // packages/dsh-notes
@@ -60,8 +60,8 @@ function defineTool(options) {
 export function apply(ctx) {
     const fs = ctx.fs
     const sp = ctx.sandboxPolicy
-    const tools = ctx.tools || ctx.get('tools')
-    const webServer = ctx.webServer || ctx.get('webServer')
+    const tools = ctx.tools
+    const webServer = ctx.webServer
     const agents = ctx.get('agents')
     const llm = ctx.get('llm')
     const adm = ctx.get('agentDefaultModel')
