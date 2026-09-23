@@ -1,12 +1,18 @@
-# dsh-notes
+<div align="center">
 
-[![npm version](https://img.shields.io/npm/v/dsh-notes.svg)](https://www.npmjs.com/package/dsh-notes)
-[![npm downloads](https://img.shields.io/npm/dw/dsh-notes.svg)](https://www.npmjs.com/package/dsh-notes)
-[![node](https://img.shields.io/node/v/dsh-notes.svg)](https://www.npmjs.com/package/dsh-notes)
-[![license](https://img.shields.io/npm/l/dsh-notes.svg)](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/LICENSE)
+# 📝 dsh-notes-plugin
+
+**把 Agent 会话里「聊完就丢」的决策与约定，沉淀成本地 Markdown 笔记**
+
+自动注入系统提示 · 可派发待办给活跃会话 · 选区一键摘录 · 纯本地 Markdown 不上传
+
+[![npm version](https://img.shields.io/npm/v/dsh-notes-plugin.svg)](https://www.npmjs.com/package/dsh-notes-plugin)
+[![npm downloads](https://img.shields.io/npm/dw/dsh-notes-plugin.svg)](https://www.npmjs.com/package/dsh-notes-plugin)
+[![node](https://img.shields.io/node/v/dsh-notes-plugin.svg)](https://www.npmjs.com/package/dsh-notes-plugin)
+[![license](https://img.shields.io/npm/l/dsh-notes-plugin.svg)](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/LICENSE)
 ![category](https://img.shields.io/badge/awesome--dsh--plugin-workflow-blue)
 
-DeepSeek Harness 会话感知本地笔记 —— 把会话里的决策与约定沉淀成本地 Markdown 笔记，自动注入系统提示、可派发给活跃会话执行。
+</div>
 
 ## 解决什么问题
 
@@ -27,7 +33,7 @@ dsh-notes 把这件事变成可积累的本地资产：
 > 宿主要求：Node ≥ 22；DSH ≥ `0.1.5-rc.1`（已通过 `peerDependencies` 声明，含预发布分支的版本范围见 package.json）
 
 ```sh
-dsh plugin --profile web add dsh-notes
+dsh plugin --profile web add dsh-notes-plugin
 ```
 
 重启 DSH 后生效：会话头部出现「**智能笔记**」按钮（✎，带计数徽标），点击打开/关闭面板；桌面角落另有可拖拽的悬浮气泡入口。
@@ -35,8 +41,8 @@ dsh plugin --profile web add dsh-notes
 ## 升级 / 卸载
 
 ```sh
-dsh plugin --profile web add dsh-notes@latest   # 升级（重启 DSH）
-dsh plugin --profile web remove dsh-notes       # 卸载（不删数据）
+dsh plugin --profile web add dsh-notes-plugin@latest   # 升级（重启 DSH）
+dsh plugin --profile web remove dsh-notes-plugin       # 卸载（不删数据）
 ```
 
 ## 功能清单

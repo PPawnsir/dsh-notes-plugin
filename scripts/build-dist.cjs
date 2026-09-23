@@ -22,7 +22,7 @@ const path = require('path')
 // __dirname = <plugin>/scripts → 插件根目录
 const ROOT = path.resolve(__dirname, '..')
 const IMPL_PATH = path.join(ROOT, 'client-impl.js')
-const OUT_PATH = path.join(ROOT, 'packages', 'dsh-notes', 'lib', 'client.js')
+const OUT_PATH = path.join(ROOT, 'packages', 'dsh-notes-plugin', 'lib', 'client.js')
 const RPC_PATH = '/dsh-notes'   // 必须与 index.mjs 的 RPC_PATH 一致（webServer exact 路由）
 
 // 归一化换行为 LF：Windows 上开发版可能是 CRLF，不归一化会产出混合换行（且每次 checkout 后产物字节不同）

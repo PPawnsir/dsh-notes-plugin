@@ -14,7 +14,7 @@ const bootClientSrc = fsNative.readFileSync(path.join(DIR, 'client.js'), 'utf8')
 const hostSrc = fsNative.readFileSync(path.join(DIR, 'host-impl.js'), 'utf8')
 const clientSrc = fsNative.readFileSync(path.join(DIR, 'client-impl.js'), 'utf8')
 // P2：发布版静态包 host（ESM）。开发版 host-impl.js 之上的回归照旧，这里额外覆盖静态包。
-const INDEX_PATH = path.join(DIR, 'packages', 'dsh-notes', 'index.mjs')
+const INDEX_PATH = path.join(DIR, 'packages', 'dsh-notes-plugin', 'index.mjs')
 const indexSrc = fsNative.readFileSync(INDEX_PATH, 'utf8')
 
 let passed = 0, failed = 0
@@ -880,7 +880,7 @@ async function main() {
   // 发布版 lib/client.js 是机械转换产物：require('react') + fetch('/dsh-notes') + <style> 注入。
   // 本节验证发布包自身的形态与功能面，不改动上面针对开发版的既有断言。
   section('18. P3 静态包 client（packages/dsh-notes/lib/client.js）')
-  const CLIENT_PATH = path.join(DIR, 'packages', 'dsh-notes', 'lib', 'client.js')
+  const CLIENT_PATH = path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js')
   const clientPkgSrc = fsNative.readFileSync(CLIENT_PATH, 'utf8')
   // 注释剥离：避免文档性注释里的字符串影响"无残留"判定
   const clientPkgCode = clientPkgSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
