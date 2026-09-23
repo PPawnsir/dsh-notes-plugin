@@ -13,7 +13,7 @@
 //
 // 要改 client 行为：改开发版 client-impl.js，然后 `node scripts/build-dist.cjs` 重新生成。
 window.__ModuleLoader__.load({
-  id: 'dsh-notes',
+  id: 'dsh-notes-plugin',
   factory: (require) => {
     var module = { exports: {} }
     var exports = module.exports
@@ -876,7 +876,7 @@ window.__ModuleLoader__.load({
     // 动态版 inject 为 ['timer','sessions','workspaces']；静态包按 PACKAGING.md 第 4 节保守处理：
     // 只声明硬依赖 slots（没它就完全没有 UI），其余服务在 apply 内 ctx.get + 守卫，
     // 避免服务未就绪时插件永远不启动。
-    module.exports = { name: 'dsh-notes', inject: ['slots', 'timer', 'sessions', 'workspaces'], apply: apply }
+    module.exports = { name: 'dsh-notes-plugin', inject: ['slots', 'timer', 'sessions', 'workspaces'], apply: apply }
     return module.exports
   }
 })

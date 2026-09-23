@@ -20,7 +20,7 @@ import path from 'node:path'
 import fsNode from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-export const name = 'dsh-notes'
+export const name = 'dsh-notes-plugin'
 // 硬依赖：fs（笔记读写）+ sandboxPolicy（写策略）+ webServer（静态包 RPC 路由）+ tools（静态包工具注册）。
 // 注意：harness 是动态插件的全局 Builtin，静态包里不存在（PACKAGING.md）——静态包必须 inject webServer/tools 走 ctx 服务通道。
 export const inject = ['fs', 'sandboxPolicy', 'webServer', 'tools']

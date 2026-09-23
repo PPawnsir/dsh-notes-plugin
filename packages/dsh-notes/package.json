@@ -1,5 +1,5 @@
 {
-  "name": "dsh-notes",
+  "name": "dsh-notes-plugin",
   "description": "DeepSeek Harness 会话感知本地笔记：把会话里的决策与约定沉淀成本地 Markdown 笔记，自动注入系统提示、可派发给活跃会话，解决「聊完就丢」的上下文断层",
   "version": "0.1.0",
   "type": "module",

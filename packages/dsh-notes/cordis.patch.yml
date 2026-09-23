@@ -1,5 +1,5 @@
-# dsh-notes bundle patch: inserts the plugin row into the web composition.
+# dsh-notes-plugin bundle patch: inserts the plugin row into the web composition.
 # Install with `dsh plugin --profile <name> add <path>`.
 - insert:
     - id: notes
-      name: dsh-notes
+      name: dsh-notes-plugin

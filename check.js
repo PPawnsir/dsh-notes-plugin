@@ -57,7 +57,7 @@ async function main() {
   section('1.2 P2 静态包 host（packages/dsh-notes/index.mjs）静态校验')
   await t('index.mjs 存在', () => assert(fsNative.existsSync(INDEX_PATH), INDEX_PATH + ' 必须存在'))
   await t('index.mjs 是 ESM（export name/inject/apply，无 bootstrap return）', () => {
-    assert(/export const name\s*=\s*'dsh-notes'/.test(indexSrc), "应 export const name = 'dsh-notes'")
+    assert(/export const name\s*=\s*'dsh-notes-plugin'/.test(indexSrc), "应 export const name = 'dsh-notes-plugin'")
     assert(/export const inject\s*=\s*\[[^\]]*'fs'[^\]]*'sandboxPolicy'[^\]]*'webServer'[^\]]*'tools'[^\]]*\]/.test(indexSrc), "inject 必须含 fs/sandboxPolicy/webServer/tools（静态包硬依赖，harness 是动态插件 Builtin 不进 inject）")
     assert(/export function apply\(ctx\)/.test(indexSrc), 'export function apply(ctx)')
     assert(!/^return\s*\{/m.test(indexSrc), '不应再有 bootstrap 的顶层 return { inject, apply } 形式')
@@ -719,7 +719,7 @@ async function main() {
   let modIndex = null
   await t('index.mjs 可被 ESM import（语法 + 顶层无副作用）', async () => {
     modIndex = await import(pathToFileURL(INDEX_PATH).href)
-    assert.strictEqual(modIndex.name, 'dsh-notes', 'name 导出')
+    assert.strictEqual(modIndex.name, 'dsh-notes-plugin', 'name 导出')
     assert(Array.isArray(modIndex.inject) && modIndex.inject.indexOf('fs') >= 0 && modIndex.inject.indexOf('sandboxPolicy') >= 0, 'inject 含 fs/sandboxPolicy')
     assert(typeof modIndex.apply === 'function', 'apply 导出')
   })
@@ -963,7 +963,7 @@ async function main() {
         global.window, makeMockDocument(), fetchMock, console
       )
       if (!captured) throw new Error('未捕获 __ModuleLoader__.load 登记项')
-      assert.strictEqual(captured.id, 'dsh-notes', 'load id 必须是 dsh-notes')
+      assert.strictEqual(captured.id, 'dsh-notes-plugin', 'load id 必须是 dsh-notes-plugin')
       moduleExports = captured.factory(function (name) {
         if (name === 'react') return ReactMock
         throw new Error('unknown require: ' + name)
@@ -991,7 +991,7 @@ async function main() {
 
   await t('lib/client.js 存在且是 __ModuleLoader__ CJS 工厂形态', () => {
     assert(clientPkgSrc.indexOf('window.__ModuleLoader__.load(') >= 0, 'window.__ModuleLoader__.load(...) 包装')
-    assert(/id:\s*'dsh-notes'/.test(clientPkgSrc), "id: 'dsh-notes'")
+    assert(/id:\s*'dsh-notes-plugin'/.test(clientPkgSrc), "id: 'dsh-notes-plugin'")
     assert(/factory:\s*\(require\)\s*=>/.test(clientPkgSrc), 'factory: (require) =>')
     assert(clientPkgSrc.indexOf('return module.exports') >= 0, 'return module.exports')
     assert(clientPkgSrc.indexOf('new Function') < 0, '发布包不应再用 new Function 引导壳')
@@ -1060,7 +1060,7 @@ async function main() {
     const mockReact = makeMockReact(() => { elCount++ })
     const loaded = loadClientPackage({}, { react: mockReact })
     assert.strictEqual(loaded.applied, true, 'apply 应执行到结束（slots/timer 就绪）')
-    assert.strictEqual(loaded.module.name, 'dsh-notes', 'name = dsh-notes')
+    assert.strictEqual(loaded.module.name, 'dsh-notes-plugin', 'name = dsh-notes-plugin')
     assert.deepStrictEqual(loaded.module.inject, ['slots', 'timer', 'sessions', 'workspaces'], "inject = ['slots','timer','sessions','workspaces']")
     // 4 个 Slot 注入点（header / fab / panel / selection）
     assert.strictEqual(loaded.slots.injections.length, 4, '应注册 4 个 Slot 注入点（实得 ' + loaded.slots.injections.length + '）')
