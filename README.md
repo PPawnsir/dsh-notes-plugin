@@ -12,7 +12,7 @@
 [![license](https://img.shields.io/npm/l/dsh-notes-plugin.svg)](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/LICENSE)
 ![category](https://img.shields.io/badge/awesome--dsh--plugin-workflow-blue)
 
-<img src="./docs/screenshot-panel.png" alt="dsh-notes-plugin 笔记面板" width="820">
+<img src="packages/dsh-notes-plugin/docs/screenshot-panel.png" alt="dsh-notes-plugin 笔记面板" width="820">
 
 </div>
 
