@@ -21,9 +21,12 @@ import fsNode from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 export const name = 'dsh-notes-plugin'
-// 硬依赖：fs（笔记读写）+ sandboxPolicy（写策略）+ webServer（静态包 RPC 路由）+ tools（静态包工具注册）。
-// 注意：harness 是动态插件的全局 Builtin，静态包里不存在（PACKAGING.md）——静态包必须 inject webServer/tools 走 ctx 服务通道。
-export const inject = ['fs', 'sandboxPolicy', 'webServer', 'tools']
+// 硬依赖：fs（笔记读写）+ sandboxPolicy（写策略）+ webServer（静态包 RPC 路由）+ tools（静态包工具注册）
+// + agents/workspaceRegistry/sessionPersistence/sessionQuery/sessionTitle（派发与注入的会话列表数据源——
+//   这些服务注册时机晚于基础服务，不声明 inject 时 apply 先于它们执行，ctx.get 拿到 undefined，会话列表永远为空）。
+// harness 是动态插件的全局 Builtin，静态包里不存在（PACKAGING.md）——静态包必须 inject webServer/tools 走 ctx 服务通道。
+// llm / agentDefaultModel / systemPrompt 为可选增强（自动分类/约定注入），保持 ctx.get + 守卫降级，不进 inject。
+export const inject = ['fs', 'sandboxPolicy', 'webServer', 'tools', 'agents', 'workspaceRegistry', 'sessionPersistence', 'sessionQuery', 'sessionTitle']
 
 // ---- 路径锚点（模块级常量，import 时求值，无副作用）----
 const PKG_DIR = path.dirname(fileURLToPath(import.meta.url))     // packages/dsh-notes
@@ -290,6 +293,24 @@ export function apply(ctx) {
       }
     }
 
+    // 由 sessionId 推导工作区名：live 走 agents 的 header.cwd，非 live 走 persistence 快照。
+    // 旧笔记（agents 未就绪期创建）workspace 为空时用于兜底补全——否则“本工作区”注入范围因严格匹配永不命中。
+    async function _wsOfSession(sid) {
+      if (!sid) return ''
+      try {
+        const a = agents && agents.get ? agents.get(sid) : undefined
+        let cwd = (a && a.session && a.session.header && a.session.header.cwd) || ''
+        if (!cwd && sessionPersistence && sessionPersistence.list) {
+          const snaps = sessionPersistence.list() || []
+          for (const s of snaps) {
+            const h = s && s.header ? s.header : s
+            if (h && h.id === sid) { cwd = h.cwd || ''; break }
+          }
+        }
+        return cwd ? basename(cwd) : ''
+      } catch (e) { return '' }
+    }
+
     async function _create(title, body, tags, topic, extra) {
       const id = genId()
       const now = new Date().toISOString()
@@ -368,6 +389,11 @@ export function apply(ctx) {
       if (injectTo !== undefined) note.injectTo = injectTo
       if (body !== undefined) note.body = body
       note.updatedAt = new Date().toISOString()
+      // 兜底补全：约定笔记 workspace 为空（agents 未就绪期创建的存量）时按来源会话推导填入，
+      // 否则“本工作区”注入范围在严格匹配下永不命中
+      if (!note.workspace && note.sessionId) {
+        try { note.workspace = await _wsOfSession(note.sessionId) } catch (e) {}
+      }
       await persistNote(note)
       return { id, kind: note.kind, status: note.status }
     }
@@ -742,12 +768,13 @@ export function apply(ctx) {
           const targets = n.injectTo || []
           let hit = false
           if (targets.length === 0) {
-            // 默认：当前工作区（workspace 为空视为全局约定）
-            hit = !n.workspace || !ws || n.workspace === ws
+            // 默认：当前工作区。严格匹配：ws 有值时要求笔记 workspace 一致（旧笔记无 workspace 视为记录时未知，
+            // 仅在 cwd 不可得的会话兜底注入——修掉"选定工作区注入后切到别的会话仍注入"）
+            hit = ws ? n.workspace === ws : !n.workspace
           } else {
             for (const t of targets) {
               if (t === 'global') { hit = true; break }
-              if (t === 'workspace') { if (!n.workspace || !ws || n.workspace === ws) { hit = true; break } }
+              if (t === 'workspace') { if (ws ? n.workspace === ws : !n.workspace) { hit = true; break } }
               else if (t === curSid) { hit = true; break }
             }
           }
@@ -1140,6 +1167,36 @@ export function apply(ctx) {
       }
     }
     let migrationDone = migrateLegacyNotes()
+
+    // 存量一次性修补：agents 未就绪期创建的笔记 workspace 为空，导致“本工作区”注入范围严格匹配后永不命中。
+    // 启动时按来源会话推导补填一次（只补空值）。注意：不用 _list()（它 await migrationDone，会与本补全死锁），
+    // 直接走底层遍历；也不挂进 migrationDone 链——_list 只需等 legacy 迁移，补全异步自跑即可。
+    const legacyDone = migrationDone
+    async function fixLegacyWorkspaces() {
+      try { await legacyDone } catch (e) {}
+      try {
+        const dirTarget = await fs.resolve(NOTES_DIR)
+        const info = await fs.stat(dirTarget)
+        if (!info) return { fixed: 0 }
+        const entries = await fs.listDir(dirTarget)
+        let fixed = 0
+        for (const entry of entries) {
+          if (!entry.name || !entry.name.endsWith('.md')) continue
+          const id = entry.name.replace(/\.md$/, '')
+          try {
+            const n = await loadNote(id)
+            if (n.deleted || n.workspace) continue
+            const ws = await _wsOfSession(n.sessionId)
+            if (!ws) continue
+            await persistNote(Object.assign({}, n, { workspace: ws }))
+            fixed++
+          } catch (e) {}
+        }
+        if (fixed > 0) console.log('notes: backfilled workspace for ' + fixed + ' note(s)')
+        return { fixed: fixed }
+      } catch (e) { console.error('notes: workspace backfill error', e); return { fixed: 0, error: String(e && e.message || e) } }
+    }
+    fixLegacyWorkspaces()
 
     ctx.effect(() => () => {
       for (const d of disposers) { try { d() } catch (e) {} }
