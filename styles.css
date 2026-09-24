@@ -6,9 +6,9 @@
 .dsh-notes-floating,.dsh-notes-fab{
   /* 背景 */
   --nbg:var(--dsw-alias-bg-overlay, #ffffff);          /* 面板主背景 */
-  --nsf:var(--dsw-alias-bg-layer-1, #fbfbfd);          /* 列表区背景（极浅灰） */
-  --nbg-hover:var(--dsw-alias-bg-layer-2, #f2f2f7);    /* 列表项 hover */
-  --nbg-sel:var(--dsw-alias-bg-layer-2, #e5e5ea);      /* 列表项选中（macOS 选中灰） */
+  --nsf:rgba(128,128,128,.05);                         /* 列表区背景（次级面）——color-mix 兜底（明暗面板均可见） */
+  --nbg-hover:rgba(128,128,128,.08);                   /* 列表项 hover（比底色深一档）——color-mix 兜底 */
+  --nbg-sel:rgba(128,128,128,.12);                     /* 列表项选中（macOS 选中灰）——color-mix 兜底 */
   --nbd:var(--dsw-alias-border-l1, #e5e5ea);           /* 边框/分隔线 */
   --nbd-soft:var(--dsw-alias-border-l1, #ececf0);      /* 更柔和的分隔 */
   /* 文字 */
@@ -18,6 +18,7 @@
   /* 强调 */
   --nacc:var(--dsw-alias-brand-primary, #0a84ff);      /* 蓝（交互/选中） */
   --nacc-soft:rgba(10,132,255,.12);
+  --nwarn:#ff9500;                                     /* 待处理/警告（橙） */
   /* kind 强调色（灰阶为主，kind 用低调色；深浅通用，保留原值） */
   --nkind-note:#8e8e93;
   --nkind-decision:#0a84ff;
@@ -31,6 +32,20 @@
   --nmono:"SF Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   /* 阴影（极淡，仅面板） */
   --nshadow:0 18px 50px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06);
+}
+
+/* color-mix 增强：从主文字色（--ntx）派生半透明灰，亮色呈浅灰、暗色呈浅白，随 DSH 主题自动切换。
+   修复 --dsw-alias-bg-layer-2/3 在亮色主题解析为 #fff 导致列表分栏/胶囊/选中态与面板底色撞色。
+   color-mix 不可用时回退到上方中性 rgba 灰（不依赖 layer token，明暗面板均可见）。 */
+@supports (color: color-mix(in srgb, #fff, transparent)){
+  .dsh-notes-floating,.dsh-notes-fab{
+    --nsf:color-mix(in srgb, var(--ntx) 5%, transparent);
+    --nbg-hover:color-mix(in srgb, var(--ntx) 8%, transparent);
+    --nbg-sel:color-mix(in srgb, var(--ntx) 12%, transparent);
+  }
+  .dsh-notes-instruct-box{
+    --nbg-hover:color-mix(in srgb, var(--ntx) 8%, transparent);
+  }
 }
 
 /* ===== tooltip（作用域隔离） ===== */
@@ -95,7 +110,7 @@
 
 /* ===== 列表区（两列布局） ===== */
 .dsh-notes-content{display:flex;flex:1;overflow:hidden;min-height:0;position:relative}
-.dsh-notes-divider{width:5px;cursor:col-resize;flex-shrink:0;background:transparent;transition:background .15s;position:relative;z-index:5}
+.dsh-notes-divider{width:5px;cursor:col-resize;flex-shrink:0;background:var(--nbd);transition:background .15s;position:relative;z-index:5}
 .dsh-notes-list{overflow:hidden;flex-shrink:0;display:flex;flex-direction:column;background:var(--nsf);min-width:180px;max-width:400px;border-right:1px solid var(--nbd-soft)}
 .dsh-notes-list-items{flex:1;overflow-y:auto;padding:2px 5px}
 .dsh-notes-list-items::-webkit-scrollbar{width:8px}
@@ -109,7 +124,6 @@
 /* ===== 笔记列表项（Apple Notes：0 圆角、无阴影、纯背景选中） ===== */
 .dsh-note-item{padding:5px 9px;margin:0;border-radius:var(--nr-md);cursor:pointer;transition:background .12s;position:relative;background:transparent;box-shadow:none;user-select:none}
 .dsh-note-item:hover{background:var(--nbg-hover)}
-.dsh-note-item:hover .dsh-note-delete{opacity:1}
 .dsh-note-item.selected{background:var(--nbg-sel)}
 .dsh-note-item.focused{background:var(--nbg-hover)}
 .dsh-note-item.pinned{}
@@ -133,15 +147,14 @@
 .dsh-note-meta-sess{font-size:10px;color:var(--nt3);white-space:nowrap;flex-shrink:0}
 .dsh-note-meta-tags{font-size:10px;color:var(--nt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 .dsh-note-preview{display:none}  /* Apple Notes 默认不显示预览，保持列表极简 */
-.dsh-note-delete{position:absolute;right:6px;top:8px;background:var(--nbg);border:1px solid var(--nbd);color:var(--nt3);font-size:11px;cursor:pointer;padding:3px 7px;border-radius:6px;opacity:0;transition:all .12s;line-height:1;font-weight:500}
-.dsh-note-delete:hover{color:#ff3b30;border-color:rgba(255,59,48,.4)}
+/* 列表项删除已迁入右键菜单（dsh-notes-ctxmenu），不再用悬浮 × 按钮 */
 .dsh-note-jump{display:none}  /* 跳转并入 meta 里的会话，不再单独按钮 */
 .dsh-note-topic-picker{display:none}  /* 主题改到详情区编辑，列表不再内联选择器 */
 
 /* ===== 详情区（阅读 + 编辑） ===== */
 .dsh-notes-editor{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--nbg)}
 .dsh-notes-editor-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--nt3);gap:12px;padding:30px;text-align:center;font-size:13px;background:var(--nbg)}
-.dsh-notes-editor-empty-ic{font-size:34px;opacity:.5;line-height:1}
+.dsh-notes-editor-empty-ic{font-size:30px;opacity:.55;line-height:1;display:inline-flex;align-items:center;justify-content:center;width:60px;height:60px;border-radius:50%;background:var(--nbg-hover);margin-bottom:4px}
 .dsh-notes-editor-empty-t{font-size:15px;font-weight:600;color:var(--nt2)}
 .dsh-notes-editor-empty-s{font-size:12px;color:var(--nt3)}
 
@@ -157,6 +170,20 @@
 .dsh-notes-ed-topic{background:transparent;border:1px solid transparent;border-radius:6px;color:var(--nacc);font-size:12px;padding:4px 8px;font-family:var(--nfont);outline:none;max-width:140px;transition:border-color .15s,background .15s}
 .dsh-notes-ed-topic:hover{background:var(--nbg-hover)}
 .dsh-notes-ed-topic:focus{border-color:var(--nacc);background:var(--nbg)}
+/* 详情区 kind tint chip（低饱和 tint 底 + 同系深色字，明暗均可读） */
+.dsh-notes-ed-kind-chip{border-radius:13px;font-weight:600;border:1px solid transparent;padding:4px 10px}
+.dsh-notes-ed-kind-chip.dsh-notes-ed-kind-note{background:rgba(10,132,255,.13);color:#0a84ff}
+.dsh-notes-ed-kind-chip.dsh-notes-ed-kind-decision{background:rgba(191,90,242,.13);color:#bf5af2}
+.dsh-notes-ed-kind-chip.dsh-notes-ed-kind-todo{background:rgba(255,149,0,.15);color:#ff9500}
+.dsh-notes-ed-kind-chip.dsh-notes-ed-kind-link{background:rgba(90,200,250,.16);color:#0a9fc4}
+.dsh-notes-ed-kind-chip.dsh-notes-ed-kind-quote{background:rgba(255,55,95,.13);color:#ff375f}
+/* 详情区标签输入（灰色小胶囊形态） */
+.dsh-notes-ed-tags-input{background:var(--nbg-hover);border:1px solid transparent;border-radius:11px;color:var(--nt2);font-size:11px;padding:3px 10px;font-family:var(--nfont);outline:none;max-width:160px;transition:border-color .15s,background .15s}
+.dsh-notes-ed-tags-input:hover{background:var(--nbg-sel)}
+.dsh-notes-ed-tags-input:focus{border-color:var(--nacc);background:var(--nbg);color:var(--ntx)}
+/* 详情区标签 chip 行（灰色小胶囊，与列表项同款） */
+.dsh-notes-ed-tags-chips{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.dsh-notes-ed-tag-chip{background:var(--nbg-hover);border-radius:10px;color:var(--nt2);font-size:10px;padding:2px 9px;font-weight:500;white-space:nowrap;line-height:1.5}
 .dsh-notes-ed-inject{background:transparent;border:1px solid var(--nbd);border-radius:6px;color:var(--nt2);font-size:11px;padding:4px 8px;font-family:var(--nmono);outline:none;width:120px}
 .dsh-notes-ed-inject:focus{border-color:var(--nacc);color:var(--ntx)}
 .dsh-notes-ed-meta-right{margin-left:auto;display:flex;gap:4px;align-items:center}
@@ -174,7 +201,7 @@
 /* 范围浮层触发按钮 */
 .dsh-notes-ed-scope-wrap{position:relative;flex:1;min-width:0}
 .dsh-notes-scope-trigger{background:transparent;border:1px solid var(--nbd);border-radius:6px;color:var(--ntx);font-size:12px;padding:4px 10px;cursor:pointer;transition:border-color .15s;font-family:var(--nfont);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
-.dsh-notes-scope-trigger:hover{border-color:var(--nacc)}
+.dsh-notes-scope-trigger:hover{border-color:var(--nt3)}
 .dsh-notes-scope-caret{color:var(--nt3);font-size:10px}
 /* 逐级浮层面板 */
 .dsh-notes-scope-panel{position:absolute;top:calc(100% + 4px);left:0;min-width:230px;max-width:300px;max-height:280px;overflow-y:auto;background:var(--nbg);border:1px solid var(--nbd);border-radius:10px;box-shadow:var(--nshadow);padding:6px;z-index:30;font-family:var(--nfont)}
@@ -218,19 +245,53 @@
 .dsh-notes-dispatch-rec-i{font-size:10px;color:var(--nt2);margin-top:2px;line-height:1.4}
 .dsh-notes-dispatch-rec.done{opacity:.55}
 .dsh-notes-dispatch-rec.done .dsh-notes-dispatch-rec-t{color:var(--nt3)}
-.dsh-notes-dispatch-done-btn{margin-top:4px;background:transparent;border:1px solid var(--nbd);border-radius:5px;color:var(--nkind-note);font-size:10px;padding:1px 8px;cursor:pointer;font-family:var(--nfont);transition:all .15s}
-.dsh-notes-dispatch-done-btn:hover{border-color:var(--nkind-note);background:rgba(52,199,89,.1)}
+.dsh-notes-dispatch-done-btn{margin-top:4px;background:transparent;border:none;border-radius:0;color:var(--nacc);font-size:10px;padding:1px 4px;cursor:pointer;font-family:var(--nfont);transition:color .15s;text-decoration:none}
+.dsh-notes-dispatch-done-btn:hover{text-decoration:underline}
+/* 派发待处理状态点（橙色圆点） */
+.dsh-notes-dispatch-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--nwarn,#ff9500);margin-right:5px;vertical-align:middle;flex-shrink:0}
 
 /* 详情操作按钮（右上角 icon） */
 .dsh-notes-ed-action{background:transparent;border:1px solid var(--nbd);border-radius:6px;color:var(--nt2);font-size:12px;cursor:pointer;padding:4px 10px;line-height:1;transition:all .15s;font-family:var(--nfont)}
 .dsh-notes-ed-action:hover{background:var(--nbg-hover);color:var(--ntx)}
 .dsh-notes-ed-action.on{background:var(--nacc-soft);border-color:var(--nacc);color:var(--nacc)}
 .dsh-notes-ed-action.danger:hover{color:#ff3b30;border-color:rgba(255,59,48,.4);background:rgba(255,59,48,.06)}
+/* 派发主按钮：主题色描边 + 浅色底（hover 加深）。
+   须置于 .dsh-notes-ed-action 基础规则之后——派发按钮同时带 ed-action 与 dispatch-btn 两个类，
+   同优先级（0-1-0）下后定义者胜，否则 ed-action 的透明底/灰字会覆盖派发按钮主样式。 */
+.dsh-notes-dispatch-btn{background:var(--nacc-soft);border:1px solid var(--nacc);color:var(--nacc);font-weight:600}
+.dsh-notes-dispatch-btn:hover{background:var(--nacc);color:#fff;border-color:var(--nacc)}
 
 /* 正文（无边框、宽行高、自动保存） */
 .dsh-notes-editor-body{flex:1;min-height:0;background:transparent;border:none;outline:none;color:var(--ntx);padding:14px 20px 20px;font-size:14px;font-family:var(--nfont);line-height:1.65;resize:none;margin:0;box-sizing:border-box;letter-spacing:.1px}
 .dsh-notes-editor-body::placeholder{color:var(--nt3)}
 .dsh-notes-editor-body.mono{font-family:var(--nmono);font-size:13px;line-height:1.6}
+
+/* ===== Markdown 预览态（dsh-notes-preview-* 前缀，走既有 token 体系）===== */
+.dsh-notes-preview-container{flex:1;min-height:0;overflow-y:auto;padding:14px 20px 20px;font-size:14px;font-family:var(--nfont);line-height:1.65;color:var(--ntx);letter-spacing:.1px;-webkit-font-smoothing:antialiased}
+.dsh-notes-preview-container::-webkit-scrollbar{width:8px}
+.dsh-notes-preview-container::-webkit-scrollbar-thumb{background:var(--nbd);border-radius:4px}
+.dsh-notes-preview-container::-webkit-scrollbar-thumb:hover{background:var(--nt3)}
+.dsh-notes-preview-container>:first-child{margin-top:0}
+.dsh-notes-preview-container>:last-child{margin-bottom:0}
+.dsh-notes-preview-p{margin:0 0 12px;word-break:break-word}
+.dsh-notes-preview-h1{font-size:18px;font-weight:700;margin:18px 0 10px;color:var(--ntx);letter-spacing:.2px}
+.dsh-notes-preview-h2{font-size:16px;font-weight:600;margin:16px 0 8px;color:var(--ntx)}
+.dsh-notes-preview-h3{font-size:14px;font-weight:600;margin:14px 0 6px;color:var(--ntx)}
+.dsh-notes-preview-code{background:var(--nbg-hover,var(--nsf));border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:12px 14px;margin:0 0 12px;overflow-x:auto;font-family:var(--nmono);font-size:13px;line-height:1.5}
+.dsh-notes-preview-code code{background:none;border:none;padding:0;font-family:inherit;font-size:inherit;color:var(--ntx)}
+.dsh-notes-preview-container code{background:var(--nbg-hover,var(--nsf));border:1px solid var(--nbd-soft);border-radius:4px;padding:1px 5px;font-family:var(--nmono);font-size:12px;color:var(--ntx)}
+.dsh-notes-preview-container pre code{background:none;border:none;padding:0;font-size:inherit}
+.dsh-notes-preview-ul,.dsh-notes-preview-ol{margin:0 0 12px;padding-left:22px}
+.dsh-notes-preview-ul li,.dsh-notes-preview-ol li{margin-bottom:4px;word-break:break-word}
+.dsh-notes-preview-quote{margin:0 0 12px;padding:8px 14px;border-left:3px solid var(--nacc);background:var(--nbg-hover,var(--nsf));border-radius:0 var(--nr-sm) var(--nr-sm) 0;color:var(--nt2);font-style:italic}
+.dsh-notes-preview-container a{color:var(--nacc);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s}
+.dsh-notes-preview-container a:hover{border-bottom-color:var(--nacc)}
+.dsh-notes-preview-container strong{font-weight:600;color:var(--ntx)}
+.dsh-notes-preview-container em{font-style:italic}
+/* 预览/编辑切换按钮（详情底部状态条左侧） */
+.dsh-notes-preview-toggle{background:transparent;border:1px solid var(--nbd);border-radius:var(--nr-sm);color:var(--nt2);font-size:11px;padding:3px 10px;cursor:pointer;transition:all .15s;font-family:var(--nfont);line-height:1.5;white-space:nowrap;flex-shrink:0}
+.dsh-notes-preview-toggle:hover{border-color:var(--nacc);color:var(--nacc);background:var(--nacc-soft)}
+.dsh-notes-preview-toggle.on{background:var(--nacc-soft);border-color:var(--nacc);color:var(--nacc);font-weight:600}
 
 /* 详情底部：轻量状态条（保存提示 + 字数） */
 .dsh-notes-ed-foot{display:flex;align-items:center;justify-content:space-between;padding:6px 20px 10px;font-size:11px;color:var(--nt3);flex-shrink:0;border-top:1px solid var(--nbd-soft)}
@@ -276,7 +337,7 @@
   --nt2:var(--dsw-alias-label-secondary,#6c6c70);
   --nt3:var(--dsw-alias-label-secondary,#aeaeb2);
   --nacc:var(--dsw-alias-brand-primary,#0a84ff);
-  --nbg-hover:var(--dsw-alias-bg-layer-2,#f2f2f7);
+  --nbg-hover:rgba(128,128,128,.08);  /* color-mix 兜底（避免亮色下与面板底色撞色） */
   --nr-md:8px;
   --nfont:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
   position:fixed;z-index:2147483646;width:320px;background:var(--nbg);border:1px solid var(--nbd);border-radius:12px;
@@ -290,7 +351,7 @@
 .dsh-notes-instruct-btn{background:transparent;border:1px solid var(--nbd);border-radius:var(--nr-md);color:var(--nt2);padding:6px 14px;cursor:pointer;font-size:12px;font-weight:500;font-family:var(--nfont);line-height:1;transition:all .15s}
 .dsh-notes-instruct-btn:hover{border-color:var(--nt3);color:var(--ntx)}
 .dsh-notes-instruct-btn.primary{background:var(--nacc);color:#fff;border-color:var(--nacc)}
-.dsh-notes-instruct-btn.primary:hover{filter:brightness(1.06);color:#fff}
+.dsh-notes-instruct-btn.primary:hover{filter:brightness(0.9);color:#fff}
 
 /* ===== 旧类名兼容（已废弃，保留避免渲染期报错；后续清理 client 引用） ===== */
 .dsh-notes-capture{padding:10px 14px;border-bottom:1px solid var(--nbd-soft);display:flex;gap:8px;background:var(--nbg);flex-shrink:0;align-items:flex-end}
@@ -310,3 +371,10 @@
 .dsh-notes-save-btn:hover{filter:brightness(1.06)}
 .dsh-notes-delete-btn{background:transparent;color:var(--nt3);border:1px solid var(--nbd);border-radius:var(--nr-md);padding:8px 16px;cursor:pointer;font-size:13px;font-weight:500;transition:all .15s}
 .dsh-notes-delete-btn:hover{color:#ff3b30;border-color:rgba(255,59,48,.4)}
+
+/* 列表项右键菜单（替代悬浮 ×）：面板风格、点击外部/Esc 关闭 */
+.dsh-notes-ctxmenu{position:absolute;z-index:60;min-width:150px;background:var(--nbg);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 6px 24px rgba(0,0,0,.14);padding:4px;display:flex;flex-direction:column;gap:1px}
+.dsh-notes-ctxmenu-item{display:flex;align-items:center;gap:7px;background:transparent;border:none;color:var(--ntx);font-size:12px;text-align:left;padding:6px 10px;border-radius:6px;cursor:pointer;transition:background .1s;font-family:var(--nfont)}
+.dsh-notes-ctxmenu-item:hover{background:var(--nbg-hover)}
+.dsh-notes-ctxmenu-item.danger{color:var(--ntx)}
+.dsh-notes-ctxmenu-item.danger:hover{color:#ff3b30;background:rgba(255,59,48,.08)}

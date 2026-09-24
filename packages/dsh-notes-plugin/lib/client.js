@@ -9,7 +9,7 @@
 //   · 样式         ：fetch notes-css + document.createElement('style') 注入（doc 级，进程单例）
 //                    （动态插件的 styles 服务在静态包中不存在）
 //   · 定时器        ：动态插件的 ctx.interval 快捷方式不存在，用 ctx.get('timer') + ctx.effect
-//   · inject       ：只声明硬依赖 slots；timer/sessions/workspaces 全部 ctx.get + 守卫
+//   · inject       ：声明全部服务（slots/timer/sessions/workspaces），保证就绪后才 apply
 //
 // 要改 client 行为：改开发版 client-impl.js，然后 `node scripts/build-dist.cjs` 重新生成。
 window.__ModuleLoader__.load({
@@ -60,6 +60,86 @@ window.__ModuleLoader__.load({
     const notify = () => listeners.forEach(fn => fn({ panelOpen }))
     const notifyNotesChanged = () => noteRefreshListeners.forEach(fn => fn())
     const e = React.createElement
+    // ===== Markdown 预览渲染器（内联手写，零外部依赖；所有插值先 HTML 转义）=====
+    // 安全红线：esc() 先把 & < > " ' 转为实体，绝不用 innerHTML 直插原文；代码块内容同样转义
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\x22/g, '&quot;').replace(/\x27/g, '&#39;')
+    }
+    function renderMarkdown(md) {
+      var src = String(md || '')
+      if (!src.trim()) return ''
+      var lines = src.replace(/\r\n/g, '\n').split('\n')
+      var out = []
+      var i = 0
+      var inUl = false, inOl = false
+      function closeLists() { if (inUl) { out.push('</ul>'); inUl = false } if (inOl) { out.push('</ol>'); inOl = false } }
+      // 行内格式：行内代码 → 粗体 → 斜体 → 链接（仅 http/https）。esc 已在入口执行
+      function inline(s) {
+        var t = esc(s)
+        t = t.replace(/\x60([^\x60]+)\x60/g, function (m, c) { return '<code>' + c + '</code>' })
+        t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        t = t.replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+        return t
+      }
+      while (i < lines.length) {
+        var line = lines[i]
+        // 围栏代码块
+        if (/^\x60\x60\x60/.test(line)) {
+          closeLists()
+          var lang = line.replace(/^\x60\x60\x60/, '').trim()
+          var codeLines = []
+          i++
+          while (i < lines.length && !/^\x60\x60\x60/.test(lines[i])) { codeLines.push(lines[i]); i++ }
+          i++
+          out.push('<pre class="dsh-notes-preview-code"' + (lang ? ' data-lang="' + esc(lang) + '"' : '') + '><code>' + esc(codeLines.join('\n')) + '</code></pre>')
+          continue
+        }
+        // 标题 # ~ ###
+        var hm = line.match(/^(#{1,3})\s+(.*)$/)
+        if (hm) {
+          closeLists()
+          var lvl = hm[1].length
+          out.push('<h' + lvl + ' class="dsh-notes-preview-h' + lvl + '">' + inline(hm[2]) + '</h' + lvl + '>')
+          i++
+          continue
+        }
+        // 引用块
+        if (/^>\s?/.test(line)) {
+          closeLists()
+          var quoteLines = []
+          while (i < lines.length && /^>\s?/.test(lines[i])) { quoteLines.push(lines[i].replace(/^>\s?/, '')); i++ }
+          out.push('<blockquote class="dsh-notes-preview-quote">' + inline(quoteLines.join(' ')) + '</blockquote>')
+          continue
+        }
+        // 无序列表
+        if (/^[-*+]\s+/.test(line)) {
+          if (inOl) { out.push('</ol>'); inOl = false }
+          if (!inUl) { out.push('<ul class="dsh-notes-preview-ul">'); inUl = true }
+          out.push('<li>' + inline(line.replace(/^[-*+]\s+/, '')) + '</li>')
+          i++
+          continue
+        }
+        // 有序列表
+        if (/^\d+\.\s+/.test(line)) {
+          if (inUl) { out.push('</ul>'); inUl = false }
+          if (!inOl) { out.push('<ol class="dsh-notes-preview-ol">'); inOl = true }
+          out.push('<li>' + inline(line.replace(/^\d+\.\s+/, '')) + '</li>')
+          i++
+          continue
+        }
+        // 空行
+        if (line.trim() === '') { closeLists(); i++; continue }
+        // 段落（连续非空非特殊行合并）
+        closeLists()
+        var paraLines = []
+        while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,3}\s|\x60\x60\x60|>\s?|[-*+]\s|\d+\.\s)/.test(lines[i])) { paraLines.push(lines[i]); i++ }
+        out.push('<p class="dsh-notes-preview-p">' + inline(paraLines.join(' ')) + '</p>')
+      }
+      closeLists()
+      return out.join('\n')
+    }
+    // ===== end Markdown 预览渲染器 =====
     // 性能自检计数器：浏览器控制台执行 JSON.stringify(window.__dshNotesPerf) 可取数诊断
     const now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now()
     const perf = { selChange: 0, selCollapsedSkip: 0, selChangeMs: 0, selShowEval: 0, selShowMs: 0, mousemoveTracked: 0, hostCall: 0, hostCallMs: 0, panelRender: 0, selRender: 0, hdrRender: 0, longTasks: 0, longTaskMs: 0, worstTaskMs: 0 }
@@ -224,6 +304,8 @@ window.__ModuleLoader__.load({
         const [dispatching, setDispatching] = React.useState(false)
         const [dispatchMode, setDispatchMode] = React.useState('existing')  // existing=派发到活跃会话 / new=新建会话派发
         const [dispatchInstr, setDispatchInstr] = React.useState('')
+        const [previewMode, setPreviewMode] = React.useState(false)   // 编辑/预览双态：默认编辑（textarea 行为不变）
+        const [ctxMenu, setCtxMenu] = React.useState(null)   // 列表项右键菜单：{ x, y, note }（面板内坐标）或 null
         const [dispatchWsId, setDispatchWsId] = React.useState('')       // new 模式：选中的工作区 id
         const [dispatchSessWs, setDispatchSessWs] = React.useState('')   // existing 模式：选中的工作区名
         const [dispatchSessId, setDispatchSessId] = React.useState('')   // existing 模式：选中的会话 id
@@ -246,6 +328,7 @@ window.__ModuleLoader__.load({
         // T2 顶栏压缩：展开态镜像到 ref（keydown 闭包挂一次，需读最新值避免过期）
         const searchOpenRef = React.useRef(false)
         const capOpenRef = React.useRef(false)
+        const ctxMenuRef = React.useRef(null)   // 右键菜单镜像（keydown 闭包读最新值）
         // 自动保存：编辑字段的最新值 ref（debounce 回调读 ref 而非闭包 state，避免过期）
         const edTitleRef = React.useRef('')
         const edTopicRef = React.useRef('')
@@ -297,6 +380,7 @@ window.__ModuleLoader__.load({
         // T2 顶栏压缩：展开态同步到 ref（keydown 闭包读 ref 避免过期）
         React.useEffect(() => { searchOpenRef.current = searchOpen }, [searchOpen])
         React.useEffect(() => { capOpenRef.current = capOpen }, [capOpen])
+        React.useEffect(() => { ctxMenuRef.current = ctxMenu }, [ctxMenu])
         // T2 顶栏压缩：展开时自动聚焦（Ctrl+K/Ctrl+N 改为 setSearchOpen(true)/setCapOpen(true)，由此 effect 完成聚焦）
         React.useEffect(() => { if (searchOpen && searchInputRef.current) searchInputRef.current.focus() }, [searchOpen])
         React.useEffect(() => {
@@ -316,8 +400,9 @@ window.__ModuleLoader__.load({
             const mod = ev.ctrlKey || ev.metaKey
             if (mod && (ev.key === 'k' || ev.key === 'K')) { ev.preventDefault(); setSearchOpen(true); return }
             if (mod && (ev.key === 'n' || ev.key === 'N')) { ev.preventDefault(); setCapOpen(true); return }
-            if (ev.key === 'Escape') { ev.preventDefault(); if (capOpenRef.current) { setCapOpen(false); return } if (searchOpenRef.current) { setSearchOpen(false); return } closeRef.current(); return }
+            if (ev.key === 'Escape') { ev.preventDefault(); if (ctxMenuRef.current) { setCtxMenu(null); return } if (capOpenRef.current) { setCapOpen(false); return } if (searchOpenRef.current) { setSearchOpen(false); return } closeRef.current(); return }
             if (inField) return
+            if (ctxMenuRef.current) return   // 右键菜单打开时暂停列表导航/打开
             const ids = pagedIdsRef.current
             if (!ids.length) return
             if (ev.key === 'j' || ev.key === 'ArrowDown') { ev.preventDefault(); moveFocusRef.current(ids, 1) }
@@ -416,6 +501,33 @@ window.__ModuleLoader__.load({
             await loadNotes(true); notifyNotesChanged()
           } catch (err) { setError(String(err.message || err)) }
         }
+        // 列表项右键菜单：替代悬浮 × 按钮（打开即选中目标笔记，操作上下文明确）
+        function openCtxMenu(ev, n) {
+          ev.preventDefault(); ev.stopPropagation()
+          const floatEl = ev.currentTarget.closest('.dsh-notes-floating')
+          const rect = floatEl ? floatEl.getBoundingClientRect() : { left: 0, top: 0, width: 600, height: 500 }
+          const mw = 160, mh = 116
+          let x = ev.clientX - rect.left, y = ev.clientY - rect.top
+          x = Math.max(4, Math.min(x, rect.width - mw - 4))
+          y = Math.max(4, Math.min(y, rect.height - mh - 4))
+          setCtxMenu({ x: x, y: y, note: n })
+          selectNote(n)
+        }
+        async function ctxSetStatus(n, status) {
+          setCtxMenu(null); setError('')
+          try {
+            const res = await rpc('notes-update', { id: n.id, status: status })
+            if (res && res.error) { setError(res.error); return }
+            await loadNotes(true); notifyNotesChanged()
+          } catch (err) { setError(String(err.message || err)) }
+        }
+        // 点击菜单外部关闭（Esc 在全局 keydown 里处理）
+        React.useEffect(() => {
+          if (!ctxMenu) return
+          const onDown = (ev) => { if (!(ev.target && ev.target.closest && ev.target.closest('.dsh-notes-ctxmenu'))) setCtxMenu(null) }
+          document.addEventListener('mousedown', onDown)
+          return () => document.removeEventListener('mousedown', onDown)
+        }, [ctxMenu])
         async function pickTopic(id, topic) {
           setTopicPickFor(null); setError('')
           try {
@@ -563,13 +675,12 @@ window.__ModuleLoader__.load({
           if (n.topic && n.topic !== '分类中') metaEls.push(e('span', { className: 'dsh-note-meta-topic' }, n.topic))
           if (n.sessionId) metaEls.push(e('span', { className: 'dsh-note-meta-sess' }, '会话 ' + shortSid(n.sessionId)))
           if (visTags.length) metaEls.push(e('span', { className: 'dsh-note-meta-tags' }, visTags.join(' · ')))
-          return e('div', { key: n.id, className: 'dsh-note-item' + (selected === n.id ? ' selected' : '') + (flashId === n.id ? ' flash' : '') + (focusId === n.id ? ' focused' : '') + statusCls, onClick: () => selectNote(n), 'data-tooltip': n.title },
+          return e('div', { key: n.id, className: 'dsh-note-item' + (selected === n.id ? ' selected' : '') + (flashId === n.id ? ' flash' : '') + (focusId === n.id ? ' focused' : '') + statusCls, onClick: () => selectNote(n), onContextMenu: (ev) => openCtxMenu(ev, n), 'data-tooltip': n.title },
             e('div', { className: 'dsh-note-row' },
               e('span', { className: 'dsh-note-kind-ic dsh-note-kind-' + (n.kind || 'note') }, kindIc),
               e('span', { className: 'dsh-note-title' }, e('span', { className: 'dsh-note-title-text' }, highlight(n.title, q))),
               e('span', { className: 'dsh-note-date' }, n.updatedAt ? n.updatedAt.slice(0, 10) : '')),
-            metaEls.length ? e('div', { className: 'dsh-note-meta' }, metaEls) : null,
-            e('button', { className: 'dsh-note-delete dsh-nt', onClick: (ev) => { ev.stopPropagation(); doDelete(n.id) }, 'data-tooltip': '删除' }, '×'))
+            metaEls.length ? e('div', { className: 'dsh-note-meta' }, metaEls) : null)
         }
         let listContent
         if (loading && notes.length === 0) listContent = e('div', { className: 'dsh-notes-loading' }, '加载中...')
@@ -649,7 +760,7 @@ window.__ModuleLoader__.load({
               e('div', { className: 'dsh-notes-ed-head' },
                 e('input', { className: 'dsh-notes-editor-title', placeholder: '标题', value: edTitle, onChange: (ev) => { setEdTitle(ev.target.value); triggerAutoSave() } }),
                 e('div', { className: 'dsh-notes-ed-meta' },
-                  e('select', { className: 'dsh-notes-ed-select', value: edKind, onChange: (ev) => { setEdKind(ev.target.value); triggerAutoSave() }, 'data-tooltip': '笔记类型' },
+                  e('select', { className: 'dsh-notes-ed-select dsh-notes-ed-kind-chip dsh-notes-ed-kind-' + edKind, value: edKind, onChange: (ev) => { setEdKind(ev.target.value); triggerAutoSave() }, 'data-tooltip': '笔记类型' },
                     e('option', { value: 'note' }, '笔记'),
                     e('option', { value: 'decision' }, '决策'),
                     e('option', { value: 'todo' }, '待办'),
@@ -661,9 +772,14 @@ window.__ModuleLoader__.load({
                     e('option', { value: 'resolved' }, '已解决'),
                     e('option', { value: 'superseded' }, '已取代')),
                   e('input', { className: 'dsh-notes-ed-topic', placeholder: '主题', value: edTopic, onChange: (ev) => { setEdTopic(ev.target.value); triggerAutoSave() }, 'data-tooltip': '主题' }),
-                  e('input', { className: 'dsh-notes-ed-topic', placeholder: '标签，逗号分隔', value: edTags, onChange: (ev) => { setEdTags(ev.target.value); triggerAutoSave() }, 'data-tooltip': '标签（convention 表示工作区约定）' }),
+                  e('input', { className: 'dsh-notes-ed-tags-input', placeholder: '标签，逗号分隔', value: edTags, onChange: (ev) => { setEdTags(ev.target.value); triggerAutoSave() }, 'data-tooltip': '标签（convention 表示工作区约定）' }),
+                  (edTags || '').split(/[,，;；]/).map(function (s) { return s.trim() }).filter(Boolean).length
+                    ? e('div', { className: 'dsh-notes-ed-tags-chips' },
+                        (edTags || '').split(/[,，;；]/).map(function (s) { return s.trim() }).filter(Boolean)
+                          .map(function (tag, i) { return e('span', { key: 'tag-' + i, className: 'dsh-notes-ed-tag-chip' }, tag) }))
+                    : null,
                   e('div', { className: 'dsh-notes-ed-meta-right' },
-                    e('button', { className: 'dsh-notes-ed-action dsh-nt', onClick: (ev) => { ev.stopPropagation(); openDispatch() }, 'data-tooltip': '派发待办到会话（可补充具体要求）' }, dispatching ? '…' : '▶ 派发'),
+                    e('button', { className: 'dsh-notes-ed-action dsh-notes-dispatch-btn dsh-nt', onClick: (ev) => { ev.stopPropagation(); openDispatch() }, 'data-tooltip': '派发待办到会话（可补充具体要求）' }, dispatching ? '…' : '▶ 派发'),
                     notes.find(n => n.id === selected) && notes.find(n => n.id === selected).sessionId ? e('button', { className: 'dsh-notes-ed-action dsh-nt', onClick: () => jumpToSession(notes.find(n => n.id === selected).sessionId), 'data-tooltip': '跳转到来源会话' }, '↗ 会话') : null,
                     e('button', { className: 'dsh-notes-ed-action' + (edStatus === 'pinned' ? ' on' : ''), onClick: () => { setEdStatus(edStatus === 'pinned' ? 'active' : 'pinned'); triggerAutoSave() }, 'data-tooltip': edStatus === 'pinned' ? '取消置顶' : '置顶' }, '📌'),
                     e('button', { className: 'dsh-notes-ed-action danger', onClick: () => doDelete(selected), 'data-tooltip': '删除（软删除，可恢复）' }, '🗑'))),
@@ -687,13 +803,16 @@ window.__ModuleLoader__.load({
                 e('div', { className: 'dsh-notes-dispatch-history-t' }, '▶ 派发历史（' + curDispatches.length + '）'),
                 curDispatches.map((d, origIdx) => ({ d: d, origIdx: origIdx })).reverse().map(({ d, origIdx }) => e('div', { key: origIdx, className: 'dsh-notes-dispatch-rec' + (d.done ? ' done' : '') },
                   e('div', { className: 'dsh-notes-dispatch-rec-top' },
-                    e('span', { className: 'dsh-notes-dispatch-rec-t' }, (d.done ? '✓ ' : '● ') + (d.sessionName || d.sessionId)),
+                    e('span', { className: 'dsh-notes-dispatch-rec-t' }, d.done ? '✓ ' + (d.sessionName || d.sessionId) : [e('span', { key: 'dot', className: 'dsh-notes-dispatch-dot' }), ' ' + (d.sessionName || d.sessionId)]),
                     e('span', { className: 'dsh-notes-dispatch-rec-m' }, (d.done ? '已完成 · ' : '待处理 · ') + (d.mode === 'new' ? '新会话' : (d.workspace || '已有会话')) + (d.at ? ' · ' + String(d.at).slice(5, 16).replace('T', ' ') : ''))),
                   d.instruction ? e('div', { className: 'dsh-notes-dispatch-rec-i' }, '要求：' + d.instruction) : null,
                   !d.done ? e('button', { className: 'dsh-notes-dispatch-done-btn', onClick: () => doDispatchDone(origIdx) }, '标记完成') : null)))
               : null,
-              e('textarea', { className: 'dsh-notes-editor-body', placeholder: '开始记录…（支持 Markdown）', value: edBody, onChange: (ev) => { setEdBody(ev.target.value); triggerAutoSave() } }),
+              previewMode
+                ? e('div', { className: 'dsh-notes-preview-container', dangerouslySetInnerHTML: { __html: renderMarkdown(edBody) } })
+                : e('textarea', { className: 'dsh-notes-editor-body', placeholder: '开始记录…（支持 Markdown）', value: edBody, onChange: (ev) => { setEdBody(ev.target.value); triggerAutoSave() } }),
               e('div', { className: 'dsh-notes-ed-foot' },
+                e('button', { className: 'dsh-notes-preview-toggle dsh-nt' + (previewMode ? ' on' : ''), onClick: () => setPreviewMode(!previewMode), 'data-tooltip': previewMode ? '切换到编辑模式' : '预览 Markdown 渲染' }, previewMode ? '✎ 编辑' : '👁 预览'),
                 e('span', { className: 'dsh-notes-ed-saved' + (savedAt ? ' show' : '') }, savedAt ? '已自动保存 ' + new Date(savedAt).toTimeString().slice(0, 5) : ''),
                 e('span', null, (edBody || '').length + ' 字')))
             : e('div', { className: 'dsh-notes-editor-empty' },
@@ -727,6 +846,12 @@ window.__ModuleLoader__.load({
               e('div', { className: 'dsh-notes-dispatch-actions' },
                 e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setDispatchOpen(false) }, '取消'),
                 e('button', { className: 'dsh-notes-dispatch-ok', onClick: doDispatchConfirm, disabled: dispatching }, dispatching ? '派发中…' : '派发'))))
+          : null,
+          // 列表项右键菜单（替代悬浮 ×）：置顶/已解决/删除
+          ctxMenu ? e('div', { className: 'dsh-notes-ctxmenu', style: { left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' } },
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => ctxSetStatus(ctxMenu.note, ctxMenu.note.status === 'pinned' ? 'active' : 'pinned') }, '📌 ' + (ctxMenu.note.status === 'pinned' ? '取消置顶' : '置顶')),
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => ctxSetStatus(ctxMenu.note, ctxMenu.note.status === 'resolved' ? 'active' : 'resolved') }, '✓ ' + (ctxMenu.note.status === 'resolved' ? '重开' : '标记已解决')),
+            e('button', { className: 'dsh-notes-ctxmenu-item danger', onClick: () => { setCtxMenu(null); doDelete(ctxMenu.note.id) } }, '🗑 删除'))
           : null)
       }
       slots.register({ name: 'shell.overlay', id: 'dsh-notes-panel', order: 200 }, (props) => e(FloatingPanel, props))
@@ -857,10 +982,37 @@ window.__ModuleLoader__.load({
           } catch (err) { setToast('记录失败：' + String(err.message || err)) }
         }
         function cancel() { visibleRef.current = false; setBtn(null); setInstrText(''); if (window.getSelection()) window.getSelection().removeAllRanges() }
+        // 复制选区文本到剪贴板：优先 navigator.clipboard，不可用/失败时降级 execCommand；不关浮层不清选区
+        function fallbackCopy(text) {
+          try {
+            var ta = document.createElement('textarea')
+            ta.value = text
+            ta.style.position = 'fixed'
+            ta.style.opacity = '0'
+            ta.style.pointerEvents = 'none'
+            document.body.appendChild(ta)
+            ta.select()
+            document.execCommand('copy')
+            document.body.removeChild(ta)
+            setToast('已复制选区')
+          } catch (err) { setToast('复制失败') }
+        }
+        function copySelection() {
+          var text = selTextRef.current
+          if (!text) { setToast('无选区可复制'); return }
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(text).then(function () { setToast('已复制选区') }, function () { fallbackCopy(text) })
+              return
+            }
+          } catch (err) {}
+          fallbackCopy(text)
+        }
         return e('div', null, btn ? e('div', { className: 'dsh-notes-instruct-box', style: { left: btn.x + 'px', top: btn.y + 'px' } },
           e('div', { className: 'dsh-notes-instruct-preview' }, previewText(selTextRef.current)),
           e('input', { ref: instrRef, className: 'dsh-notes-instruct-input', type: 'text', placeholder: '可补充：打标签/引导标题/定类型/设为约定…直接回车则仅记录', value: instrText, onChange: function (ev) { setInstrText(ev.target.value) }, onKeyDown: function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); submit() } else if (ev.key === 'Escape') { ev.preventDefault(); cancel() } } }),
           e('div', { className: 'dsh-notes-instruct-actions' },
+            e('button', { className: 'dsh-notes-instruct-btn', onClick: copySelection }, '复制'),
             e('button', { className: 'dsh-notes-instruct-btn primary', onClick: submit }, '记录'),
             e('button', { className: 'dsh-notes-instruct-btn', onClick: cancel }, '取消')
           )
@@ -873,9 +1025,8 @@ window.__ModuleLoader__.load({
     console.log('notes plugin: client ready')
     }
 
-    // 动态版 inject 为 ['timer','sessions','workspaces']；静态包按 PACKAGING.md 第 4 节保守处理：
-    // 只声明硬依赖 slots（没它就完全没有 UI），其余服务在 apply 内 ctx.get + 守卫，
-    // 避免服务未就绪时插件永远不启动。
+    // inject 声明 apply 用到的全部服务（slots/timer/sessions/workspaces），
+    // 保证 Cordis 在服务就绪后才激活 apply；apply 内仍保留 ctx.get + 存在性守卫做双保险。
     module.exports = { name: 'dsh-notes-plugin', inject: ['slots', 'timer', 'sessions', 'workspaces'], apply: apply }
     return module.exports
   }

@@ -170,6 +170,17 @@ async function main() {
   await t('client-impl 含 status 类名分支', () => assert(/status === 'pinned'/.test(clientSrc) && /status === 'resolved'/.test(clientSrc) && /status === 'superseded'/.test(clientSrc), 'status 视觉分支'))
   await t('client-impl 编辑器含 kind/status 选择器', () => assert(/value: edKind/.test(clientSrc) && /value: edStatus/.test(clientSrc), 'kind/status select'))
   await t('client-impl 选区捕获传 kind=quote', () => assert(/kind: 'quote'/.test(clientSrc), 'selection capture → quote'))
+  await t('client-impl 选区浮层含复制按钮 + primary 样式类', () => {
+    assert(clientSrc.indexOf('dsh-notes-instruct-actions') >= 0, 'instruct-actions 容器存在')
+    assert(clientSrc.indexOf('复制') >= 0, '选区浮层 actions 含复制按钮')
+    assert(/dsh-notes-instruct-btn primary/.test(clientSrc), 'primary 按钮样式类存在')
+    assert(/copySelection/.test(clientSrc), 'copySelection 复制处理函数存在')
+    assert(clientSrc.indexOf('navigator.clipboard') >= 0, '优先 navigator.clipboard.writeText')
+    assert(clientSrc.indexOf('execCommand') >= 0, '降级 execCommand 兜底')
+    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    assert(/\.dsh-notes-instruct-btn\.primary\{[^}]*var\(--nacc\)/.test(css), 'primary 按钮用 var(--nacc) 主题色')
+    assert(/\.dsh-notes-instruct-btn\.primary:hover\{[^}]*brightness\(0\.9\)/.test(css), 'primary hover 加深 brightness(0.9)')
+  })
   await t('client-impl 注入为独立开关+逐级范围浮层', () => {
     assert(/toggleInject/.test(clientSrc), '独立注入开关 toggleInject（不碰标签）')
     assert(/edScope/.test(clientSrc), '范围多选 edScope 数组')
@@ -1076,12 +1087,122 @@ async function main() {
     assert.strictEqual(loaded.slots.disposed, 4, '卸载时释放 4 个 slots.inject（实得 ' + loaded.slots.disposed + '）')
     assert(loaded.effectsCleaned >= 1, 'ctx.effect 清理执行（实得 ' + loaded.effectsCleaned + '）')
   })
+  await t('lib/client.js 选区浮层含复制按钮 + primary 样式类', () => {
+    assert(clientPkgSrc.indexOf('dsh-notes-instruct-actions') >= 0, 'instruct-actions 容器存在')
+    assert(clientPkgSrc.indexOf('复制') >= 0, '选区浮层 actions 含复制按钮')
+    assert(/dsh-notes-instruct-btn primary/.test(clientPkgSrc), 'primary 按钮样式类存在')
+    assert(/copySelection/.test(clientPkgSrc), 'copySelection 复制处理函数存在')
+    assert(clientPkgSrc.indexOf('navigator.clipboard') >= 0, '优先 navigator.clipboard.writeText')
+    assert(clientPkgSrc.indexOf('execCommand') >= 0, '降级 execCommand 兜底')
+  })
   await t('lib/client.js 是 scripts/build-dist.cjs 的产物且可复现', () => {
     assert(fsNative.existsSync(path.join(DIR, 'scripts', 'build-dist.cjs')), 'build-dist.cjs 存在')
     assert(/build-dist\.cjs/.test(clientPkgSrc), '产物头部标注了构建来源')
     const buildSrc = fsNative.readFileSync(path.join(DIR, 'scripts', 'build-dist.cjs'), 'utf8')
     assert(/RPC_PATH = '\/dsh-notes'/.test(buildSrc), 'build 脚本 RPC 路径与 host 的 RPC_PATH 一致')
     assert((buildSrc.match(/counts\[/g) || []).length >= 4, 'build 带转换计数断言（漏改会中止而不是产出坏包）')
+  })
+
+  // ===== 19. Markdown 预览/编辑双态（切换按钮 + 预览容器 + 转义 + 切回编辑不丢正文）=====
+  section('19. Markdown 预览/编辑双态')
+  // 从开发版 client-impl.js 源码提取 esc + renderMarkdown 函数体（用标记区间）
+  const PREVIEW_MARKER_START = '// ===== Markdown 预览渲染器'
+  const PREVIEW_MARKER_END = '// ===== end Markdown 预览渲染器 ====='
+  let previewFn = null
+  await t('Markdown 渲染器函数可提取', () => {
+    const ps = clientSrc.indexOf(PREVIEW_MARKER_START)
+    const pe = clientSrc.indexOf(PREVIEW_MARKER_END)
+    assert(ps >= 0 && pe > ps, 'client-impl.js 含 Markdown 渲染器标记区间')
+    const block = clientSrc.slice(ps, pe + PREVIEW_MARKER_END.length)
+    previewFn = new Function(block + '\nreturn { esc: esc, renderMarkdown: renderMarkdown }')()
+    assert(typeof previewFn.esc === 'function' && typeof previewFn.renderMarkdown === 'function', 'esc + renderMarkdown 可调用')
+  })
+
+  await t('预览切换按钮存在', () => {
+    assert(clientSrc.indexOf('dsh-notes-preview-toggle') >= 0, 'client-impl 含预览切换按钮 class')
+    assert(clientPkgSrc.indexOf('dsh-notes-preview-toggle') >= 0, '发布包 client.js 含预览切换按钮 class')
+    assert(/previewMode/.test(clientSrc), 'previewMode 状态存在')
+    assert(/setPreviewMode\(!previewMode\)/.test(clientSrc), 'toggle 调用 setPreviewMode 翻转预览态')
+    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    assert(css.indexOf('.dsh-notes-preview-toggle') >= 0, 'styles.css 含切换按钮样式')
+  })
+
+  await t('预览容器渲染（条件展示 textarea / preview-container）', () => {
+    assert(clientSrc.indexOf('dsh-notes-preview-container') >= 0, 'client-impl 含预览容器 class')
+    assert(clientPkgSrc.indexOf('dsh-notes-preview-container') >= 0, '发布包含预览容器 class')
+    assert(/dangerouslySetInnerHTML/.test(clientSrc), '预览态用 dangerouslySetInnerHTML 渲染 HTML')
+    assert(/renderMarkdown\(edBody\)/.test(clientSrc), '预览态调用 renderMarkdown(edBody)')
+    assert(/previewMode\s*\?/.test(clientSrc), 'previewMode 条件渲染分支存在')
+    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    assert(css.indexOf('.dsh-notes-preview-container') >= 0, 'styles.css 含预览容器样式')
+    assert(css.indexOf('.dsh-notes-preview-code') >= 0, 'styles.css 含代码块样式')
+  })
+
+  await t('esc 转义生效：恶意 HTML 不裸露', () => {
+    assert(previewFn, 'previewFn 可用')
+    const evil = '<img onerror=alert(1) src=x><script>alert(2)</script>'
+    const escaped = previewFn.esc(evil)
+    assert(escaped.indexOf('<img') < 0 && escaped.indexOf('<script') < 0, 'esc 后不含裸 <img / <script')
+    assert(escaped.indexOf('&lt;img') >= 0, 'esc 把 < 转为 &lt;')
+    assert(escaped.indexOf('&lt;script') >= 0, 'esc 把 <script 转为 &lt;script')
+    // renderMarkdown 同样安全：恶意内容在代码块/段落中均被转义
+    const html1 = previewFn.renderMarkdown('```\n' + evil + '\n```')
+    assert(html1.indexOf('<img') < 0 && html1.indexOf('<script') < 0, '代码块内恶意 HTML 被转义')
+    const html2 = previewFn.renderMarkdown(evil)
+    assert(html2.indexOf('<img') < 0 && html2.indexOf('<script') < 0, '段落内恶意 HTML 被转义')
+    // 正常 Markdown 渲染正确
+    const md = '# Title\n\nSome **bold** and *italic* text.\n\n- item 1\n- item 2\n'
+    const html = previewFn.renderMarkdown(md)
+    assert(html.indexOf('<h1') >= 0, '渲染标题')
+    assert(html.indexOf('<strong>bold</strong>') >= 0, '渲染粗体')
+    assert(html.indexOf('<em>italic</em>') >= 0, '渲染斜体')
+    assert(html.indexOf('<ul') >= 0 && html.indexOf('<li>item 1</li>') >= 0, '渲染无序列表')
+  })
+
+  await t('切回编辑态不丢正文', () => {
+    assert(previewFn, 'previewFn 可用')
+    // 源码断言：toggle 只翻转 previewMode，不碰 edBody
+    assert(/setPreviewMode\(!previewMode\)/.test(clientSrc), 'toggle 只翻转 previewMode，不碰 edBody')
+    // textarea 仍绑定 edBody（切回编辑时显示当前 edBody 值，不丢失）
+    assert(/value:\s*edBody/.test(clientSrc), 'textarea value 仍绑定 edBody')
+    // 预览态不触发自动保存：textarea onChange 只在编辑态渲染（预览态用 preview-container 替代）
+    assert(clientSrc.indexOf('dsh-notes-preview-container') >= 0, '预览态用 preview-container 替代 textarea')
+    // renderMarkdown 不修改 edBody（纯函数，只读不写）
+    const ps = clientSrc.indexOf(PREVIEW_MARKER_START)
+    const pe = clientSrc.indexOf(PREVIEW_MARKER_END)
+    const block = clientSrc.slice(ps, pe + PREVIEW_MARKER_END.length)
+    assert(!/setEdBody/.test(block), 'renderMarkdown 区间内不调用 setEdBody')
+    // 预览渲染器不依赖任何外部状态（纯函数）
+    assert(!/triggerAutoSave/.test(block), 'renderMarkdown 区间内不调用 triggerAutoSave')
+  })
+
+  // ===== 20. 列表项右键菜单（替代悬浮 ×：onContextMenu + ctxmenu 结构 + 三动作 + 旧按钮移除）=====
+  section('20. 列表项右键菜单（ctxmenu）')
+  await t('列表项 onContextMenu 处理器存在', () => {
+    assert(/onContextMenu:\s*\(ev\)\s*=>\s*openCtxMenu\(ev,\s*n\)/.test(clientSrc), 'client-impl 列表项含 onContextMenu → openCtxMenu')
+    assert(/onContextMenu:\s*\(ev\)\s*=>\s*openCtxMenu\(ev,\s*n\)/.test(clientPkgSrc), '发布包列表项含 onContextMenu')
+    assert(/function openCtxMenu\(ev, n\)/.test(clientSrc), 'openCtxMenu 函数存在')
+    assert(/ctxMenuRef/.test(clientSrc), 'ctxMenuRef 键盘流兼容镜像存在')
+  })
+  await t('ctxmenu 结构与样式存在', () => {
+    assert(clientSrc.indexOf('dsh-notes-ctxmenu') >= 0, 'client-impl 含 ctxmenu 容器 class')
+    assert(clientPkgSrc.indexOf('dsh-notes-ctxmenu') >= 0, '发布包含 ctxmenu 容器 class')
+    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    assert(css.indexOf('.dsh-notes-ctxmenu{') >= 0, 'styles.css 含 ctxmenu 容器样式')
+    assert(css.indexOf('.dsh-notes-ctxmenu-item') >= 0, 'styles.css 含菜单项样式')
+  })
+  await t('菜单含置顶/已解决/删除三动作', () => {
+    assert(/'📌 ' \+/.test(clientSrc) && clientSrc.indexOf('取消置顶') >= 0, '置顶/取消置顶动作存在')
+    assert(/'✓ ' \+/.test(clientSrc) && clientSrc.indexOf('标记已解决') >= 0, '标记已解决/重开动作存在')
+    assert(/'🗑 删除'/.test(clientSrc), '删除动作存在')
+    assert(/function ctxSetStatus\(n, status\)/.test(clientSrc), 'ctxSetStatus 函数存在')
+    assert(/ctxSetStatus[\s\S]{0,300}host\.call\('notes-update'/.test(clientSrc), 'ctxSetStatus 走 notes-update RPC')
+  })
+  await t('旧悬浮删除按钮已移除', () => {
+    assert(clientSrc.indexOf('dsh-note-delete') < 0, 'client-impl 不含 dsh-note-delete')
+    assert(clientPkgSrc.indexOf('dsh-note-delete') < 0, '发布包不含 dsh-note-delete')
+    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    assert(!/\.dsh-note-delete\{/.test(css), 'styles.css 不含 dsh-note-delete 样式块')
   })
 
   // ===== 总结 =====
