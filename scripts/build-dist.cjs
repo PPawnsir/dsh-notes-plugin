@@ -250,7 +250,16 @@ for (const banned of ['host.call', 'styles.insert']) {
 if (out.indexOf("fetch('" + RPC_PATH + "'") < 0) { console.error('[build-dist] 产出缺少 fetch(\'' + RPC_PATH + '\')'); process.exit(1) }
 if (out.indexOf("document.createElement('style')") < 0) { console.error('[build-dist] 产出缺少 style 注入'); process.exit(1) }
 
+// ---- 7. 同步样式资产：styles.css → 包内 lib/styles.css ----
+// index.mjs 的 CSS_CANDIDATES 以 lib/styles.css 为首选；样式改动必须与 client.js 一起进发布包，
+// 否则已安装实例（无开发版回退目录）会一直用旧样式。归一化 LF，避免 CRLF 混合。
+const CSS_SRC = path.join(ROOT, 'styles.css')
+const CSS_OUT = path.join(ROOT, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css')
+const cssText = fs.readFileSync(CSS_SRC, 'utf8').replace(/\r\n/g, '\n')
+fs.writeFileSync(CSS_OUT, cssText, 'utf8')
+
 console.log('[build-dist] ' + path.relative(ROOT, IMPL_PATH) + ' → ' + path.relative(ROOT, OUT_PATH))
 console.log('  转换计数：host.call→rpc ' + counts['host-call'] + ' 处，styles.insert→<style> 段 ' + counts['styles-block'] + ' 处，'
   + 'services-header ' + counts['services-header'] + '，perf-timer ' + counts['perf-timer'] + '，perf-wrap ' + counts['perf-wrap'])
 console.log('  产出：' + out.split('\n').length + ' 行 / ' + Buffer.byteLength(out, 'utf8') + ' 字节')
+console.log('  样式：styles.css → ' + path.relative(ROOT, CSS_OUT) + '（' + Buffer.byteLength(cssText, 'utf8') + ' 字节）')

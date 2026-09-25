@@ -310,6 +310,7 @@ window.__ModuleLoader__.load({
         const [dispatchSessWs, setDispatchSessWs] = React.useState('')   // existing 模式：选中的工作区名
         const [dispatchSessId, setDispatchSessId] = React.useState('')   // existing 模式：选中的会话 id
         const [wsList, setWsList] = React.useState([])
+        const [dispatchHistoryOpen, setDispatchHistoryOpen] = React.useState(false)   // 派发历史折叠态：默认折叠，点标题行展开
         const keepQuickRef = React.useRef(false)
         const capRef = React.useRef(null)
         const timersRef = React.useRef([])
@@ -799,14 +800,15 @@ window.__ModuleLoader__.load({
                           ' ' + s.name)))))
                     : null)
                   : null)),
-              curDispatches.length ? e('div', { className: 'dsh-notes-dispatch-history' },
-                e('div', { className: 'dsh-notes-dispatch-history-t' }, '▶ 派发历史（' + curDispatches.length + '）'),
-                curDispatches.map((d, origIdx) => ({ d: d, origIdx: origIdx })).reverse().map(({ d, origIdx }) => e('div', { key: origIdx, className: 'dsh-notes-dispatch-rec' + (d.done ? ' done' : '') },
+              curDispatches.length ? e('div', { className: 'dsh-notes-dispatch-history' + (dispatchHistoryOpen ? ' open' : ' collapsed') },
+                e('div', { className: 'dsh-notes-dispatch-history-t', onClick: () => setDispatchHistoryOpen(!dispatchHistoryOpen), role: 'button', 'aria-expanded': dispatchHistoryOpen ? 'true' : 'false' },
+                  (dispatchHistoryOpen ? '▼ ' : '▶ ') + '派发历史（' + curDispatches.length + '）'),
+                dispatchHistoryOpen ? curDispatches.map((d, origIdx) => ({ d: d, origIdx: origIdx })).reverse().map(({ d, origIdx }) => e('div', { key: origIdx, className: 'dsh-notes-dispatch-rec' + (d.done ? ' done' : '') },
                   e('div', { className: 'dsh-notes-dispatch-rec-top' },
                     e('span', { className: 'dsh-notes-dispatch-rec-t' }, d.done ? '✓ ' + (d.sessionName || d.sessionId) : [e('span', { key: 'dot', className: 'dsh-notes-dispatch-dot' }), ' ' + (d.sessionName || d.sessionId)]),
                     e('span', { className: 'dsh-notes-dispatch-rec-m' }, (d.done ? '已完成 · ' : '待处理 · ') + (d.mode === 'new' ? '新会话' : (d.workspace || '已有会话')) + (d.at ? ' · ' + String(d.at).slice(5, 16).replace('T', ' ') : ''))),
                   d.instruction ? e('div', { className: 'dsh-notes-dispatch-rec-i' }, '要求：' + d.instruction) : null,
-                  !d.done ? e('button', { className: 'dsh-notes-dispatch-done-btn', onClick: () => doDispatchDone(origIdx) }, '标记完成') : null)))
+                  !d.done ? e('button', { className: 'dsh-notes-dispatch-done-btn', onClick: () => doDispatchDone(origIdx) }, '标记完成') : null)) : null)
               : null,
               previewMode
                 ? e('div', { className: 'dsh-notes-preview-container', dangerouslySetInnerHTML: { __html: renderMarkdown(edBody) } })

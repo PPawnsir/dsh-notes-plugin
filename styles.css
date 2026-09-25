@@ -216,7 +216,7 @@
 .dsh-notes-dispatch-mask{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:60;display:flex;align-items:center;justify-content:center}
 .dsh-notes-dispatch-modal{width:340px;max-width:90%;background:var(--nbg);border:1px solid var(--nbd);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:16px;font-family:var(--nfont);max-height:80vh;overflow-y:auto}
 .dsh-notes-dispatch-modal-t{font-size:14px;font-weight:700;color:var(--ntx);margin-bottom:10px}
-.dsh-notes-dispatch-todo{background:var(--nbg-soft);border:1px solid var(--nbd-soft);border-radius:8px;padding:9px 11px;margin-bottom:10px}
+.dsh-notes-dispatch-todo{background:var(--nsf);border:1px solid var(--nbd-soft);border-radius:8px;padding:9px 11px;margin-bottom:10px}
 .dsh-notes-dispatch-todo-t{font-size:12px;font-weight:600;color:var(--ntx);margin-bottom:3px}
 .dsh-notes-dispatch-todo-b{font-size:11px;color:var(--nt3);line-height:1.5;max-height:60px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
 .dsh-notes-dispatch-instr{width:100%;box-sizing:border-box;background:var(--nbg);border:1px solid var(--nbd);border-radius:8px;color:var(--ntx);font-size:12px;padding:8px 10px;resize:vertical;font-family:var(--nfont);margin-bottom:10px;outline:none}
@@ -232,13 +232,17 @@
 .dsh-notes-dispatch-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 .dsh-notes-dispatch-cancel{background:transparent;border:1px solid var(--nbd);border-radius:7px;color:var(--nt2);font-size:12px;padding:6px 16px;cursor:pointer;font-family:var(--nfont)}
 .dsh-notes-dispatch-cancel:hover{border-color:var(--nt3);color:var(--ntx)}
-.dsh-notes-dispatch-ok{background:var(--nacc);border:none;border-radius:7px;color:#fff;font-size:12px;font-weight:600;padding:6px 16px;cursor:pointer;font-family:var(--nfont)}
+.dsh-notes-dispatch-ok{background:var(--nacc);border:none;border-radius:7px;color:var(--dsw-alias-label-primary-foreground,#fff);font-size:12px;font-weight:600;padding:6px 16px;cursor:pointer;font-family:var(--nfont)}
 .dsh-notes-dispatch-ok:hover{filter:brightness(1.08)}
 .dsh-notes-dispatch-ok:disabled{opacity:.5;cursor:not-allowed}
 /* ===== 派发历史（详情区） ===== */
-.dsh-notes-dispatch-history{margin-top:10px;padding-top:10px;border-top:1px dashed var(--nbd-soft)}
-.dsh-notes-dispatch-history-t{font-size:11px;font-weight:600;color:var(--nt2);margin-bottom:6px}
-.dsh-notes-dispatch-rec{padding:5px 8px;border-radius:6px;background:var(--nbg-soft);margin-bottom:4px}
+/* 派发历史（可折叠：默认 collapsed 只占一行标题；点击标题行切换 open/collapsed，不挤压正文） */
+.dsh-notes-dispatch-history{margin-top:10px;padding-top:10px;border-top:1px dashed var(--nbd-soft);margin-bottom:10px}
+.dsh-notes-dispatch-history-t{font-size:11px;font-weight:600;color:var(--nt2);margin-bottom:6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:5px;transition:color .15s}
+.dsh-notes-dispatch-history-t:hover{color:var(--ntx)}
+.dsh-notes-dispatch-history.collapsed{margin-bottom:6px}
+.dsh-notes-dispatch-history.collapsed .dsh-notes-dispatch-history-t{margin-bottom:0}
+.dsh-notes-dispatch-rec{padding:5px 8px;border-radius:6px;background:var(--nsf);border:1px solid var(--nbd-soft);margin-bottom:4px}
 .dsh-notes-dispatch-rec-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .dsh-notes-dispatch-rec-t{font-size:11px;font-weight:600;color:var(--nacc)}
 .dsh-notes-dispatch-rec-m{font-size:10px;color:var(--nt3);flex-shrink:0}
@@ -259,7 +263,7 @@
    须置于 .dsh-notes-ed-action 基础规则之后——派发按钮同时带 ed-action 与 dispatch-btn 两个类，
    同优先级（0-1-0）下后定义者胜，否则 ed-action 的透明底/灰字会覆盖派发按钮主样式。 */
 .dsh-notes-dispatch-btn{background:var(--nacc-soft);border:1px solid var(--nacc);color:var(--nacc);font-weight:600}
-.dsh-notes-dispatch-btn:hover{background:var(--nacc);color:#fff;border-color:var(--nacc)}
+.dsh-notes-dispatch-btn:hover{background:var(--nacc);color:var(--dsw-alias-label-primary-foreground,#fff);border-color:var(--nacc)}
 
 /* 正文（无边框、宽行高、自动保存） */
 .dsh-notes-editor-body{flex:1;min-height:0;background:transparent;border:none;outline:none;color:var(--ntx);padding:14px 20px 20px;font-size:14px;font-family:var(--nfont);line-height:1.65;resize:none;margin:0;box-sizing:border-box;letter-spacing:.1px}
@@ -305,7 +309,7 @@
 .dsh-notes-empty-ic{font-size:34px;opacity:.4;line-height:1;margin-bottom:4px}
 .dsh-notes-empty-t{font-size:14px;font-weight:600;color:var(--nt2)}
 .dsh-notes-empty-s{font-size:12px;color:var(--nt3);line-height:1.6;max-width:220px}
-.dsh-notes-empty-btn{margin-top:10px;background:var(--nacc);color:#fff;border:none;border-radius:var(--nr-md);padding:7px 18px;font-size:12px;font-weight:500;cursor:pointer;transition:filter .15s;font-family:var(--nfont)}
+.dsh-notes-empty-btn{margin-top:10px;background:var(--nacc);color:var(--dsw-alias-label-primary-foreground,#fff);border:none;border-radius:var(--nr-md);padding:7px 18px;font-size:12px;font-weight:500;cursor:pointer;transition:filter .15s;font-family:var(--nfont)}
 .dsh-notes-empty-btn:hover{filter:brightness(1.06)}
 /* 搜索高亮（琥珀色，深浅通用；明暗随 DSH 主题，不再用系统级 prefers-color-scheme） */
 .dsh-notes-mark{background:rgba(255,213,79,.35);color:inherit;border-radius:2px;padding:0 1px}
@@ -325,7 +329,7 @@
 
 /* ===== 选区快速记录浮动按钮 ===== */
 /* 注意：此按钮 position:fixed 且不在 .dsh-notes-floating 内，拿不到面板的设计令牌变量，必须用具体颜色值 */
-.dsh-notes-sel-btn{position:fixed;z-index:2147483646;background:#0a84ff;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(10,132,255,.5),0 1px 3px rgba(0,0,0,.2);line-height:1;white-space:nowrap;transition:filter .15s,transform .1s;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+.dsh-notes-sel-btn{position:fixed;z-index:2147483646;background:#0a84ff;color:var(--dsw-alias-label-primary-foreground,#fff);border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(10,132,255,.5),0 1px 3px rgba(0,0,0,.2);line-height:1;white-space:nowrap;transition:filter .15s,transform .1s;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
 .dsh-notes-sel-btn:hover{filter:brightness(1.08);transform:translateY(-1px)}
 
 /* ===== T3 选区指令框（划选后弹出：预览 + 备注输入 + 记录/取消） ===== */
@@ -350,14 +354,14 @@
 .dsh-notes-instruct-actions{display:flex;gap:8px;padding:8px 11px;justify-content:flex-end}
 .dsh-notes-instruct-btn{background:transparent;border:1px solid var(--nbd);border-radius:var(--nr-md);color:var(--nt2);padding:6px 14px;cursor:pointer;font-size:12px;font-weight:500;font-family:var(--nfont);line-height:1;transition:all .15s}
 .dsh-notes-instruct-btn:hover{border-color:var(--nt3);color:var(--ntx)}
-.dsh-notes-instruct-btn.primary{background:var(--nacc);color:#fff;border-color:var(--nacc)}
-.dsh-notes-instruct-btn.primary:hover{filter:brightness(0.9);color:#fff}
+.dsh-notes-instruct-btn.primary{background:var(--nacc);color:var(--dsw-alias-label-primary-foreground,#fff);border-color:var(--nacc)}
+.dsh-notes-instruct-btn.primary:hover{filter:brightness(0.9);color:var(--dsw-alias-label-primary-foreground,#fff)}
 
 /* ===== 旧类名兼容（已废弃，保留避免渲染期报错；后续清理 client 引用） ===== */
 .dsh-notes-capture{padding:10px 14px;border-bottom:1px solid var(--nbd-soft);display:flex;gap:8px;background:var(--nbg);flex-shrink:0;align-items:flex-end}
 .dsh-notes-capture-input{flex:1;min-width:0;background:var(--nbg-hover);border:1px solid transparent;border-radius:var(--nr-md);color:var(--ntx);padding:8px 11px;font-size:13px;resize:none;height:36px;min-height:36px;max-height:110px;font-family:var(--nfont);box-sizing:border-box;transition:border-color .15s,background .15s;line-height:1.5;outline:none}
 .dsh-notes-capture-input:focus{border-color:var(--nacc);background:var(--nbg)}
-.dsh-notes-capture-btn{background:var(--nacc);color:#fff;border:none;border-radius:var(--nr-md);padding:0 15px;height:36px;cursor:pointer;font-size:13px;font-weight:500;white-space:nowrap;flex-shrink:0;transition:filter .15s}
+.dsh-notes-capture-btn{background:var(--nacc);color:var(--dsw-alias-label-primary-foreground,#fff);border:none;border-radius:var(--nr-md);padding:0 15px;height:36px;cursor:pointer;font-size:13px;font-weight:500;white-space:nowrap;flex-shrink:0;transition:filter .15s}
 .dsh-notes-capture-btn:hover:not(:disabled){filter:brightness(1.06)}
 .dsh-notes-capture-btn:disabled{opacity:.4;cursor:default}
 .dsh-notes-capture-btn.saved{background:#34c759}
@@ -367,7 +371,7 @@
 .dsh-notes-editor-topic{flex:1;min-width:0}
 .dsh-notes-editor-tags{flex:1.5;min-width:0}
 .dsh-notes-editor-actions{padding:0 14px 14px;display:flex;gap:8px;flex-shrink:0}
-.dsh-notes-save-btn{background:var(--nacc);color:#fff;border:none;border-radius:var(--nr-md);padding:8px 16px;cursor:pointer;font-size:13px;font-weight:500;transition:filter .15s}
+.dsh-notes-save-btn{background:var(--nacc);color:var(--dsw-alias-label-primary-foreground,#fff);border:none;border-radius:var(--nr-md);padding:8px 16px;cursor:pointer;font-size:13px;font-weight:500;transition:filter .15s}
 .dsh-notes-save-btn:hover{filter:brightness(1.06)}
 .dsh-notes-delete-btn{background:transparent;color:var(--nt3);border:1px solid var(--nbd);border-radius:var(--nr-md);padding:8px 16px;cursor:pointer;font-size:13px;font-weight:500;transition:all .15s}
 .dsh-notes-delete-btn:hover{color:#ff3b30;border-color:rgba(255,59,48,.4)}

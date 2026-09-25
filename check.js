@@ -180,6 +180,14 @@ async function main() {
     const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
     assert(/\.dsh-notes-instruct-btn\.primary\{[^}]*var\(--nacc\)/.test(css), 'primary 按钮用 var(--nacc) 主题色')
     assert(/\.dsh-notes-instruct-btn\.primary:hover\{[^}]*brightness\(0\.9\)/.test(css), 'primary hover 加深 brightness(0.9)')
+    // 深色适配：instruct 系列全部走 token —— 输入框背景 var(--nbg)，无硬编码白底/深色字（var() fallback 与 primary 白字除外）
+    assert(/\.dsh-notes-instruct-input\{[^}]*background:var\(--nbg\)/.test(css), 'instruct-input 背景走 token var(--nbg)（随 DSH 主题明暗切换）')
+    const instructRules = css.match(/\.dsh-notes-instruct[^{]*\{[^}]*\}/g) || []
+    const noVar = (r) => r.replace(/var\([^)]*\)/g, '')
+    const badBg = instructRules.filter(r => /background:\s*(#fff\b|white\b)/i.test(noVar(r)))
+    assert.strictEqual(badBg.length, 0, 'instruct 系列不得含硬编码白底：' + badBg.join(' | '))
+    const badFg = instructRules.filter(r => /(^|[{;])\s*color:\s*(#0[0-9a-f]|#1[0-9a-f]|#2[0-9a-f]|#3[0-9a-f]|black\b)/i.test(noVar(r)))
+    assert.strictEqual(badFg.length, 0, 'instruct 系列不得含硬编码深色字：' + badFg.join(' | '))
   })
   await t('client-impl 注入为独立开关+逐级范围浮层', () => {
     assert(/toggleInject/.test(clientSrc), '独立注入开关 toggleInject（不碰标签）')
@@ -196,6 +204,15 @@ async function main() {
     assert(/connectWorkspace/.test(clientSrc), '新建会话用 connectWorkspace')
     assert(/dsh-notes-dispatch-history/.test(clientSrc), '详情区派发历史展示')
     assert(/notes-workspaces/.test(clientSrc) && /notes-active-sessions/.test(clientSrc), '工作区+活跃会话下拉数据源')
+  })
+  await t('client-impl 派发历史可折叠（默认折叠，点标题行展开）', () => {
+    assert(/const \[dispatchHistoryOpen, setDispatchHistoryOpen\] = React\.useState\(false\)/.test(clientSrc), '折叠态 dispatchHistoryOpen 存在且默认 false（折叠）')
+    assert(clientSrc.indexOf("dispatchHistoryOpen ? ' open' : ' collapsed'") >= 0, 'open/collapsed 折叠态 class 分支存在')
+    assert(/setDispatchHistoryOpen\(!dispatchHistoryOpen\)/.test(clientSrc), '标题行点击切换折叠态')
+    assert(clientSrc.indexOf('dispatchHistoryOpen ? curDispatches.map') >= 0, '折叠时不渲染记录列表（不挤压正文）')
+    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    assert(/\.dsh-notes-dispatch-history-t\{[^}]*cursor:pointer/.test(css), '标题行 cursor:pointer 可点击')
+    assert(/\.dsh-notes-dispatch-history\.collapsed/.test(css), 'collapsed 折叠态样式存在')
   })
   await t('client-impl 列表项含注入徽章', () => {
     assert(clientSrc.indexOf('dsh-note-inject') >= 0, '列表项注入徽章 class')
@@ -1094,6 +1111,7 @@ async function main() {
     assert(/copySelection/.test(clientPkgSrc), 'copySelection 复制处理函数存在')
     assert(clientPkgSrc.indexOf('navigator.clipboard') >= 0, '优先 navigator.clipboard.writeText')
     assert(clientPkgSrc.indexOf('execCommand') >= 0, '降级 execCommand 兜底')
+    assert(/dispatchHistoryOpen/.test(clientPkgSrc) && clientPkgSrc.indexOf("dispatchHistoryOpen ? ' open' : ' collapsed'") >= 0, '静态包含派发历史折叠态（dispatchHistoryOpen + collapsed class）')
   })
   await t('lib/client.js 是 scripts/build-dist.cjs 的产物且可复现', () => {
     assert(fsNative.existsSync(path.join(DIR, 'scripts', 'build-dist.cjs')), 'build-dist.cjs 存在')
