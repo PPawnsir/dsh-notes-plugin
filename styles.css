@@ -103,10 +103,10 @@
 .dsh-notes-kinds{flex:1;display:flex;align-items:center;gap:6px;overflow-x:auto;padding:0;border-bottom:none}
 .dsh-notes-kind-chip{background:transparent;border:1px solid var(--nbd);border-radius:13px;color:var(--nt2);font-size:11px;padding:3px 11px;cursor:pointer;transition:all .15s;white-space:nowrap;font-weight:500}
 .dsh-notes-kind-chip:hover{border-color:var(--nt3);color:var(--ntx)}
-.dsh-notes-kind-chip.on{background:var(--ntx);border-color:var(--ntx);color:var(--nbg)}
+.dsh-notes-kind-chip.on{background:var(--nbg-sel);border-color:transparent;color:var(--ntx);font-weight:600}  /* 柔和灰底深字（贴 DSH 侧边栏选中风），不再黑底白字 */
 .dsh-notes-pin-toggle{margin-left:auto;background:transparent;border:1px solid var(--nbd);border-radius:13px;color:var(--nt2);font-size:11px;padding:3px 11px;cursor:pointer;transition:all .15s;white-space:nowrap;font-weight:500;flex-shrink:0}
 .dsh-notes-pin-toggle:hover{border-color:var(--nt3);color:var(--ntx)}
-.dsh-notes-pin-toggle.on{background:var(--nacc-soft);border-color:var(--nacc);color:var(--nacc)}
+.dsh-notes-pin-toggle.on{background:var(--nbg-sel);border-color:transparent;color:var(--ntx);font-weight:600}  /* 与 kind-chip.on 同款柔和灰底 */
 
 /* ===== 列表区（两列布局） ===== */
 .dsh-notes-content{display:flex;flex:1;overflow:hidden;min-height:0;position:relative}
