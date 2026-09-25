@@ -293,19 +293,32 @@ export function apply(ctx) {
       }
     }
 
-    // 由 sessionId 推导工作区名：live 走 agents 的 header.cwd，非 live 走 persistence 快照。
+    // 由 sessionId 推导工作区名：live 走 agents 的 header.cwd，非 live 走 persistence/sessionQuery 快照。
     // 旧笔记（agents 未就绪期创建）workspace 为空时用于兜底补全——否则“本工作区”注入范围因严格匹配永不命中。
     async function _wsOfSession(sid) {
       if (!sid) return ''
       try {
         const a = agents && agents.get ? agents.get(sid) : undefined
         let cwd = (a && a.session && a.session.header && a.session.header.cwd) || ''
-        if (!cwd && sessionPersistence && sessionPersistence.list) {
-          const snaps = sessionPersistence.list() || []
-          for (const s of snaps) {
+        if (!cwd && sessionPersistence && typeof sessionPersistence.list === 'function') {
+          let snaps = []
+          try { snaps = sessionPersistence.list() || [] } catch (e) { snaps = [] }
+          if (snaps && typeof snaps.then === 'function') { try { snaps = await snaps } catch (e2) { snaps = [] } }
+          for (const s of (snaps || [])) {
             const h = s && s.header ? s.header : s
             if (h && h.id === sid) { cwd = h.cwd || ''; break }
           }
+        }
+        // 兜底二：sessionQuery.readTitleSnapshots（_activeSessions 同款，已验证在当前 DSH 可用）
+        if (!cwd && sessionQuery && typeof sessionQuery.readTitleSnapshots === 'function') {
+          try {
+            const rs = await sessionQuery.readTitleSnapshots([sid])
+            for (const r of (rs || [])) {
+              const v = r && r.status === 'fulfilled' ? r.value : (r && r.value)
+              const hd = v && v.session ? v.session : null
+              if (hd && hd.cwd) { cwd = hd.cwd; break }
+            }
+          } catch (e) {}
         }
         return cwd ? basename(cwd) : ''
       } catch (e) { return '' }
@@ -1180,6 +1193,7 @@ export function apply(ctx) {
         if (!info) return { fixed: 0 }
         const entries = await fs.listDir(dirTarget)
         let fixed = 0
+        let skipped = 0
         for (const entry of entries) {
           if (!entry.name || !entry.name.endsWith('.md')) continue
           const id = entry.name.replace(/\.md$/, '')
@@ -1187,12 +1201,12 @@ export function apply(ctx) {
             const n = await loadNote(id)
             if (n.deleted || n.workspace) continue
             const ws = await _wsOfSession(n.sessionId)
-            if (!ws) continue
+            if (!ws) { skipped++; console.log('notes: workspace backfill skip ' + id + ' (sid=' + (n.sessionId || 'none') + ', 推导不到 cwd)') ; continue }
             await persistNote(Object.assign({}, n, { workspace: ws }))
             fixed++
-          } catch (e) {}
+          } catch (e) { skipped++; console.error('notes: workspace backfill item failed', id, e) }
         }
-        if (fixed > 0) console.log('notes: backfilled workspace for ' + fixed + ' note(s)')
+        console.log('notes: workspace backfill done, fixed=' + fixed + ' skipped=' + skipped)
         return { fixed: fixed }
       } catch (e) { console.error('notes: workspace backfill error', e); return { fixed: 0, error: String(e && e.message || e) } }
     }
