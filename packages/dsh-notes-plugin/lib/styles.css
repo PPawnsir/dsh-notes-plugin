@@ -237,7 +237,7 @@
 .dsh-notes-dispatch-ok:disabled{opacity:.5;cursor:not-allowed}
 /* ===== 派发历史（详情区） ===== */
 /* 派发历史（可折叠：默认 collapsed 只占一行标题；点击标题行切换 open/collapsed，不挤压正文） */
-.dsh-notes-dispatch-history{margin-top:10px;padding-top:10px;border-top:1px dashed var(--nbd-soft);margin-bottom:10px}
+.dsh-notes-dispatch-history{margin:10px 20px 10px;padding-top:10px;border-top:1px dashed var(--nbd-soft)}  /* 左右 20px 与正文(ed-body/preview padding)对齐 */
 .dsh-notes-dispatch-history-t{font-size:11px;font-weight:600;color:var(--nt2);margin-bottom:6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:5px;transition:color .15s}
 .dsh-notes-dispatch-history-t:hover{color:var(--ntx)}
 .dsh-notes-dispatch-history.collapsed{margin-bottom:6px}
