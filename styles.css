@@ -238,19 +238,19 @@
 .dsh-notes-dispatch-ok:hover{filter:brightness(1.08)}
 .dsh-notes-dispatch-ok:disabled{opacity:.5;cursor:not-allowed}
 /* ===== 设置卡片（modal，居中；复用派发 mask/modal 风格，z-index 压过派发层） ===== */
-/* 通用结构：标题「设置」+ 设置项行列表（.dsh-notes-settings-row：左 label + 右 control），加设置项只需加行 */
+/* 通用结构：标题「设置」+ 设置项行列表（.dsh-notes-settings-row：上 label 下 control 纵向，长文案不遮挡控件），加设置项只需加行 */
 .dsh-notes-settings-mask{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:70;display:flex;align-items:center;justify-content:center}
 .dsh-notes-settings-modal{width:400px;max-width:92%;background:var(--nbg);border:1px solid var(--nbd);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:16px;font-family:var(--nfont);max-height:80vh;overflow-y:auto;color:var(--ntx)}
 .dsh-notes-settings-modal-t{font-size:14px;font-weight:700;color:var(--ntx);margin-bottom:8px}
 .dsh-notes-settings-list{display:flex;flex-direction:column}
-.dsh-notes-settings-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 2px;border-bottom:1px solid var(--nbd-soft)}
+.dsh-notes-settings-row{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:10px 2px 12px;border-bottom:1px solid var(--nbd-soft)}
 .dsh-notes-settings-row:last-child{border-bottom:none}
-.dsh-notes-settings-label{font-size:13px;color:var(--ntx);flex-shrink:0;line-height:1.4}
+.dsh-notes-settings-label{font-size:13px;color:var(--ntx);line-height:1.4}
 .dsh-notes-settings-label-s{display:block;font-size:11px;color:var(--nt3);margin-top:2px;font-weight:400}
-.dsh-notes-settings-control{display:flex;align-items:center;gap:6px;flex:1;justify-content:flex-end;min-width:0;flex-wrap:wrap}
-.dsh-notes-settings-select{max-width:230px;background:var(--nbg);border:1px solid var(--nbd);border-radius:7px;color:var(--ntx);font-size:12px;padding:5px 8px;font-family:var(--nfont);outline:none}
+.dsh-notes-settings-control{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+.dsh-notes-settings-select{width:100%;background:var(--nbg);border:1px solid var(--nbd);border-radius:7px;color:var(--ntx);font-size:12px;padding:5px 8px;font-family:var(--nfont);outline:none}
 .dsh-notes-settings-select:focus{border-color:var(--nacc)}
-.dsh-notes-settings-input{width:92px;background:var(--nbg);border:1px solid var(--nbd);border-radius:7px;color:var(--ntx);font-size:12px;padding:5px 8px;font-family:var(--nfont);outline:none}
+.dsh-notes-settings-input{flex:1;min-width:0;background:var(--nbg);border:1px solid var(--nbd);border-radius:7px;color:var(--ntx);font-size:12px;padding:5px 8px;font-family:var(--nfont);outline:none}
 .dsh-notes-settings-input:focus{border-color:var(--nacc)}
 .dsh-notes-settings-input::placeholder{color:var(--nt3)}
 .dsh-notes-settings-clear{background:transparent;border:1px solid var(--nbd);border-radius:7px;color:var(--nt2);font-size:11px;padding:5px 10px;cursor:pointer;font-family:var(--nfont);white-space:nowrap;transition:all .15s}
