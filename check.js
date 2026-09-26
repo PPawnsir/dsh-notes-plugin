@@ -43,7 +43,8 @@ async function main() {
     assert(fsNative.existsSync(cssPath), 'styles.css 存在')
     const cssContent = fsNative.readFileSync(cssPath, 'utf8')
     assert(cssContent.indexOf('.dsh-nt[data-tooltip]::after') >= 0, 'css 含作用域 tooltip')
-    assert(cssContent.indexOf('.dsh-notes-capture-input') >= 0, 'css 含捕获输入')
+    assert(cssContent.indexOf('.dsh-notes-capture-input') < 0, 'css 已移除速记输入（新建笔记 modal 替代）')
+    assert(cssContent.indexOf('.dsh-notes-settings-modal') >= 0, 'css 含设置卡片')
     assert(clientSrc.indexOf('notes-css') >= 0, 'client 通过 RPC 取 css')
     assert(clientSrc.indexOf('styles.insert(') >= 0, 'client 注入 styles')
   })
@@ -94,12 +95,12 @@ async function main() {
     assert(indexSrc.indexOf('.last-host-load') < 0 || /发布版不再写/.test(indexSrc), '心跳写入段已删除')
     assert(indexSrc.indexOf('PERF_PATH = path.join(NOTES_ROOT') >= 0, 'perf-report.json 落在 ~/.dsh/notes')
   })
-  await t('index.mjs 保留 19 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类', () => {
+  await t('index.mjs 保留 21 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置', () => {
     const m = indexSrc.match(/handle\('([^']+)'/g) || []
     const names = m.map(s => s.match(/'([^']+)'/)[1])
-    const expected = ['notes-perf', 'notes-list', 'notes-css', 'notes-src', 'notes-get', 'notes-create', 'notes-update', 'notes-quick', 'notes-quick-instruct', 'notes-delete', 'notes-restore', 'notes-archive', 'notes-search', 'notes-conventions', 'notes-sessions', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done']
+    const expected = ['notes-perf', 'notes-list', 'notes-css', 'notes-src', 'notes-get', 'notes-create', 'notes-update', 'notes-quick', 'notes-quick-instruct', 'notes-delete', 'notes-restore', 'notes-archive', 'notes-search', 'notes-conventions', 'notes-sessions', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-settings-get', 'notes-settings-set']
     for (const e of expected) assert(names.indexOf(e) >= 0, '缺少 RPC：' + e + '（实得 ' + names.length + ' 个：' + names.join(',') + '）')
-    assert(names.length === expected.length + 1, '应为 19 个迁移 RPC + 1 个 P1 存活探测（notes-ping），实得 ' + names.length)
+    assert(names.length === expected.length + 1, '应为 21 个迁移 RPC + 1 个 P1 存活探测（notes-ping），实得 ' + names.length)
     const tm = indexSrc.match(/regTool\(\{\s*name:\s*'([^']+)'/g) || []
     const tnames = tm.map(s => s.match(/'([^']+)'/)[1])
     assert.deepStrictEqual(tnames.sort(), ['note_get', 'note_manage', 'note_search'], '静态包工具必须是 3 个（实得：' + JSON.stringify(tnames) + '）')
@@ -151,7 +152,10 @@ async function main() {
   section('1.6 T1.4 键盘快捷键')
   await t('client-impl 含 keydown 监听', () => assert(/addEventListener\('keydown'/.test(clientSrc), 'keydown 监听存在'))
   await t('Ctrl+K 聚焦搜索', () => assert(/ev\.key === 'k' \|\| ev\.key === 'K'/.test(clientSrc), 'Ctrl+K 分支'))
-  await t('Ctrl+N 聚焦捕获', () => assert(/ev\.key === 'n' \|\| ev\.key === 'N'/.test(clientSrc), 'Ctrl+N 分支'))
+  await t('Ctrl+N 打开新建笔记 modal', () => {
+    assert(/ev\.key === 'n' \|\| ev\.key === 'N'/.test(clientSrc), 'Ctrl+N 分支')
+    assert(/mod && \(ev\.key === 'n' \|\| ev\.key === 'N'\)\) \{ ev\.preventDefault\(\); openNewNoteRef\.current\(\); return \}/.test(clientSrc), 'Ctrl+N 调 openNewNoteRef（打开新建 modal，不再是速记框）')
+  })
   await t('Escape 关闭', () => assert(/ev\.key === 'Escape'/.test(clientSrc), 'Esc 分支'))
   await t('j/k 或 方向键导航', () => assert(/ev\.key === 'j' \|\| ev\.key === 'ArrowDown'/.test(clientSrc) && /ev\.key === 'k' \|\| ev\.key === 'ArrowUp'/.test(clientSrc), 'j/k 与 ↑↓ 分支'))
   await t('Enter 打开聚焦项', () => assert(/ev\.key === 'Enter'/.test(clientSrc), 'Enter 分支'))
@@ -225,6 +229,65 @@ async function main() {
     assert(css.indexOf('.dsh-note-item.pinned') >= 0 && css.indexOf('.dsh-note-item.resolved') >= 0 && css.indexOf('.dsh-note-item.superseded') >= 0, 'status css')
   })
 
+  // ===== 1.8 新建笔记 modal（＋ / Ctrl+N 输标题创建，替代顶栏速记）=====
+  section('1.8 新建笔记 modal（＋ / Ctrl+N 输标题创建）')
+  // 发布包 client 源码独立读取（本节在 section 18 之前，clientPkgSrc 尚未定义）
+  const clientPkgSrcNewNote = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
+  await t('＋ 按钮点击弹新建 modal（tooltip=新建笔记（Ctrl+N））', () => {
+    assert(/onClick: openNewNote, 'data-tooltip': '新建笔记（Ctrl\+N）'/.test(clientSrc), '＋ 按钮 onClick=openNewNote + tooltip「新建笔记（Ctrl+N）」')
+    assert(/function openNewNote\(\) \{ setNewNoteTitle\(''\); setNewNotePending\(false\); setError\(''\); setNewNoteOpen\(true\) \}/.test(clientSrc), 'openNewNote 清空上次标题并打开 modal')
+    assert(/newNoteOpen \? e\('div', \{ className: 'dsh-notes-newnote-mask'/.test(clientSrc), 'mask 仅在 newNoteOpen 时渲染（＋ 点击后弹出）')
+    assert(clientPkgSrcNewNote.indexOf('onClick: openNewNote') >= 0 && clientPkgSrcNewNote.indexOf('dsh-notes-newnote-mask') >= 0, '发布包 client.js 同步含 ＋→modal（需先跑 scripts/build-dist.cjs）')
+  })
+  await t('新建 modal 结构：居中卡片 + 标题输入 + 取消/创建', () => {
+    assert(clientSrc.indexOf("'dsh-notes-newnote-modal'") >= 0 && clientSrc.indexOf("'dsh-notes-newnote-t'") >= 0, 'modal 容器 + 标题 class')
+    assert(clientSrc.indexOf("'新建笔记'") >= 0, 'modal 标题「新建笔记」')
+    assert(/ref: newNoteInputRef, className: 'dsh-notes-newnote-input', placeholder: '笔记标题…', value: newNoteTitle/.test(clientSrc), '标题输入框（placeholder「笔记标题…」）受控于 newNoteTitle')
+    assert(/newNoteOpen && newNoteInputRef\.current\) newNoteInputRef\.current\.focus\(\)/.test(clientSrc), '打开 modal 自动聚焦标题输入框')
+    assert(/onClick: \(\) => setNewNoteOpen\(false\) \}, '取消'\)/.test(clientSrc), '取消按钮关闭 modal')
+    assert(/onClick: doCreateNote, disabled: newNotePending \|\| !newNoteTitle\.trim\(\)/.test(clientSrc), '创建按钮：标题为空/创建中 disabled')
+  })
+  await t('标题输入交互：Enter 提交 / Esc 关 modal / 点遮罩关闭', () => {
+    assert(/onChange: \(ev\) => setNewNoteTitle\(ev\.target\.value\)/.test(clientSrc), '输入即更新 newNoteTitle')
+    assert(/if \(ev\.key === 'Enter'\) \{ ev\.preventDefault\(\); doCreateNote\(\) \}/.test(clientSrc), '输入框 Enter 提交创建')
+    assert(/if \(newNoteOpenRef\.current\) \{ setNewNoteOpen\(false\); return \}/.test(clientSrc), 'Esc 优先关新建 modal（在全局 keydown 中）')
+    assert(/dsh-notes-newnote-mask', onMouseDown: \(ev\) => \{ if \(ev\.target === ev\.currentTarget\) setNewNoteOpen\(false\) \}/.test(clientSrc), '点遮罩关闭 modal')
+    assert(/mod && \(ev\.key === 'n' \|\| ev\.key === 'N'\)\) \{ ev\.preventDefault\(\); openNewNoteRef\.current\(\); return \}/.test(clientSrc), 'Ctrl+N 打开新建 modal')
+  })
+  await t('创建流程：notes-create 输标题建笔记 → 刷新 → 选中新笔记 → 聚焦正文', () => {
+    assert(/host\.call\('notes-create', \{ title: title, body: '', kind: 'note' \}\)/.test(clientSrc), 'notes-create 传 title/body=空/kind=note')
+    assert(/showToast\('已创建'\)/.test(clientSrc), '创建成功 toast「已创建」')
+    const m = clientSrc.match(/async function doCreateNote\(\) \{[\s\S]*?\n        \}/)
+    assert(m, 'doCreateNote 函数体可提取')
+    const fnBody = m[0]
+    assert(/loadNotes\(true\)/.test(fnBody), '创建后静默刷新列表（后台，不阻塞选中链路）')
+    assert(/selectNote\(\{ id: res\.id/.test(fnBody), '创建后按返回 id 立即选中新笔记（不等列表刷新）')
+    assert(/setPreviewMode\(false\)/.test(fnBody), '预览态先切回编辑态（保证正文 textarea 存在）')
+    assert(/edBodyDomRef\.current\.focus\(\)/.test(fnBody), '创建后聚焦正文 textarea（edBodyDomRef）')
+    assert(/ref: edBodyDomRef, className: 'dsh-notes-editor-body'/.test(clientSrc), '正文 textarea 挂 edBodyDomRef')
+    assert(clientPkgSrcNewNote.indexOf("rpc('notes-create', { title: title, body: '', kind: 'note' })") >= 0, '发布包创建走 notes-create（rpc 形态）')
+  })
+  await t('顶栏速记已移除（capOpen/doCapture/capture 样式清零）', () => {
+    for (const dead of ['capOpen', 'capText', 'capSaved', 'capPending', 'doCapture', 'dsh-notes-capture']) {
+      assert(clientSrc.indexOf(dead) < 0, 'client-impl 不含 ' + dead)
+      assert(clientPkgSrcNewNote.indexOf(dead) < 0, '发布包 client.js 不含 ' + dead)
+    }
+    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    assert(css.indexOf('.dsh-notes-capture') < 0, 'styles.css 不含 capture 系列样式')
+  })
+  await t('新建 modal 样式走 token（dsh-notes-newnote-* 系列）', () => {
+    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    for (const cls of ['.dsh-notes-newnote-mask{', '.dsh-notes-newnote-modal{', '.dsh-notes-newnote-t{', '.dsh-notes-newnote-input', '.dsh-notes-newnote-actions{']) {
+      assert(css.indexOf(cls) >= 0, 'styles.css 缺 ' + cls)
+    }
+    assert(css.indexOf('background:var(--nbg)') >= 0, 'modal 背景走 token var(--nbg)')
+  })
+  await t('使用说明与空态文案已改为新建标题（无速记输入框残留文案）', () => {
+    assert(clientSrc.indexOf('展开输入框') < 0, '使用说明不再提「展开输入框」速记')
+    assert(clientSrc.indexOf('在上方输入框直接记录') < 0, '编辑器空态不再提「上方输入框」')
+    assert(clientSrc.indexOf('输入标题新建笔记') >= 0, '使用说明第一条改为输标题新建')
+  })
+
   // ===== 2. Host 运行时 mock =====
   section('2. Host 全链路逻辑（内存 mock）')
   const store = new Map()
@@ -253,7 +316,10 @@ async function main() {
         yield { type: 'text-delta', text: '开发' }
         yield { type: 'finish' }
       }
-    }
+    },
+    // 模型目录探针（notes-settings-get 的 models 数据源）：listProviders() → listModels(provider)
+    listProviders: () => [{ id: 'p', name: 'MockProvider' }],
+    listModels: async (prov) => (prov === 'p' ? [{ provider: 'p', id: 'm', name: 'MockModel' }] : []),
   }
   const admMock = { currentSelection: () => ({ provider: 'p', model: 'm' }) }
   const handlers = {}
@@ -857,7 +923,7 @@ async function main() {
   })
   await t('notes-css 从候选路径读到真实 styles.css', async () => {
     const css = await rpc2('notes-css', {})
-    assert(typeof css.body.css === 'string' && css.body.css.indexOf('.dsh-notes-capture-input') >= 0, 'css 下发成功（实得：' + JSON.stringify(css.body).slice(0, 120) + '）')
+    assert(typeof css.body.css === 'string' && css.body.css.indexOf('.dsh-notes-settings-modal') >= 0, 'css 下发成功（实得：' + JSON.stringify(css.body).slice(0, 120) + '）')
   })
   await t('静态包 3 工具可执行（note_search / note_get / note_manage）', async () => {
     const tSearch = tools2.find(x => x.name === 'note_search')
@@ -901,6 +967,132 @@ async function main() {
     } finally {
       delete global.harness
     }
+  })
+
+  // ===== 17.5 设置持久化 + LLM 模型选配（notes-settings-get/set + 设置卡片）=====
+  section('17.5 设置持久化 + LLM 模型选配（settings RPC + 设置卡片）')
+  // 发布包 client 源码独立读取（本节在 section 18 之前，clientPkgSrc 尚未定义）
+  const clientPkgSrcSettings = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
+  // --- 源码结构断言 ---
+  await t('设置按钮存在（标题栏 ⚙ + tooltip 设置）', () => {
+    assert(/dsh-notes-titlebar-btn dsh-nt', onClick: openSettings/.test(clientSrc), 'client-impl 标题栏含设置按钮（dsh-notes-titlebar-btn + onClick=openSettings）')
+    assert(clientSrc.indexOf("'data-tooltip': '设置'") >= 0, '设置按钮 tooltip=设置')
+    assert(clientSrc.indexOf('⚙') >= 0, '设置按钮图标 ⚙')
+  })
+  await t('设置卡片 class 存在（client-impl + 发布包 + styles.css 三处同步）', () => {
+    for (const cls of ['dsh-notes-settings-mask', 'dsh-notes-settings-modal', 'dsh-notes-settings-modal-t', 'dsh-notes-settings-list', 'dsh-notes-settings-row', 'dsh-notes-settings-label', 'dsh-notes-settings-control']) {
+      assert(clientSrc.indexOf(cls) >= 0, 'client-impl 缺 ' + cls)
+      assert(clientPkgSrcSettings.indexOf(cls) >= 0, '发布包 client.js 缺 ' + cls + '（需先跑 scripts/build-dist.cjs）')
+    }
+    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    for (const cls of ['.dsh-notes-settings-mask{', '.dsh-notes-settings-modal{', '.dsh-notes-settings-row{', '.dsh-notes-settings-select', '.dsh-notes-settings-input', '.dsh-notes-settings-clear']) {
+      assert(css.indexOf(cls) >= 0, 'styles.css 缺 ' + cls)
+    }
+  })
+  await t('设置卡片通用结构（settingsRows 数组 map 渲染：加设置项 = 加行）', () => {
+    assert(/const settingsRows = \[/.test(clientSrc), 'settingsRows 行数组存在')
+    assert(/settingsRows\.map\(row =>/.test(clientSrc), 'settingsRows.map 渲染设置项行')
+    assert(clientSrc.indexOf('LLM 模型') >= 0, '第一项为「LLM 模型」')
+    assert(clientSrc.indexOf('跟随当前会话（默认）') >= 0, '含「跟随当前会话（默认）」选项/清除钮')
+    assert(/function openSettings\(\)/.test(clientSrc) && /function saveSettingsLlm\(/.test(clientSrc), 'openSettings / saveSettingsLlm 函数存在')
+  })
+  await t('client 经 RPC 读写设置（notes-settings-get / notes-settings-set）', () => {
+    assert(clientSrc.indexOf('notes-settings-get') >= 0 && clientSrc.indexOf('notes-settings-set') >= 0, 'client-impl 含两个设置 RPC 调用')
+    assert(clientPkgSrcSettings.indexOf('notes-settings-get') >= 0 && clientPkgSrcSettings.indexOf('notes-settings-set') >= 0, '发布包 client.js 含两个设置 RPC 调用')
+  })
+  await t('index.mjs 注册 settings RPC + settings.json 持久化函数', () => {
+    assert(indexSrc.indexOf("handle('notes-settings-get'") >= 0, 'notes-settings-get 已注册')
+    assert(indexSrc.indexOf("handle('notes-settings-set'") >= 0, 'notes-settings-set 已注册')
+    assert(/SETTINGS_PATH\s*=\s*path\.join\(NOTES_ROOT,\s*'settings\.json'\)/.test(indexSrc), 'SETTINGS_PATH 落在 NOTES_ROOT/settings.json')
+    assert(indexSrc.indexOf('function loadSettings()') >= 0 && indexSrc.indexOf('function saveSettings()') >= 0, 'loadSettings/saveSettings 存在（内存缓存 + 启动加载）')
+    assert(indexSrc.indexOf('function listAvailableModels()') >= 0, 'listAvailableModels（llm 服务模型目录探针）存在')
+  })
+  await t('classifyTopic/extractInstruction 优先读设置模型（源码结构）', () => {
+    assert(indexSrc.indexOf('function resolveLlmSelection()') >= 0, 'resolveLlmSelection 存在')
+    const rm = indexSrc.match(/function resolveLlmSelection\(\) \{[\s\S]*?\n    \}/)
+    assert(rm, 'resolveLlmSelection 函数体可提取')
+    const iSet = rm[0].indexOf('settingsCache.llm')
+    const iAdm = rm[0].indexOf('adm.currentSelection()')
+    assert(iSet >= 0 && iAdm >= 0 && iSet < iAdm, 'settings.llm 优先判定，adm.currentSelection 兜底回退')
+    const cm = indexSrc.match(/async function classifyTopic\(text\) \{[\s\S]*?\n    \}/)
+    assert(cm && cm[0].indexOf('resolveLlmSelection()') >= 0, 'classifyTopic 经 resolveLlmSelection 选模型')
+    const em = indexSrc.match(/async function extractInstruction\(text, note\) \{[\s\S]*?\n    \}/)
+    assert(em && em[0].indexOf('resolveLlmSelection()') >= 0, 'extractInstruction 经 resolveLlmSelection 选模型')
+  })
+  // --- 行为断言（静态包 rpc2 链路 + 内存 mock fs/llm） ---
+  const SETTINGS_PATH_MOCK = path.join(NOTES_ROOT_STATIC, 'settings.json')
+  await t('notes-settings-get：初始空设置 + models 目录（llm 探针）', async () => {
+    const sg = await rpc2('notes-settings-get', {})
+    assert.strictEqual(sg.status, 200, 'HTTP 200')
+    assert(sg.body.settings && typeof sg.body.settings === 'object', '返回 settings 对象')
+    assert(!sg.body.settings.llm, '初始无 llm override（默认跟随会话）')
+    assert(Array.isArray(sg.body.models), 'models 是数组')
+    assert(sg.body.models.some(m => m.provider === 'p' && m.model === 'm'), 'models 含 listProviders/listModels 探到的 p/m（实得：' + JSON.stringify(sg.body.models) + '）')
+  })
+  await t('notes-settings-set：保存 llm override 并持久化 settings.json', async () => {
+    const ss = await rpc2('notes-settings-set', { llm: { provider: 'setP', model: 'setM' } })
+    assert(ss.body.ok === true, '保存成功（实得 ' + JSON.stringify(ss.body) + '）')
+    assert(store2.has(SETTINGS_PATH_MOCK), 'settings.json 已落盘（mock store）')
+    const onDisk = JSON.parse(store2.get(SETTINGS_PATH_MOCK))
+    assert(onDisk.llm && onDisk.llm.provider === 'setP' && onDisk.llm.model === 'setM', '磁盘内容含 llm override')
+    const sg = await rpc2('notes-settings-get', {})
+    assert(sg.body.settings.llm && sg.body.settings.llm.provider === 'setP' && sg.body.settings.llm.model === 'setM', 'get 回读与 set 一致')
+  })
+  await t('notes-settings-set 参数校验：缺 provider/model 报错且不写盘', async () => {
+    const before = store2.get(SETTINGS_PATH_MOCK)
+    const bad = await rpc2('notes-settings-set', { llm: { provider: 'onlyP' } })
+    assert(bad.body.error, '缺 model 应返回 error')
+    assert.strictEqual(store2.get(SETTINGS_PATH_MOCK), before, '校验失败不写盘')
+  })
+  // LLM 调用侦查：包装 llmMock.stream 记录每次调用的 provider/model（用 system 区分分类器/提取器）
+  const llmCalls = []
+  const origStreamForSettings = llmMock.stream
+  llmMock.stream = async function* (req) { llmCalls.push({ provider: req && req.provider, model: req && req.model, system: (req && req.system) || '' }); yield* origStreamForSettings(req) }
+  try {
+    await t('extractInstruction 优先读设置模型（不跟随会话）', async () => {
+      llmCalls.length = 0
+      const qi = await rpc2('notes-quick-instruct', { text: '设置模型验证原文', note: '标记为设置验证', sessionId: 'sess-set-1', cwd: 'D:\\deepseek-work' })
+      assert(qi.body.ok === true && qi.body.id, '指令记录成功')
+      const used = llmCalls.filter(c => c.system.indexOf('元数据') >= 0)
+      assert(used.length >= 1, 'extractInstruction 应至少调用一次 LLM')
+      assert(used.every(c => c.provider === 'setP' && c.model === 'setM'), 'extractInstruction 应全部用设置模型 setP/setM（实得：' + JSON.stringify(used) + '）')
+    })
+    await t('classifyTopic 优先读设置模型（不跟随会话）', async () => {
+      llmCalls.length = 0
+      const q = await rpc2('notes-quick', { text: '设置模型分类速记', sessionId: 'sess-set-cls', cwd: 'D:\\deepseek-work' })
+      assert(q.body.id, '速记成功')
+      await new Promise(r => setTimeout(r, 200))   // 等异步分类回填
+      const used = llmCalls.filter(c => c.system.indexOf('分类器') >= 0)
+      assert(used.length >= 1, 'classifyTopic 应至少调用一次 LLM')
+      assert(used.every(c => c.provider === 'setP' && c.model === 'setM'), 'classifyTopic 应全部用设置模型 setP/setM（实得：' + JSON.stringify(used) + '）')
+    })
+    await t('llm=null 恢复跟随会话（回退 adm.currentSelection）', async () => {
+      const ss = await rpc2('notes-settings-set', { llm: null })
+      assert(ss.body.ok === true, '清除成功')
+      const sg = await rpc2('notes-settings-get', {})
+      assert(!sg.body.settings.llm, 'llm override 已删除')
+      const onDisk = JSON.parse(store2.get(SETTINGS_PATH_MOCK))
+      assert(!onDisk.llm, '磁盘 settings.json 不再含 llm')
+      llmCalls.length = 0
+      const qi = await rpc2('notes-quick-instruct', { text: '恢复跟随验证原文', note: '标记为恢复验证', sessionId: 'sess-set-2', cwd: 'D:\\deepseek-work' })
+      assert(qi.body.ok === true, '指令记录成功')
+      const used = llmCalls.filter(c => c.system.indexOf('元数据') >= 0)
+      assert(used.length >= 1 && used.every(c => c.provider === 'p' && c.model === 'm'), 'extractInstruction 恢复后回退会话模型 p/m（实得：' + JSON.stringify(used) + '）')
+    })
+    await t('classifyTopic 恢复后也回退跟随会话', async () => {
+      llmCalls.length = 0
+      await rpc2('notes-quick', { text: '恢复跟随分类速记', sessionId: 'sess-set-cls2', cwd: 'D:\\deepseek-work' })
+      await new Promise(r => setTimeout(r, 200))
+      const used = llmCalls.filter(c => c.system.indexOf('分类器') >= 0)
+      assert(used.length >= 1 && used.every(c => c.provider === 'p' && c.model === 'm'), 'classifyTopic 恢复后回退会话模型 p/m（实得：' + JSON.stringify(used) + '）')
+    })
+  } finally {
+    llmMock.stream = origStreamForSettings
+  }
+  await t('settings.json 不污染笔记列表（_list 只认 .md）', async () => {
+    assert(store2.has(SETTINGS_PATH_MOCK), 'settings.json 存在于笔记目录（mock）')
+    const l = await rpc2('notes-list', {})
+    assert(l.body.notes.every(n => String(n.id).indexOf('settings') < 0), '列表无 settings 相关条目')
   })
 
   // ===== 18. P3 静态包 client（packages/dsh-notes/lib/client.js） =====
@@ -1066,7 +1258,7 @@ async function main() {
     const need = [
       'conversation.session.header.actions', 'shell.overlay',      // 三个 Slot 注册点
       'dsh-notes-hdr-btn', 'dsh-notes-fab', 'dsh-notes-floating',  // 头部按钮 / 悬浮气泡 / 浮窗面板
-      'dsh-notes-titlebar', 'dsh-notes-search-input', 'dsh-notes-capture-input',
+      'dsh-notes-titlebar', 'dsh-notes-search-input', 'dsh-notes-settings-modal',
       'dsh-notes-kind-chip', 'dsh-notes-pin-toggle', 'dsh-note-item', 'dsh-note-inject',
       'dsh-notes-editor-body', 'dsh-notes-scope-panel', 'dsh-notes-dispatch-modal',
       'dsh-notes-dispatch-history', 'dsh-notes-instruct-box', 'dsh-notes-toast',

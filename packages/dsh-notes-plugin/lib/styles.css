@@ -237,6 +237,24 @@
 .dsh-notes-dispatch-ok{background:var(--nacc);border:none;border-radius:7px;color:var(--dsw-alias-label-primary-foreground,#fff);font-size:12px;font-weight:600;padding:6px 16px;cursor:pointer;font-family:var(--nfont)}
 .dsh-notes-dispatch-ok:hover{filter:brightness(1.08)}
 .dsh-notes-dispatch-ok:disabled{opacity:.5;cursor:not-allowed}
+/* ===== 设置卡片（modal，居中；复用派发 mask/modal 风格，z-index 压过派发层） ===== */
+/* 通用结构：标题「设置」+ 设置项行列表（.dsh-notes-settings-row：左 label + 右 control），加设置项只需加行 */
+.dsh-notes-settings-mask{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:70;display:flex;align-items:center;justify-content:center}
+.dsh-notes-settings-modal{width:400px;max-width:92%;background:var(--nbg);border:1px solid var(--nbd);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:16px;font-family:var(--nfont);max-height:80vh;overflow-y:auto;color:var(--ntx)}
+.dsh-notes-settings-modal-t{font-size:14px;font-weight:700;color:var(--ntx);margin-bottom:8px}
+.dsh-notes-settings-list{display:flex;flex-direction:column}
+.dsh-notes-settings-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 2px;border-bottom:1px solid var(--nbd-soft)}
+.dsh-notes-settings-row:last-child{border-bottom:none}
+.dsh-notes-settings-label{font-size:13px;color:var(--ntx);flex-shrink:0;line-height:1.4}
+.dsh-notes-settings-label-s{display:block;font-size:11px;color:var(--nt3);margin-top:2px;font-weight:400}
+.dsh-notes-settings-control{display:flex;align-items:center;gap:6px;flex:1;justify-content:flex-end;min-width:0;flex-wrap:wrap}
+.dsh-notes-settings-select{max-width:230px;background:var(--nbg);border:1px solid var(--nbd);border-radius:7px;color:var(--ntx);font-size:12px;padding:5px 8px;font-family:var(--nfont);outline:none}
+.dsh-notes-settings-select:focus{border-color:var(--nacc)}
+.dsh-notes-settings-input{width:92px;background:var(--nbg);border:1px solid var(--nbd);border-radius:7px;color:var(--ntx);font-size:12px;padding:5px 8px;font-family:var(--nfont);outline:none}
+.dsh-notes-settings-input:focus{border-color:var(--nacc)}
+.dsh-notes-settings-input::placeholder{color:var(--nt3)}
+.dsh-notes-settings-clear{background:transparent;border:1px solid var(--nbd);border-radius:7px;color:var(--nt2);font-size:11px;padding:5px 10px;cursor:pointer;font-family:var(--nfont);white-space:nowrap;transition:all .15s}
+.dsh-notes-settings-clear:hover{border-color:var(--nacc);color:var(--nacc)}
 /* ===== 派发历史（详情区） ===== */
 /* 派发历史（可折叠：默认 collapsed 只占一行标题；点击标题行切换 open/collapsed，不挤压正文） */
 .dsh-notes-dispatch-history{margin:10px 20px 10px;padding-top:10px;border-top:1px dashed var(--nbd-soft)}  /* 左右 20px 与正文(ed-body/preview padding)对齐 */
@@ -359,14 +377,7 @@
 .dsh-notes-instruct-btn.primary{background:var(--nacc);color:var(--dsw-alias-label-primary-foreground,#fff);border-color:var(--nacc)}
 .dsh-notes-instruct-btn.primary:hover{filter:brightness(0.9);color:var(--dsw-alias-label-primary-foreground,#fff)}
 
-/* ===== 旧类名兼容（已废弃，保留避免渲染期报错；后续清理 client 引用） ===== */
-.dsh-notes-capture{padding:10px 14px;border-bottom:1px solid var(--nbd-soft);display:flex;gap:8px;background:var(--nbg);flex-shrink:0;align-items:flex-end}
-.dsh-notes-capture-input{flex:1;min-width:0;background:var(--nbg-hover);border:1px solid transparent;border-radius:var(--nr-md);color:var(--ntx);padding:8px 11px;font-size:13px;resize:none;height:36px;min-height:36px;max-height:110px;font-family:var(--nfont);box-sizing:border-box;transition:border-color .15s,background .15s;line-height:1.5;outline:none}
-.dsh-notes-capture-input:focus{border-color:var(--nacc);background:var(--nbg)}
-.dsh-notes-capture-btn{background:var(--nacc);color:var(--dsw-alias-label-primary-foreground,#fff);border:none;border-radius:var(--nr-md);padding:0 15px;height:36px;cursor:pointer;font-size:13px;font-weight:500;white-space:nowrap;flex-shrink:0;transition:filter .15s}
-.dsh-notes-capture-btn:hover:not(:disabled){filter:brightness(1.06)}
-.dsh-notes-capture-btn:disabled{opacity:.4;cursor:default}
-.dsh-notes-capture-btn.saved{background:#34c759}
+/* 顶栏速记（dsh-notes-capture 系列）已随新建笔记 modal 移除，样式同步删除 */
 .dsh-notes-editor-row{display:flex;gap:8px;margin:0 14px 8px;flex-shrink:0}
 .dsh-notes-editor-topic,.dsh-notes-editor-tags{background:var(--nbg-hover);border:1px solid transparent;border-radius:var(--nr-md);padding:8px 11px;font-size:12px;font-family:var(--nfont);box-sizing:border-box;outline:none;color:var(--ntx)}
 .dsh-notes-editor-topic:focus,.dsh-notes-editor-tags:focus{border-color:var(--nacc);background:var(--nbg)}
@@ -384,3 +395,10 @@
 .dsh-notes-ctxmenu-item:hover{background:var(--nbg-hover)}
 .dsh-notes-ctxmenu-item.danger{color:var(--ntx)}
 .dsh-notes-ctxmenu-item.danger:hover{color:#ff3b30;background:rgba(255,59,48,.08)}
+/* ===== 新建笔记 modal（＋ / Ctrl+N）：复用 dispatch modal 基调 ===== */
+.dsh-notes-newnote-mask{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center}
+.dsh-notes-newnote-modal{background:var(--nbg);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 12px 40px rgba(0,0,0,.22);width:380px;max-width:86vw;padding:18px 20px 16px;display:flex;flex-direction:column;gap:12px}
+.dsh-notes-newnote-t{font-size:14px;font-weight:600;color:var(--ntx)}
+.dsh-notes-newnote-input{background:var(--nbg-hover);border:1px solid transparent;border-radius:var(--nr-md);color:var(--ntx);padding:9px 12px;font-size:14px;font-family:var(--nfont);outline:none;transition:border-color .15s,background .15s}
+.dsh-notes-newnote-input:focus{border-color:var(--nacc);background:var(--nbg)}
+.dsh-notes-newnote-actions{display:flex;justify-content:flex-end;gap:8px}

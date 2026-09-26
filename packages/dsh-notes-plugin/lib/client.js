@@ -275,9 +275,6 @@ window.__ModuleLoader__.load({
         const [edStatus, setEdStatus] = React.useState('active')
         const [edInject, setEdInject] = React.useState(false)
         const [edScope, setEdScope] = React.useState([])
-        const [capText, setCapText] = React.useState('')
-        const [capPending, setCapPending] = React.useState(false)
-        const [capSaved, setCapSaved] = React.useState(false)
         const [savedTick, setSavedTick] = React.useState(false)
         const [savedAt, setSavedAt] = React.useState(0)
         const [searchText, setSearchText] = React.useState('')
@@ -294,9 +291,12 @@ window.__ModuleLoader__.load({
         const [focusId, setFocusId] = React.useState(null)
         const [kindFilter, setKindFilter] = React.useState('all')
         const [pinnedOnly, setPinnedOnly] = React.useState(false)
-        // T2 顶栏压缩：搜索/记录框默认收起为图标，点击或快捷键内联展开
+        // T2 顶栏压缩：搜索框默认收起为图标，点击或快捷键内联展开
         const [searchOpen, setSearchOpen] = React.useState(false)
-        const [capOpen, setCapOpen] = React.useState(false)
+        // 新建笔记 modal（＋ 按钮 / Ctrl+N 打开，输标题创建）
+        const [newNoteOpen, setNewNoteOpen] = React.useState(false)
+        const [newNoteTitle, setNewNoteTitle] = React.useState('')
+        const [newNotePending, setNewNotePending] = React.useState(false)
         const [sessList, setSessList] = React.useState([])
         const [scopeOpen, setScopeOpen] = React.useState(false)
         const [dispatchOpen, setDispatchOpen] = React.useState(false)
@@ -311,8 +311,14 @@ window.__ModuleLoader__.load({
         const [dispatchSessId, setDispatchSessId] = React.useState('')   // existing 模式：选中的会话 id
         const [wsList, setWsList] = React.useState([])
         const [dispatchHistoryOpen, setDispatchHistoryOpen] = React.useState(false)   // 派发历史折叠态：默认折叠，点标题行展开
+        // 设置卡片（通用结构：标题「设置」+ 设置项行列表；选择即保存，点遮罩/Esc 关闭）
+        const [settingsOpen, setSettingsOpen] = React.useState(false)
+        const [settingsData, setSettingsData] = React.useState(null)   // notes-settings-get 返回：{ settings, models }
+        const [setLlmProvider, setSetLlmProvider] = React.useState('')
+        const [setLlmModel, setSetLlmModel] = React.useState('')
         const keepQuickRef = React.useRef(false)
-        const capRef = React.useRef(null)
+        const newNoteInputRef = React.useRef(null)   // 新建笔记 modal 标题输入框（打开自动聚焦）
+        const edBodyDomRef = React.useRef(null)      // 正文 textarea DOM（新建笔记创建后聚焦）
         const timersRef = React.useRef([])
         const selectedRef = React.useRef(null)
         const dragRef = React.useRef(null)
@@ -326,10 +332,12 @@ window.__ModuleLoader__.load({
         const closeRef = React.useRef(null)
         const searchInputRef = React.useRef(null)
         const moveFocusRef = React.useRef(null)
-        // T2 顶栏压缩：展开态镜像到 ref（keydown 闭包挂一次，需读最新值避免过期）
+        const openNewNoteRef = React.useRef(null)   // Ctrl+N 调最新 openNewNote（keydown 闭包挂一次）
+        // 展开态镜像到 ref（keydown 闭包挂一次，需读最新值避免过期）
         const searchOpenRef = React.useRef(false)
-        const capOpenRef = React.useRef(false)
+        const newNoteOpenRef = React.useRef(false)   // 新建笔记 modal 镜像（Esc 优先关 modal）
         const ctxMenuRef = React.useRef(null)   // 右键菜单镜像（keydown 闭包读最新值）
+        const settingsOpenRef = React.useRef(false)   // 设置卡片镜像（Esc 优先关设置卡片）
         // 自动保存：编辑字段的最新值 ref（debounce 回调读 ref 而非闭包 state，避免过期）
         const edTitleRef = React.useRef('')
         const edTopicRef = React.useRef('')
@@ -378,21 +386,15 @@ window.__ModuleLoader__.load({
         }, [])
         // 搜索条件变化时重置分页（新结果从头开始）
         React.useEffect(() => { setVisibleCount(PAGE_SIZE) }, [searchText, searchIds])
-        // T2 顶栏压缩：展开态同步到 ref（keydown 闭包读 ref 避免过期）
+        // 展开态同步到 ref（keydown 闭包读 ref 避免过期）
         React.useEffect(() => { searchOpenRef.current = searchOpen }, [searchOpen])
-        React.useEffect(() => { capOpenRef.current = capOpen }, [capOpen])
+        React.useEffect(() => { newNoteOpenRef.current = newNoteOpen }, [newNoteOpen])
         React.useEffect(() => { ctxMenuRef.current = ctxMenu }, [ctxMenu])
-        // T2 顶栏压缩：展开时自动聚焦（Ctrl+K/Ctrl+N 改为 setSearchOpen(true)/setCapOpen(true)，由此 effect 完成聚焦）
+        React.useEffect(() => { settingsOpenRef.current = settingsOpen }, [settingsOpen])
+        // 展开时自动聚焦（Ctrl+K → 搜索；Ctrl+N / ＋ → 新建笔记 modal 标题输入框，由此 effect 完成聚焦）
         React.useEffect(() => { if (searchOpen && searchInputRef.current) searchInputRef.current.focus() }, [searchOpen])
-        React.useEffect(() => {
-          if (capOpen && capRef.current) {
-            capRef.current.focus()
-            const t = capRef.current
-            t.style.height = 'auto'
-            t.style.height = Math.min(110, Math.max(38, t.scrollHeight)) + 'px'
-          }
-        }, [capOpen])
-        // 键盘导航：j/k 或 ↑/↓ 移动高亮，Enter 打开，Esc 关闭，Ctrl+K 聚焦搜索，Ctrl+N 聚焦捕获
+        React.useEffect(() => { if (newNoteOpen && newNoteInputRef.current) newNoteInputRef.current.focus() }, [newNoteOpen])
+        // 键盘导航：j/k 或 ↑/↓ 移动高亮，Enter 打开，Esc 关闭，Ctrl+K 聚焦搜索，Ctrl+N 新建笔记
         React.useEffect(() => {
           function onKeyDown(ev) {
             if (!openRef.current) return
@@ -400,8 +402,8 @@ window.__ModuleLoader__.load({
             const inField = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
             const mod = ev.ctrlKey || ev.metaKey
             if (mod && (ev.key === 'k' || ev.key === 'K')) { ev.preventDefault(); setSearchOpen(true); return }
-            if (mod && (ev.key === 'n' || ev.key === 'N')) { ev.preventDefault(); setCapOpen(true); return }
-            if (ev.key === 'Escape') { ev.preventDefault(); if (ctxMenuRef.current) { setCtxMenu(null); return } if (capOpenRef.current) { setCapOpen(false); return } if (searchOpenRef.current) { setSearchOpen(false); return } closeRef.current(); return }
+            if (mod && (ev.key === 'n' || ev.key === 'N')) { ev.preventDefault(); openNewNoteRef.current(); return }
+            if (ev.key === 'Escape') { ev.preventDefault(); if (newNoteOpenRef.current) { setNewNoteOpen(false); return } if (settingsOpenRef.current) { setSettingsOpen(false); return } if (ctxMenuRef.current) { setCtxMenu(null); return } if (searchOpenRef.current) { setSearchOpen(false); return } closeRef.current(); return }
             if (inField) return
             if (ctxMenuRef.current) return   // 右键菜单打开时暂停列表导航/打开
             const ids = pagedIdsRef.current
@@ -454,27 +456,31 @@ window.__ModuleLoader__.load({
           const id = n.id
           rpc('notes-get', { id: id }).then(res => { if (res && res.note && selectedRef.current === id) setEdBody(res.note.body || '') }).catch(() => {})
         }
-        function syncTopicLater(id) {
-          const check = async () => { const list = await loadNotes(true); const n = list.find(x => x.id === id); if (n && n.topic && n.topic !== '分类中') setEdTopic(prev => (prev === '' && selectedRef.current === id) ? n.topic : prev) }
-          later(check, 3800)
-          later(check, 8500)
-        }
-        async function doCapture() {
-          const text = capText.trim()
-          if (!text || capPending) return
-          setCapPending(true); setError('')
+        // 新建笔记 modal：＋ 按钮 / Ctrl+N 打开（清空上次标题），输标题创建
+        function openNewNote() { setNewNoteTitle(''); setNewNotePending(false); setError(''); setNewNoteOpen(true) }
+        openNewNoteRef.current = openNewNote
+        // 创建流程：notes-create → 静默刷新列表 → 选中新笔记 → 聚焦正文 textarea → toast
+        async function doCreateNote() {
+          const title = newNoteTitle.trim()
+          if (!title || newNotePending) return
+          setNewNotePending(true); setError('')
           try {
-            const res = await rpc('notes-quick', { text: text, sessionId: currentSessionId })
+            const res = await rpc('notes-create', { title: title, body: '', kind: 'note' })
             if (res && res.error) { setError(res.error); return }
-            setCapText('')
-            if (capRef.current) { capRef.current.style.height = '38px'; capRef.current.focus() }
-            setCapSaved(true); later(() => setCapSaved(false), 1600)
-            showToast(res && res.merged ? '已合并到本次速记' : '已记录，正在识别主题…')
-            if (res && res.id) { setFlashId(res.id); later(() => setFlashId(null), 1800) }
-            const list = await loadNotes(true)
-            if (res && res.id) { const n = list.find(x => x.id === res.id); if (n) selectNote(n); syncTopicLater(res.id) }
+            setNewNoteOpen(false); setNewNoteTitle('')
+            showToast('已创建')
+            // 立即用创建返回值选中新笔记（不等列表刷新，避免列表时序影响选中链路）
+            if (res && res.id) {
+              selectNote({ id: res.id, title: res.title || title, topic: res.topic || '', kind: res.kind || 'note', status: res.status || 'active', tags: [], inject: false, injectTo: [] })
+              setFlashId(res.id); later(() => setFlashId(null), 1800)
+              // 聚焦正文：等选中态渲染出 textarea 再 focus（预览态先切回编辑态，否则没有 textarea 可聚焦）
+              setPreviewMode(false)
+              later(() => { try { if (edBodyDomRef.current) edBodyDomRef.current.focus() } catch (err) {} }, 300)
+              later(() => { try { if (edBodyDomRef.current && document.activeElement !== edBodyDomRef.current) edBodyDomRef.current.focus() } catch (err) {} }, 700)
+            }
             notifyNotesChanged()
-          } catch (err) { setError(String(err.message || err)) } finally { setCapPending(false) }
+            loadNotes(true)  // 后台刷新列表（不 await，不阻塞选中/聚焦链路）
+          } catch (err) { setError(String(err.message || err)) } finally { setNewNotePending(false) }
         }
         async function doSave() {
           const id = selectedRef.current
@@ -566,6 +572,30 @@ window.__ModuleLoader__.load({
         function openDispatch() {
           setDispatchInstr(''); setDispatchSessId(''); setDispatchSessWs(''); setDispatchWsId(''); setDispatchMode('existing'); setError('')
           loadActiveSessions(); loadWorkspaces(); setDispatchOpen(true)
+        }
+        // 设置卡片：打开即拉取 settings + 可用模型列表（host 探 llm 服务目录；探不到时 models=[]，控件退化为手输）
+        function openSettings() {
+          setSetLlmProvider(''); setSetLlmModel(''); setSettingsData(null); setError(''); setSettingsOpen(true)
+          rpc('notes-settings-get', {}).then(res => {
+            if (!res) return
+            setSettingsData(res)
+            const l = res.settings && res.settings.llm
+            if (l && l.provider && l.model) { setSetLlmProvider(l.provider); setSetLlmModel(l.model) }
+          }).catch(() => {})
+        }
+        // 选择即保存：llm=null 恢复跟随当前会话（默认）；否则保存 { provider, model }
+        function saveSettingsLlm(llm) {
+          rpc('notes-settings-set', { llm: llm }).then(res => {
+            if (res && res.error) { setError(res.error); return }
+            if (res && res.settings) setSettingsData(prev => Object.assign({}, prev || {}, { settings: res.settings }))
+            showToast(llm ? ('已保存：笔记 LLM = ' + llm.provider + ' / ' + llm.model) : '已恢复跟随当前会话（默认）')
+          }).catch(err => setError(String(err.message || err)))
+        }
+        // 手输模式（探不到模型列表时）：provider/model 两框齐备才保存；清除按钮恢复跟随会话
+        function saveSettingsLlmManual() {
+          const p = setLlmProvider.trim(), m = setLlmModel.trim()
+          if (!p || !m) return
+          saveSettingsLlm({ provider: p, model: m })
         }
         async function doDispatchConfirm() {
           if (!selected || dispatching) return
@@ -688,8 +718,8 @@ window.__ModuleLoader__.load({
         else if (filtered.length === 0) listContent = e('div', { className: 'dsh-notes-empty-state' },
           e('div', { className: 'dsh-notes-empty-ic' }, q ? '⌕' : '📝'),
           e('div', { className: 'dsh-notes-empty-t' }, q ? '无匹配结果' : '还没有笔记'),
-          e('div', { className: 'dsh-notes-empty-s' }, q ? '换个关键词试试，或清空筛选' : '在上方输入框记点什么，主题会自动识别'),
-          !q ? e('button', { className: 'dsh-notes-empty-btn', onClick: () => setCapOpen(true) }, '记第一条') : null)
+          e('div', { className: 'dsh-notes-empty-s' }, q ? '换个关键词试试，或清空筛选' : '点上方 ＋ 按钮输入标题，创建第一条笔记'),
+          !q ? e('button', { className: 'dsh-notes-empty-btn', onClick: openNewNote }, '记第一条') : null)
         else {
           listContent = []
           const pinned = paged.filter(n => n.status === 'pinned')
@@ -722,6 +752,7 @@ window.__ModuleLoader__.load({
             e('span', { className: 'dsh-notes-titlebar-grip' }, '⋮⋮'),
             e('div', { className: 'dsh-notes-titlebar-actions' },
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setEntryMode(entryMode === 'header' ? 'fab' : 'header'), 'data-tooltip': '切换入口模式：会话头部 / 悬浮气泡' }, '⇄'),
+              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: openSettings, 'data-tooltip': '设置' }, '⚙'),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: doArchive, 'data-tooltip': '归档合并：速记按会话、普通笔记按标签' }, '归档'),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setShowHelp(!showHelp), 'data-tooltip': '使用说明' }, '?'),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: close, 'data-tooltip': '关闭' }, '×'))),
@@ -729,7 +760,7 @@ window.__ModuleLoader__.load({
             e('button', { className: 'dsh-notes-help-close', onClick: () => setShowHelp(false) }, '×'),
             e('h4', null, '使用说明'),
             e('ul', null,
-              e('li', null, '点 ', e('kbd', null, '＋'), ' 图标展开输入框，按 ', e('kbd', null, 'Enter'), ' 快速记录，主题自动识别'),
+              e('li', null, '点 ', e('kbd', null, '＋'), ' 或按 ', e('kbd', null, 'Ctrl+N'), ' 输入标题新建笔记，创建后直接编辑正文'),
               e('li', null, '点 ', e('kbd', null, '⌕'), ' 图标展开搜索；选中页面文字后用 ＋ 记录'),
               e('li', null, '同一会话 10 分钟内的速记自动合并'),
               e('li', null, '点击笔记的主题标签可快速更换'),
@@ -739,7 +770,7 @@ window.__ModuleLoader__.load({
               e('li', null, '删除是软删除，可让 Agent 恢复'))) : null,
           e('div', { className: 'dsh-notes-toolbar' },
             e('button', { className: 'dsh-notes-tool-btn dsh-nt' + (searchOpen ? ' on' : ''), onClick: () => setSearchOpen(!searchOpen), 'data-tooltip': '搜索笔记（Ctrl+K）' }, '⌕'),
-            e('button', { className: 'dsh-notes-tool-btn dsh-nt' + (capOpen ? ' on' : ''), onClick: () => setCapOpen(!capOpen), 'data-tooltip': '新建笔记（Ctrl+N）' }, '＋'),
+            e('button', { className: 'dsh-notes-tool-btn dsh-nt', onClick: openNewNote, 'data-tooltip': '新建笔记（Ctrl+N）' }, '＋'),
             e('div', { className: 'dsh-notes-kinds' },
               ['all', 'note', 'decision', 'todo', 'link', 'quote'].map(k => e('button', { key: k, className: 'dsh-notes-kind-chip' + (kindFilter === k ? ' on' : ''), onClick: () => { setKindFilter(k); setVisibleCount(PAGE_SIZE) } }, k === 'all' ? '全部' : KIND_LABELS[k])),
               e('button', { className: 'dsh-notes-pin-toggle' + (pinnedOnly ? ' on' : ''), onClick: () => { setPinnedOnly(!pinnedOnly); setVisibleCount(PAGE_SIZE) }, 'data-tooltip': '只看置顶' }, '📌 置顶'))),
@@ -748,11 +779,6 @@ window.__ModuleLoader__.load({
               e('span', { className: 'dsh-notes-search-icon' }, '⌕'),
               e('input', { ref: searchInputRef, className: 'dsh-notes-search-input', placeholder: '搜索笔记、标签、内容…', value: searchText, onChange: (ev) => { searchRef.current = ev.target.value; setSearchText(ev.target.value); setSearchIds(null); setVisibleCount(PAGE_SIZE); if (searchDebRef.current) searchDebRef.current() } })),
             e('button', { className: 'dsh-notes-expand-close dsh-nt', onClick: () => setSearchOpen(false), 'data-tooltip': '收起搜索' }, '×')) : null,
-          capOpen ? e('div', { className: 'dsh-notes-capture dsh-notes-expand' },
-            e('textarea', { ref: capRef, className: 'dsh-notes-capture-input', placeholder: '记点什么…（Enter 保存，Shift+Enter 换行）', value: capText, rows: 1,
-              onChange: (ev) => { setCapText(ev.target.value); const t = ev.target; t.style.height = 'auto'; t.style.height = Math.min(110, Math.max(38, t.scrollHeight)) + 'px' },
-              onKeyDown: (ev) => { if (ev.key === 'Enter' && !ev.shiftKey && !ev.ctrlKey && !ev.metaKey) { ev.preventDefault(); doCapture(); setCapOpen(false) } } }),
-            e('button', { className: 'dsh-notes-capture-btn dsh-nt' + (capSaved ? ' saved' : ''), onClick: () => { doCapture(); setCapOpen(false) }, disabled: capPending || !capText.trim(), 'data-tooltip': '保存这条记录' }, capPending ? '…' : (capSaved ? '✓' : '记录'))) : null,
           e('div', { className: 'dsh-notes-content' },
             e('div', { className: 'dsh-notes-list', style: { width: listWidth + 'px' } },
               e('div', { className: 'dsh-notes-list-items', onScroll: onListScroll }, listContent, hasMore ? e('div', { className: 'dsh-notes-more' }, '继续滚动加载更多（已显示 ' + paged.length + ' / ' + filtered.length + '）') : null)),
@@ -812,7 +838,7 @@ window.__ModuleLoader__.load({
               : null,
               previewMode
                 ? e('div', { className: 'dsh-notes-preview-container', dangerouslySetInnerHTML: { __html: renderMarkdown(edBody) } })
-                : e('textarea', { className: 'dsh-notes-editor-body', placeholder: '开始记录…（支持 Markdown）', value: edBody, onChange: (ev) => { setEdBody(ev.target.value); triggerAutoSave() } }),
+                : e('textarea', { ref: edBodyDomRef, className: 'dsh-notes-editor-body', placeholder: '开始记录…（支持 Markdown）', value: edBody, onChange: (ev) => { setEdBody(ev.target.value); triggerAutoSave() } }),
               e('div', { className: 'dsh-notes-ed-foot' },
                 e('button', { className: 'dsh-notes-preview-toggle dsh-nt' + (previewMode ? ' on' : ''), onClick: () => setPreviewMode(!previewMode), 'data-tooltip': previewMode ? '切换到编辑模式' : '预览 Markdown 渲染' }, previewMode ? '✎ 编辑' : '👁 预览'),
                 e('span', { className: 'dsh-notes-ed-saved' + (savedAt ? ' show' : '') }, savedAt ? '已自动保存 ' + new Date(savedAt).toTimeString().slice(0, 5) : ''),
@@ -820,7 +846,7 @@ window.__ModuleLoader__.load({
             : e('div', { className: 'dsh-notes-editor-empty' },
                 e('div', { className: 'dsh-notes-editor-empty-ic' }, '✎'),
                 e('div', { className: 'dsh-notes-editor-empty-t' }, '选择一条笔记查看和编辑'),
-                e('div', { className: 'dsh-notes-editor-empty-s' }, '在上方输入框直接记录，主题自动识别'))),
+                e('div', { className: 'dsh-notes-editor-empty-s' }, '点上方 ＋ 按钮输入标题，新建一条笔记'))),
           e('div', { className: 'dsh-notes-resize-handle dsh-nt', style: { position: 'absolute', bottom: 0, right: 0 }, onMouseDown: (ev) => onResizeMouseDown('se', ev), 'data-tooltip': '拖拽调整' }),
           error && !dispatchOpen ? e('div', { className: 'dsh-notes-error' }, error) : null,
           // 派发对话框（modal）：todo 上下文预览 + 补充具体要求 + 已有/新建会话（级联下拉）
@@ -848,6 +874,54 @@ window.__ModuleLoader__.load({
               e('div', { className: 'dsh-notes-dispatch-actions' },
                 e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setDispatchOpen(false) }, '取消'),
                 e('button', { className: 'dsh-notes-dispatch-ok', onClick: doDispatchConfirm, disabled: dispatching }, dispatching ? '派发中…' : '派发'))))
+          : null,
+          // 设置卡片（modal，居中，复用派发 modal 的 mask/modal 风格）：通用结构——标题「设置」+ 设置项行列表
+          // （每行：左 label + 右控件）。以后加设置项只需往 settingsRows 数组加行，结构不变。
+          // 交互：选择即保存（notes-settings-set）；点遮罩 / Esc 关闭（Esc 在全局 keydown 里优先关本卡片）。
+          settingsOpen ? (() => {
+            const modelList = (settingsData && settingsData.models) || []
+            // 下拉选项 = provider/model 组合，第一项「跟随当前会话（默认）」；
+            // 已保存值不在列表中（如模型已下线）时追加一项保证回显正确
+            const selIdx = modelList.findIndex(m => m.provider === setLlmProvider && m.model === setLlmModel)
+            const opts = (setLlmProvider && setLlmModel && selIdx < 0)
+              ? modelList.concat([{ provider: setLlmProvider, model: setLlmModel, label: setLlmProvider + ' / ' + setLlmModel + '（已保存）' }])
+              : modelList
+            const curVal = selIdx >= 0 ? String(selIdx) : (opts.length > modelList.length ? String(opts.length - 1) : '')
+            const llmControl = modelList.length
+              ? e('select', { className: 'dsh-notes-settings-select', value: curVal, 'data-tooltip': '笔记自动分类 / 指令提取使用的模型', onChange: (ev) => {
+                    const v = ev.target.value
+                    if (v === '') { setSetLlmProvider(''); setSetLlmModel(''); saveSettingsLlm(null) }
+                    else { const m = opts[+v]; if (m) { setSetLlmProvider(m.provider); setSetLlmModel(m.model); saveSettingsLlm({ provider: m.provider, model: m.model }) } }
+                  } },
+                  e('option', { value: '' }, '跟随当前会话（默认）'),
+                  opts.map((m, i) => e('option', { key: m.provider + '/' + m.model + '-' + i, value: String(i) }, m.label || (m.provider + ' / ' + m.model))))
+              : e(React.Fragment, null,
+                  e('input', { className: 'dsh-notes-settings-input', placeholder: 'provider', value: setLlmProvider, onChange: (ev) => setSetLlmProvider(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
+                  e('input', { className: 'dsh-notes-settings-input', placeholder: 'model', value: setLlmModel, onChange: (ev) => setSetLlmModel(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
+                  (setLlmProvider || setLlmModel) ? e('button', { className: 'dsh-notes-settings-clear', onClick: () => { setSetLlmProvider(''); setSetLlmModel(''); saveSettingsLlm(null) } }, '跟随当前会话（默认）') : null)
+            // 通用设置项行列表：以后加设置项只需往这里加行
+            const settingsRows = [
+              { key: 'llm', label: 'LLM 模型', sub: '笔记自动分类 / 指令提取使用的模型', control: llmControl },
+            ]
+            return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setSettingsOpen(false) } },
+              e('div', { className: 'dsh-notes-settings-modal' },
+                e('div', { className: 'dsh-notes-settings-modal-t' }, '⚙ 设置'),
+                e('div', { className: 'dsh-notes-settings-list' },
+                  settingsRows.map(row => e('div', { key: row.key, className: 'dsh-notes-settings-row' },
+                    e('div', { className: 'dsh-notes-settings-label' }, row.label, row.sub ? e('span', { className: 'dsh-notes-settings-label-s' }, row.sub) : null),
+                    e('div', { className: 'dsh-notes-settings-control' }, row.control)))),
+                error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null))
+          })()
+          : null,
+          // 新建笔记 modal（＋ 按钮 / Ctrl+N）：输标题创建 → 选中 → 聚焦正文
+          newNoteOpen ? e('div', { className: 'dsh-notes-newnote-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setNewNoteOpen(false) } },
+            e('div', { className: 'dsh-notes-newnote-modal' },
+              e('div', { className: 'dsh-notes-newnote-t' }, '新建笔记'),
+              e('input', { ref: newNoteInputRef, className: 'dsh-notes-newnote-input', placeholder: '笔记标题…', value: newNoteTitle, onChange: (ev) => setNewNoteTitle(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doCreateNote() } } }),
+              error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+              e('div', { className: 'dsh-notes-newnote-actions' },
+                e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setNewNoteOpen(false) }, '取消'),
+                e('button', { className: 'dsh-notes-dispatch-ok', onClick: doCreateNote, disabled: newNotePending || !newNoteTitle.trim() }, newNotePending ? '创建中…' : '创建'))))
           : null,
           // 列表项右键菜单（替代悬浮 ×）：置顶/已解决/删除
           ctxMenu ? e('div', { className: 'dsh-notes-ctxmenu', style: { left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' } },

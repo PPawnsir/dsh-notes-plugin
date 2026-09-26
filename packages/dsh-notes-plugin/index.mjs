@@ -31,6 +31,8 @@ export const inject = ['fs', 'sandboxPolicy', 'webServer', 'tools', 'agents', 'w
 // ---- 路径锚点（模块级常量，import 时求值，无副作用）----
 const PKG_DIR = path.dirname(fileURLToPath(import.meta.url))     // packages/dsh-notes
 const NOTES_ROOT = path.join(os.homedir(), '.dsh', 'notes')      // 发布版存储根
+const SETTINGS_PATH = path.join(NOTES_ROOT, 'settings.json')     // 设置持久化（通用结构；当前仅 llm 选配）。
+// .json 后缀不进笔记列表（_list/listMd 只认 .md），settings.json 落在同目录天然不污染列表。
 // 开发版目录：只用于 (a) 首次启动的一次性数据迁移 (b) 开发资产回退读取。发布环境不存在这些文件时静默跳过。
 const LEGACY_PLUGIN_DIR = 'D:\\deepseek-work\\dsh-notes-plugin'
 const LEGACY_NOTES_DIR = path.join(LEGACY_PLUGIN_DIR, 'notes')
@@ -180,10 +182,85 @@ export function apply(ctx) {
       return [ws, sess, topic].filter(Boolean).join(' · ') || topic || '未分类'
     }
 
+    // ---- 设置持久化（SETTINGS_PATH）：内存缓存 + 启动加载；文件坏/不存在 → {}（容错）----
+    // 通用结构：设置项是 settingsCache 的顶层键（当前仅 llm），client 经 notes-settings-get/set 读写。
+    let settingsCache = {}
+    let settingsLoadPromise = null
+    function loadSettings() {
+      if (!settingsLoadPromise) {
+        settingsLoadPromise = (async () => {
+          try {
+            const p = await fs.resolve(SETTINGS_PATH)
+            const c = await fs.readText(p)
+            const obj = JSON.parse(c)
+            settingsCache = (obj && typeof obj === 'object' && !Array.isArray(obj)) ? obj : {}
+          } catch (e) { /* 文件不存在/损坏 → 空设置：默认行为（跟随会话）不变 */ }
+          return settingsCache
+        })()
+      }
+      return settingsLoadPromise
+    }
+    async function saveSettings() {
+      const p = await fs.resolve(SETTINGS_PATH)
+      await fs.writeText(p, JSON.stringify(settingsCache, null, 2), undefined, undefined, getPolicy())
+    }
+    // LLM 选择：settings.llm（provider+model 齐备）优先；否则回退跟随会话（adm.currentSelection）
+    function resolveLlmSelection() {
+      const s = settingsCache && settingsCache.llm
+      if (s && typeof s.provider === 'string' && s.provider && typeof s.model === 'string' && s.model) {
+        return { provider: s.provider, model: s.model }
+      }
+      if (!adm) return null
+      try { return adm.currentSelection() } catch (e) { return null }
+    }
+    // 可用模型列表（设置卡片下拉数据源）：探 llm 服务目录；探不到返回 []（client 退化为手输 provider/model）
+    async function listAvailableModels() {
+      const models = []
+      if (!llm) return models
+      const seen = {}
+      function push(provider, model, label) {
+        if (!provider || !model) return
+        const key = provider + '/' + model
+        if (seen[key]) return
+        seen[key] = true
+        models.push({ provider: provider, model: model, label: label || key })
+      }
+      // 首选标准目录：llm.listProviders() → llm.listModels(provider)
+      let providers = []
+      try { if (typeof llm.listProviders === 'function') providers = (await llm.listProviders()) || [] } catch (e) {}
+      if (!providers.length && Array.isArray(llm.providers)) providers = llm.providers
+      for (const p of providers) {
+        const pid = p && (typeof p === 'string' ? p : (p.id || p.provider))
+        if (!pid) continue
+        try {
+          if (typeof llm.listModels === 'function') {
+            const ms = (await llm.listModels(pid)) || []
+            for (const m of ms) {
+              const mid = m && (typeof m === 'string' ? m : (m.id || m.model))
+              if (mid) push(pid, mid, (p && p.name ? p.name : pid) + ' / ' + (m && m.name ? m.name : mid))
+            }
+          }
+        } catch (e) {}
+      }
+      // 退化探针：llm.list() / llm.listModels() 无参全量目录（部署差异兜底）
+      if (!models.length) {
+        for (const fnName of ['list', 'listModels']) {
+          try {
+            if (typeof llm[fnName] !== 'function') continue
+            const all = (await llm[fnName]()) || []
+            for (const m of all) { if (m && m.provider && (m.model || m.id)) push(m.provider, m.model || m.id) }
+            if (models.length) break
+          } catch (e) {}
+        }
+      }
+      return models
+    }
+
     async function classifyTopic(text) {
-      if (!llm || !adm) return '未分类'
+      if (!llm) return '未分类'
       try {
-        const sel = adm.currentSelection()
+        await loadSettings()
+        const sel = resolveLlmSelection()   // 设置里的 LLM 优先；未设置 → 跟随会话（adm.currentSelection）
         if (!sel || !sel.provider || !sel.model) return '未分类'
         const preset = ['需求', '设计', '开发', '调试', '运维', '调研', '其他']
         const prompt = '你是一个笔记主题分类器。预设主题：' + preset.join('、') + '。请优先从预设主题中选择最匹配的一个；如果内容明显不属于任何预设主题，可输出一个新的简短主题（2-6个汉字）。只输出主题名本身，不要解释、标点或换行：\n\n' + text
@@ -467,13 +544,14 @@ export function apply(ctx) {
     }
 
     // T3 指令式快速记录：从用户备注提取元数据（tags/titleHint/kind/inject）
-    // 复用 classifyTopic 的 llm.stream + adm.currentSelection 模式，temperature 0
+    // 复用 classifyTopic 的 llm.stream + resolveLlmSelection 模式（设置模型优先，否则跟随会话），temperature 0
     // 解析容错：失败/不规范 → 返回 null（调用方按无备注处理，等价 notes-quick）
     // 关键约束：绝不改写原文——LLM 只输出结构化 JSON，原文由调用方落盘
     async function extractInstruction(text, note) {
-      if (!llm || !adm) return null
+      if (!llm) return null
       try {
-        const sel = adm.currentSelection()
+        await loadSettings()
+        const sel = resolveLlmSelection()   // 设置里的 LLM 优先；未设置 → 跟随会话（adm.currentSelection）
         if (!sel || !sel.provider || !sel.model) return null
         const prompt = '给定选区原文和用户备注，从备注中提取笔记元数据。只输出严格 JSON，没提到的字段留空/默认，绝不改写原文。\n' +
           '字段说明：\n' +
@@ -919,6 +997,30 @@ export function apply(ctx) {
     disposers.push(handle('notes-dispatch-done', async (args) => {
       try { return await _dispatchDone(args.id, args.dispatchIndex) } catch (e) { return { error: String(e.message || e) } }
     }))
+    // 设置读取（设置卡片数据源）：settings 内存缓存（确保已加载）+ 可用模型列表（探不到为空数组，client 退化手输）
+    disposers.push(handle('notes-settings-get', async () => {
+      try { await loadSettings(); return { settings: settingsCache, models: await listAvailableModels() } }
+      catch (e) { return { settings: settingsCache || {}, models: [], error: String(e.message || e) } }
+    }))
+    // 设置保存（client 选择即保存）：浅合并顶层键；llm 为 null 表示恢复跟随会话（删除 override，默认行为不变）
+    disposers.push(handle('notes-settings-set', async (args) => {
+      try {
+        await loadSettings()
+        const patch = (args && typeof args === 'object') ? args : {}
+        if ('llm' in patch) {
+          if (patch.llm === null || patch.llm === undefined) delete settingsCache.llm
+          else {
+            const l = patch.llm
+            const provider = l && typeof l.provider === 'string' ? l.provider.trim() : ''
+            const model = l && typeof l.model === 'string' ? l.model.trim() : ''
+            if (!provider || !model) return { error: 'notes-settings-set: llm 需要 provider + model（或 null 恢复跟随会话）' }
+            settingsCache.llm = { provider: provider, model: model }
+          }
+        }
+        await saveSettings()
+        return { ok: true, settings: settingsCache }
+      } catch (e) { return { error: String(e.message || e) } }
+    }))
     // POC 存活探测（P1 骨架遗留，包内 lib/client.js 的「笔记POC」按钮消费；非 host-impl 的 19 个 RPC 之一）
     disposers.push(handle('notes-ping', async (args) => ({ ok: true, pong: Date.now(), echo: (args && typeof args === 'object') ? args : null })))
 
@@ -1180,6 +1282,8 @@ export function apply(ctx) {
       }
     }
     let migrationDone = migrateLegacyNotes()
+    // 设置启动加载（不阻塞 apply 返回）：classifyTopic/extractInstruction/notes-settings-get 内部 await 同一 promise 保证就绪
+    loadSettings()
 
     // 存量一次性修补：agents 未就绪期创建的笔记 workspace 为空，导致“本工作区”注入范围严格匹配后永不命中。
     // 启动时按来源会话推导补填一次（只补空值）。注意：不用 _list()（它 await migrationDone，会与本补全死锁），
