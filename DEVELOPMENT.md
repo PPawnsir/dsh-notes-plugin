@@ -12,6 +12,7 @@
 | `client-impl.js` | Client 真正实现：面板 UI、选区记录、键盘流、注入/派发交互 |
 | `styles.css` | 全部样式（经 `notes-css` RPC 下发），Apple Notes 设计令牌 + 暗色适配 |
 | `check.js` | 回归测试套件（内存 mock，不碰真实笔记目录） |
+| `design/notes-ui-v2.html` | **UI 交互原型（唯一规格来源）**：单文件原生 JS，浏览器直接打开验证；UI 改动必须同步更新（见下方「UI 改动同步约定」） |
 | `scripts/build-dist.cjs` | **P3 发布构建**：把开发版 `client-impl.js` 机械转换为发布版 `packages/dsh-notes/lib/client.js`（带计数断言，漏改即中止） |
 | `packages/dsh-notes/` | **发布版静态包**（`dsh plugin add` 用）：`index.mjs`(host) / `lib/client.js`(client) / `package.json` / `cordis.patch.yml`；`styles.css` 与开发版共用同一份（host 经 `notes-css` 下发） |
 
@@ -50,6 +51,16 @@ node check.js
 - **实现**（`*-impl.js`/`styles.css`）：磁盘文件，运行时由壳加载
 
 迭代流：**改磁盘实现文件 → `cordis_run(mode=run)` 重启即可，无需重新 define**。`host-impl.js` 每次加载会写 `.last-host-load` 心跳文件用于自检。
+
+## UI 改动同步约定（硬性）
+
+> ⚠️ **凡改动 UI（`client-impl.js` 布局/交互/视觉、`styles.css`），必须同步更新交互原型 `design/notes-ui-v2.html`**——原型是 UI 的唯一规格来源（单文件原生 JS + SVG 图标库 + DSH token 配色，浏览器直接打开即可验证），二者不允许出现行为或视觉偏差：
+>
+> - 新增/修改交互 → 原型先改或同一次改动内一起改，作为实现依据
+> - 视觉调整（间距/配色 token/图标）→ 同步进原型 CSS
+> - 验收流程：先开原型确认交互预期，再对照实现逐项核对
+>
+> 该约定同样约束 Agent 看板任务：涉及 UI 的任务，description 必须把「同步更新 `design/notes-ui-v2.html`」列为交付项；Verifier 验收时核对原型与实现一致。
 
 `pluginDir` 由 `host.js` 经 `new Function('harness','pluginDir',src)(harness, PLUGIN_DIR)` 注入，实现内所有路径（`NOTES_DIR`/`CSS_PATH`/`perf-report`/心跳/`notes-src`）都从它派生，移植只需改 `host.js` 顶部一处。
 

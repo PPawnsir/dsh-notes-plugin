@@ -95,12 +95,12 @@ async function main() {
     assert(indexSrc.indexOf('.last-host-load') < 0 || /发布版不再写/.test(indexSrc), '心跳写入段已删除')
     assert(indexSrc.indexOf('PERF_PATH = path.join(NOTES_ROOT') >= 0, 'perf-report.json 落在 ~/.dsh/notes')
   })
-  await t('index.mjs 保留 21 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置', () => {
+  await t('index.mjs 保留 25 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出', () => {
     const m = indexSrc.match(/handle\('([^']+)'/g) || []
     const names = m.map(s => s.match(/'([^']+)'/)[1])
-    const expected = ['notes-perf', 'notes-list', 'notes-css', 'notes-src', 'notes-get', 'notes-create', 'notes-update', 'notes-quick', 'notes-quick-instruct', 'notes-delete', 'notes-restore', 'notes-archive', 'notes-search', 'notes-conventions', 'notes-sessions', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-settings-get', 'notes-settings-set']
+    const expected = ['notes-perf', 'notes-list', 'notes-folders', 'notes-css', 'notes-src', 'notes-get', 'notes-create', 'notes-update', 'notes-quick', 'notes-quick-instruct', 'notes-delete', 'notes-restore', 'notes-archive', 'notes-search', 'notes-conventions', 'notes-sessions', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-import-preview', 'notes-import']
     for (const e of expected) assert(names.indexOf(e) >= 0, '缺少 RPC：' + e + '（实得 ' + names.length + ' 个：' + names.join(',') + '）')
-    assert(names.length === expected.length + 1, '应为 21 个迁移 RPC + 1 个 P1 存活探测（notes-ping），实得 ' + names.length)
+    assert(names.length === expected.length + 1, '应为 25 个迁移 RPC + 1 个 P1 存活探测（notes-ping），实得 ' + names.length)
     const tm = indexSrc.match(/regTool\(\{\s*name:\s*'([^']+)'/g) || []
     const tnames = tm.map(s => s.match(/'([^']+)'/)[1])
     assert.deepStrictEqual(tnames.sort(), ['note_get', 'note_manage', 'note_search'], '静态包工具必须是 3 个（实得：' + JSON.stringify(tnames) + '）')
@@ -162,41 +162,143 @@ async function main() {
   await t('输入框内不响应导航键', () => assert(/tagName === 'INPUT' \|\| t\.tagName === 'TEXTAREA' \|\| t\.isContentEditable/.test(clientSrc), 'inField 判定'))
   await t('聚焦样式 .focused 存在', () => {
     const cssPath = path.join(DIR, 'styles.css')
-    assert(fsNative.readFileSync(cssPath, 'utf8').indexOf('.dsh-note-item.focused') >= 0, 'styles.css 含 focused')
+    assert(fsNative.readFileSync(cssPath, 'utf8').indexOf('.dsh-notes-note-row.focused') >= 0, 'styles.css 含 note-row focused')
+  })
+  await t('Ctrl+K 直接聚焦侧栏搜索框（v2 常显搜索，无展开态）', () => {
+    assert(/mod && \(ev\.key === 'k' \|\| ev\.key === 'K'\)\) \{ ev\.preventDefault\(\); if \(searchInputRef\.current\) searchInputRef\.current\.focus\(\); return \}/.test(clientSrc), 'Ctrl+K → searchInputRef.focus()')
+    assert(clientSrc.indexOf('searchOpen') < 0, 'v2 移除 searchOpen 展开态（搜索框侧栏常显）')
   })
 
-  // ===== 1.7 T2.1+T2.2 client 渲染结构断言 =====
-  section('1.7 T2.1+T2.2 client 渲染结构')
+  // ===== 1.7 UI v2 client 渲染结构断言（两栏布局 + 主题全局过滤 + 全 SVG 图标）=====
+  section('1.7 UI v2 client 渲染结构（两栏 + 主题全局过滤 + SVG 图标）')
   await t('client-impl 含 kind 标签映射', () => assert(/KIND_LABELS\s*=/.test(clientSrc) && clientSrc.indexOf('decision') >= 0, 'KIND_LABELS 映射'))
-  await t('client-impl 含 kind 图标映射', () => assert(/KIND_ICONS\s*=/.test(clientSrc), 'KIND_ICONS 映射'))
-  await t('client-impl 含 kind 图标渲染', () => assert(/dsh-note-kind-ic/.test(clientSrc), 'kind 图标渲染'))
-  await t('client-impl 列表项含置顶分组', () => assert(clientSrc.indexOf("status === 'pinned'") >= 0 && clientSrc.indexOf('📌 置顶') >= 0, '置顶分组'))
+  await t('SVG 图标 helper I() + 内联图标集（原型 15 symbol + check/tag/swap）', () => {
+    assert(/const IC = \{/.test(clientSrc), 'IC 图标集存在')
+    assert(/function I\(name, size, cls\)/.test(clientSrc), 'I(name, size, cls) 图标 helper 存在')
+    assert(/viewBox: '0 0 24 24'/.test(clientSrc), 'svg viewBox 0 0 24 24')
+    // 原型 symbol 的 path 数据逐个内联（抽查关键图标）
+    for (const d of ['M12 17v5M7 4h10', 'm20 20-3.5-3.5', 'm9 6 6 6-6 6', 'M13 3 5 13.5h6L11 21l8-10.5h-6Z', 'M4 5h16l-6.5 7.5V19l-3-1.5v-5Z']) {
+      assert(clientSrc.indexOf("d: '" + d) >= 0, 'IC 缺 path：' + d)
+    }
+  })
+  await t('emoji 全移除（面板内图标全部 SVG）', () => {
+    for (const emoji of ['📌', '⚡', '👁', '🗑', '📁', '📂', '✎', '📝', '⌕', '📇']) {
+      assert(clientSrc.indexOf(emoji) < 0, 'client-impl 不应再含 emoji ' + emoji)
+    }
+  })
+  await t('两栏布局骨架（侧栏 + 编辑器通栏）', () => {
+    for (const cls of ['dsh-notes-app', 'dsh-notes-side', 'dsh-notes-brand', 'dsh-notes-quick', 'dsh-notes-chips', 'dsh-notes-tree', 'dsh-notes-side-foot', 'dsh-notes-ed']) {
+      assert(clientSrc.indexOf(cls) >= 0, 'client-impl 缺两栏结构 class：' + cls)
+    }
+    assert(clientSrc.indexOf('dsh-notes-list') < 0 && clientSrc.indexOf('dsh-notes-divider') < 0 && clientSrc.indexOf('dsh-notes-content') < 0, '旧三栏（list/divider/content）已移除')
+    assert(clientSrc.indexOf('listWidth') < 0, '旧列宽拖拽（listWidth）已移除')
+    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    for (const cls of ['.dsh-notes-app{', '.dsh-notes-side{', '.dsh-notes-brand{', '.dsh-notes-quick{', '.dsh-notes-chips{', '.dsh-notes-tree{', '.dsh-notes-side-foot{', '.dsh-notes-fbtn{', '.dsh-notes-ed{']) {
+      assert(css.indexOf(cls) >= 0, 'styles.css 缺两栏样式：' + cls)
+    }
+    assert(/\.dsh-notes-side\{[^}]*width:300px/.test(css), '侧栏固定宽 300px')
+  })
+  await t('品牌行 + 计数 + 侧栏底部 导出/导入/设置 三入口', () => {
+    assert(clientSrc.indexOf('dsh-notes-brand-logo') >= 0 && clientSrc.indexOf('dsh-notes-brand-cnt') >= 0, '品牌行 logo + 计数')
+    assert(clientSrc.indexOf("' 条'") >= 0, '品牌行计数文案「N 条」')
+    assert(clientSrc.indexOf("onClick: openExport") >= 0 && clientSrc.indexOf("onClick: openImport") >= 0 && clientSrc.indexOf("onClick: openSettings") >= 0, '底部三按钮 openExport/openImport/openSettings')
+    assert(clientSrc.indexOf("I('up', 12)") >= 0 && clientSrc.indexOf("I('down', 12)") >= 0 && clientSrc.indexOf("I('gear', 12)") >= 0, '底部三按钮 SVG 图标')
+  })
+  await t('kind chips + 置顶 chip + 新建 chip（侧栏）', () => {
+    assert(clientSrc.indexOf("['all', 'note', 'decision', 'todo', 'link', 'quote']") >= 0, 'kind chips 六种类型 + 全部')
+    assert(clientSrc.indexOf('dsh-notes-chip') >= 0, 'chip 样式类')
+    assert(/pinnedOnly \? ' on'/.test(clientSrc) && clientSrc.indexOf("'置顶'") >= 0, '置顶 chip（pinnedOnly）')
+    assert(clientSrc.indexOf("I('pin', 11)") >= 0, '置顶 chip pin 图标')
+    assert(/onClick: openNewNote, 'data-tooltip': '新建笔记（Ctrl\+N）'/.test(clientSrc), '新建 chip → openNewNote')
+  })
+  await t('树结构：视图头 + 置顶组 + 文件夹组 + 未分类主题分组 + 主题全局过滤区', () => {
+    assert(clientSrc.indexOf('dsh-notes-sec-h') >= 0, 'sec-h 分组头')
+    assert(clientSrc.indexOf('全部笔记') >= 0 && clientSrc.indexOf("'主题 · ' + view.id") >= 0 && clientSrc.indexOf("'文件夹 · ' + folderName(view.id)") >= 0, '视图头文案（全部/主题/文件夹）')
+    assert(clientSrc.indexOf('（跨文件夹 ') >= 0, '主题视图头含「跨文件夹 N 条」')
+    assert(clientSrc.indexOf('PINNED_KEY') >= 0 && clientSrc.indexOf("'置顶'") >= 0, '置顶折叠组（PINNED_KEY 持久化）')
+    assert(clientSrc.indexOf('dsh-notes-nested') >= 0, 'nested 子笔记容器')
+    assert(clientSrc.indexOf('未分类') >= 0, '未分类分组')
+    assert(clientSrc.indexOf('主题过滤') >= 0 && clientSrc.indexOf('跨文件夹') >= 0, '主题全局过滤区')
+    assert(clientSrc.indexOf('dsh-notes-topic-row') >= 0, '主题过滤行')
+  })
+  await t('视图求值：view 单选 ∩ kind ∩ 置顶 ∩ 搜索（四维 AND）', () => {
+    assert(/const \[view, setView\] = React\.useState\(\{ type: 'all', id: '' \}\)/.test(clientSrc), 'view state（all/folder/topic 单选）')
+    assert(clientSrc.indexOf("if (view.type === 'topic') filtered = filtered.filter(n => (n.topic || '') === view.id)") >= 0, '主题视图过滤')
+    assert(clientSrc.indexOf("else if (view.type === 'folder') filtered = filtered.filter(n => (n.folder || '') === view.id)") >= 0, '文件夹视图过滤')
+    assert(/if \(kindFilter !== 'all'\) filtered = filtered\.filter/.test(clientSrc), 'kind chips 过滤')
+    assert(/if \(pinnedOnly\) filtered = filtered\.filter/.test(clientSrc), '置顶过滤')
+  })
+  await t('笔记行：kind 色点 + 标题(+pin) + 约定 bolt + 行尾（主题字/文件夹徽章/日期）', () => {
+    assert(clientSrc.indexOf('dsh-notes-kind-dot') >= 0 && clientSrc.indexOf("style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' }") >= 0, 'kind 色点走 token var(--nkind-*)')
+    assert(clientSrc.indexOf('dsh-notes-note-ti') >= 0 && clientSrc.indexOf("I('pin', 10, 'dsh-notes-note-pin')") >= 0, '标题 + 置顶 pin 图标')
+    assert(clientSrc.indexOf('dsh-notes-note-inj') >= 0 && clientSrc.indexOf("I('bolt', 10)") >= 0, '约定注入 bolt 标记')
+    assert(clientSrc.indexOf('dsh-notes-fbadge') >= 0, '主题视图行尾文件夹徽章（fbadge）')
+    assert(clientSrc.indexOf('dsh-notes-note-tp') >= 0 && clientSrc.indexOf('dsh-notes-note-dt') >= 0, '文件夹上下文行尾主题字 / 其余行尾日期')
+    assert(clientSrc.indexOf('injectScopeLabel') >= 0, '注入范围文字函数')
+    assert(clientSrc.indexOf("keepQuickRef.current && tags.indexOf('quick') < 0") >= 0, 'doSave 保留 quick 速记标签（v2 行不渲染标签，语义保留在保存链路）')
+  })
+  await t('编辑器：面包屑 + 大标题 + meta chips 行 + 正文 + 底部状态', () => {
+    assert(clientSrc.indexOf('dsh-notes-ed-crumb') >= 0 && clientSrc.indexOf('dsh-notes-crumb-lnk') >= 0, '面包屑（主题段可点击）')
+    assert(clientSrc.indexOf('jumpToTopicFilter') >= 0, '面包屑/主题 chip 跳主题全局过滤')
+    assert(/className: 'dsh-notes-ed-title', placeholder: '无标题', value: edTitle/.test(clientSrc), '大标题输入（受控 edTitle）')
+    assert(clientSrc.indexOf('dsh-notes-meta-chip') >= 0 && clientSrc.indexOf('dsh-notes-meta-act') >= 0, 'meta chips + 右侧操作')
+    assert(/className: 'dsh-notes-meta-select', value: edKind/.test(clientSrc), 'kind 下拉 chip')
+    assert(clientSrc.indexOf('dsh-notes-meta-dot') >= 0, 'kind 色点 chip')
+    assert(/value: edTopic/.test(clientSrc) && clientSrc.indexOf('dsh-notes-meta-topic-input') >= 0, '主题 chip 可编辑')
+    assert(/value: edTags/.test(clientSrc) && clientSrc.indexOf('dsh-notes-meta-tags-input') >= 0, '标签 chip 可编辑')
+    assert(clientSrc.indexOf('dsh-notes-ed-foot') >= 0 && clientSrc.indexOf("'创建 '") >= 0 && clientSrc.indexOf("'更新 '") >= 0 && clientSrc.indexOf("'来源 会话 '") >= 0, '底部 创建/更新/来源')
+    assert(clientSrc.indexOf('dsh-notes-ed-saved') >= 0 && clientSrc.indexOf('已自动保存 ') >= 0, '自动保存提示')
+  })
+  await t('编辑器 meta：约定 toggle + 目录可见 toggle + 派发/来源/置顶/删除', () => {
+    assert(clientSrc.indexOf("'data-tooltip': '作为约定注入到系统提示（Agent 每回合可见）'") >= 0, '约定 toggle tooltip')
+    assert(/'约定 · 注入中'/.test(clientSrc), '约定开启态文案')
+    assert(clientSrc.indexOf('dsh-notes-ed-scope-wrap') >= 0 && clientSrc.indexOf('dsh-notes-scope-panel') >= 0 && clientSrc.indexOf('dsh-notes-scope-trigger') >= 0, '逐级范围浮层挂 meta 行')
+    assert(clientSrc.indexOf('目录可见') >= 0 && clientSrc.indexOf("I('eye', 11)") >= 0, '目录可见 toggle（eye 图标）')
+    assert(clientSrc.indexOf("'派发'") >= 0 && clientSrc.indexOf("I('play', 12)") >= 0, '派发操作（play 图标）')
+    assert(clientSrc.indexOf("'来源'") >= 0 && clientSrc.indexOf("I('ext', 12)") >= 0, '来源操作（ext 图标）')
+    assert(clientSrc.indexOf("I('pin', 12)") >= 0 && clientSrc.indexOf("I('trash', 12)") >= 0, '置顶/删除操作图标')
+    assert(clientSrc.indexOf('openDispatch') >= 0 && clientSrc.indexOf('jumpToSession') >= 0, '派发/来源行为保留')
+  })
   await t('client-impl 含 status 类名分支', () => assert(/status === 'pinned'/.test(clientSrc) && /status === 'resolved'/.test(clientSrc) && /status === 'superseded'/.test(clientSrc), 'status 视觉分支'))
-  await t('client-impl 编辑器含 kind/status 选择器', () => assert(/value: edKind/.test(clientSrc) && /value: edStatus/.test(clientSrc), 'kind/status select'))
   await t('client-impl 选区捕获传 kind=quote', () => assert(/kind: 'quote'/.test(clientSrc), 'selection capture → quote'))
-  await t('client-impl 选区浮层含复制按钮 + primary 样式类', () => {
-    assert(clientSrc.indexOf('dsh-notes-instruct-actions') >= 0, 'instruct-actions 容器存在')
-    assert(clientSrc.indexOf('复制') >= 0, '选区浮层 actions 含复制按钮')
-    assert(/dsh-notes-instruct-btn primary/.test(clientSrc), 'primary 按钮样式类存在')
+  await t('快速记录卡片 v2 结构（cap-h + 识别为引用徽章 + cap-pv 预览 + cap-in 输入 + 三按钮）', () => {
+    assert(clientSrc.indexOf('dsh-notes-cap-h') >= 0 && clientSrc.indexOf('dsh-notes-cap-src') >= 0, '卡片头部')
+    assert(clientSrc.indexOf('dsh-notes-cap-auto') >= 0 && clientSrc.indexOf('识别为 引用') >= 0, '「识别为 引用」自动徽章')
+    assert(clientSrc.indexOf('dsh-notes-cap-pv') >= 0, '选区预览块')
+    assert(/lines\.length > 160 \? lines\.slice\(0, 160\)/.test(clientSrc), '预览 160 字上限（原型口径）')
+    assert(clientSrc.indexOf('dsh-notes-cap-in') >= 0 && clientSrc.indexOf('dsh-notes-cap-input') >= 0, '补充输入框')
+    assert(clientSrc.indexOf('Enter 记录') >= 0, '输入框 kbd 提示')
+    assert(clientSrc.indexOf('dsh-notes-cap-acts') >= 0, '按钮行')
+    assert(clientSrc.indexOf('复制') >= 0 && clientSrc.indexOf("'记录'") >= 0 && clientSrc.indexOf("'取消'") >= 0, '复制/记录/取消三按钮')
+    assert(/dsh-notes-cbtn primary/.test(clientSrc), '记录按钮 primary 实心强调色')
     assert(/copySelection/.test(clientSrc), 'copySelection 复制处理函数存在')
     assert(clientSrc.indexOf('navigator.clipboard') >= 0, '优先 navigator.clipboard.writeText')
     assert(clientSrc.indexOf('execCommand') >= 0, '降级 execCommand 兜底')
+    assert(clientSrc.indexOf("closest('.dsh-notes-cap')") >= 0, '卡片内部点击不误关（closest 守卫）')
+    // 旧选区指令框（instruct 系列）已移除
+    assert(clientSrc.indexOf('dsh-notes-instruct') < 0, '旧 instruct 浮层已移除')
+  })
+  await t('快速记录卡片 v2 样式走 token（无硬编码白底/深色字）', () => {
     const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
-    assert(/\.dsh-notes-instruct-btn\.primary\{[^}]*var\(--nacc\)/.test(css), 'primary 按钮用 var(--nacc) 主题色')
-    assert(/\.dsh-notes-instruct-btn\.primary:hover\{[^}]*brightness\(0\.9\)/.test(css), 'primary hover 加深 brightness(0.9)')
-    // 深色适配：instruct 系列全部走 token —— 输入框背景 var(--nbg)，无硬编码白底/深色字（var() fallback 与 primary 白字除外）
-    assert(/\.dsh-notes-instruct-input\{[^}]*background:var\(--nbg\)/.test(css), 'instruct-input 背景走 token var(--nbg)（随 DSH 主题明暗切换）')
-    const instructRules = css.match(/\.dsh-notes-instruct[^{]*\{[^}]*\}/g) || []
+    for (const cls of ['.dsh-notes-cap{', '.dsh-notes-cap-h{', '.dsh-notes-cap-pv{', '.dsh-notes-cap-in{', '.dsh-notes-cap-acts{', '.dsh-notes-cbtn{']) {
+      assert(css.indexOf(cls) >= 0, 'styles.css 缺卡片样式：' + cls)
+    }
+    assert(/\.dsh-notes-cbtn\.primary\{[^}]*var\(--nacc\)/.test(css), 'primary 按钮用 var(--nacc) 主题色')
+    assert(/\.dsh-notes-cbtn\.primary:hover\{[^}]*opacity:\.9/.test(css), 'primary hover 减透明度（原型口径）')
+    assert(/\.dsh-notes-cap-input\{[^}]*background:transparent/.test(css), 'cap-input 背景透明（抬升面容器之上）')
+    assert(css.indexOf('dsh-notes-capin') >= 0, '卡片弹出动画')
+    assert(css.indexOf('.dsh-notes-instruct') < 0, '旧 instruct 样式已移除')
+    // cap 系列全部走 token：无硬编码白底/深色字（var() fallback 与 primary 白字除外）
+    const capRules = css.match(/\.dsh-notes-(cap|cbtn)[^{]*\{[^}]*\}/g) || []
     const noVar = (r) => r.replace(/var\([^)]*\)/g, '')
-    const badBg = instructRules.filter(r => /background:\s*(#fff\b|white\b)/i.test(noVar(r)))
-    assert.strictEqual(badBg.length, 0, 'instruct 系列不得含硬编码白底：' + badBg.join(' | '))
-    const badFg = instructRules.filter(r => /(^|[{;])\s*color:\s*(#0[0-9a-f]|#1[0-9a-f]|#2[0-9a-f]|#3[0-9a-f]|black\b)/i.test(noVar(r)))
-    assert.strictEqual(badFg.length, 0, 'instruct 系列不得含硬编码深色字：' + badFg.join(' | '))
+    const badBg = capRules.filter(r => /background:\s*(#fff\b|white\b)/i.test(noVar(r)))
+    assert.strictEqual(badBg.length, 0, 'cap 系列不得含硬编码白底：' + badBg.join(' | '))
+    const badFg = capRules.filter(r => /(^|[{;])\s*color:\s*(#0[0-9a-f]|#1[0-9a-f]|#2[0-9a-f]|#3[0-9a-f]|black\b)/i.test(noVar(r)))
+    assert.strictEqual(badFg.length, 0, 'cap 系列不得含硬编码深色字：' + badFg.join(' | '))
   })
   await t('client-impl 注入为独立开关+逐级范围浮层', () => {
     assert(/toggleInject/.test(clientSrc), '独立注入开关 toggleInject（不碰标签）')
     assert(/edScope/.test(clientSrc), '范围多选 edScope 数组')
-    assert(/dsh-notes-scope-panel/.test(clientSrc) && /dsh-notes-scope-trigger/.test(clientSrc), '逐级范围浮层 panel+trigger')
     assert(/dsh-notes-scope-group/.test(clientSrc) && /scopeByWs/.test(clientSrc), '会话按工作区分组（两级）')
     assert(clientSrc.indexOf('本工作区') >= 0 && clientSrc.indexOf('全局') >= 0, '范围含 本工作区/全局')
     assert(clientSrc.indexOf('sessList') >= 0 && clientSrc.indexOf('notes-sessions') >= 0, '会话名列表 sessList 来自 notes-sessions RPC')
@@ -218,15 +320,11 @@ async function main() {
     assert(/\.dsh-notes-dispatch-history-t\{[^}]*cursor:pointer/.test(css), '标题行 cursor:pointer 可点击')
     assert(/\.dsh-notes-dispatch-history\.collapsed/.test(css), 'collapsed 折叠态样式存在')
   })
-  await t('client-impl 列表项含注入徽章', () => {
-    assert(clientSrc.indexOf('dsh-note-inject') >= 0, '列表项注入徽章 class')
-    assert(clientSrc.indexOf('injectScopeLabel') >= 0, '注入范围文字函数')
-    assert(clientSrc.indexOf("t !== 'quick' && t !== 'convention'") >= 0, 'meta 标签过滤 convention 避免重复')
-  })
-  await t('styles.css 含 kind/status 视觉', () => {
+  await t('styles.css 含 kind/status 视觉（v2 token 化）', () => {
     const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
-    assert(css.indexOf('.dsh-note-kind-decision') >= 0, 'kind icon css')
-    assert(css.indexOf('.dsh-note-item.pinned') >= 0 && css.indexOf('.dsh-note-item.resolved') >= 0 && css.indexOf('.dsh-note-item.superseded') >= 0, 'status css')
+    assert(css.indexOf('.dsh-notes-kind-dot') >= 0, 'kind 色点 css')
+    assert(css.indexOf('--nkind-decision') >= 0 && css.indexOf('--nkind-quote') >= 0, 'kind 颜色 token 声明')
+    assert(css.indexOf('.dsh-notes-note-row.resolved') >= 0 && css.indexOf('.dsh-notes-note-row.superseded') >= 0, 'status 划线视觉')
   })
 
   // ===== 1.8 新建笔记 modal（＋ / Ctrl+N 输标题创建，替代顶栏速记）=====
@@ -255,7 +353,10 @@ async function main() {
     assert(/mod && \(ev\.key === 'n' \|\| ev\.key === 'N'\)\) \{ ev\.preventDefault\(\); openNewNoteRef\.current\(\); return \}/.test(clientSrc), 'Ctrl+N 打开新建 modal')
   })
   await t('创建流程：notes-create 输标题建笔记 → 刷新 → 选中新笔记 → 聚焦正文', () => {
-    assert(/host\.call\('notes-create', \{ title: title, body: '', kind: 'note' \}\)/.test(clientSrc), 'notes-create 传 title/body=空/kind=note')
+    assert(clientSrc.indexOf("const payload = { title: title, body: '', kind: 'note' }") >= 0, 'notes-create payload 传 title/body=空/kind=note')
+    assert(/host\.call\('notes-create', payload\)/.test(clientSrc), 'notes-create 走 payload（v2 视图落位）')
+    assert(clientSrc.indexOf("view.type === 'folder' ? view.id :") >= 0 && clientSrc.indexOf("payload.folder = createFolder") >= 0, '文件夹视图落当前文件夹')
+    assert(clientSrc.indexOf("if (view.type === 'topic' && view.id) payload.topic = view.id") >= 0, '主题视图带当前主题')
     assert(/showToast\('已创建'\)/.test(clientSrc), '创建成功 toast「已创建」')
     const m = clientSrc.match(/async function doCreateNote\(\) \{[\s\S]*?\n        \}/)
     assert(m, 'doCreateNote 函数体可提取')
@@ -264,8 +365,8 @@ async function main() {
     assert(/selectNote\(\{ id: res\.id/.test(fnBody), '创建后按返回 id 立即选中新笔记（不等列表刷新）')
     assert(/setPreviewMode\(false\)/.test(fnBody), '预览态先切回编辑态（保证正文 textarea 存在）')
     assert(/edBodyDomRef\.current\.focus\(\)/.test(fnBody), '创建后聚焦正文 textarea（edBodyDomRef）')
-    assert(/ref: edBodyDomRef, className: 'dsh-notes-editor-body'/.test(clientSrc), '正文 textarea 挂 edBodyDomRef')
-    assert(clientPkgSrcNewNote.indexOf("rpc('notes-create', { title: title, body: '', kind: 'note' })") >= 0, '发布包创建走 notes-create（rpc 形态）')
+    assert(/ref: edBodyDomRef, className: 'dsh-notes-ed-body'/.test(clientSrc), '正文 textarea 挂 edBodyDomRef（v2 ed-body）')
+    assert(clientPkgSrcNewNote.indexOf("rpc('notes-create', payload)") >= 0, '发布包创建走 notes-create（rpc 形态）')
   })
   await t('顶栏速记已移除（capOpen/doCapture/capture 样式清零）', () => {
     for (const dead of ['capOpen', 'capText', 'capSaved', 'capPending', 'doCapture', 'dsh-notes-capture']) {
@@ -359,16 +460,21 @@ async function main() {
     ]
   }
   const sessionTitleMock = { get: (session) => ({ title: '开发会话' }) }
+  // 0.1.7 会话元数据缓存断言用：readTitleSnapshots 调用计数（缓存命中后不应再触发）
+  let sharedTitleReads = 0
   const sessionQueryMock = {
     // 批量读 title + header（origin/cwd/createdAt）
-    readTitleSnapshots: async (sids) => (sids || []).map(sid => ({
-      sessionId: sid,
-      status: 'fulfilled',
-      value: {
-        session: { id: sid, cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T01:00:00.000Z', origin: sid.indexOf('sub99') >= 0 ? 'subagent' : undefined },
-        title: { title: '开发会话' }
-      }
-    }))
+    readTitleSnapshots: async (sids) => {
+      sharedTitleReads++
+      return (sids || []).map(sid => ({
+        sessionId: sid,
+        status: 'fulfilled',
+        value: {
+          session: { id: sid, cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T01:00:00.000Z', origin: sid.indexOf('sub99') >= 0 ? 'subagent' : undefined },
+          title: { title: '开发会话' }
+        }
+      }))
+    }
   }
   const ctx = {
     fs: fsMock, sandboxPolicy: { resolve: () => ({}) },
@@ -459,7 +565,7 @@ async function main() {
 
   // ===== 9. 启动加载与遥测 =====
   section('9. 启动 + 遥测')
-  await t('host-impl 应用成功（19 RPC handlers）', () => assert.strictEqual(Object.keys(handlers).length, 19))
+  await t('host-impl 应用成功（25 RPC handlers，含 notes-settings-get/set + 导入导出）', () => assert.strictEqual(Object.keys(handlers).length, 25))
   await t('notes-src handler 可用', () => assert(typeof handlers['notes-src'] === 'function'))
   await t('notes-css handler 可用', () => assert(typeof handlers['notes-css'] === 'function'))
   await t('notes-perf handler 可用', () => assert(typeof handlers['notes-perf'] === 'function'))
@@ -670,7 +776,7 @@ async function main() {
     assert.strictEqual(sentMessages.length, before + 1, '应 agent.send 注入上下文并触发工作')
     const m = sentMessages[sentMessages.length - 1]
     assert.strictEqual(m.target, 'next-turn'); assert.strictEqual(m.wakeup, true, 'wakeup=true 触发 agent 开始工作')
-    assert(m.msg.source && m.msg.source.kind === 'plugin' && m.msg.source.form === 'recall', 'source 应标记为 plugin + form=recall（召回上下文，非用户指令）')
+    assert(m.msg.source && m.msg.source.kind === 'plugin:dsh-notes' && m.msg.source.form === 'recall', 'source 应为生产者自有 kind（v4：plugin:dsh-notes）+ form=recall（召回上下文，非用户指令）')
     assert(m.msg.content[0].text.indexOf('重构 X 模块') >= 0, '消息含 todo 上下文')
     assert(m.msg.content[0].text.indexOf('重点处理性能瓶颈') >= 0, '消息含派发方补充要求')
     const g = await handlers['notes-get']({ id: c.id })
@@ -775,6 +881,101 @@ async function main() {
     }
   })
 
+  // ===== 16.5 0.1.7 会话元数据缓存（notes-dispatch-slow-fix：128s 超时空白修复） =====
+  section('16.5 0.1.7 会话元数据缓存（派发会话列表提速）')
+  await t('host-impl 含会话元数据缓存结构（模块级 Map + TTL 10min + 后台补齐）', () => {
+    assert(/const SESS_META_TTL = 10 \* 60 \* 1000/.test(hostSrc), 'SESS_META_TTL = 10min 常量（模块级）')
+    assert(/const sessMetaCache = new Map\(\)/.test(hostSrc), 'sessMetaCache 模块级 Map')
+    assert(hostSrc.indexOf('async function _fillSessMeta(missIds)') >= 0, '_fillSessMeta 后台批量读（串行化）')
+    assert(hostSrc.indexOf('sessMetaFillRunning') >= 0, '批量读串行化守卫')
+    assert(hostSrc.indexOf('titlesPending: true') >= 0 && hostSrc.indexOf('pendingIds: bgIds') >= 0, 'RPC 返回 titlesPending + pendingIds')
+    assert(hostSrc.indexOf('pendingSessions') >= 0, 'RPC 返回 pendingSessions 占位条目')
+  })
+  await t('index.mjs 双边同步同款缓存结构', () => {
+    assert(/const SESS_META_TTL = 10 \* 60 \* 1000/.test(indexSrc), 'SESS_META_TTL = 10min 常量（模块级）')
+    assert(/const sessMetaCache = new Map\(\)/.test(indexSrc), 'sessMetaCache 模块级 Map')
+    assert(indexSrc.indexOf('async function _fillSessMeta(missIds)') >= 0, '_fillSessMeta 后台批量读')
+    assert(indexSrc.indexOf('titlesPending: true') >= 0 && indexSrc.indexOf('pendingIds: bgIds') >= 0, 'RPC 返回 titlesPending + pendingIds')
+    assert(indexSrc.indexOf('(await _activeSessions()).sessions.map') >= 0, 'note_manage dispatch 取 .sessions（新返回形态）')
+    assert(hostSrc.indexOf('(await _activeSessions()).sessions.map') >= 0, 'host-impl note_manage dispatch 同步取 .sessions')
+  })
+
+  // --- 行为断言：全新实例（独立 harness/fs/计数 mock），冷热缓存计数确定 ---
+  // mock 工作区：abc12345=live（实时，不走 readTitleSnapshots）、sub9900000=非 live 子 agent（读盘路径）、arch00000=已归档（entries 阶段排除）
+  const mkCacheCtx = (sq, wr) => ({
+    fs: fsMock, sandboxPolicy: { resolve: () => ({}) },
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: systemPromptMock, sessionPersistence: sessionPersistenceMock, workspaceRegistry: wr || workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sq })[name],
+    effect: () => {},
+  })
+  const mkHarness = (h) => ({ handle: (name, fn) => { h[name] = fn; return () => { delete h[name] } }, defineTool: (d) => d, registerTool: () => () => {} })
+
+  let cacheReadsA = 0
+  const sqA = { readTitleSnapshots: async (sids) => { cacheReadsA++; return sessionQueryMock.readTitleSnapshots(sids) } }
+  const handlersA = {}
+  new Function('harness', 'pluginDir', hostSrc)(mkHarness(handlersA), DIR).apply(mkCacheCtx(sqA))
+  // 注意：sqA 包装 sessionQueryMock 会同时计 sharedTitleReads；本区只用 cacheReadsA/B/C 做断言
+  await t('冷缓存首次调用：立即返回 live 会话 + titlesPending/pendingIds（不阻塞首屏）', async () => {
+    const r = await handlersA['notes-active-sessions']({})
+    assert(Array.isArray(r.sessions) && r.sessions.length === 1 && r.sessions[0].short === 'abc12345', 'live 会话同步实时返回（实得 ' + JSON.stringify(r.sessions) + '）')
+    assert.strictEqual(r.titlesPending, true, '冷缓存响应带 titlesPending')
+    assert(Array.isArray(r.pendingIds) && r.pendingIds.length === 1 && r.pendingIds[0].indexOf('sub9900000') >= 0, 'pendingIds = 未命中非 live 会话（实得 ' + JSON.stringify(r.pendingIds) + '）')
+    assert(Array.isArray(r.pendingSessions) && r.pendingSessions.length === 1 && r.pendingSessions[0].workspace === 'deepseek-work' && r.pendingSessions[0].id.indexOf('sub9900000') >= 0, 'pendingSessions 占位条目带 workspace/id（实得 ' + JSON.stringify(r.pendingSessions) + '）')
+    assert.strictEqual(cacheReadsA, 1, '未命中会话后台触发一次批量读（实得 ' + cacheReadsA + '）')
+  })
+  await t('缓存命中：第二次调用零 readTitleSnapshots 增量 + 无 titlesPending', async () => {
+    const before = cacheReadsA
+    const r = await handlersA['notes-active-sessions']({})
+    assert.strictEqual(cacheReadsA, before, '第二次调用不再触发 readTitleSnapshots（增量须为 0，实得 ' + (cacheReadsA - before) + '）')
+    assert(!r.titlesPending, '缓存全命中不带 titlesPending')
+    assert(r.sessions.length === 1 && r.sessions[0].short === 'abc12345', 'subagent 按缓存 origin 过滤，列表稳定（实得 ' + JSON.stringify(r.sessions) + '）')
+  })
+  await t('TTL 过期重读（补丁实例 10min→80ms）：旧标题兜底展示 + 后台刷新 + titlesPending 复现', async () => {
+    const ttlSrc = hostSrc.replace('const SESS_META_TTL = 10 * 60 * 1000', 'const SESS_META_TTL = 80')
+    assert(ttlSrc.indexOf('const SESS_META_TTL = 80') >= 0 && ttlSrc !== hostSrc, 'TTL 补丁生效')
+    let cacheReadsB = 0
+    const sqB = { readTitleSnapshots: async (sids) => { cacheReadsB++; return sessionQueryMock.readTitleSnapshots(sids) } }
+    // 专属工作区：1 live（abc12345）+ 1 非 live 普通会话（ddd11111，非 subagent，标题走缓存）
+    const wrB = { archivedSessionIds: [], list: () => [{ id: 'wsB', title: 'deepseek-work', path: 'D:\\deepseek-work', sessionIds: ['session-abc12345-0000-0000-0000-000000000000', 'session-ddd11111-0000-0000-0000-000000000000'] }] }
+    const handlersB = {}
+    new Function('harness', 'pluginDir', ttlSrc)(mkHarness(handlersB), DIR).apply(mkCacheCtx(sqB, wrB))
+    const c1 = await handlersB['notes-active-sessions']({})
+    assert.strictEqual(cacheReadsB, 1, '冷缓存首次触发批量读（实得 ' + cacheReadsB + '）')
+    assert.strictEqual(c1.titlesPending, true, '冷缓存响应带 titlesPending')
+    assert(c1.sessions.length === 1 && c1.sessions[0].short === 'abc12345', '冷首屏仅 live 会话同步返回')
+    assert(c1.pendingIds.some(id => id.indexOf('ddd11111') >= 0), 'pendingIds 含持久会话')
+    const c2 = await handlersB['notes-active-sessions']({})
+    assert.strictEqual(cacheReadsB, 1, 'TTL 内命中不重读（实得 ' + cacheReadsB + '）')
+    assert(!c2.titlesPending, '命中无 titlesPending')
+    assert(c2.sessions.length === 2 && c2.sessions.some(s => s.short === 'ddd11111' && s.name === '开发会话' && s.live === false), '持久会话按缓存标题展示（实得 ' + JSON.stringify(c2.sessions) + '）')
+    await new Promise(r => setTimeout(r, 100))  // 越过 80ms TTL
+    const c3 = await handlersB['notes-active-sessions']({})
+    assert.strictEqual(cacheReadsB, 2, 'TTL 过期后台重读（实得 ' + cacheReadsB + '）')
+    assert.strictEqual(c3.titlesPending, true, '过期刷新响应带 titlesPending')
+    assert(c3.pendingIds.some(id => id.indexOf('ddd11111') >= 0), 'pendingIds 含过期会话')
+    assert(c3.sessions.length === 2 && c3.sessions.some(s => s.short === 'ddd11111' && s.name === '开发会话'), '过期期间旧标题兜底展示（列表不空不闪）')
+  })
+  await t('notes-sessions 同源同形：冷缓存也带 titlesPending（注入范围浮层不空等）', async () => {
+    let cacheReadsC = 0
+    const sqC = { readTitleSnapshots: async (sids) => { cacheReadsC++; return sessionQueryMock.readTitleSnapshots(sids) } }
+    const handlersC = {}
+    new Function('harness', 'pluginDir', hostSrc)(mkHarness(handlersC), DIR).apply(mkCacheCtx(sqC))
+    const r = await handlersC['notes-sessions']({})
+    assert.strictEqual(r.titlesPending, true, 'notes-sessions 冷缓存同样 titlesPending')
+    assert(r.sessions.some(s => s.short === 'abc12345'), 'live 会话同步返回')
+    const r2 = await handlersC['notes-sessions']({})
+    assert.strictEqual(cacheReadsC, 1, '第二次 notes-sessions 零重读（实得 ' + cacheReadsC + '）')
+    assert(!r2.titlesPending && r2.sessions.length === 1, '命中后稳定：仅 live 主会话（subagent 过滤、archived 排除）')
+  })
+  await t('client 占位渲染 + titlesPending 轮询重拉（结构）', () => {
+    assert(clientSrc.indexOf('标题加载中…') >= 0, '占位文案「短id · 标题加载中…」')
+    assert(clientSrc.indexOf('titlesPending') >= 0 && clientSrc.indexOf('pendingSessions') >= 0, 'client 消费 titlesPending + pendingSessions')
+    assert(clientSrc.indexOf('setDispatchPending') >= 0 && clientSrc.indexOf('setSessPending') >= 0, '派发对话框 + 注入范围浮层双占位状态')
+    assert(clientSrc.indexOf('later(loadActiveSessions, 1500)') >= 0, '派发对话框 1.5s 轮询重拉（dispatchOpenRef 终止）')
+    assert(clientSrc.indexOf('dispatchOpenRef') >= 0, '对话框开关镜像 ref（轮询终止条件）')
+    assert(clientSrc.indexOf('pullSessList') >= 0 && clientSrc.indexOf('timer.timeout(pullSessList, 1500)') >= 0, '注入范围浮层 1.5s 轮询重拉（面板关闭终止）')
+    assert(clientSrc.indexOf('disabled: !!s.pending') >= 0, '占位条目禁用态（不可勾选/不可选）')
+  })
+
   // ===== 17. P2 静态包 host 全链路（ESM import + webServer RPC 路由 + tools） =====
   section('17. P2 静态包 host 全链路（ESM import + webServer RPC 路由）')
   const NOTES_ROOT_STATIC = path.join(osNative.homedir(), '.dsh', 'notes')
@@ -817,15 +1018,20 @@ async function main() {
     assert(Array.isArray(modIndex.inject) && modIndex.inject.indexOf('fs') >= 0 && modIndex.inject.indexOf('sandboxPolicy') >= 0, 'inject 含 fs/sandboxPolicy')
     assert(typeof modIndex.apply === 'function', 'apply 导出')
   })
-  await t('harness 缺失时兜底：1 条 exact RPC 路由 + ctx.tools 3 工具 + 约定注入 order130', () => {
+  await t('harness 缺失时兜底：2 条 exact 路由（RPC + 全窗口页面）+ ctx.tools 3 工具 + 约定注入 order130 + 目录注入 order131', () => {
     modIndex.apply(ctx2)
-    assert.strictEqual(routes2.length, 1, '应注册 1 条 RPC 路由')
+    assert.strictEqual(routes2.length, 2, '应注册 2 条路由（/dsh-notes RPC 在前 + /dsh-notes-app 页面在后），实得 ' + routes2.length)
     assert.strictEqual(routes2[0].kind, 'exact', "路由 kind='exact'")
     assert.strictEqual(routes2[0].path, '/dsh-notes', "路由 path='/dsh-notes'")
     assert.strictEqual(typeof routes2[0].handler, 'function', 'handler 是函数')
+    assert.strictEqual(routes2[1].kind, 'exact', "页面路由 kind='exact'")
+    assert.strictEqual(routes2[1].path, '/dsh-notes-app', "页面路由 path='/dsh-notes-app'")
+    assert.strictEqual(typeof routes2[1].handler, 'function', '页面 handler 是函数')
     assert.deepStrictEqual(tools2.map(x => x.name).sort(), ['note_get', 'note_manage', 'note_search'], '注册 3 个工具')
-    assert.strictEqual(contexts2.length, 1, '注册 1 个 systemPrompt context')
+    assert.strictEqual(contexts2.length, 2, '注册 2 个 systemPrompt context（约定 + 目录）')
     assert.strictEqual(contexts2[0].order, 130, '约定注入 order=130')
+    assert.strictEqual(contexts2[1].name, 'notes:catalog', '目录注入 context 名')
+    assert.strictEqual(contexts2[1].order, 131, '目录注入 order=131（紧邻约定注入之后）')
   })
   // 走真实 HTTP handler 形态调用 RPC（等价 client 侧 fetch POST /dsh-notes）
   function rpc2(method, args) {
@@ -836,6 +1042,24 @@ async function main() {
       Promise.resolve(routes2[0].handler(req, res)).catch(reject)
     })
   }
+  // GET /dsh-notes-app 页面路由行为：真实读包内 app.html 返回 text/html；非 GET/HEAD 405
+  function pageReq(method) {
+    const headers = {}
+    const res = { statusCode: 0, body: null, setHeader: (k, v) => { headers[String(k).toLowerCase()] = v }, writeHead: (c) => { res.statusCode = c }, end: (s) => { res.body = s } }
+    return Promise.resolve(routes2[1].handler({ method: method }, res)).then(() => ({ status: res.statusCode, headers: headers, body: res.body }))
+  }
+  await t('GET /dsh-notes-app 返回 app.html（200 + text/html; charset=utf-8）', async () => {
+    const r = await pageReq('GET')
+    assert.strictEqual(r.status, 200, 'GET 应 200（实得 ' + r.status + '）')
+    assert(String(r.headers['content-type'] || '').indexOf('text/html') === 0, "Content-Type 应以 text/html 开头（实得 " + r.headers['content-type'] + '）')
+    assert(String(r.headers['cache-control'] || '').indexOf('no-store') >= 0, 'Cache-Control: no-store（每次读盘，开发期改页面免重启）')
+    assert(r.body.indexOf('<title>dsh-notes</title>') >= 0, '页面 <title> 应为 dsh-notes')
+    assert(r.body.indexOf("fetch('/dsh-notes'") >= 0, '页面应含 /dsh-notes RPC 数据层')
+  })
+  await t('POST /dsh-notes-app 返回 405（页面路由只服务 GET/HEAD）', async () => {
+    const r = await pageReq('POST')
+    assert.strictEqual(r.status, 405, 'POST 应 405（实得 ' + r.status + '）')
+  })
   const listP2 = await rpc2('notes-list', {})
   await t('RPC 200 + 首次启动迁移开发版笔记到 ~/.dsh/notes', () => {
     assert.strictEqual(listP2.status, 200, 'HTTP 200')
@@ -880,6 +1104,15 @@ async function main() {
     assert(c.body.text.indexOf('迁移前旧笔记') >= 0, 'inject=true 且 workspace 匹配时应注入（实得：' + c.body.text + '）')
     assert(c.body.text.indexOf('旧笔记正文') >= 0, '注入正文')
   })
+  await t('notes:catalog 目录注入行为（静态包）：普通笔记进目录、约定去重、标题行+轻推行', () => {
+    const cat = contexts2.find(x => x.name === 'notes:catalog')
+    assert(cat && typeof cat.text === 'function', 'notes:catalog context 已注册且 text 为函数')
+    const txt = cat.text()
+    assert(txt.indexOf('本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：') === 0, '目录标题行开头（实得：' + txt.slice(0, 80) + '）')
+    assert(txt.indexOf('- [' + cr2.body.id + '] 静态包笔记 (笔记, 运维)') >= 0, '一行一条格式：- [id] 标题 (kind中文, topic)（实得：' + txt + '）')
+    assert(txt.indexOf('迁移前旧笔记') < 0, 'inject=true 且本会话命中的约定不进目录（order 130 已注入全文，目录去重）')
+    assert(txt.indexOf('规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手') >= 0, '末尾轻推行')
+  })
   await t('notes-sessions / notes-active-sessions / notes-workspaces 可用', async () => {
     const s1 = await rpc2('notes-sessions', {})
     assert(Array.isArray(s1.body.sessions), 'sessions 数组')
@@ -890,6 +1123,46 @@ async function main() {
     assert(Array.isArray(s2.body.sessions), 'active-sessions 数组')
     const s3 = await rpc2('notes-workspaces', {})
     assert(s3.body.workspaces.length === 1 && s3.body.workspaces[0].cwd === 'D:\\deepseek-work', 'workspaces 映射')
+  })
+  await t('notes-active-sessions 缓存命中：再次调用零 readTitleSnapshots 增量（静态包模块级缓存）', async () => {
+    // 上一个测试的 notes-sessions 冷调用已后台填充缓存；此处再调必须全命中
+    const before = sharedTitleReads
+    const r = await rpc2('notes-active-sessions', {})
+    assert.strictEqual(sharedTitleReads, before, '缓存命中不应再触发 readTitleSnapshots（实得增量 ' + (sharedTitleReads - before) + '）')
+    assert(!r.body.titlesPending, '全命中响应不带 titlesPending')
+    assert(Array.isArray(r.body.sessions) && r.body.sessions.some(x => x.id === 'session-abc12345-0000-0000-0000-000000000000'), 'live 会话仍实时返回')
+  })
+  await t('index.mjs 冷缓存首屏：titlesPending + pendingIds，补齐后零重读（?coldcache 独立 ESM 实例）', async () => {
+    const modCold = await import(pathToFileURL(INDEX_PATH).href + '?coldcache=1')
+    const handlersCold = {}
+    global.harness = mkHarness(handlersCold)
+    try {
+      const storeCold = new Map()
+      const fsMockCold = {
+        resolve: async (p) => p,
+        stat: async (p) => ((p === NOTES_ROOT_STATIC || p === LEGACY_NOTES_STATIC) ? { dir: true } : (storeCold.has(p) ? { file: true } : null)),
+        listDir: async () => [],
+        readText: async (p) => { if (!storeCold.has(p)) throw new Error('ENOENT: ' + p); return storeCold.get(p) },
+        writeText: async (p, c) => { storeCold.set(p, c) },
+      }
+      modCold.apply({
+        fs: fsMockCold, sandboxPolicy: { resolve: () => ({}) },
+        webServer: { register: () => () => {} }, tools: { register: () => () => {} },
+        get: (name) => ({ agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+        effect: () => {},
+      })
+      const before = sharedTitleReads
+      const r = await handlersCold['notes-active-sessions']({})
+      assert.strictEqual(r.titlesPending, true, '静态包冷缓存响应带 titlesPending')
+      assert(Array.isArray(r.pendingIds) && r.pendingIds.length === 1 && r.pendingIds[0].indexOf('sub9900000') >= 0, 'pendingIds 含未命中非 live 会话（实得 ' + JSON.stringify(r.pendingIds) + '）')
+      assert(r.sessions.length === 1 && r.sessions[0].short === 'abc12345', 'live 会话同步返回，首屏不空')
+      assert.strictEqual(sharedTitleReads, before + 1, '未命中后台触发一次批量读（实得增量 ' + (sharedTitleReads - before) + '）')
+      const r2 = await handlersCold['notes-active-sessions']({})
+      assert.strictEqual(sharedTitleReads, before + 1, '第二次调用零 readTitleSnapshots 增量')
+      assert(!r2.titlesPending && r2.sessions.length === 1, '缓存命中后稳定（subagent 过滤、archived 排除）')
+    } finally {
+      delete global.harness
+    }
   })
   await t('notes-dispatch 派发到 live 会话 + 记录 dispatches', async () => {
     const before = sentMessages.length
@@ -941,12 +1214,78 @@ async function main() {
     assert(d.action === 'delete', 'note_manage.delete 可用')
     assert(typeof tSearch.output.render === 'function', 'output.render 保留')
   })
+  // 虚拟文件夹（静态包运行面）：notes-folders 经 webServer 兜底路由可达 + folder 字段链路 + move 往返
+  await t('notes-folders RPC（webServer 路由）：create/list 计数 + folders.json 落盘', async () => {
+    const c1 = await rpc2('notes-folders', { op: 'create', name: '静态包文件夹' })
+    assert(c1.status === 200 && c1.body.ok === true && c1.body.folder && c1.body.folder.id.indexOf('f-') === 0, 'create 返回 f- 前缀 id（实得：' + JSON.stringify(c1.body) + '）')
+    assert.strictEqual(c1.body.folder.order, 0, '首个文件夹 order=0')
+    const foldersJsonPath = path.join(NOTES_ROOT_STATIC, 'folders.json')
+    assert(store2.has(foldersJsonPath), 'folders.json 已写入 ~/.dsh/notes')
+    assert.deepStrictEqual(JSON.parse(store2.get(foldersJsonPath)), [{ id: c1.body.folder.id, name: '静态包文件夹', order: 0 }], '磁盘清单内容一致')
+    const lst = await rpc2('notes-folders', {})
+    assert(lst.body.folders.length === 1 && lst.body.folders[0].id === c1.body.folder.id, 'list 含新文件夹')
+    assert.strictEqual(typeof lst.body.unfiled, 'number', 'list 返回 unfiled 计数')
+    const bad = await rpc2('notes-folders', { op: 'purge' })
+    assert(bad.body.error && bad.body.error.indexOf('未知 op') >= 0, '未知 op 报错')
+  })
+  await t('静态包 folder 字段链路：create 带 folder → get/list/front-matter 一致 + 过滤', async () => {
+    const fid = (await rpc2('notes-folders', {})).body.folders[0].id
+    const n = await rpc2('notes-create', { title: 'fld-静态包', body: 'x', folder: fid })
+    assert(n.body.id, 'notes-create 接受 folder')
+    const g = await rpc2('notes-get', { id: n.body.id })
+    assert.strictEqual(g.body.note.folder, fid, 'get 返回 folder id')
+    const content = store2.get(path.join(NOTES_ROOT_STATIC, n.body.id + '.md'))
+    assert(content.indexOf('\nfolder: ' + fid + '\n') >= 0, 'front-matter 含 folder 行')
+    const inF = await rpc2('notes-list', { folder: fid })
+    assert(inF.body.notes.some(x => x.id === n.body.id) && inF.body.notes.every(x => x.folder === fid), 'notes-list 按 folder 过滤')
+    const unf = await rpc2('notes-list', { folder: '' })
+    assert(!unf.body.notes.some(x => x.id === n.body.id), 'folder=\'\' 未分类不含该笔记')
+    const lst = await rpc2('notes-folders', {})
+    assert.strictEqual(lst.body.folders.find(f => f.id === fid).count, 1, '文件夹计数=1')
+  })
+  await t('静态包 note_manage move/create 名称解析 + 移出往返', async () => {
+    const fid = (await rpc2('notes-folders', {})).body.folders[0].id
+    const tMgr = tools2.find(x => x.name === 'note_manage')
+    // create 按名称落位（修复：不再把名称当 id 写入悬空引用）
+    const c = await tMgr.execute({ action: 'create', title: 'fld-静态包-mgr', body: 'x', folder: '静态包文件夹' })
+    assert(c.id, 'create 按名称接受 folder')
+    const g1 = await rpc2('notes-get', { id: c.id })
+    assert.strictEqual(g1.body.note.folder, fid, 'create 名称解析为 id 落盘')
+    const cbad = await tMgr.execute({ action: 'create', title: 'fld-bad', body: 'x', folder: '不存在的文件夹' })
+    assert(cbad.error && cbad.error.indexOf('文件夹不存在') >= 0, 'create 不存在文件夹报错')
+    // move：移出 → 按名称移回
+    const m1 = await tMgr.execute({ action: 'move', id: c.id, folder: '' })
+    assert.strictEqual(m1.folder, '', 'move 空串 = 移出未分类')
+    assert.strictEqual((await rpc2('notes-get', { id: c.id })).body.note.folder, '', '移出生效')
+    const m2 = await tMgr.execute({ action: 'move', id: c.id, folder: '静态包文件夹' })
+    assert.strictEqual(m2.folder, fid, 'move 按名称解析为 id')
+    assert.strictEqual(m2.folderName, '静态包文件夹', 'move 返回 folderName')
+    assert.strictEqual((await rpc2('notes-get', { id: c.id })).body.note.folder, fid, '移回生效')
+    const mbad = await tMgr.execute({ action: 'move', id: c.id, folder: '不存在的文件夹' })
+    assert(mbad.error && mbad.error.indexOf('文件夹不存在') >= 0, 'move 不存在文件夹报错')
+    // note_search folder 过滤（名称命中）
+    const tSearch = tools2.find(x => x.name === 'note_search')
+    const s1 = await tSearch.execute({ query: 'fld-静态包-mgr', folder: '静态包文件夹' })
+    assert(s1.count >= 1 && s1.notes.every(n => n.folder === fid), 'note_search 按名称过滤命中')
+    const s2 = await tSearch.execute({ query: 'fld-静态包-mgr', folder: '' })
+    assert.strictEqual(s2.count, 0, 'folder=\'\' 未分类查不到该笔记')
+  })
+  await t('静态包 folders.json 损坏兜底：空清单 + 主流程不受影响', async () => {
+    const foldersJsonPath = path.join(NOTES_ROOT_STATIC, 'folders.json')
+    const backup = store2.get(foldersJsonPath)
+    store2.set(foldersJsonPath, '这不是 JSON {')
+    const r1 = await rpc2('notes-folders', {})
+    assert(r1.status === 200 && Array.isArray(r1.body.folders) && r1.body.folders.length === 0 && !r1.body.error, '坏 JSON → 空清单不抛错')
+    const l = await rpc2('notes-list', {})
+    assert(l.body.notes.length >= 1, 'notes-list 主流程不受 folders.json 损坏影响')
+    store2.set(foldersJsonPath, backup)
+  })
   await t('harness 主通道：handle 经 harness.handle 注册（host.call 链路可用）', async () => {
     global.harness = harnessBackup
     try {
       const modBridge = await import(pathToFileURL(INDEX_PATH).href + '?bridge=1')
       modBridge.apply(ctx2)
-      assert.strictEqual(routes2.length, 2, '兜底路由仍在')
+      assert.strictEqual(routes2.length, 4, '兜底路由仍在（两次 apply × 2 条路由：RPC + 页面），实得 ' + routes2.length)
       assert.strictEqual(typeof handlers['notes-list'], 'function', 'notes-list 经 harness.handle 注册')
       assert.strictEqual((await handlers['notes-ping']({ t: 2 })).ok, true, 'P1 notes-ping 经 harness.handle 可调用')
     } finally {
@@ -974,10 +1313,11 @@ async function main() {
   // 发布包 client 源码独立读取（本节在 section 18 之前，clientPkgSrc 尚未定义）
   const clientPkgSrcSettings = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
   // --- 源码结构断言 ---
-  await t('设置按钮存在（标题栏 ⚙ + tooltip 设置）', () => {
-    assert(/dsh-notes-titlebar-btn dsh-nt', onClick: openSettings/.test(clientSrc), 'client-impl 标题栏含设置按钮（dsh-notes-titlebar-btn + onClick=openSettings）')
+  await t('设置入口存在（v2 侧栏底部 fbtn：gear 图标 + tooltip 设置）', () => {
+    assert(/dsh-notes-fbtn dsh-nt', onClick: openSettings/.test(clientSrc), 'client-impl 侧栏底部含设置按钮（dsh-notes-fbtn + onClick=openSettings）')
     assert(clientSrc.indexOf("'data-tooltip': '设置'") >= 0, '设置按钮 tooltip=设置')
-    assert(clientSrc.indexOf('⚙') >= 0, '设置按钮图标 ⚙')
+    assert(clientSrc.indexOf("I('gear', 12)") >= 0, '设置按钮 gear SVG 图标')
+    assert(clientSrc.indexOf('⚙') < 0, '⚙ emoji 已移除（SVG 化）')
   })
   await t('设置卡片 class 存在（client-impl + 发布包 + styles.css 三处同步）', () => {
     for (const cls of ['dsh-notes-settings-mask', 'dsh-notes-settings-modal', 'dsh-notes-settings-modal-t', 'dsh-notes-settings-list', 'dsh-notes-settings-row', 'dsh-notes-settings-label', 'dsh-notes-settings-control']) {
@@ -1254,24 +1594,31 @@ async function main() {
     const modNoTimer = loadClientPackage({ slots: {}, timer: undefined })
     assert.strictEqual(modNoTimer.applied, false, 'timer 缺失时 apply 直接返回')
   })
-  await t('lib/client.js 功能面完整（UI 全保留）', () => {
+  await t('lib/client.js 功能面完整（UI v2 全保留）', () => {
     const need = [
       'conversation.session.header.actions', 'shell.overlay',      // 三个 Slot 注册点
       'dsh-notes-hdr-btn', 'dsh-notes-fab', 'dsh-notes-floating',  // 头部按钮 / 悬浮气泡 / 浮窗面板
-      'dsh-notes-titlebar', 'dsh-notes-search-input', 'dsh-notes-settings-modal',
-      'dsh-notes-kind-chip', 'dsh-notes-pin-toggle', 'dsh-note-item', 'dsh-note-inject',
-      'dsh-notes-editor-body', 'dsh-notes-scope-panel', 'dsh-notes-dispatch-modal',
-      'dsh-notes-dispatch-history', 'dsh-notes-instruct-box', 'dsh-notes-toast',
-      'dsh-notes-resize-handle', 'dsh-notes-topic-header', 'dsh-notes-empty-state'
+      'dsh-notes-titlebar', 'dsh-notes-app', 'dsh-notes-side', 'dsh-notes-quick-input',
+      'dsh-notes-chip', 'dsh-notes-sec-h', 'dsh-notes-folder-row', 'dsh-notes-note-row',
+      'dsh-notes-nested', 'dsh-notes-fbadge', 'dsh-notes-topic-row', 'dsh-notes-side-foot',
+      'dsh-notes-ed', 'dsh-notes-ed-crumb', 'dsh-notes-ed-title', 'dsh-notes-ed-meta',
+      'dsh-notes-meta-chip', 'dsh-notes-meta-act', 'dsh-notes-ed-body', 'dsh-notes-ed-foot',
+      'dsh-notes-settings-modal', 'dsh-notes-scope-panel', 'dsh-notes-dispatch-modal',
+      'dsh-notes-dispatch-history', 'dsh-notes-cap', 'dsh-notes-toast',
+      'dsh-notes-resize-handle', 'dsh-notes-empty-state'
     ]
     const missing = need.filter(x => clientPkgSrc.indexOf(x) < 0)
     assert.strictEqual(missing.length, 0, '缺少 UI 标记：' + JSON.stringify(missing))
+    // v2 旧三栏/旧浮层标记清零
+    for (const gone of ['dsh-notes-list', 'dsh-notes-divider', 'dsh-note-item', 'dsh-notes-instruct-box', 'dsh-notes-topic-header', 'dsh-notes-kind-chip', 'dsh-notes-pin-toggle']) {
+      assert(clientPkgSrc.indexOf(gone) < 0, '发布包仍含旧 UI 标记：' + gone)
+    }
     // RPC 方法面（与 index.mjs 的 handler 名一致）
-    const rpcs = ['notes-css', 'notes-list', 'notes-get', 'notes-sessions', 'notes-search', 'notes-quick', 'notes-quick-instruct', 'notes-update', 'notes-delete', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-archive', 'notes-perf']
+    const rpcs = ['notes-css', 'notes-list', 'notes-get', 'notes-create', 'notes-sessions', 'notes-search', 'notes-quick', 'notes-quick-instruct', 'notes-update', 'notes-delete', 'notes-folders', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-archive', 'notes-perf', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-import-preview', 'notes-import']
     const missRpc = rpcs.filter(x => clientPkgSrc.indexOf(x) < 0)
     assert.strictEqual(missRpc.length, 0, '缺少 RPC 调用：' + JSON.stringify(missRpc))
-    // 交互能力：拖拽 / 快捷键 / 自动保存 / 入口双模式 / 性能遥测
-    for (const k of ['drag(', 'keydown', 'dsh-notes-entry', 'dsh-notes-panel-state', 'connectWorkspace', '__dshNotesPerf', 'PerformanceObserver', 'localStorage']) {
+    // 交互能力：拖拽 / 快捷键 / 自动保存 / 入口双模式 / 性能遥测 / SVG 图标 helper
+    for (const k of ['drag(', 'keydown', 'dsh-notes-entry', 'dsh-notes-panel-state', 'connectWorkspace', '__dshNotesPerf', 'PerformanceObserver', 'localStorage', 'function I(name, size, cls)']) {
       assert(clientPkgSrc.indexOf(k) >= 0, '缺少能力：' + k)
     }
   })
@@ -1296,10 +1643,10 @@ async function main() {
     assert.strictEqual(loaded.slots.disposed, 4, '卸载时释放 4 个 slots.inject（实得 ' + loaded.slots.disposed + '）')
     assert(loaded.effectsCleaned >= 1, 'ctx.effect 清理执行（实得 ' + loaded.effectsCleaned + '）')
   })
-  await t('lib/client.js 选区浮层含复制按钮 + primary 样式类', () => {
-    assert(clientPkgSrc.indexOf('dsh-notes-instruct-actions') >= 0, 'instruct-actions 容器存在')
-    assert(clientPkgSrc.indexOf('复制') >= 0, '选区浮层 actions 含复制按钮')
-    assert(/dsh-notes-instruct-btn primary/.test(clientPkgSrc), 'primary 按钮样式类存在')
+  await t('lib/client.js 快速记录卡片 v2（复制按钮 + primary 样式类）', () => {
+    assert(clientPkgSrc.indexOf('dsh-notes-cap-acts') >= 0, '卡片按钮行容器存在')
+    assert(clientPkgSrc.indexOf('复制') >= 0, '卡片含复制按钮')
+    assert(/dsh-notes-cbtn primary/.test(clientPkgSrc), 'primary 按钮样式类存在')
     assert(/copySelection/.test(clientPkgSrc), 'copySelection 复制处理函数存在')
     assert(clientPkgSrc.indexOf('navigator.clipboard') >= 0, '优先 navigator.clipboard.writeText')
     assert(clientPkgSrc.indexOf('execCommand') >= 0, '降级 execCommand 兜底')
@@ -1401,10 +1748,10 @@ async function main() {
     assert(css.indexOf('.dsh-notes-ctxmenu{') >= 0, 'styles.css 含 ctxmenu 容器样式')
     assert(css.indexOf('.dsh-notes-ctxmenu-item') >= 0, 'styles.css 含菜单项样式')
   })
-  await t('菜单含置顶/已解决/删除三动作', () => {
-    assert(/'📌 ' \+/.test(clientSrc) && clientSrc.indexOf('取消置顶') >= 0, '置顶/取消置顶动作存在')
-    assert(/'✓ ' \+/.test(clientSrc) && clientSrc.indexOf('标记已解决') >= 0, '标记已解决/重开动作存在')
-    assert(/'🗑 删除'/.test(clientSrc), '删除动作存在')
+  await t('菜单含置顶/已解决/删除三动作（v2 纯文字 + SVG 图标）', () => {
+    assert(clientSrc.indexOf("ctxMenu.note.status === 'pinned' ? '取消置顶' : '置顶'") >= 0, '置顶/取消置顶动作存在')
+    assert(clientSrc.indexOf("ctxMenu.note.status === 'resolved' ? '重开' : '标记已解决'") >= 0, '标记已解决/重开动作存在')
+    assert(clientSrc.indexOf("I('trash', 12), '删除'") >= 0, '删除动作存在（trash 图标）')
     assert(/function ctxSetStatus\(n, status\)/.test(clientSrc), 'ctxSetStatus 函数存在')
     assert(/ctxSetStatus[\s\S]{0,300}host\.call\('notes-update'/.test(clientSrc), 'ctxSetStatus 走 notes-update RPC')
   })
@@ -1413,6 +1760,982 @@ async function main() {
     assert(clientPkgSrc.indexOf('dsh-note-delete') < 0, '发布包不含 dsh-note-delete')
     const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
     assert(!/\.dsh-note-delete\{/.test(css), 'styles.css 不含 dsh-note-delete 样式块')
+  })
+
+  // ===== 21. 虚拟文件夹（folders.json 清单 + folder 字段 + notes-folders RPC + move + 过滤）=====
+  section('21. 虚拟文件夹（folder 字段 + folders.json + notes-folders + move）')
+  // 注意：section 17 用同一个 mock harness 应用过静态包 index.mjs，其 handlers 覆盖了开发版；
+  // 本节断言的是开发版 folder 行为（静态包 folder 行为断言在 section 17），故重新 apply 开发版插件，
+  // 把 handlers 还原为 host-impl 版本（同一 store，数据互通）。
+  plugin.apply(ctx)
+  const FOLDERS_PATH_MOCK = NOTES_DIR + '\\folders.json'
+
+  // --- 源码结构断言（host 数据链路 / 工具 schema / client UI / 样式，开发版 + 发布包同步）---
+  await t('host-impl folder 字段全链路（FM 写入 / 解析 / 瘦身 / 更新）', () => {
+    assert(/'folder: ' \+ escYaml\(m\.folder \|\| ''\)/.test(hostSrc), 'buildFM 写 folder 行')
+    assert(/folder: p\.meta\.folder \|\| ''/.test(hostSrc), 'noteFromParsed 读 folder（缺省 \'\'）')
+    assert((hostSrc.match(/folder: n\.folder \|\| ''/g) || []).length >= 2, 'persistNote 与 slim 均带 folder')
+    assert(/if \(folder !== undefined\) note\.folder = folder/.test(hostSrc), '_update 仅在显式传 folder 时改（undefined 不动）')
+  })
+  await t('index.mjs folder 字段全链路 + notes-folders 注册（静态包与开发版同源）', () => {
+    assert(/'folder: ' \+ escYaml\(m\.folder \|\| ''\)/.test(indexSrc), 'index.mjs buildFM 写 folder 行')
+    assert(/folder: p\.meta\.folder \|\| ''/.test(indexSrc), 'index.mjs noteFromParsed 读 folder')
+    assert((indexSrc.match(/folder: n\.folder \|\| ''/g) || []).length >= 2, 'index.mjs persistNote 与 slim 均带 folder')
+    assert(/if \(folder !== undefined\) note\.folder = folder/.test(indexSrc), 'index.mjs _update 显式传 folder 才改')
+    assert(indexSrc.indexOf("FOLDERS_PATH = path.join(NOTES_ROOT, 'folders.json')") >= 0, 'index.mjs FOLDERS_PATH 落在 ~/.dsh/notes/folders.json')
+    for (const fn of ['loadFolders', 'saveFolders', 'effectiveFolder', 'resolveFolderRef', 'genFolderId', '_folders']) {
+      assert(indexSrc.indexOf('function ' + fn) >= 0, 'index.mjs 缺函数 ' + fn)
+    }
+    assert(/handle\('notes-folders'/.test(indexSrc), 'index.mjs 注册 notes-folders RPC（webServer 兜底路由经 handlers 表自动可达）')
+    assert(/async function _list\(tag, kind, folder\)/.test(indexSrc) && /if \(folder !== undefined && effectiveFolder\(note, folders\) !== folder\) continue/.test(indexSrc), 'index.mjs _list 接 folder 过滤')
+    assert(/async function _search\(query, tag, topic, kind, folder\)/.test(indexSrc), 'index.mjs _search 接 folder')
+    assert(/enum: \['create', 'list', 'update', 'move', 'delete'/.test(indexSrc), 'index.mjs note_manage action enum 含 move')
+  })
+  await t('host-impl folders.json 清单模块 + notes-folders RPC 注册', () => {
+    assert(hostSrc.indexOf("FOLDERS_PATH = NOTES_DIR + '\\\\folders.json'") >= 0, 'FOLDERS_PATH 落在 notes/folders.json')
+    for (const fn of ['loadFolders', 'saveFolders', 'effectiveFolder', 'resolveFolderRef', 'genFolderId', '_folders']) {
+      assert(hostSrc.indexOf('function ' + fn) >= 0, '缺函数 ' + fn)
+    }
+    assert(/JSON\.stringify\(list, null, 2\)/.test(hostSrc), 'saveFolders 持久化 JSON 清单')
+    assert(/catch \(e\) \{ return \[\] \}/.test(hostSrc), 'loadFolders 损坏兜底空数组')
+    assert.strictEqual(typeof handlers['notes-folders'], 'function', 'notes-folders handler 已注册')
+  })
+  await t('工具 schema：note_manage 含 move action + folder 参数；note_search 含 folder 参数', () => {
+    const enumList = t3.parameters.properties.action.enum
+    assert(enumList.indexOf('move') >= 0, 'note_manage action enum 应含 move（实得：' + JSON.stringify(enumList) + '）')
+    assert(t3.parameters.properties.folder, 'note_manage 缺 folder 参数')
+    assert(t1.parameters.properties.folder, 'note_search 缺 folder 参数')
+    assert(t1.parameters.properties.folder.description.indexOf('unfiled') >= 0, 'note_search folder 说明应含未分类口径')
+  })
+  await t('client 树状文件夹结构（folder-row 节点 + 折叠态持久化 + notes-folders 加载，发布包同步）', () => {
+    assert(/const \[folders, setFolders\] = React\.useState\(\[\]\)/.test(clientSrc), 'folders state 存在')
+    assert(/const \[foldersExpanded, setFoldersExpanded\] = React\.useState\(loadFoldersExpanded\)/.test(clientSrc), 'foldersExpanded state 读 localStorage 初值')
+    assert(clientSrc.indexOf("localStorage.getItem('dsh-notes-folders-expanded')") >= 0 && clientSrc.indexOf("localStorage.setItem('dsh-notes-folders-expanded', JSON.stringify(") >= 0, '折叠态持久化 localStorage(dsh-notes-folders-expanded)')
+    assert(clientSrc.indexOf("localStorage.getItem('dsh-notes-folder')") < 0, '旧 folderSel 持久化键（dsh-notes-folder）已移除')
+    assert(/host\.call\('notes-folders'\)/.test(clientSrc), 'loadFolders 走 notes-folders RPC')
+    assert(/prev\.filter\(id => id === PINNED_KEY \|\| res\.folders\.some\(f => f\.id === id\)\)/.test(clientSrc), '已删除文件夹的展开态残留自动清理')
+    for (const cls of ['dsh-notes-folder-row', 'dsh-notes-caret', 'dsh-notes-row-nm', 'dsh-notes-row-n', 'dsh-notes-ic-slot', 'dsh-notes-folder-rename', 'dsh-notes-sec-h-add']) {
+      assert(clientSrc.indexOf(cls) >= 0, 'client-impl 缺 ' + cls)
+      assert(clientPkgSrc.indexOf(cls) >= 0, '发布包 client.js 缺 ' + cls + '（需先跑 scripts/build-dist.cjs）')
+    }
+    // v2：文件夹行图标全部 SVG（caret chev + folder symbol），无 emoji
+    assert(clientSrc.indexOf("I('folder', 13)") >= 0 && clientSrc.indexOf("I('chev', 10)") >= 0, '文件夹行 SVG 图标（folder + caret chev）')
+    assert(clientSrc.indexOf('dsh-notes-folder-ic') < 0, 'client-impl 不含旧 folder-ic')
+    assert(clientPkgSrc.indexOf('dsh-notes-folder-ic') < 0, '发布包 client.js 不含旧 folder-ic')
+    assert(clientSrc.indexOf('📂') < 0, '文件夹行 📂 emoji 已移除')
+    for (const gone of ['dsh-notes-folderbar', 'dsh-notes-folder-chip', 'loadFolderSel', 'saveFolderSel', 'selectFolder(']) {
+      assert(clientSrc.indexOf(gone) < 0, 'client-impl 应已移除 ' + gone)
+      assert(clientPkgSrc.indexOf(gone) < 0, '发布包 client.js 应已移除 ' + gone + '（需先跑 scripts/build-dist.cjs）')
+    }
+    assert(clientSrc.indexOf('PINNED_KEY') >= 0 && clientSrc.indexOf('sec-pinned') >= 0, '树顶部保留「置顶」折叠组（PINNED_KEY）')
+    assert(clientSrc.indexOf('新建文件夹') >= 0, '含「新建文件夹」入口（分组头 ＋ tooltip）')
+    assert(clientPkgSrc.indexOf('notes-folders') >= 0, '发布包 client.js 含 notes-folders RPC 调用')
+  })
+  await t('client 树渲染逻辑（v2：视图头 / 置顶折叠组 / 文件夹嵌套 / 未分类主题二级分组 / 主题全局过滤区 + 新建落位）', () => {
+    assert(clientSrc.indexOf('const treeMode') < 0, 'v2 恒为树渲染（旧 treeMode 平铺退化已移除）')
+    assert(/if \(n\.folder\) expandFolder\(n\.folder\)/.test(clientSrc), '选中笔记所在文件夹自动展开')
+    assert(/function toggleFolder\(id\)/.test(clientSrc) && /function isFolderExpanded\(id\)/.test(clientSrc) && /function expandFolder\(id\)/.test(clientSrc), '折叠切换/判定/自动展开 helper 存在')
+    assert(clientSrc.indexOf("className: 'dsh-notes-nested'") >= 0, '文件夹/主题分组子笔记 nested 渲染')
+    assert(clientSrc.indexOf("folderSel === 'pinned'") < 0 && clientSrc.indexOf("folderSel !== 'all'") < 0, 'folderSel 过滤分支已移除')
+    assert(clientSrc.indexOf('groupByTopic(unfiled)') >= 0, '未分类按主题二级分组')
+    assert(clientSrc.indexOf('notes.forEach(n => { if (n.topic) allTopics[n.topic]') >= 0, '主题过滤区统计全库主题（不按当前过滤）')
+    assert(/setView\(view\.type === 'topic' && view\.id === tn \? \{ type: 'all', id: '' \} : \{ type: 'topic', id: tn \}\)/.test(clientSrc), '主题行点击切换主题视图/全部')
+    assert(/setView\(view\.type === 'folder' && view\.id === f\.id \? \{ type: 'all', id: '' \} : \{ type: 'folder', id: f\.id \}\)/.test(clientSrc), '文件夹行主体点击进入/退出文件夹视图（原型行为）')
+    assert(clientSrc.indexOf("view.type === 'folder' ? view.id :") >= 0, '新建落位：文件夹视图落当前文件夹')
+    assert(/payload\.folder = createFolder/.test(clientSrc), 'notes-create 携带 folder')
+  })
+  await t('client 移动到文件夹 + 文件夹右键管理（v2 纯文字标签，开发版 + 发布包同步）', () => {
+    assert(clientSrc.indexOf('移动到文件夹') >= 0, '笔记行右键含「移动到文件夹」')
+    assert(/function ctxMoveToFolder\(n, folderId\)/.test(clientSrc), 'ctxMoveToFolder 存在')
+    assert(/host\.call\('notes-update', \{ id: n\.id, folder: folderId \}\)/.test(clientSrc), '移动走 notes-update 只改 folder 字段')
+    assert(clientSrc.indexOf('移出文件夹（未分类）') >= 0 && clientSrc.indexOf('新建文件夹…') >= 0, '子菜单含移出/新建')
+    assert(/function openFolderMenu\(ev, f\)/.test(clientSrc), 'openFolderMenu 存在')
+    for (const label of ["'重命名'", "'上移'", "'下移'", "'删除文件夹'"]) {
+      assert(clientSrc.indexOf(label) >= 0, '文件夹右键菜单缺「' + label + '」')
+    }
+    for (const op of ["{ op: 'create', name: name }", "{ op: 'rename', id: id, name: name }", "{ op: 'delete', id: f.id }", "{ op: 'reorder', ids: ids }"]) {
+      assert(clientSrc.indexOf(op) >= 0, 'client-impl 缺 notes-folders 调用 ' + op)
+    }
+    assert(clientPkgSrc.indexOf('移动到文件夹') >= 0 && clientPkgSrc.indexOf('删除文件夹') >= 0, '发布包含移动/删除文件夹交互')
+  })
+  await t('styles.css 树状文件夹样式（v2 token 化，开发版 + 发布包同步）', () => {
+    const cssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    for (const cls of ['.dsh-notes-folder-row{', '.dsh-notes-caret{', '.dsh-notes-row-nm{', '.dsh-notes-row-n{', '.dsh-notes-folder-rename{', '.dsh-notes-nested{', '.dsh-notes-sec-h{', '.dsh-notes-fbadge{', '.dsh-notes-note-row{']) {
+      assert(cssDev.indexOf(cls) >= 0, 'styles.css 缺 ' + cls)
+      assert(cssPkg.indexOf(cls) >= 0, '发布包 lib/styles.css 缺 ' + cls)
+    }
+    assert(cssDev.indexOf('.dsh-notes-folder-ic') < 0 && cssPkg.indexOf('.dsh-notes-folder-ic') < 0, 'folder-ic 样式已移除（开发版 + 发布包）')
+    // 文件夹行视觉（原型 .row.head）：cursor:default + 11.5px 灰字（--nt2）
+    assert(/\.dsh-notes-folder-row\{[^}]*cursor:default/.test(cssDev) && /\.dsh-notes-folder-row\{[^}]*cursor:default/.test(cssPkg), '文件夹行 cursor:default')
+    assert(/\.dsh-notes-folder-row\{[^}]*color:var\(--nt2\)/.test(cssDev) && /\.dsh-notes-folder-row\{[^}]*font-size:11\.5px/.test(cssDev), '文件夹行 11.5px 灰字（--nt2）')
+    // 嵌套笔记：margin-left 13px + padding-left 9px + 1px 引导线（--nbd-soft，原型口径）
+    assert(/\.dsh-notes-nested\{[^}]*margin-left:13px/.test(cssDev) && /\.dsh-notes-nested\{[^}]*padding-left:9px/.test(cssDev) && /\.dsh-notes-nested\{[^}]*border-left:1px solid var\(--nbd-soft\)/.test(cssDev), '嵌套笔记 1px 缩进引导线（原型 13px/9px）')
+    // 新建文件夹入口：分组头 ＋ 图标按钮（sec-h-add，hover 强调色）
+    assert(/\.dsh-notes-sec-h-add\{[^}]*var\(--nt3\)/.test(cssDev) && /\.dsh-notes-sec-h-add:hover\{[^}]*var\(--nacc\)/.test(cssDev), '新建文件夹入口（nt3 → hover nacc）')
+    assert(cssDev.indexOf('.dsh-notes-folderbar') < 0 && cssPkg.indexOf('.dsh-notes-folderbar') < 0, 'folderbar 样式已移除（开发版 + 发布包）')
+    assert(cssDev.indexOf('.dsh-notes-folder-chip') < 0 && cssPkg.indexOf('.dsh-notes-folder-chip') < 0, 'folder-chip 样式已移除（开发版 + 发布包）')
+    assert(cssDev.indexOf('.dsh-note-item') < 0 && cssPkg.indexOf('.dsh-note-item') < 0, '旧 dsh-note-item 列表项样式已移除（开发版 + 发布包）')
+  })
+
+  // --- 行为断言（内存 mock：handlers + note_manage + fsMock store）---
+  await t('notes-folders list 初始兜底：folders.json 缺失 → 空清单 + unfiled 计数（不抛错）', async () => {
+    assert(!store.has(FOLDERS_PATH_MOCK), '前置：mock store 无 folders.json')
+    const r = await handlers['notes-folders']({})
+    assert(Array.isArray(r.folders) && r.folders.length === 0, 'folders 为空数组（实得：' + JSON.stringify(r) + '）')
+    const all = await handlers['notes-list']({})
+    assert.strictEqual(r.unfiled, all.notes.length, '无清单时全部笔记计入 unfiled')
+  })
+  await t('notes-folders create：落盘 folders.json + order 递增；缺 name 报错', async () => {
+    const c1 = await handlers['notes-folders']({ op: 'create', name: '工作' })
+    assert(c1.ok === true && c1.folder && c1.folder.id.indexOf('f-') === 0, 'create 返回 f- 前缀 id（实得：' + JSON.stringify(c1) + '）')
+    assert.strictEqual(c1.folder.name, '工作')
+    assert.strictEqual(c1.folder.order, 0, '首个文件夹 order=0')
+    assert(store.has(FOLDERS_PATH_MOCK), 'folders.json 已写入 mock store')
+    const onDisk = JSON.parse(store.get(FOLDERS_PATH_MOCK))
+    assert.deepStrictEqual(onDisk, [{ id: c1.folder.id, name: '工作', order: 0 }], '磁盘清单内容一致')
+    const c2 = await handlers['notes-folders']({ op: 'create', name: '学习' })
+    assert.strictEqual(c2.folder.order, 1, '第二个文件夹 order 递增为 1')
+    const bad = await handlers['notes-folders']({ op: 'create', name: '  ' })
+    assert(bad.error && bad.error.indexOf('需要 name') >= 0, '空白 name 应报错')
+    const bad2 = await handlers['notes-folders']({ op: 'create' })
+    assert(bad2.error, '缺 name 应报错')
+  })
+  await t('folder 字段数据往返：create 带 folder → get/list/磁盘 front-matter 一致', async () => {
+    const folders = (await handlers['notes-folders']({})).folders
+    const fWork = folders.find(f => f.name === '工作')
+    const r = await handlers['notes-create']({ title: 'fld-往返', body: 'RT', topic: '开发', folder: fWork.id })
+    const g = await handlers['notes-get']({ id: r.id })
+    assert.strictEqual(g.note.folder, fWork.id, 'get 返回 folder id')
+    const content = store.get(NOTES_DIR + '\\' + r.id + '.md')
+    assert(content.indexOf('\nfolder: ' + fWork.id + '\n') >= 0, 'front-matter 含 folder 行（实得：' + content.split('\n').slice(0, 8).join('|') + '）')
+    const l = await handlers['notes-list']({})
+    assert.strictEqual(l.notes.find(n => n.id === r.id).folder, fWork.id, 'list slim 带 folder 字段')
+  })
+  await t('旧文件无 folder 字段兜底为未分类（向后兼容）', async () => {
+    const legacyId = 'n-legacy-folder'
+    const legacyContent = '---\nid: ' + legacyId + '\ntitle: 老笔记无folder\ntopic: 需求\ntags: quick\ncreatedAt: "2026-01-01T00:00:00.000Z"\nupdatedAt: "2026-01-01T00:00:00.000Z"\n---\n\n正文\n'
+    await fsMock.writeText(NOTES_DIR + '\\' + legacyId + '.md', legacyContent)
+    const g = await handlers['notes-get']({ id: legacyId })
+    assert.strictEqual(g.note.folder, '', '无 folder 字段 → 缺省 \'\'（未分类）')
+    const r = await handlers['notes-folders']({})
+    assert(r.unfiled >= 1, '旧文件计入 unfiled')
+  })
+  await t('notes-list folder 过滤：按 id 命中 / 空串 = 未分类', async () => {
+    const folders = (await handlers['notes-folders']({})).folders
+    const fWork = folders.find(f => f.name === '工作')
+    const inWork = await handlers['notes-list']({ folder: fWork.id })
+    assert(inWork.notes.length >= 1 && inWork.notes.every(n => n.folder === fWork.id), 'folder=id 只返回该文件夹笔记')
+    const unfiled = await handlers['notes-list']({ folder: '' })
+    assert(unfiled.notes.length >= 1 && unfiled.notes.every(n => !(n.folder && folders.some(f => f.id === n.folder))), 'folder=\'\' 只返回未分类（不含清单内引用）')
+    assert(unfiled.notes.find(n => n.id === 'n-legacy-folder'), '未分类列表含旧文件')
+    const all = await handlers['notes-list']({})
+    assert.strictEqual(all.notes.length, inWork.notes.length + unfiled.notes.length, '不过滤 = 各文件夹 + 未分类 之和（当前仅一个非空文件夹）')
+  })
+  await t('notes-folders list 计数口径：移入后 count/unfiled 联动', async () => {
+    const before = await handlers['notes-folders']({})
+    const fWork = before.folders.find(f => f.name === '工作')
+    const note = await handlers['notes-create']({ title: 'fld-计数', body: 'x', topic: '开发' })
+    const afterCreate = await handlers['notes-folders']({})
+    assert.strictEqual(afterCreate.unfiled, before.unfiled + 1, '新建未指定文件夹 → unfiled+1')
+    await handlers['notes-update']({ id: note.id, folder: fWork.id })
+    const afterMove = await handlers['notes-folders']({})
+    assert.strictEqual(afterMove.unfiled, before.unfiled, '移入文件夹 → unfiled 回落')
+    assert.strictEqual(afterMove.folders.find(f => f.id === fWork.id).count, fWork.count + 1, '目标文件夹 count+1')
+  })
+  await t('notes-folders rename：改名生效 + 不存在 id/缺 name 报错', async () => {
+    const folders = (await handlers['notes-folders']({})).folders
+    const fStudy = folders.find(f => f.name === '学习')
+    const r = await handlers['notes-folders']({ op: 'rename', id: fStudy.id, name: '学习资料' })
+    assert(r.ok === true && r.name === '学习资料', 'rename 返回 ok + 新名')
+    const after = await handlers['notes-folders']({})
+    assert(after.folders.find(f => f.id === fStudy.id).name === '学习资料', 'list 反映新名')
+    const onDisk = JSON.parse(store.get(FOLDERS_PATH_MOCK))
+    assert(onDisk.find(f => f.id === fStudy.id).name === '学习资料', '磁盘清单已更新')
+    const bad = await handlers['notes-folders']({ op: 'rename', id: 'f-nope', name: 'x' })
+    assert(bad.error && bad.error.indexOf('文件夹不存在') >= 0, '不存在 id 报错')
+    const bad2 = await handlers['notes-folders']({ op: 'rename', id: fStudy.id, name: ' ' })
+    assert(bad2.error && bad2.error.indexOf('需要 name') >= 0, '空白 name 报错')
+  })
+  await t('notes-folders reorder：入列按序重排 + 未入列追加尾部 + order 归一化', async () => {
+    const c3 = await handlers['notes-folders']({ op: 'create', name: '临时' })
+    const folders = (await handlers['notes-folders']({})).folders
+    const fWork = folders.find(f => f.name === '工作')
+    const fStudy = folders.find(f => f.name === '学习资料')
+    const r = await handlers['notes-folders']({ op: 'reorder', ids: [c3.folder.id, fWork.id] })
+    assert(r.ok === true && Array.isArray(r.folders), 'reorder 返回 ok + folders')
+    assert.deepStrictEqual(r.folders.map(f => f.id), [c3.folder.id, fWork.id, fStudy.id], '入列按 ids 序，未入列保持原序追加尾部')
+    assert.deepStrictEqual(r.folders.map(f => f.order), [0, 1, 2], 'order 归一化为 0..n-1')
+    const listed = (await handlers['notes-folders']({})).folders
+    assert.deepStrictEqual(listed.map(f => f.id), [c3.folder.id, fWork.id, fStudy.id], 'list 按 order 排序输出')
+    const bad = await handlers['notes-folders']({ op: 'reorder' })
+    assert(bad.error && bad.error.indexOf('ids') >= 0, '缺 ids 报错')
+  })
+  await t('notes-folders delete：其下笔记回退未分类（reset 计数 + folder 清空）', async () => {
+    const folders = (await handlers['notes-folders']({})).folders
+    const fTemp = folders.find(f => f.name === '临时')
+    const n1 = await handlers['notes-create']({ title: 'fld-删1', body: 'x', folder: fTemp.id })
+    const n2 = await handlers['notes-create']({ title: 'fld-删2', body: 'x', folder: fTemp.id })
+    const before = await handlers['notes-folders']({})
+    assert.strictEqual(before.folders.find(f => f.id === fTemp.id).count, 2, '前置：两条笔记在「临时」')
+    const r = await handlers['notes-folders']({ op: 'delete', id: fTemp.id })
+    assert(r.ok === true && r.reset === 2, 'delete 返回 ok + reset=2（实得：' + JSON.stringify(r) + '）')
+    const after = await handlers['notes-folders']({})
+    assert(!after.folders.find(f => f.id === fTemp.id), '清单不再含已删文件夹')
+    assert.strictEqual(after.unfiled, before.unfiled + 2, '回退笔记计入 unfiled')
+    const g1 = await handlers['notes-get']({ id: n1.id })
+    assert.strictEqual(g1.note.folder, '', '笔记 folder 已清空为未分类')
+    const content = store.get(NOTES_DIR + '\\' + n1.id + '.md')
+    assert(content.indexOf(fTemp.id) < 0, '磁盘 front-matter 不再引用已删文件夹 id')
+    const bad = await handlers['notes-folders']({ op: 'delete', id: fTemp.id })
+    assert(bad.error && bad.error.indexOf('文件夹不存在') >= 0, '重复删除报错')
+  })
+  await t('notes-folders 未知 op 报错', async () => {
+    const r = await handlers['notes-folders']({ op: 'purge' })
+    assert(r.error && r.error.indexOf('未知 op') >= 0, '未知 op 返回错误（实得：' + JSON.stringify(r) + '）')
+  })
+  await t('note_manage move：按 id/名称移动 + 移出未分类 + 参数校验', async () => {
+    const folders = (await handlers['notes-folders']({})).folders
+    const fWork = folders.find(f => f.name === '工作')
+    const fStudy = folders.find(f => f.name === '学习资料')
+    // 磁盘 folder 行是缓存无关的真相源（工具与重 apply 的 handlers 分属两个插件实例，各有缓存）
+    const diskFolder = (id) => { const m = store.get(NOTES_DIR + '\\' + id + '.md').match(/\nfolder: ([^\n]*)\n/); return m ? m[1] : null }
+    const n = await noteManage.execute({ action: 'create', title: 'fld-move', body: 'x' })
+    const m1 = await noteManage.execute({ action: 'move', id: n.id, folder: fWork.id })
+    assert.strictEqual(m1.action, 'move')
+    assert.strictEqual(m1.folder, fWork.id)
+    assert.strictEqual(m1.folderName, '工作')
+    assert.strictEqual(diskFolder(n.id), fWork.id, '按 id 移动生效（磁盘 front-matter）')
+    const m2 = await noteManage.execute({ action: 'move', id: n.id, folder: '学习资料' })
+    assert.strictEqual(m2.folder, fStudy.id, '按名称精确命中解析为 id')
+    assert.strictEqual(diskFolder(n.id), fStudy.id, '按名称移动生效（磁盘 front-matter）')
+    const m3 = await noteManage.execute({ action: 'move', id: n.id, folder: '' })
+    assert.strictEqual(m3.folder, '', '空串 = 移出到未分类')
+    assert(m3.message.indexOf('未分类') >= 0, '移出消息含未分类')
+    assert.strictEqual(diskFolder(n.id), '', '移出后磁盘 folder 行为空')
+    const e1 = await noteManage.execute({ action: 'move', id: n.id })
+    assert(e1.error && e1.error.indexOf('需要 folder') >= 0, '缺 folder 报错')
+    const e2 = await noteManage.execute({ action: 'move', folder: fWork.id })
+    assert(e2.error && e2.error.indexOf('需要 id') >= 0, '缺 id 报错')
+    const e3 = await noteManage.execute({ action: 'move', id: n.id, folder: '不存在的文件夹' })
+    assert(e3.error && e3.error.indexOf('文件夹不存在') >= 0, '找不到文件夹报错（不写悬空引用）')
+  })
+  await t('note_manage create/list 带 folder（create 按 id 落位；list 名称/id 兼容，\'\' = 未分类）', async () => {
+    const folders = (await handlers['notes-folders']({})).folders
+    const fStudy = folders.find(f => f.name === '学习资料')
+    const c = await noteManage.execute({ action: 'create', title: 'fld-manage-create', body: 'x', folder: fStudy.id })
+    assert(c.id, 'create 接受 folder id')
+    assert.strictEqual((await handlers['notes-get']({ id: c.id })).note.folder, fStudy.id, 'create 落位到指定文件夹')
+    const l1 = await noteManage.execute({ action: 'list', folder: '学习资料' })
+    assert(l1.notes.length >= 1 && l1.notes.every(n => n.folder === fStudy.id), 'list 按名称过滤')
+    const l2 = await noteManage.execute({ action: 'list', folder: fStudy.id })
+    assert(l2.notes.length >= 1 && l2.notes.every(n => n.folder === fStudy.id), 'list 按 id 过滤')
+    const l3 = await noteManage.execute({ action: 'list', folder: '' })
+    assert(l3.notes.every(n => !(n.folder && folders.some(f => f.id === n.folder))), 'list folder=\'\' 只看未分类')
+    const e1 = await noteManage.execute({ action: 'list', folder: 'f-nope' })
+    assert(e1.error && e1.error.indexOf('文件夹不存在') >= 0, 'list 不存在文件夹报错')
+  })
+  await t('note_search folder 过滤（名称命中 / \'\' 未分类 / 不存在报错）', async () => {
+    const tSearch = findTool('note_search')
+    const folders = (await handlers['notes-folders']({})).folders
+    const fStudy = folders.find(f => f.name === '学习资料')
+    const s1 = await tSearch.execute({ query: 'fld-manage-create', folder: '学习资料' })
+    assert(s1.count >= 1 && s1.notes.every(n => n.folder === fStudy.id), '按名称过滤命中')
+    const s2 = await tSearch.execute({ query: 'fld-manage-create', folder: '' })
+    assert.strictEqual(s2.count, 0, '该笔记不在未分类，folder=\'\' 应查不到')
+    const s3 = await tSearch.execute({ folder: fStudy.id })
+    assert(s3.notes.length >= 1 && s3.notes.every(n => n.folder === fStudy.id), '按 id 过滤（无 query 列全部）')
+    const e1 = await tSearch.execute({ folder: '不存在的文件夹' })
+    assert(e1.error && e1.error.indexOf('文件夹不存在') >= 0, '不存在文件夹报错')
+  })
+  await t('update 不动 folder：note_manage.update 保持原值，notes-update 显式改', async () => {
+    const folders = (await handlers['notes-folders']({})).folders
+    const fWork = folders.find(f => f.name === '工作')
+    const n = await noteManage.execute({ action: 'create', title: 'fld-upd-iso', body: 'x', folder: fWork.id })
+    await noteManage.execute({ action: 'update', id: n.id, title: 'fld-upd-iso-改' })
+    const g = await handlers['notes-get']({ id: n.id })
+    assert.strictEqual(g.note.title, 'fld-upd-iso-改', '标题已改')
+    assert.strictEqual(g.note.folder, fWork.id, 'update 未传 folder 时保持原文件夹')
+    await handlers['notes-update']({ id: n.id, folder: '' })
+    assert.strictEqual((await handlers['notes-get']({ id: n.id })).note.folder, '', 'notes-update 显式 folder=\'\' 移出（client 移动通道）')
+  })
+  await t('悬空引用兜底：folder 指向清单外 id 按未分类对待（计数/过滤口径一致）', async () => {
+    const ghostId = 'n-ghost-folder'
+    await fsMock.writeText(NOTES_DIR + '\\' + ghostId + '.md', '---\nid: ' + ghostId + '\ntitle: 悬空引用笔记\ntopic: 调试\nfolder: f-ghost000\ncreatedAt: "2026-01-01T00:00:00.000Z"\nupdatedAt: "2026-01-01T00:00:00.000Z"\n---\n\n正文\n')
+    const g = await handlers['notes-get']({ id: ghostId })
+    assert.strictEqual(g.note.folder, 'f-ghost000', '原始字段保留（不篡改数据）')
+    const u0 = (await handlers['notes-folders']({})).unfiled
+    const ghostList = await handlers['notes-list']({ folder: 'f-ghost000' })
+    assert.strictEqual(ghostList.notes.length, 0, '按清单外 id 过滤为空（effectiveFolder 判未分类）')
+    const unfiled = await handlers['notes-list']({ folder: '' })
+    assert(unfiled.notes.find(n => n.id === ghostId), '悬空引用笔记出现在未分类列表')
+    assert(u0 >= 1, '悬空引用计入 unfiled')
+  })
+  await t('folders.json 损坏/结构非法兜底：清单空 + 笔记主流程不受影响', async () => {
+    store.set(FOLDERS_PATH_MOCK, '这不是 JSON {')
+    const r1 = await handlers['notes-folders']({})
+    assert(Array.isArray(r1.folders) && r1.folders.length === 0 && !r1.error, '坏 JSON → 空清单不抛错')
+    const l = await handlers['notes-list']({})
+    assert(l.notes.length >= 1, 'notes-list 主流程不受 folders.json 损坏影响')
+    store.set(FOLDERS_PATH_MOCK, '{"x":1}')
+    const r2 = await handlers['notes-folders']({})
+    assert(r2.folders.length === 0, '非数组 JSON → 空清单')
+    store.set(FOLDERS_PATH_MOCK, JSON.stringify([{ id: 'f-ok1', name: 'OK', order: 0 }, { name: '无id' }, null, 'junk', { id: 123, name: '数字id', order: '0' }]))
+    const r3 = await handlers['notes-folders']({})
+    assert.strictEqual(r3.folders.length, 2, '非法元素被过滤（缺 id/null/字符串）')
+    assert(r3.folders.find(f => f.id === 'f-ok1') && r3.folders.find(f => f.id === '123'), '合法元素保留且 id 归一化为字符串')
+    store.delete(FOLDERS_PATH_MOCK)
+    const r4 = await handlers['notes-folders']({})
+    assert(r4.folders.length === 0, '删除清单文件后回退空清单（状态清理）')
+  })
+
+  // --- 树状列表拖拽：笔记挪入/挪出文件夹（HTML5 DnD；开发版 + 发布包同步）---
+  await t('拖拽：笔记行 draggable + dragstart 记录 noteId（ref 防闭包过期 + dataTransfer）', () => {
+    assert(/const dragNoteIdRef = React\.useRef\(null\)/.test(clientSrc), 'dragNoteIdRef 拖拽状态 ref 存在')
+    assert(/draggable: true, onDragStart: \(ev\) => onNoteDragStart\(ev, n\)/.test(clientSrc), '笔记行 draggable + onDragStart → onNoteDragStart')
+    assert(/onDragEnd: \(ev\) => onNoteDragEnd\(ev\)/.test(clientSrc), '笔记行 onDragEnd → onNoteDragEnd')
+    assert(/function onNoteDragStart\(ev, n\)/.test(clientSrc) && /function onNoteDragEnd\(ev\)/.test(clientSrc), 'onNoteDragStart/onNoteDragEnd 函数存在')
+    assert(/dragNoteIdRef\.current = n\.id/.test(clientSrc), 'dragstart 记录 noteId 到 ref')
+    assert(clientSrc.indexOf("ev.dataTransfer.setData('text/dsh-note-id', n.id)") >= 0, 'dragstart 写入 dataTransfer text/dsh-note-id（Firefox 起拖必需）')
+    assert(clientSrc.indexOf("classList.add('dragging')") >= 0, 'dragstart 源行加 .dragging 半透明')
+  })
+  await t('拖拽：文件夹行 drop 目标（dragover preventDefault + drop-hint 高亮 + drop 移入）', () => {
+    assert(/function onFolderDragOver\(ev\)/.test(clientSrc) && /function onFolderDragLeave\(ev\)/.test(clientSrc) && /function onFolderDrop\(ev, f\)/.test(clientSrc), '文件夹行 dragover/dragleave/drop 处理器存在')
+    assert(/onDragOver: onFolderDragOver, onDragLeave: onFolderDragLeave, onDrop: \(ev\) => onFolderDrop\(ev, f\)/.test(clientSrc), '文件夹行挂载三个 DnD 处理器')
+    assert(clientSrc.indexOf("classList.add('drop-hint')") >= 0 && clientSrc.indexOf("classList.remove('drop-hint')") >= 0, 'drop-hint 高亮加/摘')
+    assert(clientSrc.indexOf('ctxMoveToFolder({ id: id }, f.id)') >= 0, 'drop 移入复用 ctxMoveToFolder（notes-update 只改 folder 字段）')
+    assert(clientSrc.indexOf("(noteObj.folder || '') !== f.id") >= 0, '已在目标夹内静默无动作（不重复弹 toast）')
+  })
+  await t('拖拽：未分类区 drop 目标 = 移出文件夹；非法目标无动作；dragend 兜底清理', () => {
+    assert(/function onUnfiledDragOver\(ev\)/.test(clientSrc) && /function onUnfiledDrop\(ev\)/.test(clientSrc), '未分类区 dragover/drop 处理器存在')
+    assert(clientSrc.indexOf("className: 'dsh-notes-unfiled-drop', onDragOver: onUnfiledDragOver, onDragLeave: onUnfiledDragLeave, onDrop: onUnfiledDrop") >= 0, '未分类平铺区包一层 drop 容器')
+    assert(clientSrc.indexOf("ctxMoveToFolder({ id: id }, '')") >= 0, 'drop 到未分类区 = 移出（folder: \'\'）')
+    assert((clientSrc.match(/if \(!dragNoteIdRef\.current\) return/g) || []).length >= 4, '四个 drop 处理器均先判 ref：非本插件笔记拖拽不接管（非法目标无动作）')
+    assert(clientSrc.indexOf("classList.remove('dragging')") >= 0, 'dragend 清理 .dragging')
+    assert(clientSrc.indexOf("querySelectorAll('.dsh-notes-floating .drop-hint')") >= 0, 'dragend 清理面板内所有残留 .drop-hint')
+    // 右键「移动到文件夹」保留（拖拽与右键菜单共存）
+    assert(clientSrc.indexOf('移动到文件夹') >= 0, '右键「移动到文件夹」保留')
+  })
+  await t('拖拽样式：.dragging 半透明 + .drop-hint 虚线描边（原型 .row.drop）+ 未分类区容器（开发版 + 发布包同步）', () => {
+    const cssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    assert(/\.dsh-notes-note-row\.dragging\{[^}]*opacity:\.35/.test(cssDev), 'styles.css 含 .dsh-notes-note-row.dragging opacity:.35（原型口径）')
+    assert(/\.dsh-notes-folder-row\.drop-hint\{[^}]*outline:1\.5px dashed var\(--nacc\)/.test(cssDev), 'styles.css 含 .drop-hint 1.5px 虚线 --nacc 描边（原型 .row.drop）')
+    assert(cssDev.indexOf('.dsh-notes-unfiled-drop') >= 0, 'styles.css 含未分类区 drop 容器样式')
+    for (const cls of ['.dsh-notes-note-row.dragging', '.dsh-notes-folder-row.drop-hint', '.dsh-notes-unfiled-drop']) {
+      assert(cssPkg.indexOf(cls) >= 0, '发布包 lib/styles.css 缺 ' + cls + '（需先跑 scripts/build-dist.cjs）')
+    }
+  })
+  await t('发布包 client.js 同步拖拽链路（需先跑 scripts/build-dist.cjs）', () => {
+    for (const k of ['text/dsh-note-id', 'onNoteDragStart', 'onNoteDragEnd', 'onFolderDragOver', 'onFolderDrop', 'onUnfiledDrop', 'dragNoteIdRef', 'drop-hint', 'dsh-notes-unfiled-drop', 'draggable: true']) {
+      assert(clientPkgSrc.indexOf(k) >= 0, '发布包 client.js 缺 ' + k)
+    }
+    assert(clientPkgSrc.indexOf('ctxMoveToFolder({ id: id }, f.id)') >= 0 && clientPkgSrc.indexOf("ctxMoveToFolder({ id: id }, '')") >= 0, '发布包 drop 移入/移出复用 ctxMoveToFolder')
+  })
+
+  // ===== 22. 笔记目录索引注入（notes:catalog order 131 + recall 字段 + catalogEnabled 总开关） =====
+  section('22. 笔记目录索引注入（recall 通道，host 双侧同步）')
+
+  // --- 源码结构断言（开发版 host-impl + 静态包 index.mjs 同步） ---
+  await t('双侧注册 notes:catalog order 131 + catalogText + 40 封顶 + 文案', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const label = pair[0], src = pair[1]
+      assert(src.indexOf("name: 'notes:catalog'") >= 0 && /order:\s*131/.test(src), label + ' 注册 notes:catalog order 131')
+      assert(src.indexOf('function catalogText()') >= 0, label + ' catalogText 生成函数存在')
+      assert(/CATALOG_LIMIT\s*=\s*40/.test(src), label + ' CATALOG_LIMIT=40 封顶')
+      assert(src.indexOf("settingsCache.catalogEnabled === false") >= 0, label + ' catalogEnabled 总开关门（默认开）')
+      assert(src.indexOf('本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：') >= 0, label + ' 目录标题行文案')
+      assert(src.indexOf('规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手') >= 0, label + ' 末尾轻推行文案')
+      assert(src.indexOf('…另有 ') >= 0 && src.indexOf('条较早笔记，用 note_search 检索') >= 0, label + ' 溢出提示行文案')
+      assert(src.indexOf('function conventionHit(n, ws, curSid)') >= 0, label + ' conventionHit 共用命中判定（约定注入与目录去重）')
+      assert(src.indexOf("n.status === 'resolved' || n.status === 'superseded'") >= 0, label + ' 排除 resolved/superseded')
+      assert(src.indexOf('n.recall === false') >= 0, label + ' 排除 recall=false')
+      assert(src.indexOf('conventionHit(n, ws, curSid)') >= 0, label + ' 目录与约定注入去重')
+    }
+  })
+  await t('双侧 recall 字段链路（buildFM / noteFromParsed / persistNote / slim / _update / 工具 schema）', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const label = pair[0], src = pair[1]
+      assert(/'recall: ' \+ escYaml\(m\.recall === false \? 'false' : 'true'\)/.test(src), label + ' buildFM 写 recall 行')
+      assert(src.indexOf("recall: p.meta.recall !== 'false'") >= 0, label + ' noteFromParsed 读 recall（缺省 true）')
+      assert((src.match(/recall: n\.recall !== false/g) || []).length >= 2, label + ' persistNote 与 slim 均带 recall')
+      assert(/if \(recall !== undefined\) note\.recall = recall !== false/.test(src), label + ' _update 显式传 recall 才改（undefined 不动）')
+      assert(/recall: \{ type: 'boolean'/.test(src), label + ' note_manage schema 含 recall 参数')
+      assert(src.indexOf("handle('notes-settings-set'") >= 0 && src.indexOf('catalogEnabled') >= 0, label + ' notes-settings-set 支持 catalogEnabled')
+    }
+  })
+
+  // --- 行为断言（开发版 host-impl，全新实例：独立 store/handlers/contexts，计数确定） ---
+  const store3 = new Map()
+  const fsMock3 = {
+    resolve: async (p) => p,
+    stat: async (p) => (p === NOTES_DIR ? { dir: true } : (store3.has(p) ? { file: true } : null)),
+    listDir: async (p) => {
+      const prefix = p + '\\'
+      const out = []
+      for (const k of store3.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+      return out
+    },
+    readText: async (p) => { if (!store3.has(p)) throw new Error('ENOENT: ' + p); return store3.get(p) },
+    writeText: async (p, c) => { store3.set(p, c) },
+  }
+  const handlers3 = {}
+  const tools3 = []
+  const harnessMock3 = {
+    handle: (name, fn) => { handlers3[name] = fn; return () => { delete handlers3[name] } },
+    defineTool: (def) => def,
+    registerTool: (ctx, def) => { tools3.push(def); return () => {} },
+  }
+  const contexts3 = []
+  const ctx3 = {
+    fs: fsMock3, sandboxPolicy: { resolve: () => ({}) },
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: (c) => { contexts3.push(c); return () => {} } }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    effect: () => {},
+  }
+  new Function('harness', 'pluginDir', hostSrc)(harnessMock3, DIR).apply(ctx3)
+  const catCtx3 = contexts3.find(x => x.name === 'notes:catalog')
+  const tMgr3 = tools3.find(x => x.name === 'note_manage')
+
+  await t('notes:catalog context 注册（order 131 紧邻约定注入 130 之后，开发版）', () => {
+    assert.strictEqual(contexts3.length, 2, '注册 2 个 systemPrompt context')
+    assert.strictEqual(contexts3[0].name, 'notes:workspace-conventions')
+    assert.strictEqual(contexts3[0].order, 130, '约定注入 order=130')
+    assert.strictEqual(contexts3[1].name, 'notes:catalog')
+    assert.strictEqual(contexts3[1].order, 131, '目录注入 order=131')
+    assert(typeof catCtx3.text === 'function', 'text 是函数')
+  })
+  await t('空库目录文本为空串（不注入，绝不返回 undefined）', () => {
+    assert.strictEqual(catCtx3.text(), '', '空库返回空串')
+  })
+
+  // 造数据：本区笔记 / 跨区笔记 / pinned 待办 / resolved / 约定 inject=true / recall=false
+  const cn1 = await handlers3['notes-create']({ title: '目录笔记甲', body: '甲正文', topic: '开发' })
+  await tMgr3.execute({ action: 'create', title: '目录笔记乙', body: '乙正文', topic: '设计', workspace: 'other-ws' })
+  await tMgr3.execute({ action: 'create', title: '目录待办置顶', body: 'x', kind: 'todo', status: 'pinned', topic: '运维' })
+  await tMgr3.execute({ action: 'create', title: '已解决笔记', body: 'x', status: 'resolved' })
+  await tMgr3.execute({ action: 'create', title: '已被取代笔记', body: 'x', status: 'superseded' })
+  await handlers3['notes-create']({ title: '本区约定不入目录', body: '约定全文已注入', inject: true, topic: '约定' })
+  const cn6 = await tMgr3.execute({ action: 'create', title: 'recall关闭笔记', body: 'x', recall: false })
+
+  await t('目录标题行 + 一行一条格式 + 末尾轻推行', () => {
+    const txt = catCtx3.text()
+    assert(txt.indexOf('本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：') === 0, '标题行开头（实得：' + txt.slice(0, 80) + '）')
+    assert(txt.indexOf('- [' + cn1.id + '] 目录笔记甲 (笔记, 开发)') >= 0, '行格式：- [id] 标题 (kind中文, topic)')
+    assert(txt.indexOf('(待办, 运维)') >= 0, 'kind 中文映射（todo→待办）')
+    assert(txt.indexOf('\n规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手') > 0, '末尾轻推行')
+  })
+  await t('排序：pinned 优先 → 当前工作区优先；跨工作区标注 ←来源', () => {
+    const txt = catCtx3.text()
+    assert(txt.indexOf('目录待办置顶') >= 0 && txt.indexOf('目录待办置顶') < txt.indexOf('目录笔记甲'), 'pinned 排最前')
+    const i1 = txt.indexOf('目录笔记甲'), i2 = txt.indexOf('目录笔记乙')
+    assert(i1 >= 0 && i2 >= 0 && i1 < i2, '当前工作区笔记排在其他工作区之前')
+    assert(txt.indexOf('目录笔记乙 (笔记, 设计, ←other-ws)') >= 0, '非当前工作区标注 ←工作区名')
+    assert(txt.indexOf('目录笔记甲 (笔记, 开发)') >= 0 && txt.indexOf('目录笔记甲 (笔记, 开发,') < 0, '当前工作区不标注来源')
+  })
+  await t('准入排除：resolved / superseded / recall=false / 约定去重', () => {
+    const txt = catCtx3.text()
+    assert(txt.indexOf('已解决笔记') < 0, 'resolved 不进目录')
+    assert(txt.indexOf('已被取代笔记') < 0, 'superseded 不进目录')
+    assert(txt.indexOf('recall关闭笔记') < 0, 'recall=false 不进目录')
+    assert(txt.indexOf('本区约定不入目录') < 0, 'inject=true 且本会话命中的约定不进目录（order 130 已注入全文）')
+    const conv = contexts3[0].text()
+    assert(conv.indexOf('本区约定不入目录') >= 0 && conv.indexOf('约定全文已注入') >= 0, '约定全文确实在 order 130 注入（去重成立的前提）')
+  })
+  await t('recall 字段 front-matter 往返 + 缺省 true', async () => {
+    const onDisk1 = store3.get(NOTES_DIR + '\\' + cn1.id + '.md')
+    assert(onDisk1.indexOf('\nrecall: true\n') >= 0, '缺省写 recall: true')
+    const onDisk6 = store3.get(NOTES_DIR + '\\' + cn6.id + '.md')
+    assert(onDisk6.indexOf('\nrecall: false\n') >= 0, 'create recall=false 写 recall: false')
+    const g = await handlers3['notes-get']({ id: cn1.id })
+    assert.strictEqual(g.note.recall, true, 'notes-get 返回 recall=true（缺省）')
+    assert.strictEqual(g.note.inject, false, 'recall 与 inject 正交（缺省 recall=true 不影响 inject）')
+  })
+  await t('note_manage update 可改 recall（false 出目录 / true 回目录）', async () => {
+    const u1 = await tMgr3.execute({ action: 'update', id: cn1.id, recall: false })
+    assert(!u1.error, 'update recall=false 成功')
+    assert(catCtx3.text().indexOf('目录笔记甲') < 0, 'recall=false 后目录不含该笔记')
+    const onDisk = store3.get(NOTES_DIR + '\\' + cn1.id + '.md')
+    assert(onDisk.indexOf('\nrecall: false\n') >= 0, '磁盘 front-matter 同步为 recall: false')
+    await tMgr3.execute({ action: 'update', id: cn1.id, recall: true })
+    assert(catCtx3.text().indexOf('目录笔记甲') >= 0, 'recall 改回 true 后目录恢复')
+  })
+  await t('旧文件无 recall 字段缺省进目录（向后兼容）', async () => {
+    const legacyId = 'n-legacy-recall'
+    await fsMock3.writeText(NOTES_DIR + '\\' + legacyId + '.md', '---\nid: ' + legacyId + '\ntitle: 旧版无recall笔记\ntopic: 运维\ncreatedAt: "2026-01-01T00:00:00.000Z"\nupdatedAt: "2026-01-01T00:00:00.000Z"\n---\n\n旧正文\n')
+    const g = await handlers3['notes-get']({ id: legacyId })   // 触发解析进 cache（catalogText 只读 cache）
+    assert.strictEqual(g.note.recall, true, '旧文件解析缺省 recall=true')
+    assert(catCtx3.text().indexOf('旧版无recall笔记') >= 0, '无 recall 字段的旧笔记缺省进目录')
+  })
+  await t('note_manage schema 含 recall 参数', () => {
+    assert(tMgr3.parameters.properties.recall && tMgr3.parameters.properties.recall.type === 'boolean', 'recall boolean 参数存在')
+  })
+  await t('catalogEnabled 总开关：默认开 → 关即空 → settings.json 落盘 → 校验非布尔 → 重开恢复', async () => {
+    assert(catCtx3.text().length > 0, '默认开：目录非空')
+    const bad = await handlers3['notes-settings-set']({ catalogEnabled: 'yes' })
+    assert(bad.error && bad.error.indexOf('catalogEnabled') >= 0, '非布尔值报错')
+    assert(catCtx3.text().length > 0, '校验失败不影响开关状态')
+    const off = await handlers3['notes-settings-set']({ catalogEnabled: false })
+    assert(off.ok === true, '关闭成功（实得 ' + JSON.stringify(off) + '）')
+    assert.strictEqual(catCtx3.text(), '', '关闭后目录文本为空')
+    const onDisk = JSON.parse(store3.get(NOTES_DIR + '\\settings.json'))
+    assert.strictEqual(onDisk.catalogEnabled, false, 'settings.json 含 catalogEnabled:false')
+    const sg = await handlers3['notes-settings-get']({})
+    assert.strictEqual(sg.settings.catalogEnabled, false, 'notes-settings-get 回读一致')
+    assert(Array.isArray(sg.models) && sg.models.some(m => m.provider === 'p' && m.model === 'm'), 'settings-get 带 models 目录（llm 探针）')
+    await handlers3['notes-settings-set']({ catalogEnabled: true })
+    assert(catCtx3.text().length > 0, '重新打开后目录恢复')
+  })
+
+  // --- 40 条封顶（再开全新实例，计数确定） ---
+  await t('40 条封顶 + 溢出提示行（…另有 N 条较早笔记）', async () => {
+    const store4 = new Map()
+    const fsMock4 = {
+      resolve: async (p) => p,
+      stat: async (p) => (p === NOTES_DIR ? { dir: true } : (store4.has(p) ? { file: true } : null)),
+      listDir: async (p) => {
+        const prefix = p + '\\'
+        const out = []
+        for (const k of store4.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+        return out
+      },
+      readText: async (p) => { if (!store4.has(p)) throw new Error('ENOENT: ' + p); return store4.get(p) },
+      writeText: async (p, c) => { store4.set(p, c) },
+    }
+    const handlers4 = {}
+    const contexts4 = []
+    const harnessMock4 = { handle: (name, fn) => { handlers4[name] = fn; return () => {} }, defineTool: (d) => d, registerTool: () => () => {} }
+    new Function('harness', 'pluginDir', hostSrc)(harnessMock4, DIR).apply({
+      fs: fsMock4, sandboxPolicy: { resolve: () => ({}) },
+      get: (name) => ({ agents: agentsMock, systemPrompt: { context: (c) => { contexts4.push(c); return () => {} } } })[name],
+      effect: () => {},
+    })
+    for (let i = 0; i < 45; i++) await handlers4['notes-create']({ title: '批量' + i, body: 'x' })
+    const txt = contexts4.find(x => x.name === 'notes:catalog').text()
+    const itemLines = txt.split('\n').filter(l => l.indexOf('- [n-') === 0)
+    assert.strictEqual(itemLines.length, 40, '目录最多 40 条（实得 ' + itemLines.length + '）')
+    assert(txt.indexOf('…另有 5 条较早笔记，用 note_search 检索') >= 0, '溢出提示行（实得尾部：' + txt.split('\n').slice(-2).join(' | ') + '）')
+  })
+
+  // --- 静态包行为（独立 ESM 实例 + 独立 store；harness 缺席 → webServer 路由 + ctx.tools） ---
+  section('22.5 笔记目录索引注入（静态包 index.mjs 行为）')
+  const store5 = new Map()
+  const fsMock5 = {
+    resolve: async (p) => p,
+    stat: async (p) => (p === NOTES_ROOT_STATIC ? { dir: true } : (store5.has(p) ? { file: true } : null)),
+    listDir: async (p) => {
+      const prefix = p + '\\'
+      const out = []
+      for (const k of store5.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+      return out
+    },
+    readText: async (p) => { if (!store5.has(p)) throw new Error('ENOENT: ' + p); return store5.get(p) },
+    writeText: async (p, c) => { store5.set(p, c) },
+  }
+  const routes5 = []
+  const tools5b = []
+  const contexts5 = []
+  const ctx5 = {
+    fs: fsMock5,
+    sandboxPolicy: { resolve: () => ({}) },
+    webServer: { register: (r) => { routes5.push(r); return () => {} } },
+    tools: { register: (d) => { tools5b.push(d); return () => {} } },
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: (c) => { contexts5.push(c); return () => {} } }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    effect: () => {},
+  }
+  const modCat = await import(pathToFileURL(INDEX_PATH).href + '?catalog=1')
+  modCat.apply(ctx5)
+  function rpc5(method, args) {
+    return new Promise((resolve, reject) => {
+      const body = Buffer.from(JSON.stringify({ method: method, args: args }))
+      const req = { method: 'POST', on: (ev, cb) => { if (ev === 'data') cb(body); else if (ev === 'end') cb(); return req }, destroy: () => {} }
+      const res = { statusCode: 0, setHeader: () => {}, writeHead: (c) => { res.statusCode = c }, end: (s) => { let b; try { b = JSON.parse(s) } catch (e) { b = s } resolve({ status: res.statusCode, body: b }) } }
+      Promise.resolve(routes5[0].handler(req, res)).catch(reject)
+    })
+  }
+  const catCtx5 = contexts5.find(x => x.name === 'notes:catalog')
+  await t('静态包注册 notes:catalog order 131（无迁移干扰的干净库）', () => {
+    assert.strictEqual(contexts5.length, 2, '静态包注册 2 个 context')
+    assert.strictEqual(contexts5[0].order, 130, '约定注入 order=130')
+    assert.strictEqual(catCtx5 && catCtx5.order, 131, '目录注入 order=131')
+    assert.strictEqual(catCtx5.text(), '', '空库目录为空串')
+  })
+  await t('静态包目录行为：create 进目录 / recall=false 排除 / update 可改', async () => {
+    const c = await rpc5('notes-create', { title: '静态目录笔记', body: 'x', topic: '开发' })
+    assert(c.body.id, 'notes-create 成功')
+    let txt = catCtx5.text()
+    assert(txt.indexOf('- [' + c.body.id + '] 静态目录笔记 (笔记, 开发)') >= 0, '新建笔记进目录（实得：' + txt + '）')
+    const tMgr5 = tools5b.find(x => x.name === 'note_manage')
+    const c2 = await tMgr5.execute({ action: 'create', title: '静态recall关', body: 'x', recall: false })
+    assert(c2.id && !c2.error, '工具 create recall=false 成功')
+    assert(catCtx5.text().indexOf('静态recall关') < 0, 'recall=false 不进目录')
+    const u = await tMgr5.execute({ action: 'update', id: c.body.id, recall: false })
+    assert(!u.error, '工具 update recall=false 成功')
+    assert(catCtx5.text().indexOf('静态目录笔记') < 0, 'update recall=false 后出目录')
+    const onDisk = store5.get(path.join(NOTES_ROOT_STATIC, c.body.id + '.md'))
+    assert(onDisk.indexOf('\nrecall: false\n') >= 0, '静态包磁盘 front-matter 同步 recall: false')
+    await tMgr5.execute({ action: 'update', id: c.body.id, recall: true })
+    assert(catCtx5.text().indexOf('静态目录笔记') >= 0, 'recall 改回 true 后回目录')
+  })
+  await t('静态包 catalogEnabled 总开关（notes-settings-set 经 webServer 路由）', async () => {
+    const off = await rpc5('notes-settings-set', { catalogEnabled: false })
+    assert(off.body.ok === true, '关闭成功（实得 ' + JSON.stringify(off.body) + '）')
+    assert.strictEqual(catCtx5.text(), '', '关闭后目录为空')
+    const onDisk = JSON.parse(store5.get(path.join(NOTES_ROOT_STATIC, 'settings.json')))
+    assert.strictEqual(onDisk.catalogEnabled, false, 'settings.json 落盘 catalogEnabled:false')
+    const sg = await rpc5('notes-settings-get', {})
+    assert.strictEqual(sg.body.settings.catalogEnabled, false, 'settings-get 回读一致')
+    const bad = await rpc5('notes-settings-set', { catalogEnabled: 1 })
+    assert(bad.body.error && bad.body.error.indexOf('catalogEnabled') >= 0, '非布尔值报错')
+    await rpc5('notes-settings-set', { catalogEnabled: null })
+    const sg2 = await rpc5('notes-settings-get', {})
+    assert(!('catalogEnabled' in sg2.body.settings), 'null 删除 override（恢复缺省开）')
+    assert(catCtx5.text().length > 0, '恢复默认开后目录回来')
+  })
+
+  // ===== 22.6 笔记目录注入 client UI 开关（设置卡片 catalogEnabled 总开关 + 详情区逐条 recall 开关） =====
+  section('22.6 笔记目录注入 client UI 开关（catalogEnabled 总开关 + recall 逐条）')
+  await t('设置卡片含「笔记目录注入」总开关行（settingsRows 加行，勾选即保存）', () => {
+    assert(/key: 'catalog', label: '笔记目录注入'/.test(clientSrc), 'settingsRows 含「笔记目录注入」行')
+    assert(clientSrc.indexOf('catalogEnabled') >= 0, 'client-impl 含 catalogEnabled 字段')
+    assert(/function saveSettingsCatalog\(/.test(clientSrc), 'saveSettingsCatalog 保存函数存在')
+    assert(/function saveSettingsCatalog\([\s\S]*?notes-settings-set', \{ catalogEnabled: enabled \}\)/.test(clientSrc), '总开关走 notes-settings-set 传 catalogEnabled 布尔')
+    assert(clientSrc.indexOf('向 Agent 系统提示注入笔记目录（一行一条），供其规划时参考并按需 note_get 取全文') >= 0, '总开关 tooltip/sub 说明文案')
+    assert(/setSetCatalog\(!res\.settings \|\| res\.settings\.catalogEnabled !== false\)/.test(clientSrc), 'openSettings 回读 catalogEnabled（缺省开）')
+  })
+  await t('编辑器逐条「目录可见」开关（v2 meta chip tgl，edRecall 链路照抄 edInject 模式）', () => {
+    assert(/const \[edRecall, setEdRecall\] = React\.useState\(true\)/.test(clientSrc), 'edRecall state 缺省 true（进目录）')
+    assert(/const edRecallRef = React\.useRef\(true\)/.test(clientSrc), 'edRecallRef 自动保存镜像存在')
+    assert(/setEdRecall\(n\.recall !== false\)/.test(clientSrc), 'selectNote 读 n.recall（缺省 true）')
+    assert(/edRecallRef\.current = edRecall/.test(clientSrc), '渲染期同步 edRecallRef')
+    assert(/recall: edRecallRef\.current/.test(clientSrc), 'doSave 的 notes-update payload 带 recall（恒为布尔，绝不含 undefined）')
+    assert(/function toggleRecall\(\) \{ setEdRecall\(!edRecall\); triggerAutoSave\(\) \}/.test(clientSrc), 'toggleRecall 翻转 + 触发自动保存')
+    assert(clientSrc.indexOf('关闭后该笔记不出现在注入给 Agent 的目录中') >= 0, '逐条开关 tooltip 文案')
+    assert(/dsh-notes-meta-chip tgl' \+ \(edRecall \? ' on' : ''\)/.test(clientSrc), '目录可见渲染为 meta chip toggle（on 态高亮）')
+    assert(clientSrc.indexOf("I('eye', 11)") >= 0 && clientSrc.indexOf("'目录可见'") >= 0, 'eye SVG 图标 + 「目录可见」文案（📇 emoji 已移除）')
+  })
+  await t('开关样式类三处同步（client-impl + 发布包 client.js + styles.css）', () => {
+    for (const cls of ['dsh-notes-settings-checkwrap', 'dsh-notes-settings-check']) {
+      assert(clientSrc.indexOf(cls) >= 0, 'client-impl 缺 ' + cls)
+      assert(clientPkgSrc.indexOf(cls) >= 0, '发布包 client.js 缺 ' + cls + '（需先跑 scripts/build-dist.cjs）')
+    }
+    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    assert(css.indexOf('.dsh-notes-settings-checkwrap{') >= 0 && css.indexOf('.dsh-notes-settings-check{') >= 0, 'styles.css 缺 settings-check 系列样式')
+  })
+  await t('发布包 client.js 同步目录开关链路（需先跑 scripts/build-dist.cjs）', () => {
+    assert(clientPkgSrc.indexOf('笔记目录注入') >= 0 && clientPkgSrc.indexOf('目录可见') >= 0, '发布包含总开关行 + 逐条开关文案')
+    assert(clientPkgSrc.indexOf('catalogEnabled') >= 0 && /recall: edRecallRef\.current/.test(clientPkgSrc), '发布包含 catalogEnabled + recall 链路')
+    assert(clientPkgSrc.indexOf('saveSettingsCatalog') >= 0 && clientPkgSrc.indexOf('toggleRecall') >= 0, '发布包含两个开关函数')
+  })
+
+  // ===== 23. 笔记导入/导出（notes-export / notes-import-preview / notes-import，双侧同步） =====
+  section('23. 笔记导入/导出（目录快照 + 预览分类 + 全量备份 + 覆盖策略 + folders 合并）')
+
+  // --- 源码结构断言（开发版 host-impl + 静态包 index.mjs 同步）---
+  await t('双侧注册 3 个 RPC + 核心函数 + 目录命名约定（host-impl / index.mjs）', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const label = pair[0], src = pair[1]
+      assert(src.indexOf("handle('notes-export'") >= 0, label + ' 注册 notes-export')
+      assert(src.indexOf("handle('notes-import-preview'") >= 0, label + ' 注册 notes-import-preview')
+      assert(src.indexOf("handle('notes-import'") >= 0, label + ' 注册 notes-import')
+      for (const fn of ['_export', '_importPreview', '_import', 'scanImportDir', 'copyNotesDir', 'listNoteMd', 'readFoldersFile', 'readLibraryRaw', 'tsStamp']) {
+        assert(src.indexOf('function ' + fn) >= 0, label + ' 缺函数 ' + fn)
+      }
+      assert(src.indexOf('dsh-notes-export-') >= 0, label + ' 导出目录命名 dsh-notes-export-<ts>')
+      assert(src.indexOf('notes-backup-') >= 0, label + ' 备份目录命名 notes-backup-<ts>')
+      assert(src.indexOf("indexOf('n-') === 0") >= 0, label + ' n-*.md 过滤（settings.json / *.bak / 子目录不进出）')
+      assert(src.indexOf("p.meta.id || name.replace(/\\.md$/i, '')") >= 0, label + ' 导入 id 取 front-matter，缺失按文件名兜底')
+    }
+  })
+
+  // --- 行为断言（开发版 host-impl，全新实例：独立 store/handlers，计数确定）---
+  // mock 增强：stat 对「有子项的隐含目录」返回 dir（贴近真实 fs，import/export 的目录存在性校验依赖它）
+  function mkFsMockImp(store, dirs) {
+    return {
+      resolve: async (p) => p,
+      stat: async (p) => {
+        if (dirs.indexOf(p) >= 0) return { dir: true }
+        if (store.has(p)) return { file: true }
+        const prefix = p + '\\'
+        for (const k of store.keys()) if (k.startsWith(prefix)) return { dir: true }
+        return null
+      },
+      listDir: async (p) => {
+        const prefix = p + '\\'
+        const out = []
+        for (const k of store.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+        return out
+      },
+      readText: async (p) => { if (!store.has(p)) throw new Error('ENOENT: ' + p); return store.get(p) },
+      writeText: async (p, c) => { store.set(p, c) },
+    }
+  }
+  const store6 = new Map()
+  const fsMock6 = mkFsMockImp(store6, [NOTES_DIR])
+  const handlers6 = {}
+  const harnessMock6 = { handle: (name, fn) => { handlers6[name] = fn; return () => { delete handlers6[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+  const ctx6 = {
+    fs: fsMock6, sandboxPolicy: { resolve: () => ({}) },
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    effect: () => {},
+  }
+  new Function('harness', 'pluginDir', hostSrc)(harnessMock6, DIR).apply(ctx6)
+  await t('开发版注册 25 个 RPC（含 notes-export / notes-import-preview / notes-import）', () => {
+    assert.strictEqual(Object.keys(handlers6).length, 25, '实得 ' + Object.keys(handlers6).length)
+    assert(typeof handlers6['notes-export'] === 'function' && typeof handlers6['notes-import-preview'] === 'function' && typeof handlers6['notes-import'] === 'function', '3 个新 handler 存在')
+  })
+
+  // 造库：3 条笔记 + 1 个文件夹
+  const exA = await handlers6['notes-create']({ title: '导出A', body: '正文A', topic: '开发' })
+  const exB = await handlers6['notes-create']({ title: '导出B', body: '正文B', topic: '设计' })
+  const exC = await handlers6['notes-create']({ title: '导出C', body: '正文C', topic: '运维' })
+  await handlers6['notes-folders']({ op: 'create', name: '导出文件夹' })
+
+  await t('notes-export：全库快照（n-*.md + folders.json）到 <dir>\\dsh-notes-export-<ts>', async () => {
+    const r = await handlers6['notes-export']({ dir: 'D:\\exp-out' })
+    assert(!r.error, '导出成功（实得 ' + JSON.stringify(r) + '）')
+    assert.strictEqual(r.exported, 3, '导出 3 条笔记')
+    assert.strictEqual(r.foldersFile, true, 'folders.json 一并导出')
+    assert(/\\dsh-notes-export-\d{8}-\d{6}$/.test(r.target), 'target = <dir>\\dsh-notes-export-<yyyyMMdd-HHmmss>（实得：' + r.target + '）')
+    for (const id of [exA.id, exB.id, exC.id]) {
+      assert.strictEqual(store6.get(r.target + '\\' + id + '.md'), store6.get(NOTES_DIR + '\\' + id + '.md'), id + ' 快照内容与原文件逐字节一致')
+    }
+    assert.strictEqual(store6.get(r.target + '\\folders.json'), store6.get(NOTES_DIR + '\\folders.json'), 'folders.json 快照一致')
+    assert(!store6.has(r.target + '\\settings.json'), 'settings.json 不导出')
+  })
+  await t('notes-export 参数校验：缺 dir 报错 / dir 是文件报错', async () => {
+    const e1 = await handlers6['notes-export']({})
+    assert(e1.error && e1.error.indexOf('需要 dir') >= 0, '缺 dir 报错')
+    const e2 = await handlers6['notes-export']({ dir: NOTES_DIR + '\\' + exA.id + '.md' })
+    assert(e2.error && e2.error.indexOf('不是目录') >= 0, 'dir 指向文件应报错（实得：' + JSON.stringify(e2) + '）')
+  })
+
+  // 预览基线：全新导出目录与库一致 → 全 same；预览本身不写任何文件
+  let expDir = null
+  await t('notes-import-preview：全 same 基线 + folders.new=0 + 不写任何东西', async () => {
+    const ex = await handlers6['notes-export']({ dir: 'D:\\exp-out' })
+    expDir = ex.target
+    const sizeBefore = store6.size
+    const p = await handlers6['notes-import-preview']({ dir: expDir })
+    assert(!p.error, '预览成功（实得 ' + JSON.stringify(p).slice(0, 200) + '）')
+    assert.strictEqual(p.total, 3)
+    assert.strictEqual(p.same, 3); assert.strictEqual(p.diff, 0); assert.strictEqual(p.added, 0)
+    assert(p.detail.every(d => d.status === 'same' && d.deleted === false), 'detail 全 same 且未标注 deleted')
+    assert(p.folders && p.folders.total === 1 && p.folders.new === 0, 'folders：清单 1 个且全部已存在')
+    assert.strictEqual(store6.size, sizeBefore, '预览不写任何文件（纯只读）')
+  })
+
+  // 构造混合场景：B 外部改动（diff）+ 新增 n-newimp01（added）+ 新增 deleted 笔记（added+标注）+ folders.json 加新文件夹
+  await t('notes-import-preview：same/diff/added 分类 + deleted 标注 + folders 新增统计', async () => {
+    store6.set(expDir + '\\' + exB.id + '.md', store6.get(expDir + '\\' + exB.id + '.md') + '\n外部改动\n')
+    store6.set(expDir + '\\n-newimp01.md', '---\nid: n-newimp01\ntitle: 外部新笔记\ntopic: 调研\ncreatedAt: "2026-01-02T00:00:00.000Z"\nupdatedAt: "2026-01-02T00:00:00.000Z"\n---\n\n新正文\n')
+    store6.set(expDir + '\\n-delimp01.md', '---\nid: n-delimp01\ntitle: 外部已删笔记\ndeleted: true\ncreatedAt: "2026-01-02T00:00:00.000Z"\nupdatedAt: "2026-01-02T00:00:00.000Z"\n---\n\n已删正文\n')
+    const curFolders = JSON.parse(store6.get(expDir + '\\folders.json'))
+    curFolders.push({ id: 'f-imp01', name: '导入新文件夹', order: 5 })
+    store6.set(expDir + '\\folders.json', JSON.stringify(curFolders, null, 2))
+    const p = await handlers6['notes-import-preview']({ dir: expDir })
+    assert.strictEqual(p.total, 5, 'A/B/C + 2 新增')
+    assert.strictEqual(p.same, 2); assert.strictEqual(p.diff, 1); assert.strictEqual(p.added, 2)
+    const byId = {}
+    for (const d of p.detail) byId[d.id] = d
+    assert.strictEqual(byId[exB.id].status, 'diff', 'B 分类为 diff')
+    assert.strictEqual(byId['n-newimp01'].status, 'added', '新笔记分类为 added')
+    assert.strictEqual(byId['n-delimp01'].status, 'added', 'deleted 笔记也是 added')
+    assert.strictEqual(byId['n-delimp01'].deleted, true, 'deleted 笔记在预览 detail 里标注（导入后仍隐藏）')
+    assert.strictEqual(p.folders.total, 2)
+    assert.strictEqual(p.folders.new, 1, 'f-imp01 是新文件夹')
+  })
+  await t('notes-import-preview 参数与目录校验', async () => {
+    const e1 = await handlers6['notes-import-preview']({})
+    assert(e1.error && e1.error.indexOf('需要 dir') >= 0, '缺 dir 报错')
+    const e2 = await handlers6['notes-import-preview']({ dir: 'D:\\no-such-dir-anywhere' })
+    assert(e2.error && e2.error.indexOf('目录不存在') >= 0, '目录不存在报错（实得：' + JSON.stringify(e2) + '）')
+  })
+
+  await t('notes-import：先全量备份 → added 入库 / same 跳过 / diff 默认跳过 / folders 合并只增不删', async () => {
+    const r = await handlers6['notes-import']({ dir: expDir })
+    assert(!r.error, '导入成功（实得 ' + JSON.stringify(r) + '）')
+    assert.strictEqual(r.imported, 2, 'n-newimp01 + n-delimp01 入库')
+    assert.strictEqual(r.skippedSame, 2, 'A/C 相同跳过')
+    assert.strictEqual(r.skippedDiff, 1, 'B 不同且未 overwrite → 跳过')
+    assert.strictEqual(r.overwritten, 0)
+    assert.strictEqual(r.foldersMerged, 1, 'f-imp01 追加合并')
+    assert(/\\notes-backup-\d{8}-\d{6}$/.test(r.backupDir), 'backupDir = notes\\notes-backup-<ts>（实得：' + r.backupDir + '）')
+    // 备份是导入前的库快照：B 为原文（不含外部改动），含 folders.json，不含 settings.json
+    const bakB = store6.get(r.backupDir + '\\' + exB.id + '.md')
+    assert(bakB && bakB.indexOf('正文B') >= 0 && bakB.indexOf('外部改动') < 0, '备份保留导入前 B 原文')
+    assert(store6.has(r.backupDir + '\\' + exA.id + '.md') && store6.has(r.backupDir + '\\' + exC.id + '.md'), '备份含全部 n-*.md')
+    assert(store6.has(r.backupDir + '\\folders.json'), '备份含 folders.json')
+    assert(!store6.has(r.backupDir + '\\settings.json'), '备份不含 settings.json')
+    // 默认策略不动 diff 笔记
+    assert(store6.get(NOTES_DIR + '\\' + exB.id + '.md').indexOf('外部改动') < 0, '库内 B 保持原文（diff 未覆盖）')
+    // added 入库：文件落盘 + 缓存同步可 get
+    assert(store6.has(NOTES_DIR + '\\n-newimp01.md'), '新笔记文件已入库')
+    const g = await handlers6['notes-get']({ id: 'n-newimp01' })
+    assert(g.note && g.note.title === '外部新笔记' && g.note.body.indexOf('新正文') >= 0, '导入笔记可立即 get（缓存已同步）')
+    // deleted 按原文件导入，导入后仍隐藏
+    assert(store6.has(NOTES_DIR + '\\n-delimp01.md'), 'deleted 笔记文件按原样入库')
+    const l = await handlers6['notes-list']({})
+    assert(l.notes.find(n => n.id === 'n-newimp01'), '列表含新导入笔记')
+    assert(!l.notes.find(n => n.id === 'n-delimp01'), 'deleted 导入后仍隐藏')
+    // folders.json 合并：只增不删，新 id 追加尾部且 order 续排（不沿用导入清单的 order=5）
+    const onDisk = JSON.parse(store6.get(NOTES_DIR + '\\folders.json'))
+    assert.strictEqual(onDisk.length, 2, 'folders 只增（1→2）')
+    const nf = onDisk.find(f => f.id === 'f-imp01')
+    assert(nf && nf.name === '导入新文件夹' && nf.order === 1, '新文件夹 order 续在尾部（实得 ' + JSON.stringify(nf) + '）')
+    assert(onDisk.find(f => f.name === '导出文件夹').order === 0, '既有文件夹不动')
+  })
+  await t('notes-import 幂等：二次导入全 same / folders 无新增；overwrite=true 才覆盖 diff', async () => {
+    const r2 = await handlers6['notes-import']({ dir: expDir })
+    assert.strictEqual(r2.imported, 0, '二次导入无新增')
+    assert.strictEqual(r2.skippedSame, 4, 'A/C + 2 条新导入全部相同')
+    assert.strictEqual(r2.skippedDiff, 1, 'diff 仍跳过')
+    assert.strictEqual(r2.foldersMerged, 0, 'folders 无新增')
+    const r3 = await handlers6['notes-import']({ dir: expDir, overwrite: true })
+    assert.strictEqual(r3.overwritten, 1, 'overwrite=true 覆盖 B')
+    assert.strictEqual(r3.imported, 0)
+    assert(store6.get(NOTES_DIR + '\\' + exB.id + '.md').indexOf('外部改动') >= 0, '库内 B 已是外部改动版')
+    const g = await handlers6['notes-get']({ id: exB.id })
+    assert(g.note.body.indexOf('外部改动') >= 0, '缓存同步为覆盖后内容')
+  })
+  await t('notes-import 参数与目录校验（不建备份）', async () => {
+    const before = Array.from(store6.keys()).filter(k => k.indexOf('notes-backup-') >= 0).length
+    const e1 = await handlers6['notes-import']({})
+    assert(e1.error && e1.error.indexOf('需要 dir') >= 0, '缺 dir 报错')
+    const e2 = await handlers6['notes-import']({ dir: 'D:\\no-such-dir-anywhere' })
+    assert(e2.error && e2.error.indexOf('目录不存在') >= 0, '目录不存在报错')
+    const after = Array.from(store6.keys()).filter(k => k.indexOf('notes-backup-') >= 0).length
+    assert.strictEqual(after, before, '校验失败不产生新备份')
+  })
+
+  // --- 静态包行为（index.mjs 独立 ESM 实例 + 独立 store；harness 主通道注册 handlers7） ---
+  section('23.5 笔记导入/导出（静态包 index.mjs 行为）')
+  const store7 = new Map()
+  const fsMock7 = mkFsMockImp(store7, [NOTES_ROOT_STATIC])
+  const handlers7 = {}
+  const harnessMock7 = { handle: (name, fn) => { handlers7[name] = fn; return () => { delete handlers7[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+  await t('静态包导入/导出全链路（导出 → 预览分类 → 备份 → 默认跳过 diff → overwrite 覆盖 → folders 合并）', async () => {
+    global.harness = harnessMock7
+    try {
+      const modImp = await import(pathToFileURL(INDEX_PATH).href + '?impexp=1')
+      modImp.apply({
+        fs: fsMock7, sandboxPolicy: { resolve: () => ({}) },
+        webServer: { register: () => () => {} }, tools: { register: () => () => {} },
+        get: (name) => ({ agents: agentsMock, systemPrompt: { context: () => () => {} } })[name],
+        effect: () => {},
+      })
+      assert.strictEqual(Object.keys(handlers7).length, 26, '静态包注册 26 个 RPC（25 + notes-ping），实得 ' + Object.keys(handlers7).length)
+      const sA = await handlers7['notes-create']({ title: '静态导出A', body: 'SA正文' })
+      const sB = await handlers7['notes-create']({ title: '静态导出B', body: 'SB正文' })
+      await handlers7['notes-folders']({ op: 'create', name: '静态夹' })
+      // 导出
+      const ex = await handlers7['notes-export']({ dir: 'D:\\exp-st' })
+      assert(!ex.error && ex.exported === 2 && ex.foldersFile === true, '导出 2 条 + folders.json（实得 ' + JSON.stringify(ex) + '）')
+      assert(/\\dsh-notes-export-\d{8}-\d{6}$/.test(ex.target), '静态包导出目录命名一致（path.join）')
+      assert.strictEqual(store7.get(path.join(ex.target, sA.id + '.md')), store7.get(path.join(NOTES_ROOT_STATIC, sA.id + '.md')), '快照逐字节一致')
+      // 预览基线全 same
+      const p0 = await handlers7['notes-import-preview']({ dir: ex.target })
+      assert(p0.same === 2 && p0.diff === 0 && p0.added === 0 && p0.folders.new === 0, '预览基线全 same')
+      // 混合场景：B 改动 + 新增 + 新文件夹
+      store7.set(path.join(ex.target, sB.id + '.md'), store7.get(path.join(ex.target, sB.id + '.md')) + '静态改动')
+      store7.set(path.join(ex.target, 'n-stnew01.md'), '---\nid: n-stnew01\ntitle: 静态新入\ncreatedAt: "2026-01-02T00:00:00.000Z"\nupdatedAt: "2026-01-02T00:00:00.000Z"\n---\n\n新\n')
+      const fArr = JSON.parse(store7.get(path.join(ex.target, 'folders.json')))
+      fArr.push({ id: 'f-stimp01', name: '静态新夹', order: 9 })
+      store7.set(path.join(ex.target, 'folders.json'), JSON.stringify(fArr))
+      const p1 = await handlers7['notes-import-preview']({ dir: ex.target })
+      assert(p1.same === 1 && p1.diff === 1 && p1.added === 1 && p1.folders.new === 1, '预览分类：1 same / 1 diff / 1 added / 1 新文件夹（实得 ' + JSON.stringify({ s: p1.same, d: p1.diff, a: p1.added, f: p1.folders }) + '）')
+      // 默认导入：备份 + added 入库 + diff 跳过 + folders 合并
+      const im = await handlers7['notes-import']({ dir: ex.target })
+      assert(im.imported === 1 && im.skippedSame === 1 && im.skippedDiff === 1 && im.overwritten === 0 && im.foldersMerged === 1, '默认导入计数（实得 ' + JSON.stringify(im) + '）')
+      assert(/\\notes-backup-\d{8}-\d{6}$/.test(im.backupDir), '备份目录命名一致')
+      assert(store7.get(path.join(im.backupDir, sB.id + '.md')).indexOf('静态改动') < 0, '备份保留导入前 B 原文')
+      assert(store7.has(path.join(NOTES_ROOT_STATIC, 'n-stnew01.md')), '新笔记入库')
+      assert(store7.get(path.join(NOTES_ROOT_STATIC, sB.id + '.md')).indexOf('静态改动') < 0, 'diff 默认跳过')
+      const onDisk = JSON.parse(store7.get(path.join(NOTES_ROOT_STATIC, 'folders.json')))
+      const nf = onDisk.find(f => f.id === 'f-stimp01')
+      assert(onDisk.length === 2 && nf && nf.order === 1, 'folders 合并只增不删 + order 续排（实得 ' + JSON.stringify(onDisk) + '）')
+      // overwrite 覆盖
+      const im2 = await handlers7['notes-import']({ dir: ex.target, overwrite: true })
+      assert(im2.overwritten === 1 && im2.skippedSame === 2, 'overwrite 覆盖 1 条 diff（实得 ' + JSON.stringify(im2) + '）')
+      assert(store7.get(path.join(NOTES_ROOT_STATIC, sB.id + '.md')).indexOf('静态改动') >= 0, '覆盖生效')
+      const g = await handlers7['notes-get']({ id: sB.id })
+      assert(g.note.body.indexOf('静态改动') >= 0, '缓存同步覆盖后内容')
+      // 校验
+      const bad = await handlers7['notes-import']({ dir: 'D:\\no-such-static-dir' })
+      assert(bad.error && bad.error.indexOf('目录不存在') >= 0, '静态包目录不存在报错')
+    } finally {
+      delete global.harness
+    }
+  })
+
+  // ===== 24. 半独立全窗口笔记页 /dsh-notes-app（app.html + 页面路由，静态断言） =====
+  section('24. 半独立笔记页 /dsh-notes-app（app.html v2 定稿改造 + webServer GET 路由）')
+  const APP_HTML_PATH = path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html')
+  await t('app.html 存在且非空', () => {
+    assert(fsNative.existsSync(APP_HTML_PATH), APP_HTML_PATH + ' 必须存在')
+    assert(fsNative.readFileSync(APP_HTML_PATH, 'utf8').length > 5000, 'app.html 应是完整页面（>5KB）')
+  })
+  const appSrc = fsNative.readFileSync(APP_HTML_PATH, 'utf8')
+  await t('app.html 页面标识：title=dsh-notes + 全窗口布局 + 主题 token', () => {
+    assert(appSrc.indexOf('<title>dsh-notes</title>') >= 0, '<title>dsh-notes</title>')
+    assert(appSrc.indexOf('data-theme="dark"') >= 0 && appSrc.indexOf('html[data-theme="light"]') >= 0, '暗/明双主题 token 保留')
+    assert(appSrc.indexOf('class="app"') >= 0 && appSrc.indexOf('class="side"') >= 0 && appSrc.indexOf('class="topbar"') >= 0, '全窗口两栏布局（topbar + side + ed）')
+    assert(appSrc.indexOf('--kind-decision') >= 0 && appSrc.indexOf('--nacc') >= 0, 'DSH token 配色保留')
+  })
+  await t('app.html 数据层：fetch /dsh-notes POST {method,args}，无原型 mock 残留', () => {
+    assert(appSrc.indexOf("fetch('/dsh-notes'") >= 0, "rpc() 应 fetch('/dsh-notes')")
+    assert(/method:\s*'POST'/.test(appSrc), 'POST 方法')
+    assert(appSrc.indexOf('JSON.stringify({ method: method, args: args || {} })') >= 0, 'payload 形态 {method,args}')
+    assert(appSrc.indexOf("var notes=[{id:'n1'") < 0 && appSrc.indexOf('原型示意') < 0, '不得残留 v2 原型 mock 数据/占位')
+    assert(appSrc.indexOf('__ModuleLoader__') < 0 && appSrc.indexOf("require('react')") < 0, '页面不依赖 client bundle/React')
+  })
+  await t('app.html 复用全部现有 RPC（list/get/create/update/delete/restore/folders/search/quick/quick-instruct/settings/import-export/dispatch/sessions）', () => {
+    const need = ['notes-list', 'notes-get', 'notes-create', 'notes-update', 'notes-delete', 'notes-restore', 'notes-folders', 'notes-search', 'notes-quick', 'notes-quick-instruct', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-import-preview', 'notes-import', 'notes-active-sessions', 'notes-dispatch', 'notes-dispatch-done', 'notes-sessions']
+    for (const m of need) assert(appSrc.indexOf("'" + m + "'") >= 0, '页面应调用 RPC：' + m)
+    assert(/setTimeout\(pullSessions,\s*1500\)/.test(appSrc) || appSrc.indexOf('1500') >= 0, 'titlesPending 1.5s 重拉契约')
+  })
+  await t('app.html 关键交互结构：树/编辑器/快速记录卡片/派发对话框/设置/导入导出/注入范围浮层', () => {
+    for (const k of ['id="tree"', 'id="q"', 'id="chips"', 'id="capHost"', 'id="modalHost"', 'id="toast"', 'id="btnNew"', 'id="btnExport"', 'id="btnImport"', 'id="btnSettings"']) assert(appSrc.indexOf(k) >= 0, '静态结构缺：' + k)
+    for (const k of ['ed-title', 'ed-body', 'ed-meta', 'ed-crumb', 'scope-panel', 'disp-sess', 'disp-todo', 'imp-list', 'set-row', 'cap-in', 'note-row', 'nested']) assert(appSrc.indexOf(k) >= 0, '样式/动态结构缺：' + k)
+    assert(appSrc.indexOf('contenteditable="true"') >= 0, '标题/正文 contenteditable 编辑')
+    assert(appSrc.indexOf('localStorage') >= 0 && appSrc.indexOf('dsh-notes-app-foldopen') >= 0, '折叠态 localStorage 持久化')
+    assert(appSrc.indexOf('dsh-notes-panel-state') < 0, '不做面板位置持久化（全窗口页面）')
+  })
+  await t('app.html 页面特化：来源会话降级 toast + 快速记录传空 sessionId/cwd + 返回 DSH 入口', () => {
+    assert(appSrc.indexOf('请回 DSH 主界面打开') >= 0, '来源会话点击降级为 toast 提示回 DSH')
+    assert(appSrc.indexOf("sessionId: '', cwd: ''") >= 0, 'notes-quick / notes-quick-instruct 传空会话上下文（host 兜底标题）')
+    assert(appSrc.indexOf('href="/"') >= 0, '顶栏返回 DSH 主界面入口')
+    assert(appSrc.indexOf('connectWorkspace') < 0, '页面无 workspaces 服务，不做新建会话派发')
+  })
+  await t('app.html 内联脚本语法可解析（new Function 编译级校验）', () => {
+    const m = appSrc.match(/<script>([\s\S]*?)<\/script>/)
+    assert(m && m[1].length > 3000, '应含主脚本块')
+    new Function(m[1])   // 仅编译不执行：语法错误在此抛出
+  })
+  await t('原型同步（DEVELOPMENT.md UI 约定）：notes-ui-v2.html 与 app.html 共享同一套 UI/交互，仅数据层不同', () => {
+    const PROTO_PATH = path.join(DIR, 'design', 'notes-ui-v2.html')
+    assert(fsNative.existsSync(PROTO_PATH), 'design/notes-ui-v2.html 存在')
+    const protoSrc = fsNative.readFileSync(PROTO_PATH, 'utf8')
+    // 关键 UI 标记两边一致（topbar/side/ed/modal/scope/cap/disp/ctxmenu）
+    for (const k of ['class="topbar"', 'class="side"', 'class="ed empty"', 'scope-panel', 'disp-sess', 'disp-todo', 'imp-list', 'set-row', 'cap-in', 'ctxmenu', 'note-row', 'id="tree"', 'id="modalHost"']) {
+      assert(protoSrc.indexOf(k) >= 0, '原型缺 UI 标记：' + k)
+      assert(appSrc.indexOf(k) >= 0, 'app.html 缺 UI 标记：' + k)
+    }
+    // 同一 rpc(method,args) 接口形态；原型为内存 mock，页面为 fetch('/dsh-notes')
+    assert(/function rpc\(method, args\)/.test(protoSrc) && /function rpc\(method, args\)/.test(appSrc), '两边同 rpc(method,args) 接口')
+    assert(protoSrc.indexOf('_mockRpc') >= 0, '原型数据层为内存 mock（_mockRpc）')
+    assert(!/function rpc\(method, args\) \{\s*return fetch\(/.test(protoSrc), '原型 rpc 函数体不走 fetch（注释提及不算）')
+    assert(protoSrc.indexOf('唯一规格来源') >= 0, '原型头部注释声明同步约定')
+    const pm = protoSrc.match(/<script>([\s\S]*?)<\/script>/)
+    assert(pm && pm[1].length > 3000, '原型含主脚本块')
+    new Function(pm[1])   // 编译级校验
+  })
+  await t('index.mjs 注册 GET /dsh-notes-app 页面路由（exact + app.html 读盘 + text/html）', () => {
+    assert(indexSrc.indexOf("APP_PAGE_ROUTE = '/dsh-notes-app'") >= 0, "页面路由常量 '/dsh-notes-app'")
+    assert(indexSrc.indexOf("path.join(PKG_DIR, 'app.html')") >= 0, 'app.html 以 import.meta.url 锚定的包内路径读取')
+    assert(/path:\s*APP_PAGE_ROUTE/.test(indexSrc), 'webServer.register 消费 APP_PAGE_ROUTE')
+    assert(indexSrc.indexOf('text/html; charset=utf-8') >= 0, '响应 Content-Type: text/html; charset=utf-8')
+    assert(indexSrc.indexOf("req.method !== 'GET' && req.method !== 'HEAD'") >= 0, '仅 GET/HEAD，其余 405')
+    assert(indexSrc.indexOf('notes-app') >= 0, '启动日志含页面路由')
   })
 
   // ===== 总结 =====

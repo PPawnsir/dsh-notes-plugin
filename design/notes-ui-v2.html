@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dsh-notes UI v2 — 交互原型（app.html 同步版）</title>
+<!--
+  dsh-notes UI v2 — 交互原型（唯一规格来源，浏览器直接打开即可验证）
+  本文件与 packages/dsh-notes-plugin/app.html（/dsh-notes-app 全窗口笔记页）逐字节共享同一套
+  CSS / DOM 结构 / 交互脚本；唯一差异 = 数据层：app.html 走 fetch('/dsh-notes') RPC，
+  本文件 rpc() 为纯内存 mock（接口形态 {method,args} 完全一致）。
+  ⚠️ UI 改动同步约定（DEVELOPMENT.md）：改 UI 必须两边一起改，不允许行为或视觉偏差。
+-->
+<style>
+  :root{
+    --nfont:-apple-system,"SF Pro Text","Segoe UI","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+    --nmono:ui-monospace,"Cascadia Code",Consolas,monospace;
+    --nr-lg:12px; --nr-md:8px; --nr-sm:6px;
+  }
+  html[data-theme="dark"]{
+    --nbg:#161618; --npanel:#1b1b1e; --nbg-raise:#232327; --nbg-hover:#26262b; --nbg-sel:rgba(108,140,255,.14);
+    --ntx:#f2f2f4; --nt2:#a8a8b0; --nt3:#6b6b74; --nbd:#2a2a30; --nbd-soft:#222228;
+    --nacc:#6c8cff; --nacc-tx:#9db4ff; --nwarn:#e5b567; --ndanger:#e5734f;
+    --kind-note:#8f8fa3; --kind-decision:#e5b567; --kind-todo:#6c8cff; --kind-link:#56c8d8; --kind-quote:#b58fe5;
+  }
+  html[data-theme="light"]{
+    --nbg:#ececef; --npanel:#ffffff; --nbg-raise:#f7f7f9; --nbg-hover:#e8e8ec; --nbg-sel:rgba(64,98,232,.10);
+    --ntx:#1d1d21; --nt2:#6e6e78; --nt3:#9d9da6; --nbd:#e2e2e7; --nbd-soft:#ececf0;
+    --nacc:#4062e8; --nacc-tx:#4062e8; --nwarn:#b07f1e; --ndanger:#cf5b34;
+    --kind-note:#8f8f9c; --kind-decision:#b07f1e; --kind-todo:#4062e8; --kind-link:#1e9aab; --kind-quote:#8a5cd6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--nfont);background:var(--nbg);color:var(--ntx);height:100vh;overflow:hidden;font-size:13px;display:flex;flex-direction:column}
+  svg.ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  /* ===== 顶栏（全窗口页面身份；原型 proto-bar 的正装版） ===== */
+  .topbar{display:flex;gap:10px;align-items:center;padding:8px 14px;background:var(--npanel);border-bottom:1px solid var(--nbd);font-size:12px;color:var(--nt2)}
+  .topbar .logo{width:20px;height:20px;border-radius:5px;background:var(--nacc);display:grid;place-items:center;color:#fff}
+  .topbar .logo svg.ic{width:12px;height:12px}
+  .topbar b{color:var(--ntx);font-size:13px}
+  .topbar .sub{color:var(--nt3);font-size:11px}
+  .topbar .sp{flex:1}
+  .tbtn{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11.5px;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd);border-radius:var(--nr-sm);padding:4px 12px;cursor:pointer;text-decoration:none}
+  .tbtn:hover{background:var(--nbg-hover)}
+  .tbtn svg.ic{width:12px;height:12px}
+  /* ===== 主体两栏 ===== */
+  .app{flex:1;display:flex;min-height:0;padding:10px;gap:10px}
+  .side{width:342px;flex-shrink:0;background:var(--npanel);border-radius:var(--nr-lg);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--nbd-soft)}
+  .brand{display:flex;align-items:center;gap:8px;padding:13px 14px 9px}
+  .brand .logo{width:22px;height:22px;border-radius:6px;background:var(--nacc);display:grid;place-items:center;color:#fff}
+  .brand b{font-size:13px} .brand .cnt{margin-left:auto;font-size:11px;color:var(--nt3)}
+  .quick{margin:0 10px 8px;display:flex;align-items:center;gap:7px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:6px 10px}
+  .quick:focus-within{border-color:var(--nacc)}
+  .quick input{flex:1;border:0;outline:0;background:transparent;color:var(--ntx);font:inherit;font-size:12px}
+  .quick input::placeholder{color:var(--nt3)}
+  .quick .kbd{font-family:var(--nmono);font-size:10px;background:var(--nbg);border:1px solid var(--nbd);border-radius:4px;padding:1px 5px;color:var(--nt3)}
+  .chips{display:flex;gap:5px;padding:0 10px 9px;flex-wrap:wrap}
+  .chip{font-size:11px;padding:2px 9px;border-radius:20px;border:1px solid var(--nbd);color:var(--nt2);cursor:pointer;display:flex;align-items:center;gap:4px}
+  .chip.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:500}
+  .chips .sp{flex:1}
+  .chip.new svg.ic{width:11px;height:11px}
+  .tree{flex:1;overflow-y:auto;padding:0 6px 8px;border-top:1px solid var(--nbd-soft)}
+  .sec-h{display:flex;align-items:center;gap:5px;padding:10px 10px 4px;font-size:10.5px;font-weight:600;letter-spacing:.8px;color:var(--nt3);text-transform:uppercase}
+  .sec-h .add{margin-left:auto;color:var(--nt3);cursor:pointer;padding:0 3px;border-radius:4px}
+  .sec-h .add:hover{color:var(--nacc);background:var(--nbg-hover)}
+  .row{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:var(--nr-sm);color:var(--nt2);cursor:default;user-select:none}
+  .row:hover{background:var(--nbg-hover);color:var(--ntx)}
+  .row.head{font-size:11.5px;font-weight:600}
+  .row.head.on{background:var(--nbg-sel);color:var(--nacc-tx)}
+  .row.drop{outline:1.5px dashed var(--nacc);outline-offset:-2px}
+  .caret{width:11px;flex-shrink:0;color:var(--nt3);display:grid;place-items:center;transition:transform .15s;cursor:pointer}
+  .caret.open{transform:rotate(90deg)} .caret svg.ic{width:10px;height:10px}
+  .row .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .row .n{font-size:10.5px;color:var(--nt3)}
+  .ic-slot{width:15px;flex-shrink:0;display:grid;place-items:center;color:var(--nt2)}
+  .note-row{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:var(--nr-sm);color:var(--ntx);cursor:default;user-select:none}
+  .note-row:hover{background:var(--nbg-hover)}
+  .note-row.sel{background:var(--nbg-sel)}
+  .note-row .kind{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .note-row .ti{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .note-row .tp{font-size:10px;color:var(--nt3);flex-shrink:0;max-width:70px;overflow:hidden;text-overflow:ellipsis}
+  .note-row .pin{width:10px;height:10px;flex-shrink:0;color:var(--nwarn)}
+  .note-row.dim{opacity:.45}
+  .nested{margin-left:13px;padding-left:9px;border-left:1px solid var(--nbd-soft)}
+  .nested .note-row{padding:3.5px 8px;font-size:12.5px}
+  .fbadge{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nt3);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;padding:0 5px;flex-shrink:0}
+  .fbadge svg.ic{width:9px;height:9px}
+  .note-row.drag{opacity:.35}
+  .side-foot{padding:8px 10px;border-top:1px solid var(--nbd-soft);display:flex;gap:6px}
+  .fbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;color:var(--nt2);background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:5px 0;cursor:pointer}
+  .fbtn:hover{color:var(--nacc-tx);border-color:var(--nacc)} .fbtn svg.ic{width:12px;height:12px}
+  /* ===== 编辑器 ===== */
+  .ed{flex:1;background:var(--npanel);border-radius:var(--nr-lg);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--nbd-soft)}
+  .ed.empty{align-items:center;justify-content:center;color:var(--nt3);gap:8px}
+  .ed.empty .ic{width:26px;height:26px}
+  .ed-h{padding:16px 24px 0}
+  .ed-crumb{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--nt3)}
+  .ed-crumb .sep{opacity:.5} .ed-crumb .cur{color:var(--nt2)} .ed-crumb .lnk{color:var(--nacc-tx);cursor:pointer}
+  .ed-title{margin-top:8px;font-size:21px;font-weight:700;line-height:1.3;outline:none;border-radius:var(--nr-sm);padding:2px 4px;margin-left:-4px}
+  .ed-title:focus{background:var(--nbg-raise)} .ed-title:empty::before{content:"无标题";color:var(--nt3)}
+  .ed-meta{display:flex;align-items:center;gap:7px;margin-top:12px;padding-bottom:12px;border-bottom:1px solid var(--nbd-soft);flex-wrap:wrap}
+  .meta-chip{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--nt2);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:20px;padding:3px 10px;cursor:pointer}
+  .meta-chip .dot{width:6px;height:6px;border-radius:50%}
+  .meta-chip svg.ic{width:11px;height:11px}
+  .meta-chip.tgl.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx)}
+  .meta-chip select,.meta-chip input{border:0;background:transparent;color:inherit;font:inherit;outline:0;cursor:pointer}
+  .meta-chip input{cursor:text;min-width:0}
+  .meta-chip input::placeholder{color:var(--nt3)}
+  .meta-chip select option{color:var(--ntx);background:var(--npanel)}
+  .meta-sp{flex:1}
+  .meta-act{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--nt3);padding:3px 9px;border-radius:var(--nr-sm);cursor:pointer}
+  .meta-act:hover{background:var(--nbg-hover);color:var(--ntx)}
+  .meta-act.on{color:var(--nwarn)}
+  .meta-act.danger:hover{color:var(--ndanger)}
+  .meta-act svg.ic{width:12px;height:12px}
+  .ed-body{flex:1;overflow-y:auto;padding:18px 24px;font-size:13px;line-height:1.75;outline:none;white-space:pre-wrap}
+  .ed-body:empty::before{content:"正文…（Markdown）";color:var(--nt3)}
+  .ed-body code{font-family:var(--nmono);font-size:11.5px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;padding:1px 5px}
+  .ed-foot{padding:8px 24px 12px;display:flex;gap:14px;font-size:10.5px;color:var(--nt3);border-top:1px solid var(--nbd-soft)}
+  .ed-foot .saved{margin-left:auto;color:var(--nt2)}
+  /* ===== 注入范围浮层 ===== */
+  .scope-wrap{position:relative}
+  .scope-panel{position:absolute;top:calc(100% + 6px);left:0;z-index:60;min-width:210px;max-width:300px;max-height:260px;overflow-y:auto;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:6px}
+  .scope-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--nt2);padding:5px 8px;border-radius:var(--nr-sm);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .scope-item:hover{background:var(--nbg-hover);color:var(--ntx)}
+  .scope-item input{accent-color:var(--nacc)}
+  .scope-item.dis{opacity:.5;cursor:default}
+  .scope-sep{margin:6px 8px 2px;font-size:10px;color:var(--nt3);letter-spacing:.6px}
+  .scope-ws{font-size:10.5px;color:var(--nt3);padding:5px 8px 2px}
+  /* ===== 派发历史 ===== */
+  .disp{margin:0 24px;padding:8px 0 0;font-size:11.5px}
+  .disp-t{color:var(--nt3);cursor:pointer;user-select:none}
+  .disp-t:hover{color:var(--nt2)}
+  .disp-rec{border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:7px 10px;margin-top:6px;background:var(--nbg-raise)}
+  .disp-rec.done{opacity:.6}
+  .disp-rec-top{display:flex;align-items:center;gap:6px;color:var(--ntx)}
+  .disp-rec-top .dot{width:6px;height:6px;border-radius:50%;background:var(--nwarn)}
+  .disp-rec-m{margin-left:auto;font-size:10.5px;color:var(--nt3)}
+  .disp-rec-i{margin-top:4px;color:var(--nt2);font-size:11px;white-space:pre-wrap}
+  .disp-done-btn{margin-top:5px;font-size:11px;color:var(--nacc-tx);background:transparent;border:1px solid var(--nbd);border-radius:var(--nr-sm);padding:2px 10px;cursor:pointer}
+  .disp-done-btn:hover{border-color:var(--nacc)}
+  /* ===== 通用 modal ===== */
+  .mask{position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.45);display:grid;place-items:center}
+  .modal{width:460px;max-width:calc(100vw - 60px);max-height:82vh;overflow-y:auto;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-lg);box-shadow:0 16px 48px rgba(0,0,0,.5);padding:16px}
+  .modal-t{font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;margin-bottom:12px}
+  .modal-t .sub{font-size:10.5px;color:var(--nt3);font-weight:400}
+  .modal-hint{font-size:11.5px;color:var(--nt3);line-height:1.6;margin-bottom:10px}
+  .modal-err{font-size:11.5px;color:var(--ndanger);margin-top:10px;line-height:1.5;white-space:pre-wrap}
+  .modal-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+  .mbtn{font:inherit;font-size:12px;padding:5px 16px;border-radius:var(--nr-md);border:1px solid var(--nbd);background:var(--nbg-raise);color:var(--nt2);cursor:pointer}
+  .mbtn:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .mbtn.primary{background:var(--nacc);border-color:transparent;color:#fff;font-weight:600}
+  .mbtn.primary:hover{opacity:.9}
+  .mbtn.primary:disabled,.mbtn.danger:disabled{opacity:.45;cursor:default}
+  .mbtn.danger{background:var(--ndanger);border-color:transparent;color:#fff;font-weight:600}
+  .minput{width:100%;font:inherit;font-size:12px;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:7px 10px;outline:0}
+  .minput:focus{border-color:var(--nacc)}
+  textarea.minput{resize:vertical;line-height:1.6}
+  /* 设置卡片 */
+  .set-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--nbd-soft)}
+  .set-row:last-child{border-bottom:0}
+  .set-label{flex:1;font-size:12.5px}
+  .set-label .s{display:block;font-size:10.5px;color:var(--nt3);margin-top:2px;line-height:1.5}
+  .set-ctrl{display:flex;align-items:center;gap:6px}
+  .set-ctrl select{max-width:190px}
+  .set-check{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--nt2);cursor:pointer}
+  .set-check input{accent-color:var(--nacc)}
+  /* 派发对话框 */
+  .disp-todo{border:1px solid var(--nbd-soft);border-radius:var(--nr-md);background:var(--nbg-raise);padding:8px 10px;margin-bottom:10px}
+  .disp-todo-t{font-size:12.5px;font-weight:600}
+  .disp-todo-b{font-size:11px;color:var(--nt3);margin-top:3px;max-height:48px;overflow:hidden;white-space:pre-wrap}
+  .disp-ws{font-size:10.5px;color:var(--nt3);letter-spacing:.6px;margin:10px 0 3px}
+  .disp-sess{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--nt2);padding:6px 8px;border-radius:var(--nr-sm);cursor:pointer}
+  .disp-sess:hover{background:var(--nbg-hover);color:var(--ntx)}
+  .disp-sess.on{background:var(--nbg-sel);color:var(--nacc-tx)}
+  .disp-sess.dis{opacity:.5;cursor:default}
+  .disp-sess .live{width:6px;height:6px;border-radius:50%;background:#56c88f;flex-shrink:0}
+  .disp-sess .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* 导入预览 */
+  .imp-sum{display:flex;gap:12px;font-size:11.5px;color:var(--nt2);margin:10px 0 6px;flex-wrap:wrap}
+  .imp-sum b{color:var(--ntx)}
+  .imp-sum .added b{color:#56c88f} .imp-sum .diff b{color:var(--nwarn)}
+  .imp-warn{font-size:11px;color:var(--nwarn);margin-bottom:6px}
+  .imp-list{max-height:180px;overflow-y:auto;border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:4px}
+  .imp-row{display:flex;align-items:center;gap:7px;font-size:11.5px;padding:3.5px 6px;color:var(--nt2)}
+  .imp-badge{font-size:10px;border-radius:4px;padding:0 6px;flex-shrink:0;border:1px solid var(--nbd)}
+  .imp-badge.added{color:#56c88f} .imp-badge.diff{color:var(--nwarn)} .imp-badge.same{color:var(--nt3)}
+  .imp-row .ti{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .imp-deltag{font-size:10px;color:var(--ndanger)}
+  /* ===== toast ===== */
+  .toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(8px);background:var(--npanel);border:1px solid var(--nbd);box-shadow:0 6px 24px rgba(0,0,0,.35);color:var(--ntx);font-size:12px;padding:8px 16px;border-radius:20px;opacity:0;pointer-events:none;transition:all .2s;z-index:200;max-width:70vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .toast.show{opacity:1;pointer-events:auto}
+  .toast a{color:var(--nacc-tx);margin-left:8px;cursor:pointer}
+  .hintbar{padding:6px 14px;background:var(--npanel);border-top:1px solid var(--nbd);font-size:11px;color:var(--nt3);display:flex;gap:16px}
+  /* ===== 文件夹右键菜单 ===== */
+  .ctxmenu{position:fixed;z-index:150;min-width:150px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:4px}
+  .ctxmenu .mi{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--nt2);padding:6px 10px;border-radius:var(--nr-sm);cursor:pointer}
+  .ctxmenu .mi:hover{background:var(--nbg-hover);color:var(--ntx)}
+  .ctxmenu .mi.danger:hover{color:var(--ndanger)}
+  .ctxmenu .mi svg.ic{width:12px;height:12px}
+  /* ===== 快速记录卡片（v2） ===== */
+  .cap{position:fixed;z-index:99;width:300px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-lg);box-shadow:0 10px 32px rgba(0,0,0,.4);overflow:hidden;animation:capin .14s ease-out}
+  @keyframes capin{from{opacity:0;transform:translateY(5px) scale(.98)}to{opacity:1;transform:none}}
+  .cap-h{display:flex;align-items:center;gap:7px;padding:9px 12px 0;font-size:10.5px;color:var(--nt3)}
+  .cap-h .src{display:flex;align-items:center;gap:4px}
+  .cap-h .auto{margin-left:auto;display:flex;align-items:center;gap:4px;background:var(--nbg-sel);color:var(--nacc-tx);border-radius:20px;padding:1px 8px;font-size:10px}
+  .cap-h .auto .dot{width:6px;height:6px;border-radius:50%;background:var(--kind-quote)}
+  .cap-pv{margin:8px 12px 0;padding:8px 10px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);font-size:11.5px;line-height:1.5;color:var(--nt2);max-height:64px;overflow:hidden;position:relative;white-space:pre-wrap}
+  .cap-pv::after{content:"";position:absolute;bottom:0;left:0;right:0;height:14px;background:linear-gradient(transparent,var(--nbg-raise))}
+  .cap-in{display:flex;align-items:center;gap:7px;margin:8px 12px 0;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:6px 10px}
+  .cap-in:focus-within{border-color:var(--nacc)}
+  .cap-in input{flex:1;border:0;outline:0;background:transparent;color:var(--ntx);font:inherit;font-size:12px}
+  .cap-in input::placeholder{color:var(--nt3)}
+  .cap-in .kbd{font-family:var(--nmono);font-size:9.5px;color:var(--nt3);background:var(--nbg);border:1px solid var(--nbd);border-radius:4px;padding:1px 5px;flex-shrink:0}
+  .cap-acts{display:flex;gap:6px;padding:9px 12px 11px}
+  .cbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;font-size:11.5px;padding:6px 0;border-radius:var(--nr-md);border:1px solid var(--nbd);background:var(--nbg-raise);color:var(--nt2);cursor:pointer}
+  .cbtn:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .cbtn.primary{background:var(--nacc);border-color:transparent;color:#fff;font-weight:600}
+  .cbtn.primary:hover{opacity:.9}
+  .cbtn svg.ic{width:12px;height:12px}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5M7 4h10l-1.5 6.5 3 4.5h-13l3-4.5Z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 7a2 2 0 0 1 2-2h4l2 2.5h6a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/></symbol>
+  <symbol id="i-topic" viewBox="0 0 24 24"><path d="M12 3l2.2 5.6L20 11l-5.8 2.4L12 19l-2.2-5.6L4 11l5.8-2.4Z"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L11 21l8-10.5h-6Z"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5.5v13l11-6.5Z"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M11 5H6a1.5 1.5 0 0 0-1.5 1.5V18A1.5 1.5 0 0 0 6 19.5h11.5A1.5 1.5 0 0 0 19 18v-5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 6.5h15M9 6V4.5h6V6M7 6.5 8 20h8l1-13.5M10 10v6M14 10v6"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v2.3M12 18.2v2.3M3.5 12h2.3M18.2 12h2.3M6 6l1.6 1.6M16.4 16.4 18 18M18 6l-1.6 1.6M7.6 16.4 6 18"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V6M6.5 11.5 12 6l5.5 5.5M5 20h14"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v13M6.5 12.5 12 18l5.5-5.5M5 20h14"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M6 4h9l4 4v12H6Z"/><path d="M14.5 4v4.5H19"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 5h16l-6.5 7.5V19l-3-1.5v-5Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 3v4h-4"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/></symbol>
+</defs></svg>
+
+<div class="topbar">
+  <div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>dsh-notes</b>
+  <span class="sub">全窗口笔记页 · 与 DSH 浮动面板同源数据（/dsh-notes RPC）</span>
+  <span class="sp"></span>
+  <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg>刷新</button>
+  <button class="tbtn" id="btnTheme">切换主题</button>
+  <span class="tbtn" style="cursor:default;color:var(--nt3)">交互原型 · 内存 mock 数据（UI 与 app.html 一致）</span>
+</div>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>笔记</b><span class="cnt" id="brandCnt"></span></div>
+    <div class="quick"><svg class="ic"><use href="#i-search"/></svg><input id="q" placeholder="搜索笔记、标签、内容…"><span class="kbd">Ctrl K</span></div>
+    <div class="chips" id="chips">
+      <span class="chip on" data-k="all">全部</span><span class="chip" data-k="todo">待办</span><span class="chip" data-k="decision">决策</span><span class="chip" data-k="quote">引用</span>
+      <span class="chip" data-k="pinned"><svg class="ic" style="width:11px;height:11px"><use href="#i-pin"/></svg>置顶</span>
+      <span class="sp"></span>
+      <span class="chip new" id="btnNew"><svg class="ic"><use href="#i-plus"/></svg>新建</span>
+    </div>
+    <div class="tree" id="tree"></div>
+    <div class="side-foot">
+      <div class="fbtn" id="btnExport"><svg class="ic"><use href="#i-up"/></svg>导出</div>
+      <div class="fbtn" id="btnImport"><svg class="ic"><use href="#i-down"/></svg>导入</div>
+      <div class="fbtn" id="btnSettings"><svg class="ic"><use href="#i-gear"/></svg>设置</div>
+    </div>
+  </aside>
+
+  <section class="ed empty" id="ed">
+    <svg class="ic"><use href="#i-note"/></svg>
+    <div>选择左侧一条笔记查看和编辑</div>
+    <div style="font-size:11px">点左侧「新建」创建笔记；正文划选文字可弹出快速记录卡片</div>
+  </section>
+</div>
+<div class="hintbar"><span>🖱 在右侧正文<b>划选文字松手</b> → 弹出快速记录卡片</span><span>拖笔记 → 文件夹移入 / 拖到「未分类」移出</span><span>文件夹右键：重命名 / 排序 / 删除</span><span>Ctrl K 搜索 · Esc 关闭浮层</span></div>
+<div id="capHost"></div>
+<div id="modalHost"></div>
+<div id="ctxHost"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= 数据层：rpc(method,args) 与 app.html 同一接口形态 =================
+   原型环境无 /dsh-notes 后端：rpc 为纯内存 mock 实现（模拟 30ms 网络延迟）。
+   app.html 中此函数的实体为 fetch('/dsh-notes', POST {method,args})——除本函数与数据外，
+   本文件与 app.html 逐字节一致（UI 唯一规格来源约束：改 UI 两边同步）。 */
+var _mockFolders = [{ id: 'f1', name: 'o2oa 环境', order: 0 }, { id: 'f2', name: 'DSH 插件开发', order: 1 }, { id: 'f3', name: '工程结构', order: 2 }];
+var _mockNotes = [
+ { id: 'n1', title: 'oa 环境配置', kind: 'note', topic: '运维', folder: 'f1', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-09-25T02:10:00.000Z', updatedAt: '2026-09-25T02:10:00.000Z', sessionId: 'session-oa123456-0000-0000-0000-000000000000', cwd: 'D:\\ontology-proj', dispatches: [], body: '# oa-frontend 本地启动配置\n关闭 mock，走真实接口：VITE_OA_MOCK=false\n测试环境 前台 https://10.52.2.64:8088/\nRedis：off-oaha-redis01 10.185.149.201:31097' },
+ { id: 'n2', title: '66 机器 nginx 配置', kind: 'note', topic: '运维', folder: 'f1', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-09-25T01:00:00.000Z', updatedAt: '2026-09-25T01:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: 'server { listen 8300; root /opt/cmcc-sso/admin-web/dist; location /backstage-management/ { proxy_pass http://127.0.0.1:8081; } }' },
+ { id: 'n3', title: 'openviking · 运维', kind: 'quote', topic: '运维', folder: 'f1', status: 'active', inject: false, injectTo: [], recall: true, tags: ['quick'], createdAt: '2026-09-23T09:00:00.000Z', updatedAt: '2026-09-23T09:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '守护进程状态：已配置 ✅ Windows 计划任务 OpenViking-Server 已注册成功并验证。' },
+ { id: 'n4', title: '运维（合并）', kind: 'note', topic: '运维', folder: 'f1', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-09-23T08:00:00.000Z', updatedAt: '2026-09-23T08:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: 'npm token · 测试/预生产/生产环境地址与账号…' },
+ { id: 'n5', title: 'DSH 插件发布指南', kind: 'note', topic: 'DSH 插件开发', folder: 'f2', status: 'active', inject: false, injectTo: [], recall: true, tags: ['dsh'], createdAt: '2026-09-22T07:00:00.000Z', updatedAt: '2026-09-22T07:00:00.000Z', sessionId: 'session-live001-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', dispatches: [], body: '包结构 → cordis.patch.yml → npm publish → 市场收录完整链路。' },
+ { id: 'n6', title: '客户端插件可用性红线', kind: 'note', topic: 'DSH 插件开发', folder: 'f2', status: 'active', inject: true, injectTo: [], recall: true, tags: [], createdAt: '2026-09-22T06:00:00.000Z', updatedAt: '2026-09-22T06:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '上下文切换后的在途响应覆盖 · 渲染 bailout · 时区偏移。可用性要求是底线。' },
+ { id: 'n7', title: '不动工约定', kind: 'decision', topic: '其他', folder: '', status: 'pinned', inject: true, injectTo: ['global'], recall: true, tags: [], createdAt: '2026-09-26T02:00:00.000Z', updatedAt: '2026-09-26T02:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '调研讨论阶段，用户没有明确指令前不要编辑工程文件或工程数据；可查找文件、写脚本验证。' },
+ { id: 'n8', title: 'TODO: oabanner 兼容评估', kind: 'todo', topic: '数据管线', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-09-17T03:00:00.000Z', updatedAt: '2026-09-17T03:00:00.000Z', sessionId: 'session-work1234-0000-0000-0000-000000000000', cwd: 'D:\\ontology-proj', dispatches: [{ sessionId: 'session-work1234-0000-0000-0000-000000000000', sessionName: 'oabanner 数据管线', workspace: 'ontology-proj', mode: 'existing', instruction: '先出字段 diff 清单再评估', at: '2026-09-28T10:20:00.000Z', done: false }], body: '拿到新增字段清单（新旧 JSON key diff）；检查 ingest.py 对未知字段的容忍度。' },
+ { id: 'n9', title: 'TODO: 数据推演形态 C', kind: 'note', topic: 'modeling-workbench', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-09-17T02:00:00.000Z', updatedAt: '2026-09-17T02:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: 'C 形态（时序外推）暂缓，待数据窗口积累后评估。' },
+ { id: 'n10', title: 'TODO: semantica 收编主仓库', kind: 'note', topic: '工程结构', folder: 'f3', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-09-16T02:00:00.000Z', updatedAt: '2026-09-16T02:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '上游克隆带自己的 .git，主仓库通过 sys.path.insert 引用，属历史偶然状态。' },
+ { id: 'n11', title: '55b0879a · 调试', kind: 'quote', topic: '调试', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: ['quick'], createdAt: '2026-09-29T01:00:00.000Z', updatedAt: '2026-09-29T01:00:00.000Z', sessionId: 'session-live001-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', dispatches: [], body: '看板插件调试速记。' },
+ { id: 'n12', title: '需求（归档合并）', kind: 'note', topic: '需求', folder: '', status: 'resolved', inject: false, injectTo: [], recall: false, tags: [], createdAt: '2026-09-12T02:00:00.000Z', updatedAt: '2026-09-12T02:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: 'oabanner 按天序列 · 每人每日当量走势（做个人效能趋势图/预警）…' }
+];
+var _mockSettings = {};
+var _mockSessions = [
+ { id: 'session-live001-0000-0000-0000-000000000000', short: 'live001', name: '主窗口 · dsh-notes 开发', cwd: 'D:\\deepseek-work', workspace: 'deepseek-work', live: true, createdAt: '2026-09-29T01:00:00.000Z' },
+ { id: 'session-oa123456-0000-0000-0000-000000000000', short: 'oa123456', name: 'oa 环境配置排查', cwd: 'D:\\ontology-proj', workspace: 'ontology-proj', live: true, createdAt: '2026-09-28T02:00:00.000Z' },
+ { id: 'session-work1234-0000-0000-0000-000000000000', short: 'work1234', name: 'oabanner 数据管线', cwd: 'D:\\ontology-proj', workspace: 'ontology-proj', live: false, createdAt: '2026-09-27T02:00:00.000Z' }
+];
+var _mockSessPolls = 0;
+function _mockSlim(n) {
+  return { id: n.id, title: n.title, topic: n.topic, workspace: n.workspace || '', folder: n.folder || '', tags: n.tags || [], kind: n.kind || 'note', status: n.status || 'active', inject: n.inject === true, injectTo: n.injectTo || [], recall: n.recall !== false, createdAt: n.createdAt, updatedAt: n.updatedAt, sessionId: n.sessionId || '', cwd: n.cwd || '', mergedFrom: [], dispatches: n.dispatches || [], archivedAt: '', preview: String(n.body || '').slice(0, 200) }
+}
+function _mockGenId() { return 'n-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
+function _mockNow() { return new Date().toISOString() }
+function rpc(method, args) {
+  return new Promise(function (resolve) { setTimeout(function () { resolve(_mockRpc(method, args || {})) }, 30) })
+}
+function _mockRpc(method, a) {
+  var i, n;
+  if (method === 'notes-list') return { notes: _mockNotes.filter(function (x) { return !x.deleted }).map(_mockSlim) };
+  if (method === 'notes-get') { n = _mockNotes.find(function (x) { return x.id === a.id }); return n && !n.deleted ? { note: JSON.parse(JSON.stringify(n)) } : { error: 'Note has been deleted' } }
+  if (method === 'notes-create') {
+    var id = _mockGenId(), now = _mockNow();
+    n = { id: id, title: a.title || 'Untitled', topic: a.topic || '未分类', folder: a.folder || '', tags: a.tags || [], kind: a.kind || 'note', status: 'active', inject: a.inject === true, injectTo: a.injectTo || [], recall: a.recall !== false, createdAt: now, updatedAt: now, sessionId: '', cwd: '', dispatches: [], deleted: false, body: a.body || '' };
+    _mockNotes.unshift(n);
+    return { id: id, topic: n.topic, title: n.title, kind: n.kind, status: n.status };
+  }
+  if (method === 'notes-update') {
+    n = _mockNotes.find(function (x) { return x.id === a.id });
+    if (!n || n.deleted) return { error: 'Note has been deleted' };
+    ['title', 'topic', 'tags', 'kind', 'status', 'injectTo', 'folder', 'body'].forEach(function (k) { if (a[k] !== undefined) n[k] = a[k] });
+    if (a.inject !== undefined) n.inject = a.inject === true;
+    if (a.recall !== undefined) n.recall = a.recall !== false;
+    n.updatedAt = _mockNow();
+    return { id: n.id, kind: n.kind, status: n.status };
+  }
+  if (method === 'notes-delete') { n = _mockNotes.find(function (x) { return x.id === a.id }); if (n) { n.deleted = true; n.updatedAt = _mockNow() } return { id: a.id } }
+  if (method === 'notes-restore') { n = _mockNotes.find(function (x) { return x.id === a.id }); if (n) { n.deleted = false; n.updatedAt = _mockNow() } return { id: a.id } }
+  if (method === 'notes-folders') {
+    var op = a.op || 'list';
+    if (op === 'list') {
+      var counts = {}, unfiled = 0;
+      _mockNotes.filter(function (x) { return !x.deleted }).forEach(function (x) { var f = x.folder || ''; if (f && _mockFolders.some(function (y) { return y.id === f })) counts[f] = (counts[f] || 0) + 1; else unfiled++ });
+      return { folders: _mockFolders.slice().sort(function (x, y) { return x.order - y.order }).map(function (f) { return { id: f.id, name: f.name, order: f.order, count: counts[f.id] || 0 } }), unfiled: unfiled };
+    }
+    if (op === 'create') { var nf = { id: 'f-' + Date.now().toString(36), name: String(a.name || '').trim(), order: _mockFolders.length }; _mockFolders.push(nf); return { ok: true, folder: nf } }
+    if (op === 'rename') { var rf = _mockFolders.find(function (x) { return x.id === a.id }); if (!rf) return { error: '文件夹不存在: ' + a.id }; rf.name = String(a.name || '').trim(); return { ok: true, id: a.id, name: rf.name } }
+    if (op === 'delete') {
+      var di = _mockFolders.findIndex(function (x) { return x.id === a.id });
+      if (di < 0) return { error: '文件夹不存在: ' + a.id };
+      _mockFolders.splice(di, 1);
+      _mockNotes.forEach(function (x) { if ((x.folder || '') === a.id) x.folder = '' });
+      return { ok: true, id: a.id, reset: 0 };
+    }
+    if (op === 'reorder') { var rank = {}; (a.ids || []).forEach(function (x, j) { rank[x] = j }); _mockFolders.forEach(function (f) { f.order = rank[f.id] !== undefined ? rank[f.id] : 99 }); return { ok: true, folders: _mockFolders } }
+    return { error: '未知 op：' + op };
+  }
+  if (method === 'notes-search') {
+    var q = String(a.query || '').toLowerCase();
+    return { notes: _mockNotes.filter(function (x) { return !x.deleted }).filter(function (x) { return !q || ((x.title || '') + ' ' + (x.body || '') + ' ' + (x.topic || '') + ' ' + (x.tags || []).join(' ')).toLowerCase().indexOf(q) >= 0 }).map(_mockSlim) };
+  }
+  if (method === 'notes-quick' || method === 'notes-quick-instruct') {
+    var qid = _mockGenId(), qnow = _mockNow();
+    var qn = { id: qid, title: '速记', topic: '分类中', folder: '', tags: ['quick'], kind: a.kind || 'quote', status: 'active', inject: false, injectTo: [], recall: true, createdAt: qnow, updatedAt: qnow, sessionId: '', cwd: '', dispatches: [], deleted: false, body: String(a.text || '') + '\n' };
+    if (method === 'notes-quick-instruct' && String(a.note || '').trim()) { qn.topic = '速记'; qn.title = '速记 · ' + String(a.note).trim().slice(0, 12) }
+    _mockNotes.unshift(qn);
+    /* 模拟 host LLM 异步分类回填：1.2s 后改主题/标题（页面 4s/10s 延迟重拉或手动刷新可见） */
+    setTimeout(function () { qn.topic = '运维'; if (qn.title === '速记') qn.title = '页面速记 · 运维'; qn.updatedAt = _mockNow() }, 1200);
+    return { id: qid, topic: qn.topic, title: qn.title, kind: qn.kind, merged: false };
+  }
+  if (method === 'notes-settings-get') return { settings: JSON.parse(JSON.stringify(_mockSettings)), models: [{ provider: 'kimi', model: 'kimi-k3', label: 'Kimi / kimi-k3' }, { provider: 'deepseek', model: 'deepseek-chat', label: 'DeepSeek / deepseek-chat' }] };
+  if (method === 'notes-settings-set') { Object.keys(a).forEach(function (k) { if (a[k] === null || a[k] === undefined) delete _mockSettings[k]; else _mockSettings[k] = a[k] }); return { ok: true, settings: JSON.parse(JSON.stringify(_mockSettings)) } }
+  if (method === 'notes-export') return { exported: _mockNotes.filter(function (x) { return !x.deleted }).length, foldersFile: true, target: (a.dir || 'D:\\mock') + '\\dsh-notes-export-20260929-203000' };
+  if (method === 'notes-import-preview') return { total: 3, same: 1, diff: 1, added: 1, unreadable: 0, folders: { total: 2, new: 1 }, detail: [{ id: 'n1', title: 'oa 环境配置', status: 'same' }, { id: 'n5', title: 'DSH 插件发布指南', status: 'diff' }, { id: 'n-demo', title: '演示新增笔记', status: 'added' }] };
+  if (method === 'notes-import') return { imported: 1, overwritten: a.overwrite ? 1 : 0, skippedSame: 1, skippedDiff: a.overwrite ? 0 : 1, foldersMerged: 1, backupDir: (a.dir || 'D:\\mock') + '\\notes-backup-20260929-203000' };
+  if (method === 'notes-sessions' || method === 'notes-active-sessions') {
+    _mockSessPolls++;
+    var pending = _mockSessPolls === 1;   /* 首次返回 titlesPending，演示 1.5s 重拉契约 */
+    return { sessions: _mockSessions.slice(), titlesPending: pending, pendingIds: pending ? ['session-pending99-0000'] : [], pendingSessions: pending ? [{ id: 'session-pending99-0000', short: 'pending9', workspace: 'deepseek-work' }] : [] };
+  }
+  if (method === 'notes-workspaces') return { workspaces: [{ id: 'ws1', title: 'deepseek-work', cwd: 'D:\\deepseek-work' }, { id: 'ws2', title: 'ontology-proj', cwd: 'D:\\ontology-proj' }] };
+  if (method === 'notes-dispatch') {
+    n = _mockNotes.find(function (x) { return x.id === a.id });
+    if (!n || n.deleted) return { error: '笔记已删除' };
+    if (!a.sessionId) return { error: '缺少目标会话' };
+    var rec = { sessionId: a.sessionId, sessionName: a.sessionName || a.sessionId, workspace: a.workspace || '', mode: a.mode || 'existing', instruction: String(a.instruction || '').trim(), at: _mockNow(), done: false };
+    n.dispatches = (n.dispatches || []).concat([rec]); n.updatedAt = _mockNow();
+    return { ok: true, id: n.id, sessionId: a.sessionId, sessionName: rec.sessionName, dispatch: rec };
+  }
+  if (method === 'notes-dispatch-done') {
+    n = _mockNotes.find(function (x) { return x.id === a.id });
+    if (!n || !n.dispatches || !n.dispatches[a.dispatchIndex]) return { error: '无效的派发记录索引' };
+    n.dispatches[a.dispatchIndex] = Object.assign({}, n.dispatches[a.dispatchIndex], { done: true, doneAt: _mockNow() });
+    return { ok: true, id: n.id };
+  }
+  return { error: 'mock: unknown method ' + method };
+}
+
+/* ================= 常量与状态 ================= */
+var KIND = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用' };
+var KCOLOR = { note: 'var(--kind-note)', decision: 'var(--kind-decision)', todo: 'var(--kind-todo)', link: 'var(--kind-link)', quote: 'var(--kind-quote)' };
+var STATUS_LABEL = { active: '进行中', pinned: '置顶', resolved: '已解决', superseded: '已取代' };
+var notes = [];              // slim 列表缓存（常驻内存；写操作后静默回填）
+var folders = [];            // 虚拟文件夹清单 [{id,name,order,count}]
+var view = { type: 'all', id: '' };   // all | folder | topic
+var kindF = 'all';           // all | note/todo/... | pinned
+var searchText = '', searchIds = null; // searchIds=null=仅本地过滤；数组=host 全文命中 ∪ 本地命中
+var selId = null, edNote = null;       // edNote = 当前选中笔记完整体（含 body）
+var dragId = null, saveTimer = null, searchTimer = null;
+var sessList = [], sessPending = [];   // 注入范围浮层会话源（notes-sessions）
+var foldOpen = loadFoldOpen();         // 文件夹折叠态（localStorage；缺省全展开）
+var scopeOpen = false;
+
+/* ================= 基础工具 ================= */
+function $(id) { return document.getElementById(id) }
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+function icon(id, sz) { return '<svg class="ic"' + (sz ? ' style="width:' + sz + 'px;height:' + sz + 'px"' : '') + '><use href="#' + id + '"/></svg>' }
+function fname(id) { var f = folders.find(function (x) { return x.id === id }); return f ? f.name : '' }
+function shortSid(sid) { return sid ? String(sid).replace(/^session-/, '').slice(0, 8) : '' }
+function fmtDT(iso) { return iso ? String(iso).slice(0, 16).replace('T', ' ') : '' }
+function fmtD(iso) { return iso ? String(iso).slice(5, 10) : '' }
+function isPinned(n) { return n && n.status === 'pinned' }
+function toast(m, act) {
+  var t = $('toast');
+  t.innerHTML = esc(m) + (act && act.label ? ' <a id="toastAct">' + esc(act.label) + '</a>' : '');
+  t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('show') }, act && act.label ? 4200 : 2200);
+  if (act && act.label) $('toastAct').onclick = function () { t.classList.remove('show'); act.fn() };
+}
+function loadFoldOpen() { try { var v = localStorage.getItem('dsh-notes-app-foldopen'); return v ? JSON.parse(v) : {} } catch (e) { return {} } }
+function saveFoldOpen() { try { localStorage.setItem('dsh-notes-app-foldopen', JSON.stringify(foldOpen)) } catch (e) {} }
+
+/* ================= 数据加载（list 常驻缓存 + 写后回填） ================= */
+function loadNotes(silent) {
+  return rpc('notes-list').then(function (res) {
+    if (res && res.notes) notes = res.notes;
+    return loadFolders();
+  }).then(function () { renderTree(); })
+    .catch(function (e) { if (!silent) toast('列表加载失败：' + (e && e.message || e)) });
+}
+function loadFolders() {
+  return rpc('notes-folders').then(function (res) { if (res && res.folders) folders = res.folders }).catch(function () {})
+}
+// 注入范围浮层会话源：titlesPending 时 1.5s 重拉直到补齐（0.1.7 首屏提速契约）
+var sessPullTimer = null;
+function pullSessions() {
+  rpc('notes-sessions', {}).then(function (res) {
+    if (!res) return;
+    if (res.sessions) sessList = res.sessions;
+    sessPending = res.titlesPending && Array.isArray(res.pendingSessions) ? res.pendingSessions : [];
+    if (scopeOpen) renderScopePanel();
+    if (res.titlesPending) sessPullTimer = setTimeout(pullSessions, 1500);
+  }).catch(function () {})
+}
+
+/* ================= 视图求值：文件夹 ∩ 主题 ∩ 类型 ∩ 搜索（四维 AND） ================= */
+function matches(n) {
+  if (view.type === 'topic') { if ((n.topic || '') !== view.id) return false }
+  else if (view.type === 'folder') { if ((n.folder || '') !== view.id) return false }
+  if (kindF === 'pinned' && !isPinned(n)) return false;
+  if (kindF !== 'all' && kindF !== 'pinned' && (n.kind || 'note') !== kindF) return false;
+  if (searchText) {
+    var q = searchText.toLowerCase();
+    var local = ((n.title || '') + ' ' + (n.preview || '') + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ') + ' ' + fname(n.folder)).toLowerCase().indexOf(q) >= 0;
+    var remote = searchIds ? searchIds.indexOf(n.id) >= 0 : false;
+    if (!local && !remote) return false;
+  }
+  return true;
+}
+
+/* ================= 侧栏树 ================= */
+function noteRow(n, inFolderCtx) {
+  var tail = '';
+  if (view.type === 'topic' && n.folder) tail += '<span class="fbadge">' + icon('i-folder', 9) + esc(fname(n.folder)) + '</span>';
+  else if (inFolderCtx && n.topic) tail += '<span class="tp" title="主题：' + esc(n.topic) + '">' + esc(n.topic) + '</span>';
+  else tail += '<span class="tp">' + fmtD(n.updatedAt) + '</span>';
+  return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + '" data-note="' + n.id + '" draggable="true">'
+    + '<span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>'
+    + '<span class="ti">' + (isPinned(n) ? '<svg class="ic pin"><use href="#i-pin"/></svg> ' : '') + esc(n.title || '无标题') + '</span>'
+    + (n.inject ? '<span style="color:var(--nacc);display:flex" title="约定注入">' + icon('i-bolt', 10) + '</span>' : '') + tail + '</div>';
+}
+function renderTree() {
+  var vis = notes.filter(matches);
+  $('brandCnt').textContent = (view.type === 'all' && kindF === 'all' && !searchText ? notes.length : vis.length) + ' 条';
+  var h = '';
+  var vt = view.type === 'topic' ? ('主题 · ' + view.id) : view.type === 'folder' ? ('文件夹 · ' + fname(view.id)) : '全部笔记';
+  h += '<div class="sec-h">' + icon('i-filter', 11) + esc(vt) + (view.type === 'topic' ? ' <span style="letter-spacing:0;text-transform:none;font-weight:500">（跨文件夹 ' + vis.length + ' 条）</span>' : '') + (view.type !== 'all' ? '<span class="add" id="viewClear" title="清除视图过滤">✕</span>' : '') + '</div>';
+  /* 置顶聚合组（置顶筛选时不再重复展示） */
+  if (kindF !== 'pinned') {
+    var pins = vis.filter(isPinned);
+    if (pins.length) { h += '<div class="sec-h">' + icon('i-pin', 11) + ' 置顶</div>'; pins.forEach(function (n) { h += noteRow(n, false) }) }
+  }
+  /* 文件夹组 */
+  h += '<div class="sec-h">文件夹<span class="add" id="addFolder" title="新建文件夹">' + icon('i-plus', 12) + '</span></div>';
+  folders.forEach(function (f) {
+    var kids = vis.filter(function (n) { return (n.folder || '') === f.id });
+    var open = foldOpen[f.id] !== false;
+    h += '<div class="row head' + (view.type === 'folder' && view.id === f.id ? ' on' : '') + '" data-fold="' + f.id + '" data-drop="1">'
+      + '<span class="caret' + (open ? ' open' : '') + '">' + icon('i-chev') + '</span>'
+      + '<span class="ic-slot">' + icon('i-folder', 13) + '</span>'
+      + '<span class="nm">' + esc(f.name) + '</span><span class="n">' + (view.type === 'topic' || searchText || kindF !== 'all' ? kids.length : (f.count != null ? f.count : kids.length)) + '</span></div>';
+    if (open && kids.length) { h += '<div class="nested">'; kids.forEach(function (n) { h += noteRow(n, true) }); h += '</div>' }
+  });
+  /* 未分类（topic 分组平铺） */
+  h += '<div class="sec-h" data-drop-out="1" title="拖笔记到此处移出文件夹">未分类</div><div class="nested">';
+  var unfiled = vis.filter(function (n) { return !n.folder });
+  var topics = {};
+  unfiled.forEach(function (n) { var k = n.topic || '未分类'; (topics[k] = topics[k] || []).push(n) });
+  Object.keys(topics).sort().forEach(function (t) {
+    h += '<div class="row head" style="font-size:10.5px;color:var(--nt3)">' + icon('i-topic', 11) + '<span class="nm">' + esc(t) + '</span><span class="n">' + topics[t].length + '</span></div><div class="nested">';
+    topics[t].forEach(function (n) { h += noteRow(n, false) });
+    h += '</div>';
+  });
+  if (!unfiled.length) h += '<div class="row" style="color:var(--nt3);font-size:11px">（空）</div>';
+  h += '</div>';
+  /* 主题全局过滤器 */
+  h += '<div class="sec-h">' + icon('i-topic', 11) + ' 主题过滤<span class="add" style="cursor:default">跨文件夹</span></div>';
+  var allTopics = {};
+  notes.forEach(function (n) { if (n.topic) allTopics[n.topic] = (allTopics[n.topic] || 0) + 1 });
+  Object.keys(allTopics).sort().forEach(function (t) {
+    var on = view.type === 'topic' && view.id === t;
+    h += '<div class="row' + (on ? ' on' : '') + '" data-topic="' + esc(t) + '"><span class="ic-slot">' + icon('i-topic', 12) + '</span><span class="nm">' + esc(t) + '</span><span class="n">' + allTopics[t] + '</span></div>';
+  });
+  if (!vis.length) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">无匹配笔记</div>';
+  $('tree').innerHTML = h;
+  $('chips').querySelectorAll('.chip[data-k]').forEach(function (c) {
+    c.classList.toggle('on', kindF === c.dataset.k);
+    c.onclick = function () { kindF = c.dataset.k; render() };
+  });
+  var vc = $('viewClear'); if (vc) vc.onclick = function () { view = { type: 'all', id: '' }; render() };
+  var af = $('addFolder'); if (af) af.onclick = function (ev) { ev.stopPropagation(); doCreateFolder() };
+}
+/* 树事件委托（挂一次；drag 事件均冒泡） */
+$('tree').addEventListener('click', function (ev) {
+  var caret = ev.target.closest('.caret');
+  var frow = ev.target.closest('[data-fold]');
+  if (caret && frow) { var f = frow.dataset.fold; foldOpen[f] = foldOpen[f] === false ? true : false; saveFoldOpen(); renderTree(); return }
+  if (frow) { view = { type: 'folder', id: frow.dataset.fold }; foldOpen[frow.dataset.fold] = true; saveFoldOpen(); render(); return }
+  var trow = ev.target.closest('[data-topic]');
+  if (trow) { var t = trow.dataset.topic; view = view.type === 'topic' && view.id === t ? { type: 'all', id: '' } : { type: 'topic', id: t }; render(); return }
+  var nrow = ev.target.closest('[data-note]');
+  if (nrow) selectNote(nrow.dataset.note);
+});
+$('tree').addEventListener('contextmenu', function (ev) {
+  var frow = ev.target.closest('[data-fold]');
+  if (!frow) return;
+  ev.preventDefault();
+  openFolderMenu(ev.clientX, ev.clientY, frow.dataset.fold);
+});
+$('tree').addEventListener('dragstart', function (ev) {
+  var nrow = ev.target.closest('[data-note]'); if (!nrow) return;
+  dragId = nrow.dataset.note; nrow.classList.add('drag');
+  try { ev.dataTransfer.setData('text/plain', dragId); ev.dataTransfer.effectAllowed = 'move' } catch (e) {}
+});
+$('tree').addEventListener('dragend', function () { dragId = null; document.querySelectorAll('.drop').forEach(function (e) { e.classList.remove('drop') }) });
+$('tree').addEventListener('dragover', function (ev) {
+  if (!dragId) return;
+  var drop = ev.target.closest('[data-drop],[data-drop-out]');
+  if (!drop) return;
+  ev.preventDefault();
+  drop.classList.add('drop');
+});
+$('tree').addEventListener('dragleave', function (ev) {
+  var drop = ev.target.closest('[data-drop],[data-drop-out]');
+  if (drop) drop.classList.remove('drop');
+});
+$('tree').addEventListener('drop', function (ev) {
+  var drop = ev.target.closest('[data-drop],[data-drop-out]');
+  if (!drop || !dragId) return;
+  ev.preventDefault();
+  drop.classList.remove('drop');
+  var target = drop.hasAttribute('data-drop-out') ? '' : drop.dataset.fold;
+  var id = dragId; dragId = null;
+  moveNoteToFolder(id, target);
+});
+function moveNoteToFolder(id, folderId) {
+  var n = notes.find(function (x) { return x.id === id });
+  if (!n || (n.folder || '') === (folderId || '')) return;
+  rpc('notes-update', { id: id, folder: folderId }).then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    if (folderId) { foldOpen[folderId] = true; saveFoldOpen() }
+    toast(folderId ? '已移动到「' + fname(folderId) + '」' : '已移出文件夹');
+    loadNotes(true);
+  }).catch(function (e) { toast('移动失败：' + (e && e.message || e)) });
+}
+
+/* ================= 文件夹管理（notes-folders op 契约） ================= */
+function doCreateFolder() {
+  var name = prompt('新文件夹名称：');
+  if (!name || !name.trim()) return;
+  rpc('notes-folders', { op: 'create', name: name.trim() }).then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    toast('已建文件夹「' + name.trim() + '」');
+    if (res && res.folder && res.folder.id) { foldOpen[res.folder.id] = true; saveFoldOpen(); view = { type: 'folder', id: res.folder.id } }
+    loadNotes(true);
+  }).catch(function (e) { toast('建文件夹失败：' + (e && e.message || e)) });
+}
+function doRenameFolder(f) {
+  var name = prompt('重命名文件夹：', f.name);
+  if (!name || !name.trim() || name.trim() === f.name) return;
+  rpc('notes-folders', { op: 'rename', id: f.id, name: name.trim() }).then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    toast('已重命名为「' + name.trim() + '」');
+    loadNotes(true);
+  }).catch(function (e) { toast('重命名失败：' + (e && e.message || e)) });
+}
+function doDeleteFolder(f) {
+  if (!confirm('删除文件夹「' + f.name + '」？其下 ' + (f.count || 0) + ' 条笔记将移回未分类。')) return;
+  rpc('notes-folders', { op: 'delete', id: f.id }).then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    if (view.type === 'folder' && view.id === f.id) view = { type: 'all', id: '' };
+    toast('已删除文件夹「' + f.name + '」');
+    loadNotes(true);
+  }).catch(function (e) { toast('删除失败：' + (e && e.message || e)) });
+}
+function doReorderFolder(f, delta) {
+  var ids = folders.map(function (x) { return x.id });
+  var i = ids.indexOf(f.id), j = i + delta;
+  if (i < 0 || j < 0 || j >= ids.length) return;
+  ids.splice(i, 1); ids.splice(j, 0, f.id);
+  rpc('notes-folders', { op: 'reorder', ids: ids }).then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    loadNotes(true);
+  }).catch(function (e) { toast('排序失败：' + (e && e.message || e)) });
+}
+/* 文件夹右键菜单 */
+function openFolderMenu(x, y, fid) {
+  var f = folders.find(function (z) { return z.id === fid });
+  if (!f) return;
+  var host = $('ctxHost');
+  host.innerHTML = '<div class="ctxmenu" id="ctxMenu">'
+    + '<div class="mi" data-a="rename">' + icon('i-note') + '重命名</div>'
+    + '<div class="mi" data-a="up">' + icon('i-up') + '上移</div>'
+    + '<div class="mi" data-a="down">' + icon('i-down') + '下移</div>'
+    + '<div class="mi danger" data-a="del">' + icon('i-trash') + '删除</div></div>';
+  var m = $('ctxMenu');
+  m.style.left = Math.min(x, innerWidth - 170) + 'px';
+  m.style.top = Math.min(y, innerHeight - 160) + 'px';
+  m.addEventListener('click', function (ev) {
+    var mi = ev.target.closest('.mi'); if (!mi) return;
+    closeCtx();
+    var a = mi.dataset.a;
+    if (a === 'rename') doRenameFolder(f);
+    else if (a === 'up') doReorderFolder(f, -1);
+    else if (a === 'down') doReorderFolder(f, 1);
+    else if (a === 'del') doDeleteFolder(f);
+  });
+}
+function closeCtx() { $('ctxHost').innerHTML = '' }
+document.addEventListener('mousedown', function (ev) {
+  if (!ev.target.closest('.ctxmenu')) closeCtx();
+  if (!ev.target.closest('#scopeWrap')) { if (scopeOpen) { scopeOpen = false; renderScopePanel() } }
+});
+
+/* ================= 选中与编辑器 ================= */
+function selectNote(id) {
+  selId = id; scopeOpen = false;
+  var n = notes.find(function (x) { return x.id === id });
+  if (n && n.folder) { foldOpen[n.folder] = true; saveFoldOpen() }
+  edNote = n ? Object.assign({}, n, { body: '' }) : null;
+  renderTree(); renderEd();
+  if (n) {
+    rpc('notes-get', { id: id }).then(function (res) {
+      if (res && res.note && selId === id) { edNote = res.note; fillEdBody(); renderEdFoot(); }
+    }).catch(function () {})
+  }
+}
+function fillEdBody() { if (edNote) $('edBody').textContent = edNote.body || '' }
+function triggerSave() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 900) }
+function doSave() {
+  if (!edNote || !selId) return;
+  var keepQuick = (notes.find(function (x) { return x.id === selId }) || {}).tags || [];
+  var tags = (edNote._tagsStr != null ? edNote._tagsStr : (edNote.tags || []).filter(function (t) { return t !== 'quick' }).join(', '))
+    .split(/[,，;；]/).map(function (s) { return s.trim() }).filter(Boolean);
+  if (keepQuick.indexOf('quick') >= 0 && tags.indexOf('quick') < 0) tags.push('quick');
+  var upd = {
+    id: selId, title: edNote.title, tags: tags, body: edNote.body,
+    kind: edNote.kind, status: edNote.status, inject: edNote.inject === true,
+    injectTo: edNote.injectTo || [], recall: edNote.recall !== false
+  };
+  if ((edNote.topic || '').trim()) upd.topic = edNote.topic.trim();
+  rpc('notes-update', upd).then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    $('edSaved').textContent = '✓ 已自动保存 ' + new Date().toTimeString().slice(0, 5);
+    edNote._tagsStr = null;
+    loadNotes(true);
+  }).catch(function (e) { toast('保存失败：' + (e && e.message || e)) });
+}
+function injectScopeLabel(injectTo) {
+  var arr = injectTo || [];
+  if (arr.length === 0) return '本工作区';
+  if (arr.indexOf('global') >= 0) return '全局';
+  var names = arr.map(function (t) {
+    if (t === 'workspace') return '本工作区';
+    var s = sessList.find(function (x) { return x.short === t });
+    return s ? s.name : ('会话 ' + t);
+  });
+  return names.join('、');
+}
+function renderEd() {
+  var ed = $('ed');
+  if (!edNote) {
+    ed.className = 'ed empty';
+    ed.innerHTML = '<svg class="ic"><use href="#i-note"/></svg><div>选择左侧一条笔记查看和编辑</div><div style="font-size:11px">点左侧「新建」创建笔记；正文划选文字可弹出快速记录卡片</div>';
+    return;
+  }
+  var n = edNote;
+  ed.className = 'ed';
+  ed.innerHTML =
+    '<div class="ed-h">'
+    + '<div class="ed-crumb" id="edCrumb"></div>'
+    + '<div class="ed-title" id="edTitle" contenteditable="true" spellcheck="false"></div>'
+    + '<div class="ed-meta" id="edMeta"></div>'
+    + '</div>'
+    + '<div class="disp" id="dispHost"></div>'
+    + '<div class="ed-body" id="edBody" contenteditable="true" spellcheck="false"></div>'
+    + '<div class="ed-foot"><span id="edCreated"></span><span id="edUpdated"></span><span id="edSource"></span><span class="saved" id="edSaved"></span></div>';
+  renderCrumb(); renderMeta(); renderDispatches(); fillEdBody(); renderEdFoot();
+  $('edTitle').textContent = n.title === 'Untitled' ? '' : (n.title || '');
+  $('edTitle').addEventListener('input', function () { if (!edNote) return; edNote.title = this.textContent.trim() || 'Untitled'; triggerSave() });
+  $('edBody').addEventListener('input', function () { if (!edNote) return; edNote.body = this.textContent; triggerSave() });
+}
+function renderCrumb() {
+  var n = edNote; if (!n) return;
+  $('edCrumb').innerHTML = (fname(n.folder) ? '<span class="cur">' + esc(fname(n.folder)) + '</span><span class="sep">/</span>' : '')
+    + '<span class="lnk" id="crumbTopic" title="按主题全局过滤（跨文件夹）">' + esc(n.topic || '未分类') + '</span><span class="sep">/</span><span>' + esc(n.id) + '</span>';
+  $('crumbTopic').onclick = function () { view = { type: 'topic', id: n.topic || '未分类' }; render(); toast('已按主题过滤：' + (n.topic || '未分类')) };
+}
+function renderMeta() {
+  var n = edNote; if (!n) return;
+  var tagsStr = n._tagsStr != null ? n._tagsStr : (n.tags || []).filter(function (t) { return t !== 'quick' }).join(', ');
+  $('edMeta').innerHTML =
+    '<span class="meta-chip" title="类型"><span class="dot" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span><select id="kindSel">'
+    + Object.keys(KIND).map(function (k) { return '<option value="' + k + '"' + (k === (n.kind || 'note') ? ' selected' : '') + '>' + KIND[k] + '</option>' }).join('') + '</select></span>'
+    + '<span class="meta-chip" title="状态"><select id="statusSel">'
+    + ['active', 'resolved', 'superseded'].map(function (s) { return '<option value="' + s + '"' + (s === (isPinned(n) ? 'active' : n.status || 'active') ? ' selected' : '') + '>' + STATUS_LABEL[s] + '</option>' }).join('') + '</select></span>'
+    + '<span class="meta-chip" title="主题（host LLM 可异步回填；改后自动保存）">' + icon('i-topic') + '<input id="mTopicInput" size="8" placeholder="主题" value="' + esc(n.topic === '分类中' ? '' : (n.topic || '')) + '"></span>'
+    + '<span class="meta-chip" title="标签，逗号分隔">' + icon('i-filter') + '<input id="mTagsInput" size="10" placeholder="标签…" value="' + esc(tagsStr) + '"></span>'
+    + (fname(n.folder) ? '<span class="meta-chip">' + icon('i-folder') + esc(fname(n.folder)) + '</span>' : '')
+    + '<span class="meta-chip tgl' + (n.inject ? ' on' : '') + '" id="mInj" title="作为约定注入到系统提示（Agent 每回合可见）">' + icon('i-bolt') + '约定</span>'
+    + (n.inject ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="选择注入范围（可多选）">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
+    + '<span class="meta-chip tgl' + (n.recall !== false ? ' on' : '') + '" id="mRecall" title="关闭后不出现在注入给 Agent 的目录中">' + icon('i-eye') + '目录可见</span>'
+    + '<span class="meta-sp"></span>'
+    + '<span class="meta-act" id="mDispatch" title="派发待办到活跃会话">' + icon('i-play') + '派发</span>'
+    + (n.sessionId ? '<span class="meta-act" id="mSrc" title="来源会话">' + icon('i-ext') + '来源</span>' : '')
+    + '<span class="meta-act' + (isPinned(n) ? ' on' : '') + '" id="mPin" title="' + (isPinned(n) ? '取消置顶' : '置顶') + '">' + icon('i-pin') + '</span>'
+    + '<span class="meta-act danger" id="mDel" title="删除（软删除，可撤销/由 Agent 恢复）">' + icon('i-trash') + '</span>';
+  $('kindSel').onchange = function () { edNote.kind = this.value; triggerSave(); renderMeta(); renderTree() };
+  $('statusSel').onchange = function () { edNote.status = this.value; triggerSave(); renderMeta(); renderTree() };
+  $('mTopicInput').oninput = function () { edNote.topic = this.value; triggerSave() };
+  $('mTagsInput').oninput = function () { edNote._tagsStr = this.value; triggerSave() };
+  $('mInj').onclick = function () {
+    edNote.inject = !(edNote.inject === true);
+    if (edNote.inject) { if (!sessList.length) pullSessions(); scopeOpen = true } else { scopeOpen = false }
+    triggerSave(); renderMeta();
+    toast(edNote.inject ? '已注入为约定（范围见右侧下拉）' : '已取消约定注入');
+  };
+  var trig = $('scopeTrig');
+  if (trig) trig.onclick = function (ev) { ev.stopPropagation(); scopeOpen = !scopeOpen; if (scopeOpen && !sessList.length) pullSessions(); renderScopePanel() };
+  $('mRecall').onclick = function () { edNote.recall = edNote.recall === false; triggerSave(); renderMeta(); toast(edNote.recall !== false ? '已加入 Agent 目录' : '已从 Agent 目录隐藏') };
+  $('mDispatch').onclick = function () { openDispatch() };
+  var src = $('mSrc');
+  if (src) src.onclick = function () { toast('来源会话 ' + shortSid(edNote.sessionId) + '（' + edNote.sessionId + '）· 页面无跳转能力，请回 DSH 主界面打开') };
+  $('mPin').onclick = function () { edNote.status = isPinned(edNote) ? 'active' : 'pinned'; triggerSave(); renderMeta(); renderTree(); toast(isPinned(edNote) ? '已置顶' : '已取消置顶') };
+  $('mDel').onclick = function () { doDeleteNote(edNote.id) };
+  renderScopePanel();
+}
+/* 注入范围浮层（本工作区/全局/指定会话多选；契约同面板 toggleScope） */
+function renderScopePanel() {
+  var hostEl = $('scopePanelHost');
+  if (!hostEl) return;
+  if (!scopeOpen || !edNote || !edNote.inject) { hostEl.innerHTML = ''; return }
+  var scope = edNote.injectTo || [];
+  var byWs = {};
+  sessList.forEach(function (s) { var w = s.workspace || '其他'; (byWs[w] = byWs[w] || []).push(s) });
+  sessPending.forEach(function (p) { var w = p.workspace || '其他'; (byWs[w] = byWs[w] || []).push({ id: p.id, short: p.short, name: '', pending: true }) });
+  var wsKeys = Object.keys(byWs).sort();
+  var h = '<div class="scope-panel">'
+    + '<label class="scope-item"><input type="checkbox" data-scope="workspace"' + (scope.length === 0 || scope.indexOf('workspace') >= 0 ? ' checked' : '') + '> 本工作区</label>'
+    + '<label class="scope-item"><input type="checkbox" data-scope="global"' + (scope.indexOf('global') >= 0 ? ' checked' : '') + '> 全局（所有会话）</label>'
+    + (wsKeys.length ? '<div class="scope-sep">指定会话</div>' : '');
+  wsKeys.forEach(function (ws) {
+    h += '<div class="scope-ws">' + esc(ws) + '</div>';
+    byWs[ws].forEach(function (s) {
+      h += '<label class="scope-item' + (s.pending ? ' dis' : '') + '"><input type="checkbox" data-scope="' + esc(s.short) + '"' + (!s.pending && scope.indexOf(s.short) >= 0 ? ' checked' : '') + (s.pending ? ' disabled' : '') + '> ' + (s.pending ? esc(s.short) + ' · 标题加载中…' : esc(s.name || s.short)) + '</label>';
+    });
+  });
+  hostEl.innerHTML = h + '</div>';
+  hostEl.querySelectorAll('input[data-scope]').forEach(function (cb) {
+    cb.onchange = function () { toggleScope(cb.dataset.scope) };
+  });
+}
+function toggleScope(key) {
+  var cur = (edNote.injectTo || []).slice();
+  var next;
+  if (key === 'global') next = cur.indexOf('global') >= 0 ? [] : ['global'];
+  else {
+    var withoutGlobal = cur.filter(function (t) { return t !== 'global' });
+    next = withoutGlobal.indexOf(key) >= 0 ? withoutGlobal.filter(function (t) { return t !== key }) : withoutGlobal.concat([key]);
+  }
+  edNote.injectTo = next;
+  triggerSave(); renderMeta(); scopeOpen = true; renderScopePanel();
+}
+function renderDispatches() {
+  var host = $('dispHost'); if (!host || !edNote) return;
+  var ds = edNote.dispatches || [];
+  if (!ds.length) { host.innerHTML = ''; return }
+  var open = host.dataset.open === '1';
+  var h = '<div class="disp-t" id="dispT">' + (open ? '▼' : '▶') + ' 派发历史（' + ds.length + '）</div>';
+  if (open) {
+    ds.map(function (d, i) { return { d: d, i: i } }).reverse().forEach(function (r) {
+      var d = r.d;
+      h += '<div class="disp-rec' + (d.done ? ' done' : '') + '"><div class="disp-rec-top">'
+        + (d.done ? '✓ ' : '<span class="dot"></span>') + esc(d.sessionName || d.sessionId)
+        + '<span class="disp-rec-m">' + (d.done ? '已完成 · ' : '待处理 · ') + (d.mode === 'new' ? '新会话' : (d.workspace || '已有会话')) + (d.at ? ' · ' + fmtDT(d.at) : '') + '</span></div>'
+        + (d.instruction ? '<div class="disp-rec-i">要求：' + esc(d.instruction) + '</div>' : '')
+        + (!d.done ? '<button class="disp-done-btn" data-di="' + r.i + '">标记完成</button>' : '') + '</div>';
+    });
+  }
+  host.innerHTML = h;
+  $('dispT').onclick = function () { host.dataset.open = open ? '0' : '1'; renderDispatches() };
+  host.querySelectorAll('.disp-done-btn').forEach(function (b) {
+    b.onclick = function () {
+      rpc('notes-dispatch-done', { id: edNote.id, dispatchIndex: Number(b.dataset.di) }).then(function (res) {
+        if (res && res.error) { toast(res.error); return }
+        toast('已标记完成'); refreshSelected(); loadNotes(true);
+      }).catch(function (e) { toast('操作失败：' + (e && e.message || e)) });
+    };
+  });
+}
+function renderEdFoot() {
+  var n = edNote; if (!n || !$('edCreated')) return;
+  $('edCreated').textContent = '创建 ' + fmtDT(n.createdAt);
+  $('edUpdated').textContent = '更新 ' + fmtDT(n.updatedAt);
+  $('edSource').textContent = n.sessionId ? ('来源 会话 ' + shortSid(n.sessionId)) : '来源 页面';
+}
+function refreshSelected() {
+  if (!selId) return;
+  var id = selId;
+  rpc('notes-get', { id: id }).then(function (res) {
+    if (res && res.note && selId === id) { var body = edNote ? edNote.body : ''; edNote = res.note; if (document.activeElement !== $('edBody')) edNote.body = res.note.body; else edNote.body = body; renderEd(); }
+  }).catch(function () {})
+}
+function doDeleteNote(id) {
+  if (!id) return;
+  rpc('notes-delete', { id: id }).then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    if (selId === id) { selId = null; edNote = null; renderEd() }
+    loadNotes(true);
+    toast('已删除（软删除）', {
+      label: '撤销', fn: function () {
+        rpc('notes-restore', { id: id }).then(function (r) {
+          if (r && r.error) { toast(r.error); return }
+          toast('已恢复'); loadNotes(true);
+        }).catch(function (e) { toast('恢复失败：' + (e && e.message || e)) });
+      }
+    });
+  }).catch(function (e) { toast('删除失败：' + (e && e.message || e)) });
+}
+
+/* ================= 新建笔记 ================= */
+$('btnNew').addEventListener('click', function () {
+  var seedFolder = view.type === 'folder' ? view.id : '';
+  var seedTopic = view.type === 'topic' ? view.id : '';
+  var payload = { title: '', body: '', kind: kindF !== 'all' && kindF !== 'pinned' ? kindF : 'note' };
+  if (seedFolder) payload.folder = seedFolder;
+  if (seedTopic) payload.topic = seedTopic;
+  rpc('notes-create', payload).then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    toast('已创建笔记（主题/文件夹随当前视图）');
+    loadNotes(true).then(function () { if (res && res.id) selectNote(res.id) });
+  }).catch(function (e) { toast('创建失败：' + (e && e.message || e)) });
+});
+
+/* ================= 搜索：本地即时过滤 + 250ms 防抖 notes-search 并集 ================= */
+$('q').addEventListener('input', function () {
+  searchText = this.value;
+  render();
+  clearTimeout(searchTimer);
+  var q = searchText.trim();
+  if (!q) { searchIds = null; return }
+  searchTimer = setTimeout(function () {
+    rpc('notes-search', { query: q }).then(function (res) {
+      if (res && res.notes && $('q').value.trim() === q) { searchIds = res.notes.map(function (n) { return n.id }); render() }
+    }).catch(function () {})
+  }, 250);
+});
+
+/* ================= modal 框架 ================= */
+function openModal(html) {
+  $('modalHost').innerHTML = '<div class="mask" id="mask"><div class="modal" id="modal">' + html + '</div></div>';
+  $('mask').addEventListener('mousedown', function (ev) { if (ev.target === ev.currentTarget) closeModal() });
+}
+function closeModal() { $('modalHost').innerHTML = '' }
+function modalErr(m) { var e = $('mErr'); if (e) { e.textContent = m; e.style.display = 'block' } }
+
+/* ================= 派发（notes-active-sessions + notes-dispatch；页面无 workspaces 服务，仅已有会话） ================= */
+var dState = null;
+function openDispatch() {
+  if (!edNote || !selId) { toast('先选择一条笔记'); return }
+  dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [] };
+  pullActiveSessions();
+  renderDispatchModal();
+}
+function pullActiveSessions() {
+  rpc('notes-active-sessions', {}).then(function (res) {
+    if (!res || !dState) return;
+    if (res.sessions) dState.sessions = res.sessions;
+    dState.pendingSess = res.titlesPending && Array.isArray(res.pendingSessions) ? res.pendingSessions : [];
+    if ($('dispSessHost')) renderDispatchSessList();
+    if (res.titlesPending && dState) setTimeout(function () { if (dState && $('dispSessHost')) pullActiveSessions() }, 1500);
+  }).catch(function () {})
+}
+function renderDispatchModal() {
+  var n = edNote;
+  openModal(
+    '<div class="modal-t">' + icon('i-play', 13) + ' 派发待办<span class="sub">注入上下文并触发目标会话处理 · 新建会话派发请回 DSH 面板</span></div>'
+    + '<div class="disp-todo"><div class="disp-todo-t">' + esc(n.title || 'Untitled') + '</div><div class="disp-todo-b">' + esc(String(n.preview || n.body || '').trim().slice(0, 200) || '（无正文）') + '</div></div>'
+    + '<textarea class="minput" id="dInstr" rows="3" placeholder="补充具体要求 / 指令（可选）…"></textarea>'
+    + '<div id="dispSessHost"></div>'
+    + '<div class="modal-err" id="mErr" style="display:none"></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="dCancel">取消</button><button class="mbtn primary" id="dOk">派发</button></div>'
+  );
+  $('dInstr').oninput = function () { dState.instr = this.value };
+  $('dCancel').onclick = closeModal;
+  $('dOk').onclick = doDispatchConfirm;
+  renderDispatchSessList();
+}
+function renderDispatchSessList() {
+  var host = $('dispSessHost'); if (!host || !dState) return;
+  var byWs = {};
+  dState.sessions.forEach(function (s) { var w = s.workspace || '其他'; (byWs[w] = byWs[w] || []).push(s) });
+  dState.pendingSess.forEach(function (p) { var w = p.workspace || '其他'; (byWs[w] = byWs[w] || []).push({ id: p.id, short: p.short, name: '', pending: true }) });
+  var wsKeys = Object.keys(byWs).sort();
+  var h = '<div class="disp-ws">活跃会话 ' + dState.sessions.length + (dState.pendingSess.length ? '（+' + dState.pendingSess.length + ' 标题加载中…）' : '') + ' · 按工作区分组</div>';
+  if (!wsKeys.length) h += '<div class="modal-hint">没有可派发的活跃会话。目标会话需处于打开状态；请先在 DSH 主界面打开，或回 DSH 浮动面板使用「新建会话」派发。</div>';
+  wsKeys.forEach(function (ws) {
+    h += '<div class="disp-ws">' + esc(ws) + '</div>';
+    byWs[ws].forEach(function (s) {
+      h += '<div class="disp-sess' + (s.pending ? ' dis' : '') + (dState.sessId === s.id ? ' on' : '') + '" data-sid="' + (s.pending ? '' : esc(s.id)) + '">'
+        + (s.live ? '<span class="live" title="live"></span>' : '<span class="live" style="background:var(--nt3)" title="非 live"></span>')
+        + '<span class="nm">' + (s.pending ? esc(s.short) + ' · 标题加载中…' : esc(s.name || s.short)) + '</span>'
+        + '<span style="font-size:10px;color:var(--nt3)">' + esc(s.short || '') + '</span></div>';
+    });
+  });
+  host.innerHTML = h;
+  host.querySelectorAll('.disp-sess[data-sid]').forEach(function (el) {
+    if (!el.dataset.sid) return;
+    el.onclick = function () { dState.sessId = el.dataset.sid; renderDispatchSessList() };
+  });
+}
+function doDispatchConfirm() {
+  if (!dState || dState.pending) return;
+  if (!dState.sessId) { modalErr('请选择目标会话'); return }
+  var sess = dState.sessions.find(function (s) { return s.id === dState.sessId });
+  dState.pending = true; $('dOk').disabled = true; $('dOk').textContent = '派发中…';
+  rpc('notes-dispatch', { id: selId, sessionId: dState.sessId, sessionName: sess ? sess.name : '', workspace: sess ? sess.workspace : '', mode: 'existing', instruction: dState.instr }).then(function (res) {
+    dState.pending = false;
+    if (res && res.error) {
+      modalErr(res.error + (res.needOpen ? '\n（页面无打开会话能力，请回 DSH 主界面打开该会话后重试）' : ''));
+      $('dOk').disabled = false; $('dOk').textContent = '派发';
+      return;
+    }
+    closeModal(); dState = null;
+    toast('已派发待办到「' + (sess ? sess.name : '') + '」（开始处理）');
+    refreshSelected(); loadNotes(true);
+  }).catch(function (e) {
+    dState.pending = false; modalErr('派发失败：' + (e && e.message || e));
+    $('dOk').disabled = false; $('dOk').textContent = '派发';
+  });
+}
+
+/* ================= 设置 / 导出 / 导入 ================= */
+function openSettings() {
+  openModal('<div class="modal-t">' + icon('i-gear', 13) + ' 设置</div><div id="setBody"><div class="modal-hint">加载中…</div></div><div class="modal-err" id="mErr" style="display:none"></div>');
+  rpc('notes-settings-get', {}).then(function (res) {
+    if (!res || !$('setBody')) return;
+    var settings = res.settings || {};
+    var models = res.models || [];
+    var l = settings.llm || null;
+    var catalogOn = settings.catalogEnabled !== false;
+    var llmCtrl;
+    if (models.length) {
+      llmCtrl = '<select class="minput" id="setLlmSel">'
+        + '<option value="">跟随当前会话（默认）</option>'
+        + models.map(function (m) {
+            var v = m.provider + '/' + m.model;
+            return '<option value="' + esc(v) + '"' + (l && l.provider === m.provider && l.model === m.model ? ' selected' : '') + '>' + esc(m.label || v) + '</option>'
+          }).join('') + '</select>';
+    } else {
+      llmCtrl = '<input class="minput" id="setLlmP" size="10" placeholder="provider" value="' + esc(l ? l.provider : '') + '">'
+        + '<input class="minput" id="setLlmM" size="12" placeholder="model" value="' + esc(l ? l.model : '') + '">'
+        + '<button class="mbtn" id="setLlmSave">保存</button>'
+        + (l ? '<button class="mbtn" id="setLlmClear">跟随会话</button>' : '');
+    }
+    $('setBody').innerHTML =
+      '<div class="set-row"><div class="set-label">LLM 模型<span class="s">笔记自动分类 / 指令提取使用的模型</span></div><div class="set-ctrl">' + llmCtrl + '</div></div>'
+      + '<div class="set-row"><div class="set-label">笔记目录注入<span class="s">向 Agent 系统提示注入笔记目录（一行一条），供其规划时参考并按需 note_get 取全文</span></div><div class="set-ctrl"><label class="set-check"><input type="checkbox" id="setCatalog"' + (catalogOn ? ' checked' : '') + '> ' + (catalogOn ? '已开启' : '已关闭') + '</label></div></div>'
+      + '<div class="set-row"><div class="set-label">数据<span class="s">全库目录快照导出 / 从快照目录导入（只增改不删，导入前自动全量备份）</span></div><div class="set-ctrl"><button class="mbtn" id="setExport">导出全部</button><button class="mbtn" id="setImport">导入…</button></div></div>';
+    var sel = $('setLlmSel');
+    if (sel) sel.onchange = function () {
+      var v = this.value;
+      var p = v ? { provider: v.split('/')[0], model: v.split('/').slice(1).join('/') } : null;
+      saveSettings({ llm: p }, p ? ('已保存：笔记 LLM = ' + v) : '已恢复跟随当前会话（默认）');
+    };
+    var sp = $('setLlmSave');
+    if (sp) sp.onclick = function () {
+      var pv = $('setLlmP').value.trim(), mv = $('setLlmM').value.trim();
+      if (!pv || !mv) { modalErr('provider 与 model 均需填写'); return }
+      saveSettings({ llm: { provider: pv, model: mv } }, '已保存：笔记 LLM = ' + pv + ' / ' + mv);
+    };
+    var sc = $('setLlmClear');
+    if (sc) sc.onclick = function () { saveSettings({ llm: null }, '已恢复跟随当前会话（默认）'); openSettings() };
+    $('setCatalog').onchange = function () {
+      saveSettings({ catalogEnabled: !!this.checked }, this.checked ? '已开启笔记目录注入' : '已关闭笔记目录注入');
+      this.parentNode.lastChild.textContent = this.checked ? ' 已开启' : ' 已关闭';
+    };
+    $('setExport').onclick = function () { openExport() };
+    $('setImport').onclick = function () { openImport() };
+  }).catch(function (e) { modalErr('设置加载失败：' + (e && e.message || e)) });
+}
+function saveSettings(patch, okMsg) {
+  rpc('notes-settings-set', patch).then(function (res) {
+    if (res && res.error) { modalErr(res.error); return }
+    if (okMsg) toast(okMsg);
+  }).catch(function (e) { modalErr('保存失败：' + (e && e.message || e)) });
+}
+function openExport() {
+  var last = '';
+  try { last = localStorage.getItem('dsh-notes-last-export-dir') || '' } catch (e) {}
+  openModal(
+    '<div class="modal-t">' + icon('i-up', 13) + ' 导出全部笔记</div>'
+    + '<div class="modal-hint">把整个笔记库（含 folders.json）完整快照到目标目录下的 dsh-notes-export-&lt;时间戳&gt; 子目录，不打包不压缩，目录即格式。</div>'
+    + '<input class="minput" id="expDir" placeholder="目标目录，如 D:\\backup 或桌面路径…" value="' + esc(last) + '">'
+    + '<div class="modal-err" id="mErr" style="display:none"></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="eCancel">取消</button><button class="mbtn primary" id="eOk">导出</button></div>'
+  );
+  $('expDir').focus();
+  $('eCancel').onclick = closeModal;
+  $('expDir').onkeydown = function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); $('eOk').click() } };
+  $('eOk').onclick = function () {
+    var dir = $('expDir').value.trim();
+    if (!dir) { modalErr('请填写目标目录'); return }
+    $('eOk').disabled = true; $('eOk').textContent = '导出中…';
+    rpc('notes-export', { dir: dir }).then(function (res) {
+      if (res && res.error) { modalErr(res.error); $('eOk').disabled = false; $('eOk').textContent = '导出'; return }
+      try { localStorage.setItem('dsh-notes-last-export-dir', dir) } catch (e) {}
+      closeModal();
+      toast('已导出 ' + (res.exported || 0) + ' 条笔记到 ' + (res.target || dir));
+    }).catch(function (e) { modalErr('导出失败：' + (e && e.message || e)); $('eOk').disabled = false; $('eOk').textContent = '导出' });
+  };
+}
+var impPreview = null, impOverwrite = false;
+function openImport() {
+  impPreview = null; impOverwrite = false;
+  openModal(
+    '<div class="modal-t">' + icon('i-down', 13) + ' 导入笔记</div>'
+    + '<div class="modal-hint">从目录快照导入（只增改不删）：库中不存在的直接入库，内容相同的跳过，内容不同的默认跳过；执行前自动全量备份当前库。</div>'
+    + '<input class="minput" id="impDir" placeholder="来源目录（dsh-notes-export-… 或 notes-backup-… 目录）…">'
+    + '<div id="impBody"></div>'
+    + '<div class="modal-err" id="mErr" style="display:none"></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="iCancel">取消</button><button class="mbtn primary" id="iOk">预览</button></div>'
+  );
+  $('impDir').focus();
+  $('iCancel').onclick = closeModal;
+  $('impDir').oninput = function () { impPreview = null; $('impBody').innerHTML = ''; $('iOk').textContent = '预览' };
+  $('impDir').onkeydown = function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); $('iOk').click() } };
+  $('iOk').onclick = function () { impPreview ? doImportExecute() : doImportPreview() };
+}
+function doImportPreview() {
+  var dir = $('impDir').value.trim();
+  if (!dir) { modalErr('请填写来源目录'); return }
+  $('iOk').disabled = true; $('iOk').textContent = '检查中…';
+  rpc('notes-import-preview', { dir: dir }).then(function (res) {
+    $('iOk').disabled = false;
+    if (res && res.error) { modalErr(res.error); $('iOk').textContent = '预览'; return }
+    if (!res.total) { modalErr('该目录没有可导入的笔记：' + dir); $('iOk').textContent = '预览'; return }
+    impPreview = res; impOverwrite = false;
+    renderImportPreview();
+  }).catch(function (e) { modalErr('预览失败：' + (e && e.message || e)); $('iOk').disabled = false; $('iOk').textContent = '预览' });
+}
+function renderImportPreview() {
+  var p = impPreview; if (!p || !$('impBody')) return;
+  var IMP_LABEL = { added: '新增', same: '相同', diff: '不同' };
+  var fl = p.folders || { total: 0, new: 0 };
+  var h = '<div class="imp-sum"><span class="added">新增 <b>' + p.added + '</b></span><span>相同 <b>' + p.same + '</b></span><span class="' + (p.diff ? 'diff' : '') + '">不同 <b>' + p.diff + '</b></span>'
+    + (fl.total ? '<span>文件夹新增 <b>' + fl.new + '</b> / 共 ' + fl.total + '</span>' : '') + '</div>'
+    + (p.unreadable ? '<div class="imp-warn">⚠ ' + p.unreadable + ' 个文件无法读取，已跳过</div>' : '')
+    + '<div class="imp-list">'
+    + (p.detail || []).map(function (d) {
+        return '<div class="imp-row"><span class="imp-badge ' + d.status + '">' + (IMP_LABEL[d.status] || d.status) + '</span><span class="ti" title="' + esc(d.title || 'Untitled') + '">' + esc(d.title || 'Untitled') + '</span>' + (d.deleted ? '<span class="imp-deltag">已删除</span>' : '') + '</div>'
+      }).join('') + '</div>'
+    + '<label class="set-check" style="margin-top:8px"><input type="checkbox" id="impOw"' + (p.diff ? '' : ' disabled') + '> 覆盖内容不同的笔记（' + p.diff + ' 条，不勾则跳过）</label>';
+  $('impBody').innerHTML = h;
+  var ow = $('impOw');
+  if (ow) ow.onchange = function () { impOverwrite = !!this.checked };
+  $('iOk').textContent = '执行导入';
+  $('iOk').className = 'mbtn danger';
+}
+function doImportExecute() {
+  var dir = $('impDir').value.trim();
+  if (!dir || !impPreview) return;
+  $('iOk').disabled = true; $('iOk').textContent = '导入中…';
+  rpc('notes-import', { dir: dir, overwrite: !!impOverwrite }).then(function (res) {
+    if (res && res.error) { modalErr(res.error); $('iOk').disabled = false; $('iOk').textContent = '执行导入'; return }
+    closeModal();
+    var got = (res.imported || 0) + (res.overwritten || 0);
+    var skipped = (res.skippedSame || 0) + (res.skippedDiff || 0);
+    var bak = String(res.backupDir || '').split(/[\\/]/).filter(Boolean).pop() || '';
+    toast('已导入 ' + got + ' 条（跳过 ' + skipped + ' 条）' + (res.foldersMerged ? '，合并文件夹 ' + res.foldersMerged + ' 个' : '') + (bak ? '，已自动备份到 ' + bak : ''));
+    loadNotes(true);
+  }).catch(function (e) { modalErr('导入失败：' + (e && e.message || e)); $('iOk').disabled = false; $('iOk').textContent = '执行导入' });
+}
+$('btnSettings').addEventListener('click', openSettings);
+$('btnExport').addEventListener('click', openExport);
+$('btnImport').addEventListener('click', openImport);
+
+/* ================= 快速记录卡片（v2）：正文划选松手触发 ================= */
+var capEl = null, capText = '';
+document.addEventListener('mouseup', function (ev) {
+  if (capEl && capEl.contains(ev.target)) return;
+  if (ev.target.closest && ev.target.closest('input,textarea,select,.modal,.ctxmenu')) return;
+  var sel = window.getSelection();
+  var txt = sel && !sel.isCollapsed ? String(sel).trim() : '';
+  if (!txt || txt.length < 2) return;
+  var rect = sel.getRangeAt(0).getBoundingClientRect();
+  showCap(txt.slice(0, 500), rect.right + 8, rect.bottom + 6);
+});
+function showCap(text, x, y) {
+  closeCap(); capText = text;
+  capEl = document.createElement('div'); capEl.className = 'cap';
+  capEl.innerHTML =
+    '<div class="cap-h"><span class="src">' + icon('i-note', 11) + '选区速记</span>'
+    + '<span class="auto"><span class="dot"></span>记录为 引用</span></div>'
+    + '<div class="cap-pv">' + esc(text.length > 160 ? text.slice(0, 160) + '…' : text) + '</div>'
+    + '<div class="cap-in">' + icon('i-plus', 12) + '<input id="capInput" placeholder="可补充：打标签 / 引导标题 / 定类型…"><span class="kbd">Enter 记录</span></div>'
+    + '<div class="cap-acts">'
+    + '<button class="cbtn" id="capCopy">' + icon('i-note') + '复制</button>'
+    + '<button class="cbtn primary" id="capSave">' + icon('i-check', 12) + '记录</button>'
+    + '<button class="cbtn" id="capCancel">取消</button></div>';
+  $('capHost').appendChild(capEl);
+  var pw = capEl.offsetWidth || 300, ph = capEl.offsetHeight || 180;
+  capEl.style.left = Math.max(8, Math.min(x, innerWidth - pw - 14)) + 'px';
+  capEl.style.top = Math.max(8, Math.min(y, innerHeight - ph - 14)) + 'px';
+  $('capInput').focus();
+  $('capCopy').onclick = function () {
+    var done = function () { toast('已复制选区'); closeCap() };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(capText).then(done, done);
+    else done();
+  };
+  $('capSave').onclick = saveCap;
+  $('capCancel').onclick = closeCap;
+  capEl.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter' && ev.target.id === 'capInput') { ev.preventDefault(); saveCap() }
+    if (ev.key === 'Escape') { ev.stopPropagation(); closeCap() }
+  });
+}
+function saveCap() {
+  var input = $('capInput');
+  var hint = input ? input.value.trim() : '';
+  var text = capText;
+  closeCap();
+  if (!text) return;
+  /* 有备注 → notes-quick-instruct（LLM 提取 tags/titleHint/kind/inject）；无备注 → notes-quick（合并窗口 + 异步分类）。
+     sessionId/cwd 传空：页面无会话上下文，标题回退由 host 兜底。 */
+  var call = hint
+    ? rpc('notes-quick-instruct', { text: text, note: hint, sessionId: '', cwd: '' })
+    : rpc('notes-quick', { text: text, sessionId: '', cwd: '', kind: 'quote' });
+  call.then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    toast(res && res.merged ? '已合并进今日速记' : '已记录为引用（主题分类由 host LLM 异步回填）');
+    loadNotes(true).then(function () { if (res && res.id && !res.merged) selectNote(res.id) });
+    /* 分类异步回填：延迟静默重拉两次，标题/主题自动刷新可见 */
+    setTimeout(function () { loadNotes(true) }, 4000);
+    setTimeout(function () { loadNotes(true) }, 10000);
+  }).catch(function (e) { toast('记录失败：' + (e && e.message || e)) });
+}
+function closeCap() { if (capEl) { capEl.remove(); capEl = null } if (window.getSelection) window.getSelection().removeAllRanges() }
+
+/* ================= 顶栏：刷新 / 主题 ================= */
+$('btnRefresh').addEventListener('click', function () { searchIds = null; loadNotes(); if (sessList.length) pullSessions(); toast('已刷新') });
+function applyTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem('dsh-notes-app-theme', t) } catch (e) {} }
+$('btnTheme').addEventListener('click', function () { applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark') });
+try { var savedTheme = localStorage.getItem('dsh-notes-app-theme'); if (savedTheme === 'light' || savedTheme === 'dark') applyTheme(savedTheme) } catch (e) {}
+
+/* ================= 键盘 ================= */
+document.addEventListener('keydown', function (ev) {
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'k') { ev.preventDefault(); $('q').focus(); return }
+  if (ev.key === 'Escape') {
+    if ($('modalHost').firstChild) { closeModal(); return }
+    if (scopeOpen) { scopeOpen = false; renderScopePanel(); return }
+    if (capEl) { closeCap(); return }
+    if ($('ctxHost').firstChild) { closeCtx(); return }
+    if (!document.activeElement || !document.activeElement.isContentEditable) { searchText = ''; searchIds = null; $('q').value = ''; render() }
+  }
+});
+
+/* ================= 启动 ================= */
+function render() { renderTree(); if (edNote) renderMeta() }
+loadNotes();
+</script>
+</body>
+</html>
