@@ -68,7 +68,7 @@ node check.js
 >
 > 1. README 的「版本适配（dsh-notes ↔ DSH）」映射表必须随每个插件版本更新一行：插件版本 / 发布日期 / 声明适配 DSH（取 `peerDependencies` 实值）/ **实测基线**（本版本开发与回归所用 DSH 版本）/ 要点摘要。
 > 2. 「实测基线」必须真实：发布前在基线版本上跑过 `node check.js` 与活体验证；未验证过的 DSH 版本不得写进基线列。
-> 3. `peerDependencies` 上限是「未验证」的保守声明（如 `<0.2.0-0`）：DSH 次版本跃迁后，新兼容性以新插件版本发布并同步更新映射表与上限。
+> 3. `peerDependencies` 双向随实测走：**下限 = 实测基线**（依赖了某版本 API 即视为依赖；实测发现旧版本不可用必须收紧，如 0.2.2 把下限从 0.1.5-rc.1 收紧到 0.1.7），**上限 = 未验证的保守声明**（如 `<0.2.0-0`）。npm 已发布版本无法修改声明——发现声明与实际不符时，发新 patch 版修正并在映射表标注。
 > 4. 发布任务（release）的交付项必须包含：`package.json` version 三处一致（根/包/README 表）+ `files` 白名单核对（`npm pack` 干跑验证新资产，如 app.html）+ 映射表更新。tag==version 校验由 CI（`publish.yml`）兜底。
 
 `pluginDir` 由 `host.js` 经 `new Function('harness','pluginDir',src)(harness, PLUGIN_DIR)` 注入，实现内所有路径（`NOTES_DIR`/`CSS_PATH`/`perf-report`/心跳/`notes-src`）都从它派生，移植只需改 `host.js` 顶部一处。
