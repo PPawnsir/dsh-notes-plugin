@@ -3,24 +3,27 @@
 /* tooltip 必须作用域隔离（.dsh-nt）：全局 [data-tooltip] 选择器会污染整个 DSH 页面导致卡顿 */
 
 /* ===== 设计令牌（映射 DSH 主题 token，明暗随 DSH 主题自动切换；缺失时回退浅色兜底） ===== */
-.dsh-notes-floating,.dsh-notes-fab{
+/* 映射口径（DSH 0.1.7 实测）：npanel=一级层面（亮 #fff / 暗 #232324）、nbg=页面底（亮 #fff / 暗 #151517）、
+   nbg-raise=二级层面（暗 #2c2c2e）、nbg-hover=官方交互 hover、nbd=border-l2、nbd-soft=border-l3、
+   nt3=label-tertiary、nacc=业务主色鲜蓝（亮 #4176e6 / 暗 #7aaaff，曾误绑中性品牌色导致暗色选中态发灰） */
+.dsh-notes-floating,.dsh-notes-fab,.dsh-notes-hdr-btn{
   /* 背景（v2：npanel=卡片面 / nbg=容器底 / nbg-raise=输入与徽章的抬升面） */
-  --npanel:var(--dsw-alias-bg-overlay, #ffffff);       /* 侧栏/编辑器面板背景 */
-  --nbg:var(--dsw-alias-bg-overlay, #ffffff);          /* app 容器底（color-mix 覆盖为略深一档） */
-  --nbg-raise:rgba(128,128,128,.06);                   /* 输入框/徽章抬升面——color-mix 兜底 */
-  --nbg-hover:rgba(128,128,128,.08);                   /* 行 hover——color-mix 兜底 */
-  --nbg-sel:rgba(128,128,128,.12);                     /* 行/chip 选中——color-mix 覆盖为强调色 tint */
-  --nbd:var(--dsw-alias-border-l1, #e5e5ea);           /* 边框/分隔线 */
-  --nbd-soft:var(--dsw-alias-border-l1, #ececf0);      /* 更柔和的分隔 */
+  --npanel:var(--dsw-alias-bg-layer-1, #ffffff);       /* 侧栏/编辑器面板背景（一级层面） */
+  --nbg:var(--dsw-alias-bg-base, #ececef);             /* app 容器底（页面底；亮色与面板同为 #fff，由下方 color-mix 派生层次） */
+  --nbg-raise:var(--dsw-alias-bg-layer-2, #f7f7f9);    /* 输入框/徽章抬升面（二级层面；亮色 color-mix 派生） */
+  --nbg-hover:var(--dsw-alias-interactive-bg-hover, rgba(38,49,72,.06)); /* 行 hover（DSH 官方交互色） */
+  --nbg-sel:rgba(64,98,232,.10);                       /* 行/chip 选中——color-mix 覆盖为强调色 tint */
+  --nbd:var(--dsw-alias-border-l2, rgba(0,0,0,.10));   /* 边框/分隔线 */
+  --nbd-soft:var(--dsw-alias-border-l3, rgba(0,0,0,.12)); /* 卡片边框/分隔 */
   /* 文字 */
-  --ntx:var(--dsw-alias-label-primary, #1c1c1e);       /* 主文字 */
+  --ntx:var(--dsw-alias-label-primary, #0f1115);       /* 主文字 */
   --ntx-soft:var(--ntx);                               /* 正文柔化版（88% 主色，color-mix 覆盖） */
-  --nt2:var(--dsw-alias-label-secondary, #6c6c70);     /* 次要文字（时间/来源） */
-  --nt3:var(--dsw-alias-label-secondary, #aeaeb2);     /* 弱化（placeholder/分组头/图标） */
+  --nt2:var(--dsw-alias-label-secondary, #61666b);     /* 次要文字（时间/来源） */
+  --nt3:var(--dsw-alias-label-tertiary, #81858c);      /* 弱化（placeholder/分组头/图标） */
   /* 强调 */
-  --nacc:var(--dsw-alias-brand-primary, #0a84ff);      /* 品牌主色（交互/选中/主按钮） */
+  --nacc:var(--dsw-alias-state-business-primary, #6c8cff); /* 鲜蓝强调色（DSH 业务主色，明暗自适应） */
   --nacc-tx:var(--nacc);                               /* 强调文字（color-mix 覆盖为 nacc↔ntx 混色，明暗均可读） */
-  --nacc-soft:rgba(10,132,255,.12);
+  --nacc-soft:rgba(108,140,255,.12);
   --nwarn:#ff9500;                                     /* 待处理/置顶 pin（橙，深浅通用常量） */
   --ndanger:#e5734f;                                   /* 危险操作（原型 token，深浅通用常量） */
   /* kind 强调色（灰阶为主，kind 用低调色；深浅通用，保留原值） */
@@ -36,21 +39,28 @@
   --nmono:"SF Mono",ui-monospace,"Cascadia Code","Cascadia Mono",SFMono-Regular,Menlo,Consolas,monospace;  /* Win11 Cascadia 优先于 Consolas */
   /* 阴影（极淡，仅面板） */
   --nshadow:0 18px 50px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06);
+  --nshadow-fab:0 4px 14px rgba(0,0,0,.10),0 1px 4px rgba(0,0,0,.06);  /* FAB 亮色阴影（轻）；暗色由 data-ds-dark-theme 覆盖加重 */
+}
+/* 暗色主题 FAB 阴影加重（DSH 以 body[data-ds-dark-theme] 切换，亮色不命中保持轻阴影） */
+body[data-ds-dark-theme] .dsh-notes-floating,
+body[data-ds-dark-theme] .dsh-notes-fab,
+body[data-ds-dark-theme] .dsh-notes-hdr-btn{
+  --nshadow-fab:0 10px 28px rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.25);
 }
 
 /* 快速记录卡片（position:fixed 不在 .dsh-notes-floating 内，拿不到面板令牌，自带一份同名令牌） */
 .dsh-notes-cap{
-  --npanel:var(--dsw-alias-bg-overlay,#ffffff);
-  --nbg:var(--dsw-alias-bg-overlay,#ffffff);
-  --nbg-raise:rgba(128,128,128,.06);
-  --nbg-hover:rgba(128,128,128,.08);
-  --nbg-sel:rgba(128,128,128,.12);
-  --nbd:var(--dsw-alias-border-l1,#e5e5ea);
-  --nbd-soft:var(--dsw-alias-border-l1,#ececf0);
-  --ntx:var(--dsw-alias-label-primary,#1c1c1e);
-  --nt2:var(--dsw-alias-label-secondary,#6c6c70);
-  --nt3:var(--dsw-alias-label-secondary,#aeaeb2);
-  --nacc:var(--dsw-alias-brand-primary,#0a84ff);
+  --npanel:var(--dsw-alias-bg-layer-1,#ffffff);
+  --nbg:var(--dsw-alias-bg-base,#ececef);
+  --nbg-raise:var(--dsw-alias-bg-layer-2,#f7f7f9);
+  --nbg-hover:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06));
+  --nbg-sel:rgba(64,98,232,.10);
+  --nbd:var(--dsw-alias-border-l2,rgba(0,0,0,.10));
+  --nbd-soft:var(--dsw-alias-border-l3,rgba(0,0,0,.12));
+  --ntx:var(--dsw-alias-label-primary,#0f1115);
+  --nt2:var(--dsw-alias-label-secondary,#61666b);
+  --nt3:var(--dsw-alias-label-tertiary,#81858c);
+  --nacc:var(--dsw-alias-state-business-primary,#6c8cff);
   --nacc-tx:var(--nacc);
   --nkind-quote:#98989d;
   --nr-md:8px; --nr-lg:12px;
@@ -58,24 +68,26 @@
   --nmono:"SF Mono",ui-monospace,"Cascadia Code",Consolas,monospace;
 }
 
-/* color-mix 增强：从主文字色（--ntx）/品牌色（--nacc）派生半透明阶，明暗随 DSH 主题自动切换。
-   修复 --dsw-alias-bg-layer-2/3 在亮色主题解析为 #fff 导致抬升面/选中态与面板底色撞色。
-   color-mix 不可用时回退到上方中性 rgba 灰（不依赖 layer token，明暗面板均可见）。 */
+/* color-mix 增强：选中态/柔化文字由强调色（--nacc）与主文字色（--ntx）派生，明暗随 DSH 主题自动切换。
+   亮色主题下 bg-base/bg-layer-1/2 均解析为 #fff，容器底/抬升面需从主文字色派生层次避免撞色
+   （仅亮色覆盖；暗色三层 token 本身即正确层次 #151517/#232324/#2c2c2e，不覆盖，否则容器会比面板更亮）。
+   color-mix 不可用时回退到上方 var() 兜底值（浅色口径）。 */
 @supports (color: color-mix(in srgb, #fff, transparent)){
-  .dsh-notes-floating,.dsh-notes-fab{
-    --nbg:color-mix(in srgb, var(--ntx) 3%, var(--npanel));
-    --nbg-raise:color-mix(in srgb, var(--ntx) 5%, var(--npanel));
-    --nbg-hover:color-mix(in srgb, var(--ntx) 8%, transparent);
+  .dsh-notes-floating,.dsh-notes-fab,.dsh-notes-hdr-btn{
     --nbg-sel:color-mix(in srgb, var(--nacc) 14%, transparent);
     --ntx-soft:color-mix(in srgb, var(--ntx) 88%, transparent);
     --nacc-tx:color-mix(in srgb, var(--nacc) 78%, var(--ntx));
   }
   .dsh-notes-cap{
-    --nbg:color-mix(in srgb, var(--ntx) 3%, var(--npanel));
-    --nbg-raise:color-mix(in srgb, var(--ntx) 5%, var(--npanel));
-    --nbg-hover:color-mix(in srgb, var(--ntx) 8%, transparent);
     --nbg-sel:color-mix(in srgb, var(--nacc) 14%, transparent);
     --nacc-tx:color-mix(in srgb, var(--nacc) 78%, var(--ntx));
+  }
+  body:not([data-ds-dark-theme]) .dsh-notes-floating,
+  body:not([data-ds-dark-theme]) .dsh-notes-fab,
+  body:not([data-ds-dark-theme]) .dsh-notes-hdr-btn,
+  body:not([data-ds-dark-theme]) .dsh-notes-cap{
+    --nbg:color-mix(in srgb, var(--ntx) 6%, var(--npanel));
+    --nbg-raise:color-mix(in srgb, var(--ntx) 4%, var(--npanel));
   }
 }
 
@@ -87,18 +99,22 @@
 /* ===== SVG 图标统一基座（stroke 风格，随 currentColor；尺寸由 I() 内联 style 覆盖） ===== */
 svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;display:inline-block;vertical-align:middle}
 
-/* ===== 会话头部入口按钮（图标 + 文字） ===== */
-.dsh-notes-hdr-btn{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;margin:0 2px;cursor:pointer;border-radius:6px;font-size:12px;line-height:1.4;color:var(--color-text-secondary,#999);background:transparent;border:1px solid var(--nbd);transition:background .15s,color .15s,border-color .15s;white-space:nowrap;vertical-align:middle;font-family:inherit}
-.dsh-notes-hdr-btn:hover{background:var(--color-surface-hover,rgba(128,128,128,.15));color:var(--color-text-primary,#eee)}
-.dsh-notes-hdr-btn.active{color:var(--color-accent,#0a84ff);border-color:var(--color-accent,#0a84ff)}
+/* ===== 会话头部入口按钮（v2 描边胶囊：note SVG 13px + 文字；激活=面板打开；无计数徽章） ===== */
+/* 规格来源：design/notes-ui-v2.html Shell 入口小节 .hbtn（头部 A 方案定稿） */
+.dsh-notes-hdr-btn{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;margin:0 2px;cursor:pointer;border-radius:8px;font-size:12px;line-height:1.4;color:var(--nt2);background:transparent;border:1px solid var(--nbd);transition:background .15s,color .15s,border-color .15s;white-space:nowrap;vertical-align:middle;font-family:inherit}
+.dsh-notes-hdr-btn:hover{background:var(--nbg-hover);color:var(--ntx)}
+.dsh-notes-hdr-btn.active{background:var(--nbg-sel);border-color:transparent;color:var(--nacc);font-weight:600}
 .dsh-notes-hdr-ic{display:inline-flex;align-items:center;pointer-events:none}
 
-/* ===== 悬浮气泡入口（圆形固定定位、可拖拽、点击展开面板） ===== */
-.dsh-notes-fab{position:fixed;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;margin:0;cursor:grab;background:var(--nbg);border:1px solid var(--nbd);box-shadow:0 4px 14px rgba(0,0,0,.18),0 1px 4px rgba(0,0,0,.1);color:var(--ntx);font-family:var(--nfont);z-index:2147483646;transition:box-shadow .15s,transform .12s,color .15s,border-color .15s;user-select:none;-webkit-user-select:none;touch-action:none}
-.dsh-notes-fab:hover{box-shadow:0 6px 20px rgba(0,0,0,.22),0 2px 6px rgba(0,0,0,.12);border-color:var(--nacc);color:var(--nacc)}
+/* ===== 悬浮气泡入口（v2 卡片式 44px：面板底+描边+阴影，note SVG 22px + 右下 kind 三色点；可拖拽、点击展开；无角标） ===== */
+/* 规格来源：design/notes-ui-v2.html Shell 入口小节 .fabg（G 大图标版定稿） */
+.dsh-notes-fab{position:fixed;width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;padding:0;margin:0;cursor:grab;background:var(--npanel);border:1px solid var(--nbd-soft);box-shadow:var(--nshadow-fab);color:var(--ntx);font-family:var(--nfont);z-index:2147483646;transition:box-shadow .15s,transform .12s,color .15s,border-color .15s;user-select:none;-webkit-user-select:none;touch-action:none}
+.dsh-notes-fab:hover{transform:translateY(-1px);border-color:var(--nacc);color:var(--nacc)}
 .dsh-notes-fab:active{cursor:grabbing}
-.dsh-notes-fab.active{color:var(--nacc);border-color:var(--nacc);box-shadow:0 6px 20px rgba(10,132,255,.25),0 2px 6px rgba(0,0,0,.12)}
+.dsh-notes-fab.active{color:var(--nacc);border-color:var(--nacc)}
 .dsh-notes-fab-ic{display:inline-flex;align-items:center;pointer-events:none}
+.dsh-notes-fab-tridots{position:absolute;right:4px;bottom:4px;display:flex;gap:2px;background:var(--npanel);border-radius:8px;padding:1px 3px;pointer-events:none}
+.dsh-notes-fab-tridots i{width:5px;height:5px;border-radius:50%;display:block}
 
 /* ===== 浮空面板 ===== */
 .dsh-notes-floating{position:fixed;background:var(--nbg);border:1px solid var(--nbd);border-radius:12px;box-shadow:var(--nshadow);display:flex;flex-direction:column;font-family:var(--nfont);color:var(--ntx);box-sizing:border-box;overflow:hidden;z-index:2147483647;-webkit-font-smoothing:antialiased;font-size:13px}
@@ -225,6 +241,11 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 .dsh-notes-meta-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
 .dsh-notes-meta-chip.tgl{cursor:pointer;user-select:none}
 .dsh-notes-meta-chip.tgl.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx)}
+/* 注入三态分段控件（关闭/约定/资料）：chip 内三段，选中段走 nbg-sel + nacc-tx token（明暗自适应） */
+.dsh-notes-role-seg{padding:2px 3px;gap:2px}
+.dsh-notes-role-opt{padding:1px 8px;border-radius:13px;color:var(--nt3);cursor:pointer;user-select:none}
+.dsh-notes-role-opt:hover{color:var(--ntx);background:var(--nbg-hover)}
+.dsh-notes-role-opt.on{background:var(--nbg-sel);color:var(--nacc-tx);font-weight:600}
 .dsh-notes-meta-select{border:0;background:transparent;color:inherit;font:inherit;font-size:11px;outline:0;cursor:pointer;padding:0}
 .dsh-notes-meta-select option{color:var(--ntx);background:var(--npanel)}
 .dsh-notes-meta-topic-input{width:76px;border:0;background:transparent;color:inherit;font:inherit;font-size:11px;outline:0;padding:0}

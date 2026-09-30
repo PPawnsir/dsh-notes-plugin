@@ -6,8 +6,19 @@
   "client": "client.js",
   "type": "commonjs",
   "scripts": {
-    "test": "node check.js"
+    "test": "node check.js",
+    "demo": "node scripts/make-demo.cjs"
   },
-  "keywords": ["dsh", "notes", "markdown", "plugin"],
-  "license": "MIT"
+  "keywords": [
+    "dsh",
+    "notes",
+    "markdown",
+    "plugin"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "gifenc": "^1.0.3",
+    "pngjs": "^7.0.0",
+    "puppeteer-core": "^25.12.0"
+  }
 }

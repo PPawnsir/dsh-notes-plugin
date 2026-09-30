@@ -17,15 +17,17 @@
     --nr-lg:12px; --nr-md:8px; --nr-sm:6px;
   }
   html[data-theme="dark"]{
-    --nbg:#161618; --npanel:#1b1b1e; --nbg-raise:#232327; --nbg-hover:#26262b; --nbg-sel:rgba(108,140,255,.14);
-    --ntx:#f2f2f4; --nt2:#a8a8b0; --nt3:#6b6b74; --nbd:#2a2a30; --nbd-soft:#222228;
-    --nacc:#6c8cff; --nacc-tx:#9db4ff; --nwarn:#e5b567; --ndanger:#e5734f;
+    /* DSH 0.1.7 暗色实机值（与面板 token 解析一致）：bg-base/layer-1/layer-2 + 官方交互 hover + 业务主色鲜蓝 */
+    --nbg:#151517; --npanel:#232324; --nbg-raise:#2c2c2e; --nbg-hover:#ffffff14; --nbg-sel:rgba(122,170,255,.14);
+    --ntx:#f9fafb; --nt2:#cfd3d6; --nt3:#adb2b8; --nbd:#ffffff1f; --nbd-soft:#ffffff29;
+    --nacc:#7aaaff; --nacc-tx:#96bcfe; --nwarn:#e5b567; --ndanger:#e5734f;
     --kind-note:#8f8fa3; --kind-decision:#e5b567; --kind-todo:#6c8cff; --kind-link:#56c8d8; --kind-quote:#b58fe5;
   }
   html[data-theme="light"]{
-    --nbg:#ececef; --npanel:#ffffff; --nbg-raise:#f7f7f9; --nbg-hover:#e8e8ec; --nbg-sel:rgba(64,98,232,.10);
-    --ntx:#1d1d21; --nt2:#6e6e78; --nt3:#9d9da6; --nbd:#e2e2e7; --nbd-soft:#ececf0;
-    --nacc:#4062e8; --nacc-tx:#4062e8; --nwarn:#b07f1e; --ndanger:#cf5b34;
+    /* DSH 0.1.7 亮色实机值：layer 系同为 #fff，容器底/抬升面按实机 color-mix（ntx 6%/4%）折算 */
+    --nbg:#f1f1f1; --npanel:#ffffff; --nbg-raise:#f5f5f6; --nbg-hover:#2631480f; --nbg-sel:rgba(65,118,230,.14);
+    --ntx:#0f1115; --nt2:#61666b; --nt3:#81858c; --nbd:#0000001a; --nbd-soft:#0000001f;
+    --nacc:#4176e6; --nacc-tx:#3660b8; --nwarn:#b07f1e; --ndanger:#cf5b34;
     --kind-note:#8f8f9c; --kind-decision:#b07f1e; --kind-todo:#4062e8; --kind-link:#1e9aab; --kind-quote:#8a5cd6;
   }
   *{box-sizing:border-box;margin:0;padding:0}
@@ -101,6 +103,11 @@
   .meta-chip .dot{width:6px;height:6px;border-radius:50%}
   .meta-chip svg.ic{width:11px;height:11px}
   .meta-chip.tgl.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx)}
+  /* 注入三态分段控件（关闭/约定/资料）：选中段走 nbg-sel + nacc-tx token */
+  .meta-chip.role-seg{padding:2px 3px;gap:2px}
+  .role-seg .seg{padding:1px 8px;border-radius:13px;color:var(--nt3)}
+  .role-seg .seg:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .role-seg .seg.on{background:var(--nbg-sel);color:var(--nacc-tx);font-weight:600}
   .meta-chip select,.meta-chip input{border:0;background:transparent;color:inherit;font:inherit;outline:0;cursor:pointer}
   .meta-chip input{cursor:text;min-width:0}
   .meta-chip input::placeholder{color:var(--nt3)}
@@ -371,7 +378,7 @@ function noteRow(n, inFolderCtx) {
   return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + '" data-note="' + n.id + '" draggable="true">'
     + '<span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>'
     + '<span class="ti">' + (isPinned(n) ? '<svg class="ic pin"><use href="#i-pin"/></svg> ' : '') + esc(n.title || '无标题') + '</span>'
-    + (n.inject ? '<span style="color:var(--nacc);display:flex" title="约定注入">' + icon('i-bolt', 10) + '</span>' : '') + tail + '</div>';
+    + (n.inject ? '<span style="color:var(--nacc);display:flex" title="注入为上下文 · ' + (n.injectRole === 'reference' ? '资料' : '约定') + '">' + icon('i-bolt', 10) + '</span>' : '') + tail + '</div>';
 }
 function renderTree() {
   var vis = notes.filter(matches);
@@ -572,6 +579,7 @@ function doSave() {
     kind: edNote.kind, status: edNote.status, inject: edNote.inject === true,
     injectTo: edNote.injectTo || [], recall: edNote.recall !== false
   };
+  if (upd.inject) upd.injectRole = edNote.injectRole === 'reference' ? 'reference' : 'convention';   /* 非 off 才带 injectRole（payload 禁 undefined） */
   if ((edNote.topic || '').trim()) upd.topic = edNote.topic.trim();
   rpc('notes-update', upd).then(function (res) {
     if (res && res.error) { toast(res.error); return }
@@ -623,6 +631,8 @@ function renderCrumb() {
 function renderMeta() {
   var n = edNote; if (!n) return;
   var tagsStr = n._tagsStr != null ? n._tagsStr : (n.tags || []).filter(function (t) { return t !== 'quick' }).join(', ');
+  /* 注入三态：off=不注入 / convention=约定（须遵守）/ reference=资料（按需取用）；存量 inject=true 无 role 缺省 convention */
+  var role = n.inject ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off';
   $('edMeta').innerHTML =
     '<span class="meta-chip" title="类型"><span class="dot" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span><select id="kindSel">'
     + Object.keys(KIND).map(function (k) { return '<option value="' + k + '"' + (k === (n.kind || 'note') ? ' selected' : '') + '>' + KIND[k] + '</option>' }).join('') + '</select></span>'
@@ -631,8 +641,11 @@ function renderMeta() {
     + '<span class="meta-chip" title="主题（host LLM 可异步回填；改后自动保存）">' + icon('i-topic') + '<input id="mTopicInput" size="8" placeholder="主题" value="' + esc(n.topic === '分类中' ? '' : (n.topic || '')) + '"></span>'
     + '<span class="meta-chip" title="标签，逗号分隔">' + icon('i-filter') + '<input id="mTagsInput" size="10" placeholder="标签…" value="' + esc(tagsStr) + '"></span>'
     + (fname(n.folder) ? '<span class="meta-chip">' + icon('i-folder') + esc(fname(n.folder)) + '</span>' : '')
-    + '<span class="meta-chip tgl' + (n.inject ? ' on' : '') + '" id="mInj" title="作为约定注入到系统提示（Agent 每回合可见）">' + icon('i-bolt') + '约定</span>'
-    + (n.inject ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="选择注入范围（可多选）">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
+    + '<span class="meta-chip role-seg" id="mRole">' + icon('i-bolt')
+    + '<span class="seg' + (role === 'off' ? ' on' : '') + '" data-role="off" title="不注入系统提示">关闭</span>'
+    + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="须遵守的行为规则">约定</span>'
+    + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="事实性补充信息，Agent 按需取用">资料</span></span>'
+    + (role !== 'off' ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="选择注入范围（可多选）">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
     + '<span class="meta-chip tgl' + (n.recall !== false ? ' on' : '') + '" id="mRecall" title="关闭后不出现在注入给 Agent 的目录中">' + icon('i-eye') + '目录可见</span>'
     + '<span class="meta-sp"></span>'
     + '<span class="meta-act" id="mDispatch" title="派发待办到活跃会话">' + icon('i-play') + '派发</span>'
@@ -643,12 +656,16 @@ function renderMeta() {
   $('statusSel').onchange = function () { edNote.status = this.value; triggerSave(); renderMeta(); renderTree() };
   $('mTopicInput').oninput = function () { edNote.topic = this.value; triggerSave() };
   $('mTagsInput').oninput = function () { edNote._tagsStr = this.value; triggerSave() };
-  $('mInj').onclick = function () {
-    edNote.inject = !(edNote.inject === true);
-    if (edNote.inject) { if (!sessList.length) pullSessions(); scopeOpen = true } else { scopeOpen = false }
-    triggerSave(); renderMeta();
-    toast(edNote.inject ? '已注入为约定（范围见右侧下拉）' : '已取消约定注入');
-  };
+  $('mRole').querySelectorAll('.seg').forEach(function (seg) {
+    seg.onclick = function () {
+      var r = seg.getAttribute('data-role');
+      if (r === role) return;
+      if (r === 'off') { edNote.inject = false; scopeOpen = false }
+      else { edNote.inject = true; edNote.injectRole = r; if (!sessList.length) pullSessions(); scopeOpen = true }
+      triggerSave(); renderMeta();
+      toast(r === 'off' ? '已关闭上下文注入' : '已注入为上下文 · ' + (r === 'reference' ? '资料' : '约定') + '（范围见右侧下拉）');
+    };
+  });
   var trig = $('scopeTrig');
   if (trig) trig.onclick = function (ev) { ev.stopPropagation(); scopeOpen = !scopeOpen; if (scopeOpen && !sessList.length) pullSessions(); renderScopePanel() };
   $('mRecall').onclick = function () { edNote.recall = edNote.recall === false; triggerSave(); renderMeta(); toast(edNote.recall !== false ? '已加入 Agent 目录' : '已从 Agent 目录隐藏') };

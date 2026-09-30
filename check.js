@@ -48,6 +48,37 @@ async function main() {
     assert(clientSrc.indexOf('notes-css') >= 0, 'client 通过 RPC 取 css')
     assert(clientSrc.indexOf('styles.insert(') >= 0, 'client 注入 styles')
   })
+  await t('token 语义映射 bg-layer 系 + 鲜蓝强调（开发版/发布包/原型/app.html 四处同步）', () => {
+    const cssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    const MAP = [
+      ['--npanel:var(--dsw-alias-bg-layer-1', 'npanel → bg-layer-1（一级层面）'],
+      ['--nbg:var(--dsw-alias-bg-base', 'nbg → bg-base（页面底）'],
+      ['--nbg-raise:var(--dsw-alias-bg-layer-2', 'nbg-raise → bg-layer-2（二级层面）'],
+      ['--nbg-hover:var(--dsw-alias-interactive-bg-hover', 'nbg-hover → interactive-bg-hover（官方交互色）'],
+      ['--nbd:var(--dsw-alias-border-l2', 'nbd → border-l2'],
+      ['--nbd-soft:var(--dsw-alias-border-l3', 'nbd-soft → border-l3'],
+      ['--nt3:var(--dsw-alias-label-tertiary', 'nt3 → label-tertiary'],
+      ['--nacc:var(--dsw-alias-state-business-primary', 'nacc → state-business-primary（鲜蓝，亮 #4176e6 / 暗 #7aaaff）'],
+    ]
+    for (const [css, tag] of [[cssDev, 'styles.css'], [cssPkg, '发布包 lib/styles.css']]) {
+      for (const [needle, label] of MAP) assert(css.indexOf(needle) >= 0, tag + ' 缺映射：' + label)
+      assert(css.indexOf('--dsw-alias-bg-overlay') < 0, tag + ' 不得再引用 bg-overlay（暗色解析为中灰 #61666b 导致整板发灰）')
+      assert(css.indexOf('--dsw-alias-brand-primary') < 0, tag + ' 不得再引用 brand-primary（中性色 #0f1115/#f9fafb，非强调蓝）')
+      assert(css.indexOf('body:not([data-ds-dark-theme])') >= 0, tag + ' color-mix 层次派生须仅作用亮色（暗色三层 token 本身即正确层次）')
+    }
+    // 原型与 app.html 色板 = DSH 实机解析值（暗色 bluish 系 + 鲜蓝强调），两文件色板块逐字节一致（UI 同步硬性约定）
+    const proto = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
+    const app = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
+    const grab = (s) => (s.match(/html\[data-theme="(?:dark|light)"\]\{[^}]*\}/g) || []).join('\n')
+    assert(grab(proto).length > 0 && grab(proto) === grab(app), '原型与 app.html 色板逐字节一致')
+    for (const v of ['--nbg:#151517', '--npanel:#232324', '--nbg-raise:#2c2c2e', '--nbg-hover:#ffffff14', '--nbg-sel:rgba(122,170,255,.14)', '--ntx:#f9fafb', '--nt2:#cfd3d6', '--nt3:#adb2b8', '--nbd:#ffffff1f', '--nbd-soft:#ffffff29', '--nacc:#7aaaff', '--nacc-tx:#96bcfe']) {
+      assert(proto.indexOf(v) >= 0, '原型暗色色板缺 DSH 实机值：' + v)
+    }
+    for (const v of ['--nbg:#f1f1f1', '--npanel:#ffffff', '--nbg-raise:#f5f5f6', '--nbg-hover:#2631480f', '--nbg-sel:rgba(65,118,230,.14)', '--ntx:#0f1115', '--nt2:#61666b', '--nt3:#81858c', '--nbd:#0000001a', '--nbd-soft:#0000001f', '--nacc:#4176e6', '--nacc-tx:#3660b8']) {
+      assert(proto.indexOf(v) >= 0, '原型亮色色板缺 DSH 实机值：' + v)
+    }
+  })
   await t('T1.1 工具瘦身 9→3', () => {
     const m = hostSrc.match(/regTool\(\{\s*name:\s*'([^']+)'/g) || []
     const names = m.map(s => s.match(/'([^']+)'/)[1])
@@ -228,10 +259,11 @@ async function main() {
     assert(/if \(kindFilter !== 'all'\) filtered = filtered\.filter/.test(clientSrc), 'kind chips 过滤')
     assert(/if \(pinnedOnly\) filtered = filtered\.filter/.test(clientSrc), '置顶过滤')
   })
-  await t('笔记行：kind 色点 + 标题(+pin) + 约定 bolt + 行尾（主题字/文件夹徽章/日期）', () => {
+  await t('笔记行：kind 色点 + 标题(+pin) + 注入 bolt + 行尾（主题字/文件夹徽章/日期）', () => {
     assert(clientSrc.indexOf('dsh-notes-kind-dot') >= 0 && clientSrc.indexOf("style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' }") >= 0, 'kind 色点走 token var(--nkind-*)')
     assert(clientSrc.indexOf('dsh-notes-note-ti') >= 0 && clientSrc.indexOf("I('pin', 10, 'dsh-notes-note-pin')") >= 0, '标题 + 置顶 pin 图标')
-    assert(clientSrc.indexOf('dsh-notes-note-inj') >= 0 && clientSrc.indexOf("I('bolt', 10)") >= 0, '约定注入 bolt 标记')
+    assert(clientSrc.indexOf('dsh-notes-note-inj') >= 0 && clientSrc.indexOf("I('bolt', 10)") >= 0, '上下文注入 bolt 标记')
+    assert(clientSrc.indexOf("'注入为上下文 · ' + (n.injectRole === 'reference' ? '资料' : '约定') + ' · 范围：'") >= 0, 'bolt tooltip 按 injectRole 段位显示 约定/资料')
     assert(clientSrc.indexOf('dsh-notes-fbadge') >= 0, '主题视图行尾文件夹徽章（fbadge）')
     assert(clientSrc.indexOf('dsh-notes-note-tp') >= 0 && clientSrc.indexOf('dsh-notes-note-dt') >= 0, '文件夹上下文行尾主题字 / 其余行尾日期')
     assert(clientSrc.indexOf('injectScopeLabel') >= 0, '注入范围文字函数')
@@ -249,10 +281,16 @@ async function main() {
     assert(clientSrc.indexOf('dsh-notes-ed-foot') >= 0 && clientSrc.indexOf("'创建 '") >= 0 && clientSrc.indexOf("'更新 '") >= 0 && clientSrc.indexOf("'来源 会话 '") >= 0, '底部 创建/更新/来源')
     assert(clientSrc.indexOf('dsh-notes-ed-saved') >= 0 && clientSrc.indexOf('已自动保存 ') >= 0, '自动保存提示')
   })
-  await t('编辑器 meta：约定 toggle + 目录可见 toggle + 派发/来源/置顶/删除', () => {
-    assert(clientSrc.indexOf("'data-tooltip': '作为约定注入到系统提示（Agent 每回合可见）'") >= 0, '约定 toggle tooltip')
-    assert(/'约定 · 注入中'/.test(clientSrc), '约定开启态文案')
+  await t('编辑器 meta：注入三态分段控件 + 目录可见 toggle + 派发/来源/置顶/删除', () => {
+    assert(clientSrc.indexOf("'dsh-notes-meta-chip dsh-notes-role-seg'") >= 0, '三态分段控件容器（meta-chip + role-seg）')
+    assert((clientSrc.match(/dsh-notes-role-opt/g) || []).length >= 3, '三个段位（关闭/约定/资料）')
+    assert(clientSrc.indexOf("onClick: () => setRoleSeg('off')") >= 0 && clientSrc.indexOf("onClick: () => setRoleSeg('convention')") >= 0 && clientSrc.indexOf("onClick: () => setRoleSeg('reference')") >= 0, '三段点击切换 setRoleSeg')
+    assert(clientSrc.indexOf("'data-tooltip': '不注入系统提示'") >= 0, '关闭段 tooltip')
+    assert(clientSrc.indexOf("'data-tooltip': '须遵守的行为规则'") >= 0, '约定段 tooltip')
+    assert(clientSrc.indexOf("'data-tooltip': '事实性补充信息，Agent 按需取用'") >= 0, '资料段 tooltip')
+    assert(/edRole === 'off' \? ' on' : ''/.test(clientSrc) && /edRole === 'convention' \? ' on' : ''/.test(clientSrc) && /edRole === 'reference' \? ' on' : ''/.test(clientSrc), '选中段 on 态高亮（三态各自分支）')
     assert(clientSrc.indexOf('dsh-notes-ed-scope-wrap') >= 0 && clientSrc.indexOf('dsh-notes-scope-panel') >= 0 && clientSrc.indexOf('dsh-notes-scope-trigger') >= 0, '逐级范围浮层挂 meta 行')
+    assert(/const isInjected = edRole !== 'off'/.test(clientSrc) && clientSrc.indexOf('isInjected ? e(\'span\', { className: \'dsh-notes-ed-scope-wrap\' }') >= 0, '范围浮层在非 off（约定/资料）时显示')
     assert(clientSrc.indexOf('目录可见') >= 0 && clientSrc.indexOf("I('eye', 11)") >= 0, '目录可见 toggle（eye 图标）')
     assert(clientSrc.indexOf("'派发'") >= 0 && clientSrc.indexOf("I('play', 12)") >= 0, '派发操作（play 图标）')
     assert(clientSrc.indexOf("'来源'") >= 0 && clientSrc.indexOf("I('ext', 12)") >= 0, '来源操作（ext 图标）')
@@ -296,12 +334,59 @@ async function main() {
     const badFg = capRules.filter(r => /(^|[{;])\s*color:\s*(#0[0-9a-f]|#1[0-9a-f]|#2[0-9a-f]|#3[0-9a-f]|black\b)/i.test(noVar(r)))
     assert.strictEqual(badFg.length, 0, 'cap 系列不得含硬编码深色字：' + badFg.join(' | '))
   })
-  await t('client-impl 注入为独立开关+逐级范围浮层', () => {
-    assert(/toggleInject/.test(clientSrc), '独立注入开关 toggleInject（不碰标签）')
+  await t('client-impl 注入为独立三态控件+逐级范围浮层', () => {
+    assert(/function setRoleSeg\(r\) \{/.test(clientSrc), '独立注入三态切换 setRoleSeg（不碰标签）')
+    assert(!/toggleInject/.test(clientSrc), '旧布尔开关 toggleInject 已移除')
+    assert(/if \(r === 'off'\) setScopeOpen\(false\)/.test(clientSrc) && /else if \(wasOff\) setScopeOpen\(true\)/.test(clientSrc), 'off→非off 自动展开范围浮层，切 off 收起')
     assert(/edScope/.test(clientSrc), '范围多选 edScope 数组')
     assert(/dsh-notes-scope-group/.test(clientSrc) && /scopeByWs/.test(clientSrc), '会话按工作区分组（两级）')
     assert(clientSrc.indexOf('本工作区') >= 0 && clientSrc.indexOf('全局') >= 0, '范围含 本工作区/全局')
     assert(clientSrc.indexOf('sessList') >= 0 && clientSrc.indexOf('notes-sessions') >= 0, '会话名列表 sessList 来自 notes-sessions RPC')
+  })
+  await t('注入三态 edRole 链路：state/ref/selectNote 映射/doSave payload（开发版 + 发布包）', () => {
+    assert(/const \[edRole, setEdRole\] = React\.useState\('off'\)/.test(clientSrc), 'edRole 三态 state（off/convention/reference，缺省 off）')
+    assert(/const edRoleRef = React\.useRef\('off'\)/.test(clientSrc), 'edRoleRef 自动保存镜像存在')
+    assert(/setEdRole\(n\.inject \? \(n\.injectRole \|\| 'convention'\) : 'off'\)/.test(clientSrc), 'selectNote 映射：inject=true 无 role 缺省 convention（存量零迁移），否则 off')
+    assert(/edRoleRef\.current = edRole/.test(clientSrc), '渲染期同步 edRoleRef')
+    assert(/inject: edRoleRef\.current !== 'off'/.test(clientSrc), 'doSave：off → inject:false')
+    assert(/if \(upd\.inject\) upd\.injectRole = edRoleRef\.current/.test(clientSrc), 'doSave：非 off 才带 injectRole（off 态 payload 不带，禁 undefined）')
+    assert(clientSrc.indexOf('edInject') < 0, '旧 edInject 布尔链路清零')
+    const pkgRole = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
+    assert(pkgRole.indexOf('dsh-notes-role-seg') >= 0 && pkgRole.indexOf('setRoleSeg') >= 0 && pkgRole.indexOf('edRoleRef') >= 0, '发布包 lib/client.js 同步三态链路（需先跑 scripts/build-dist.cjs）')
+    assert(pkgRole.indexOf('edInject') < 0 && pkgRole.indexOf('toggleInject') < 0, '发布包旧布尔链路清零')
+    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    assert(css.indexOf('.dsh-notes-role-seg{') >= 0 && css.indexOf('.dsh-notes-role-opt{') >= 0 && css.indexOf('.dsh-notes-role-opt.on{') >= 0, 'styles.css 含 role-seg/role-opt 三态样式')
+    assert(/\.dsh-notes-role-opt\.on\{[^}]*background:var\(--nbg-sel\)[^}]*color:var\(--nacc-tx\)/.test(css), '选中段走 var(--nbg-sel) + var(--nacc-tx) token')
+    const pkgCss = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    assert(pkgCss.indexOf('.dsh-notes-role-opt.on{') >= 0, '发布包 lib/styles.css 同步三态样式')
+  })
+  await t('app.html + 原型三态同步：分段控件/role 映射/保存 payload/mock 链路', () => {
+    const appRole = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
+    const protoRole = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
+    for (const pair of [[appRole, 'app.html'], [protoRole, '原型 notes-ui-v2.html']]) {
+      const src = pair[0], tag = pair[1]
+      assert(src.indexOf('meta-chip role-seg') >= 0 && src.indexOf('data-role="off"') >= 0 && src.indexOf('data-role="convention"') >= 0 && src.indexOf('data-role="reference"') >= 0, tag + ' 含三态分段控件（关闭/约定/资料）')
+      assert(src.indexOf('>关闭</span>') >= 0 && src.indexOf('>约定</span>') >= 0 && src.indexOf('>资料</span>') >= 0, tag + ' 三段位文案')
+      assert(src.indexOf('title="不注入系统提示"') >= 0 && src.indexOf('title="须遵守的行为规则"') >= 0 && src.indexOf('title="事实性补充信息，Agent 按需取用"') >= 0, tag + ' 三段 tooltip')
+      assert(src.indexOf("var role = n.inject ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off'") >= 0, tag + ' renderMeta 三态映射（存量 inject=true 无 role 缺省 convention）')
+      assert(src.indexOf("if (upd.inject) upd.injectRole = edNote.injectRole === 'reference' ? 'reference' : 'convention'") >= 0, tag + ' doSave 非 off 才带 injectRole（payload 禁 undefined）')
+      assert(/\.role-seg \.seg\.on\{[^}]*background:var\(--nbg-sel\)[^}]*color:var\(--nacc-tx\)/.test(src), tag + ' 选中段样式走 var(--nbg-sel)+var(--nacc-tx) token')
+      assert(src.indexOf('id="mInj"') < 0 && src.indexOf('注入为约定') < 0 && src.indexOf('约定注入') < 0, tag + ' 旧「注入为约定」开关/单义文案清零')
+    }
+    assert(protoRole.indexOf("injectRole: 'reference'") >= 0, '原型 mock 含 reference 示例数据（n6 演示资料态）')
+    assert(/injectRole: n\.injectRole === 'reference' \? 'reference' : 'convention'/.test(protoRole), '原型 _mockSlim 携带 injectRole（缺省 convention）')
+    assert(/if \(a\.injectRole !== undefined\) n\.injectRole = a\.injectRole === 'reference'/.test(protoRole), '原型 mock notes-update 透传 injectRole')
+  })
+  await t('client 旧「注入为约定」单义文案清零（三态升级为 关闭/约定/资料）', () => {
+    const pkgRole2 = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
+    for (const pair of [[clientSrc, 'client-impl.js'], [pkgRole2, '发布包 lib/client.js']]) {
+      const src = pair[0], tag = pair[1]
+      for (const dead of ['注入为约定', '约定 · 注入中', '作为约定注入到系统提示', 'toggleInject', '已记录并设为约定', '设为约定…']) {
+        assert(src.indexOf(dead) < 0, tag + ' 不含旧文案/旧开关：' + dead)
+      }
+    }
+    assert(clientSrc.indexOf('已记录并注入为上下文（') >= 0, '速记 toast 改「注入为上下文（约定/资料）」')
+    assert(clientSrc.indexOf('注入为上下文…直接回车则仅记录') >= 0, '速记备注 placeholder 改「注入为上下文」')
   })
   await t('client-impl 派发对话框（已有/新建会话）', () => {
     assert(/dsh-notes-dispatch-modal/.test(clientSrc), '派发对话框 modal')
@@ -325,6 +410,41 @@ async function main() {
     assert(css.indexOf('.dsh-notes-kind-dot') >= 0, 'kind 色点 css')
     assert(css.indexOf('--nkind-decision') >= 0 && css.indexOf('--nkind-quote') >= 0, 'kind 颜色 token 声明')
     assert(css.indexOf('.dsh-notes-note-row.resolved') >= 0 && css.indexOf('.dsh-notes-note-row.superseded') >= 0, 'status 划线视觉')
+  })
+  await t('入口 v2：头部描边胶囊 + FAB 卡片式 tridots（无计数徽章，开发版/发布包/原型同步）', () => {
+    const cssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    const pkgClient = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
+    for (const [css, tag] of [[cssDev, 'styles.css'], [cssPkg, '发布包 lib/styles.css']]) {
+      // 头部按钮 = 原型 .hbtn 描边胶囊：inline-flex / gap 6px / padding 5px 11px / 1px var(--nbd) / radius 8px / 透明底
+      assert(/\.dsh-notes-floating,\.dsh-notes-fab,\.dsh-notes-hdr-btn\{/.test(css), tag + ' token 作用域须含 .dsh-notes-hdr-btn（头部按钮在 DSH 文档流内，不在面板里）')
+      const hdr = (css.match(/(?:^|\n)\.dsh-notes-hdr-btn\{([^}]*)\}/) || [])[1] || ''
+      assert(/gap:6px/.test(hdr) && /padding:5px 11px/.test(hdr) && /border-radius:8px/.test(hdr) && /border:1px solid var\(--nbd\)/.test(hdr) && /background:transparent/.test(hdr) && /color:var\(--nt2\)/.test(hdr), tag + ' 头部按钮 v2 描边胶囊基态（实得：' + hdr + '）')
+      assert(/\.dsh-notes-hdr-btn:hover\{[^}]*var\(--nbg-hover\)[^}]*var\(--ntx\)/.test(css), tag + ' 头部按钮 hover=nbg-hover 底 + ntx 字')
+      assert(/\.dsh-notes-hdr-btn\.active\{[^}]*var\(--nbg-sel\)[^}]*border-color:transparent[^}]*var\(--nacc\)[^}]*font-weight:600/.test(css), tag + ' 头部按钮激活态=nbg-sel 底 + transparent 边 + nacc 字 + 600')
+      // FAB = 原型 .fabg 卡片式：44px / radius 12px / npanel 底 / nbd-soft 描边 / 阴影
+      const fab = (css.match(/(?:^|\n)\.dsh-notes-fab\{([^}]*)\}/) || [])[1] || ''
+      assert(/width:44px/.test(fab) && /border-radius:12px/.test(fab) && /background:var\(--npanel\)/.test(fab) && /border:1px solid var\(--nbd-soft\)/.test(fab) && /box-shadow:var\(--nshadow-fab\)/.test(fab) && /color:var\(--ntx\)/.test(fab), tag + ' FAB v2 卡片式基态（实得：' + fab + '）')
+      // FAB 阴影主题自适应：亮色轻阴影为默认，暗色经 body[data-ds-dark-theme] 覆盖加重（修复亮色阴影过重）
+      assert(css.indexOf('--nshadow-fab:0 4px 14px rgba(0,0,0,.10),0 1px 4px rgba(0,0,0,.06)') >= 0, tag + ' FAB 亮色轻阴影 token 默认值')
+      assert(/body\[data-ds-dark-theme\][^{]*\{[^}]*--nshadow-fab:0 10px 28px/.test(css), tag + ' FAB 暗色重阴影 data-ds-dark-theme 覆盖')
+      assert(/\.dsh-notes-fab:hover\{[^}]*translateY\(-1px\)[^}]*var\(--nacc\)/.test(css), tag + ' FAB hover=上浮 1px + nacc 图标/描边')
+      assert(/\.dsh-notes-fab-tridots\{[^}]*right:4px[^}]*bottom:4px[^}]*gap:2px[^}]*var\(--npanel\)[^}]*padding:1px 3px/.test(css), tag + ' FAB tridots 底托样式')
+      assert(/\.dsh-notes-fab-tridots i\{[^}]*width:5px[^}]*height:5px[^}]*border-radius:50%/.test(css), tag + ' FAB tridots 5px 圆点')
+      // 旧版残留清零（圆形 FAB / 旧灰色 token）
+      assert(css.indexOf('--color-text-secondary') < 0 && css.indexOf('--color-surface-hover') < 0 && css.indexOf('--color-accent') < 0, tag + ' 旧头部按钮 token 已清')
+    }
+    for (const [src, tag] of [[clientSrc, 'client-impl.js'], [pkgClient, '发布包 lib/client.js']]) {
+      assert(src.indexOf("I('note', 22)") >= 0, tag + ' FAB 中央 note 图标 22px')
+      assert(src.indexOf("I('note', 13)") >= 0, tag + ' 头部按钮 note 图标 13px')
+      assert(src.indexOf('dsh-notes-fab-tridots') >= 0, tag + ' FAB 渲染 tridots')
+      assert(src.indexOf('var(--nkind-todo)') >= 0 && src.indexOf('var(--nkind-decision)') >= 0 && src.indexOf('var(--nkind-quote)') >= 0, tag + ' tridots 三枚 kind 色点')
+      // 需求变更：两个入口均不要计数徽章
+      assert(src.indexOf('dsh-notes-hdr-badge') < 0 && src.indexOf('dsh-notes-fab-badge') < 0, tag + ' 无计数徽章标记')
+    }
+    // 原型 Shell 入口小节已同步（实现与原型保持一致）
+    const proto = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
+    assert(proto.indexOf('.shell-demo') >= 0 && proto.indexOf('.hbtn{') >= 0 && proto.indexOf('.hbtn.on') >= 0 && proto.indexOf('.fabg{') >= 0 && proto.indexOf('.fabg .tridots') >= 0, '原型含 Shell 入口小节 .hbtn/.fabg/.tridots')
   })
 
   // ===== 1.8 新建笔记 modal（＋ / Ctrl+N 输标题创建，替代顶栏速记）=====
@@ -678,13 +798,18 @@ async function main() {
     const r = await handlers['notes-conventions']({})
     assert(r.text === '', '无约定时返回空串')
   })
-  await t('inject=true 笔记注入文本', async () => {
-    await handlers['notes-create']({ title: '本工作区约定', body: '代码必须带单测', inject: true, topic: '约定' })
+  await t('inject=true 笔记注入文本（双角色新文案：缺省进约定桶，单桶只出该桶标题）', async () => {
+    const cConv = await handlers['notes-create']({ title: '本工作区约定', body: '代码必须带单测', inject: true, topic: '约定' })
     const r = await handlers['notes-conventions']({})
     assert(r.text.indexOf('本工作区约定') >= 0, '约定标题应出现')
     assert(r.text.indexOf('代码必须带单测') >= 0, '约定正文应出现')
-    assert(r.text.indexOf('deepseek-work') >= 0, '应标注工作区名')
-    assert(r.text.indexOf('记录于会话') >= 0, '应标注来源会话')
+    assert(r.text.indexOf('以下是注入的上下文笔记（与当前任务无关时忽略）：') === 0, '新文案引导词开头（实得：' + r.text.slice(0, 60) + '）')
+    assert(r.text.indexOf('用户约定（须遵守）：') >= 0, '缺省 injectRole=convention 进约定桶')
+    assert(r.text.indexOf('- [' + cConv.id + '] 本工作区约定') >= 0, '桶内条目格式 - [id] 标题')
+    assert(r.text.indexOf('参考资料（与当前任务相关时按需取用）：') < 0, '单桶命中时只输出该桶标题（无 reference 不出资料桶）')
+    assert(r.text.indexOf('已记录的约定') < 0, '新文案不含旧引导词「已记录的约定」')
+    assert(r.text.indexOf('记录会话') < 0 && r.text.indexOf('记录于会话') < 0, '新文案不含会话归属标注')
+    assert(r.text.indexOf('工作区「') < 0, '新文案不含工作区归属标签')
   })
   await t('inject 缺省 false 不注入（独立字段，不靠标签）', async () => {
     // 即使带 convention 标签，没显式 inject=true 也不注入（注入是独立字段，不是标签）
@@ -702,6 +827,88 @@ async function main() {
     assert(g.note.inject === true, '旧文件 inject 应回退到 convention 标签')
     const r = await handlers['notes-conventions']({})
     assert(r.text.indexOf('旧版约定') >= 0, '旧文件（无 inject 字段）应回退按 convention 标签注入')
+    assert(r.text.indexOf('用户约定（须遵守）：') >= 0 && r.text.indexOf('旧版约定') > r.text.indexOf('用户约定（须遵守）：'), '旧文件无 injectRole 字段 → 缺省进约定桶（零迁移）')
+  })
+
+  // ===== 12.5 injectRole 双角色：字段链路 + 分桶文案 =====
+  await t('injectRole 字段往返：create 带 reference → get/list/front-matter 一致', async () => {
+    const c = await handlers['notes-create']({ title: '参考资料笔记', body: '机器配置：Node 22', inject: true, topic: '资料', injectRole: 'reference' })
+    const g = await handlers['notes-get']({ id: c.id })
+    assert.strictEqual(g.note.injectRole, 'reference', 'notes-get 返回 injectRole=reference')
+    const lst = await handlers['notes-list']({})
+    assert.strictEqual(lst.notes.find(n => n.id === c.id).injectRole, 'reference', 'notes-list（slim）携带 injectRole')
+    const onDisk = store.get(NOTES_DIR + '\\' + c.id + '.md')
+    assert(onDisk.indexOf('\ninjectRole: reference\n') >= 0, 'front-matter 写 injectRole: reference（inject=true 才落盘）')
+  })
+  await t('injectRole 缺省/非法值回退 convention（create 不传 / 非法值 / 旧文件无字段）', async () => {
+    const c1 = await handlers['notes-create']({ title: '缺省角色约定', body: 'x', inject: true, topic: '约定' })
+    const g1 = await handlers['notes-get']({ id: c1.id })
+    assert.strictEqual(g1.note.injectRole, 'convention', 'create 不传 injectRole 缺省 convention')
+    const onDisk1 = store.get(NOTES_DIR + '\\' + c1.id + '.md')
+    assert(onDisk1.indexOf('\ninjectRole: convention\n') >= 0, '缺省也落盘 injectRole: convention（inject=true）')
+    const c2 = await handlers['notes-create']({ title: '非法角色约定', body: 'x', inject: true, topic: '约定', injectRole: 'bogus' })
+    const g2 = await handlers['notes-get']({ id: c2.id })
+    assert.strictEqual(g2.note.injectRole, 'convention', '非法 injectRole 回退 convention')
+    const gLegacy = await handlers['notes-get']({ id: 'n-legacy-conv' })
+    assert.strictEqual(gLegacy.note.injectRole, 'convention', '旧文件无 injectRole 字段回退 convention（零迁移）')
+  })
+  await t('inject=false 时 injectRole 不落盘（避免脏数据）', async () => {
+    const c = await handlers['notes-create']({ title: '非注入资料', body: 'x', injectRole: 'reference', topic: '资料' })
+    const onDisk = store.get(NOTES_DIR + '\\' + c.id + '.md')
+    assert(onDisk.indexOf('injectRole') < 0, 'inject=false 不写 injectRole 行（实得：' + onDisk.split('\n').slice(0, 12).join('|') + '）')
+  })
+  await t('role 分桶文案：两桶并列（约定桶 + 资料桶各自引导词）', async () => {
+    const r = await handlers['notes-conventions']({})
+    const iConv = r.text.indexOf('用户约定（须遵守）：')
+    const iRef = r.text.indexOf('参考资料（与当前任务相关时按需取用）：')
+    assert(iConv >= 0 && iRef >= 0, '两桶引导词齐备（实得：' + r.text.slice(0, 120) + '）')
+    assert(iConv < iRef, '约定桶在资料桶之前')
+    assert(r.text.indexOf('参考资料笔记') > iRef, 'reference 笔记列在资料桶下')
+    const iConvNote = r.text.indexOf('本工作区约定')
+    assert(iConvNote > iConv && iConvNote < iRef, 'convention 笔记列在约定桶下')
+  })
+  await t('note_manage 工具路由透传 injectRole（create/update）+ schema 参数', async () => {
+    const nm = findTool('note_manage')
+    const p = nm.parameters.properties
+    assert(p.injectRole && p.injectRole.type === 'string' && JSON.stringify(p.injectRole.enum) === '["convention","reference"]', 'schema 含 injectRole enum（实得：' + JSON.stringify(p.injectRole) + '）')
+    assert(p.inject.description.indexOf('as context') >= 0, 'inject 描述改为上下文注入（实得：' + p.inject.description + '）')
+    const c = await nm.execute({ action: 'create', title: '工具资料', body: '参考内容', inject: true, injectRole: 'reference', topic: '资料' })
+    assert(!c.error, 'manage.create 成功（实得：' + JSON.stringify(c) + '）')
+    const g = await handlers['notes-get']({ id: c.id })
+    assert.strictEqual(g.note.injectRole, 'reference', 'manage.create 透传 injectRole')
+    const u = await nm.execute({ action: 'update', id: c.id, injectRole: 'convention' })
+    assert(!u.error, 'manage.update injectRole 成功')
+    const g2 = await handlers['notes-get']({ id: c.id })
+    assert.strictEqual(g2.note.injectRole, 'convention', 'manage.update 改 injectRole 生效')
+    const onDisk = store.get(NOTES_DIR + '\\' + c.id + '.md')
+    assert(onDisk.indexOf('\ninjectRole: convention\n') >= 0, 'update 后 front-matter 同步')
+    await nm.execute({ action: 'update', id: c.id, topic: '资料-改' })
+    const g3 = await handlers['notes-get']({ id: c.id })
+    assert.strictEqual(g3.note.injectRole, 'convention', 'update 不显式传 injectRole 保持原值（undefined 不动）')
+  })
+  await t('notes-update RPC 透传 injectRole（显式改 / 不传不动）', async () => {
+    const c = await handlers['notes-create']({ title: 'RPC角色笔记', body: 'x', inject: true, topic: '约定' })
+    await handlers['notes-update']({ id: c.id, injectRole: 'reference' })
+    const g = await handlers['notes-get']({ id: c.id })
+    assert.strictEqual(g.note.injectRole, 'reference', 'notes-update 透传 injectRole')
+    await handlers['notes-update']({ id: c.id, topic: '约定2' })
+    const g2 = await handlers['notes-get']({ id: c.id })
+    assert.strictEqual(g2.note.injectRole, 'reference', 'notes-update 不传 injectRole 保持原值')
+  })
+  await t('双侧 injectRole 字段链路 + 分桶文案同步（host-impl / index.mjs 源码结构）', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const label = pair[0], src = pair[1]
+      assert(src.indexOf("(m.inject ? 'injectRole: '") >= 0 && /'injectRole: ' \+ escYaml\(m\.injectRole === 'reference' \? 'reference' : 'convention'\)/.test(src), label + ' buildFM 仅 inject=true 写 injectRole 行')
+      assert(src.indexOf("p.meta.injectRole === 'reference' ? 'reference' : 'convention'") >= 0, label + ' noteFromParsed 读 injectRole（缺省/非法回退 convention）')
+      assert((src.match(/injectRole: n\.injectRole === 'reference' \? 'reference' : 'convention'/g) || []).length >= 2, label + ' persistNote 与 slim 均携带 injectRole')
+      assert(src.indexOf("injectRole: ex.injectRole === 'reference' ? 'reference' : 'convention'") >= 0, label + ' _create 接受 injectRole')
+      assert(/if \(injectRole !== undefined\) note\.injectRole = injectRole === 'reference' \? 'reference' : 'convention'/.test(src), label + ' _update 第 12 位参数显式传才改（undefined 不动）')
+      assert(/injectRole: \{ type: 'string', enum: \['convention', 'reference'\]/.test(src), label + ' note_manage schema 含 injectRole enum')
+      assert(/args\.injectRole/.test(src), label + ' 工具/RPC 路由透传 args.injectRole')
+      assert(src.indexOf('以下是注入的上下文笔记（与当前任务无关时忽略）：') >= 0, label + ' 新引导词')
+      assert(src.indexOf('用户约定（须遵守）：') >= 0 && src.indexOf('参考资料（与当前任务相关时按需取用）：') >= 0, label + ' 双桶引导词')
+      assert(src.indexOf('已记录的约定') < 0 && src.indexOf('记录于会话') < 0 && src.indexOf('工作区「') < 0, label + ' 旧文案（工作区归属/会话标注）已删除')
+    }
   })
   await t('跨工作区 convention 不注入', async () => {
     await handlers['notes-create']({ title: '别区约定', body: '别区内容', inject: true, topic: '约定' })
@@ -851,6 +1058,10 @@ async function main() {
     assert(qiGet.note.tags.indexOf('quick') >= 0, '保留 quick 默认标签')
     assert.strictEqual(qiGet.note.kind, 'todo', 'kind 应用为 todo')
     assert.strictEqual(qiGet.note.inject, true, 'inject 应用为约定')
+    assert.strictEqual(qiGet.note.injectRole, 'convention', 'LLM 未输出 injectRole 时缺省 convention（提取器提示词已说明按 kind 推断建议）')
+    assert.strictEqual(qi.applied.injectRole, 'convention', 'applied 透传 injectRole')
+    const qiDisk = store.get(NOTES_DIR + '\\' + qi.id + '.md')
+    assert(qiDisk.indexOf('\ninjectRole: convention\n') >= 0, 'inject=true 落盘 injectRole 行')
     assert.strictEqual(qiGet.note.topic, '登录崩溃修复', 'titleHint 引导 topic')
   })
   await t('notes-quick-instruct 不走合并窗口（独立笔记）', () => {
@@ -1103,6 +1314,26 @@ async function main() {
     const c = await rpc2('notes-conventions', {})
     assert(c.body.text.indexOf('迁移前旧笔记') >= 0, 'inject=true 且 workspace 匹配时应注入（实得：' + c.body.text + '）')
     assert(c.body.text.indexOf('旧笔记正文') >= 0, '注入正文')
+    assert(c.body.text.indexOf('用户约定（须遵守）：') >= 0, '迁移旧笔记（无 injectRole 字段）缺省进约定桶')
+    assert(c.body.text.indexOf('已记录的约定') < 0 && c.body.text.indexOf('记录会话') < 0, '静态包新文案不含旧归属标注')
+  })
+  await t('静态包 injectRole 链路：create reference → get/front-matter/双桶文案/update 一致', async () => {
+    const c = await rpc2('notes-create', { title: '静态包资料', body: '参考资料正文P2', tags: ['rolep2'], inject: true, topic: '资料', injectRole: 'reference' })
+    assert(c.body.id, 'create 返回 id（实得 ' + JSON.stringify(c.body) + '）')
+    const g = await rpc2('notes-get', { id: c.body.id })
+    assert.strictEqual(g.body.note.injectRole, 'reference', '静态包 notes-get 返回 injectRole=reference')
+    const onDisk = store2.get(path.join(NOTES_ROOT_STATIC, c.body.id + '.md'))
+    assert(onDisk && onDisk.indexOf('\ninjectRole: reference\n') >= 0, '静态包磁盘 front-matter 写 injectRole: reference')
+    const conv = await rpc2('notes-conventions', {})
+    const iRef = conv.body.text.indexOf('参考资料（与当前任务相关时按需取用）：')
+    assert(conv.body.text.indexOf('用户约定（须遵守）：') >= 0 && iRef >= 0, '双桶引导词并列')
+    assert(conv.body.text.indexOf('静态包资料') > iRef, 'reference 笔记列在资料桶下')
+    const u = await rpc2('notes-update', { id: c.body.id, injectRole: 'convention' })
+    assert(!u.body.error, 'notes-update 透传 injectRole')
+    const g2 = await rpc2('notes-get', { id: c.body.id })
+    assert.strictEqual(g2.body.note.injectRole, 'convention', '静态包 notes-update 改 injectRole 生效')
+    const onDisk2 = store2.get(path.join(NOTES_ROOT_STATIC, c.body.id + '.md'))
+    assert(onDisk2.indexOf('\ninjectRole: convention\n') >= 0, '静态包 update 后磁盘 front-matter 同步')
   })
   await t('notes:catalog 目录注入行为（静态包）：普通笔记进目录、约定去重、标题行+轻推行', () => {
     const cat = contexts2.find(x => x.name === 'notes:catalog')
@@ -2402,7 +2633,7 @@ async function main() {
     assert(clientSrc.indexOf('向 Agent 系统提示注入笔记目录（一行一条），供其规划时参考并按需 note_get 取全文') >= 0, '总开关 tooltip/sub 说明文案')
     assert(/setSetCatalog\(!res\.settings \|\| res\.settings\.catalogEnabled !== false\)/.test(clientSrc), 'openSettings 回读 catalogEnabled（缺省开）')
   })
-  await t('编辑器逐条「目录可见」开关（v2 meta chip tgl，edRecall 链路照抄 edInject 模式）', () => {
+  await t('编辑器逐条「目录可见」开关（v2 meta chip tgl，edRecall 链路照抄编辑字段模式）', () => {
     assert(/const \[edRecall, setEdRecall\] = React\.useState\(true\)/.test(clientSrc), 'edRecall state 缺省 true（进目录）')
     assert(/const edRecallRef = React\.useRef\(true\)/.test(clientSrc), 'edRecallRef 自动保存镜像存在')
     assert(/setEdRecall\(n\.recall !== false\)/.test(clientSrc), 'selectNote 读 n.recall（缺省 true）')

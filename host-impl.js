@@ -66,6 +66,8 @@ return {
         'kind: ' + escYaml(m.kind || 'note') + '\n' +
         'status: ' + escYaml(m.status || 'active') + '\n' +
         'inject: ' + escYaml(m.inject ? 'true' : 'false') + '\n' +
+        // injectRole 仅 inject=true 时落盘（非注入笔记不带角色字段，避免脏数据）
+        (m.inject ? 'injectRole: ' + escYaml(m.injectRole === 'reference' ? 'reference' : 'convention') + '\n' : '') +
         'injectTo: ' + (m.injectTo || []).map(escYaml).join(', ') + '\n' +
         'recall: ' + escYaml(m.recall === false ? 'false' : 'true') + '\n' +
         'createdAt: ' + escYaml(m.createdAt) + '\n' +
@@ -252,6 +254,8 @@ return {
       let injectTo = []
       if (Array.isArray(p.meta.injectTo)) injectTo = p.meta.injectTo
       else if (p.meta.injectTo) injectTo = String(p.meta.injectTo).split(',').map(s => s.trim()).filter(Boolean)
+      // injectRole：注入角色（convention=须遵守的约定 / reference=按需取用的资料）；缺省/非法值回退 'convention'（存量零迁移）
+      const injectRole = p.meta.injectRole === 'reference' ? 'reference' : 'convention'
       return {
         id: p.meta.id || id,
         title: p.meta.title || 'Untitled',
@@ -263,6 +267,7 @@ return {
         status: p.meta.status || 'active',
         inject: inject,
         injectTo: injectTo,
+        injectRole: injectRole,
         // recall：目录索引准入字段，缺省 true（旧文件无 recall 字段 → 进目录）；显式 false 逐条关闭（与 inject 正交）
         recall: p.meta.recall !== 'false',
         createdAt: p.meta.createdAt || '',
@@ -297,7 +302,7 @@ return {
       const meta = {
         id: n.id, title: n.title, topic: n.topic, workspace: n.workspace, folder: n.folder || '',
         tags: n.tags || [], kind: n.kind || 'note', status: n.status || 'active',
-        inject: n.inject === true, injectTo: n.injectTo || [], recall: n.recall !== false,
+        inject: n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false,
         createdAt: n.createdAt, updatedAt: n.updatedAt,
         sessionId: n.sessionId, cwd: n.cwd, mergedFrom: n.mergedFrom || [],
         dispatches: n.dispatches || [],
@@ -314,7 +319,7 @@ return {
       return {
         id: n.id, title: n.title, topic: n.topic, workspace: n.workspace, folder: n.folder || '',
         tags: n.tags, kind: n.kind || 'note', status: n.status || 'active',
-        inject: n.inject === true, injectTo: n.injectTo || [], recall: n.recall !== false,
+        inject: n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false,
         createdAt: n.createdAt, updatedAt: n.updatedAt,
         sessionId: n.sessionId, cwd: n.cwd, mergedFrom: n.mergedFrom,
         dispatches: n.dispatches || [],
@@ -452,6 +457,7 @@ return {
         status: ex.status || 'active',
         inject: ex.inject === true,
         injectTo: ex.injectTo || [],
+        injectRole: ex.injectRole === 'reference' ? 'reference' : 'convention',
         recall: ex.recall !== false,
         createdAt: ex.createdAt || now, updatedAt: ex.updatedAt || now,
         sessionId: ex.sessionId !== undefined ? ex.sessionId : sc.sessionId,
@@ -507,7 +513,7 @@ return {
       return Object.assign({}, note)
     }
 
-    async function _update(id, title, body, tags, topic, kind, status, inject, injectTo, folder, recall) {
+    async function _update(id, title, body, tags, topic, kind, status, inject, injectTo, folder, recall, injectRole) {
       const note = Object.assign({}, await loadNote(id))
       if (note.deleted) throw new Error('Note has been deleted')
       if (title !== undefined) note.title = title
@@ -519,6 +525,7 @@ return {
       if (injectTo !== undefined) note.injectTo = injectTo
       if (folder !== undefined) note.folder = folder
       if (recall !== undefined) note.recall = recall !== false
+      if (injectRole !== undefined) note.injectRole = injectRole === 'reference' ? 'reference' : 'convention'
       if (body !== undefined) note.body = body
       note.updatedAt = new Date().toISOString()
       await persistNote(note)
@@ -595,8 +602,9 @@ return {
           '- tags: 字符串数组，打标签（如备注"标记为重要 bug" → ["重要","bug"]）\n' +
           '- titleHint: 字符串，标题/主题引导（如"这是关于登录的" → "登录"）\n' +
           '- kind: 字符串，类型枚举 note/decision/todo/link/quote（如"这是待办" → todo）\n' +
-          '- inject: 布尔，是否设为约定（如"记住这个" → true）\n\n' +
-          '选区原文：\n' + text + '\n\n用户备注：\n' + note + '\n\n只输出 JSON：{"tags":[],"titleHint":"","kind":"note","inject":false}'
+          '- inject: 布尔，是否注入到系统提示上下文（如"记住这个" → true）\n' +
+          '- injectRole: 字符串，注入角色枚举 convention/reference（仅 inject=true 时有意义）：convention=须遵守的约定，reference=与当前任务相关时按需取用的资料；按 kind 推断建议 decision/todo → convention、note/link/quote → reference；缺省 convention\n\n' +
+          '选区原文：\n' + text + '\n\n用户备注：\n' + note + '\n\n只输出 JSON：{"tags":[],"titleHint":"","kind":"note","inject":false,"injectRole":"convention"}'
         let out = ''
         for await (const chunk of llm.stream({
           provider: sel.provider,
@@ -622,7 +630,9 @@ return {
         const kindRaw = String(obj.kind || '').trim().toLowerCase()
         const kind = KINDS.indexOf(kindRaw) >= 0 ? kindRaw : 'note'
         const inject = obj.inject === true
-        return { tags: tags, titleHint: titleHint, kind: kind, inject: inject }
+        const roleRaw = String(obj.injectRole || '').trim().toLowerCase()
+        const injectRole = roleRaw === 'reference' ? 'reference' : (roleRaw === 'convention' ? 'convention' : '')
+        return { tags: tags, titleHint: titleHint, kind: kind, inject: inject, injectRole: injectRole }
       } catch (e) {
         console.error('notes: extractInstruction failed', e)
         return null
@@ -637,14 +647,14 @@ return {
       // 备注为空 → 走现有逻辑（合并窗口，行为不变）
       if (!noteTrim) {
         const r = await _quickCapture(text, sessionId, cwd, 'quote')
-        return { ok: true, id: r.id, applied: { tags: [], kind: r.kind || 'note', inject: false }, merged: r.merged }
+        return { ok: true, id: r.id, applied: { tags: [], kind: r.kind || 'note', inject: false, injectRole: 'convention' }, merged: r.merged }
       }
       // 备注非空 → LLM 提取元数据
       const meta = await extractInstruction(text, noteTrim)
       if (!meta) {
         // LLM 不可用 / 解析失败 → 等价 notes-quick（合并逻辑，原文不变）
         const r = await _quickCapture(text, sessionId, cwd, 'quote')
-        return { ok: true, id: r.id, applied: { tags: [], kind: r.kind || 'note', inject: false }, merged: r.merged, fallback: true }
+        return { ok: true, id: r.id, applied: { tags: [], kind: r.kind || 'note', inject: false, injectRole: 'convention' }, merged: r.merged, fallback: true }
       }
       // 新建独立笔记（不走合并窗口），body=选区原文（不变）
       const now = new Date().toISOString()
@@ -659,6 +669,8 @@ return {
       const noteObj = {
         id: id, title: title, topic: topic, workspace: basename(cw),
         tags: tags, kind: meta.kind, status: 'active', inject: meta.inject, injectTo: [],
+        // 注入角色：LLM 显式输出优先，缺省 convention（与 noteFromParsed 回退口径一致）
+        injectRole: meta.injectRole || 'convention',
         createdAt: now, updatedAt: now, sessionId: sid, cwd: cw,
         mergedFrom: [], archivedAt: '', deleted: false,
         body: text + '\n'
@@ -673,7 +685,7 @@ return {
           } catch (e) {}
         }).catch(function () {})
       }
-      return { ok: true, id: id, applied: { tags: meta.tags, kind: meta.kind, inject: meta.inject, titleHint: meta.titleHint } }
+      return { ok: true, id: id, applied: { tags: meta.tags, kind: meta.kind, inject: meta.inject, injectRole: meta.injectRole || 'convention', titleHint: meta.titleHint } }
     }
 
     async function _delete(id) {
@@ -1083,10 +1095,13 @@ return {
       return false
     }
 
-    // T2.3 工作区约定：从常驻内存 cache 同步读取 convention 笔记，注入 agent 系统提示。
+    // 上下文注入（双角色）：从常驻内存 cache 同步读取 inject=true 笔记，按 injectRole 分桶注入 agent 系统提示。
     // text 是同步函数（systemPrompt 契约），故不能 await _list()，必须读 cache。
     // 是否注入：inject 布尔字段（noteFromParsed 已对旧数据回退到 convention 标签）；
-    // 注入范围由约定笔记的 injectTo 字段决定（命中语义见 conventionHit）。
+    // 注入范围由笔记的 injectTo 字段决定（命中语义见 conventionHit）。
+    // 分桶：injectRole='convention' → 用户约定（须遵守）；'reference' → 参考资料（按需取用）；
+    // 缺省/非法值已在 noteFromParsed 回退 convention（存量零迁移）；只命中单桶时只输出该桶标题。
+    // 文案不再标注工作区归属与来源会话：大量笔记由 agent 快速记录产生，归属标注对注入方无意义。
     function conventionText() {
       const shortSid = (x) => x ? String(x).replace(/^session-/, '').slice(0, 8) : ''
       try {
@@ -1107,13 +1122,14 @@ return {
         }
         if (matches.length === 0) return ''
         matches.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
-        const blocks = matches.map(n => {
-          const src = shortSid(n.sessionId)
-          const srcLabel = src ? '（记录于会话 ' + src + '）' : '（来源会话未知）'
-          return '【' + (n.title || 'Untitled') + '】' + srcLabel + '\n' + String(n.body || '').trim()
-        }).join('\n\n')
-        const label = ws ? '工作区「' + ws + '」' : '全局'
-        const full = '以下是' + label + '已记录的约定（本地笔记，每条标注其记录会话；与当前任务无关时忽略）：\n\n' + blocks
+        // 双角色分桶：约定与资料各自成段，标题换行收拢，正文行统一缩进两格保持在列表项内
+        const conventions = []
+        const references = []
+        for (const n of matches) (n.injectRole === 'reference' ? references : conventions).push(n)
+        const block = (n) => '- [' + n.id + '] ' + String(n.title || 'Untitled').replace(/[\r\n]+/g, ' ') + '\n  ' + String(n.body || '').trim().replace(/\n/g, '\n  ')
+        let full = '以下是注入的上下文笔记（与当前任务无关时忽略）：'
+        if (conventions.length) full += '\n\n用户约定（须遵守）：\n\n' + conventions.map(block).join('\n\n')
+        if (references.length) full += '\n\n参考资料（与当前任务相关时按需取用）：\n\n' + references.map(block).join('\n\n')
         return full.length > 4000 ? full.slice(0, 4000) + '\n\n（内容过长已截断）' : full
       } catch (e) { return '' }
     }
@@ -1213,10 +1229,10 @@ return {
       try { const n = await _get(args.id); const s = slim(n); s.body = n.body; return { note: s } } catch (e) { return { error: String(e.message || e) } }
     }))
     disposers.push(handle('notes-create', async (args) => {
-      try { return await _create(args.title, args.body, args.tags, args.topic, { kind: args.kind, status: args.status, inject: args.inject, injectTo: args.injectTo, folder: args.folder, recall: args.recall }) } catch (e) { return { error: String(e.message || e) } }
+      try { return await _create(args.title, args.body, args.tags, args.topic, { kind: args.kind, status: args.status, inject: args.inject, injectRole: args.injectRole, injectTo: args.injectTo, folder: args.folder, recall: args.recall }) } catch (e) { return { error: String(e.message || e) } }
     }))
     disposers.push(handle('notes-update', async (args) => {
-      try { return await _update(args.id, args.title, args.body, args.tags, args.topic, args.kind, args.status, args.inject, args.injectTo, args.folder, args.recall) } catch (e) { return { error: String(e.message || e) } }
+      try { return await _update(args.id, args.title, args.body, args.tags, args.topic, args.kind, args.status, args.inject, args.injectTo, args.folder, args.recall, args.injectRole) } catch (e) { return { error: String(e.message || e) } }
     }))
     disposers.push(handle('notes-quick', async (args) => {
       try { return await _quickCapture(args.text, args.sessionId, args.cwd, args.kind) } catch (e) { return { error: String(e.message || e) } }
@@ -1237,13 +1253,13 @@ return {
     disposers.push(handle('notes-search', async (args) => {
       try { return { notes: (await _search(args && args.query, args && args.tag, args && args.topic, args && args.kind, args && args.folder)).map(slim) } } catch (e) { return { error: String(e.message || e) } }
     }))
-    // T2.3 工作区约定自动注入：注册动态 prompt context（order 130，位于 policy/delegation 之后）
-    // 笔记目录索引注入（recall 通道）：order 131 紧邻约定注入之后；text 同步返回 string，无内容/总开关关闭返回 ''
+    // 上下文注入（双角色分桶）：注册动态 prompt context（order 130，位于 policy/delegation 之后）
+    // 笔记目录索引注入（recall 通道）：order 131 紧邻上下文注入之后；text 同步返回 string，无内容/总开关关闭返回 ''
     if (systemPrompt && typeof systemPrompt.context === 'function') {
       disposers.push(systemPrompt.context({ name: 'notes:workspace-conventions', order: 130, text: () => conventionText() }))
       disposers.push(systemPrompt.context({ name: 'notes:catalog', order: 131, text: () => catalogText() }))
     }
-    // 调试 RPC：预览当前会话将注入的约定文本（E2E 验证用）
+    // 调试 RPC：预览当前会话将注入的上下文笔记文本（双角色分桶新文案，E2E 验证用）
     disposers.push(handle('notes-conventions', async () => ({ text: conventionText() || '' })))
     // 会话列表（注入范围多选用）：与派发同源——工作区有效会话（排除已归档 + 子 agent），复用 _activeSessions
     // 返回 { sessions, titlesPending?, pendingIds?, pendingSessions? }：缓存未命中的会话后台补标题（0.1.7 首屏不阻塞）
@@ -1373,13 +1389,13 @@ return {
       name: 'note_manage',
       description: 'Single tool for create/list/update/delete/restore/archive. Pick an action and supply its required fields. The Agent should prefer this for any non-search CRUD: one tool means one decision point and one schema to learn.\n\n' +
         'Fields kind (what it is) and status (its lifecycle) are orthogonal: kind ∈ note/decision/todo/link/quote (default note); status ∈ active/pinned/resolved/superseded (default active).\n' +
-        'inject (boolean) controls whether the note is injected into the system prompt as a workspace convention — an explicit field, NOT a tag. injectTo (string[]) is the injection scope, a multi-select list: [] or ["workspace"]=current workspace (default), ["global"]=all sessions, or session short-ids like ["99f2b674","7f8b49e6"]=those sessions.\n\n' +
+        'inject (boolean) controls whether the note is injected into the system prompt as context — an explicit field, NOT a tag. injectRole ("convention"|"reference", default "convention") picks the injection bucket: convention = user rules to follow; reference = background facts to consult only when relevant to the current task. Rule of thumb — infer from kind: decision/todo → convention, note/link/quote → reference. injectTo (string[]) is the injection scope, a multi-select list: [] or ["workspace"]=current workspace (default), ["global"]=all sessions, or session short-ids like ["99f2b674","7f8b49e6"]=those sessions.\n\n' +
         'recall (boolean) controls whether the note appears in the notes catalog — a one-line-per-note index injected into the system prompt (right after conventions) so you know what the library holds without searching; default true. Set false to hide a note from the catalog (it stays searchable via note_search). Orthogonal to inject; notes with status resolved/superseded never appear in the catalog.\n\n' +
         'folder (string) assigns a note to a virtual folder: pass a folder id or an exact folder name; "" or omitted = unfiled (未分类). Folders (name/order) are managed via the notes-folders RPC (list/create/rename/delete/reorder).\n\n' +
         'Actions:\n' +
-        '- create: { title, body, topic?, tags?, kind?, status?, inject?, injectTo?, recall?, folder?, sessionId?, cwd?, workspace? }\n' +
+        '- create: { title, body, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, folder?, sessionId?, cwd?, workspace? }\n' +
         '- list: { tag?, topic?, kind?, folder? } (no id/title/body needed)\n' +
-        '- update: { id, title?, body?, topic?, tags?, kind?, status?, inject?, injectTo?, recall? }\n' +
+        '- update: { id, title?, body?, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall? }\n' +
         '- move: { id, folder } (move note into a virtual folder; folder = folder id or exact folder name, "" = move out to unfiled)\n' +
         '- delete: { id } (soft delete; restorable via restore)\n' +
         '- restore: { id } (undo delete/archive)\n' +
@@ -1397,7 +1413,8 @@ return {
           tags: { type: 'array', items: { type: 'string' }, description: 'Tags (create/update)' },
           kind: { type: 'string', enum: KINDS, description: 'Kind (create/update): note/decision/todo/link/quote; default note' },
           status: { type: 'string', enum: STATUSES, description: 'Status (create/update): active/pinned/resolved/superseded; default active' },
-          inject: { type: 'boolean', description: 'Inject as convention into system prompt (create/update); default false' },
+          inject: { type: 'boolean', description: 'Inject into system prompt as context (create/update); default false' },
+          injectRole: { type: 'string', enum: ['convention', 'reference'], description: 'Injection role: convention=rules to follow | reference=background facts to consult as needed; default convention' },
           injectTo: { type: 'array', items: { type: 'string' }, description: 'Injection scope multi-select (create/update): []/["workspace"]=current workspace (default), ["global"]=all, or session short-ids' },
           recall: { type: 'boolean', description: 'Recall in the notes catalog index (create/update); default true. Set false to hide from the catalog (still searchable via note_search).' },
           folder: { type: 'string', description: 'Virtual folder (create/move/list filter): folder id or exact folder name; "" = unfiled (未分类)' },
@@ -1429,7 +1446,7 @@ return {
             }
             const r = await _create(args.title, args.body, args.tags, args.topic, {
               sessionId: args.sessionId, cwd: args.cwd, workspace: args.workspace,
-              kind: args.kind, status: args.status, inject: args.inject, injectTo: args.injectTo,
+              kind: args.kind, status: args.status, inject: args.inject, injectRole: args.injectRole, injectTo: args.injectTo,
               folder: folder, recall: args.recall
             })
             return { action: 'create', id: r.id, topic: r.topic, kind: r.kind, status: r.status, message: 'Note created' }
@@ -1455,7 +1472,7 @@ return {
           }
           if (action === 'update') {
             if (!args.id) return { error: 'note_manage.update 需要 id' }
-            const r = await _update(args.id, args.title, args.body, args.tags, args.topic, args.kind, args.status, args.inject, args.injectTo, undefined, args.recall)
+            const r = await _update(args.id, args.title, args.body, args.tags, args.topic, args.kind, args.status, args.inject, args.injectTo, undefined, args.recall, args.injectRole)
             return { action: 'update', id: args.id, kind: r.kind, status: r.status, message: 'Note updated' }
           }
           if (action === 'delete') {

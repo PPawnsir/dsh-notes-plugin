@@ -62,6 +62,15 @@ node check.js
 >
 > 该约定同样约束 Agent 看板任务：涉及 UI 的任务，description 必须把「同步更新 `design/notes-ui-v2.html`」列为交付项；Verifier 验收时核对原型与实现一致。
 
+## 版本适配映射约定（硬性）
+
+> ⚠️ **DSH 更新频繁，每个 release 必须向用户给出明确的版本引导**：
+>
+> 1. README 的「版本适配（dsh-notes ↔ DSH）」映射表必须随每个插件版本更新一行：插件版本 / 发布日期 / 声明适配 DSH（取 `peerDependencies` 实值）/ **实测基线**（本版本开发与回归所用 DSH 版本）/ 要点摘要。
+> 2. 「实测基线」必须真实：发布前在基线版本上跑过 `node check.js` 与活体验证；未验证过的 DSH 版本不得写进基线列。
+> 3. `peerDependencies` 上限是「未验证」的保守声明（如 `<0.2.0-0`）：DSH 次版本跃迁后，新兼容性以新插件版本发布并同步更新映射表与上限。
+> 4. 发布任务（release）的交付项必须包含：`package.json` version 三处一致（根/包/README 表）+ `files` 白名单核对（`npm pack` 干跑验证新资产，如 app.html）+ 映射表更新。tag==version 校验由 CI（`publish.yml`）兜底。
+
 `pluginDir` 由 `host.js` 经 `new Function('harness','pluginDir',src)(harness, PLUGIN_DIR)` 注入，实现内所有路径（`NOTES_DIR`/`CSS_PATH`/`perf-report`/心跳/`notes-src`）都从它派生，移植只需改 `host.js` 顶部一处。
 
 ## Host 端（`host-impl.js`）

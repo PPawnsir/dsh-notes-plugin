@@ -287,7 +287,13 @@ window.__ModuleLoader__.load({
             }
           )
         }
-        return e('button', { className: 'dsh-notes-fab dsh-nt' + (panelOpen ? ' active' : ''), style: { left: pos.x + 'px', top: pos.y + 'px' }, onMouseDown, 'data-tooltip': '笔记' }, e('span', { className: 'dsh-notes-fab-ic' }, I('note', 18)))
+        // v2 卡片式 FAB（G 大图标版）：中央 note 22px + 右下 kind 三色点（todo/decision/quote），无计数角标
+        return e('button', { className: 'dsh-notes-fab dsh-nt' + (panelOpen ? ' active' : ''), style: { left: pos.x + 'px', top: pos.y + 'px' }, onMouseDown, 'data-tooltip': '笔记' },
+          e('span', { className: 'dsh-notes-fab-ic' }, I('note', 22)),
+          e('span', { className: 'dsh-notes-fab-tridots', 'aria-hidden': 'true' },
+            e('i', { style: { background: 'var(--nkind-todo)' } }),
+            e('i', { style: { background: 'var(--nkind-decision)' } }),
+            e('i', { style: { background: 'var(--nkind-quote)' } })))
       }
       slots.register({ name: 'shell.overlay', id: 'dsh-notes-fab', order: 199 }, (props) => e(FabEntry, props))
     })
@@ -304,7 +310,7 @@ window.__ModuleLoader__.load({
         const [edBody, setEdBody] = React.useState('')
         const [edKind, setEdKind] = React.useState('note')
         const [edStatus, setEdStatus] = React.useState('active')
-        const [edInject, setEdInject] = React.useState(false)
+        const [edRole, setEdRole] = React.useState('off')   // 注入三态：off=不注入 / convention=约定（须遵守）/ reference=资料（按需取用）
         const [edRecall, setEdRecall] = React.useState(true)   // 目录可见（recall 字段，缺省 true=进目录；与 inject 正交）
         const [edScope, setEdScope] = React.useState([])
         const [savedAt, setSavedAt] = React.useState(0)
@@ -399,7 +405,7 @@ window.__ModuleLoader__.load({
         const edBodyRef = React.useRef('')
         const edKindRef = React.useRef('note')
         const edStatusRef = React.useRef('active')
-        const edInjectRef = React.useRef(false)
+        const edRoleRef = React.useRef('off')
         const edRecallRef = React.useRef(true)
         const edScopeRef = React.useRef([])
         const autoSaveRef = React.useRef(null)
@@ -539,7 +545,7 @@ window.__ModuleLoader__.load({
           setSelected(n.id); setFocusId(n.id); setEdTitle(n.title); setEdTopic(n.topic && n.topic !== '分类中' ? n.topic : '')
           keepQuickRef.current = (n.tags || []).indexOf('quick') >= 0
           setEdTags((n.tags || []).filter(t => t !== 'quick').join(', '))
-          setEdKind(n.kind || 'note'); setEdStatus(n.status || 'active'); setEdInject(n.inject === true); setEdScope(n.injectTo || []); setEdRecall(n.recall !== false)
+          setEdKind(n.kind || 'note'); setEdStatus(n.status || 'active'); setEdRole(n.inject ? (n.injectRole || 'convention') : 'off'); setEdScope(n.injectTo || []); setEdRecall(n.recall !== false)
           setEdBody('')
           // 列表是瘦身数据，正文按需加载
           const id = n.id
@@ -583,7 +589,8 @@ window.__ModuleLoader__.load({
           setError('')
           const tags = (edTagsRef.current || '').split(/[,，;；]/).map(s => s.trim()).filter(Boolean)
           if (keepQuickRef.current && tags.indexOf('quick') < 0) tags.push('quick')
-          const upd = { id: id, title: edTitleRef.current, tags: tags, body: edBodyRef.current, kind: edKindRef.current, status: edStatusRef.current, inject: edInjectRef.current, injectTo: edScopeRef.current, recall: edRecallRef.current }
+          const upd = { id: id, title: edTitleRef.current, tags: tags, body: edBodyRef.current, kind: edKindRef.current, status: edStatusRef.current, inject: edRoleRef.current !== 'off', injectTo: edScopeRef.current, recall: edRecallRef.current }
+          if (upd.inject) upd.injectRole = edRoleRef.current   // 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘）
           if ((edTopicRef.current || '').trim()) upd.topic = edTopicRef.current.trim()
           try {
             const res = await rpc('notes-update', upd)
@@ -806,8 +813,16 @@ window.__ModuleLoader__.load({
         }, [folderMenu])
         function close() { panelOpen = false; notify() }
         function jumpToSession(sessionId) { if (sessions && sessionId) { try { sessions.open(sessionId) } catch (err) {} } }
-        // 注入开关：独立字段 inject，不碰标签
-        function toggleInject() { setEdInject(!edInject); triggerAutoSave() }
+        // 注入三态切换：独立字段 inject + injectRole（off→inject:false；约定/资料→inject:true+injectRole），不碰标签
+        // off→非off 时自动展开范围浮层（与原 toggle 开启行为一致）；切到 off 收起浮层
+        function setRoleSeg(r) {
+          if (r === edRole) return
+          const wasOff = edRole === 'off'
+          setEdRole(r)
+          if (r === 'off') setScopeOpen(false)
+          else if (wasOff) setScopeOpen(true)
+          triggerAutoSave()
+        }
         // 目录可见开关：独立字段 recall（缺省 true=进目录；false 逐条排除，与 inject 正交）
         function toggleRecall() { setEdRecall(!edRecall); triggerAutoSave() }
         // 范围多选：切换某个目标（global/workspace/会话短id）的选中态
@@ -988,7 +1003,7 @@ window.__ModuleLoader__.load({
         edBodyRef.current = edBody
         edKindRef.current = edKind
         edStatusRef.current = edStatus
-        edInjectRef.current = edInject
+        edRoleRef.current = edRole
         edRecallRef.current = edRecall
         edScopeRef.current = edScope
         // 自动保存：debounce 只注册一次（null 时赋值），回调读 ref 避免闭包过期
@@ -1026,7 +1041,7 @@ window.__ModuleLoader__.load({
           })
           return names.join('、')
         }
-        // ===== 侧栏笔记行（原型 note-row）：kind 色点 + 标题(+置顶 pin) + 约定 bolt + 行尾 =====
+        // ===== 侧栏笔记行（原型 note-row）：kind 色点 + 标题(+置顶 pin) + 注入 bolt + 行尾 =====
         // 行尾（原型 noteRow）：主题视图内显示所属文件夹徽章；文件夹上下文内显示淡灰主题字（方案A）；其余显示日期
         function renderNoteRow(n, inFolderCtx) {
           let tail
@@ -1036,7 +1051,7 @@ window.__ModuleLoader__.load({
           return e('div', { key: n.id, className: 'dsh-notes-note-row' + (selected === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (flashId === n.id ? ' flash' : '') + (n.status === 'resolved' ? ' resolved' : '') + (n.status === 'superseded' ? ' superseded' : ''), onClick: () => selectNote(n), onContextMenu: (ev) => openCtxMenu(ev, n), draggable: true, onDragStart: (ev) => onNoteDragStart(ev, n), onDragEnd: (ev) => onNoteDragEnd(ev) },
             e('span', { className: 'dsh-notes-kind-dot', style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' } }),
             e('span', { className: 'dsh-notes-note-ti' }, n.status === 'pinned' ? I('pin', 10, 'dsh-notes-note-pin') : null, highlight(n.title || '无标题', q)),
-            n.inject === true ? e('span', { className: 'dsh-notes-note-inj dsh-nt', 'data-tooltip': '注入为约定 · 范围：' + injectScopeLabel(n.injectTo) }, I('bolt', 10)) : null,
+            n.inject === true ? e('span', { className: 'dsh-notes-note-inj dsh-nt', 'data-tooltip': '注入为上下文 · ' + (n.injectRole === 'reference' ? '资料' : '约定') + ' · 范围：' + injectScopeLabel(n.injectTo) }, I('bolt', 10)) : null,
             tail)
         }
         // ===== 侧栏树（原型 renderTree 翻译）：视图头 → 置顶组 → 文件夹组（nested 子笔记）→ 未分类（主题二级分组）→ 主题全局过滤 =====
@@ -1139,8 +1154,8 @@ window.__ModuleLoader__.load({
         if (loading && notes.length === 0) treeEls.unshift(e('div', { key: 'loading', className: 'dsh-notes-loading' }, '加载中...'))
         // 键盘导航顺序 = 树渲染顺序（置顶组与所属位置重复出现的笔记去重）
         pagedIdsRef.current = Array.from(new Set(treeIds))
-        // 是否注入为约定：由独立的 inject 布尔字段决定（不依赖标签）
-        const isConvention = edInject
+        // 是否注入为上下文：由 inject + injectRole 双字段推出的三态决定（off 之外即注入中，不依赖标签）
+        const isInjected = edRole !== 'off'
         // 当前选中笔记（编辑器区多处用）
         const curNote = notes.find(n => n.id === selected) || null
         const curFolderName = curNote && curNote.folder ? folderName(curNote.folder) : ''
@@ -1190,8 +1205,12 @@ window.__ModuleLoader__.load({
                 e('input', { className: 'dsh-notes-meta-topic-input', placeholder: '主题', value: edTopic, onChange: (ev) => { setEdTopic(ev.target.value); triggerAutoSave() } }),
                 e('span', { className: 'dsh-notes-meta-jump dsh-nt', 'data-tooltip': '按主题全局过滤', onClick: jumpToTopicFilter }, I('filter', 10))),
               curFolderName ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': '所在文件夹' }, I('folder', 11), curFolderName) : null,
-              e('span', { className: 'dsh-notes-meta-chip tgl' + (isConvention ? ' on' : ''), onClick: () => { toggleInject(); if (!isConvention) setScopeOpen(true) }, 'data-tooltip': '作为约定注入到系统提示（Agent 每回合可见）' }, I('bolt', 11), isConvention ? '约定 · 注入中' : '约定'),
-              isConvention ? e('span', { className: 'dsh-notes-ed-scope-wrap' },
+              e('span', { className: 'dsh-notes-meta-chip dsh-notes-role-seg' },
+                I('bolt', 11),
+                e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'off' ? ' on' : ''), onClick: () => setRoleSeg('off'), 'data-tooltip': '不注入系统提示' }, '关闭'),
+                e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'convention' ? ' on' : ''), onClick: () => setRoleSeg('convention'), 'data-tooltip': '须遵守的行为规则' }, '约定'),
+                e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'reference' ? ' on' : ''), onClick: () => setRoleSeg('reference'), 'data-tooltip': '事实性补充信息，Agent 按需取用' }, '资料')),
+              isInjected ? e('span', { className: 'dsh-notes-ed-scope-wrap' },
                 e('button', { className: 'dsh-notes-meta-chip dsh-notes-scope-trigger dsh-nt', onClick: (ev) => { ev.stopPropagation(); setScopeOpen(!scopeOpen) }, 'data-tooltip': '选择注入范围（可多选）' },
                   injectScopeLabel(edScope), e('span', { className: 'dsh-notes-scope-caret' }, '▾')),
                 scopeOpen ? e('div', { className: 'dsh-notes-scope-panel' },
@@ -1559,7 +1578,7 @@ window.__ModuleLoader__.load({
               else if (res.ok && res.applied) {
                 const a = res.applied
                 let msg = '已记录'
-                if (a.inject) msg = '已记录并设为约定'
+                if (a.inject) msg = '已记录并注入为上下文（' + (a.injectRole === 'reference' ? '资料' : '约定') + '）'
                 else if (a.tags && a.tags.length) msg = '已记录并标记 #' + a.tags.join(' #')
                 else if (a.kind && a.kind !== 'note' && a.kind !== 'quote') msg = '已记录为' + (KIND_LABELS[a.kind] || a.kind)
                 else msg = res.merged ? '已合并到本次速记' : '已记录，正在识别主题…'
@@ -1609,7 +1628,7 @@ window.__ModuleLoader__.load({
           e('div', { className: 'dsh-notes-cap-pv' }, previewText(selTextRef.current)),
           e('div', { className: 'dsh-notes-cap-in' },
             I('plus', 12),
-            e('input', { ref: instrRef, className: 'dsh-notes-cap-input', type: 'text', placeholder: '可补充：打标签/引导标题/定类型/设为约定…直接回车则仅记录', value: instrText, onChange: function (ev) { setInstrText(ev.target.value) }, onKeyDown: function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); submit() } else if (ev.key === 'Escape') { ev.preventDefault(); cancel() } } }),
+            e('input', { ref: instrRef, className: 'dsh-notes-cap-input', type: 'text', placeholder: '可补充：打标签/引导标题/定类型/注入为上下文…直接回车则仅记录', value: instrText, onChange: function (ev) { setInstrText(ev.target.value) }, onKeyDown: function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); submit() } else if (ev.key === 'Escape') { ev.preventDefault(); cancel() } } }),
             e('span', { className: 'dsh-notes-kbd' }, 'Enter 记录')),
           e('div', { className: 'dsh-notes-cap-acts' },
             e('button', { className: 'dsh-notes-cbtn', onClick: copySelection }, I('note', 12), '复制'),

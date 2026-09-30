@@ -18,15 +18,17 @@
     --nr-lg:12px; --nr-md:8px; --nr-sm:6px;
   }
   html[data-theme="dark"]{
-    --nbg:#161618; --npanel:#1b1b1e; --nbg-raise:#232327; --nbg-hover:#26262b; --nbg-sel:rgba(108,140,255,.14);
-    --ntx:#f2f2f4; --nt2:#a8a8b0; --nt3:#6b6b74; --nbd:#2a2a30; --nbd-soft:#222228;
-    --nacc:#6c8cff; --nacc-tx:#9db4ff; --nwarn:#e5b567; --ndanger:#e5734f;
+    /* DSH 0.1.7 暗色实机值（与面板 token 解析一致）：bg-base/layer-1/layer-2 + 官方交互 hover + 业务主色鲜蓝 */
+    --nbg:#151517; --npanel:#232324; --nbg-raise:#2c2c2e; --nbg-hover:#ffffff14; --nbg-sel:rgba(122,170,255,.14);
+    --ntx:#f9fafb; --nt2:#cfd3d6; --nt3:#adb2b8; --nbd:#ffffff1f; --nbd-soft:#ffffff29;
+    --nacc:#7aaaff; --nacc-tx:#96bcfe; --nwarn:#e5b567; --ndanger:#e5734f;
     --kind-note:#8f8fa3; --kind-decision:#e5b567; --kind-todo:#6c8cff; --kind-link:#56c8d8; --kind-quote:#b58fe5;
   }
   html[data-theme="light"]{
-    --nbg:#ececef; --npanel:#ffffff; --nbg-raise:#f7f7f9; --nbg-hover:#e8e8ec; --nbg-sel:rgba(64,98,232,.10);
-    --ntx:#1d1d21; --nt2:#6e6e78; --nt3:#9d9da6; --nbd:#e2e2e7; --nbd-soft:#ececf0;
-    --nacc:#4062e8; --nacc-tx:#4062e8; --nwarn:#b07f1e; --ndanger:#cf5b34;
+    /* DSH 0.1.7 亮色实机值：layer 系同为 #fff，容器底/抬升面按实机 color-mix（ntx 6%/4%）折算 */
+    --nbg:#f1f1f1; --npanel:#ffffff; --nbg-raise:#f5f5f6; --nbg-hover:#2631480f; --nbg-sel:rgba(65,118,230,.14);
+    --ntx:#0f1115; --nt2:#61666b; --nt3:#81858c; --nbd:#0000001a; --nbd-soft:#0000001f;
+    --nacc:#4176e6; --nacc-tx:#3660b8; --nwarn:#b07f1e; --ndanger:#cf5b34;
     --kind-note:#8f8f9c; --kind-decision:#b07f1e; --kind-todo:#4062e8; --kind-link:#1e9aab; --kind-quote:#8a5cd6;
   }
   *{box-sizing:border-box;margin:0;padding:0}
@@ -102,6 +104,11 @@
   .meta-chip .dot{width:6px;height:6px;border-radius:50%}
   .meta-chip svg.ic{width:11px;height:11px}
   .meta-chip.tgl.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx)}
+  /* 注入三态分段控件（关闭/约定/资料）：选中段走 nbg-sel + nacc-tx token */
+  .meta-chip.role-seg{padding:2px 3px;gap:2px}
+  .role-seg .seg{padding:1px 8px;border-radius:13px;color:var(--nt3)}
+  .role-seg .seg:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .role-seg .seg.on{background:var(--nbg-sel);color:var(--nacc-tx);font-weight:600}
   .meta-chip select,.meta-chip input{border:0;background:transparent;color:inherit;font:inherit;outline:0;cursor:pointer}
   .meta-chip input{cursor:text;min-width:0}
   .meta-chip input::placeholder{color:var(--nt3)}
@@ -191,6 +198,21 @@
   .toast.show{opacity:1;pointer-events:auto}
   .toast a{color:var(--nacc-tx);margin-left:8px;cursor:pointer}
   .hintbar{padding:6px 14px;background:var(--npanel);border-top:1px solid var(--nbd);font-size:11px;color:var(--nt3);display:flex;gap:16px}
+  /* ===== Shell 入口（定稿：头部按钮 A + FAB G） ===== */
+  .shell-demo{display:flex;align-items:center;gap:18px;padding:10px 14px;border-top:1px solid var(--nbd-soft)}
+  .shell-demo .dh{display:flex;align-items:center;gap:8px;background:var(--nbg-raise);border-radius:8px;padding:6px 10px;flex:1}
+  .shell-demo .dh .sess{font-size:12px;color:var(--nt2)}
+  .shell-demo .dh .sp{flex:1}
+  .hbtn{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--nt2);border:1px solid var(--nbd);border-radius:8px;padding:5px 11px;background:transparent}
+  .hbtn:hover{background:var(--nbg-hover);color:var(--ntx)}
+  .hbtn.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc);font-weight:600}
+  .hbtn svg.ic{width:13px;height:13px}
+  .fabg{position:relative;width:44px;height:44px;border-radius:12px;background:var(--npanel);border:1px solid var(--nbd-soft);box-shadow:0 4px 14px rgba(0,0,0,.10),0 1px 4px rgba(0,0,0,.06);display:grid;place-items:center;color:var(--ntx);cursor:pointer;flex-shrink:0}
+  html[data-theme="dark"] .fabg{box-shadow:0 10px 28px rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.25)}
+  .fabg svg.ic{width:22px;height:22px}
+  .fabg .tridots{position:absolute;right:4px;bottom:4px;display:flex;gap:2px;background:var(--npanel);border-radius:8px;padding:1px 3px}
+  .fabg .tridots i{width:5px;height:5px;border-radius:50%;display:block}
+  .shell-demo .lab{font-size:10px;color:var(--nt3)}
   /* ===== 文件夹右键菜单 ===== */
   .ctxmenu{position:fixed;z-index:150;min-width:150px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:4px}
   .ctxmenu .mi{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--nt2);padding:6px 10px;border-radius:var(--nr-sm);cursor:pointer}
@@ -276,6 +298,18 @@
   </section>
 </div>
 <div class="hintbar"><span>🖱 在右侧正文<b>划选文字松手</b> → 弹出快速记录卡片</span><span>拖笔记 → 文件夹移入 / 拖到「未分类」移出</span><span>文件夹右键：重命名 / 排序 / 删除</span><span>Ctrl K 搜索 · Esc 关闭浮层</span></div>
+<div class="shell-demo">
+  <span class="lab">Shell 入口（定稿）</span>
+  <div class="dh">
+    <span class="sess">笔记插件开发</span><span class="sp"></span>
+    <span class="hbtn"><svg class="ic" viewBox="0 0 24 24"><path d="M6 4h9l4 4v12H6Z"/><path d="M14.5 4v4.5H19"/></svg>智能笔记</span>
+    <span class="hbtn on"><svg class="ic" viewBox="0 0 24 24"><path d="M6 4h9l4 4v12H6Z"/><path d="M14.5 4v4.5H19"/></svg>智能笔记（激活）</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="fabg"><svg class="ic" viewBox="0 0 24 24"><path d="M6 4h9l4 4v12H6Z"/><path d="M14.5 4v4.5H19"/></svg><span class="tridots"><i style="background:var(--kind-todo,#6c8cff)"></i><i style="background:var(--kind-decision,#e5b567)"></i><i style="background:var(--kind-quote,#b58fe5)"></i></span></div>
+    <span class="lab">FAB · G（大图标+三色点）</span>
+  </div>
+</div>
 <div id="capHost"></div>
 <div id="modalHost"></div>
 <div id="ctxHost"></div>
@@ -293,7 +327,7 @@ var _mockNotes = [
  { id: 'n3', title: 'openviking · 运维', kind: 'quote', topic: '运维', folder: 'f1', status: 'active', inject: false, injectTo: [], recall: true, tags: ['quick'], createdAt: '2026-09-23T09:00:00.000Z', updatedAt: '2026-09-23T09:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '守护进程状态：已配置 ✅ Windows 计划任务 OpenViking-Server 已注册成功并验证。' },
  { id: 'n4', title: '运维（合并）', kind: 'note', topic: '运维', folder: 'f1', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-09-23T08:00:00.000Z', updatedAt: '2026-09-23T08:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: 'npm token · 测试/预生产/生产环境地址与账号…' },
  { id: 'n5', title: 'DSH 插件发布指南', kind: 'note', topic: 'DSH 插件开发', folder: 'f2', status: 'active', inject: false, injectTo: [], recall: true, tags: ['dsh'], createdAt: '2026-09-22T07:00:00.000Z', updatedAt: '2026-09-22T07:00:00.000Z', sessionId: 'session-live001-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', dispatches: [], body: '包结构 → cordis.patch.yml → npm publish → 市场收录完整链路。' },
- { id: 'n6', title: '客户端插件可用性红线', kind: 'note', topic: 'DSH 插件开发', folder: 'f2', status: 'active', inject: true, injectTo: [], recall: true, tags: [], createdAt: '2026-09-22T06:00:00.000Z', updatedAt: '2026-09-22T06:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '上下文切换后的在途响应覆盖 · 渲染 bailout · 时区偏移。可用性要求是底线。' },
+ { id: 'n6', title: '客户端插件可用性红线', kind: 'note', topic: 'DSH 插件开发', folder: 'f2', status: 'active', inject: true, injectRole: 'reference', injectTo: [], recall: true, tags: [], createdAt: '2026-09-22T06:00:00.000Z', updatedAt: '2026-09-22T06:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '上下文切换后的在途响应覆盖 · 渲染 bailout · 时区偏移。可用性要求是底线。' },
  { id: 'n7', title: '不动工约定', kind: 'decision', topic: '其他', folder: '', status: 'pinned', inject: true, injectTo: ['global'], recall: true, tags: [], createdAt: '2026-09-26T02:00:00.000Z', updatedAt: '2026-09-26T02:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '调研讨论阶段，用户没有明确指令前不要编辑工程文件或工程数据；可查找文件、写脚本验证。' },
  { id: 'n8', title: 'TODO: oabanner 兼容评估', kind: 'todo', topic: '数据管线', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-09-17T03:00:00.000Z', updatedAt: '2026-09-17T03:00:00.000Z', sessionId: 'session-work1234-0000-0000-0000-000000000000', cwd: 'D:\\ontology-proj', dispatches: [{ sessionId: 'session-work1234-0000-0000-0000-000000000000', sessionName: 'oabanner 数据管线', workspace: 'ontology-proj', mode: 'existing', instruction: '先出字段 diff 清单再评估', at: '2026-09-28T10:20:00.000Z', done: false }], body: '拿到新增字段清单（新旧 JSON key diff）；检查 ingest.py 对未知字段的容忍度。' },
  { id: 'n9', title: 'TODO: 数据推演形态 C', kind: 'note', topic: 'modeling-workbench', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-09-17T02:00:00.000Z', updatedAt: '2026-09-17T02:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: 'C 形态（时序外推）暂缓，待数据窗口积累后评估。' },
@@ -309,7 +343,7 @@ var _mockSessions = [
 ];
 var _mockSessPolls = 0;
 function _mockSlim(n) {
-  return { id: n.id, title: n.title, topic: n.topic, workspace: n.workspace || '', folder: n.folder || '', tags: n.tags || [], kind: n.kind || 'note', status: n.status || 'active', inject: n.inject === true, injectTo: n.injectTo || [], recall: n.recall !== false, createdAt: n.createdAt, updatedAt: n.updatedAt, sessionId: n.sessionId || '', cwd: n.cwd || '', mergedFrom: [], dispatches: n.dispatches || [], archivedAt: '', preview: String(n.body || '').slice(0, 200) }
+  return { id: n.id, title: n.title, topic: n.topic, workspace: n.workspace || '', folder: n.folder || '', tags: n.tags || [], kind: n.kind || 'note', status: n.status || 'active', inject: n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, createdAt: n.createdAt, updatedAt: n.updatedAt, sessionId: n.sessionId || '', cwd: n.cwd || '', mergedFrom: [], dispatches: n.dispatches || [], archivedAt: '', preview: String(n.body || '').slice(0, 200) }
 }
 function _mockGenId() { return 'n-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
 function _mockNow() { return new Date().toISOString() }
@@ -322,7 +356,7 @@ function _mockRpc(method, a) {
   if (method === 'notes-get') { n = _mockNotes.find(function (x) { return x.id === a.id }); return n && !n.deleted ? { note: JSON.parse(JSON.stringify(n)) } : { error: 'Note has been deleted' } }
   if (method === 'notes-create') {
     var id = _mockGenId(), now = _mockNow();
-    n = { id: id, title: a.title || 'Untitled', topic: a.topic || '未分类', folder: a.folder || '', tags: a.tags || [], kind: a.kind || 'note', status: 'active', inject: a.inject === true, injectTo: a.injectTo || [], recall: a.recall !== false, createdAt: now, updatedAt: now, sessionId: '', cwd: '', dispatches: [], deleted: false, body: a.body || '' };
+    n = { id: id, title: a.title || 'Untitled', topic: a.topic || '未分类', folder: a.folder || '', tags: a.tags || [], kind: a.kind || 'note', status: 'active', inject: a.inject === true, injectRole: a.injectRole === 'reference' ? 'reference' : 'convention', injectTo: a.injectTo || [], recall: a.recall !== false, createdAt: now, updatedAt: now, sessionId: '', cwd: '', dispatches: [], deleted: false, body: a.body || '' };
     _mockNotes.unshift(n);
     return { id: id, topic: n.topic, title: n.title, kind: n.kind, status: n.status };
   }
@@ -331,6 +365,7 @@ function _mockRpc(method, a) {
     if (!n || n.deleted) return { error: 'Note has been deleted' };
     ['title', 'topic', 'tags', 'kind', 'status', 'injectTo', 'folder', 'body'].forEach(function (k) { if (a[k] !== undefined) n[k] = a[k] });
     if (a.inject !== undefined) n.inject = a.inject === true;
+    if (a.injectRole !== undefined) n.injectRole = a.injectRole === 'reference' ? 'reference' : 'convention';
     if (a.recall !== undefined) n.recall = a.recall !== false;
     n.updatedAt = _mockNow();
     return { id: n.id, kind: n.kind, status: n.status };
@@ -478,7 +513,7 @@ function noteRow(n, inFolderCtx) {
   return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + '" data-note="' + n.id + '" draggable="true">'
     + '<span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>'
     + '<span class="ti">' + (isPinned(n) ? '<svg class="ic pin"><use href="#i-pin"/></svg> ' : '') + esc(n.title || '无标题') + '</span>'
-    + (n.inject ? '<span style="color:var(--nacc);display:flex" title="约定注入">' + icon('i-bolt', 10) + '</span>' : '') + tail + '</div>';
+    + (n.inject ? '<span style="color:var(--nacc);display:flex" title="注入为上下文 · ' + (n.injectRole === 'reference' ? '资料' : '约定') + '">' + icon('i-bolt', 10) + '</span>' : '') + tail + '</div>';
 }
 function renderTree() {
   var vis = notes.filter(matches);
@@ -679,6 +714,7 @@ function doSave() {
     kind: edNote.kind, status: edNote.status, inject: edNote.inject === true,
     injectTo: edNote.injectTo || [], recall: edNote.recall !== false
   };
+  if (upd.inject) upd.injectRole = edNote.injectRole === 'reference' ? 'reference' : 'convention';   /* 非 off 才带 injectRole（payload 禁 undefined） */
   if ((edNote.topic || '').trim()) upd.topic = edNote.topic.trim();
   rpc('notes-update', upd).then(function (res) {
     if (res && res.error) { toast(res.error); return }
@@ -730,6 +766,8 @@ function renderCrumb() {
 function renderMeta() {
   var n = edNote; if (!n) return;
   var tagsStr = n._tagsStr != null ? n._tagsStr : (n.tags || []).filter(function (t) { return t !== 'quick' }).join(', ');
+  /* 注入三态：off=不注入 / convention=约定（须遵守）/ reference=资料（按需取用）；存量 inject=true 无 role 缺省 convention */
+  var role = n.inject ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off';
   $('edMeta').innerHTML =
     '<span class="meta-chip" title="类型"><span class="dot" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span><select id="kindSel">'
     + Object.keys(KIND).map(function (k) { return '<option value="' + k + '"' + (k === (n.kind || 'note') ? ' selected' : '') + '>' + KIND[k] + '</option>' }).join('') + '</select></span>'
@@ -738,8 +776,11 @@ function renderMeta() {
     + '<span class="meta-chip" title="主题（host LLM 可异步回填；改后自动保存）">' + icon('i-topic') + '<input id="mTopicInput" size="8" placeholder="主题" value="' + esc(n.topic === '分类中' ? '' : (n.topic || '')) + '"></span>'
     + '<span class="meta-chip" title="标签，逗号分隔">' + icon('i-filter') + '<input id="mTagsInput" size="10" placeholder="标签…" value="' + esc(tagsStr) + '"></span>'
     + (fname(n.folder) ? '<span class="meta-chip">' + icon('i-folder') + esc(fname(n.folder)) + '</span>' : '')
-    + '<span class="meta-chip tgl' + (n.inject ? ' on' : '') + '" id="mInj" title="作为约定注入到系统提示（Agent 每回合可见）">' + icon('i-bolt') + '约定</span>'
-    + (n.inject ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="选择注入范围（可多选）">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
+    + '<span class="meta-chip role-seg" id="mRole">' + icon('i-bolt')
+    + '<span class="seg' + (role === 'off' ? ' on' : '') + '" data-role="off" title="不注入系统提示">关闭</span>'
+    + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="须遵守的行为规则">约定</span>'
+    + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="事实性补充信息，Agent 按需取用">资料</span></span>'
+    + (role !== 'off' ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="选择注入范围（可多选）">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
     + '<span class="meta-chip tgl' + (n.recall !== false ? ' on' : '') + '" id="mRecall" title="关闭后不出现在注入给 Agent 的目录中">' + icon('i-eye') + '目录可见</span>'
     + '<span class="meta-sp"></span>'
     + '<span class="meta-act" id="mDispatch" title="派发待办到活跃会话">' + icon('i-play') + '派发</span>'
@@ -750,12 +791,16 @@ function renderMeta() {
   $('statusSel').onchange = function () { edNote.status = this.value; triggerSave(); renderMeta(); renderTree() };
   $('mTopicInput').oninput = function () { edNote.topic = this.value; triggerSave() };
   $('mTagsInput').oninput = function () { edNote._tagsStr = this.value; triggerSave() };
-  $('mInj').onclick = function () {
-    edNote.inject = !(edNote.inject === true);
-    if (edNote.inject) { if (!sessList.length) pullSessions(); scopeOpen = true } else { scopeOpen = false }
-    triggerSave(); renderMeta();
-    toast(edNote.inject ? '已注入为约定（范围见右侧下拉）' : '已取消约定注入');
-  };
+  $('mRole').querySelectorAll('.seg').forEach(function (seg) {
+    seg.onclick = function () {
+      var r = seg.getAttribute('data-role');
+      if (r === role) return;
+      if (r === 'off') { edNote.inject = false; scopeOpen = false }
+      else { edNote.inject = true; edNote.injectRole = r; if (!sessList.length) pullSessions(); scopeOpen = true }
+      triggerSave(); renderMeta();
+      toast(r === 'off' ? '已关闭上下文注入' : '已注入为上下文 · ' + (r === 'reference' ? '资料' : '约定') + '（范围见右侧下拉）');
+    };
+  });
   var trig = $('scopeTrig');
   if (trig) trig.onclick = function (ev) { ev.stopPropagation(); scopeOpen = !scopeOpen; if (scopeOpen && !sessList.length) pullSessions(); renderScopePanel() };
   $('mRecall').onclick = function () { edNote.recall = edNote.recall === false; triggerSave(); renderMeta(); toast(edNote.recall !== false ? '已加入 Agent 目录' : '已从 Agent 目录隐藏') };
