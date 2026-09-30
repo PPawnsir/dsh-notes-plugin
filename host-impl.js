@@ -1076,21 +1076,17 @@ return {
     }
 
     // 约定命中判定（约定注入 conventionText 与目录去重 catalogText 共用）：
-    // 注入范围 injectTo 是多选数组：
-    //   []（空）        → 默认当前工作区（向后兼容旧数据 injectTo=''）
-    //   含 'global'     → 全局注入（不限工作区）
-    //   含 'workspace'  → 当前工作区
-    //   含会话短 id     → 注入该会话（可多选多个会话）
+    // 注入范围 injectTo 是多选数组（不再有「工作区」维度——笔记无归属，只看会话）：
+    //   []（空）                  → 默认所有会话
+    //   含 'global' / 'workspace' → 存量值容错：同样视为所有会话（不迁移、不保留工作区过滤）
+    //   含会话短 id               → 仅注入这些会话（可多选多个会话）
+    // ws 形参保留（调用点不变）但不再用于过滤。
     function conventionHit(n, ws, curSid) {
       const targets = n.injectTo || []
-      if (targets.length === 0) {
-        // 默认：当前工作区（workspace 为空视为全局约定）
-        return !n.workspace || !ws || n.workspace === ws
-      }
+      if (targets.length === 0) return true
       for (const t of targets) {
-        if (t === 'global') return true
-        if (t === 'workspace') { if (!n.workspace || !ws || n.workspace === ws) return true }
-        else if (t === curSid) return true
+        if (t === 'global' || t === 'workspace') return true
+        if (t === curSid) return true
       }
       return false
     }
@@ -1138,7 +1134,7 @@ return {
     // 全库一行一条目录 + 轻推提示：让 agent 规划时知道库里有什么，相关条目自主 note_get 拉全文、note_search 检索更多。
     // 准入：排除 deleted、status=resolved/superseded（已了结不进目录）、recall=false（front-matter 逐条关闭，缺省 true）；
     // 与约定注入去重：inject=true 且本会话命中（order 130 已注入全文）的笔记不再出现。
-    // 排序：pinned 优先 → 当前工作区（workspace 字段 == 当前 cwd basename）→ updatedAt 降序；CATALOG_LIMIT 条封顶。
+    // 排序：pinned 优先 → updatedAt 降序（注入无工作区维度，不按工作区重排）；CATALOG_LIMIT 条封顶。
     // text 是同步函数（systemPrompt 契约）：读常驻 cache + settingsCache；总开关关闭/无条目/异常 → 返回 ''（不能返回 undefined）。
     const CATALOG_LIMIT = 40
     const CATALOG_KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用' }
@@ -1167,17 +1163,13 @@ return {
           const px = x.status === 'pinned' ? 1 : 0
           const py = y.status === 'pinned' ? 1 : 0
           if (px !== py) return py - px                                        // pinned 优先
-          const wx = ws && x.workspace === ws ? 1 : 0
-          const wy = ws && y.workspace === ws ? 1 : 0
-          if (wx !== wy) return wy - wx                                        // 当前工作区优先
           return (y.updatedAt || '').localeCompare(x.updatedAt || '')          // 更新时间降序
         })
         const shown = pool.slice(0, CATALOG_LIMIT)
         const lines = shown.map(n => {
           const kl = CATALOG_KIND_LABELS[n.kind] || CATALOG_KIND_LABELS.note
           const title = String(n.title || 'Untitled').replace(/[\r\n]+/g, ' ')   // 一行一条：标题换行收拢
-          const wsTag = (ws && n.workspace && n.workspace !== ws) ? ', ←' + n.workspace : ''   // 非当前工作区标注来源
-          return '- [' + n.id + '] ' + title + ' (' + kl + ', ' + (n.topic || '未分类') + wsTag + ')'
+          return '- [' + n.id + '] ' + title + ' (' + kl + ', ' + (n.topic || '未分类') + ')'
         })
         if (pool.length > CATALOG_LIMIT) lines.push('…另有 ' + (pool.length - CATALOG_LIMIT) + ' 条较早笔记，用 note_search 检索')
         return '本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：\n' +
@@ -1389,7 +1381,7 @@ return {
       name: 'note_manage',
       description: 'Single tool for create/list/update/delete/restore/archive. Pick an action and supply its required fields. The Agent should prefer this for any non-search CRUD: one tool means one decision point and one schema to learn.\n\n' +
         'Fields kind (what it is) and status (its lifecycle) are orthogonal: kind ∈ note/decision/todo/link/quote (default note); status ∈ active/pinned/resolved/superseded (default active).\n' +
-        'inject (boolean) controls whether the note is injected into the system prompt as context — an explicit field, NOT a tag. injectRole ("convention"|"reference", default "convention") picks the injection bucket: convention = user rules to follow; reference = background facts to consult only when relevant to the current task. Rule of thumb — infer from kind: decision/todo → convention, note/link/quote → reference. injectTo (string[]) is the injection scope, a multi-select list: [] or ["workspace"]=current workspace (default), ["global"]=all sessions, or session short-ids like ["99f2b674","7f8b49e6"]=those sessions.\n\n' +
+        'inject (boolean) controls whether the note is injected into the system prompt as context — an explicit field, NOT a tag. injectRole ("convention"|"reference", default "convention") picks the injection bucket: convention = user rules to follow; reference = background facts to consult only when relevant to the current task. Rule of thumb — infer from kind: decision/todo → convention, note/link/quote → reference. injectTo (string[]) is the injection scope, a multi-select list: [] or omitted=all sessions (default), or session short-ids like ["99f2b674","7f8b49e6"] to restrict the scope.\n\n' +
         'recall (boolean) controls whether the note appears in the notes catalog — a one-line-per-note index injected into the system prompt (right after conventions) so you know what the library holds without searching; default true. Set false to hide a note from the catalog (it stays searchable via note_search). Orthogonal to inject; notes with status resolved/superseded never appear in the catalog.\n\n' +
         'folder (string) assigns a note to a virtual folder: pass a folder id or an exact folder name; "" or omitted = unfiled (未分类). Folders (name/order) are managed via the notes-folders RPC (list/create/rename/delete/reorder).\n\n' +
         'Actions:\n' +
@@ -1415,7 +1407,7 @@ return {
           status: { type: 'string', enum: STATUSES, description: 'Status (create/update): active/pinned/resolved/superseded; default active' },
           inject: { type: 'boolean', description: 'Inject into system prompt as context (create/update); default false' },
           injectRole: { type: 'string', enum: ['convention', 'reference'], description: 'Injection role: convention=rules to follow | reference=background facts to consult as needed; default convention' },
-          injectTo: { type: 'array', items: { type: 'string' }, description: 'Injection scope multi-select (create/update): []/["workspace"]=current workspace (default), ["global"]=all, or session short-ids' },
+          injectTo: { type: 'array', items: { type: 'string' }, description: 'Injection scope multi-select: [] or omitted=all sessions (default), or session short-ids like ["99f2b674","7f8b49e6"] to restrict' },
           recall: { type: 'boolean', description: 'Recall in the notes catalog index (create/update); default true. Set false to hide from the catalog (still searchable via note_search).' },
           folder: { type: 'string', description: 'Virtual folder (create/move/list filter): folder id or exact folder name; "" = unfiled (未分类)' },
           // dispatch 字段

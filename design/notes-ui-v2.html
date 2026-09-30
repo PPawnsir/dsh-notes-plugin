@@ -132,6 +132,7 @@
   .scope-item input{accent-color:var(--nacc)}
   .scope-item.dis{opacity:.5;cursor:default}
   .scope-sep{margin:6px 8px 2px;font-size:10px;color:var(--nt3);letter-spacing:.6px}
+  .scope-hint{font-size:10.5px;color:var(--nt3);padding:2px 8px 6px;line-height:1.5;border-bottom:1px solid var(--nbd-soft);margin-bottom:4px}
   .scope-ws{font-size:10.5px;color:var(--nt3);padding:5px 8px 2px}
   /* ===== 派发历史 ===== */
   .disp{margin:0 24px;padding:8px 0 0;font-size:11.5px}
@@ -724,11 +725,9 @@ function doSave() {
   }).catch(function (e) { toast('保存失败：' + (e && e.message || e)) });
 }
 function injectScopeLabel(injectTo) {
-  var arr = injectTo || [];
-  if (arr.length === 0) return '本工作区';
-  if (arr.indexOf('global') >= 0) return '全局';
+  var arr = (injectTo || []).filter(function (t) { return t !== 'global' && t !== 'workspace' });
+  if (arr.length === 0) return '所有会话';
   var names = arr.map(function (t) {
-    if (t === 'workspace') return '本工作区';
     var s = sessList.find(function (x) { return x.short === t });
     return s ? s.name : ('会话 ' + t);
   });
@@ -811,7 +810,7 @@ function renderMeta() {
   $('mDel').onclick = function () { doDeleteNote(edNote.id) };
   renderScopePanel();
 }
-/* 注入范围浮层（本工作区/全局/指定会话多选；契约同面板 toggleScope） */
+/* 注入范围浮层（指定会话多选；缺省=所有会话，契约同面板 toggleScope） */
 function renderScopePanel() {
   var hostEl = $('scopePanelHost');
   if (!hostEl) return;
@@ -822,9 +821,7 @@ function renderScopePanel() {
   sessPending.forEach(function (p) { var w = p.workspace || '其他'; (byWs[w] = byWs[w] || []).push({ id: p.id, short: p.short, name: '', pending: true }) });
   var wsKeys = Object.keys(byWs).sort();
   var h = '<div class="scope-panel">'
-    + '<label class="scope-item"><input type="checkbox" data-scope="workspace"' + (scope.length === 0 || scope.indexOf('workspace') >= 0 ? ' checked' : '') + '> 本工作区</label>'
-    + '<label class="scope-item"><input type="checkbox" data-scope="global"' + (scope.indexOf('global') >= 0 ? ' checked' : '') + '> 全局（所有会话）</label>'
-    + (wsKeys.length ? '<div class="scope-sep">指定会话</div>' : '');
+    + '<div class="scope-hint">默认注入到所有会话；勾选会话则仅限这些会话</div>';
   wsKeys.forEach(function (ws) {
     h += '<div class="scope-ws">' + esc(ws) + '</div>';
     byWs[ws].forEach(function (s) {
@@ -837,13 +834,8 @@ function renderScopePanel() {
   });
 }
 function toggleScope(key) {
-  var cur = (edNote.injectTo || []).slice();
-  var next;
-  if (key === 'global') next = cur.indexOf('global') >= 0 ? [] : ['global'];
-  else {
-    var withoutGlobal = cur.filter(function (t) { return t !== 'global' });
-    next = withoutGlobal.indexOf(key) >= 0 ? withoutGlobal.filter(function (t) { return t !== key }) : withoutGlobal.concat([key]);
-  }
+  var cur = (edNote.injectTo || []).filter(function (t) { return t !== 'global' && t !== 'workspace' });
+  var next = cur.indexOf(key) >= 0 ? cur.filter(function (t) { return t !== key }) : cur.concat([key]);
   edNote.injectTo = next;
   triggerSave(); renderMeta(); scopeOpen = true; renderScopePanel();
 }

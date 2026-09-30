@@ -85,7 +85,7 @@ node check.js
 
 `systemPrompt.context({ name:'notes:workspace-conventions', order:130, text })` 注册动态 prompt 上下文。`text` 是同步函数（不能 await），从 `cache` 读。
 
-匹配规则：`n.deleted` 排除；`inject !== true` 排除（旧文件无 `inject` 字段时 `noteFromParsed` 回退到 `tags` 含 `convention`）；`injectTo` 数组多选过滤（`[]`=本工作区 / `global` / 会话短 id）。当前工作区取 `agents.currentInitiator().session.header.cwd` 的 basename。
+匹配规则：`n.deleted` 排除；`inject !== true` 排除（旧文件无 `inject` 字段时 `noteFromParsed` 回退到 `tags` 含 `convention`）；`injectTo` 数组多选过滤（`[]`=所有会话（缺省） / 会话短 id=仅限这些会话；存量 `global`/`workspace` 值一律按所有会话容错，不迁移）。注入无「工作区」维度——笔记无归属，只看会话短 id（取 `agents.currentInitiator()` 的 sessionId 前 8 位）。
 
 > ⚠️ 坑：`systemPrompt.context` 的 `text` 必须返回 `string`，返回 `undefined` 会让 DSH assemble 时 `undefined.indexOf` 崩溃（run 失败）。无匹配时返回 `''`。
 

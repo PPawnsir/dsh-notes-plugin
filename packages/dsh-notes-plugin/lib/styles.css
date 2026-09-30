@@ -279,6 +279,7 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 .dsh-notes-scope-trigger{cursor:pointer;border:none}
 .dsh-notes-scope-caret{color:var(--nt3);font-size:10px}
 .dsh-notes-scope-panel{position:absolute;top:calc(100% + 4px);left:0;min-width:230px;max-width:300px;max-height:280px;overflow-y:auto;background:var(--npanel);border:1px solid var(--nbd);border-radius:10px;box-shadow:var(--nshadow);padding:6px;z-index:30;font-family:var(--nfont)}
+.dsh-notes-scope-hint{font-size:10.5px;color:var(--nt3);padding:2px 9px 6px;line-height:1.5;border-bottom:1px solid var(--nbd-soft);margin-bottom:4px}
 .dsh-notes-scope-item{display:flex;align-items:center;gap:7px;padding:6px 9px;font-size:12px;color:var(--ntx);cursor:pointer;border-radius:6px;user-select:none;transition:background .12s}
 .dsh-notes-scope-item:hover{background:var(--nbg-hover)}
 .dsh-notes-scope-item input{accent-color:var(--nacc);cursor:pointer;margin:0;flex-shrink:0}

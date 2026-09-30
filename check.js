@@ -340,8 +340,26 @@ async function main() {
     assert(/if \(r === 'off'\) setScopeOpen\(false\)/.test(clientSrc) && /else if \(wasOff\) setScopeOpen\(true\)/.test(clientSrc), 'off→非off 自动展开范围浮层，切 off 收起')
     assert(/edScope/.test(clientSrc), '范围多选 edScope 数组')
     assert(/dsh-notes-scope-group/.test(clientSrc) && /scopeByWs/.test(clientSrc), '会话按工作区分组（两级）')
-    assert(clientSrc.indexOf('本工作区') >= 0 && clientSrc.indexOf('全局') >= 0, '范围含 本工作区/全局')
+    assert(clientSrc.indexOf("toggleScope('workspace')") < 0 && clientSrc.indexOf("toggleScope('global')") < 0, '范围浮层移除「本工作区/全局」选项（缺省=所有会话）')
+    assert(clientSrc.indexOf('dsh-notes-scope-hint') >= 0 && clientSrc.indexOf('默认注入到所有会话；勾选会话则仅限这些会话') >= 0, '范围浮层顶部灰色默认提示行')
+    assert(clientSrc.indexOf("return '所有会话'") >= 0, '范围触发按钮缺省标签=所有会话')
     assert(clientSrc.indexOf('sessList') >= 0 && clientSrc.indexOf('notes-sessions') >= 0, '会话名列表 sessList 来自 notes-sessions RPC')
+  })
+  await t('注入范围重构：schema 描述去工作区/全局维度（host-impl / index.mjs 双边）+ 发布包同步', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const label = pair[0], src = pair[1]
+      assert(src.indexOf('["workspace"]') < 0 && src.indexOf('["global"]') < 0, label + ' schema/工具描述不含 ["workspace"]/["global"] 字样')
+      assert(src.indexOf('Injection scope multi-select: [] or omitted=all sessions (default), or session short-ids like ["99f2b674","7f8b49e6"] to restrict') >= 0, label + ' schema injectTo 描述新口径（缺省=所有会话）')
+      // conventionHit 新语义：缺省/存量 'global'/'workspace' 值 → 所有会话；会话短 id → 仅限这些会话
+      assert(src.indexOf("if (t === 'global' || t === 'workspace') return true") >= 0, label + ' conventionHit 存量 global/workspace 值按所有会话容错')
+      assert(src.indexOf('当前工作区优先') < 0 && src.indexOf('←') < 0, label + ' 目录去「当前工作区优先」排序与 ←来源 标注')
+    }
+    const pkgClient = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
+    assert(pkgClient.indexOf("toggleScope('workspace')") < 0 && pkgClient.indexOf("toggleScope('global')") < 0, '发布包 lib/client.js 范围浮层移除「本工作区/全局」选项（需先跑 scripts/build-dist.cjs）')
+    assert(pkgClient.indexOf('默认注入到所有会话；勾选会话则仅限这些会话') >= 0 && pkgClient.indexOf("return '所有会话'") >= 0, '发布包提示行/缺省标签同步')
+    const devCss = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const pkgCss = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    assert(devCss.indexOf('.dsh-notes-scope-hint{') >= 0 && pkgCss.indexOf('.dsh-notes-scope-hint{') >= 0, 'styles.css / 发布包样式含 scope-hint（var(--nt3) 灰字）')
   })
   await t('注入三态 edRole 链路：state/ref/selectNote 映射/doSave payload（开发版 + 发布包）', () => {
     assert(/const \[edRole, setEdRole\] = React\.useState\('off'\)/.test(clientSrc), 'edRole 三态 state（off/convention/reference，缺省 off）')
@@ -910,10 +928,11 @@ async function main() {
       assert(src.indexOf('已记录的约定') < 0 && src.indexOf('记录于会话') < 0 && src.indexOf('工作区「') < 0, label + ' 旧文案（工作区归属/会话标注）已删除')
     }
   })
-  await t('跨工作区 convention 不注入', async () => {
-    await handlers['notes-create']({ title: '别区约定', body: '别区内容', inject: true, topic: '约定' })
+  await t('跨工作区 convention 同样注入（注入无工作区维度）', async () => {
+    await noteManage.execute({ action: 'create', title: '别区约定', body: '别区内容', inject: true, topic: '约定', workspace: 'other-ws' })
     const r = await handlers['notes-conventions']({})
     assert(r.text.indexOf('本工作区约定') >= 0, '本工作区约定仍在')
+    assert(r.text.indexOf('别区约定') >= 0, 'workspace=other-ws 的笔记同样注入（注入范围只看会话，不看工作区）')
   })
   await t('deleted 的约定不注入', async () => {
     const c = await handlers['notes-create']({ title: '待删除约定', body: '不注入', inject: true, topic: '约定' })
@@ -924,10 +943,15 @@ async function main() {
 
   // ===== 13. injectTo 注入范围（多选数组） =====
   section('13. injectTo 注入范围（多选数组）')
-  await t('injectTo=[global] 注入（不限工作区）', async () => {
+  await t('injectTo=[global] 存量值兼容 = 所有会话注入', async () => {
     await handlers['notes-create']({ title: '全局约定', body: '全局生效', inject: true, topic: '约定', injectTo: ['global'] })
     const r = await handlers['notes-conventions']({})
-    assert(r.text.indexOf('全局约定') >= 0, 'global 约定应注入')
+    assert(r.text.indexOf('全局约定') >= 0, '存量 global 值按所有会话注入')
+  })
+  await t("injectTo=[workspace] 存量值兼容 = 所有会话注入", async () => {
+    await handlers['notes-create']({ title: '旧口径约定', body: '存量 workspace 值', inject: true, topic: '约定', injectTo: ['workspace'] })
+    const r = await handlers['notes-conventions']({})
+    assert(r.text.indexOf('旧口径约定') >= 0, '存量 workspace 值按所有会话注入（不迁移、不过滤）')
   })
   await t('injectTo=[不匹配会话] 不注入', async () => {
     // agentsMock 当前 initiator 短 id = 'abc12345'；injectTo=['deadbeef'] 不匹配 → 不应注入
@@ -940,10 +964,10 @@ async function main() {
     const r = await handlers['notes-conventions']({})
     assert(r.text.indexOf('本会话约定') >= 0, 'injectTo 等于当前会话短id 时应注入')
   })
-  await t('injectTo=[] 缺省 = 按 workspace 注入', async () => {
+  await t('injectTo=[] 缺省 = 所有会话注入', async () => {
     // 前面已创建 '本工作区约定'（inject=true 无 injectTo）应仍在注入列表
     const r = await handlers['notes-conventions']({})
-    assert(r.text.indexOf('本工作区约定') >= 0, '无 injectTo 的约定按 workspace 注入')
+    assert(r.text.indexOf('本工作区约定') >= 0, '无 injectTo 的约定按所有会话注入')
   })
 
   // ===== 14. notes-sessions 会话名 =====
@@ -2455,13 +2479,14 @@ async function main() {
     assert(txt.indexOf('(待办, 运维)') >= 0, 'kind 中文映射（todo→待办）')
     assert(txt.indexOf('\n规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手') > 0, '末尾轻推行')
   })
-  await t('排序：pinned 优先 → 当前工作区优先；跨工作区标注 ←来源', () => {
+  await t('排序：pinned 优先 → updatedAt 降序；目录不再标注 ←工作区来源', () => {
     const txt = catCtx3.text()
     assert(txt.indexOf('目录待办置顶') >= 0 && txt.indexOf('目录待办置顶') < txt.indexOf('目录笔记甲'), 'pinned 排最前')
     const i1 = txt.indexOf('目录笔记甲'), i2 = txt.indexOf('目录笔记乙')
-    assert(i1 >= 0 && i2 >= 0 && i1 < i2, '当前工作区笔记排在其他工作区之前')
-    assert(txt.indexOf('目录笔记乙 (笔记, 设计, ←other-ws)') >= 0, '非当前工作区标注 ←工作区名')
-    assert(txt.indexOf('目录笔记甲 (笔记, 开发)') >= 0 && txt.indexOf('目录笔记甲 (笔记, 开发,') < 0, '当前工作区不标注来源')
+    assert(i1 >= 0 && i2 >= 0, '本区/跨区笔记都进目录（无工作区过滤）')
+    assert(i2 < i1, 'updatedAt 降序（乙晚于甲创建，排在甲前）')
+    assert(txt.indexOf('目录笔记乙 (笔记, 设计)') >= 0 && txt.indexOf('←') < 0, '行尾不再标注 ←工作区名')
+    assert(txt.indexOf('目录笔记甲 (笔记, 开发)') >= 0, '行格式不变（- [id] 标题 (kind, topic)）')
   })
   await t('准入排除：resolved / superseded / recall=false / 约定去重', () => {
     const txt = catCtx3.text()
@@ -2956,6 +2981,13 @@ async function main() {
     assert(protoSrc.indexOf('_mockRpc') >= 0, '原型数据层为内存 mock（_mockRpc）')
     assert(!/function rpc\(method, args\) \{\s*return fetch\(/.test(protoSrc), '原型 rpc 函数体不走 fetch（注释提及不算）')
     assert(protoSrc.indexOf('唯一规格来源') >= 0, '原型头部注释声明同步约定')
+    // 注入范围浮层重构同步：去「本工作区/全局」选项（缺省=所有会话）+ 顶部默认提示行（app.html 与原型一致）
+    for (const pair of [['app.html', appSrc], ['原型', protoSrc]]) {
+      assert(pair[1].indexOf('data-scope="workspace"') < 0 && pair[1].indexOf('data-scope="global"') < 0, pair[0] + ' 范围浮层移除「本工作区/全局」选项（缺省=所有会话）')
+      assert(pair[1].indexOf('class="scope-hint"') >= 0 && pair[1].indexOf('默认注入到所有会话；勾选会话则仅限这些会话') >= 0, pair[0] + ' 范围浮层顶部默认提示行')
+      assert(pair[1].indexOf('.scope-hint{') >= 0, pair[0] + ' scope-hint 样式（var(--nt3) 灰字）')
+      assert(pair[1].indexOf("return '所有会话'") >= 0, pair[0] + ' injectScopeLabel 缺省=所有会话')
+    }
     const pm = protoSrc.match(/<script>([\s\S]*?)<\/script>/)
     assert(pm && pm[1].length > 3000, '原型含主脚本块')
     new Function(pm[1])   // 编译级校验

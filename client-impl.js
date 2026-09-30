@@ -782,17 +782,10 @@ return {
         }
         // 目录可见开关：独立字段 recall（缺省 true=进目录；false 逐条排除，与 inject 正交）
         function toggleRecall() { setEdRecall(!edRecall); triggerAutoSave() }
-        // 范围多选：切换某个目标（global/workspace/会话短id）的选中态
+        // 范围多选：切换某个会话短 id 的选中态（缺省=所有会话；存量 'global'/'workspace' 值在首次勾选时规范化掉，host 端仍容错）
         function toggleScope(key) {
-          const cur = edScopeRef.current || []
-          let next
-          if (key === 'global') {
-            // global 是排他的：选了 global 就清空其他
-            next = cur.indexOf('global') >= 0 ? [] : ['global']
-          } else {
-            const withoutGlobal = cur.filter(t => t !== 'global')
-            next = withoutGlobal.indexOf(key) >= 0 ? withoutGlobal.filter(t => t !== key) : withoutGlobal.concat([key])
-          }
+          const cur = (edScopeRef.current || []).filter(t => t !== 'global' && t !== 'workspace')
+          const next = cur.indexOf(key) >= 0 ? cur.filter(t => t !== key) : cur.concat([key])
           setEdScope(next)
           triggerAutoSave()
         }
@@ -986,13 +979,11 @@ return {
           const el = ev.target
           if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) { setVisibleCount(c => c + PAGE_SIZE) }
         }
-        // 注入范围文字（injectTo 是多选数组）：[] = 本工作区；含 global = 全局；否则列出所选会话名
+        // 注入范围文字（injectTo 是多选数组）：缺省 = 所有会话（存量 global/workspace 值同样视为所有会话）；否则列出所选会话名
         function injectScopeLabel(injectTo) {
-          const arr = injectTo || []
-          if (arr.length === 0) return '本工作区'
-          if (arr.indexOf('global') >= 0) return '全局'
+          const arr = (injectTo || []).filter(t => t !== 'global' && t !== 'workspace')
+          if (arr.length === 0) return '所有会话'
           const names = arr.map(t => {
-            if (t === 'workspace') return '本工作区'
             const s = sessList.find(x => x.short === t)
             return s ? s.name : ('会话 ' + t)
           })
@@ -1171,9 +1162,8 @@ return {
                 e('button', { className: 'dsh-notes-meta-chip dsh-notes-scope-trigger dsh-nt', onClick: (ev) => { ev.stopPropagation(); setScopeOpen(!scopeOpen) }, 'data-tooltip': '选择注入范围（可多选）' },
                   injectScopeLabel(edScope), e('span', { className: 'dsh-notes-scope-caret' }, '▾')),
                 scopeOpen ? e('div', { className: 'dsh-notes-scope-panel' },
-                  e('label', { className: 'dsh-notes-scope-item' }, e('input', { type: 'checkbox', checked: edScope.length === 0 || edScope.indexOf('workspace') >= 0, onChange: () => toggleScope('workspace') }), ' 本工作区'),
-                  e('label', { className: 'dsh-notes-scope-item' }, e('input', { type: 'checkbox', checked: edScope.indexOf('global') >= 0, onChange: () => toggleScope('global') }), ' 全局（所有会话）'),
-                  scopeWsKeys.length ? e('div', { className: 'dsh-notes-scope-sep' }, '指定会话') : null,
+                  // 默认提示行：注入无「工作区/全局」维度——缺省注入所有会话，勾选会话则仅限这些会话
+                  e('div', { className: 'dsh-notes-scope-hint' }, '默认注入到所有会话；勾选会话则仅限这些会话'),
                   scopeWsKeys.map(ws => e('div', { key: ws, className: 'dsh-notes-scope-group' },
                     e('div', { className: 'dsh-notes-scope-ws' }, ws),
                     scopeByWs[ws].map(s => e('label', { key: s.id, className: 'dsh-notes-scope-item dsh-notes-scope-sess' },
