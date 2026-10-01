@@ -308,6 +308,7 @@ var view = { type: 'all', id: '' };   // all | folder | topic
 var kindF = 'all';           // all | note/todo/... | pinned
 var searchText = '', searchIds = null; // searchIds=null=仅本地过滤；数组=host 全文命中 ∪ 本地命中
 var selId = null, edNote = null;       // edNote = 当前选中笔记完整体（含 body）
+var edLoading = false;                 /* 正文异步加载中：doSave 省略 body 字段（防竞态清空正文） */
 var dragId = null, saveTimer = null, searchTimer = null;
 var sessList = [], sessPending = [];   // 注入范围浮层会话源（notes-sessions）
 var foldOpen = loadFoldOpen();         // 文件夹折叠态（localStorage；缺省全展开）
@@ -560,11 +561,13 @@ function selectNote(id) {
   var n = notes.find(function (x) { return x.id === id });
   if (n && n.folder) { foldOpen[n.folder] = true; saveFoldOpen() }
   edNote = n ? Object.assign({}, n, { body: '' }) : null;
+  edLoading = true;   /* 正文异步加载中：doSave 省略 body，防改名触发保存把空正文写盘 */
   renderTree(); renderEd();
   if (n) {
     rpc('notes-get', { id: id }).then(function (res) {
       if (res && res.note && selId === id) { edNote = res.note; fillEdBody(); renderEdFoot(); }
-    }).catch(function () {})
+      edLoading = false;
+    }).catch(function () { edLoading = false })
   }
 }
 function fillEdBody() { if (edNote) $('edBody').textContent = edNote.body || '' }
@@ -576,10 +579,11 @@ function doSave() {
     .split(/[,，;；]/).map(function (s) { return s.trim() }).filter(Boolean);
   if (keepQuick.indexOf('quick') >= 0 && tags.indexOf('quick') < 0) tags.push('quick');
   var upd = {
-    id: selId, title: edNote.title, tags: tags, body: edNote.body,
+    id: selId, title: edNote.title, tags: tags,
     kind: edNote.kind, status: edNote.status, inject: edNote.inject === true,
     injectTo: edNote.injectTo || [], recall: edNote.recall !== false
   };
+  if (!edLoading) upd.body = edNote.body;   /* 正文加载中省略 body（host 对 undefined 保留原内容，防竞态清空正文） */
   if (upd.inject) upd.injectRole = edNote.injectRole === 'reference' ? 'reference' : 'convention';   /* 非 off 才带 injectRole（payload 禁 undefined） */
   if ((edNote.topic || '').trim()) upd.topic = edNote.topic.trim();
   rpc('notes-update', upd).then(function (res) {

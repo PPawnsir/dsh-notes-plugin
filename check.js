@@ -406,6 +406,17 @@ async function main() {
     assert(clientSrc.indexOf('已记录并注入为上下文（') >= 0, '速记 toast 改「注入为上下文（约定/资料）」')
     assert(clientSrc.indexOf('注入为上下文…直接回车则仅记录') >= 0, '速记备注 placeholder 改「注入为上下文」')
   })
+  await t('改名防竞态：正文加载中 doSave 省略 body（面板 + app.html + 发布包）', () => {
+    const pkgCli = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
+    const appHtml = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
+    for (const pair of [[clientSrc, 'client-impl.js'], [pkgCli, '发布包 lib/client.js']]) {
+      const src = pair[0], tag = pair[1]
+      assert(src.indexOf('edLoadingRef.current = true') >= 0, tag + ' selectNote 置加载标记')
+      assert(/edLoadingRef\.current = false/.test(src), tag + ' notes-get 回填/异常后解除标记')
+      assert(/if \(!edLoadingRef\.current\) upd\.body = edBodyRef\.current/.test(src), tag + ' doSave 加载中省略 body（host 对 undefined 保留原内容）')
+    }
+    assert(appHtml.indexOf('edLoading = true') >= 0 && /if \(!edLoading\) upd\.body = edNote\.body/.test(appHtml), 'app.html 同款防竞态守卫')
+  })
   await t('client-impl 派发对话框（已有/新建会话）', () => {
     assert(/dsh-notes-dispatch-modal/.test(clientSrc), '派发对话框 modal')
     assert(/openDispatch/.test(clientSrc) && /doDispatchConfirm/.test(clientSrc), '打开对话框+确认派发')

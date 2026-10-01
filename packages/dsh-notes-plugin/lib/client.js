@@ -375,6 +375,7 @@ window.__ModuleLoader__.load({
         const keepQuickRef = React.useRef(false)
         const newNoteInputRef = React.useRef(null)   // 新建笔记 modal 标题输入框（打开自动聚焦）
         const edBodyDomRef = React.useRef(null)      // 正文 textarea DOM（新建笔记创建后聚焦）
+        const edLoadingRef = React.useRef(false)     // 正文异步加载中（notes-get 未返回）：期间 doSave 省略 body 字段，防改名触发保存把空正文写盘
         const timersRef = React.useRef([])
         const selectedRef = React.useRef(null)
         const dragNoteIdRef = React.useRef(null)   // 笔记拖拽状态：dragstart 记录 noteId（ref 防闭包过期），dragend 清空
@@ -547,9 +548,10 @@ window.__ModuleLoader__.load({
           setEdTags((n.tags || []).filter(t => t !== 'quick').join(', '))
           setEdKind(n.kind || 'note'); setEdStatus(n.status || 'active'); setEdRole(n.inject ? (n.injectRole || 'convention') : 'off'); setEdScope(n.injectTo || []); setEdRecall(n.recall !== false)
           setEdBody('')
-          // 列表是瘦身数据，正文按需加载
+          // 列表是瘦身数据，正文按需加载；加载期间 edLoadingRef=true，doSave 省略 body（防改名等保存把空正文写盘）
+          edLoadingRef.current = true
           const id = n.id
-          rpc('notes-get', { id: id }).then(res => { if (res && res.note && selectedRef.current === id) setEdBody(res.note.body || '') }).catch(() => {})
+          rpc('notes-get', { id: id }).then(res => { if (res && res.note && selectedRef.current === id) setEdBody(res.note.body || ''); edLoadingRef.current = false }).catch(() => { edLoadingRef.current = false })
         }
         // 新建笔记 modal：侧栏「新建」chip / Ctrl+N 打开（清空上次标题），输标题创建
         function openNewNote() { setNewNoteTitle(''); setNewNotePending(false); setError(''); setNewNoteOpen(true) }
@@ -589,7 +591,8 @@ window.__ModuleLoader__.load({
           setError('')
           const tags = (edTagsRef.current || '').split(/[,，;；]/).map(s => s.trim()).filter(Boolean)
           if (keepQuickRef.current && tags.indexOf('quick') < 0) tags.push('quick')
-          const upd = { id: id, title: edTitleRef.current, tags: tags, body: edBodyRef.current, kind: edKindRef.current, status: edStatusRef.current, inject: edRoleRef.current !== 'off', injectTo: edScopeRef.current, recall: edRecallRef.current }
+          const upd = { id: id, title: edTitleRef.current, tags: tags, kind: edKindRef.current, status: edStatusRef.current, inject: edRoleRef.current !== 'off', injectTo: edScopeRef.current, recall: edRecallRef.current }
+          if (!edLoadingRef.current) upd.body = edBodyRef.current   // 正文加载中省略 body（host 对 undefined 保留原内容，防竞态清空正文）
           if (upd.inject) upd.injectRole = edRoleRef.current   // 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘）
           if ((edTopicRef.current || '').trim()) upd.topic = edTopicRef.current.trim()
           try {
