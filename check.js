@@ -126,13 +126,13 @@ async function main() {
     assert(indexSrc.indexOf('.last-host-load') < 0 || /发布版不再写/.test(indexSrc), '心跳写入段已删除')
     assert(indexSrc.indexOf('PERF_PATH = path.join(NOTES_ROOT') >= 0, 'perf-report.json 落在 ~/.dsh/notes')
   })
-  await t('index.mjs 保留 32 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传', () => {
+  await t('index.mjs 保留 34 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传', () => {
     const m = indexSrc.match(/handle\('([^']+)'/g) || []
     const names = m.map(s => s.match(/'([^']+)'/)[1])
-    // 32 = 25 基线 + notes-archive-preview/notes-archive-undo（显式归档重构，已收口：见 section 8/8.5 行为矩阵）+ notes-asset-upload（图片资产）+ notes-ai-organize/notes-assets-prune（AI 整理落地，02:44 并行 host 任务已进树）+ notes-purge（P1 回收站彻底删除）+ notes-export-single（P3 单文件导出）
-    const expected = ['notes-perf', 'notes-list', 'notes-folders', 'notes-css', 'notes-src', 'notes-get', 'notes-create', 'notes-update', 'notes-quick', 'notes-quick-instruct', 'notes-delete', 'notes-restore', 'notes-purge', 'notes-archive', 'notes-archive-preview', 'notes-archive-undo', 'notes-search', 'notes-conventions', 'notes-sessions', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-export-single', 'notes-import-preview', 'notes-import', 'notes-asset-upload', 'notes-ai-organize', 'notes-assets-prune']
+    // 34 = 25 基线 + notes-archive-preview/notes-archive-undo（显式归档重构，已收口：见 section 8/8.5 行为矩阵）+ notes-asset-upload（图片资产）+ notes-ai-organize/notes-assets-prune（AI 整理落地，02:44 并行 host 任务已进树）+ notes-purge（P1 回收站彻底删除）+ notes-export-single（P3 单文件导出）+ notes-inject-preview（注入预览器）+ notes-suggest（整理建议器，见 section 33）
+    const expected = ['notes-perf', 'notes-list', 'notes-folders', 'notes-css', 'notes-src', 'notes-get', 'notes-create', 'notes-update', 'notes-quick', 'notes-quick-instruct', 'notes-delete', 'notes-restore', 'notes-purge', 'notes-archive', 'notes-archive-preview', 'notes-archive-undo', 'notes-search', 'notes-conventions', 'notes-inject-preview', 'notes-sessions', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-export-single', 'notes-import-preview', 'notes-import', 'notes-asset-upload', 'notes-ai-organize', 'notes-assets-prune', 'notes-suggest']
     for (const e of expected) assert(names.indexOf(e) >= 0, '缺少 RPC：' + e + '（实得 ' + names.length + ' 个：' + names.join(',') + '）')
-    assert(names.length === expected.length + 1, '应为 32 个迁移 RPC（含 notes-asset-upload + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + P3 notes-export-single）+ 1 个 P1 存活探测（notes-ping），实得 ' + names.length)
+    assert(names.length === expected.length + 1, '应为 34 个迁移 RPC（含 notes-asset-upload + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + P3 notes-export-single + notes-inject-preview + notes-suggest）+ 1 个 P1 存活探测（notes-ping），实得 ' + names.length)
     const tm = indexSrc.match(/regTool\(\{\s*name:\s*'([^']+)'/g) || []
     const tnames = tm.map(s => s.match(/'([^']+)'/)[1])
     assert.deepStrictEqual(tnames.sort(), ['note_get', 'note_manage', 'note_search'], '静态包工具必须是 3 个（实得：' + JSON.stringify(tnames) + '）')
@@ -219,29 +219,43 @@ async function main() {
     }
   })
   await t('两栏布局骨架（侧栏 + 编辑器通栏）', () => {
-    for (const cls of ['dsh-notes-app', 'dsh-notes-side', 'dsh-notes-brand', 'dsh-notes-quick', 'dsh-notes-chips', 'dsh-notes-tree', 'dsh-notes-side-foot', 'dsh-notes-ed']) {
+    for (const cls of ['dsh-notes-app', 'dsh-notes-side', 'dsh-notes-brand', 'dsh-notes-quick', 'dsh-notes-filterbar', 'dsh-notes-tree', 'dsh-notes-side-foot', 'dsh-notes-ed']) {
       assert(clientSrc.indexOf(cls) >= 0, 'client-impl 缺两栏结构 class：' + cls)
     }
     assert(clientSrc.indexOf('dsh-notes-list') < 0 && clientSrc.indexOf('dsh-notes-divider') < 0 && clientSrc.indexOf('dsh-notes-content') < 0, '旧三栏（list/divider/content）已移除')
     assert(clientSrc.indexOf('listWidth') < 0, '旧列宽拖拽（listWidth）已移除')
     const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
-    for (const cls of ['.dsh-notes-app{', '.dsh-notes-side{', '.dsh-notes-brand{', '.dsh-notes-quick{', '.dsh-notes-chips{', '.dsh-notes-tree{', '.dsh-notes-side-foot{', '.dsh-notes-fbtn{', '.dsh-notes-ed{']) {
+    for (const cls of ['.dsh-notes-app{', '.dsh-notes-side{', '.dsh-notes-brand{', '.dsh-notes-quick{', '.dsh-notes-filterbar{', '.dsh-notes-tree{', '.dsh-notes-side-foot{', '.dsh-notes-fbtn{', '.dsh-notes-ed{']) {
       assert(css.indexOf(cls) >= 0, 'styles.css 缺两栏样式：' + cls)
     }
     assert(/\.dsh-notes-side\{[^}]*width:300px/.test(css), '侧栏固定宽 300px')
   })
-  await t('品牌行 + 计数 + 侧栏底部 导出/导入/设置 三入口', () => {
+  await t('品牌行 + 计数 + 新建＋入口 + 侧栏底部收敛为 回收站/选择/设置 三入口（导出/导入/整理移入设置卡片）', () => {
     assert(clientSrc.indexOf('dsh-notes-brand-logo') >= 0 && clientSrc.indexOf('dsh-notes-brand-cnt') >= 0, '品牌行 logo + 计数')
     assert(clientSrc.indexOf("' 条'") >= 0, '品牌行计数文案「N 条」')
-    assert(clientSrc.indexOf("onClick: openExport") >= 0 && clientSrc.indexOf("onClick: openImport") >= 0 && clientSrc.indexOf("onClick: openSettings") >= 0, '底部三按钮 openExport/openImport/openSettings')
-    assert(clientSrc.indexOf("I('up', 12)") >= 0 && clientSrc.indexOf("I('down', 12)") >= 0 && clientSrc.indexOf("I('gear', 12)") >= 0, '底部三按钮 SVG 图标')
+    // 筛选中心口径⑥：新建 chip 迁入 brand 行右侧 ＋ 按钮
+    assert(clientSrc.indexOf('dsh-notes-brand-add') >= 0, 'brand 行右侧新建 ＋ 入口（dsh-notes-brand-add）')
+    // 底部按钮区精确截取（dsh-notes-side-foot → editorEl 之间）：恰 3 个 fbtn = 回收站 + 选择（多选合并迁入）+ 设置，无导出/导入/整理
+    const foot = clientSrc.match(/dsh-notes-side-foot' \},([\s\S]*?)editorEl\)/)
+    assert(foot, '侧栏底部区存在')
+    assert.strictEqual((foot[1].match(/dsh-notes-fbtn/g) || []).length, 3, '底部按钮恰为 3 个（实得 ' + ((foot[1].match(/dsh-notes-fbtn/g) || []).length) + '）')
+    assert(foot[1].indexOf('onClick: openTrash') >= 0 && foot[1].indexOf('onClick: toggleSelMode') >= 0 && foot[1].indexOf('onClick: openSettings') >= 0, '底部 = 回收站 + 选择 + 设置')
+    assert(foot[1].indexOf('openExport') < 0 && foot[1].indexOf('openImport') < 0 && foot[1].indexOf('openSuggest') < 0, '底部已无 导出/导入/整理 入口')
+    assert(foot[1].indexOf("'导出'") < 0 && foot[1].indexOf("'导入'") < 0 && foot[1].indexOf("'整理'") < 0, '底部无 导出/导入/整理 字样')
+    // open* 逻辑保留：导出/导入仍在设置卡片「数据」区，整理建议在设置卡片「整理建议」行
+    assert(clientSrc.indexOf("onClick: openExport") >= 0 && clientSrc.indexOf("onClick: openImport") >= 0 && clientSrc.indexOf("onClick: openSuggest") >= 0, 'openExport/openImport/openSuggest 逻辑保留（设置卡片路径可达）')
+    assert(clientSrc.indexOf("I('gear', 12)") >= 0, '设置按钮 gear SVG 图标')
   })
-  await t('kind chips + 置顶 chip + 新建 chip（侧栏）', () => {
-    assert(clientSrc.indexOf("['all', 'note', 'decision', 'todo', 'link', 'quote']") >= 0, 'kind chips 六种类型 + 全部')
-    assert(clientSrc.indexOf('dsh-notes-chip') >= 0, 'chip 样式类')
-    assert(/pinnedOnly \? ' on'/.test(clientSrc) && clientSrc.indexOf("'置顶'") >= 0, '置顶 chip（pinnedOnly）')
-    assert(clientSrc.indexOf("I('pin', 11)") >= 0, '置顶 chip pin 图标')
-    assert(/onClick: openNewNote, 'data-tooltip': '新建笔记（Ctrl\+N）'/.test(clientSrc), '新建 chip → openNewNote')
+  await t('筛选中心控制行（筛选按钮(N) + 激活 chips + 独立排序控件；popover 分组面板）', () => {
+    assert(clientSrc.indexOf("const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote']") >= 0, '类型组五种 kind（多选）')
+    assert(clientSrc.indexOf('dsh-notes-filterbar') >= 0 && clientSrc.indexOf('dsh-notes-fpop') >= 0, '筛选中心容器（filterbar + popover）')
+    assert(clientSrc.indexOf('dsh-notes-fchip') >= 0 && clientSrc.indexOf('dsh-notes-fchip-x') >= 0, '激活条件 chip + × 移除')
+    assert(clientSrc.indexOf('dsh-notes-fsort-menu') >= 0 && clientSrc.indexOf('dsh-notes-fsort-item') >= 0, '独立排序控件菜单')
+    assert(clientSrc.indexOf("I('pin', 11)") >= 0, '置顶 pin 图标（popover 状态组）')
+    assert(/onClick: openNewNote, 'data-tooltip': '新建笔记（Ctrl\+N）'/.test(clientSrc), 'brand 行 ＋ → openNewNote')
+    // 旧平铺 chips / 旧筛选面板已移除
+    assert(clientSrc.indexOf('dsh-notes-chip') < 0 && clientSrc.indexOf('dsh-notes-filter-panel') < 0 && clientSrc.indexOf('dsh-notes-fp-opt') < 0, '旧 chips 行/旧筛选面板类已移除')
+    assert(clientSrc.indexOf("'仅置顶'") < 0 && clientSrc.indexOf("'仅敏感'") < 0 && clientSrc.indexOf("'仅注入'") < 0, '旧单选开关文案已移除')
   })
   await t('树结构：视图头 + 置顶组 + 文件夹组 + 未分类主题分组 + 主题全局过滤区', () => {
     assert(clientSrc.indexOf('dsh-notes-sec-h') >= 0, 'sec-h 分组头')
@@ -253,12 +267,12 @@ async function main() {
     assert(clientSrc.indexOf('主题过滤') >= 0 && clientSrc.indexOf('跨文件夹') >= 0, '主题全局过滤区')
     assert(clientSrc.indexOf('dsh-notes-topic-row') >= 0, '主题过滤行')
   })
-  await t('视图求值：view 单选 ∩ kind ∩ 置顶 ∩ 搜索（四维 AND）', () => {
+  await t('视图求值：view 单选 ∩ 筛选中心（组内 OR / 跨组 AND）∩ 搜索', () => {
     assert(/const \[view, setView\] = React\.useState\(\{ type: 'all', id: '' \}\)/.test(clientSrc), 'view state（all/folder/topic 单选）')
     assert(clientSrc.indexOf("if (view.type === 'topic') filtered = filtered.filter(n => (n.topic || '') === view.id)") >= 0, '主题视图过滤')
     assert(clientSrc.indexOf("else if (view.type === 'folder') filtered = filtered.filter(n => (n.folder || '') === view.id)") >= 0, '文件夹视图过滤')
-    assert(/if \(kindFilter !== 'all'\) filtered = filtered\.filter/.test(clientSrc), 'kind chips 过滤')
-    assert(/if \(pinnedOnly\) filtered = filtered\.filter/.test(clientSrc), '置顶过滤')
+    assert(clientSrc.indexOf('filtered = filtered.filter(n => matchFilters(n, filters))') >= 0, '筛选中心谓词接入求值管线')
+    assert(/const \[filters, setFilters\] = React\.useState/.test(clientSrc), 'filters 状态（{pinned, injected, injectEver, sensitive, kinds[]}）')
   })
   await t('笔记行：kind 色点 + 标题(+pin) + 注入 bolt + 行尾（主题字/文件夹徽章/日期）', () => {
     assert(clientSrc.indexOf('dsh-notes-kind-dot') >= 0 && clientSrc.indexOf("style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' }") >= 0, 'kind 色点走 token var(--nkind-*)')
@@ -700,6 +714,12 @@ async function main() {
   await t('notes-search RPC 命中正文且瘦身', () => {
     assert(sRpc.notes && sRpc.notes.length >= 1 && !('body' in sRpc.notes[0]))
   })
+  // 搜索体验升级：matches 命中字段（只读断言，写库的组合过滤/全档用例在 34.2 独立实例，防污染共享库）
+  await t('notes-search 附 matches 命中字段（正文命中标记 body）', () => {
+    const hit = sRpc.notes.find(n => n.id === q1.id)
+    assert(hit && Array.isArray(hit.matches), '带 query 的结果附 matches 数组（实得 ' + JSON.stringify(hit && hit.matches) + '）')
+    assert(hit.matches.indexOf('body') >= 0 && hit.matches.indexOf('title') < 0, '正文命中标 body、标题未中不标 title')
+  })
 
   // ===== 7. 软删除 + 恢复 =====
   section('7. 软删除 + 恢复')
@@ -878,7 +898,7 @@ async function main() {
 
   // ===== 9. 启动加载与遥测 =====
   section('9. 启动 + 遥测')
-  await t('host-impl 应用成功（32 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge）', () => assert.strictEqual(Object.keys(handlers).length, 32))
+  await t('host-impl 应用成功（34 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest）', () => assert.strictEqual(Object.keys(handlers).length, 34))
   await t('notes-src handler 可用', () => assert(typeof handlers['notes-src'] === 'function'))
   await t('notes-css handler 可用', () => assert(typeof handlers['notes-css'] === 'function'))
   await t('notes-perf handler 可用', () => assert(typeof handlers['notes-perf'] === 'function'))
@@ -1675,6 +1695,7 @@ async function main() {
   await t('notes-search 命中', async () => {
     const s = await rpc2('notes-search', { query: '速记P2第二' })
     assert.strictEqual(s.body.notes.length, 1, '命中 1 条')
+    assert(Array.isArray(s.body.notes[0].matches) && s.body.notes[0].matches.indexOf('body') >= 0, '静态包附 matches 命中字段（正文命中标 body）')
   })
   await t('notes-delete / notes-restore 软删除往返', async () => {
     await rpc2('notes-delete', { id: cr2.body.id })
@@ -1992,6 +2013,17 @@ async function main() {
     assert(clientSrc.indexOf('跟随当前会话（默认）') >= 0, '含「跟随当前会话（默认）」选项/清除钮')
     assert(/function openSettings\(\)/.test(clientSrc) && /function saveSettingsLlm\(/.test(clientSrc), 'openSettings / saveSettingsLlm 函数存在')
   })
+  await t('设置卡片承接底部收敛：「数据」区补回收站兜底 + 新增「整理建议」行（openTrash/openSuggest 仍可达）', () => {
+    // dataControl 追加「回收站」按钮（openTrash，与底部同款）
+    assert(clientSrc.indexOf("onClick: openTrash }, '回收站'") >= 0, 'client-impl 数据区含「回收站」按钮（openTrash）')
+    // settingsRows 新增「整理建议」行（openSuggest）
+    assert(/key: 'suggest', label: '整理建议'/.test(clientSrc), 'client-impl settingsRows 含「整理建议」行')
+    assert(clientSrc.indexOf("sub: '速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）'") >= 0, '整理建议行 sub 文案')
+    assert(/const suggestControl = e\('button', \{[^}]*onClick: openSuggest[^}]*\}, '打开'\)/.test(clientSrc), '整理建议行控件 = 打开按钮 → openSuggest')
+    // 发布包 client.js 同步（build-dist 产物）
+    assert(clientPkgSrcSettings.indexOf("onClick: openTrash }, '回收站'") >= 0, '发布包数据区含「回收站」按钮（需先跑 scripts/build-dist.cjs）')
+    assert(/key: 'suggest', label: '整理建议'/.test(clientPkgSrcSettings), '发布包 settingsRows 含「整理建议」行（需先跑 scripts/build-dist.cjs）')
+  })
   await t('client 经 RPC 读写设置（notes-settings-get / notes-settings-set）', () => {
     assert(clientSrc.indexOf('notes-settings-get') >= 0 && clientSrc.indexOf('notes-settings-set') >= 0, 'client-impl 含两个设置 RPC 调用')
     assert(clientPkgSrcSettings.indexOf('notes-settings-get') >= 0 && clientPkgSrcSettings.indexOf('notes-settings-set') >= 0, '发布包 client.js 含两个设置 RPC 调用')
@@ -2255,7 +2287,7 @@ async function main() {
       'conversation.session.header.actions', 'shell.overlay',      // 三个 Slot 注册点
       'dsh-notes-hdr-btn', 'dsh-notes-fab', 'dsh-notes-floating',  // 头部按钮 / 悬浮气泡 / 浮窗面板
       'dsh-notes-titlebar', 'dsh-notes-app', 'dsh-notes-side', 'dsh-notes-quick-input',
-      'dsh-notes-chip', 'dsh-notes-sec-h', 'dsh-notes-folder-row', 'dsh-notes-note-row',
+      'dsh-notes-fchip', 'dsh-notes-sec-h', 'dsh-notes-folder-row', 'dsh-notes-note-row',
       'dsh-notes-nested', 'dsh-notes-fbadge', 'dsh-notes-topic-row', 'dsh-notes-side-foot',
       'dsh-notes-ed', 'dsh-notes-ed-crumb', 'dsh-notes-ed-title', 'dsh-notes-ed-meta',
       'dsh-notes-meta-chip', 'dsh-notes-meta-act', 'dsh-notes-ed-body', 'dsh-notes-ed-foot',
@@ -2270,7 +2302,7 @@ async function main() {
       assert(clientPkgSrc.indexOf(gone) < 0, '发布包仍含旧 UI 标记：' + gone)
     }
     // RPC 方法面（与 index.mjs 的 handler 名一致）
-    const rpcs = ['notes-css', 'notes-list', 'notes-get', 'notes-create', 'notes-sessions', 'notes-search', 'notes-quick', 'notes-quick-instruct', 'notes-update', 'notes-delete', 'notes-restore', 'notes-purge', 'notes-folders', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-archive', 'notes-archive-preview', 'notes-archive-undo', 'notes-perf', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-export-single', 'notes-import-preview', 'notes-import', 'notes-asset-upload']
+    const rpcs = ['notes-css', 'notes-list', 'notes-get', 'notes-create', 'notes-sessions', 'notes-search', 'notes-quick', 'notes-quick-instruct', 'notes-update', 'notes-delete', 'notes-restore', 'notes-purge', 'notes-folders', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-archive', 'notes-archive-preview', 'notes-archive-undo', 'notes-perf', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-export-single', 'notes-import-preview', 'notes-import', 'notes-asset-upload', 'notes-inject-preview', 'notes-suggest']
     const missRpc = rpcs.filter(x => clientPkgSrc.indexOf(x) < 0)
     assert.strictEqual(missRpc.length, 0, '缺少 RPC 调用：' + JSON.stringify(missRpc))
     // 交互能力：拖拽 / 快捷键 / 自动保存 / 入口双模式 / 性能遥测 / SVG 图标 helper
@@ -2578,7 +2610,7 @@ async function main() {
     }
     assert(/handle\('notes-folders'/.test(indexSrc), 'index.mjs 注册 notes-folders RPC（webServer 兜底路由经 handlers 表自动可达）')
     assert(/async function _list\(tag, kind, folder, includeDeleted\)/.test(indexSrc) && /if \(folder !== undefined && effectiveFolder\(note, folders\) !== folder\) continue/.test(indexSrc), 'index.mjs _list 接 folder 过滤（第 4 参数 includeDeleted，P1 回收站）')
-    assert(/async function _search\(query, tag, topic, kind, folder\)/.test(indexSrc), 'index.mjs _search 接 folder')
+    assert(/async function _search\(query, tag, topic, kind, folder, filters\)/.test(indexSrc), 'index.mjs _search 接 folder（+ filters 组合过滤尾参，搜索体验升级）')
     assert(/enum: \['create', 'list', 'update', 'move', 'delete'/.test(indexSrc), 'index.mjs note_manage action enum 含 move')
   })
   await t('host-impl folders.json 清单模块 + notes-folders RPC 注册', () => {
@@ -2603,7 +2635,7 @@ async function main() {
     assert(clientSrc.indexOf("localStorage.getItem('dsh-notes-folders-expanded')") >= 0 && clientSrc.indexOf("localStorage.setItem('dsh-notes-folders-expanded', JSON.stringify(") >= 0, '折叠态持久化 localStorage(dsh-notes-folders-expanded)')
     assert(clientSrc.indexOf("localStorage.getItem('dsh-notes-folder')") < 0, '旧 folderSel 持久化键（dsh-notes-folder）已移除')
     assert(/host\.call\('notes-folders'\)/.test(clientSrc), 'loadFolders 走 notes-folders RPC')
-    assert(/prev\.filter\(id => id === PINNED_KEY \|\| res\.folders\.some\(f => f\.id === id\)\)/.test(clientSrc), '已删除文件夹的展开态残留自动清理')
+    assert(/setFoldersExpanded\(prev => pruneFoldersExpanded\(prev, res\.folders\)\)/.test(clientSrc), '已删除文件夹的展开态残留自动清理（pruneFoldersExpanded）')
     for (const cls of ['dsh-notes-folder-row', 'dsh-notes-caret', 'dsh-notes-row-nm', 'dsh-notes-row-n', 'dsh-notes-ic-slot', 'dsh-notes-folder-rename', 'dsh-notes-sec-h-add']) {
       assert(clientSrc.indexOf(cls) >= 0, 'client-impl 缺 ' + cls)
       assert(clientPkgSrc.indexOf(cls) >= 0, '发布包 client.js 缺 ' + cls + '（需先跑 scripts/build-dist.cjs）')
@@ -2629,10 +2661,43 @@ async function main() {
     assert(clientSrc.indexOf("folderSel === 'pinned'") < 0 && clientSrc.indexOf("folderSel !== 'all'") < 0, 'folderSel 过滤分支已移除')
     assert(clientSrc.indexOf('groupByTopic(unfiled)') >= 0, '未分类按主题二级分组')
     assert(clientSrc.indexOf('notes.forEach(n => { if (n.topic) allTopics[n.topic]') >= 0, '主题过滤区统计全库主题（不按当前过滤）')
-    assert(/setView\(view\.type === 'topic' && view\.id === tn \? \{ type: 'all', id: '' \} : \{ type: 'topic', id: tn \}\)/.test(clientSrc), '主题行点击切换主题视图/全部')
-    assert(/setView\(view\.type === 'folder' && view\.id === f\.id \? \{ type: 'all', id: '' \} : \{ type: 'folder', id: f\.id \}\)/.test(clientSrc), '文件夹行主体点击进入/退出文件夹视图（原型行为）')
+    assert(/setView\(view\.type === 'topic' && view\.id === tn \? \{ type: 'all', id: '' \} : \{ type: 'topic', id: tn \}\)/.test(clientSrc), '主题行尾过滤图标切换主题视图/全部（行主体单击已让位原地展开）')
+    assert(/setView\(view\.type === 'folder' && view\.id === f\.id \? \{ type: 'all', id: '' \} : \{ type: 'folder', id: f\.id \}\)/.test(clientSrc), '文件夹行尾过滤图标切换文件夹视图/全部（行主体单击已让位原地展开）')
     assert(clientSrc.indexOf("view.type === 'folder' ? view.id :") >= 0, '新建落位：文件夹视图落当前文件夹')
     assert(/payload\.folder = createFolder/.test(clientSrc), 'notes-create 携带 folder')
+  })
+  await t('目录树点击展开语义（点哪个展开哪个）：行主体=原地展开 + 视图过滤降级行尾图标 + 陈旧 id 清洗（四端同步）', () => {
+    const appSrcT = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
+    const protoSrcT = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
+    // ① 文件夹行主体单击 = 原地展开/折叠（toggleFolder；caret 不再独占折叠，整行同义）
+    assert(clientSrc.indexOf('onClick: () => toggleFolder(f.id)') >= 0, '文件夹行主体 onClick = toggleFolder（原地展开）')
+    assert(clientSrc.indexOf('ev.stopPropagation(); toggleFolder(f.id)') < 0, 'caret 不再单独绑折叠（整行同义）')
+    // ② 视图过滤降级为行尾过滤图标（stopPropagation 不抢占单击）+ 文件夹右键菜单项兜底
+    assert(clientSrc.indexOf("'dsh-notes-row-vfilter dsh-nt'") >= 0, '文件夹/主题行尾过滤图标（dsh-notes-row-vfilter）')
+    assert(/ev\.stopPropagation\(\); setView\(view\.type === 'folder' && view\.id === f\.id/.test(clientSrc), '文件夹行尾图标点击 = 进入/退出文件夹视图')
+    assert(clientSrc.indexOf('进入文件夹视图') >= 0, '文件夹右键菜单含「进入文件夹视图」')
+    // ③ 主题行主体单击 = 原地展开/收起该主题子列表（topicExpanded object，session 内不持久化）
+    assert(/const \[topicExpanded, setTopicExpanded\] = React\.useState\(\{\}\)/.test(clientSrc), 'topicExpanded state（object，不持久化）')
+    assert(/function toggleTopicExpanded\(tn\)/.test(clientSrc) && clientSrc.indexOf('onClick: () => toggleTopicExpanded(tn)') >= 0, '主题行主体 onClick = toggleTopicExpanded（原地展开）')
+    assert(/ev\.stopPropagation\(\); setView\(view\.type === 'topic' && view\.id === tn/.test(clientSrc), '主题行尾图标点击 = 主题视图（跨文件夹过滤）')
+    assert(clientSrc.indexOf("key: 'tpk-' + tn") >= 0, '主题原地展开子列表 nested 渲染（tpk- 前缀）')
+    // ④ 陈旧展开态清洗：按当前文件夹 id + PINNED_KEY 过滤；空集回 null（缺省全展开）并回写持久化
+    assert(/function pruneFoldersExpanded\(prev, folderList\)/.test(clientSrc), 'pruneFoldersExpanded 清洗 helper 存在')
+    assert(clientSrc.indexOf('id === PINNED_KEY || folderList.some(f => f.id === id)') >= 0, '按当前文件夹 id + PINNED_KEY 过滤失效 id')
+    assert(clientSrc.indexOf('const fixed = next.length ? next : null') >= 0 && clientSrc.indexOf('saveFoldersExpanded(fixed)') >= 0, '清洗后为空 → null 回缺省全展开并回写持久化')
+    // 发布包 + styles.css 同步
+    assert(clientPkgSrc.indexOf('dsh-notes-row-vfilter') >= 0 && clientPkgSrc.indexOf('toggleTopicExpanded') >= 0 && clientPkgSrc.indexOf('pruneFoldersExpanded') >= 0, '发布包 lib/client.js 同步（需先跑 scripts/build-dist.cjs）')
+    const cssDevT = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    assert(cssDevT.indexOf('.dsh-notes-row-vfilter{') >= 0 && cssDevT.indexOf('.dsh-notes-row-vfilter.on{') >= 0, 'styles.css 含行尾过滤图标样式（常态/hover 浮现/激活常显）')
+    // app.html / 原型 notes-ui-v2.html 同步：行主体折叠 + vfilter 图标 + 主题原地展开 + 陈旧清洗 + 右键菜单项
+    for (const pair of [['app.html', appSrcT], ['原型 notes-ui-v2.html', protoSrcT]]) {
+      assert(pair[1].indexOf("ev.target.closest('.vfilter')") >= 0, pair[0] + ' 树事件委托识别 .vfilter 行尾图标')
+      assert(pair[1].indexOf('class="vfilter') >= 0, pair[0] + ' 文件夹/主题行渲染行尾过滤图标')
+      assert(pair[1].indexOf('var topicOpen = {}') >= 0 && pair[1].indexOf('topicOpen[t] = !topicOpen[t]') >= 0, pair[0] + ' 主题行原地展开（topicOpen）')
+      assert(pair[1].indexOf('.vfilter{') >= 0 && pair[1].indexOf('.vfilter.on{') >= 0, pair[0] + ' vfilter 样式')
+      assert(pair[1].indexOf('进入文件夹视图') >= 0, pair[0] + ' 文件夹右键菜单含「进入文件夹视图」')
+      assert(/delete foldOpen\[k\]/.test(pair[1]), pair[0] + ' foldOpen 陈旧 id 清洗（loadFolders）')
+    }
   })
   await t('client 移动到文件夹 + 文件夹右键管理（v2 纯文字标签，开发版 + 发布包同步）', () => {
     assert(clientSrc.indexOf('移动到文件夹') >= 0, '笔记行右键含「移动到文件夹」')
@@ -2931,7 +2996,7 @@ async function main() {
     for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
       const label = pair[0], src = pair[1]
       assert(src.indexOf("name: 'notes:catalog'") >= 0 && /order:\s*131/.test(src), label + ' 注册 notes:catalog order 131')
-      assert(src.indexOf('function catalogText()') >= 0, label + ' catalogText 生成函数存在')
+      assert(src.indexOf('function catalogText(sidOverride)') >= 0, label + ' catalogText 生成函数存在（sidOverride 为注入预览形参，缺省行为不变）')
       assert(/CATALOG_LIMIT\s*=\s*40/.test(src), label + ' CATALOG_LIMIT=40 封顶')
       assert(src.indexOf("settingsCache.catalogEnabled === false") >= 0, label + ' catalogEnabled 总开关门（默认开）')
       assert(src.indexOf('本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：') >= 0, label + ' 目录标题行文案')
@@ -3288,8 +3353,8 @@ async function main() {
     effect: () => {},
   }
   new Function('harness', 'pluginDir', hostSrc)(harnessMock6, DIR).apply(ctx6)
-  await t('开发版注册 32 个 RPC（含 notes-export / notes-export-single / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge + P3 单文件导出）', () => {
-    assert.strictEqual(Object.keys(handlers6).length, 32, '实得 ' + Object.keys(handlers6).length)
+  await t('开发版注册 34 个 RPC（含 notes-export / notes-export-single / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge + P3 单文件导出 + notes-inject-preview 注入预览 + notes-suggest 整理建议）', () => {
+    assert.strictEqual(Object.keys(handlers6).length, 34, '实得 ' + Object.keys(handlers6).length)
     assert(typeof handlers6['notes-export'] === 'function' && typeof handlers6['notes-import-preview'] === 'function' && typeof handlers6['notes-import'] === 'function', '3 个新 handler 存在')
     assert(typeof handlers6['notes-export-single'] === 'function', 'notes-export-single handler 存在（P3 单文件导出）')
     assert(typeof handlers6['notes-asset-upload'] === 'function', 'notes-asset-upload handler 存在')
@@ -3531,7 +3596,7 @@ async function main() {
         get: (name) => ({ agents: agentsMock, systemPrompt: { context: () => () => {} } })[name],
         effect: () => {},
       })
-      assert.strictEqual(Object.keys(handlers7).length, 33, '静态包注册 33 个 RPC（32 + notes-ping），实得 ' + Object.keys(handlers7).length)
+      assert.strictEqual(Object.keys(handlers7).length, 35, '静态包注册 35 个 RPC（34 + notes-ping），实得 ' + Object.keys(handlers7).length)
       const sA = await handlers7['notes-create']({ title: '静态导出A', body: 'SA正文' })
       const sB = await handlers7['notes-create']({ title: '静态导出B', body: 'SB正文' })
       await handlers7['notes-folders']({ op: 'create', name: '静态夹' })
@@ -3820,12 +3885,13 @@ async function main() {
     assert(appSrc.indexOf('__ModuleLoader__') < 0 && appSrc.indexOf("require('react')") < 0, '页面不依赖 client bundle/React')
   })
   await t('app.html 复用全部现有 RPC（list/get/create/update/delete/restore/folders/search/quick/quick-instruct/settings/import-export/dispatch/sessions/asset-upload）', () => {
-    const need = ['notes-list', 'notes-get', 'notes-create', 'notes-update', 'notes-delete', 'notes-restore', 'notes-purge', 'notes-folders', 'notes-search', 'notes-quick', 'notes-quick-instruct', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-import-preview', 'notes-import', 'notes-active-sessions', 'notes-dispatch', 'notes-dispatch-done', 'notes-sessions', 'notes-asset-upload', 'notes-archive', 'notes-archive-preview', 'notes-archive-undo']
+    const need = ['notes-list', 'notes-get', 'notes-create', 'notes-update', 'notes-delete', 'notes-restore', 'notes-purge', 'notes-folders', 'notes-search', 'notes-quick', 'notes-quick-instruct', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-import-preview', 'notes-import', 'notes-active-sessions', 'notes-dispatch', 'notes-dispatch-done', 'notes-sessions', 'notes-asset-upload', 'notes-archive', 'notes-archive-preview', 'notes-archive-undo', 'notes-inject-preview', 'notes-suggest']
     for (const m of need) assert(appSrc.indexOf("'" + m + "'") >= 0, '页面应调用 RPC：' + m)
     assert(/setTimeout\(pullSessions,\s*1500\)/.test(appSrc) || appSrc.indexOf('1500') >= 0, 'titlesPending 1.5s 重拉契约')
   })
   await t('app.html 关键交互结构：树/编辑器/快速记录卡片/派发对话框/设置/导入导出/注入范围浮层', () => {
-    for (const k of ['id="tree"', 'id="q"', 'id="chips"', 'id="capHost"', 'id="modalHost"', 'id="toast"', 'id="btnNew"', 'id="btnExport"', 'id="btnImport"', 'id="btnSettings"']) assert(appSrc.indexOf(k) >= 0, '静态结构缺：' + k)
+    for (const k of ['id="tree"', 'id="q"', 'id="filterbar"', 'id="fchips"', 'id="fpop"', 'id="btnSort"', 'id="capHost"', 'id="modalHost"', 'id="toast"', 'id="btnNew"', 'id="btnTrash"', 'id="btnSelMode"', 'id="btnSettings"']) assert(appSrc.indexOf(k) >= 0, '静态结构缺：' + k)
+    assert(appSrc.indexOf('id="btnExport"') < 0 && appSrc.indexOf('id="btnImport"') < 0 && appSrc.indexOf('id="btnSuggest"') < 0, '底部 导出/导入/整理 按钮已移除（收敛进设置卡片）')
     for (const k of ['ed-title', 'ed-main', 'ed-meta', 'ed-crumb', 'scope-panel', 'disp-sess', 'disp-todo', 'imp-list', 'set-row', 'cap-in', 'note-row', 'nested']) assert(appSrc.indexOf(k) >= 0, '样式/动态结构缺：' + k)
     assert(appSrc.indexOf('contenteditable="true"') >= 0, '标题/正文 contenteditable 编辑')
     assert(appSrc.indexOf('localStorage') >= 0 && appSrc.indexOf('dsh-notes-app-foldopen') >= 0, '折叠态 localStorage 持久化')
@@ -4343,7 +4409,9 @@ async function main() {
     for (const kw of ['✨ 整理', '模板骨架', '资产清理', '压缩']) assert(readme.indexOf(kw) >= 0, 'README 功能清单缺二期关键词：' + kw)
     assert(readme.indexOf('notes-ai-organize') >= 0 && readme.indexOf('notes-assets-prune') >= 0, 'README 数据位置/RPC 提及二期 RPC')
     const dev = fsNative.readFileSync(path.join(DIR, 'DEVELOPMENT.md'), 'utf8')
-    assert(dev.indexOf('32 个 RPC') >= 0, 'DEVELOPMENT RPC 计数更新为 32（P1 notes-purge + P3 notes-export-single）')
+    assert(dev.indexOf('34 个 RPC') >= 0, 'DEVELOPMENT RPC 计数更新为 34（P1 notes-purge + P3 notes-export-single + 注入预览 notes-inject-preview + 整理建议 notes-suggest）')
+    assert(dev.indexOf('notes-inject-preview') >= 0, 'DEVELOPMENT RPC 清单提及注入预览 notes-inject-preview')
+    assert(dev.indexOf('notes-suggest') >= 0, 'DEVELOPMENT RPC 清单提及整理建议 notes-suggest')
     assert(dev.indexOf('notes-export-single') >= 0, 'DEVELOPMENT RPC 清单提及 P3 notes-export-single')
     const pkgReadme = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'README.md'), 'utf8')
     for (const kw of ['✨ 整理', '资产清理']) assert(pkgReadme.indexOf(kw) >= 0, '发布包 README 同步二期（需跑 scripts/sync-pkg-readme.cjs）：' + kw)
@@ -4735,6 +4803,11 @@ async function main() {
   await t('app.html 回收站同款：btnTrash 入口 + openTrash + notes-purge + confirm 双确认 + toast', () => {
     assert(appSrc.indexOf('id="btnTrash"') >= 0, 'app.html 侧栏底部回收站入口')
     assert(appSrc.indexOf("$('btnTrash').addEventListener('click', openTrash)") >= 0, 'app.html 入口接线')
+    // 底部收敛：恰 3 个 fbtn（回收站 + 选择 + 设置，「选择」自旧 chips 行迁入——筛选中心口径⑥），无 导出/导入/整理；回收站在设置卡片「数据」区有兜底入口
+    const footA = appSrc.match(/<div class="side-foot">([\s\S]*?)<\/div>\s*<\/aside>/)
+    assert(footA && (footA[1].match(/class="fbtn"/g) || []).length === 3, 'app.html 底部按钮恰为 3 个')
+    assert(footA[1].indexOf('btnTrash') >= 0 && footA[1].indexOf('btnSelMode') >= 0 && footA[1].indexOf('btnSettings') >= 0, 'app.html 底部 = 回收站 + 选择 + 设置')
+    assert(appSrc.indexOf('id="setTrash"') >= 0 && appSrc.indexOf("$('setTrash').onclick = function () { openTrash() }") >= 0, 'app.html 设置卡片「数据」区回收站兜底入口（openTrash）')
     assert(appSrc.indexOf('function openTrash()') >= 0 && appSrc.indexOf("rpc('notes-list', { includeDeleted: true })") >= 0, 'app.html openTrash + includeDeleted')
     assert(appSrc.indexOf("rpc('notes-purge', { id: id })") >= 0 && appSrc.indexOf("rpc('notes-restore', { id: id })") >= 0, 'app.html purge/restore RPC')
     assert(appSrc.indexOf('彻底删除不可恢复') >= 0, 'app.html confirm 双确认文案')
@@ -4743,12 +4816,17 @@ async function main() {
   })
   await t('原型 notes-ui-v2.html 回收站硬性同步：UI 标记 + mock includeDeleted/purge + 演示数据', () => {
     assert(protoV2Src.indexOf('id="btnTrash"') >= 0 && protoV2Src.indexOf('function openTrash()') >= 0, 'v2 回收站入口 + 函数')
+    // 底部收敛同款：恰 3 个 fbtn（回收站 + 选择 + 设置）+ 设置卡片「数据」区兜底
+    const footP = protoV2Src.match(/<div class="side-foot">([\s\S]*?)<\/div>\s*<\/aside>/)
+    assert(footP && (footP[1].match(/class="fbtn"/g) || []).length === 3, 'v2 底部按钮恰为 3 个')
+    assert(footP[1].indexOf('btnTrash') >= 0 && footP[1].indexOf('btnSelMode') >= 0 && footP[1].indexOf('btnSettings') >= 0, 'v2 底部 = 回收站 + 选择 + 设置')
+    assert(protoV2Src.indexOf('id="setTrash"') >= 0 && protoV2Src.indexOf("$('setTrash').onclick = function () { openTrash() }") >= 0, 'v2 设置卡片「数据」区回收站兜底入口')
     assert(protoV2Src.indexOf('includeDeleted') >= 0, 'v2 mock notes-list includeDeleted')
     assert(protoV2Src.indexOf("method === 'notes-purge'") >= 0, 'v2 mock notes-purge')
     assert(protoV2Src.indexOf('彻底删除不可恢复') >= 0, 'v2 confirm 双确认文案')
     assert(protoV2Src.indexOf('已删演示') >= 0, 'v2 mock 含软删除演示笔记（回收站非空演示）')
     // v2 与 app.html 回收站 UI 标记双端一致（共享 DOM id / 函数名 / 样式类）
-    for (const k of ['btnTrash', 'openTrash', 'loadTrash', 'renderTrashList', 'doTrashRestore', 'doTrashPurge', 'trashList', 'trash-act', 'trashState']) {
+    for (const k of ['btnTrash', 'setTrash', 'openTrash', 'loadTrash', 'renderTrashList', 'doTrashRestore', 'doTrashPurge', 'trashList', 'trash-act', 'trashState']) {
       assert(protoV2Src.indexOf(k) >= 0 && appSrc.indexOf(k) >= 0, '回收站 UI 标记双端一致：' + k)
     }
   })
@@ -5209,18 +5287,17 @@ async function main() {
     ]
     assert.strictEqual(arr.slice().sort(cmp).map(n => n.id).join(','), 'z,y,x,v,w', 'useCount 降序 → 同数 updatedAt 降序（缺省字段按 0 计）')
   })
-  await t('按引用排序 chip + 状态同步（client-impl / 发布包 lib/client.js / app.html / 原型）', () => {
-    assert(clientSrc.indexOf("const [sortBy, setSortBy] = React.useState('time')") >= 0, 'client-impl sortBy 状态缺省 time')
-    assert(clientSrc.indexOf("'data-tooltip': '按被引用次数排序（note_get 命中计数；再点恢复按更新时间）'") >= 0, 'client-impl 排序 chip tooltip')
-    assert(clientSrc.indexOf("setSortBy(sortBy === 'use' ? 'time' : 'use')") >= 0, 'client-impl chip 点击切换')
-    assert(clientPkgSrc.indexOf("React.useState('time')") >= 0 && clientPkgSrc.indexOf('按引用') >= 0, '发布包 lib/client.js 同步排序（需先跑 scripts/build-dist.cjs）')
+  await t('排序三档接入筛选中心独立控件：时间/引用/相关度（client-impl / 发布包 lib/client.js / app.html / 原型）', () => {
+    assert(clientSrc.indexOf("const [sortBy, setSortBy] = React.useState(() => loadFiltersState().sortBy)") >= 0, 'client-impl sortBy 状态（持久化恢复，缺省 time）')
+    assert(clientSrc.indexOf("const FILTER_SORTS = [") >= 0 && clientSrc.indexOf("{ id: 'time', label: '时间'") >= 0 && clientSrc.indexOf("{ id: 'use', label: '引用'") >= 0 && clientSrc.indexOf("{ id: 'rel', label: '相关度'") >= 0, 'client-impl 排序三档（FILTER_SORTS 独立控件）')
+    assert(clientSrc.indexOf('setSortBy(s.id); setSortOpen(false)') >= 0, 'client-impl 排序档位点击切换（选择即关菜单）')
+    assert(clientPkgSrc.indexOf('FILTER_SORTS') >= 0 && clientPkgSrc.indexOf("label: '相关度'") >= 0, '发布包 lib/client.js 同步排序三档（需先跑 scripts/build-dist.cjs）')
     for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
       const s = pair[1], label = pair[0]
-      assert(s.indexOf('id="chipSortUse"') >= 0, label + ' 排序 chip')
-      assert(s.indexOf("var sortBy = 'time';") >= 0, label + ' sortBy 状态缺省 time')
-      assert(s.indexOf("if (sortBy === 'use') vis.sort(") >= 0, label + ' 按引用排序逻辑')
-      assert(s.indexOf("$('chipSortUse').classList.toggle('on', sortBy === 'use')") >= 0, label + ' chip on 态同步')
-      assert(s.indexOf("$('chipSortUse').addEventListener('click'") >= 0, label + ' chip 点击切换绑定')
+      assert(s.indexOf("var sortBy = _fs.sortBy;") >= 0, label + ' sortBy 状态（持久化恢复，缺省 time）')
+      assert(s.indexOf("if (sortBy === 'use') vis.sort(") >= 0, label + ' 按引用排序逻辑保留')
+      assert(s.indexOf("var FILTER_SORTS = [") >= 0 && s.indexOf("{ id: 'time', label: '时间'") >= 0 && s.indexOf("{ id: 'rel', label: '相关度'") >= 0, label + ' 排序三档（FILTER_SORTS 独立控件）')
+      assert(s.indexOf("sortBy === 'rel' && qRel") >= 0, label + ' 相关度排序分支')
     }
   })
 
@@ -5366,6 +5443,974 @@ async function main() {
     for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
       assert(pair[1].indexOf('data-wiki') < 0 && pair[1].indexOf('WIKI_RE') < 0 && pair[1].indexOf('wikiLinksTo') < 0 && pair[1].indexOf('extractWikiTargets') < 0, pair[0] + ' 不含双链逻辑（解析放 client，库已在内存）')
     }
+  })
+
+  // ===== 32. 注入预览器（notes-inject-preview RPC + 设置卡片「注入预览」modal） =====
+  // 契约：RPC {sessionId?} → { conventions, catalog, stats:{conventionsChars, catalogChars, totalChars, maskedNotes, staleMarked, budgetTruncated} }；
+  // 缺省 sessionId = 「全局」视角（sidOverride=''，只命中 injectTo=[] 的笔记）；传会话 id/短 id 按 conventionHit 同一口径过滤；
+  // 纯复用 conventionText/catalogText（新增 sidOverride 形参 + 渲染统计 lastConvStats/lastCatStats），不重写拼装；预览渲染不更新 lastInjectChars（仪表只反映真实注入）。
+  section('32. 注入预览器（notes-inject-preview + 设置卡片入口 modal + 双端同步）')
+
+  // ---- 32.1 host 双侧结构契约（host-impl / index.mjs 双包同步）----
+  await t('host 双侧：notes-inject-preview RPC + sidOverride 形参 + 渲染统计变量（双包同步）', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("handle('notes-inject-preview'") >= 0, label + ' notes-inject-preview RPC 注册')
+      assert(s.indexOf('function conventionText(sidOverride)') >= 0, label + ' conventionText 支持 sidOverride（纯复用，不重写拼装）')
+      assert(s.indexOf('function catalogText(sidOverride)') >= 0, label + ' catalogText 支持 sidOverride')
+      assert((s.match(/sidOverride [!=]== undefined/g) || []).length >= 4, label + ' sidOverride 守卫（curSid ×2 + lastInjectChars ×2）')
+      assert(s.indexOf('const lastConvStats = { masked: 0, budgetTruncated: false }') >= 0, label + ' lastConvStats 渲染统计')
+      assert(s.indexOf('const lastCatStats = { masked: 0, stale: 0 }') >= 0, label + ' lastCatStats 渲染统计')
+      assert(s.indexOf('lastCatStats.stale = staleCount') >= 0, label + ' catalogText 时效标注计数')
+      assert(s.indexOf('conventionsChars: conventions.length') >= 0 && s.indexOf('budgetTruncated: lastConvStats.budgetTruncated') >= 0, label + ' stats 字段结构')
+      assert(s.indexOf('if (sidOverride === undefined) lastInjectChars = full.length') >= 0, label + ' 预览渲染不更新 lastInjectChars（仪表只反映真实注入）')
+    }
+  })
+
+  // ---- 32.2 host 行为级（开发版独立实例 storeIP/handlersIP，与 28/29 节同款隔离模式）----
+  const storeIP = new Map()
+  const fsMockIP = {
+    resolve: async (p) => p,
+    stat: async (p) => (p === NOTES_DIR ? { dir: true } : (storeIP.has(p) ? { file: true } : null)),
+    listDir: async (p) => {
+      const prefix = p + '\\'
+      const out = []
+      for (const k of storeIP.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+      return out
+    },
+    readText: async (p) => { if (!storeIP.has(p)) throw new Error('ENOENT: ' + p); return storeIP.get(p) },
+    writeText: async (p, c) => { storeIP.set(p, c) },
+  }
+  const handlersIP = {}
+  const harnessMockIP = { handle: (name, fn) => { handlersIP[name] = fn; return () => { delete handlersIP[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+  new Function('harness', 'pluginDir', hostSrc)(harnessMockIP, DIR).apply({
+    fs: fsMockIP, sandboxPolicy: { resolve: () => ({}) },
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    effect: () => {},
+  })
+  await t('notes-inject-preview 返回结构：conventions/catalog 字符串 + stats 六字段数值正确', async () => {
+    await handlersIP['notes-create']({ title: '预览全局约定', body: '全局约定正文', inject: true, topic: '约定' })
+    const r = await handlersIP['notes-inject-preview']({})
+    assert(!r.error, '无报错（实得 ' + JSON.stringify(r).slice(0, 160) + '）')
+    assert(typeof r.conventions === 'string' && typeof r.catalog === 'string', 'conventions/catalog 为字符串')
+    const st = r.stats
+    assert(st && typeof st.conventionsChars === 'number' && typeof st.catalogChars === 'number' && typeof st.totalChars === 'number', 'stats 字符数三字段为数值')
+    assert(typeof st.maskedNotes === 'number' && typeof st.staleMarked === 'number' && typeof st.budgetTruncated === 'boolean', 'stats maskedNotes/staleMarked/budgetTruncated 类型')
+    assert.strictEqual(st.conventionsChars, r.conventions.length, 'conventionsChars = conventions.length')
+    assert.strictEqual(st.catalogChars, r.catalog.length, 'catalogChars = catalog.length')
+    assert.strictEqual(st.totalChars, r.conventions.length + r.catalog.length, 'totalChars = 两者之和')
+    assert(r.conventions.indexOf('预览全局约定') >= 0 && r.conventions.indexOf('全局约定正文') >= 0, '全局视角含 injectTo=[] 注入笔记')
+  })
+  await t('sessionId 过滤：缺省全局不含定向笔记；传会话长 id 自动 shortSid 命中；其他会话不命中', async () => {
+    await handlersIP['notes-create']({ title: '预览定向约定abc', body: '定向正文', inject: true, injectTo: ['abc12345'], topic: '约定' })
+    const g0 = await handlersIP['notes-inject-preview']({})
+    assert(g0.conventions.indexOf('预览定向约定abc') < 0, '缺省 sessionId = 全局视角，不含 injectTo 定向笔记')
+    const g1 = await handlersIP['notes-inject-preview']({ sessionId: 'session-abc12345-0000-0000-0000-000000000000' })
+    assert(g1.conventions.indexOf('预览定向约定abc') >= 0, '传会话长 id 命中定向笔记（shortSid 转换）')
+    assert(g1.conventions.indexOf('预览全局约定') >= 0, '全局笔记在会话视角仍在（injectTo=[] 所有会话共享）')
+    const g2 = await handlersIP['notes-inject-preview']({ sessionId: 'deadbeef' })
+    assert(g2.conventions.indexOf('预览定向约定abc') < 0, '其他会话短 id 不命中')
+  })
+  await t('脱敏文本进入预览：sensitive 正文/标题打码 + 占位符 + stats.maskedNotes 覆盖双桶', async () => {
+    const c1 = await handlersIP['notes-create']({ title: '预览敏感约定', body: '部署密码：Top$ecret99', inject: true, sensitive: true, topic: '敏感' })
+    await handlersIP['notes-create']({ title: '预览敏感目录 token: ghp_pv999', body: 'x', sensitive: true, topic: '敏感' })   // inject=false → 进目录桶
+    const r = await handlersIP['notes-inject-preview']({})
+    assert(r.conventions.indexOf('Top$ecret99') < 0, '约定预览不含明文密码')
+    assert(r.conventions.indexOf('部署密码：******（敏感，note_get ' + c1.id + ' 获取）') >= 0, '约定预览含打码占位符（键保留值遮蔽）')
+    assert(r.catalog.indexOf('ghp_pv999') < 0 && r.catalog.indexOf('🔒') >= 0, '目录预览标题打码 + 🔒 标记')
+    assert(r.stats.maskedNotes >= 2, 'maskedNotes 覆盖约定桶 + 目录桶（实得 ' + r.stats.maskedNotes + '）')
+  })
+  await t('stats.staleMarked / budgetTruncated：⚠ 时效标注计数 + 预算截断标记 + 预览不污染 lastInjectChars', async () => {
+    const old = new Date(Date.now() - 100 * 86400000).toISOString()
+    await fsMockIP.writeText(NOTES_DIR + '\\n-pv-stale.md', '---\nid: n-pv-stale\ntitle: 预览陈旧笔记\ntopic: 运维\ncreatedAt: "' + old + '"\nupdatedAt: "' + old + '"\n---\n\n旧正文\n')
+    await handlersIP['notes-get']({ id: 'n-pv-stale' })   // 触发解析进 cache（catalogText 只读 cache）
+    const r0 = await handlersIP['notes-inject-preview']({})
+    assert(r0.catalog.indexOf('预览陈旧笔记 (笔记, 运维) ⚠ 100 天未更新') >= 0, '目录预览含 ⚠ 时效标注')
+    assert(r0.stats.staleMarked >= 1, 'staleMarked ≥ 1（实得 ' + r0.stats.staleMarked + '）')
+    assert.strictEqual(r0.stats.budgetTruncated, false, '缺省不限：budgetTruncated=false')
+    // 预算收紧 → 资料桶整条省略 → budgetTruncated=true + 省略提示行入预览文本
+    await handlersIP['notes-create']({ title: '预览资料一', body: 'a'.repeat(300), inject: true, injectRole: 'reference', topic: '资料' })
+    await handlersIP['notes-settings-set']({ injectBudgetChars: 120 })
+    const r1 = await handlersIP['notes-inject-preview']({})
+    assert.strictEqual(r1.stats.budgetTruncated, true, '超预算：budgetTruncated=true')
+    assert(r1.conventions.indexOf('条资料超出预算未注入（note_search 可检索）') >= 0, '预览文本含预算省略提示行')
+    assert(r1.conventions.indexOf('预览资料一') < 0, '资料桶被省略（约定桶永不截断）')
+    await handlersIP['notes-settings-set']({ injectBudgetChars: null })
+    const r2 = await handlersIP['notes-inject-preview']({})
+    assert.strictEqual(r2.stats.budgetTruncated, false, '恢复不限：budgetTruncated=false')
+    // 预览渲染不触碰仪表数据源：lastInjectChars 恒为 0（本实例从未真实渲染注入）
+    assert(r2.conventions.length > 0, '预览有内容')
+    const sg = await handlersIP['notes-settings-get']({})
+    assert.strictEqual(sg.lastInjectChars, 0, 'notes-inject-preview 不更新 lastInjectChars（仪表只反映真实注入）')
+  })
+
+  // ---- 32.3 静态包行为（独立 ESM 实例；harness 缺席 → webServer 路由链路，与 29.3 同款）----
+  await t('静态包：notes-inject-preview 经 webServer 路由返回完整结构 + sessionId 过滤', async () => {
+    const storePv = new Map()
+    const fsMockPv = {
+      resolve: async (p) => p,
+      stat: async (p) => (p === NOTES_ROOT_STATIC ? { dir: true } : (storePv.has(p) ? { file: true } : null)),
+      listDir: async (p) => {
+        const prefix = p + '\\'
+        const out = []
+        for (const k of storePv.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+        return out
+      },
+      readText: async (p) => { if (!storePv.has(p)) throw new Error('ENOENT: ' + p); return storePv.get(p) },
+      writeText: async (p, c) => { storePv.set(p, c) },
+    }
+    const routesPv = []
+    const modPv = await import(pathToFileURL(INDEX_PATH).href + '?injprev=1')
+    modPv.apply({
+      fs: fsMockPv, sandboxPolicy: { resolve: () => ({}) },
+      webServer: { register: (r) => { routesPv.push(r); return () => {} } },
+      tools: { register: () => () => {} },
+      get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+      effect: () => {},
+    })
+    function rpcPv(method, args) {
+      return new Promise((resolve, reject) => {
+        const body = Buffer.from(JSON.stringify({ method: method, args: args }))
+        const req = { method: 'POST', on: (ev, cb) => { if (ev === 'data') cb(body); else if (ev === 'end') cb(); return req }, destroy: () => {} }
+        const res = { statusCode: 0, setHeader: () => {}, writeHead: (c) => { res.statusCode = c }, end: (s) => { let b; try { b = JSON.parse(s) } catch (e) { b = s } resolve({ status: res.statusCode, body: b }) } }
+        Promise.resolve(routesPv[0].handler(req, res)).catch(reject)
+      })
+    }
+    await rpcPv('notes-create', { title: '静态预览约定', body: '静态正文', inject: true, topic: '约定' })
+    await rpcPv('notes-create', { title: '静态预览定向', body: '定向', inject: true, injectTo: ['abc12345'], topic: '约定' })
+    const r = await rpcPv('notes-inject-preview', {})
+    assert(r.body && typeof r.body.conventions === 'string' && typeof r.body.catalog === 'string' && r.body.stats, '路由返回 {conventions, catalog, stats} 结构齐备')
+    assert(r.body.conventions.indexOf('静态预览约定') >= 0 && r.body.conventions.indexOf('静态预览定向') < 0, '静态包缺省全局视角（定向笔记不命中）')
+    assert.strictEqual(r.body.stats.totalChars, r.body.conventions.length + r.body.catalog.length, '静态包 totalChars = 两桶之和')
+    const r2 = await rpcPv('notes-inject-preview', { sessionId: 'abc12345' })
+    assert(r2.body.conventions.indexOf('静态预览定向') >= 0, '静态包 sessionId 过滤命中定向笔记')
+  })
+
+  // ---- 32.4 client 结构断言（开发版 client-impl + 发布包 lib/client.js + 样式双端）----
+  await t('client 注入预览链路：设置行入口 + modal 双 tab/会话下拉/统计条 + Esc + 错误条排除（开发版 + 发布包）', () => {
+    assert(clientSrc.indexOf("key: 'injprev', label: '注入预览'") >= 0, 'settingsRows 含「注入预览」行')
+    assert(clientSrc.indexOf('onClick: openInjectPreview') >= 0, '预览按钮接线 openInjectPreview')
+    assert(clientSrc.indexOf('function openInjectPreview()') >= 0 && clientSrc.indexOf('function loadInjectPreview(sid)') >= 0, 'openInjectPreview/loadInjectPreview 存在')
+    assert(clientSrc.indexOf("host.call('notes-inject-preview', sid ? { sessionId: sid } : {})") >= 0, 'RPC 调用（缺省全局 / 传 sessionId）')
+    assert(clientSrc.indexOf("const [injectPreviewTab, setInjectPreviewTab] = React.useState('conv')") >= 0, '双 tab 状态（缺省约定）')
+    assert(clientSrc.indexOf('dsh-notes-injprev-text') >= 0 && clientSrc.indexOf('dsh-notes-injprev-stats') >= 0 && clientSrc.indexOf('dsh-notes-injprev-tab') >= 0, '预览 modal 结构类（文本区/统计条/tab）')
+    assert(clientSrc.indexOf('预算截断 ') >= 0 && clientSrc.indexOf('时效标注 ') >= 0, '统计条文案（预算截断/时效标注）')
+    assert(clientSrc.indexOf('if (injectPreviewOpenRef.current) { setInjectPreviewOpen(false); return }') >= 0, 'Esc 链路关预览对话框')
+    assert(clientSrc.indexOf('!trashOpen && !injectPreviewOpen') >= 0, '全局错误条排除预览 modal（modal 内自显错误）')
+    assert(clientSrc.indexOf('setSettingsOpen(false); setInjectPreviewOpen(true)') >= 0, '与设置卡片互斥（modal 不叠 modal）')
+    for (const k of ['openInjectPreview', 'notes-inject-preview', 'dsh-notes-injprev-text', 'injectPreviewTab', '注入预览']) {
+      assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺 ' + k + '（需先跑 scripts/build-dist.cjs）')
+    }
+  })
+  await t('注入预览样式双端：styles.css ⇄ 发布包 lib/styles.css', () => {
+    const cssDevP = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssPkgP = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    for (const pair of [['styles.css', cssDevP], ['发布包 lib/styles.css', cssPkgP]]) {
+      for (const cls of ['.dsh-notes-injprev-modal{', '.dsh-notes-injprev-tab{', '.dsh-notes-injprev-tab.on{', '.dsh-notes-injprev-text{', '.dsh-notes-injprev-stats{']) {
+        assert(pair[1].indexOf(cls) >= 0, pair[0] + ' 缺注入预览样式：' + cls + '（需跑 scripts/build-dist.cjs）')
+      }
+    }
+  })
+
+  // ---- 32.5 app.html / 原型 notes-ui-v2.html 同步（UI 唯一规格来源约束）----
+  await t('app.html + 原型注入预览同款：设置行入口 + openInjectPreview + 双 tab/会话下拉/统计条（双端 UI 标记一致 + mock 演示）', () => {
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('id="setInjectPreview"') >= 0, label + ' 设置卡片「注入预览」入口')
+      assert(s.indexOf("$('setInjectPreview').onclick") >= 0 && s.indexOf('openInjectPreview()') >= 0, label + ' 入口接线')
+      assert(s.indexOf('function openInjectPreview()') >= 0 && s.indexOf('function loadInjectPreview()') >= 0 && s.indexOf('function renderInjectPreview()') >= 0, label + ' 预览三函数')
+      assert(s.indexOf("rpc('notes-inject-preview', injectPreviewState.sid ? { sessionId: injectPreviewState.sid } : {})") >= 0, label + ' RPC 调用（缺省全局 / 传 sessionId）')
+      assert(s.indexOf("rpc('notes-sessions', {})") >= 0, label + ' 会话下拉数据源 notes-sessions')
+      assert(s.indexOf('injprev-text') >= 0 && s.indexOf('injprev-stats') >= 0 && s.indexOf('injprev-tab') >= 0, label + ' 预览 modal 结构类')
+      assert(s.indexOf('预算截断 ') >= 0 && s.indexOf('.modal.injprev{') >= 0, label + ' 统计条文案 + 宽 modal 样式')
+    }
+    // 双端 UI 标记一致（共享 DOM id / 函数名 / 样式类）
+    for (const k of ['setInjectPreview', 'openInjectPreview', 'loadInjectPreview', 'renderInjectPreview', 'injectPreviewState', 'injprevTabConv', 'injprevTabCat', 'injprevSess', 'injprevText', 'injprevStats']) {
+      assert(protoV2Src.indexOf(k) >= 0 && appSrc.indexOf(k) >= 0, '注入预览 UI 标记双端一致：' + k)
+    }
+    assert(protoV2Src.indexOf("method === 'notes-inject-preview'") >= 0, '原型 mock notes-inject-preview')
+    assert(protoV2Src.indexOf('定向约定') >= 0, '原型 mock 演示 sessionId 过滤（定向约定）')
+    assert(protoV2Src.indexOf('maskedNotes: 2') >= 0 && protoV2Src.indexOf('staleMarked: 1') >= 0 && protoV2Src.indexOf('budgetTruncated: false') >= 0, '原型 mock 统计演示值')
+  })
+
+  // ===== 33. 整理建议器（notes-suggest RPC + 侧栏「整理」入口三段式 modal + 四端同步）=====
+  // 契约：notes-suggest（dry-run 零写入）→ { archiveCandidates（速记组，内聚复用 _archivePreview，与 notes-archive-preview 同源）,
+  //   staleCandidates（kind=note/link 且超 staleDays 且 useCount===0——遥测保护：useCount>0 不入选）,
+  //   orphanCandidates（孤儿：无 [[双链]] 出链/反向链接 + inject=false + useCount=0 + status=active 的普通笔记，排除速记/归档产物防误伤，上限 20）, generatedAt }。
+  // 红线：只提名不自动执行——「去归档」直达归档预览对话框；「一键批量软删除」confirm 后才逐条 notes-delete；孤儿仅展示逐条跳转。
+  section('33. 整理建议器（notes-suggest + 三段式 modal + 四端同步）')
+
+  // ---- 33.1 host 双侧：suggest-helpers 标记块逐字节一致 + eval 单测（与 sensitive-helpers/export-single 同款姿势）----
+  const grabSuggestBlk = (s, tag) => { const m = s.match(/\/\/ ==== suggest-helpers BEGIN ====[\s\S]*?\/\/ ==== suggest-helpers END ====/); assert(m, tag + ' 缺 suggest-helpers 标记块'); return m[0] }
+  const sugBlkDev = grabSuggestBlk(hostSrc, 'host-impl.js')
+  const sugBlkPkg = grabSuggestBlk(indexSrc, 'index.mjs')
+  const sugNS = {}
+  new Function('ns', sugBlkDev + '\nns.suggestCandidates = suggestCandidates; ns.suggestLinkTargetsOf = suggestLinkTargetsOf; ns.SUGGEST_ORPHAN_LIMIT = SUGGEST_ORPHAN_LIMIT;')(sugNS)
+  await t('suggest-helpers 标记块双包逐字节一致 + 可 eval（suggestCandidates/suggestLinkTargetsOf 导出）', () => {
+    assert.strictEqual(sugBlkPkg, sugBlkDev, 'host-impl.js 与 index.mjs 的 suggest-helpers 块必须逐字节一致')
+    assert.strictEqual(typeof sugNS.suggestCandidates, 'function', 'suggestCandidates 可 eval 导出')
+    assert.strictEqual(typeof sugNS.suggestLinkTargetsOf, 'function', 'suggestLinkTargetsOf 可 eval 导出')
+    assert.strictEqual(sugNS.SUGGEST_ORPHAN_LIMIT, 20, '孤儿候选上限 20')
+  })
+  await t('host 双侧：notes-suggest RPC 注册 + _suggest 内聚复用 _archivePreview + 生成时间戳（双包同步）', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("handle('notes-suggest'") >= 0, label + ' notes-suggest RPC 注册')
+      assert(s.indexOf('async function _suggest()') >= 0, label + ' _suggest 存在')
+      assert(s.indexOf('const pv = await _archivePreview()') >= 0, label + ' 速记组内聚复用 _archivePreview（结构与 notes-archive-preview 同源）')
+      assert(s.indexOf('generatedAt: new Date().toISOString()') >= 0, label + ' generatedAt 时间戳')
+      assert(s.indexOf('只提名不执行') >= 0, label + ' 红线注释：只提名不执行')
+      assert(s.indexOf('防误伤') >= 0, label + ' orphanCandidates 判定条件注释（防误伤）')
+    }
+  })
+  await t('suggestCandidates 单元：stale 过滤（useCount=0 才入选 + kind=note/link + 超期才入选 + 降序）', () => {
+    const dayMs = 86400000
+    const iso = (d) => new Date(Date.now() - d * dayMs).toISOString()
+    const mk = (over) => Object.assign({ id: 'n-x', title: 'x', kind: 'note', status: 'active', inject: false, useCount: 0, tags: [], mergedFrom: [], updatedAt: iso(10), body: '' }, over)
+    const r = sugNS.suggestCandidates([
+      mk({ id: 'n-s1', updatedAt: iso(200) }),               // 过期+未引用+note → 入选
+      mk({ id: 'n-s2', updatedAt: iso(200), useCount: 3 }),  // 仍被引用 → 不入选（遥测保护）
+      mk({ id: 'n-s3', kind: 'todo', updatedAt: iso(200) }), // kind≠note/link → 不入选
+      mk({ id: 'n-s4', updatedAt: iso(5) }),                 // 未超期 → 不入选
+      mk({ id: 'n-s5', kind: 'link', updatedAt: iso(100) }), // link 过期未引用 → 入选
+    ], 90)
+    assert.deepStrictEqual(r.staleCandidates.map(x => x.id).sort(), ['n-s1', 'n-s5'], 'stale 仅过期+未引用+note/link 入选（实得 ' + r.staleCandidates.map(x => x.id).join(',') + '）')
+    assert(r.staleCandidates[0].id === 'n-s1' && r.staleCandidates[0].staleDays >= 199, 'staleDays 降序（200 天在前）')
+    assert(r.staleCandidates[0].topic !== undefined && r.staleCandidates[0].updatedAt, 'stale 条目含 id/title/topic/updatedAt/staleDays')
+    assert.strictEqual(sugNS.suggestCandidates([mk({ id: 'n-s1', updatedAt: iso(200) })], 0).staleCandidates.length, 0, 'staleLimit=0（时效关闭）→ stale 段为空')
+  })
+  await t('suggestCandidates 单元：orphan 判定（防误伤逐项排除：inject/useCount/quick/归档产物/出链/反向链接/status/kind）+ 上限 20 最旧在前', () => {
+    const mk = (over) => Object.assign({ id: 'n-x', title: 'x', kind: 'note', status: 'active', inject: false, useCount: 0, tags: [], mergedFrom: [], updatedAt: '2026-01-01T00:00:00.000Z', body: '' }, over)
+    const pool = [
+      mk({ id: 'n-o1', title: '纯孤儿' }),                                     // 入选
+      mk({ id: 'n-o2', inject: true }),                                        // 注入中 → 排除
+      mk({ id: 'n-o3', useCount: 2 }),                                         // 被引用过 → 排除
+      mk({ id: 'n-o4', tags: ['quick'] }),                                     // 速记 → 排除（archive 通道）
+      mk({ id: 'n-o5', mergedFrom: ['n-a', 'n-b'] }),                          // 归档产物 → 排除
+      mk({ id: 'n-o6', body: '见 [[不存在目标]] 吗' }),                         // 有出链 → 排除
+      mk({ id: 'n-o7', title: '被链目标' }),                                   // 被 n-o8 [[标题]] 反链 → 排除
+      mk({ id: 'n-o8', body: '引用 [[被链目标]]' }),                           // 有出链 → 排除
+      mk({ id: 'n-o9', status: 'pinned' }),                                    // 置顶 → 排除
+      mk({ id: 'n-o10', status: 'resolved' }),                                 // 已解决 → 排除
+      mk({ id: 'n-o11', kind: 'todo' }),                                       // 非普通笔记 → 排除
+      mk({ id: 'n-o12', body: '链 [[n-o13]]' }),                               // 有出链 → 排除
+      mk({ id: 'n-o13', title: '被id链' }),                                    // 被 n-o12 [[id]] 反链 → 排除
+    ]
+    const r = sugNS.suggestCandidates(pool, 0)
+    assert.deepStrictEqual(r.orphanCandidates.map(x => x.id), ['n-o1'], '仅纯孤儿入选（实得 ' + r.orphanCandidates.map(x => x.id).join(',') + '）')
+    const many = []
+    for (let i = 1; i <= 25; i++) many.push(mk({ id: 'n-m' + String(i).padStart(2, '0'), updatedAt: '2026-01-' + String(i).padStart(2, '0') + 'T00:00:00.000Z' }))
+    const r2 = sugNS.suggestCandidates(many, 0)
+    assert.strictEqual(r2.orphanCandidates.length, 20, '孤儿上限 20（实得 ' + r2.orphanCandidates.length + '）')
+    assert.strictEqual(r2.orphanCandidates[0].id, 'n-m01', '最旧在前')
+  })
+
+  // ---- 33.2 host 行为级（开发版独立实例 storeSG/handlersSG，与 32 节同款隔离模式）----
+  const storeSG = new Map()
+  const fsMockSG = {
+    resolve: async (p) => p,
+    stat: async (p) => (p === NOTES_DIR ? { dir: true } : (storeSG.has(p) ? { file: true } : null)),
+    listDir: async (p) => {
+      const prefix = p + '\\'
+      const out = []
+      for (const k of storeSG.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+      return out
+    },
+    readText: async (p) => { if (!storeSG.has(p)) throw new Error('ENOENT: ' + p); return storeSG.get(p) },
+    writeText: async (p, c) => { storeSG.set(p, c) },
+  }
+  const handlersSG = {}
+  const harnessMockSG = { handle: (name, fn) => { handlersSG[name] = fn; return () => { delete handlersSG[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+  new Function('harness', 'pluginDir', hostSrc)(harnessMockSG, DIR).apply({
+    fs: fsMockSG, sandboxPolicy: { resolve: () => ({}) },
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    effect: () => {},
+  })
+  await t('notes-suggest 三段返回 + 遥测/时效闭环 + 零写入（开发版独立实例）', async () => {
+    const dayMs = 86400000
+    const iso = (d) => new Date(Date.now() - d * dayMs).toISOString()
+    // 直写 store 造库（front-matter 确定性 updatedAt/useCount）：
+    // 速记组 ×2（sess-sg-1）+ 过期未引用 note(200d)/link(150d) + 过期但被引用(useCount=4) + 孤儿 + 出链/反链对 + 注入中 + 单条速记（不成组）
+    const seed = (id, fm, body) => storeSG.set(NOTES_DIR + '\\' + id + '.md', '---\nid: ' + id + '\n' + fm.join('\n') + '\n---\n\n' + body)
+    seed('n-sg-q1', ['title: 速记甲', 'topic: 调试', 'tags: quick', 'sessionId: sess-sg-1', 'createdAt: "' + iso(3) + '"', 'updatedAt: "' + iso(3) + '"'], '速记内容一')
+    seed('n-sg-q2', ['title: 速记乙', 'topic: 调试', 'tags: quick', 'sessionId: sess-sg-1', 'createdAt: "' + iso(2) + '"', 'updatedAt: "' + iso(2) + '"'], '速记内容二')
+    seed('n-sg-stale1', ['title: 陈旧笔记', 'topic: 运维', 'createdAt: "' + iso(200) + '"', 'updatedAt: "' + iso(200) + '"'], '陈旧正文')
+    seed('n-sg-stale-link', ['title: 陈旧链接', 'topic: ' + '资料', 'kind: link', 'createdAt: "' + iso(150) + '"', 'updatedAt: "' + iso(150) + '"'], 'https://example.com/old')
+    seed('n-sg-stale-used', ['title: 陈旧但被引用', 'topic: 运维', 'useCount: 4', 'createdAt: "' + iso(200) + '"', 'updatedAt: "' + iso(200) + '"'], '仍被 agent 引用')
+    seed('n-sg-orphan', ['title: ' + '孤立笔记', 'topic: 其他', 'createdAt: "' + iso(1) + '"', 'updatedAt: "' + iso(1) + '"'], '无链正文')
+    seed('n-sg-linker', ['title: 出链笔记', 'topic: 其他', 'createdAt: "' + iso(1) + '"', 'updatedAt: "' + iso(1) + '"'], '见 [[n-sg-linked]] 的说明')
+    seed('n-sg-linked', ['title: 被反链笔记', 'topic: 其他', 'createdAt: "' + iso(1) + '"', 'updatedAt: "' + iso(1) + '"'], '被引用正文')
+    seed('n-sg-inject', ['title: 注入中笔记', 'topic: 约定', 'inject: true', 'createdAt: "' + iso(1) + '"', 'updatedAt: "' + iso(1) + '"'], '注入正文')
+    seed('n-sg-quick-single', ['title: 单条速记', 'topic: 调试', 'tags: quick', 'sessionId: sess-sg-2', 'createdAt: "' + iso(1) + '"', 'updatedAt: "' + iso(1) + '"'], '单条速记不成组')
+    const keysBefore = Array.from(storeSG.keys()).filter(k => k.indexOf(NOTES_DIR + '\\') === 0).sort()
+    const r = await handlersSG['notes-suggest']({})
+    const keysAfter = Array.from(storeSG.keys()).filter(k => k.indexOf(NOTES_DIR + '\\') === 0).sort()
+    assert.deepStrictEqual(keysAfter, keysBefore, 'notes-suggest 零写入（NOTES_DIR 键集合不变）')
+    assert(!r.error, '无报错（实得 ' + JSON.stringify(r).slice(0, 160) + '）')
+    assert(typeof r.generatedAt === 'string' && r.generatedAt.length > 10, 'generatedAt 时间戳存在')
+    // a. 速记组：与 notes-archive-preview 逐字段一致（内聚复用）
+    const pv = await handlersSG['notes-archive-preview']({})
+    assert.deepStrictEqual(r.archiveCandidates, pv.quickGroups, 'archiveCandidates 与 notes-archive-preview.quickGroups 逐字段一致')
+    assert(r.archiveCandidates.length === 1 && r.archiveCandidates[0].sessionId === 'sess-sg-1' && r.archiveCandidates[0].members.length === 2, '速记组 1 组 2 条（实得 ' + JSON.stringify(r.archiveCandidates).slice(0, 160) + '）')
+    assert(typeof r.archiveCandidates[0].totalUseCount === 'number' && r.archiveCandidates[0].dateSpan && typeof r.archiveCandidates[0].totalBytes === 'number', '组附 totalUseCount/dateSpan/totalBytes')
+    // b. 过期未引用：useCount=0 才入选（遥测保护：n-sg-stale-used 不入选）
+    const staleIds = r.staleCandidates.map(x => x.id).sort()
+    assert.deepStrictEqual(staleIds, ['n-sg-stale-link', 'n-sg-stale1'], 'stale 仅过期+未引用+note/link（实得 ' + staleIds.join(',') + '）')
+    assert(r.staleCandidates[0].id === 'n-sg-stale1' && r.staleCandidates[0].staleDays >= 199, 'staleDays 降序 + 天数正确')
+    // c. 孤儿：纯孤儿入选；出链/反链/注入/速记/被引用均排除（防误伤）
+    const orphIds = r.orphanCandidates.map(x => x.id).sort()
+    assert(orphIds.indexOf('n-sg-orphan') >= 0, '纯孤儿入选')
+    for (const excluded of ['n-sg-linker', 'n-sg-linked', 'n-sg-inject', 'n-sg-quick-single', 'n-sg-stale-used', 'n-sg-q1', 'n-sg-q2', 'n-sg-stale-link']) {
+      assert(orphIds.indexOf(excluded) < 0, '防误伤排除：' + excluded)
+    }
+    assert(orphIds.length <= 20, '孤儿上限 20')
+  })
+  await t('notes-suggest 时效阈值跟随 settings.staleDays（override 生效 + 0 关闭 + null 恢复缺省）', async () => {
+    await handlersSG['notes-settings-set']({ staleDays: 300 })
+    const r1 = await handlersSG['notes-suggest']({})
+    assert.strictEqual(r1.staleCandidates.length, 0, 'staleDays=300：200/150 天均未超期 → stale 空')
+    await handlersSG['notes-settings-set']({ staleDays: 160 })
+    const r2 = await handlersSG['notes-suggest']({})
+    assert.deepStrictEqual(r2.staleCandidates.map(x => x.id), ['n-sg-stale1'], 'staleDays=160：仅 200 天入选（150 天出局）')
+    await handlersSG['notes-settings-set']({ staleDays: 0 })
+    const r3 = await handlersSG['notes-suggest']({})
+    assert.strictEqual(r3.staleCandidates.length, 0, 'staleDays=0 关闭时效 → stale 段为空')
+    await handlersSG['notes-settings-set']({ staleDays: null })
+    const r4 = await handlersSG['notes-suggest']({})
+    assert.strictEqual(r4.staleCandidates.length, 2, 'null 恢复缺省 90 → 两条回到候选')
+  })
+
+  // ---- 33.3 静态包行为（index.mjs 独立 ESM 实例，harness 主通道）----
+  await t('静态包：notes-suggest 注册 + 三段结构 + 孤儿入选（index.mjs 独立实例）', async () => {
+    const storeSug = new Map()
+    const fsMockSug = mkFsMockImp(storeSug, [NOTES_ROOT_STATIC])
+    const handlersSug = {}
+    const harnessMockSug = { handle: (name, fn) => { handlersSug[name] = fn; return () => { delete handlersSug[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+    global.harness = harnessMockSug   // 静态包 handle() 主通道读全局 harness（apply 时解析）；指回本实例的注册表
+    const modSug = await import(pathToFileURL(INDEX_PATH).href + '?suggest=1')
+    modSug.apply({
+      fs: fsMockSug, sandboxPolicy: { resolve: () => ({}) },
+      webServer: { register: () => () => {} }, tools: { register: () => () => {} },
+      get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+      effect: () => {},
+    })
+    assert.strictEqual(typeof handlersSug['notes-suggest'], 'function', '静态包注册 notes-suggest')
+    const c = await handlersSug['notes-create']({ title: '静态建议笔记', body: 'x' })
+    const r = await handlersSug['notes-suggest']({})
+    assert(!r.error && Array.isArray(r.archiveCandidates) && Array.isArray(r.staleCandidates) && Array.isArray(r.orphanCandidates) && typeof r.generatedAt === 'string', '三段 + generatedAt 结构齐备（实得 ' + JSON.stringify(r).slice(0, 160) + '）')
+    assert(r.orphanCandidates.some(x => x.id === c.id), '新建普通笔记（无链/未引用/进行中）入选孤儿')
+  })
+
+  // ---- 33.4 client 结构断言（开发版 client-impl + 发布包 lib/client.js + 样式双端）----
+  await t('client 整理建议：设置卡片「整理建议」行入口 + 三段式 modal + Esc + 错误条互斥（开发版 + 发布包）', () => {
+    for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("key: 'suggest', label: '整理建议'") >= 0, label + ' 设置卡片「整理建议」行（底部收敛后的入口）')
+      assert(s.indexOf("onClick: openSuggest }, '打开'") >= 0, label + ' 整理建议行控件 → openSuggest')
+      assert(s.indexOf('整理建议：速记组归档') >= 0, label + ' 整理建议入口 tooltip 文案保留')
+      assert(s.indexOf('function openSuggest()') >= 0 && s.indexOf('function loadSuggest()') >= 0, label + ' openSuggest/loadSuggest 存在')
+      assert(s.indexOf("' 整理建议'") >= 0 && s.indexOf('只提名不自动执行') >= 0, label + ' modal 标题 + 红线副标')
+      assert(s.indexOf('可整理的速记组') >= 0 && s.indexOf('过期未引用') >= 0 && s.indexOf('可能无用') >= 0, label + ' 三段标题')
+      assert(s.indexOf('库很干净，无需整理') >= 0, label + ' 空态文案「库很干净，无需整理」')
+      assert(s.indexOf('dsh-notes-suggest-sec') >= 0, label + ' 分节样式类')
+      assert(s.indexOf('if (suggestOpenRef.current) { setSuggestOpen(false); return }') >= 0, label + ' Esc 链路关建议框')
+      assert(s.indexOf('!injectPreviewOpen && !suggestOpen') >= 0, label + ' 全局错误条排除建议 modal（modal 内自显错误）')
+    }
+    assert(clientSrc.indexOf("host.call('notes-suggest', {})") >= 0, 'openSuggest 走 notes-suggest（dry-run 零写入）')
+    assert(clientPkgSrc.indexOf("rpc('notes-suggest', {})") >= 0, '发布包同链路（rpc 形态，需先跑 scripts/build-dist.cjs）')
+  })
+  await t('client 建议动作：去归档直达归档预览 / 批量软删 confirm + 逐条 notes-delete payload / 孤儿仅展示逐条跳转', () => {
+    // ① 速记组「去归档」：关建议框 → openArchive（归档预览对话框，数据同源）
+    assert(clientSrc.indexOf('function suggestGoArchive() { setSuggestOpen(false); openArchive() }') >= 0, '「去归档」直达归档预览对话框')
+    assert(clientPkgSrc.indexOf('function suggestGoArchive()') >= 0, '发布包同步 suggestGoArchive')
+    // ② 过期未引用「一键批量软删除」：confirm 守卫 + 逐条 notes-delete + 删后收尾刷新
+    assert(clientSrc.indexOf("window.confirm('一键批量软删除：' + list.length + ' 条") >= 0, '批量软删前 window.confirm 确认')
+    assert(clientSrc.indexOf("await host.call('notes-delete', { id: n.id })") >= 0, '逐条 notes-delete payload（软删，回收站可恢复）')
+    assert(clientPkgSrc.indexOf("await rpc('notes-delete', { id: n.id })") >= 0, '发布包同批量软删 payload（rpc 形态）')
+    assert(clientSrc.indexOf('afterArchiveCleanup(list.map(n => n.id))') >= 0, '删后收尾：正打开笔记退出选中态（归档同款）')
+    assert(clientSrc.indexOf('loadSuggest()') >= 0, '删后刷新建议数据（三段联动）')
+    // ③ 孤儿仅展示：「查看」逐条跳转（jumpToWikiTarget 同款过滤退回）；无批量操作（启发式判定防误伤）
+    assert(clientSrc.indexOf('function suggestViewNote(id) { setSuggestOpen(false); jumpToWikiTarget(id) }') >= 0, '孤儿「查看」逐条跳转')
+    const sec3 = clientSrc.match(/'可能无用',[\s\S]*?判定口径/)   // 锚定③段标题行（JSX 形态），避开段头注释与②段批量按钮
+    assert(sec3 && sec3[0].indexOf('查看') >= 0 && sec3[0].indexOf('一键批量') < 0 && sec3[0].indexOf('danger') < 0, '孤儿段仅展示（查看按钮，无批量/danger 操作）')
+  })
+  await t('整理建议样式双端：styles.css ⇄ 发布包 lib/styles.css', () => {
+    const cssDevS = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssPkgS = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    for (const pair of [['styles.css', cssDevS], ['发布包 lib/styles.css', cssPkgS]]) {
+      for (const cls of ['.dsh-notes-suggest-modal{', '.dsh-notes-suggest-sec{', '.dsh-notes-suggest-sec-t{', '.dsh-notes-suggest-sec-n{']) {
+        assert(pair[1].indexOf(cls) >= 0, pair[0] + ' 缺整理建议样式：' + cls + '（需跑 scripts/build-dist.cjs）')
+      }
+    }
+  })
+
+  // ---- 33.5 app.html / 原型 notes-ui-v2.html 同款（UI 唯一规格来源约束）----
+  await t('app.html + 原型整理建议同款：设置卡片「整理建议」行入口 + 三段式 modal + 批量软删 confirm + 孤儿仅展示（双端 UI 标记一致 + mock 演示）', () => {
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('id="btnSuggest"') < 0, label + ' 底部「整理」按钮已移除（收敛进设置卡片）')
+      assert(s.indexOf('id="setSuggest"') >= 0, label + ' 设置卡片「整理建议」行入口')
+      assert(s.indexOf("$('setSuggest').onclick = function () { openSuggest() }") >= 0, label + ' 入口接线（设置卡片）')
+      assert(s.indexOf('function openSuggest()') >= 0 && s.indexOf('function renderSuggestList()') >= 0 && s.indexOf('function doSuggestBatchDelete()') >= 0, label + ' 建议三函数')
+      assert(s.indexOf("rpc('notes-suggest', {})") >= 0, label + ' RPC 调用 notes-suggest')
+      assert(s.indexOf('整理建议') >= 0 && s.indexOf('可整理的速记组') >= 0 && s.indexOf('过期未引用') >= 0 && s.indexOf('可能无用') >= 0, label + ' modal 三段标题')
+      assert(s.indexOf('库很干净，无需整理') >= 0, label + ' 空态文案')
+      assert(s.indexOf('.sg-sec{') >= 0 && s.indexOf('.sg-sec-t{') >= 0, label + ' 分节样式')
+      assert(s.indexOf("confirm('一键批量软删除：'") >= 0, label + ' 批量软删 confirm 确认')
+      assert(s.indexOf("rpc('notes-delete', { id: n.id })") >= 0, label + ' 逐条 notes-delete payload')
+      assert(s.indexOf('sgGoArch') >= 0 && s.indexOf('openArchive()') >= 0, label + ' 「去归档」直达归档预览')
+      const sec3 = s.match(/>可能无用<span[\s\S]*?判定口径/)   // 锚定③段标题行（HTML 字符串形态），避开段头注释与②段批量按钮
+      assert(sec3 && sec3[0].indexOf('查看') >= 0 && sec3[0].indexOf('一键批量') < 0 && sec3[0].indexOf('danger') < 0, label + ' 孤儿段仅展示（无批量操作）')
+      assert(s.indexOf('suggestState = null; return }') >= 0, label + ' Esc 统一关建议框')
+    }
+    // 双端 UI 标记一致（共享 DOM id / 函数名 / 样式类）
+    for (const k of ['setSuggest', 'openSuggest', 'loadSuggest', 'renderSuggestList', 'doSuggestBatchDelete', 'suggestState', 'sgGoArch', 'sgBatchDel', 'sg-view', 'sg-sec']) {
+      assert(protoV2Src.indexOf(k) >= 0 && appSrc.indexOf(k) >= 0, '整理建议 UI 标记双端一致：' + k)
+    }
+    assert(protoV2Src.indexOf("method === 'notes-suggest'") >= 0, '原型 mock 含 notes-suggest')
+    assert(protoV2Src.indexOf('过期演示') >= 0 && protoV2Src.indexOf('孤儿演示') >= 0, '原型 mock 演示数据（过期 + 孤儿）')
+  })
+
+  // ===== 34. 搜索体验升级（<mark> 高亮防 XSS + 相关度排序 + kind/sensitive/inject 组合过滤 + host 扩展 + 四端同步）=====
+  section('34. 搜索体验升级（高亮 / 相关度 / 组合过滤 / 四端同步）')
+
+  // ---- 34.1 host 双包 search-helpers 标记块：提取 eval 单测 + 双包逐字节一致 ----
+  const grabSearchBlk = (s, tag) => { const m = s.match(/\/\/ ==== search-helpers BEGIN ====[\s\S]*?\/\/ ==== search-helpers END ====/); assert(m, tag + ' 缺 search-helpers 标记块'); return m[0] }
+  const searchBlkDev = grabSearchBlk(hostSrc, 'host-impl.js')
+  const searchBlkPkg = grabSearchBlk(indexSrc, 'index.mjs')
+  await t('search-helpers 双包逐字节一致（host-impl.js ⇄ index.mjs）', () => assert.strictEqual(searchBlkDev, searchBlkPkg))
+  const searchNS = {}
+  new Function('ns', searchBlkDev + '\nns.searchMatchFields = searchMatchFields; ns.searchPassFilters = searchPassFilters')(searchNS)
+  await t('searchMatchFields：title/tags/body 命中字段 + 多档并列 + 无 query 空数组', () => {
+    const f = searchNS.searchMatchFields
+    assert.deepStrictEqual(f({ title: 'Alpha', tags: [], body: '' }, 'alpha'), ['title'], '标题命中 → [title]')
+    assert.deepStrictEqual(f({ title: '', tags: ['Beta'], body: '' }, 'beta'), ['tags'], '标签命中 → [tags]')
+    assert.deepStrictEqual(f({ title: '', tags: [], body: 'Gamma 正文' }, 'gamma'), ['body'], '正文命中 → [body]')
+    assert.deepStrictEqual(f({ title: '多档', tags: ['多档'], body: '多档' }, '多档'), ['title', 'tags', 'body'], '多字段同命中全列（相关度取最高档）')
+    assert.deepStrictEqual(f({ title: 'x', tags: ['y'], body: 'z' }, ''), [], '无 query → 空数组')
+  })
+  await t('searchPassFilters：sensitive/inject 三态（true=仅命中 / false=仅排除 / undefined=不过滤）', () => {
+    const p = searchNS.searchPassFilters
+    const s = { sensitive: true, inject: false }, n0 = { sensitive: false, inject: true }
+    assert(p(s, { sensitive: true }) === true && p(n0, { sensitive: true }) === false, 'sensitive=true 仅敏感')
+    assert(p(s, { sensitive: false }) === false && p(n0, { sensitive: false }) === true, 'sensitive=false 排除敏感')
+    assert(p(s, { inject: true }) === false && p(n0, { inject: true }) === true, 'inject=true 仅注入')
+    assert(p(s, { inject: false }) === true && p(n0, { inject: false }) === false, 'inject=false 排除注入')
+    assert(p(s, undefined) === true && p(s, {}) === true && p(s, { sensitive: undefined, inject: undefined }) === true, '缺省不过滤（向后兼容旧调用）')
+  })
+  await t('host 双包 notes-search 扩展结构（RPC 透传 + slim 附 matches + 工具参数）', () => {
+    for (const pair of [['host-impl.js', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('async function _search(query, tag, topic, kind, folder, filters)') >= 0, label + ' _search 扩展 filters 参数（末尾追加，向后兼容）')
+      assert(s.indexOf('if (n.matches) s.matches = n.matches') >= 0, label + ' slim 结果附 matches 命中字段')
+      assert(s.indexOf('sensitive: a.sensitive, inject: a.inject') >= 0, label + ' RPC 透传 sensitive/inject 组合过滤')
+      assert(s.indexOf("sensitive: { type: 'boolean'") >= 0 && s.indexOf("inject: { type: 'boolean'") >= 0, label + ' note_search 工具含 sensitive/inject 参数')
+    }
+  })
+
+  // ---- 34.2 host 行为（开发版独立实例，防污染第 2 节共享库）：matches 全档 + 组合过滤 + 向后兼容 ----
+  const store34 = new Map()
+  const handlers34 = {}
+  const harnessMock34 = { handle: (name, fn) => { handlers34[name] = fn; return () => { delete handlers34[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+  new Function('harness', 'pluginDir', hostSrc)(harnessMock34, DIR).apply({
+    fs: mkFsMockImp(store34, [NOTES_DIR]), sandboxPolicy: { resolve: () => ({}) },
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    effect: () => {},
+  })
+  const sf1 = await handlers34['notes-create']({ title: '搜索升级·敏感约定', body: '含凭据正文本', tags: ['sec'], topic: '运维', kind: 'decision', sensitive: true, inject: true })
+  const sf2 = await handlers34['notes-create']({ title: '搜索升级·普通笔记', body: '普通正文本', tags: ['sec'], topic: '运维' })
+  await t('matches 命中字段全档：title / tags / body / 仅 topic 命中不计档', async () => {
+    await handlers34['notes-create']({ title: '命中字段甲', body: '无瓜正文', tags: [], topic: '其他' })
+    await handlers34['notes-create']({ title: '无瓜标题乙', body: '无瓜', tags: ['命中字段'], topic: '其他' })
+    await handlers34['notes-create']({ title: '无瓜标题丙', body: '正文命中字段出现', tags: [], topic: '其他' })
+    await handlers34['notes-create']({ title: '无瓜标题丁', body: '无瓜', tags: [], topic: '命中字段' })
+    const r = await handlers34['notes-search']({ query: '命中字段' })
+    const byTitle = {}
+    for (const n of r.notes) byTitle[n.title] = n.matches
+    assert.deepStrictEqual(byTitle['命中字段甲'], ['title'], '标题命中 → [title]')
+    assert.deepStrictEqual(byTitle['无瓜标题乙'], ['tags'], '标签命中 → [tags]')
+    assert.deepStrictEqual(byTitle['无瓜标题丙'], ['body'], '正文命中 → [body]')
+    assert.deepStrictEqual(byTitle['无瓜标题丁'], [], '仅 topic 命中 → 空档（相关度排最末，但仍搜得到——向后兼容）')
+  })
+  await t('组合过滤：sensitive / inject / kind 三态组合', async () => {
+    const r1 = await handlers34['notes-search']({ tag: 'sec', sensitive: true })
+    assert(r1.notes.length === 1 && r1.notes[0].id === sf1.id, 'sensitive=true 仅敏感（实得 ' + r1.notes.length + '）')
+    const r2 = await handlers34['notes-search']({ tag: 'sec', sensitive: false })
+    assert(r2.notes.length === 1 && r2.notes[0].id === sf2.id, 'sensitive=false 排除敏感')
+    const r3 = await handlers34['notes-search']({ tag: 'sec', inject: true })
+    assert(r3.notes.length === 1 && r3.notes[0].id === sf1.id, 'inject=true 仅注入')
+    const r4 = await handlers34['notes-search']({ tag: 'sec', inject: false })
+    assert(r4.notes.length === 1 && r4.notes[0].id === sf2.id, 'inject=false 排除注入')
+    const r5 = await handlers34['notes-search']({ tag: 'sec', kind: 'decision', sensitive: true, inject: true })
+    assert(r5.notes.length === 1 && r5.notes[0].id === sf1.id, 'kind+sensitive+inject 组合 AND')
+    const r6 = await handlers34['notes-search']({ tag: 'sec', kind: 'todo' })
+    assert(r6.notes.length === 0, 'kind 不命中 → 空')
+  })
+  await t('向后兼容：旧调用（仅 query / 无新参数）行为不变', async () => {
+    const r = await handlers34['notes-search']({ tag: 'sec' })
+    assert(r.notes.length === 2 && !('matches' in r.notes[0]), '无 query → 不附 matches 字段（旧调用方不受影响）')
+    const r2 = await handlers34['notes-search']({ query: '搜索升级' })
+    assert(r2.notes.length === 2, '不带过滤参数 → 全集命中（缺省不过滤）')
+  })
+  await t('note_search 工具：sensitive/inject 参数 + matches 命中字段透传', async () => {
+    const tools34 = []
+    const harnessMock34b = { handle: () => () => {}, defineTool: (d) => d, registerTool: (c, d) => { tools34.push(d); return () => {} } }
+    const store34b = new Map()
+    new Function('harness', 'pluginDir', hostSrc)(harnessMock34b, DIR).apply({
+      fs: mkFsMockImp(store34b, [NOTES_DIR]), sandboxPolicy: { resolve: () => ({}) },
+      get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+      effect: () => {},
+    })
+    const tool = tools34.find(x => x.name === 'note_search')
+    assert(tool && tool.parameters.properties.sensitive && tool.parameters.properties.inject, '工具 schema 含 sensitive/inject')
+    // 工具链路端到端：note_manage 造数 → note_search 检索（含组合过滤与 matches）
+    const manage = tools34.find(x => x.name === 'note_manage')
+    await manage.execute({ action: 'create', title: '工具搜索·敏感', body: 'x', tags: ['t34'], sensitive: true, inject: true })
+    await manage.execute({ action: 'create', title: '工具搜索·普通', body: 'x', tags: ['t34'] })
+    const rAll = await tool.execute({ tag: 't34' })
+    assert(rAll.count === 2, '工具缺省不过滤（实得 ' + rAll.count + '）')
+    const rSens = await tool.execute({ tag: 't34', sensitive: true })
+    assert(rSens.count === 1 && rSens.notes[0].title === '工具搜索·敏感', '工具 sensitive=true 仅敏感')
+    const rQ = await tool.execute({ query: '工具搜索' })
+    assert(rQ.count === 2 && Array.isArray(rQ.notes[0].matches) && rQ.notes[0].matches.indexOf('title') >= 0, '工具返回 matches 命中字段（标题命中）')
+  })
+
+  // ---- 34.2 静态包 index.mjs 行为（独立 ESM 实例：matches + 组合过滤）----
+  await t('静态包：notes-search matches 命中字段 + sensitive/inject 组合过滤（index.mjs 独立实例）', async () => {
+    const storeS34 = new Map()
+    const fsMockS34 = mkFsMockImp(storeS34, [NOTES_ROOT_STATIC])
+    const handlersS34 = {}
+    const harnessMockS34 = { handle: (name, fn) => { handlersS34[name] = fn; return () => { delete handlersS34[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+    global.harness = harnessMockS34   // 静态包 handle() 主通道读全局 harness（apply 时解析）；指回本实例注册表
+    const modS34 = await import(pathToFileURL(INDEX_PATH).href + '?search34=1')
+    modS34.apply({
+      fs: fsMockS34, sandboxPolicy: { resolve: () => ({}) },
+      webServer: { register: () => () => {} }, tools: { register: () => () => {} },
+      get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+      effect: () => {},
+    })
+    const c1 = await handlersS34['notes-create']({ title: '静态搜索甲', body: '正文含令牌', tags: ['s34'], sensitive: true, inject: true })
+    const c2 = await handlersS34['notes-create']({ title: '静态搜索乙', body: '普通正文', tags: ['s34'] })
+    const r1 = await handlersS34['notes-search']({ query: '静态搜索' })
+    assert(r1.notes.length === 2 && r1.notes.every(n => Array.isArray(n.matches) && n.matches[0] === 'title'), '静态包附 matches（标题命中，实得 ' + JSON.stringify(r1.notes.map(n => n.matches)) + '）')
+    const r2 = await handlersS34['notes-search']({ tag: 's34', sensitive: true })
+    assert(r2.notes.length === 1 && r2.notes[0].id === c1.id, '静态包 sensitive=true 仅敏感')
+    const r3 = await handlersS34['notes-search']({ tag: 's34', inject: false })
+    assert(r3.notes.length === 1 && r3.notes[0].id === c2.id, '静态包 inject=false 排除注入')
+    const r4 = await handlersS34['notes-search']({ tag: 's34' })
+    assert(r4.notes.length === 2 && !('matches' in r4.notes[0]), '静态包向后兼容：无 query 无 matches、缺省不过滤')
+  })
+
+  // ---- 34.3 高亮防 XSS（先 esc 再包 <mark>；禁止 innerHTML 拼原文）----
+  const grabFn = (s, name, tag) => { const m = s.match(new RegExp('function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?\\n\\}')); assert(m, tag + ' 缺 ' + name + '()'); return m[0] }
+  const hlApp = grabFn(appSrc, 'hl', 'app.html')
+  const hlProto = grabFn(protoV2Src, 'hl', '原型 notes-ui-v2.html')
+  await t('hl() 高亮函数双端逐字节一致（app.html ⇄ 原型）', () => assert.strictEqual(hlApp, hlProto))
+  const hlNS = {}
+  new Function('ns', grabFn(appSrc, 'esc', 'app.html') + '\n' + hlApp + '\nns.hl = hl')(hlNS)
+  await t('高亮防 XSS：先 esc 再包 <mark>（恶意标题/恶意查询词/正则元字符均安全）', () => {
+    const hl = hlNS.hl
+    const escPos = hlApp.indexOf('esc(text == null'), markPos = hlApp.indexOf("'<mark>$1</mark>'")
+    assert(escPos >= 0 && markPos > escPos, '源码顺序：先 esc 再包 <mark>')
+    const out1 = hl('<img src=x onerror=alert(1)> 笔记', 'img')
+    assert(out1.indexOf('<img') < 0 && out1.indexOf('onerror') >= 0, '标题原文先转义（无 <img 节点，onerror 成纯文本）')
+    assert(out1.indexOf('<mark>img</mark>') >= 0, '命中词包 <mark>')
+    const out2 = hl('普通标题', '<img onerror=alert(1)>')
+    assert(out2.indexOf('<img') < 0 && out2.indexOf('<mark>') < 0, '恶意查询词经 esc 后无命中、不注入标签')
+    assert(hl('a.c (x) [y]', '.') === 'a<mark>.</mark>c (x) [y]', '正则元字符转义：. 只命中字面点（实得 ' + hl('a.c (x) [y]', '.') + '）')
+    assert(hl('100% 完成 & 收尾', '&') === '100% 完成 <mark>&amp;</mark> 收尾', '查询词 & 经 esc 后命中转义文本（&amp; 形态一致）')
+    assert(hl('', 'x') === '' && hl('abc', '') === 'abc' && hl('abc', '  ') === 'abc', '空文本/空查询原样返回')
+  })
+  await t('面板 highlight（React）：正则转义 + mark 元素（React 转义渲染，无 innerHTML 拼原文）', () => {
+    assert(clientSrc.indexOf("q.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')") >= 0, 'client-impl highlight 查询词正则元字符转义')
+    assert(clientSrc.indexOf("e('mark', { key: i, className: 'dsh-notes-mark' }, p)") >= 0, 'client-impl 高亮走 React mark 元素（文本节点自动转义）')
+    assert(clientPkgSrc.indexOf("'dsh-notes-mark'") >= 0, '发布包 lib/client.js 同步高亮（需先跑 scripts/build-dist.cjs）')
+    assert(clientSrc.indexOf("highlight(n.title || '无标题', q)") >= 0, '面板行标题接入高亮')
+  })
+
+  // ---- 34.4 相关度排序（标题 > 标签 > 正文 > 其他，同级 updatedAt 降序）----
+  await t('相关度排序比较器行为（app.html/原型 relRank + 比较器提取执行）', () => {
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1], label = pair[0]
+      const relSrc = grabFn(s, 'relRank', label)
+      const meta = { 'n-t': ['title'], 'n-t2': ['title'], 'n-g': ['tags'], 'n-b': ['body'] }
+      const relRank = new Function('searchMeta', relSrc + '\nreturn relRank')(meta)
+      assert.strictEqual(relRank({ id: 'n-l', title: 'XqX', tags: [], preview: '' }, 'q'), 3, label + ' 无 meta 时本地估算标题命中=3')
+      assert.strictEqual(relRank({ id: 'n-x', title: '', tags: [], preview: '' }, 'q'), 0, label + ' 无命中=0 档')
+      const cm = s.match(/if \(sortBy === 'rel' && qRel\) vis\.sort\(function \(a, b\) \{ return ([^\r\n]+) \}\);/)
+      assert(cm, label + ' 缺相关度排序行')
+      const cmp = new Function('relRank', 'qRel', 'return function (a, b) { return ' + cm[1] + ' }')(relRank, 'q')
+      const arr = [
+        { id: 'n-b', title: '', tags: [], preview: '', updatedAt: '2026-01-04T00:00:00.000Z' },
+        { id: 'n-t', title: '', tags: [], preview: '', updatedAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'n-x', title: '', tags: [], preview: '', updatedAt: '2026-01-06T00:00:00.000Z' },
+        { id: 'n-g', title: '', tags: [], preview: '', updatedAt: '2026-01-03T00:00:00.000Z' },
+        { id: 'n-t2', title: '', tags: [], preview: '', updatedAt: '2026-01-05T00:00:00.000Z' },
+      ]
+      assert.strictEqual(arr.slice().sort(cmp).map(n => n.id).join(','), 'n-t2,n-t,n-g,n-b,n-x', label + ' 标题>标签>正文>无命中，同级 updatedAt 降序')
+    }
+  })
+  await t('相关度排序比较器（面板 client-impl）：relRank 降序 + updatedAt 兜底 + 无搜索词退化', () => {
+    const m = clientSrc.match(/else if \(sortBy === 'rel' && q\) filtered = filtered\.slice\(\)\.sort\(\(a, b\) => ([^\r\n]+)\)\r?\n/)
+    assert(m, 'client-impl 缺相关度排序行')
+    const cmp = new Function('relRank', 'return (a, b) => ' + m[1])((n) => n._r)
+    const arr = [
+      { id: 'a', _r: 1, updatedAt: '2026-01-02' }, { id: 'b', _r: 3, updatedAt: '2026-01-01' },
+      { id: 'c', _r: 3, updatedAt: '2026-01-03' }, { id: 'd', _r: 2, updatedAt: '2026-01-04' }, { id: 'e', _r: 0, updatedAt: '2026-01-05' },
+    ]
+    assert.strictEqual(arr.slice().sort(cmp).map(n => n.id).join(','), 'c,b,d,a,e', '标题>标签>正文>无命中，同级 updatedAt 降序')
+    assert(clientSrc.indexOf("sortBy === 'rel' && q") >= 0, '无搜索词时相关度退化为 host 序（不抢默认排序）')
+  })
+
+  // ---- 34.5 四端同步：筛选中心（design/notes-filter-center.html 落地）----
+  // 面板（client-impl / 发布包 lib/client.js）+ app.html / 原型 + 样式双端 + 原型 mock
+  await t('四端同步：筛选中心（筛选按钮(N) + 分组 popover + 激活 chips + 独立排序控件）', () => {
+    for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('筛选中心：分组勾选条件（组内 OR / 跨组 AND）') >= 0, label + ' 筛选中心入口 tooltip')
+      assert(s.indexOf('dsh-notes-filterbar') >= 0 && s.indexOf('dsh-notes-fpop') >= 0 && s.indexOf('dsh-notes-fchip') >= 0 && s.indexOf('dsh-notes-fcnt') >= 0, label + ' 控制行结构（filterbar/popover/chip/计数丸）')
+      assert(s.indexOf('dsh-notes-fsort-menu') >= 0 && s.indexOf('dsh-notes-fsort-item') >= 0, label + ' 独立排序控件菜单')
+      assert(s.indexOf('组内多选 = OR') >= 0 && s.indexOf('组内 OR · 与状态组 = AND') >= 0, label + ' popover 分组规则文案')
+      assert(s.indexOf("'命中 '") >= 0 && s.indexOf("'清空'") >= 0 && s.indexOf("'完成'") >= 0, label + ' popover 底部 命中数 + 清空/完成')
+      assert(s.indexOf("pred: n => n.status === 'pinned'") >= 0 && s.indexOf('pred: n => n.inject === true') >= 0 && s.indexOf('pred: n => n.injectEver === true') >= 0 && s.indexOf('pred: n => n.sensitive === true') >= 0, label + ' 状态组四条件谓词')
+      assert(s.indexOf("n.injectEver !== undefined") >= 0, label + ' 曾注入 feature-detect（slim 有该字段才显示）')
+      assert(s.indexOf("localStorage.setItem('dsh-notes-filters'") >= 0 && s.indexOf("localStorage.getItem('dsh-notes-filters')") >= 0, label + ' 筛选条件+排序 localStorage 持久化')
+      assert(s.indexOf('searchMatches') >= 0 && s.indexOf('relRank') >= 0, label + ' 命中字段消费 + 相关度排位')
+      assert(s.indexOf('sArgs.sensitive = true') >= 0 && s.indexOf('sArgs.inject = true') >= 0, label + ' 组合过滤参数同步 host（单条件独活时）')
+      assert(s.indexOf("host.call('notes-search', sArgs)") >= 0 || s.indexOf("rpc('notes-search', sArgs)") >= 0, label + ' notes-search 走 sArgs（含组合过滤）')
+      assert(s.indexOf('FILTERS0()') >= 0 && s.indexOf('matchFilters(n, filters)') >= 0, label + ' filters state + 谓词接入')
+      assert(s.indexOf("'清空筛选'") >= 0, label + ' 空结果态「清空筛选」快捷动作')
+      // Esc 顺序：排序菜单先于筛选 popover 关闭
+      const escI = s.indexOf("if (ev.key === 'Escape')")
+      const sI = s.indexOf('sortOpenRef.current) { setSortOpen(false); return }', escI)
+      const fI = s.indexOf('filterOpenRef.current) { setFilterOpen(false); return }', escI)
+      assert(sI > 0 && fI > 0 && sI < fI, label + ' Esc 顺序：排序菜单 → 筛选 popover')
+      // 旧筛选面板/平铺 chips 已移除
+      assert(s.indexOf('dsh-notes-filter-panel') < 0 && s.indexOf('dsh-notes-fp-opt') < 0 && s.indexOf('dsh-notes-chip-badge') < 0, label + ' 旧筛选面板结构已移除')
+      assert(s.indexOf("'仅置顶'") < 0 && s.indexOf("'仅敏感'") < 0 && s.indexOf("'仅注入'") < 0, label + ' 旧单选开关文案已移除')
+      assert(s.indexOf('kindFilter') < 0 && s.indexOf('pinnedOnly') < 0 && s.indexOf('sensOnly') < 0 && s.indexOf('injOnly') < 0, label + ' 旧过滤 state 已迁入 filters')
+    }
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('id="filterbar"') >= 0 && s.indexOf('id="btnFilter"') >= 0 && s.indexOf('id="fchips"') >= 0 && s.indexOf('id="fpop"') >= 0 && s.indexOf('id="btnSort"') >= 0 && s.indexOf('id="fsortMenu"') >= 0 && s.indexOf('id="filterBd"') >= 0, label + ' 筛选中心 DOM 骨架')
+      // 状态组/类型组 checkbox 由 FILTER_STATUS/FILTER_KINDS 驱动生成（data-ft/data-fk 为拼接属性，断言模型定义 + 拼接点）
+      assert(s.indexOf("{ id: 'pinned', label: '置顶', icon: 'i-pin'") >= 0 && s.indexOf("{ id: 'injected', label: '已注入', icon: 'i-bolt'") >= 0 && s.indexOf("{ id: 'injectEver', label: '曾注入', icon: 'i-clock'") >= 0 && s.indexOf("{ id: 'sensitive', label: '敏感', icon: 'i-lock'") >= 0, label + ' 状态组四条件模型（多选）')
+      assert(s.indexOf("data-ft=\"' + s.id + '\"") >= 0 && s.indexOf("data-fk=\"' + k + '\"") >= 0, label + ' 状态组/类型组 checkbox 接线（data-ft/data-fk）')
+      assert(s.indexOf("var FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote'];") >= 0, label + ' 类型组五种 kind（多选）')
+      assert(s.indexOf("if (s.id === 'injectEver' && !showEver) return") >= 0, label + ' 曾注入 feature-detect（slim 无 injectEver 字段不显示）')
+      assert(s.indexOf('组内多选 = OR') >= 0 && s.indexOf('组内 OR · 与状态组 = AND') >= 0, label + ' 分组规则文案')
+      assert(s.indexOf('id="popClear"') >= 0 && s.indexOf('id="popDone"') >= 0 && s.indexOf('命中 ') >= 0, label + ' popover 底部 清空/完成/命中数')
+      assert(s.indexOf('id="emptyClear"') >= 0 && s.indexOf('清空筛选条件') >= 0, label + ' 空结果态清空链接')
+      assert(s.indexOf('function matchFilters(n, F)') >= 0 && s.indexOf('matchFilters(n, filters)') >= 0, label + ' 筛选谓词（组内 OR / 跨组 AND）')
+      assert(s.indexOf('function renderFilterBar()') >= 0 && s.indexOf('function renderFilterPop()') >= 0 && s.indexOf('function renderSortMenu()') >= 0, label + ' 筛选中心渲染函数')
+      assert(s.indexOf('function doSearch()') >= 0 && s.indexOf('function reSearch()') >= 0, label + ' 搜索/重搜函数保留')
+      assert(s.indexOf('sArgs.sensitive = true') >= 0 && s.indexOf('sArgs.inject = true') >= 0 && s.indexOf('sArgs.kind = filters.kinds[0]') >= 0 && s.indexOf("rpc('notes-search', sArgs)") >= 0, label + ' 组合过滤参数同步 host（单条件独活/类型单选时）')
+      assert(s.indexOf("localStorage.getItem('dsh-notes-app-filters')") >= 0 && s.indexOf("localStorage.setItem('dsh-notes-app-filters'") >= 0, label + ' 筛选条件+排序 localStorage 持久化')
+      assert(s.indexOf("$('btnFilter').addEventListener('click'") >= 0 && s.indexOf("$('btnSort').addEventListener('click'") >= 0, label + ' 筛选/排序按钮接线')
+      assert(s.indexOf("$('fchips').addEventListener('click'") >= 0 && s.indexOf('filters[c.dataset.ft] = false') >= 0 && s.indexOf('filters.kinds.splice(i, 1)') >= 0, label + ' 激活 chip × 单条移除')
+      assert(s.indexOf("$('fsortMenu').addEventListener('click'") >= 0, label + ' 排序菜单接线')
+      assert(s.indexOf('function hl(text, q)') >= 0 && s.indexOf("hl(n.title || '无标题', searchText)") >= 0 && s.indexOf('.note-row .ti mark{') >= 0, label + ' hl() 高亮保留')
+      assert(s.indexOf("sortBy === 'rel' && qRel") >= 0, label + ' 相关度排序档保留')
+      assert(s.indexOf('id="i-clock"') >= 0 && s.indexOf('id="i-sort"') >= 0 && s.indexOf('id="i-x"') >= 0, label + ' defs 含 i-clock/i-sort/i-x（曾注入/排序/×）')
+      assert(s.indexOf('id="btnSelMode"') >= 0 && s.indexOf('id="btnNew"') >= 0, label + ' 选择（side-foot）/新建（brand 行）保留')
+      assert(s.indexOf('class="add-new" id="btnNew"') >= 0 && s.indexOf('.brand .add-new{') >= 0, label + ' 新建入口迁入 brand 行')
+      // Esc 顺序：排序菜单先于筛选 popover
+      const sI2 = s.indexOf('if (sortOpen) { sortOpen = false; renderFilterBar(); return }')
+      const fI2 = s.indexOf('if (filterOpen) { filterOpen = false; renderFilterBar(); return }')
+      assert(sI2 > 0 && fI2 > 0 && sI2 < fI2, label + ' Esc 顺序：排序菜单 → 筛选 popover')
+      // 旧筛选面板/平铺 chips 已移除
+      assert(s.indexOf('id="fpanel"') < 0 && s.indexOf('.fpanel{') < 0 && s.indexOf('.fp-opt.on{') < 0 && s.indexOf('.chip .fbdg{') < 0, label + ' 旧筛选面板样式/容器已移除')
+      assert(s.indexOf('id="chips"') < 0 && s.indexOf("'仅置顶'") < 0 && s.indexOf("'仅敏感'") < 0 && s.indexOf("'仅注入'") < 0, label + ' 旧 chips 行/单选开关文案已移除（带引号条件文案，避免误伤 mock 文本）')
+      assert(s.indexOf('data-ft="inject"') < 0 && s.indexOf('data-k=') < 0 && s.indexOf('chipSortUse') < 0, label + ' 旧条件标记已迁移')
+      // 布局层级断言（硬性约束：树区不被挤压）
+      assert(/\.side\{[^}]*display:flex;flex-direction:column/.test(s), label + ' 侧栏 flex 纵列')
+      assert(/\.tree\{[^}]*flex:1;overflow-y:auto/.test(s), label + ' 树区 flex:1 自适应剩余高度')
+      assert(/\.filterbar\{[^}]*flex-wrap:nowrap[^}]*flex-shrink:0/.test(s), label + ' 控制行不换行 + 固定高度（不挤压树区）')
+      assert(/\.fchips\{[^}]*overflow-x:auto/.test(s), label + ' 激活 chips 单行横向滚动')
+      assert(/\.fpop\{[^}]*position:absolute/.test(s) && /\.fsort-menu\{[^}]*position:absolute/.test(s), label + ' popover/排序菜单均 absolute 浮层（覆盖树上）')
+    }
+    // 筛选谓词语义功能级回归：从四端源码提取 matchFilters 逐语义验证（组内 OR / 跨组 AND / 曾注入含已注入 / kind 缺省 note）
+    const F0 = { pinned: false, injected: false, injectEver: false, sensitive: false, kinds: [] }
+    const F$ = (o) => Object.assign({}, F0, o)
+    for (const pair of [['client-impl', clientSrc, '\n    }'], ['发布包 lib/client.js', clientPkgSrc, '\n    }'], ['app.html', appSrc, '\n}'], ['原型 notes-ui-v2.html', protoV2Src, '\n}']]) {
+      const start = pair[1].indexOf('function matchFilters(n, F) {')
+      const end = start < 0 ? -1 : pair[1].indexOf(pair[2], start)
+      assert(start >= 0 && end > start, pair[0] + ' matchFilters 可提取')
+      const m = [pair[1].slice(start, end + pair[2].length)]
+      const mf = new Function('return ' + m[0])()
+      assert(mf({ id: 'a' }, F0) === true, pair[0] + ' 无条件全过')
+      assert(mf({ status: 'pinned' }, F$({ pinned: true })) === true && mf({ status: 'active' }, F$({ pinned: true })) === false, pair[0] + ' 置顶单条件')
+      assert(mf({ status: 'pinned' }, F$({ pinned: true, sensitive: true })) === true && mf({ sensitive: true }, F$({ pinned: true, sensitive: true })) === true && mf({ status: 'active' }, F$({ pinned: true, sensitive: true })) === false, pair[0] + ' 状态组组内 OR（置顶 ∪ 敏感）')
+      assert(mf({ inject: true, kind: 'decision' }, F$({ injected: true, kinds: ['decision'] })) === true && mf({ inject: true, kind: 'note' }, F$({ injected: true, kinds: ['decision'] })) === false && mf({ inject: false, kind: 'decision' }, F$({ injected: true, kinds: ['decision'] })) === false, pair[0] + ' 跨组 AND（已注入 ∩ 决策）')
+      assert(mf({ kind: 'todo' }, F$({ kinds: ['note', 'todo'] })) === true && mf({ kind: 'link' }, F$({ kinds: ['note', 'todo'] })) === false, pair[0] + ' 类型组组内 OR')
+      assert(mf({ injectEver: true, inject: true }, F$({ injectEver: true })) === true && mf({ injectEver: true }, F$({ injectEver: true })) === true && mf({ inject: true }, F$({ injectEver: true })) === false, pair[0] + ' 曾注入含已注入（injectEver=true 即命中）')
+      assert(mf({}, F$({ kinds: ['note'] })) === true, pair[0] + ' kind 缺省回退 note')
+    }
+    assert(protoV2Src.indexOf('id="i-lock"') >= 0, '原型 defs 含 i-lock 图标（敏感条件）')
+    assert(protoV2Src.indexOf('a.sensitive === true && x.sensitive !== true') >= 0, '原型 mock notes-search 组合过滤同 host 口径')
+    assert(protoV2Src.indexOf("s.matches.push('title')") >= 0, '原型 mock 返回 matches 命中字段')
+    assert(protoV2Src.indexOf('sensitive: n.sensitive === true') >= 0, '原型 mock slim 含 sensitive')
+    assert(protoV2Src.indexOf("recall: true, sensitive: true, tags: [], createdAt: '2026-09-23T08:00:00.000Z'") >= 0, '原型 mock 演示数据：n4 敏感笔记（npm token）')
+    assert(protoV2Src.indexOf('injectEver: true') >= 0 && protoV2Src.indexOf('if (n.injectEver !== undefined) s.injectEver = n.injectEver === true') >= 0, '原型 mock：曾注入演示数据 + slim 条件透传（feature-detect）')
+    const cssDev34 = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssPkg34 = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    for (const pair of [['styles.css', cssDev34], ['发布包 lib/styles.css', cssPkg34]]) {
+      const c = pair[1], lab = pair[0]
+      assert(c.indexOf('.dsh-notes-filterbar{') >= 0 && c.indexOf('.dsh-notes-fpop{') >= 0 && c.indexOf('.dsh-notes-fchip{') >= 0 && c.indexOf('.dsh-notes-fsort-menu{') >= 0 && c.indexOf('.dsh-notes-fg-item{') >= 0 && c.indexOf('.dsh-notes-pbtn') >= 0, lab + ' 缺筛选中心样式（需跑 scripts/build-dist.cjs）')
+      assert(c.indexOf('.dsh-notes-brand-add{') >= 0, lab + ' 缺 brand 行新建入口样式')
+      assert(c.indexOf('.dsh-notes-mark{') >= 0, lab + ' 缺 mark 高亮样式')
+      assert(/\.dsh-notes-filterbar\{[^}]*flex-wrap:nowrap[^}]*flex-shrink:0/.test(c) && /\.dsh-notes-fchips\{[^}]*overflow-x:auto/.test(c), lab + ' 控制行不换行 + chips 单行横滚（树区高度不受影响）')
+      assert(/\.dsh-notes-fpop\{[^}]*position:absolute/.test(c) && /\.dsh-notes-fsort-menu\{[^}]*position:absolute/.test(c), lab + ' popover/排序菜单 absolute 浮层')
+      assert(c.indexOf('.dsh-notes-filter-panel') < 0 && c.indexOf('.dsh-notes-fp-opt') < 0 && c.indexOf('.dsh-notes-chip-badge') < 0 && c.indexOf('.dsh-notes-chips{') < 0, lab + ' 旧筛选面板/chips 行样式已移除')
+    }
+  })
+  await t('app.html / 原型 <script> 块语法自洽（提取 new Function 校验）', () => {
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const m = pair[1].match(/<script>([\s\S]*?)<\/script>/)
+      assert(m && m[1].length > 1000, pair[0] + ' script 块可提取')
+      new Function(m[1])   // 语法错误会抛出
+    }
+  })
+
+  // ---- 34.6 injectEver 曾注入粘性标记（notes-inject-filter）：host 双包字段链路 + 行为（粘性/归档继承）+ 四端徽章/chip ----
+  await t('injectEver 字段链路源码断言（host-impl / index.mjs 双包同步）', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const src = pair[1], label = pair[0]
+      assert(src.indexOf("'injectEver: ' + escYaml(m.injectEver === true ? 'true' : 'false')") >= 0, label + ' buildFM 恒写 injectEver（缺省 false）')
+      assert(src.indexOf("injectEver: p.meta.injectEver === 'true' || inject === true") >= 0, label + ' noteFromParsed 读 injectEver（缺省 false + 现状兜底 injectEver ⊇ inject）')
+      assert((src.match(/injectEver: n\.injectEver === true \|\| n\.inject === true/g) || []).length >= 2, label + ' persistNote 与 slim 均携带 injectEver')
+      assert(src.indexOf('injectEver: ex.injectEver === true || ex.inject === true') >= 0, label + ' _create 粘性（创建即注入 / 归档继承显式传入）')
+      assert(src.indexOf('if (inject === true) note.injectEver = true') >= 0, label + ' _update 单向粘性（inject 置 true 拉起，置 false/不传不回退）')
+      assert(src.indexOf('injectEver: meta.inject === true') >= 0, label + ' notes-quick-instruct 落 injectEver')
+      assert(src.indexOf('injectEver: members.some(n => n.injectEver === true || n.inject === true)') >= 0, label + ' _mergeGroup 归档继承（members.some，与 sensitive 同款）')
+      assert(src.indexOf('never unsets it; injectEver is read-only') >= 0, label + ' note_manage 工具描述说明 injectEver 粘性语义')
+    }
+  })
+
+  // --- 行为断言（独立实例 storeIE/handlersIE/toolsIE，与其他章节隔离；同 sensitive 节同款模式）---
+  const storeIE = new Map()
+  const fsMockIE = mkFsMockImp(storeIE, [NOTES_DIR])
+  const handlersIE = {}
+  const toolsIE = []
+  const harnessMockIE = {
+    handle: (name, fn) => { handlersIE[name] = fn; return () => { delete handlersIE[name] } },
+    defineTool: (def) => def,
+    registerTool: (ctx, def) => { toolsIE.push(def); return () => {} },
+  }
+  new Function('harness', 'pluginDir', hostSrc)(harnessMockIE, DIR).apply({
+    fs: fsMockIE, sandboxPolicy: { resolve: () => ({}) },
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    effect: () => {},
+  })
+  const nmIE = toolsIE.find(x => x.name === 'note_manage')
+
+  await t('injectEver 创建即粘性：create inject=true → get / list（slim）/ front-matter 均 true', async () => {
+    const c = await handlersIE['notes-create']({ title: '注入约定甲IE', body: 'x', topic: '注入IE', inject: true })
+    assert.strictEqual((await handlersIE['notes-get']({ id: c.id })).note.injectEver, true, 'notes-get injectEver=true')
+    const lst = await handlersIE['notes-list']({})
+    assert.strictEqual(lst.notes.find(n => n.id === c.id).injectEver, true, 'notes-list（slim）携带 injectEver=true')
+    const onDisk = storeIE.get(NOTES_DIR + '\\' + c.id + '.md')
+    assert(onDisk.indexOf('\ninjectEver: true\n') >= 0, 'front-matter 写 injectEver: true（实得：' + onDisk.split('\n').slice(0, 18).join('|') + '）')
+  })
+  await t('injectEver 缺省 false：create 不传 inject → get false + front-matter 恒写 false', async () => {
+    const c = await handlersIE['notes-create']({ title: '普通笔记乙IE', body: 'x', topic: '杂IE' })
+    assert.strictEqual((await handlersIE['notes-get']({ id: c.id })).note.injectEver, false, '缺省 false（noteFromParsed 回退）')
+    const onDisk = storeIE.get(NOTES_DIR + '\\' + c.id + '.md')
+    assert(onDisk.indexOf('\ninjectEver: false\n') >= 0, 'buildFM 恒写 injectEver: false')
+  })
+  await t('injectEver 单向粘性（never unset）：开 → 关 → 仍 true；不传 inject 不动存量值', async () => {
+    const c = await handlersIE['notes-create']({ title: '粘性笔记丙IE', body: 'x', topic: '注入IE' })
+    assert.strictEqual((await handlersIE['notes-get']({ id: c.id })).note.injectEver, false, '初始 false')
+    await handlersIE['notes-update']({ id: c.id, inject: true })
+    assert.strictEqual((await handlersIE['notes-get']({ id: c.id })).note.injectEver, true, '开启注入 → injectEver=true')
+    await handlersIE['notes-update']({ id: c.id, inject: false })
+    const g2 = (await handlersIE['notes-get']({ id: c.id })).note
+    assert.strictEqual(g2.inject, false, 'inject 已关闭')
+    assert.strictEqual(g2.injectEver, true, '粘性核心断言：关闭注入后 injectEver 仍 true（不回退）')
+    const onDisk = storeIE.get(NOTES_DIR + '\\' + c.id + '.md')
+    assert(onDisk.indexOf('\ninject: false\n') >= 0 && onDisk.indexOf('\ninjectEver: true\n') >= 0, '落盘 inject=false 与 injectEver=true 并存')
+    await handlersIE['notes-update']({ id: c.id, topic: '注入IE-改' })
+    assert.strictEqual((await handlersIE['notes-get']({ id: c.id })).note.injectEver, true, 'update 不传 inject → injectEver 不动')
+  })
+  await t('note_manage create/update 透传粘性：manage 开启 → 关闭 → 仍 true；list（slim）携带', async () => {
+    const c = await nmIE.execute({ action: 'create', title: '工具粘性丁IE', body: 'x', topic: '注入IE' })
+    assert(!c.error, 'manage.create 成功（实得：' + JSON.stringify(c) + '）')
+    await nmIE.execute({ action: 'update', id: c.id, inject: true })
+    assert.strictEqual((await handlersIE['notes-get']({ id: c.id })).note.injectEver, true, 'manage.update inject=true 拉起 injectEver')
+    await nmIE.execute({ action: 'update', id: c.id, inject: false })
+    assert.strictEqual((await handlersIE['notes-get']({ id: c.id })).note.injectEver, true, 'manage.update inject=false 不回退（粘性）')
+    const lst = await nmIE.execute({ action: 'list' })
+    assert.strictEqual(lst.notes.find(n => n.id === c.id).injectEver, true, 'manage.list（slim）携带 injectEver=true')
+  })
+  await t('存量文件兼容：无字段缺省 false；旧 inject=true 现状兜底 true；injectEver: true 解析保留', async () => {
+    await fsMockIE.writeText(NOTES_DIR + '\\n-legacy-plain-ie.md', '---\nid: n-legacy-plain-ie\ntitle: 旧普通\ntopic: 杂\ninject: false\ncreatedAt: "2026-01-01T00:00:00.000Z"\nupdatedAt: "2026-01-01T00:00:00.000Z"\nsessionId: \ncwd: \n---\n\nx\n')
+    assert.strictEqual((await handlersIE['notes-get']({ id: 'n-legacy-plain-ie' })).note.injectEver, false, '旧文件无 injectEver 字段缺省 false（零迁移）')
+    await fsMockIE.writeText(NOTES_DIR + '\\n-legacy-inj-ie.md', '---\nid: n-legacy-inj-ie\ntitle: 旧注入\ntopic: 杂\ninject: true\ncreatedAt: "2026-01-01T00:00:00.000Z"\nupdatedAt: "2026-01-01T00:00:00.000Z"\nsessionId: \ncwd: \n---\n\nx\n')
+    assert.strictEqual((await handlersIE['notes-get']({ id: 'n-legacy-inj-ie' })).note.injectEver, true, '旧 inject=true 笔记现状兜底 injectEver=true（injectEver ⊇ inject 不变量）')
+    await fsMockIE.writeText(NOTES_DIR + '\\n-legacy-ever-ie.md', '---\nid: n-legacy-ever-ie\ntitle: 旧曾注入\ntopic: 杂\ninject: false\ninjectEver: true\ncreatedAt: "2026-01-01T00:00:00.000Z"\nupdatedAt: "2026-01-01T00:00:00.000Z"\nsessionId: \ncwd: \n---\n\nx\n')
+    const g3 = (await handlersIE['notes-get']({ id: 'n-legacy-ever-ie' })).note
+    assert.strictEqual(g3.injectEver, true, 'injectEver: true 存量解析保留')
+    assert.strictEqual(g3.inject, false, 'inject: false 保留（曾注入且已关闭形态）')
+  })
+  await t('归档合并 injectEver 继承：任一成员曾注入/正注入 → 归档笔记 true；全普通 → false', async () => {
+    const c1 = await nmIE.execute({ action: 'create', title: '归档成员-曾注入IE', body: 'x1', topic: '归档IE' })
+    await nmIE.execute({ action: 'update', id: c1.id, inject: true })
+    await nmIE.execute({ action: 'update', id: c1.id, inject: false })   // 曾注入（现已关闭）
+    const c2 = await nmIE.execute({ action: 'create', title: '归档成员-普通IE', body: 'x2', topic: '归档IE' })
+    const r = await nmIE.execute({ action: 'archive', groups: [{ memberIds: [c1.id, c2.id] }] })
+    assert(!r.error && r.merged === 1, '归档成功（实得：' + JSON.stringify(r) + '）')
+    assert.strictEqual((await handlersIE['notes-get']({ id: r.mergedIds[0] })).note.injectEver, true, '归档笔记继承 injectEver（成员曾注入）')
+    const c3 = await nmIE.execute({ action: 'create', title: '归档成员-普通甲IE', body: 'y1', topic: '归档IE2' })
+    const c4 = await nmIE.execute({ action: 'create', title: '归档成员-普通乙IE', body: 'y2', topic: '归档IE2' })
+    const r2 = await nmIE.execute({ action: 'archive', groups: [{ memberIds: [c3.id, c4.id] }] })
+    assert(!r2.error && r2.merged === 1, '第二组归档成功')
+    assert.strictEqual((await handlersIE['notes-get']({ id: r2.mergedIds[0] })).note.injectEver, false, '全普通成员 → 归档笔记 injectEver=false')
+  })
+  await t('静态包 index.mjs 行为：injectEver 粘性（开 → 关 → 仍 true）+ slim 携带', async () => {
+    const storeIE2 = new Map()
+    const handlersIE2 = {}
+    const harnessMockIE2 = { handle: (name, fn) => { handlersIE2[name] = fn; return () => { delete handlersIE2[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+    global.harness = harnessMockIE2   // 静态包 handle() 主通道读全局 harness（apply 时解析）；指回本实例注册表
+    const modIE = await import(pathToFileURL(INDEX_PATH).href + '?injever=1')
+    modIE.apply({
+      fs: mkFsMockImp(storeIE2, [NOTES_ROOT_STATIC]), sandboxPolicy: { resolve: () => ({}) },
+      webServer: { register: () => () => {} }, tools: { register: () => () => {} },
+      get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+      effect: () => {},
+    })
+    const c = await handlersIE2['notes-create']({ title: '静态粘性IE', body: 'x', topic: '注入IE' })
+    assert.strictEqual((await handlersIE2['notes-get']({ id: c.id })).note.injectEver, false, '静态包初始 false')
+    await handlersIE2['notes-update']({ id: c.id, inject: true })
+    await handlersIE2['notes-update']({ id: c.id, inject: false })
+    const g = (await handlersIE2['notes-get']({ id: c.id })).note
+    assert.strictEqual(g.inject, false, '静态包 inject 已关闭')
+    assert.strictEqual(g.injectEver, true, '静态包粘性：关闭注入后 injectEver 仍 true')
+    const lst = await handlersIE2['notes-list']({})
+    assert.strictEqual(lst.notes.find(n => n.id === c.id).injectEver, true, '静态包 slim 携带 injectEver')
+    const onDisk = storeIE2.get(NOTES_ROOT_STATIC + '\\' + c.id + '.md')
+    assert(onDisk.indexOf('\ninjectEver: true\n') >= 0, '静态包 front-matter 落 injectEver: true')
+  })
+
+  // --- 四端同步：曾注入行徽章 + 详情 meta chip（面板双形态 / app.html / 原型）---
+  await t('四端同步：曾注入行徽章（clock）+ 详情 meta chip + 样式', () => {
+    for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("className: 'dsh-notes-note-injevr dsh-nt'") >= 0, label + ' 行尾曾注入徽章（clock，被引用徽章旁；需跑 scripts/build-dist.cjs）')
+      assert(s.indexOf("n.inject !== true && n.injectEver === true ? e('span', { className: 'dsh-notes-note-injevr") >= 0, label + ' 行徽章条件：曾注入且非已注入（互斥 bolt），不满足不渲染')
+      assert(s.indexOf("'data-tooltip': '曾注入：历史上开启过上下文注入（现已关闭）'") >= 0, label + ' 行徽章 tooltip')
+      assert(s.indexOf("curNote.injectEver === true && !isInjected") >= 0, label + ' 详情 chip 条件（injectEver 且当前未注入）')
+      assert(s.indexOf("I('clock', 11), '曾注入'") >= 0, label + ' 详情 meta chip「曾注入」（clock 图标）')
+      assert(s.indexOf('injectEver 为粘性标记，不随关闭回退') >= 0, label + ' 详情 chip tooltip 说明粘性语义')
+      assert(s.indexOf("clock: [e('circle'") >= 0, label + ' IC.clock 时钟图标')
+    }
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("!n.inject && n.injectEver === true ? '<span class=\"injevr\"") >= 0, label + ' 行徽章条件：曾注入且非已注入（互斥 bolt）')
+      assert(s.indexOf('曾注入：历史上开启过上下文注入（现已关闭）') >= 0, label + ' 行徽章 tooltip')
+      assert(s.indexOf("icon('i-clock', 9)") >= 0, label + ' 行徽章 i-clock 图标')
+      assert(s.indexOf('.note-row .injevr{') >= 0, label + ' 行徽章样式（淡灰时钟）')
+      assert(s.indexOf("n.injectEver === true && !n.inject ? '<span class=\"meta-chip\"") >= 0, label + ' 详情 meta chip 条件')
+      assert(s.indexOf("icon('i-clock') + '曾注入</span>'") >= 0, label + ' 详情 meta chip「曾注入」')
+      assert(s.indexOf('injectEver 为粘性标记，不随关闭回退') >= 0, label + ' 详情 chip tooltip 说明粘性语义')
+    }
+    const cssIEDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssIEPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    for (const pair of [['styles.css', cssIEDev], ['发布包 lib/styles.css', cssIEPkg]]) {
+      assert(pair[1].indexOf('.dsh-notes-note-injevr{') >= 0, pair[0] + ' 含曾注入行徽章样式（需跑 scripts/build-dist.cjs）')
+    }
+    // 原型 mock：n3/n10 曾注入演示数据（inject: false + injectEver: true → 行渲染时钟徽章）
+    assert(protoV2Src.indexOf("inject: false, injectTo: [], recall: true, tags: ['quick'], injectEver: true") >= 0, '原型 mock n3 曾注入演示数据')
+  })
+
+  // ===== 35. 侧栏宽度拖拽分隔条（面板 + app.html + 原型三端同步：拖拽 / clamp 200px–60% / localStorage 记忆 / 双击重置） =====
+  section('35. 侧栏宽度拖拽分隔条（splitter：拖拽 + clamp + 记忆 + 双击重置，三端同步）')
+  const spCssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+  const spCssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+  const spClientPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
+  const spApp = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
+  const spProto = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
+  await t('面板分隔条链路（client-impl.js）：元素 / DOM 序 / 拖拽 / clamp / 记忆 / 双击重置', () => {
+    assert(clientSrc.indexOf("className: 'dsh-notes-splitter dsh-nt'") >= 0, '分隔条元素 .dsh-notes-splitter')
+    assert(clientSrc.indexOf('onMouseDown: onSplitterMouseDown') >= 0 && clientSrc.indexOf('onDoubleClick: resetSideW') >= 0, 'mousedown / dblclick 接线')
+    // DOM 序：分隔条位于侧栏（side-foot 之后）与编辑器（editorEl）之间
+    const iFoot = clientSrc.indexOf('dsh-notes-side-foot'), iSplit = clientSrc.indexOf("className: 'dsh-notes-splitter"), iEd = clientSrc.indexOf('editorEl),')
+    assert(iFoot > 0 && iSplit > iFoot && iEd > iSplit, '分隔条位于侧栏与编辑器之间')
+    // 拖拽链路：复用 drag() 助手（mousemove 挂 document、mouseup 移除监听防泄漏）；拖拽期间 body 禁选 class 随 mouseup 移除
+    const iFn = clientSrc.indexOf('function onSplitterMouseDown(ev)')
+    assert(iFn > 0, 'onSplitterMouseDown 存在')
+    const fnBody = clientSrc.slice(iFn, clientSrc.indexOf('function resetSideW', iFn))
+    assert(fnBody.indexOf('drag(') >= 0, '复用 drag() 助手')
+    assert(fnBody.indexOf("document.body.classList.add('dsh-notes-split-drag')") >= 0 && fnBody.indexOf("document.body.classList.remove('dsh-notes-split-drag')") >= 0, '拖拽期间禁文本选择（mouseup 移除）')
+    assert(fnBody.indexOf('clampSideW(sw + ev2.clientX - sx') >= 0, 'mousemove 按面板内相对坐标增量算宽')
+    assert(fnBody.indexOf('saveSideW(sideWRef.current)') >= 0, 'mouseup 持久化（ref 防闭包过期）')
+    // drag() 助手自身：document mousemove / mouseup 成对装卸（mouseup 移除监听防泄漏）
+    const iDrag = clientSrc.indexOf('function drag(move, done)')
+    const dragBody = iDrag < 0 ? '' : clientSrc.slice(iDrag, iDrag + 420)
+    assert(iDrag > 0 && dragBody.indexOf("document.addEventListener('mousemove', onMove)") >= 0 && dragBody.indexOf("document.removeEventListener('mousemove', onMove)") >= 0 && dragBody.indexOf("document.removeEventListener('mouseup', onUp)") >= 0, 'drag()：mousemove 挂 document、mouseup 移除监听')
+    // clamp / 记忆 / 缺省 / aside 宽度受控
+    assert(clientSrc.indexOf('function clampSideW(w, panelW)') >= 0 && clientSrc.indexOf('Math.max(200, Math.min(Math.round(panelW * 0.6), Math.round(w)))') >= 0, 'clamp 200px–60% 面板宽')
+    assert(clientSrc.indexOf("const SIDE_W_KEY = 'dsh-notes-sidebar-w'") >= 0 && clientSrc.indexOf('const SIDE_W_DEFAULT = 300') >= 0, 'localStorage key（面板独立）+ 缺省 300（同 styles.css 侧栏缺省宽）')
+    assert(clientSrc.indexOf('function resetSideW()') >= 0 && clientSrc.indexOf('saveSideW(null)') >= 0, '双击重置缺省宽（清除持久化）')
+    assert(clientSrc.indexOf("className: 'dsh-notes-side', style: { width: clampSideW(sideW, size.width) + 'px' }") >= 0, 'aside 宽度受控（渲染按当前面板宽 clamp）')
+  })
+  await t('面板 clamp 边界 + 记忆恢复行为（client-impl 提取执行）', () => {
+    const grabLine = (src, name) => { const st = src.indexOf('function ' + name + '('); assert(st >= 0, name + ' 存在'); return src.slice(st, src.indexOf('\n', st)) }
+    const clampFn = new Function('return ' + grabLine(clientSrc, 'clampSideW'))()
+    assert(clampFn(100, 920) === 200, 'clamp 下限 200px')
+    assert(clampFn(300, 920) === 300, 'clamp 区间内原值')
+    assert(clampFn(9999, 920) === 552, 'clamp 上限 = 60% 面板宽（920→552）')
+    assert(clampFn(9999, 680) === 408, '上限随面板宽收窄（680→408）')
+    const store = {}
+    const mockLS = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v) }, removeItem: (k) => { delete store[k] } }
+    const fns = new Function('localStorage', 'SIDE_W_KEY', grabLine(clientSrc, 'loadSideW') + '\n' + grabLine(clientSrc, 'saveSideW') + '\nreturn { loadSideW: loadSideW, saveSideW: saveSideW }')(mockLS, 'dsh-notes-sidebar-w')
+    assert(fns.loadSideW() === null, '无持久化 → null（回缺省）')
+    fns.saveSideW(420)
+    assert(store['dsh-notes-sidebar-w'] === '420' && fns.loadSideW() === 420, '拖拽结束持久化 → 加载恢复')
+    fns.saveSideW(null)
+    assert(!('dsh-notes-sidebar-w' in store) && fns.loadSideW() === null, '双击重置清除持久化 → 回缺省')
+    fns.saveSideW(150)
+    assert(fns.loadSideW() === null, '非法值（<200）不回读')
+  })
+  await t('分隔条样式双端（styles.css ⇄ 发布包 lib/styles.css，build-dist 同步）', () => {
+    for (const pair of [['styles.css', spCssDev], ['发布包 lib/styles.css', spCssPkg]]) {
+      const c = pair[1], lab = pair[0]
+      assert(c.indexOf('.dsh-notes-splitter{width:4px;margin:0 -7px;') >= 0, lab + ' 4px 分隔条叠加间隙不占位（负 margin 抵消 gap，需跑 scripts/build-dist.cjs）')
+      assert(c.indexOf('.dsh-notes-splitter:hover,.dsh-notes-splitter.on{background:var(--nacc)}') >= 0, lab + ' hover/拖拽中高亮（需跑 scripts/build-dist.cjs）')
+      assert(/\.dsh-notes-splitter\{[^}]*cursor:col-resize/.test(c), lab + ' col-resize 光标（需跑 scripts/build-dist.cjs）')
+      assert(c.indexOf('body.dsh-notes-split-drag') >= 0 && c.indexOf('user-select:none!important') >= 0, lab + ' 拖拽期间全局禁文本选择（需跑 scripts/build-dist.cjs）')
+    }
+  })
+  await t('发布包 client.js 同步分隔条链路（需先跑 scripts/build-dist.cjs）', () => {
+    assert(spClientPkg.indexOf("className: 'dsh-notes-splitter") >= 0 && spClientPkg.indexOf('onSplitterMouseDown') >= 0 && spClientPkg.indexOf('resetSideW') >= 0 && spClientPkg.indexOf("'dsh-notes-sidebar-w'") >= 0, '发布包 lib/client.js 缺分隔条链路（需先跑 scripts/build-dist.cjs）')
+  })
+  await t('app.html + 原型同款：分隔条 DOM / 样式 / 脚本双端一致（key 独立 dsh-notes-app-sidebar-w）', () => {
+    for (const pair of [['app.html', spApp], ['原型 notes-ui-v2.html', spProto]]) {
+      const s = pair[1], lab = pair[0]
+      // DOM：分隔条位于 </aside> 与 <section class="ed" 之间
+      const iAside = s.indexOf('</aside>'), iSplit = s.indexOf('<div class="splitter" id="splitter"'), iEd = s.indexOf('<section class="ed')
+      assert(iAside > 0 && iSplit > iAside && iEd > iSplit, lab + ' 分隔条 DOM 序：aside → splitter → ed')
+      assert(s.indexOf('title="拖拽调整侧栏宽度（双击重置）"') >= 0, lab + ' 分隔条引导 tooltip')
+      // 样式：4px 叠加间隙不占位 + hover/拖拽高亮 + col-resize + 拖拽期间禁选
+      assert(s.indexOf('.splitter{width:4px;margin:0 -7px;') >= 0, lab + ' 4px 拖拽条叠加间隙不占位（负 margin 抵消 gap）')
+      assert(s.indexOf('.splitter:hover,.splitter.on{background:var(--nacc)}') >= 0, lab + ' hover/拖拽中高亮')
+      assert(/\.splitter\{[^}]*cursor:col-resize/.test(s), lab + ' col-resize 光标')
+      assert(s.indexOf('body.split-drag') >= 0 && s.indexOf('user-select:none!important') >= 0, lab + ' 拖拽期间禁文本选择')
+      // 脚本：mousedown 起拖 → document mousemove 算宽 → mouseup 卸监听；clamp；记忆；双击重置；窗口 resize 复核
+      assert(s.indexOf("splitterEl.addEventListener('mousedown'") >= 0, lab + ' mousedown 起拖')
+      assert(s.indexOf("document.addEventListener('mousemove', onMove)") >= 0 && s.indexOf("document.removeEventListener('mousemove', onMove)") >= 0 && s.indexOf("document.removeEventListener('mouseup', onUp)") >= 0, lab + ' mousemove 挂 document、mouseup 移除监听防泄漏')
+      assert(s.indexOf("document.body.classList.add('split-drag')") >= 0 && s.indexOf("document.body.classList.remove('split-drag')") >= 0, lab + ' 拖拽期间禁选 class 随 mouseup 移除')
+      assert(s.indexOf('function clampSideW(w)') >= 0 && s.indexOf('Math.max(200, Math.min(Math.round(') >= 0 && s.indexOf('* 0.6') >= 0, lab + ' clamp 200px–60% 面板宽')
+      assert(s.indexOf("var SIDE_W_KEY = 'dsh-notes-app-sidebar-w'") >= 0 && s.indexOf('SIDE_W_DEFAULT = 342') >= 0, lab + ' localStorage 记忆（独立 key）+ 缺省 342（同 .side 缺省宽）')
+      assert(s.indexOf('function loadSideW()') >= 0 && s.indexOf('\nloadSideW();') >= 0, lab + ' 加载恢复持久化宽度')
+      assert(s.indexOf("splitterEl.addEventListener('dblclick'") >= 0 && s.indexOf('applySideW(SIDE_W_DEFAULT)') >= 0 && s.indexOf('saveSideW(null)') >= 0, lab + ' 双击重置缺省宽（清除持久化）')
+      assert(s.indexOf("window.addEventListener('resize'") >= 0, lab + ' 窗口 resize 按新 60% 上限复核')
+      assert(s.indexOf("'dsh-notes-sidebar-w'") < 0, lab + ' 不用面板 key（key 独立）')
+    }
+    // 双端逐字节一致：分隔条 CSS 块与 JS 块（UI 同步硬性约定；数据层之外的共享交互）
+    const grabCss = (s) => (s.match(/  \/\* ===== 侧栏宽度拖拽条[\s\S]*?-webkit-user-select:none!important\}\n/) || [''])[0]
+    assert(grabCss(spApp).length > 10 && grabCss(spApp) === grabCss(spProto), 'app.html ⇄ 原型：分隔条 CSS 逐字节一致')
+    const grabJs = (s) => (s.match(/\/\* ================= 侧栏宽度拖拽条[\s\S]*?\nloadSideW\(\);\n/) || [''])[0]
+    assert(grabJs(spApp).length > 10 && grabJs(spApp) === grabJs(spProto), 'app.html ⇄ 原型：分隔条脚本逐字节一致')
   })
 
   // ===== 总结 =====

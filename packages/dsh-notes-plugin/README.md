@@ -25,7 +25,8 @@ DSH 更新频繁，插件各版本能力与适配范围不同，**升级插件�
 
 | 插件版本 | 发布 | 声明适配 DSH | 实测基线 | 要点 |
 | --- | --- | --- | --- | --- |
-| **0.2.4** | 2026-09-30 | `^0.1.7 \| 0.2.0-rc.2 \| ^0.2.0` | **0.2.0-rc.2** | 兼容 DSH 0.2.0：声明显式覆盖 0.2.0-rc.2 预发布（semver 预发布不命中宽区间，须枚举）；改名竞态防正文丢失；已在本机 0.2.0-rc.2 实测加载 |
+| **0.3.0** | 2026-10-02 | `^0.1.7 \| 0.2.0-rc.2 \| ^0.2.0` | **0.2.0-rc.2** | 大版本：编辑器双模式（源码⇄富文本）+ 图片支持 + ✨AI 整理 + 显式归档（预览/撤销）+ 敏感脱敏 + 注入增强（时效/预算/预览器）+ 回收站 + 使用遥测 + 双链/反向链接 + 单文件导出 + 整理建议器 + 筛选中心（约 20 项，详见功能清单）；peer 声明维持不变（上界 `^0.2.0` 保守不放开 0.3.x——未验证） |
+| 0.2.4 | 2026-09-30 | `^0.1.7 \| 0.2.0-rc.2 \| ^0.2.0` | 0.2.0-rc.2 | 兼容 DSH 0.2.0：声明显式覆盖 0.2.0-rc.2 预发布（semver 预发布不命中宽区间，须枚举）；改名竞态防正文丢失；已在本机 0.2.0-rc.2 实测加载 |
 | 0.2.3 | 2026-09-30 | `>=0.1.7 <0.2.0-0` | 0.1.7 | npm 页面 README 与仓库根同步（sync-pkg-readme + docs 入白名单） |
 | 0.2.2 | 2026-09-30 | `>=0.1.7 <0.2.0-0` | 0.1.7 | 声明范围校正：下限收紧到实测基线 0.1.7（0.1.5~0.1.6 派发列表超时实测不可用，0.2.1 仍误声明旧范围）|
 | 0.2.1 | 2026-09-30 | `>=0.1.5-rc.1 <0.2.0-0` | 0.1.7 | 上下文注入双角色（约定/资料）/ 注入范围移除工作区维度（默认所有会话）/ 入口按钮与配色 v2 打磨 |
@@ -80,15 +81,21 @@ dsh plugin --profile web remove dsh-notes-plugin       # 卸载（不删数据�
 - **上下文注入（双角色）**：详情区「⚡ 关闭 / 约定 / 资料」三态分段控件（独立字段 `inject` + `injectRole`，不依赖标签）——约定=须遵守的行为规则（每回合注入「用户约定」桶），资料=事实性补充信息（「参考资料」桶，与当前任务相关时按需取用）；范围浮层多选——默认注入所有会话，勾选具体会话则仅限这些会话（会话按工作区分组、显示会话名，自动排除子 agent 与已归档会话）
 - **目录索引注入（recall 通道）**：整篇注入之外的轻量通道——一行一条目录（`- [id] 标题 (类型, 主题)`）自动注入系统提示（`order 131`，紧邻约定之后）并附规划轻推，agent 规划期即知库里有什么；已了结（resolved/superseded）与整篇注入已命中的笔记自动排除，40 条封顶；单条以前沿 `recall: false` 退出目录，设置卡片总开关（`catalogEnabled`）一键全关
 - **任务派发**：待办一键派发到活跃会话或新建会话，可补充具体要求；派发记录（会话名/要求/时间/是否完成）落在笔记的 `dispatches` 字段里，正文不被污染；目标会话系统提示持续注入该待办直到标记完成；DSH 0.1.7 适配——活跃会话列表走会话元数据缓存（未命中先返回占位 + `titlesPending`，前端 1.5s 轮询补齐），加载从 128s 降到 0.2s
-- **检索**：面板搜索框（本地即时过滤 + 250ms 防抖全文兜底，取并集）、kind 筛选 chips、`note_search` 工具
+- **检索**：面板搜索框（本地即时过滤 + 250ms 防抖全文兜底，取并集）、筛选中心（「筛选(N)」按钮 + 分组 popover——状态组 置顶/已注入/曾注入/敏感 与类型组五 kind 均多选，组内 OR 跨组 AND，激活条件 chips 可单独移除，曾注入按 slim 字段 feature-detect；排序独立控件 时间/引用/相关度，条件与排序持久化记忆）、`note_search` 工具
 - **键盘流**：`Ctrl+K` 搜索、`Ctrl+N` 新建、`j/k`/`↑↓` 移动、`Enter` 打开、`Esc` 关闭（输入框内不抢键）
-- **归档整理**：标题栏「归档」弹预览，勾选速记组后才合并（toast 可撤销）；手动笔记用列表「选择」多选合并；原笔记软删除（`.bak` 备份）可恢复
+- **归档整理（显式）**：标题栏「归档」先 dry-run 预览（`notes-archive-preview`，含引导气泡），勾选速记组后才合并（`notes-archive` 白名单组，host 先全量校验再动手；toast 可撤销一次 `notes-archive-undo`）；手动笔记已摘出自动分组（防误并），用列表「选择」多选合并；原笔记软删除（`.bak` 备份）可恢复
+- **整理建议器**：设置卡片「整理建议」——`notes-suggest` dry-run 零写入提名三类候选：速记归档组 / 过期未引用（kind=note/link 且超 `staleDays` 且从未被 `note_get` 命中）/ 孤儿笔记（无 `[[双链]]` 出链与反向链接、未注入、零引用的普通笔记）；只提名不执行——直达归档预览 / confirm 后批量软删 / 孤儿仅展示逐条跳转
+- **编辑器双模式（源码 ⇄ 富文本）**：meta 行两段开关或 `Ctrl+/` 切换——富文本为受限 WYSIWYG（白名单：h1-h3 / 列表 / 引用 / 围栏代码块 / 粗斜体 / 行内码 / 链接（仅 http/https）/ 图片 / 双链，render ⇄ serialize 双向 round-trip 无损，900ms 防抖回写源码）；富文本工具栏（加粗/斜体/链接/图片）+ 粘贴 HTML 白名单清洗（h4-6 降段落、script/style 丢弃）；含白名单外语法时富文本入口置灰 + 横幅给出原因，删净即恢复
+- **富文本门禁放宽**：行内 HTML（`<b>`/`<i>` 等）字面渲染、GFM 表格只读渲染（`contenteditable=false` 原子岛屿，序列化逐字回吐）——不再整篇降级，仅多行 HTML 块 / 嵌套引用等歧义结构才禁用富文本
 - **✨ 整理（AI 按模板重写）**：编辑器 meta 行「整理」按钮——当前草稿经 `notes-ai-organize`（`notes-quick-instruct` 同款 LLM 通道）按 `kind` 模板结构化重写（决策→背景/结论/理由，待办→checkbox，链接→链接/说明，引用→引用块/出处，机器/运维信息→环境/机器清单/账号/门户）；替换后走自动保存，toast 可撤销一次；正文超 12000 字报错引导分段
-- **kind 模板骨架**：新建笔记按类型预填骨架（同上模板；`note` 为自由格式空正文）——面板新建 modal 可选类型，全窗口页随侧栏类型过滤芯片
-- **图片压缩**：超过 1MB 的 PNG/JPEG 上传前在前端 canvas 降质转 JPEG（长边 ≤2560px、质量阶梯 0.85→0.45、透明底刷白；GIF/WebP 不动以保动画/透明），上传弹窗显示「已压缩 原 → 现」
+- **kind 模板骨架**：新建笔记按类型预填骨架（同上模板；`note` 为自由格式空正文）——面板新建 modal 可选类型，全窗口页随筛选中心类型组（恰选 1 个时按该类型预填）
+- **图片支持**：正文 `![](assets/xxx)` 相对路径引用（`assets/` 目录落盘），粘贴 / 拖拽 / 工具栏按钮三入口上传（`notes-asset-upload`：mime 白名单 png/jpeg/gif/webp、≤5MB；`GET /dsh-notes/asset` 供 `<img>` 加载，防路径穿越）；超过 1MB 的 PNG/JPEG 上传前在前端 canvas 降质转 JPEG（长边 ≤2560px、质量阶梯 0.85→0.45、透明底刷白；GIF/WebP 不动以保动画/透明），上传弹窗显示「已压缩 原 → 现」；归档备份与导入导出连带资产
 - **资产清理**：设置卡片「资产清理」——`notes-assets-prune` 扫描 `assets/` 中未被任何笔记正文引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删），dry-run 预览勾选后才删除；发布版静态包走真删除，开发版为清空占位（0 字节墓碑）
 - **回收站**：侧栏底部「回收站」（面板与全窗口页同入口）——列出软删除的笔记（`notes-list` 参数化 `includeDeleted`），逐条「恢复」（`notes-restore`）或「彻底删除」（`notes-purge`，confirm 双确认「彻底删除不可恢复」）；彻底删除仅限已软删除笔记（host 安全闸），`.md` 与归档备份 `.md.bak` 一并移除——发布版静态包走真删除，开发版为清空占位（0 字节墓碑，全链路视作不存在）
-- **导入 / 导出**：侧栏底部「导出」/ 设置卡片「数据」区入口——全库目录快照（含 `folders.json`，不打包不压缩，目录即格式）；「导出单文件…」按范围（全部/文件夹/标签）把笔记拼接为单个自包含 Markdown（每篇 = 标题 + 元信息块 + 正文，可选目录页，图片 base64 内联，可直接分享；单文件超 20MB 告警但仍照常导出）；导入两步式：先预览（新增/相同/不同分类 + 文件夹合并统计）再执行，默认跳过内容不同的冲突、勾选后才覆盖；执行前自动备份，只增改不删
+- **敏感笔记脱敏**：编辑器 meta 行 🔒 toggle（`sensitive=true`）——注入系统提示时正文按行打码（键名与结构保留、值遮蔽为 `******（敏感，note_get <id> 获取）`，agent 须 `note_get` 取原文；目录注入标题同样打码并加 🔒 标记）；命中密码/密钥模式自动识别——速记直接落 `sensitive=true`，手动创建回传 `sensitiveSuggested` 建议（不强制）
+- **注入增强**：时效衰减提醒（目录行对超 `staleDays`（缺省 90 天，0=关闭）未更新的 note/link 尾注 ⚠）+ 注入体积预算（`injectBudgetChars` 字符预算，超限截断并标注）+ 设置卡片「注入预览」（`notes-inject-preview` 实时渲染注入产物 + 脱敏/时效/截断统计，缺省全局视角、可按会话过滤）+ `injectEver` 曾注入粘性标记（只升不降，驱动筛选中心「曾注入」与列表行徽章）
+- **双链与反向链接**：正文 `[[id或标题]]` 互链（id 精确优先、标题全库精确匹配，解析不到按纯文本）——列表行尾双链标记、富文本内点击跳转目标笔记、详情区「反向链接」面板列出全库指向当前笔记的其他条目（全库惰性索引，未热时提示「索引中…」）
+- **导入 / 导出**：设置卡片「数据」区入口——全库目录快照（含 `folders.json`，不打包不压缩，目录即格式）；「导出单文件…」按范围（全部/文件夹/标签）把笔记拼接为单个自包含 Markdown（每篇 = 标题 + 元信息块 + 正文，可选目录页，图片 base64 内联，可直接分享；单文件超 20MB 告警但仍照常导出）；导入两步式：先预览（新增/相同/不同分类 + 文件夹合并统计）再执行，默认跳过内容不同的冲突、勾选后才覆盖；执行前自动备份，只增改不删
 - **Apple Notes 质感**：0 圆角列表项、纯背景选中、hover 才显操作、自动保存（底部提示「已自动保存 HH:MM」）、暗色模式适配
 - **半独立应用**：浏览器直接访问 `/dsh-notes-app`（与 DSH Web 同源——把 DSH 页面地址的路径换成 `/dsh-notes-app` 即可）打开全窗口笔记页——包内 `app.html` 与面板共享 UI v2 和同一套 RPC 数据层，不进会话也能管理笔记（记录 / 文件夹 / 派发 / 导入导出 / 设置全可用）
 - **性能**：内存缓存（写入同步回填，列表命中零磁盘读）+ 正文按需加载 + 懒加载分页（每屏 50 条）；面板位置/尺寸/列宽持久化到 `localStorage`
@@ -119,7 +126,7 @@ dsh plugin --profile web remove dsh-notes-plugin       # 卸载（不删数据�
   n-xxxxxxxx.md.bak    # 归档/覆盖时的备份
   assets/              # 图片资产（base64 文本落盘；正文以 ![](assets/xxx) 相对路径引用；孤儿资产可用「设置 → 资产清理」清理）
   folders.json         # 虚拟文件夹清单 [{id, name, order}]（缺失/损坏自动兜底为空清单，不影响笔记主流程）
-  settings.json        # 面板设置（LLM 模型选配、catalogEnabled 目录注入总开关等）
+  settings.json        # 面板设置（LLM 模型选配、catalogEnabled 目录注入总开关、staleDays 时效阈值、injectBudgetChars 注入预算等）
   perf-report.json     # 面板性能遥测（可随时删除）
 ```
 
@@ -139,6 +146,9 @@ inject: false          # 是否注入系统提示（注入为上下文总开关�
 injectRole: convention # 注入角色（仅 inject=true 时落盘/生效）：convention=约定·须遵守的行为规则 / reference=资料·事实性补充信息（agent 按需取用）；缺省 convention
 injectTo: []           # 注入范围多选：[] = 所有会话（默认）/ [会话短id,...] = 仅限这些会话（存量 global/workspace 值按所有会话容错）
 recall: true           # 是否进目录索引注入（false 退出目录但仍可搜索；与 inject 正交）
+injectEver: false      # 曾注入粘性标记（inject 曾置 true 即永久 true，只读）
+sensitive: false       # 敏感笔记（注入时正文按行打码脱敏）
+useCount: 0            # 使用遥测（note_get 命中计数，60s 防抖落盘）
 createdAt: ISO-8601
 updatedAt: ISO-8601
 sessionId: 来源会话
@@ -152,7 +162,7 @@ deleted: "false"       # 软删除标记
 正文 Markdown
 ```
 
-向后兼容：旧文件缺 `inject`/`kind`/`status`/`injectRole`/`injectTo`/`folder`/`recall` 字段时自动兜底（`folder` 缺省为未分类；`recall` 缺省为 true；`injectRole` 缺省为 `convention`，存量笔记零迁移；无 `inject` 时回退按 `tags` 含 `convention` 判定）。`folder` 指向清单外 id（如 folders.json 损坏或被外部改乱）时按未分类对待，删除文件夹会主动把其下笔记的 `folder` 清空回退未分类。
+向后兼容：旧文件缺 `inject`/`kind`/`status`/`injectRole`/`injectTo`/`folder`/`recall`/`sensitive`/`injectEver`/`useCount` 字段时自动兜底（`folder` 缺省为未分类；`recall` 缺省为 true；`injectRole` 缺省为 `convention`；`sensitive`/`injectEver` 缺省 false；`useCount` 缺省 0，存量笔记零迁移；无 `inject` 时回退按 `tags` 含 `convention` 判定）。`folder` 指向清单外 id（如 folders.json 损坏或被外部改乱）时按未分类对待，删除文件夹会主动把其下笔记的 `folder` 清空回退未分类。
 
 ## 权限与实现
 
@@ -170,7 +180,7 @@ deleted: "false"       # 软删除标记
 node scripts/build-dist.cjs           # 改完 client-impl.js 后刷新 lib/client.js
 node --check packages/dsh-notes-plugin/index.mjs
 node --check packages/dsh-notes-plugin/lib/client.js
-node check.js                         # 276 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录注入 + 导入导出 + 半独立页）
+node check.js                         # 486 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录注入 + 导入导出 + 半独立页 + 双模式编辑器 + 敏感脱敏 + 注入增强 + 遥测/双链）
 ```
 
 详见 [DEVELOPMENT.md](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/DEVELOPMENT.md) 与 [tests/e2e.md](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/tests/e2e.md)。

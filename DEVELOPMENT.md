@@ -8,7 +8,7 @@
 |---|---|
 | `host.js` | Host 引导壳（~20 行）：`fs.readText` 读 `host-impl.js` + `new Function('harness','pluginDir',src)` 执行。顶部 `PLUGIN_DIR` 是唯一需要配置的路径 |
 | `client.js` | Client 引导壳：经 `notes-src` RPC 拉 `client-impl.js` + `new Function('React','styles','host',src)`，带 800ms×15 重试 |
-| `host-impl.js` | Host 真正实现：fs 读写、LLM 主题分类、32 个 RPC、3 个 Agent 工具、约定注入、任务派发 |
+| `host-impl.js` | Host 真正实现：fs 读写、LLM 主题分类、34 个 RPC、3 个 Agent 工具、约定注入、任务派发 |
 | `client-impl.js` | Client 真正实现：面板 UI、选区记录、键盘流、注入/派发交互 |
 | `styles.css` | 全部样式（经 `notes-css` RPC 下发），Apple Notes 设计令牌 + 暗色适配 |
 | `check.js` | 回归测试套件（内存 mock，不碰真实笔记目录） |
@@ -79,7 +79,7 @@ node check.js
 - `inject: ['fs','sandboxPolicy']`；`agents/llm/agentDefaultModel/systemPrompt/sessionPersistence/workspaceRegistry` 经 `ctx.get(...)` 可选读取
 - **缓存层**：`cache: Map<id, note>` 常驻内存；`persistNote` 写入即同步缓存，`_list` 命中零磁盘读；外部新增文件 list 时懒加载
 - **快速记录队列**：`quickChain` 串行化避免读-改-写竞态；同 session 且 10 分钟内合并，否则新建；主题分类异步回填（先落盘返回，不阻塞）
-- **32 个 RPC**：`notes-list/get/create/update/quick/quick-instruct/delete/restore/purge/archive/archive-preview/archive-undo/search/css/src/perf/conventions/sessions/active-sessions/workspaces/dispatch/dispatch-done/settings-get/settings-set/export/export-single/import-preview/import/asset-upload/folders/ai-organize/assets-prune`（二期新增 `notes-ai-organize` 按 kind 模板重写正文、`notes-assets-prune` 孤儿资产清理 dry-run 预览 + 白名单删除；P1 回收站：`notes-list` 参数化 `includeDeleted` + `notes-purge` 彻底删除——仅限已软删除笔记，`.md` 与 `.md.bak` 一并移除；ctx.fs 无删除契约，开发版落回墓碑式清空（0 字节占位，全链路视作不存在），静态包经 `fs.processPath` + `node:fs` 真删；P3 单文件导出：`notes-export-single` 按 scope（all/folder/tag）拼接单篇自包含 Markdown，图片 base64 内联，>20MB 告警仍导出）
+- **34 个 RPC**：`notes-list/get/create/update/quick/quick-instruct/delete/restore/purge/archive/archive-preview/archive-undo/search/css/src/perf/conventions/inject-preview/sessions/active-sessions/workspaces/dispatch/dispatch-done/settings-get/settings-set/export/export-single/import-preview/import/asset-upload/folders/ai-organize/assets-prune/suggest`（二期新增 `notes-ai-organize` 按 kind 模板重写正文、`notes-assets-prune` 孤儿资产清理 dry-run 预览 + 白名单删除；P1 回收站：`notes-list` 参数化 `includeDeleted` + `notes-purge` 彻底删除——仅限已软删除笔记，`.md` 与 `.md.bak` 一并移除；ctx.fs 无删除契约，开发版落回墓碑式清空（0 字节占位，全链路视作不存在），静态包经 `fs.processPath` + `node:fs` 真删；P3 单文件导出：`notes-export-single` 按 scope（all/folder/tag）拼接单篇自包含 Markdown，图片 base64 内联，>20MB 告警仍导出；注入预览器：`notes-inject-preview {sessionId?}` 纯复用 conventionText/catalogText 渲染产物 + 统计（脱敏/时效标注/预算截断），缺省全局视角、传会话 id 按 injectTo 命中过滤，预览不更新 lastInjectChars；整理建议器：`notes-suggest` dry-run 零写入返回三类候选——archiveCandidates 速记组（内聚复用 `_archivePreview` 同款结构）/ staleCandidates 过期未引用（kind=note/link 且超 staleDays 且 useCount===0，遥测保护）/ orphanCandidates 孤儿（无 [[双链]] 出链与反向链接、inject=false、useCount=0、status=active 的普通笔记，排除速记与归档产物防误伤，上限 20），只提名不执行，client 三段式 modal 直达归档预览 / confirm 后批量软删 / 孤儿仅展示逐条跳转）
 - **3 个 Agent 工具**：`note_search`、`note_get`、`note_manage`（七 action：create/list/update/delete/restore/archive/dispatch）
 
 ### 约定注入（T2.3）

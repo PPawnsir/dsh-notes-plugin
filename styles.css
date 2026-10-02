@@ -134,6 +134,11 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 /* ===== 两栏布局（原型 .app：左 342px 侧栏 + 右通栏编辑器，卡片间隙 10px） ===== */
 .dsh-notes-app{flex:1;display:flex;min-height:0;padding:10px;gap:10px;background:var(--nbg)}
 .dsh-notes-side{width:300px;flex-shrink:0;background:var(--npanel);border-radius:var(--nr-lg);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--nbd-soft)}
+/* ===== 侧栏分隔条（4px 拖拽条：叠加在两栏 10px 间隙上不占位——宽 4px + 双侧 -7px margin 抵消 gap；hover/拖拽中高亮；双击重置缺省宽） ===== */
+.dsh-notes-splitter{width:4px;margin:0 -7px;flex-shrink:0;cursor:col-resize;z-index:5;border-radius:2px;transition:background .15s}
+.dsh-notes-splitter:hover,.dsh-notes-splitter.on{background:var(--nacc)}
+/* 拖拽期间全局禁文本选择 + 强制 col-resize（body class 随 mouseup 移除，与 document 监听同生命周期） */
+body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!important;user-select:none!important;-webkit-user-select:none!important}
 
 /* 品牌行（logo + 笔记 + 计数） */
 .dsh-notes-brand{display:flex;align-items:center;gap:8px;padding:13px 14px 9px}
@@ -141,6 +146,10 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 .dsh-notes-brand-logo .dsh-ic{width:13px;height:13px}
 .dsh-notes-brand b{font-size:13px;color:var(--ntx);font-weight:600}
 .dsh-notes-brand-cnt{margin-left:auto;font-size:11px;color:var(--nt3)}
+/* 新建入口（自旧 chips 行迁入 brand 行右侧，筛选中心口径⑥） */
+.dsh-notes-brand-add{color:var(--nt3);cursor:pointer;padding:2px;border-radius:4px;display:grid;place-items:center;flex-shrink:0}
+.dsh-notes-brand-add:hover{color:var(--nacc);background:var(--nbg-hover)}
+.dsh-notes-brand-add .dsh-ic{width:13px;height:13px}
 
 /* 搜索框（侧栏常显，Ctrl K 聚焦） */
 .dsh-notes-quick{margin:0 10px 8px;display:flex;align-items:center;gap:7px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:6px 10px;color:var(--nt3);transition:border-color .15s}
@@ -149,15 +158,53 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 .dsh-notes-quick-input::placeholder{color:var(--nt3)}
 .dsh-notes-kbd{font-family:var(--nmono);font-size:10px;background:var(--npanel);border:1px solid var(--nbd);border-radius:4px;padding:1px 5px;color:var(--nt3);flex-shrink:0;white-space:nowrap}
 
-/* kind 筛选 chips + 置顶 + 新建 */
-.dsh-notes-chips{display:flex;gap:5px;padding:0 10px 9px;flex-wrap:wrap;align-items:center;flex-shrink:0}
-.dsh-notes-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 9px;border-radius:20px;border:1px solid var(--nbd);color:var(--nt2);cursor:pointer;user-select:none;font-family:var(--nfont);line-height:1.6}
-.dsh-notes-chip:hover{color:var(--ntx);border-color:var(--nt3)}
-.dsh-notes-chip.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:500}
-.dsh-notes-chip .dsh-ic{width:11px;height:11px}
-.dsh-notes-chip.new{color:var(--nt2)}
-.dsh-notes-chip.new:hover{color:var(--nacc-tx);border-color:var(--nacc)}
-.dsh-notes-sp{flex:1}
+/* ===== 筛选中心（design/notes-filter-center.html 落地）：筛选按钮(N) + 激活条件 chips（单行横滚）+ 独立排序控件 ===== */
+/* 硬性布局约束：chips 过多单行横向滚动，树区高度不受影响（filterbar 不换行、flex-shrink:0；fpop/fsort-menu 均 absolute 浮层覆盖树上） */
+.dsh-notes-filterbar{position:relative;display:flex;align-items:center;gap:5px;padding:0 10px 9px;flex-wrap:nowrap;flex-shrink:0}
+.dsh-notes-fbtn-filter{display:inline-flex;align-items:center;gap:5px;font-family:var(--nfont);font-size:11px;color:var(--nt2);background:var(--nbg-raise);border:1px solid var(--nbd);border-radius:20px;padding:3px 11px;cursor:pointer;flex-shrink:0;line-height:1.6}
+.dsh-notes-fbtn-filter:hover{color:var(--ntx);background:var(--nbg-hover)}
+.dsh-notes-fbtn-filter.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:600}
+.dsh-notes-fbtn-filter .dsh-ic{width:11px;height:11px}
+.dsh-notes-fcnt{font-family:var(--nmono);font-size:9.5px;line-height:1.4;background:var(--nacc);color:#fff;border-radius:8px;padding:0 5px}
+/* 激活条件 chips：单行横排，超宽横向滚动（不挤压树区高度）；× 单条移除，与 popover 勾选双向同步 */
+.dsh-notes-fchips{display:flex;gap:4px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:thin}
+.dsh-notes-fchip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 4px 2px 9px;border-radius:20px;background:var(--nbg-sel);color:var(--nacc-tx);flex-shrink:0;user-select:none;white-space:nowrap}
+.dsh-notes-fchip .dsh-ic{width:10px;height:10px}
+.dsh-notes-fchip-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.dsh-notes-fchip-x{display:grid;place-items:center;width:14px;height:14px;border-radius:50%;cursor:pointer;opacity:.75}
+.dsh-notes-fchip-x:hover{opacity:1;background:var(--nbg-hover);color:var(--ntx)}
+.dsh-notes-fchip-x .dsh-ic{width:9px;height:9px}
+/* 独立排序控件（右端；非缺省排序或菜单打开时高亮；与筛选正交，互不重置） */
+.dsh-notes-fsort-wrap{position:relative;flex-shrink:0}
+.dsh-notes-fsort-btn{display:inline-flex;align-items:center;gap:4px;font-family:var(--nfont);font-size:11px;color:var(--nt2);background:transparent;border:1px solid var(--nbd);border-radius:20px;padding:3px 10px;cursor:pointer;line-height:1.6}
+.dsh-notes-fsort-btn:hover{color:var(--ntx);background:var(--nbg-hover)}
+.dsh-notes-fsort-btn.on{color:var(--nacc-tx);border-color:var(--nacc)}
+.dsh-notes-fsort-btn .dsh-ic{width:11px;height:11px}
+.dsh-notes-fsort-menu{position:absolute;top:calc(100% + 4px);right:0;z-index:90;min-width:190px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:var(--nshadow);padding:4px;animation:dshNotesPopIn .12s ease}
+.dsh-notes-fsort-item{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--nt2);padding:5px 9px;border-radius:var(--nr-sm);cursor:pointer;user-select:none}
+.dsh-notes-fsort-item:hover{background:var(--nbg-hover);color:var(--ntx)}
+.dsh-notes-fsort-item.on{color:var(--nacc-tx);font-weight:600}
+.dsh-notes-fsort-tick{width:12px;visibility:hidden;display:grid;place-items:center;flex-shrink:0}
+.dsh-notes-fsort-item.on .dsh-notes-fsort-tick{visibility:visible}
+.dsh-notes-fsort-sd{margin-left:auto;font-size:10px;color:var(--nt3);font-weight:400}
+/* popover 分组面板（锚定筛选按钮下挂；覆盖树上、关闭即消失，绝不挤压树区） */
+.dsh-notes-fpop{position:absolute;top:calc(100% + 4px);left:10px;z-index:80;width:238px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:var(--nshadow);padding:6px 6px 0;animation:dshNotesPopIn .12s ease}
+@keyframes dshNotesPopIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.dsh-notes-fg-h{display:flex;align-items:baseline;justify-content:space-between;gap:6px;font-size:10px;color:var(--nt3);letter-spacing:.6px;padding:5px 8px 3px;text-transform:uppercase}
+.dsh-notes-fg-rule{font-size:9.5px;letter-spacing:0;text-transform:none;opacity:.85;white-space:nowrap}
+.dsh-notes-fg-item{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--nt2);padding:5px 8px;border-radius:var(--nr-sm);cursor:pointer;user-select:none}
+.dsh-notes-fg-item:hover{background:var(--nbg-hover);color:var(--ntx)}
+.dsh-notes-fg-item input{accent-color:var(--nacc);margin:0;flex-shrink:0}
+.dsh-notes-fg-item .dsh-ic{width:11px;height:11px;color:var(--nt3)}
+.dsh-notes-fg-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.dsh-notes-fg-fl{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsh-notes-fg-cnt{font-size:10px;color:var(--nt3);flex-shrink:0}
+.dsh-notes-fpop-foot{display:flex;align-items:center;gap:8px;border-top:1px solid var(--nbd-soft);margin-top:6px;padding:7px 2px 8px}
+.dsh-notes-fpop-pcnt{flex:1;font-size:10.5px;color:var(--nt3)}
+.dsh-notes-pbtn{font-family:var(--nfont);font-size:11px;padding:3px 14px;border-radius:var(--nr-sm);border:1px solid var(--nbd);background:var(--nbg-raise);color:var(--nt2);cursor:pointer}
+.dsh-notes-pbtn:hover{color:var(--ntx);background:var(--nbg-hover)}
+.dsh-notes-pbtn.primary{background:var(--nacc);border-color:transparent;color:#fff;font-weight:600}
+.dsh-notes-pbtn.primary:hover{opacity:.9}
 
 /* ===== 笔记树（原型 .tree） ===== */
 .dsh-notes-tree{flex:1;overflow-y:auto;padding:0 6px 8px;border-top:1px solid var(--nbd-soft)}
@@ -190,10 +237,16 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 .dsh-notes-caret{width:11px;flex-shrink:0;color:var(--nt3);display:grid;place-items:center;transition:transform .15s;cursor:pointer;border-radius:3px}
 .dsh-notes-caret.open{transform:rotate(90deg)}
 .dsh-notes-caret .dsh-ic{width:10px;height:10px}
-/* 文件夹行（原型 .row.head：点击主体=进入文件夹视图，点 caret=折叠切换；也是 drop 目标） */
+/* 文件夹行（原型 .row.head：点击主体=原地展开/折叠，行尾过滤图标=进入文件夹视图；也是 drop 目标） */
 .dsh-notes-folder-row{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:var(--nr-sm);color:var(--nt2);cursor:default;user-select:none;font-size:11.5px;font-weight:600;font-family:var(--nfont)}
 .dsh-notes-folder-row:hover{background:var(--nbg-hover);color:var(--ntx)}
 .dsh-notes-folder-row.on{background:var(--nbg-sel);color:var(--nacc-tx)}
+/* 行尾视图过滤图标（文件夹行/主题过滤行共用：单击行主体=原地展开，视图过滤降级为行尾小图标；hover 浮现，激活时常显） */
+.dsh-notes-row-vfilter{width:16px;height:16px;flex-shrink:0;display:grid;place-items:center;color:var(--nt3);border-radius:4px;cursor:pointer;opacity:0;transition:opacity .12s}
+.dsh-notes-folder-row:hover .dsh-notes-row-vfilter,.dsh-notes-row:hover .dsh-notes-row-vfilter{opacity:1}
+.dsh-notes-row-vfilter:hover{color:var(--nacc);background:var(--nbg-hover)}
+.dsh-notes-row-vfilter.on{opacity:1;color:var(--nacc)}
+.dsh-notes-row-vfilter .dsh-ic{width:11px;height:11px}
 .dsh-notes-folder-rename{flex:1;min-width:0;background:var(--npanel);border:1px solid var(--nacc);border-radius:6px;color:var(--ntx);font-size:12px;padding:2px 6px;outline:none;font-family:var(--nfont);box-sizing:border-box}
 /* 笔记行（原型 .note-row：kind 色点 + 标题(+pin) + ⚡约定 + 行尾） */
 .dsh-notes-note-row{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:var(--nr-sm);color:var(--ntx);cursor:default;user-select:none;font-size:13px}
@@ -208,6 +261,8 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 .dsh-notes-note-ti{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .dsh-notes-note-pin{width:10px;height:10px;color:var(--nwarn);margin-right:3px}
 .dsh-notes-note-inj{color:var(--nacc);display:inline-flex;align-items:center;flex-shrink:0}
+/* 曾注入行徽章（injectEver 粘性标记：淡灰时钟，与已注入 bolt 蓝徽章互斥显示） */
+.dsh-notes-note-injevr{color:var(--nt3);display:inline-flex;align-items:center;flex-shrink:0}
 /* 使用遥测（P2）：行尾被引用徽章（quote 图标 + 计数；0 次不渲染） */
 .dsh-notes-note-use{display:inline-flex;align-items:center;gap:2px;font-size:10px;color:var(--nt3);flex-shrink:0;line-height:1.6}
 .dsh-notes-note-use .dsh-ic{width:9px;height:9px}
@@ -228,6 +283,7 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 .dsh-notes-side-foot{padding:8px 10px;border-top:1px solid var(--nbd-soft);display:flex;gap:6px;flex-shrink:0}
 .dsh-notes-fbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;color:var(--nt2);background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:5px 0;cursor:pointer;user-select:none;font-family:var(--nfont)}
 .dsh-notes-fbtn:hover{color:var(--nacc-tx);border-color:var(--nacc)}
+.dsh-notes-fbtn.on{color:var(--nacc-tx);border-color:var(--nacc);background:var(--nbg-sel)}   /* 「选择」多选态高亮（自旧 chips 行迁入 side-foot） */
 .dsh-notes-fbtn .dsh-ic{width:12px;height:12px}
 
 /* ===== 编辑器通栏（原型 .ed：面包屑 + 大标题 + meta chips + 正文 + 底部状态） ===== */
@@ -342,6 +398,17 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 .dsh-notes-inject-gauge-bar{height:100%;background:var(--nacc);border-radius:4px;transition:width .3s}
 .dsh-notes-inject-gauge-bar.over{background:var(--ndanger)}
 .dsh-notes-inject-gauge-t{display:block;font-size:10.5px;color:var(--nt3);margin-top:4px}
+
+/* ===== 注入预览 modal（设置卡片「注入预览」入口）：双 tab + 只读等宽文本 + 底部统计条 ===== */
+.dsh-notes-injprev-modal{width:560px}   /* 注入全文预览需要更宽，覆盖 settings-modal 的 400px */
+.dsh-notes-injprev-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.dsh-notes-injprev-tabs{display:flex;gap:4px}
+.dsh-notes-injprev-tab{font-family:var(--nfont);font-size:11.5px;padding:3px 14px;border-radius:20px;border:1px solid var(--nbd);background:transparent;color:var(--nt2);cursor:pointer;transition:all .15s}
+.dsh-notes-injprev-tab:hover{color:var(--ntx);background:var(--nbg-hover)}
+.dsh-notes-injprev-tab.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:500}
+.dsh-notes-injprev-sess{margin-left:auto;width:auto;max-width:230px;flex-shrink:1;min-width:0}
+.dsh-notes-injprev-text{font-family:var(--nmono);font-size:11px;line-height:1.65;background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:8px;padding:10px 12px;max-height:46vh;min-height:120px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0;color:var(--nt2);box-sizing:border-box}
+.dsh-notes-injprev-stats{font-size:10.5px;color:var(--nt3);margin-top:10px;line-height:1.6}
 
 /* ===== 数据导入/导出（导出/导入对话框；mask/modal 复用设置卡片类） ===== */
 .dsh-notes-data-modal{width:440px}   /* 导入预览明细需要更宽，覆盖 settings-modal 的 400px */
@@ -517,6 +584,13 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 .dsh-notes-trash-act.danger{color:var(--ndanger)}
 .dsh-notes-trash-act.danger:hover{border-color:var(--ndanger);color:var(--ndanger)}
 .dsh-notes-trash-act:disabled{opacity:.5;cursor:default}
+
+/* ===== 整理建议对话框（复用 arch 列表样式 + trash-act 行内按钮）：三段分节标题 ===== */
+.dsh-notes-suggest-modal{width:480px}
+.dsh-notes-suggest-sec{margin-bottom:4px}
+.dsh-notes-suggest-sec-t{display:flex;align-items:center;gap:7px;padding:6px 2px;font-size:11.5px;font-weight:600;color:var(--ntx)}
+.dsh-notes-suggest-sec-n{font-size:10.5px;font-weight:400;color:var(--nt3)}
+.dsh-notes-suggest-sec-t .dsh-notes-trash-act{margin-left:auto}
 
 /* ===== 列表多选（「选择」chip → 行首复选框 → 底部浮动操作条） ===== */
 .dsh-notes-pick-check{flex-shrink:0;accent-color:var(--nacc);cursor:pointer;margin:0}

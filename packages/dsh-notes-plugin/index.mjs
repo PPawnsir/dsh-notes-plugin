@@ -184,6 +184,8 @@ export function apply(ctx) {
         'inject: ' + escYaml(m.inject ? 'true' : 'false') + '\n' +
         // injectRole 仅 inject=true 时落盘（非注入笔记不带角色字段，避免脏数据）
         (m.inject ? 'injectRole: ' + escYaml(m.injectRole === 'reference' ? 'reference' : 'convention') + '\n' : '') +
+        // injectEver 恒写（true/false 显式落盘，缺省 false）：曾注入粘性标记——一旦 inject 置 true 即永久 true，后续关闭 inject 不回退（侧栏「曾注入」过滤/行徽章数据源）
+        'injectEver: ' + escYaml(m.injectEver === true ? 'true' : 'false') + '\n' +
         'injectTo: ' + (m.injectTo || []).map(escYaml).join(', ') + '\n' +
         'recall: ' + escYaml(m.recall === false ? 'false' : 'true') + '\n' +
         // sensitive 恒写（true/false 显式落盘，缺省 false）：敏感笔记注入时正文按行打码
@@ -290,6 +292,10 @@ export function apply(ctx) {
       return (typeof v === 'number' && isFinite(v) && v >= 0) ? Math.floor(v) : 0
     }
     let lastInjectChars = 0
+    // 注入预览统计（notes-inject-preview RPC 数据源）：conventionText/catalogText 每次同步渲染后更新；
+    // 两函数均为同步执行，RPC 紧接调用后读取，无竞态。预览渲染（sidOverride 传入）不更新 lastInjectChars——仪表只反映真实注入。
+    const lastConvStats = { masked: 0, budgetTruncated: false }
+    const lastCatStats = { masked: 0, stale: 0 }
     // 时效判定：updatedAt 距今超过 limit 天 → 返回整天数（目录 ⚠ 标注用）；limit=0 关闭 / 无法解析 / 未超期 → 0
     function staleDaysOf(updatedAt, limit) {
       if (limit <= 0) return 0
@@ -427,6 +433,9 @@ export function apply(ctx) {
         recall: p.meta.recall !== 'false',
         // sensitive：敏感内容标记（注入时正文按行打码，键保留值遮蔽），缺省 false（存量零迁移）
         sensitive: p.meta.sensitive === 'true',
+        // injectEver：曾注入粘性标记（单向只升不降——inject 曾置 true 即永久 true，关闭不回退），缺省 false（存量零迁移）；
+        // 当前 inject=true 蕴含曾注入（旧数据无字段时由现状兜底，保证 injectEver ⊇ inject 不变量）
+        injectEver: p.meta.injectEver === 'true' || inject === true,
         createdAt: p.meta.createdAt || '',
         updatedAt: p.meta.updatedAt || '',
         sessionId: p.meta.sessionId || '',
@@ -499,7 +508,7 @@ export function apply(ctx) {
       const meta = {
         id: n.id, title: n.title, topic: n.topic, workspace: n.workspace, folder: n.folder || '',
         tags: n.tags || [], kind: n.kind || 'note', status: n.status || 'active',
-        inject: n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, sensitive: n.sensitive === true,
+        inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, sensitive: n.sensitive === true,
         createdAt: n.createdAt, updatedAt: n.updatedAt,
         sessionId: n.sessionId, cwd: n.cwd, mergedFrom: n.mergedFrom || [],
         dispatches: n.dispatches || [],
@@ -517,7 +526,7 @@ export function apply(ctx) {
       return {
         id: n.id, title: n.title, topic: n.topic, workspace: n.workspace, folder: n.folder || '',
         tags: n.tags, kind: n.kind || 'note', status: n.status || 'active',
-        inject: n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, sensitive: n.sensitive === true,
+        inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, sensitive: n.sensitive === true,
         createdAt: n.createdAt, updatedAt: n.updatedAt,
         sessionId: n.sessionId, cwd: n.cwd, mergedFrom: n.mergedFrom,
         dispatches: n.dispatches || [],
@@ -687,6 +696,8 @@ export function apply(ctx) {
         kind: ex.kind || 'note',
         status: ex.status || 'active',
         inject: ex.inject === true,
+        // injectEver 粘性：创建即注入（inject=true）或显式继承（归档合并 members.some 传入）→ true；否则缺省 false
+        injectEver: ex.injectEver === true || ex.inject === true,
         injectTo: ex.injectTo || [],
         injectRole: ex.injectRole === 'reference' ? 'reference' : 'convention',
         recall: ex.recall !== false,
@@ -761,7 +772,8 @@ export function apply(ctx) {
       if (tags !== undefined) note.tags = tags
       if (kind !== undefined) note.kind = kind
       if (status !== undefined) note.status = status
-      if (inject !== undefined) note.inject = inject === true
+      // injectEver 单向粘性（never unset）：inject 显式置 true 时同步拉起；置 false/不传均不回退（injectEver = 旧值 || 新 inject）
+      if (inject !== undefined) { note.inject = inject === true; if (inject === true) note.injectEver = true }
       if (injectTo !== undefined) note.injectTo = injectTo
       if (folder !== undefined) note.folder = folder
       if (recall !== undefined) note.recall = recall !== false
@@ -926,6 +938,8 @@ export function apply(ctx) {
       const noteObj = {
         id: id, title: title, topic: topic, workspace: basename(cw),
         tags: tags, kind: meta.kind, status: 'active', inject: meta.inject, injectTo: [],
+        // injectEver 粘性：指令式速记 LLM 判定 inject=true 时同步拉起（与 _create 同口径）
+        injectEver: meta.inject === true,
         // 注入角色：LLM 显式输出优先，缺省 convention（与 noteFromParsed 回退口径一致）
         injectRole: meta.injectRole || 'convention',
         sensitive: sens,
@@ -1124,6 +1138,86 @@ export function apply(ctx) {
       return { quickGroups: quickGroups }
     }
 
+    // ==== suggest-helpers BEGIN ====（本块 host-impl.js 与 packages/dsh-notes-plugin/index.mjs 双包逐字节一致，check.js 提取比对 + eval 单测；改动必须双边同步）
+    // 整理建议判定内核（notes-suggest 的纯函数部分，零外部函数依赖可 eval 单测）：
+    // 让已合入的 useCount（遥测）+ staleDays（时效）数据产生闭环价值——主动提名整理动作。
+    // 红线：只提名不执行（归档走 notes-archive-preview/notes-archive；删除由 client confirm 后逐条 notes-delete 软删）。
+    // 双链判定与 client 编辑器同一正则口径：[[target]]（target 不含方括号/换行）；[[id]] 或 [[标题]] 精确命中即视为被引用。
+    const SUGGEST_LINK_RE = /\[\[([^\[\]\n]+)\]\]/g
+    // 孤儿候选上限：提名而非穷尽（防长列表淹没前两段；最旧的优先展示）
+    const SUGGEST_ORPHAN_LIMIT = 20
+    // 提取正文 [[target]] 出链（与 client 侧提取同口径；上限 500 防病态正文卡正则）
+    function suggestLinkTargetsOf(body) {
+      const out = []
+      SUGGEST_LINK_RE.lastIndex = 0
+      let m
+      while ((m = SUGGEST_LINK_RE.exec(String(body == null ? '' : body)))) { out.push(m[1]); if (out.length >= 500) break }
+      return out
+    }
+    // 时效判定：updatedAt 距今超过 limit 天 → 整天数；limit<=0（关闭）/无法解析/未超期 → 0
+    // （与外层 staleDaysOf 同口径；本块自包含不引用外部函数，nowMs 可注入供单测取确定值）
+    function suggestStaleDays(updatedAt, limit, nowMs) {
+      if (limit <= 0) return 0
+      const t = Date.parse(updatedAt || '')
+      if (!isFinite(t)) return 0
+      const d = Math.floor(((nowMs || Date.now()) - t) / 86400000)
+      return d > limit ? d : 0
+    }
+    // 候选计算（纯函数；all = 未删除全量笔记，staleLimit = staleDaysLimit() 由调用方注入）：
+    //   staleCandidates：kind=note/link 且 updatedAt 距今 > staleLimit 且 useCount===0
+    //     （从未被引用且过期的参考资料——最高优先清理信号；useCount>0 的过期笔记仍被 agent 引用，不提名）。按 staleDays 降序。
+    //   orphanCandidates：可能无用的孤儿笔记（上限 20，最旧在前）。判定条件（防误伤，缺一不可）：
+    //     · kind='note'：普通笔记（todo/decision/link/quote 各有生命周期语义，不在此列）
+    //     · status='active'：pinned/resolved/superseded 是显式用户状态，不动
+    //     · inject=false：注入中的笔记正在影响会话系统提示，绝不提名
+    //     · useCount=0：被 note_get 命中过即视为有价值
+    //     · 正文无 [[..]] 出链，且全库无指向它的 [[id]]/[[标题]] 反向链接
+    //       （all 不含已删笔记——已删笔记的链接不算活引用，与 client 反向链接面板口径一致）
+    //     · 排除速记（tags 含 quick：已由 archiveCandidates 通道提名，避免双重提名误导）
+    //     · 排除归档产物（mergedFrom 非空：合并归档笔记是「已整理」成果，提名删除会误伤归档结果）
+    function suggestCandidates(all, staleLimit) {
+      const staleCandidates = []
+      if (staleLimit > 0) {
+        for (const n of all) {
+          if (n.kind !== 'note' && n.kind !== 'link') continue
+          const sd = suggestStaleDays(n.updatedAt, staleLimit)
+          if (sd <= 0) continue
+          if ((n.useCount || 0) > 0) continue   // 遥测保护：仍被引用的过期笔记不提名
+          staleCandidates.push({ id: n.id, title: n.title, topic: n.topic || '', updatedAt: n.updatedAt || '', staleDays: sd })
+        }
+        staleCandidates.sort((x, y) => y.staleDays - x.staleDays)
+      }
+      // 反向链接索引：全库正文 [[target]] 集合（一次扫描；命中 id 或标题即视为被引用）
+      const linkTargets = new Set()
+      for (const n of all) for (const t of suggestLinkTargetsOf(n.body)) linkTargets.add(t)
+      const orphans = []
+      for (const n of all) {
+        if ((n.kind || 'note') !== 'note') continue
+        if ((n.status || 'active') !== 'active') continue
+        if (n.inject === true) continue
+        if ((n.useCount || 0) > 0) continue
+        if ((n.tags || []).indexOf('quick') >= 0) continue
+        if ((n.mergedFrom || []).length > 0) continue
+        if (suggestLinkTargetsOf(n.body).length > 0) continue
+        if (linkTargets.has(n.id) || (n.title && linkTargets.has(n.title))) continue
+        orphans.push({ id: n.id, title: n.title, topic: n.topic || '', updatedAt: n.updatedAt || '', createdAt: n.createdAt || '' })
+      }
+      orphans.sort((x, y) => String(x.updatedAt || '').localeCompare(String(y.updatedAt || '')))   // 最旧在前
+      return { staleCandidates: staleCandidates, orphanCandidates: orphans.slice(0, SUGGEST_ORPHAN_LIMIT) }
+    }
+    // ==== suggest-helpers END ====
+
+    // 整理建议（notes-suggest，dry-run 零写入）：返回 { archiveCandidates, staleCandidates, orphanCandidates, generatedAt }
+    // archiveCandidates 内聚复用 _archivePreview——速记组结构与 notes-archive-preview 完全同源，
+    // client「去归档」直达归档预览对话框对接的正是同一批组（dry-run 非热路径，二次 _list 走缓存）。
+    async function _suggest() {
+      await loadSettings()   // 幂等（缓存 promise）：确保 staleDays 用户 override 已加载生效
+      const all = await _list()
+      const pv = await _archivePreview()
+      const c = suggestCandidates(all, staleDaysLimit())
+      return { archiveCandidates: pv.quickGroups, staleCandidates: c.staleCandidates, orphanCandidates: c.orphanCandidates, generatedAt: new Date().toISOString() }
+    }
+
     // 合并一组笔记为一条归档笔记：正文按 updatedAt 升序拼接（## 日期 分节），原笔记先 .bak 备份再软删除。
     // 返回 { noteId, memberIds }（undo 事务记录用）
     async function _mergeGroup(members, titleOverride) {
@@ -1149,7 +1243,9 @@ export function apply(ctx) {
         archivedAt: now,
         folder: last.folder || '',
         // 敏感继承：任一成员敏感则归档笔记敏感（合并正文含成员原文，泄露面不降级）
-        sensitive: members.some(n => n.sensitive === true)
+        sensitive: members.some(n => n.sensitive === true),
+        // 曾注入继承（与 sensitive 同款 members.some）：任一成员曾注入/正注入 → 归档笔记 injectEver=true
+        injectEver: members.some(n => n.injectEver === true || n.inject === true)
       })
       // 归档前先备份原笔记（.bak 后缀，_list 不会读到）
       for (const n of members) {
@@ -1447,19 +1543,43 @@ export function apply(ctx) {
     }
     // ==== dispatch-loop END ====
 
-    async function _search(query, tag, topic, kind, folder) {
+    // ==== search-helpers BEGIN ====（搜索命中字段 + 组合过滤：host-impl.js 与 packages/dsh-notes-plugin/index.mjs 双包逐字节一致，改动必须双边同步；check.js 提取本标记区间 eval 单测）
+    // 命中字段（相关度档位数据源，notes-search 随 slim 结果返回 matches 数组）：标题命中 > 标签命中 > 正文命中；
+    // topic 命中不计档（返回空数组——相关度排序时排最末；该笔记仍因 hay 含 topic 而被搜到，向后兼容旧行为）
+    function searchMatchFields(n, q) {
+      const fields = []
+      if (!q) return fields
+      if ((n.title || '').toLowerCase().indexOf(q) >= 0) fields.push('title')
+      if ((n.tags || []).join(' ').toLowerCase().indexOf(q) >= 0) fields.push('tags')
+      if ((n.body || '').toLowerCase().indexOf(q) >= 0) fields.push('body')
+      return fields
+    }
+    // 组合过滤（供筛选面板/工具消费，三态布尔）：true=仅命中 / false=仅排除 / undefined=不过滤；kind 由 _search 既有参数承担
+    function searchPassFilters(n, filters) {
+      const f = filters || {}
+      if (f.sensitive === true && n.sensitive !== true) return false
+      if (f.sensitive === false && n.sensitive === true) return false
+      if (f.inject === true && n.inject !== true) return false
+      if (f.inject === false && n.inject === true) return false
+      return true
+    }
+    // ==== search-helpers END ====
+
+    async function _search(query, tag, topic, kind, folder, filters) {
       const all = await _list(undefined, undefined, folder)
       const q = query ? String(query).toLowerCase() : ''
       return all.filter(n => {
         if (tag && (n.tags || []).indexOf(tag) < 0) return false
         if (topic && n.topic !== topic) return false
         if (kind && n.kind !== kind) return false
+        if (!searchPassFilters(n, filters)) return false
         if (q) {
           const hay = ((n.title || '') + ' ' + (n.body || '') + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ')).toLowerCase()
           if (hay.indexOf(q) < 0) return false
         }
         return true
-      })
+        // matches 挂在浅拷贝上（不污染 _list 缓存对象）；无 query 时不带 matches 字段（向后兼容）
+      }).map(n => q ? Object.assign({}, n, { matches: searchMatchFields(n, q) }) : n)
     }
 
     // ---- 导入/导出：全库目录快照（目录即格式，零新依赖；settings.json 与 *.md.bak 不进出）----
@@ -1921,8 +2041,11 @@ export function apply(ctx) {
     // 分桶：injectRole='convention' → 用户约定（须遵守）；'reference' → 参考资料（按需取用）；
     // 缺省/非法值已在 noteFromParsed 回退 convention（存量零迁移）；只命中单桶时只输出该桶标题。
     // 文案不再标注工作区归属与来源会话：大量笔记由 agent 快速记录产生，归属标注对注入方无意义。
-    function conventionText() {
+    // sidOverride（注入预览 RPC 专用）：不传 = 真实注入路径（取当前会话，行为不变）；传 '' = 「全局」视角（只命中 injectTo=[] 的笔记）；
+    // 传会话短 id = 按该会话 injectTo 命中过滤。拼装逻辑不变，仅 curSid 输入来源不同（纯复用）。
+    function conventionText(sidOverride) {
       const shortSid = (x) => x ? String(x).replace(/^session-/, '').slice(0, 8) : ''
+      lastConvStats.masked = 0; lastConvStats.budgetTruncated = false
       try {
         let cwd = ''
         let sid = ''
@@ -1932,14 +2055,14 @@ export function apply(ctx) {
           sid = a.sessionId || (a.session && a.session.id) || ''
         }
         const ws = basename(cwd)
-        const curSid = shortSid(sid)
+        const curSid = sidOverride !== undefined ? sidOverride : shortSid(sid)
         const matches = []
         for (const n of cache.values()) {
           if (n.deleted) continue
           if (n.inject !== true) continue
           if (conventionHit(n, ws, curSid)) matches.push(n)
         }
-        if (matches.length === 0) { lastInjectChars = 0; return '' }
+        if (matches.length === 0) { if (sidOverride === undefined) lastInjectChars = 0; return '' }
         matches.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
         // 双角色分桶：约定与资料各自成段，标题换行收拢，正文行统一缩进两格保持在列表项内
         const conventions = []
@@ -1973,7 +2096,9 @@ export function apply(ctx) {
         // 尾部提示行恒定可见（截断之后追加）：预算省略计数 + 脱敏计数（原文 note_get 按 id 获取 / note_search 检索）
         if (droppedRefs > 0) full += '\n\n…另有 ' + droppedRefs + ' 条资料超出预算未注入（note_search 可检索）'
         if (maskedCount > 0) full += '\n\n（其中 ' + maskedCount + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）'
-        lastInjectChars = full.length   // 注入体积缓存：每次渲染更新（设置卡片仪表数据源）
+        // 预览统计：脱敏条数 + 预算截断标记（资料桶有省略即视为截断）；预览渲染不触碰 lastInjectChars
+        lastConvStats.masked = maskedCount; lastConvStats.budgetTruncated = droppedRefs > 0
+        if (sidOverride === undefined) lastInjectChars = full.length   // 注入体积缓存：真实注入渲染才更新（设置卡片仪表数据源）
         return full
       } catch (e) { return '' }
     }
@@ -1986,7 +2111,9 @@ export function apply(ctx) {
     // text 是同步函数（systemPrompt 契约）：读常驻 cache + settingsCache；总开关关闭/无条目/异常 → 返回 ''（不能返回 undefined）。
     const CATALOG_LIMIT = 40
     const CATALOG_KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用' }
-    function catalogText() {
+    // sidOverride：注入预览 RPC 专用（语义同 conventionText）；不传 = 真实注入路径（当前会话），行为不变
+    function catalogText(sidOverride) {
+      lastCatStats.masked = 0; lastCatStats.stale = 0
       try {
         if (settingsCache && settingsCache.catalogEnabled === false) return ''   // 面板总开关（settings.json，缺省开）
         let cwd = ''
@@ -1997,7 +2124,7 @@ export function apply(ctx) {
           sid = a.sessionId || (a.session && a.session.id) || ''
         }
         const ws = basename(cwd)
-        const curSid = shortSid(sid)
+        const curSid = sidOverride !== undefined ? sidOverride : shortSid(sid)
         const pool = []
         for (const n of cache.values()) {
           if (n.deleted) continue
@@ -2018,6 +2145,7 @@ export function apply(ctx) {
         let maskedCount = 0
         // P1 时效衰减提醒：kind=note/link（参考资料类）且 updatedAt 距今超过 staleDays（缺省 90 天，0=关闭）的行尾追加 ⚠ 标注
         const staleLimit = staleDaysLimit()
+        let staleCount = 0   // 预览统计：被 ⚠ 时效标注的条目数
         const lines = shown.map(n => {
           const kl = CATALOG_KIND_LABELS[n.kind] || CATALOG_KIND_LABELS.note
           let title = String(n.title || 'Untitled').replace(/[\r\n]+/g, ' ')   // 一行一条：标题换行收拢
@@ -2025,11 +2153,12 @@ export function apply(ctx) {
           if (n.sensitive === true) { maskedCount++; title = maskSensitiveLine(title, n.id); mark = '🔒 ' }
           let line = '- [' + n.id + '] ' + mark + title + ' (' + kl + ', ' + (n.topic || '未分类') + ')'
           const sd = staleDaysOf(n.updatedAt, (n.kind === 'note' || n.kind === 'link') ? staleLimit : 0)
-          if (sd > 0) line += ' ⚠ ' + sd + ' 天未更新'
+          if (sd > 0) { staleCount++; line += ' ⚠ ' + sd + ' 天未更新' }
           return line
         })
         if (pool.length > CATALOG_LIMIT) lines.push('…另有 ' + (pool.length - CATALOG_LIMIT) + ' 条较早笔记，用 note_search 检索')
         if (maskedCount > 0) lines.push('（其中 ' + maskedCount + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）')
+        lastCatStats.masked = maskedCount; lastCatStats.stale = staleCount   // 预览统计（notes-inject-preview）
         return '本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：\n' +
           lines.join('\n') +
           '\n规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手'
@@ -2135,8 +2264,18 @@ export function apply(ctx) {
     disposers.push(handle('notes-archive-undo', async () => {
       try { return await _archiveUndo() } catch (e) { return { error: String(e.message || e) } }
     }))
+    // 整理建议（dry-run 零写入）：三类候选（速记组/过期未引用/孤儿）——只提名不执行；过期未引用的批量软删由 client confirm 后逐条 notes-delete
+    disposers.push(handle('notes-suggest', async () => {
+      try { return await _suggest() } catch (e) { return { error: String(e.message || e) } }
+    }))
+    // notes-search 扩展（向后兼容）：新增 sensitive/inject 组合过滤参数（true=仅命中 / false=仅排除 / 缺省=不过滤，供筛选面板消费）；
+    // 带 query 时每条 slim 结果附 matches 命中字段数组（title/tags/body，供前端高亮与「相关度」排序；旧调用方不读该字段不受影响）
     disposers.push(handle('notes-search', async (args) => {
-      try { return { notes: (await _search(args && args.query, args && args.tag, args && args.topic, args && args.kind, args && args.folder)).map(slim) } } catch (e) { return { error: String(e.message || e) } }
+      try {
+        const a = args || {}
+        const found = await _search(a.query, a.tag, a.topic, a.kind, a.folder, { sensitive: a.sensitive, inject: a.inject })
+        return { notes: found.map(n => { const s = slim(n); if (n.matches) s.matches = n.matches; return s }) }
+      } catch (e) { return { error: String(e.message || e) } }
     }))
     // 上下文注入（双角色分桶）：注册动态 prompt context（order 130，位于 policy/delegation 之后）
     // 笔记目录索引注入（recall 通道）：order 131 紧邻上下文注入之后；text 同步返回 string，无内容/总开关关闭返回 ''
@@ -2146,6 +2285,29 @@ export function apply(ctx) {
     }
     // 调试 RPC：预览当前会话将注入的上下文笔记文本（双角色分桶新文案，E2E 验证用）
     disposers.push(handle('notes-conventions', async () => ({ text: conventionText() || '' })))
+    // 注入预览（设置卡片「注入预览」modal 数据源）：纯复用 conventionText/catalogText 渲染产物 + 统计，不重写拼装。
+    // args.sessionId 缺省 = 「全局」视角（sidOverride=''，只命中 injectTo=[] / 存量 global/workspace 的笔记）；
+    // 传会话 id/短 id 则按该会话 injectTo 命中过滤（conventionHit 同一口径）。
+    // 预览渲染不更新 lastInjectChars（仪表只反映真实注入）；统计取自同步渲染的 lastConvStats/lastCatStats（无竞态）。
+    disposers.push(handle('notes-inject-preview', async (args) => {
+      try {
+        const sid = args && args.sessionId ? shortSid(String(args.sessionId)) : ''
+        const conventions = conventionText(sid) || ''
+        const catalog = catalogText(sid) || ''
+        return {
+          conventions: conventions,
+          catalog: catalog,
+          stats: {
+            conventionsChars: conventions.length,
+            catalogChars: catalog.length,
+            totalChars: conventions.length + catalog.length,
+            maskedNotes: lastConvStats.masked + lastCatStats.masked,
+            staleMarked: lastCatStats.stale,
+            budgetTruncated: lastConvStats.budgetTruncated
+          }
+        }
+      } catch (e) { return { error: String(e.message || e) } }
+    }))
     // 会话列表（注入范围多选用）：与派发同源——工作区有效会话（排除已归档 + 子 agent），复用 _activeSessions
     // 返回 { sessions, titlesPending?, pendingIds?, pendingSessions? }：缓存未命中的会话后台补标题（0.1.7 首屏不阻塞）
     disposers.push(handle('notes-sessions', async () => {
@@ -2376,15 +2538,17 @@ export function apply(ctx) {
     // RPC 层保持 handler 不变（client panel 仍在用）；工具只面向 Agent，瘦身 schema。
     regTool({
       name: 'note_search',
-      description: 'Search local notes by free-text query (matches title/body/topic/tags), with optional tag, topic, kind, and folder filters. Returns slim notes (no body) for fast triage — call note_get for the full body of a specific id. Tip: when planning a task, picking an approach, or making decisions, consider searching this notes library first for related decisions, todos, and context recorded in earlier sessions — it may already contain the conclusions you need.',
+      description: 'Search local notes by free-text query (matches title/body/topic/tags), with optional tag, topic, kind, folder, sensitive, and inject filters. When a query is given, each result carries a matches array telling which fields matched (title/tags/body — relevance: title > tags > body). Returns slim notes (no body) for fast triage — call note_get for the full body of a specific id. Tip: when planning a task, picking an approach, or making decisions, consider searching this notes library first for related decisions, todos, and context recorded in earlier sessions — it may already contain the conclusions you need.',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Free-text query against title, body, topic, and tags. Omit to list all (optionally filtered by tag/topic/kind/folder).' },
+          query: { type: 'string', description: 'Free-text query against title, body, topic, and tags. Omit to list all (optionally filtered by tag/topic/kind/folder/sensitive/inject).' },
           tag: { type: 'string', description: 'Optional tag filter (exact match)' },
           topic: { type: 'string', description: 'Optional topic filter (exact match)' },
           kind: { type: 'string', enum: KINDS, description: 'Optional kind filter: note/decision/todo/link/quote' },
           folder: { type: 'string', description: 'Optional folder filter: folder id or exact folder name; empty string = unfiled notes (未分类)' },
+          sensitive: { type: 'boolean', description: 'Optional sensitive filter: true = only sensitive (masked) notes, false = exclude sensitive notes. Omit = no filter.' },
+          inject: { type: 'boolean', description: 'Optional inject filter: true = only notes injected into the system prompt, false = exclude injected notes. Omit = no filter.' },
           limit: { type: 'number', description: 'Optional max results (default 50)' }
         }
       },
@@ -2397,9 +2561,9 @@ export function apply(ctx) {
           if (!rf) return { error: '文件夹不存在：' + String(folder) }
           folder = rf.id
         }
-        const all = await _search(args && args.query, args && args.tag, args && args.topic, args && args.kind, folder)
+        const all = await _search(args && args.query, args && args.tag, args && args.topic, args && args.kind, folder, { sensitive: args && args.sensitive, inject: args && args.inject })
         const limit = (args && args.limit) || 50
-        return { count: all.length, notes: all.slice(0, limit).map(slim) }
+        return { count: all.length, notes: all.slice(0, limit).map(n => { const s = slim(n); if (n.matches) s.matches = n.matches; return s }) }
       }
     })
 
@@ -2453,7 +2617,7 @@ export function apply(ctx) {
           tags: { type: 'array', items: { type: 'string' }, description: 'Tags (create/update)' },
           kind: { type: 'string', enum: KINDS, description: 'Kind (create/update): note/decision/todo/link/quote; default note' },
           status: { type: 'string', enum: STATUSES, description: 'Status (create/update): active/pinned/resolved/superseded; default active' },
-          inject: { type: 'boolean', description: 'Inject into system prompt as context (create/update); default false' },
+          inject: { type: 'boolean', description: 'Inject into system prompt as context (create/update); default false. Setting inject=true permanently marks injectEver=true (sticky "ever injected" flag — later turning inject off never unsets it; injectEver is read-only and appears in list/get output).' },
           injectRole: { type: 'string', enum: ['convention', 'reference'], description: 'Injection role: convention=rules to follow | reference=background facts to consult as needed; default convention' },
           injectTo: { type: 'array', items: { type: 'string' }, description: 'Injection scope multi-select: [] or omitted=all sessions (default), or session short-ids like ["99f2b674","7f8b49e6"] to restrict' },
           recall: { type: 'boolean', description: 'Recall in the notes catalog index (create/update); default true. Set false to hide from the catalog (still searchable via note_search).' },

@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dsh-notes 筛选中心 — UI 设计稿（设计先行）</title>
+<!--
+  dsh-notes 筛选中心 — UI 设计稿（design/notes-filter-center.html，浏览器直接打开即可验证）
+  =====================================================================================
+  定位：「设计先行」产物 —— 供 notes-filter-center 开发任务按稿实施的唯一 UI 规格来源。
+  本稿为独立新文件：不改动 design/notes-ui-v2.html / app.html（避免与在途开发任务的文件锁冲突）；
+  落地时由开发任务把本稿组件合并进 v2 / app.html（元素对照表见右侧设计说明 ⑥）。
+
+  设计范围（侧栏过滤完整形态，替代 v2 的 .chips 行）：
+    ① 筛选按钮：「筛选(N)」（漏斗图标；N=激活条件数，0 不显示计数丸）+ 右侧激活条件 chips
+       （条件图标/类型色点 + 文案 + ×，单条可移除，与面板勾选双向同步）
+    ② popover 分组面板：状态组（置顶/已注入/曾注入/敏感）+ 类型组（笔记/决策/待办/链接/引用）；
+       组内多选 = OR、跨组 = AND；勾选即时生效；底部 [命中 N 条][清空][完成]；
+       点外部 / Esc / 完成 关闭
+    ③ 独立排序控件：↕ 时间/引用/相关度（单选菜单；排序与筛选正交，互不重置）
+    ④ 笔记行徽章带：置顶 → 敏感🔒 → 已注入 → 曾注入⏱ → 被引用N（全 tooltip；被引用 0 次不渲染；
+       无徽章不渲染徽章带行）
+
+  演示场景（demobar 切换，共 4 个）：
+    A · 常态（无筛选）——干净：按钮无计数、无 chips，时间序全量列表（覆盖全部徽章组合样本）
+    B · 多条件组合（跨组 AND）——已注入 ∩ 决策：筛选(2) + 两条 chips，命中 n1/n8
+    C · 面板展开操作过程——popover 打开态：分组勾选、即时生效、底部动作按钮
+    D · 组内多选（OR）——状态组 置顶 ∪ 敏感：命中 3 条，演示组内 OR 语义
+
+  约定（与 notes-ui-v2.html / notes-editor-v3.html 相同）：原生 JS + SVG 图标 + DSH token 配色
+    （暗/亮双主题，token 值与 v2 逐字节一致）；数据层纯内存 mock；所有插值先 esc() 转义，
+    绝不用 innerHTML 直插原文。
+  自测钩子：URL 加 ?selftest=1 打开，控制台输出 [selftest] PASS/FAIL 明细。
+  口径备忘：
+    · 筛选按钮图标定稿为漏斗 i-filter（沿用 v2 既有 filter 图标体系；调研笔记中的 ⚙ 为占位符，
+      避免与 side-foot「设置」齿轮混淆）。
+    · 「曾注入」= 当前未注入但历史注入过（mock 字段 everInjected）；实现端数据源（注入历史遥测）
+      由 notes-filter-center 与 host 对齐。
+    · 「相关度」排序为 mock 权重示意（useCount×2 + 注入/置顶加权），实现端接搜索打分。
+-->
+<style>
+  :root{
+    --nfont:-apple-system,"SF Pro Text","Segoe UI","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+    --nmono:ui-monospace,"Cascadia Code",Consolas,monospace;
+    --nr-lg:12px; --nr-md:8px; --nr-sm:6px;
+  }
+  html[data-theme="dark"]{
+    /* DSH 0.1.7 暗色实机值（与 notes-ui-v2.html 逐字节一致） */
+    --nbg:#151517; --npanel:#232324; --nbg-raise:#2c2c2e; --nbg-hover:#ffffff14; --nbg-sel:rgba(122,170,255,.14);
+    --ntx:#f9fafb; --nt2:#cfd3d6; --nt3:#adb2b8; --nbd:#ffffff1f; --nbd-soft:#ffffff29;
+    --nacc:#7aaaff; --nacc-tx:#96bcfe; --nwarn:#e5b567; --ndanger:#e5734f;
+    --kind-note:#8f8fa3; --kind-decision:#e5b567; --kind-todo:#6c8cff; --kind-link:#56c8d8; --kind-quote:#b58fe5;
+  }
+  html[data-theme="light"]{
+    --nbg:#f1f1f1; --npanel:#ffffff; --nbg-raise:#f5f5f6; --nbg-hover:#2631480f; --nbg-sel:rgba(65,118,230,.14);
+    --ntx:#0f1115; --nt2:#61666b; --nt3:#81858c; --nbd:#0000001a; --nbd-soft:#0000001f;
+    --nacc:#4176e6; --nacc-tx:#3660b8; --nwarn:#b07f1e; --ndanger:#cf5b34;
+    --kind-note:#8f8f9c; --kind-decision:#b07f1e; --kind-todo:#4062e8; --kind-link:#1e9aab; --kind-quote:#8a5cd6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--nfont);background:var(--nbg);color:var(--ntx);height:100vh;overflow:hidden;font-size:13px;display:flex;flex-direction:column}
+  svg.ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  /* ===== 顶栏（沿用 v2） ===== */
+  .topbar{display:flex;gap:10px;align-items:center;padding:8px 14px;background:var(--npanel);border-bottom:1px solid var(--nbd);font-size:12px;color:var(--nt2)}
+  .topbar .logo{width:20px;height:20px;border-radius:5px;background:var(--nacc);display:grid;place-items:center;color:#fff}
+  .topbar .logo svg.ic{width:12px;height:12px}
+  .topbar b{color:var(--ntx);font-size:13px}
+  .topbar .sub{color:var(--nt3);font-size:11px}
+  .topbar .sp{flex:1}
+  .tbtn{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11.5px;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd);border-radius:var(--nr-sm);padding:4px 12px;cursor:pointer;text-decoration:none}
+  .tbtn:hover{background:var(--nbg-hover)}
+  .tbtn svg.ic{width:12px;height:12px}
+  /* ===== 演示条（沿用 editor-v3：场景切换 + 场景描述 + 快捷键提示） ===== */
+  .demobar{display:flex;align-items:center;gap:12px;padding:7px 14px;background:var(--npanel);border-bottom:1px solid var(--nbd);font-size:11.5px;color:var(--nt3)}
+  .scn{display:flex;gap:3px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:20px;padding:2px;flex-shrink:0}
+  .scn .s{padding:2px 12px;border-radius:16px;cursor:pointer;color:var(--nt2);display:flex;align-items:center;gap:5px;white-space:nowrap}
+  .scn .s:hover{color:var(--ntx)}
+  .scn .s.on{background:var(--nbg-sel);color:var(--nacc-tx);font-weight:600}
+  .scn-desc{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:var(--nt2)}
+  .demobar .hint{margin-left:auto;display:flex;gap:14px;font-size:10.5px;white-space:nowrap;flex-shrink:0}
+  .kbd{font-family:var(--nmono);font-size:10px;background:var(--nbg-raise);border:1px solid var(--nbd);border-radius:4px;padding:1px 5px;color:var(--nt3)}
+  /* ===== 主体两栏：左=侧栏原型，右=设计说明 ===== */
+  .app{flex:1;display:flex;min-height:0;padding:10px;gap:10px}
+  .side{width:342px;flex-shrink:0;background:var(--npanel);border-radius:var(--nr-lg);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--nbd-soft)}
+  .brand{display:flex;align-items:center;gap:8px;padding:13px 14px 9px}
+  .brand .logo{width:22px;height:22px;border-radius:6px;background:var(--nacc);display:grid;place-items:center;color:#fff}
+  .brand b{font-size:13px} .brand .cnt{margin-left:auto;font-size:11px;color:var(--nt3)}
+  /* 新建入口（自 v2 chips 行迁入 brand 行，见说明⑥） */
+  .brand .add-new{color:var(--nt3);cursor:pointer;padding:2px;border-radius:4px;display:grid;place-items:center}
+  .brand .add-new:hover{color:var(--nacc);background:var(--nbg-hover)}
+  .brand .add-new svg.ic{width:13px;height:13px}
+  .quick{margin:0 10px 8px;display:flex;align-items:center;gap:7px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:6px 10px}
+  .quick:focus-within{border-color:var(--nacc)}
+  .quick input{flex:1;border:0;outline:0;background:transparent;color:var(--ntx);font:inherit;font-size:12px}
+  .quick input::placeholder{color:var(--nt3)}
+  /* ===== ① 筛选中心行（替代 v2 .chips 行）：筛选按钮 + 激活条件 chips + 独立排序控件 ===== */
+  /* 硬性布局约束（用户明确要求）：chips 过多单行横向滚动，树区高度不受影响（filterbar 不换行、flex-shrink:0） */
+  .filterbar{position:relative;display:flex;align-items:center;gap:5px;padding:0 10px 9px;flex-wrap:nowrap;flex-shrink:0}
+  .fbtn-filter{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;color:var(--nt2);background:var(--nbg-raise);border:1px solid var(--nbd);border-radius:20px;padding:3px 11px;cursor:pointer;flex-shrink:0}
+  .fbtn-filter:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .fbtn-filter.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:600}
+  .fbtn-filter svg.ic{width:11px;height:11px}
+  .fbtn-filter .cnt{font-family:var(--nmono);font-size:9.5px;line-height:1.4;background:var(--nacc);color:#fff;border-radius:8px;padding:0 5px}
+  /* ② 激活条件 chips 滚动容器（单行横排，超宽横向滚动，不换行不撑高）+ chip（图标/色点 + 文案 + ×；与面板勾选双向同步） */
+  .fchips{display:flex;gap:4px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:thin}
+  .fchip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 4px 2px 9px;border-radius:20px;background:var(--nbg-sel);color:var(--nacc-tx);flex-shrink:0;user-select:none;white-space:nowrap}
+  .fchip svg.ic{width:10px;height:10px}
+  .fchip .dot{width:7px;height:7px;border-radius:50%}
+  .fchip .x{display:grid;place-items:center;width:14px;height:14px;border-radius:50%;cursor:pointer;opacity:.75}
+  .fchip .x:hover{opacity:1;background:var(--nbg-hover);color:var(--ntx)}
+  .fchip .x svg.ic{width:9px;height:9px}
+  /* ③ 独立排序控件（右端；非缺省排序或菜单打开时高亮） */
+  .fsort-wrap{position:relative;margin-left:auto;flex-shrink:0}
+  .fsort-btn{display:inline-flex;align-items:center;gap:4px;font:inherit;font-size:11px;color:var(--nt2);background:transparent;border:1px solid var(--nbd);border-radius:20px;padding:3px 10px;cursor:pointer}
+  .fsort-btn:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .fsort-btn.on{color:var(--nacc-tx);border-color:var(--nacc)}
+  .fsort-btn svg.ic{width:11px;height:11px}
+  .fsort-menu{display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:90;min-width:190px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:4px}
+  .fsort-menu.open{display:block;animation:popIn .12s ease}
+  .fsort-item{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--nt2);padding:5px 9px;border-radius:var(--nr-sm);cursor:pointer;user-select:none}
+  .fsort-item:hover{background:var(--nbg-hover);color:var(--ntx)}
+  .fsort-item.on{color:var(--nacc-tx);font-weight:600}
+  .fsort-item .tick{width:12px;visibility:hidden;display:grid;place-items:center}
+  .fsort-item.on .tick{visibility:visible}
+  .fsort-item .sd{margin-left:auto;font-size:10px;color:var(--nt3);font-weight:400}
+  /* ② popover 分组面板（锚定筛选按钮下挂；覆盖在列表之上） */
+  .fpop{display:none;position:absolute;top:calc(100% + 4px);left:10px;z-index:80;width:238px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:6px 6px 0}
+  .fpop.open{display:block;animation:popIn .12s ease}
+  @keyframes popIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+  .fg-h{display:flex;align-items:baseline;justify-content:space-between;gap:6px;font-size:10px;color:var(--nt3);letter-spacing:.6px;padding:5px 8px 3px;text-transform:uppercase}
+  .fg-rule{font-size:9.5px;letter-spacing:0;text-transform:none;opacity:.85;white-space:nowrap}
+  .fg-item{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--nt2);padding:5px 8px;border-radius:var(--nr-sm);cursor:pointer;user-select:none}
+  .fg-item:hover{background:var(--nbg-hover);color:var(--ntx)}
+  .fg-item input{accent-color:var(--nacc);margin:0;flex-shrink:0}
+  .fg-item .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .fg-item svg.ic{width:11px;height:11px;color:var(--nt3)}
+  .fg-item .fl{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fg-item .cnt2{font-size:10px;color:var(--nt3);flex-shrink:0}
+  .fpop-foot{display:flex;align-items:center;gap:8px;border-top:1px solid var(--nbd-soft);margin-top:6px;padding:7px 2px 8px}
+  .fpop-foot .pcnt{flex:1;font-size:10.5px;color:var(--nt3)}
+  .pbtn{font:inherit;font-size:11px;padding:3px 14px;border-radius:var(--nr-sm);border:1px solid var(--nbd);background:var(--nbg-raise);color:var(--nt2);cursor:pointer}
+  .pbtn:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .pbtn.primary{background:var(--nacc);border-color:transparent;color:#fff;font-weight:600}
+  .pbtn.primary:hover{opacity:.9}
+  /* ===== 笔记列表（树分组与本稿无关，聚焦平铺列表 + ④ 行徽章带） ===== */
+  .tree{flex:1;overflow-y:auto;padding:0 6px 8px;border-top:1px solid var(--nbd-soft)}
+  .sec-h{display:flex;align-items:center;gap:5px;padding:10px 10px 4px;font-size:10.5px;font-weight:600;letter-spacing:.8px;color:var(--nt3);text-transform:uppercase}
+  .sec-h .cnt2{margin-left:auto;font-size:10px;font-weight:400;letter-spacing:0;text-transform:none}
+  .note-row{display:flex;align-items:flex-start;gap:7px;padding:5px 8px;border-radius:var(--nr-sm);color:var(--ntx);cursor:default;user-select:none}
+  .note-row:hover{background:var(--nbg-hover)}
+  .note-row.sel{background:var(--nbg-sel)}
+  .note-row .kind{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:5px}
+  .note-row .ncol{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+  .note-row .nl1{display:flex;align-items:center;gap:6px}
+  .note-row .ti{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .note-row .tp{font-size:10px;color:var(--nt3);flex-shrink:0}
+  /* ④ 行徽章带（顺序固定：置顶 → 敏感 → 已注入 → 曾注入 → 被引用N；全部带 tooltip） */
+  .nbadges{display:flex;gap:3px;flex-wrap:wrap}
+  .nbadge{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;line-height:1;padding:2.5px 6px;border-radius:4px;border:1px solid var(--nbd-soft);color:var(--nt3);background:var(--nbg-raise)}
+  .nbadge svg.ic{width:9px;height:9px}
+  .nbadge.pin{color:var(--nwarn)}
+  .nbadge.lock{color:var(--ndanger)}
+  .nbadge.inj{color:var(--nacc-tx);background:var(--nbg-sel);border-color:transparent}
+  .empty{padding:18px 10px;font-size:11.5px;color:var(--nt3);text-align:center;line-height:2}
+  .empty .lnk{color:var(--nacc-tx);cursor:pointer}
+  .side-foot{padding:8px 10px;border-top:1px solid var(--nbd-soft);display:flex;gap:6px}
+  .fbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;color:var(--nt2);background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:5px 0;cursor:pointer}
+  .fbtn:hover{color:var(--nacc-tx);border-color:var(--nacc)} .fbtn svg.ic{width:12px;height:12px}
+  /* ===== 右侧设计说明面板 ===== */
+  .spec{flex:1;min-width:0;background:var(--npanel);border-radius:var(--nr-lg);border:1px solid var(--nbd-soft);overflow-y:auto;padding:18px 26px 26px;font-size:12.5px;line-height:1.75;color:var(--nt2)}
+  .spec h2{font-size:15px;color:var(--ntx);margin:0 0 2px}
+  .spec .meta{font-size:11px;color:var(--nt3);margin-bottom:8px}
+  .spec h3{font-size:12.5px;color:var(--ntx);margin:16px 0 4px;display:flex;align-items:center;gap:7px}
+  .spec h3 .no{display:grid;place-items:center;width:17px;height:17px;border-radius:50%;background:var(--nbg-sel);color:var(--nacc-tx);font-size:10px;font-weight:700;flex-shrink:0}
+  .spec p{margin:3px 0}
+  .spec ul{margin:3px 0 3px 18px}
+  .spec li{margin:2px 0}
+  .spec code{font-family:var(--nmono);font-size:11px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;padding:1px 5px}
+  .spec table{border-collapse:collapse;width:100%;margin:6px 0;font-size:11.5px}
+  .spec th,.spec td{border:1px solid var(--nbd-soft);padding:5px 9px;text-align:left;vertical-align:top}
+  .spec th{color:var(--nt3);font-weight:600;background:var(--nbg-raise);white-space:nowrap}
+  .spec .sw{display:inline-block;width:9px;height:9px;border-radius:3px;vertical-align:-1px;margin-right:5px}
+  /* ===== toast ===== */
+  .toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(8px);background:var(--npanel);border:1px solid var(--nbd);box-shadow:0 6px 24px rgba(0,0,0,.35);color:var(--ntx);font-size:12px;padding:8px 16px;border-radius:20px;opacity:0;pointer-events:none;transition:all .2s;z-index:200;max-width:70vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .toast.show{opacity:1;pointer-events:auto}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5M7 4h10l-1.5 6.5 3 4.5h-13l3-4.5Z"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L11 21l8-10.5h-6Z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-quote" viewBox="0 0 24 24"><path d="M7 7h4v4c0 3-1.5 4.5-4 5M14 7h4v4c0 3-1.5 4.5-4 5"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 5h16l-6.5 7.5V19l-3-1.5v-5Z"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M8 5v14M8 5 4.5 8.5M8 5l3.5 3.5M16 19V5M16 19l3.5-3.5M16 19l-3.5-3.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M6 4h9l4 4v12H6Z"/><path d="M14.5 4v4.5H19"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v2.3M12 18.2v2.3M3.5 12h2.3M18.2 12h2.3M6 6l1.6 1.6M16.4 16.4 18 18M18 6l-1.6 1.6M7.6 16.4 6 18"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 6.5h15M9 6V4.5h6V6M7 6.5 8 20h8l1-13.5M10 10v6M14 10v6"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V6M6.5 11.5 12 6l5.5 5.5M5 20h14"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v13M6.5 12.5 12 18l5.5-5.5M5 20h14"/></symbol>
+</defs></svg>
+
+<div class="topbar">
+  <div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>dsh-notes</b>
+  <span class="sub">筛选中心 · UI 设计稿（设计先行 → notes-filter-center 按稿实施）</span>
+  <span class="sp"></span>
+  <a class="tbtn" href="./notes-ui-v2.html" title="打开 v2 原型对照（本稿落地时替换其 chips 行）">对照 v2</a>
+  <button class="tbtn" id="btnTheme">切换主题</button>
+  <span class="tbtn" style="cursor:default;color:var(--nt3)">设计稿 · 内存 mock（不改插件代码）</span>
+</div>
+
+<div class="demobar">
+  <span>演示场景</span>
+  <div class="scn" id="scn">
+    <span class="s on" data-s="A">A · 常态</span>
+    <span class="s" data-s="B">B · 跨组 AND</span>
+    <span class="s" data-s="C">C · 面板操作</span>
+    <span class="s" data-s="D">D · 组内 OR</span>
+  </div>
+  <span class="scn-desc" id="scnDesc"></span>
+  <div class="hint"><span><span class="kbd">Esc</span> 关闭浮层</span><span>勾选即时生效 · 组内 OR / 跨组 AND</span></div>
+</div>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>笔记</b><span class="cnt" id="brandCnt"></span>
+      <span class="add-new" id="btnNew" title="新建笔记（自 v2 chips 行「新建」迁入，见说明⑥）"><svg class="ic"><use href="#i-plus"/></svg></span>
+    </div>
+    <div class="quick"><svg class="ic"><use href="#i-search"/></svg><input id="q" placeholder="搜索笔记（与筛选叠加 = AND）…"><span class="kbd">Ctrl K</span></div>
+    <!-- ①②③ 筛选中心行：本稿核心，落地时整体替换 v2 .chips 行 -->
+    <div class="filterbar" id="filterbar">
+      <button class="fbtn-filter" id="filterBtn" aria-haspopup="true" aria-expanded="false" title="筛选中心：分组勾选条件（组内 OR / 跨组 AND）"></button>
+      <div class="fchips" id="fchips"></div>
+      <div class="fsort-wrap" id="sortWrap">
+        <button class="fsort-btn" id="sortBtn" title="排序（与筛选正交，互不重置）"></button>
+        <div class="fsort-menu" id="fsortMenu"></div>
+      </div>
+      <div class="fpop" id="fpop" role="dialog" aria-label="筛选条件"></div>
+    </div>
+    <div class="tree" id="tree"></div>
+    <div class="side-foot">
+      <div class="fbtn" title="导出（占位，与 v2 一致）"><svg class="ic"><use href="#i-up"/></svg>导出</div>
+      <div class="fbtn" title="导入（占位，与 v2 一致）"><svg class="ic"><use href="#i-down"/></svg>导入</div>
+      <div class="fbtn" title="回收站（占位，与 v2 一致）"><svg class="ic"><use href="#i-trash"/></svg>回收站</div>
+      <div class="fbtn" id="btnSelDemo" title="多选合并（自 v2 chips 行「选择」迁入，见说明⑥）"><svg class="ic"><use href="#i-check"/></svg>选择</div>
+      <div class="fbtn" title="设置（占位，与 v2 一致）"><svg class="ic"><use href="#i-gear"/></svg>设置</div>
+    </div>
+  </aside>
+
+  <!-- 右侧：设计说明（落地口径，供 notes-filter-center 开发按稿实施） -->
+  <section class="spec">
+    <h2>筛选中心 · 设计说明（落地口径）</h2>
+    <div class="meta">design/notes-filter-center.html · 2026-10-02 · 供 notes-filter-center 开发实施 · 数据为内存 mock · token/图标/风格与 design/notes-ui-v2.html 一致</div>
+
+    <h3><span class="no">1</span>筛选按钮（「筛选(N)」）</h3>
+    <ul>
+      <li>位置：侧栏搜索框正下方 —— 即 v2 <code>.chips</code> 行的原位。</li>
+      <li>常态：中性药丸按钮（<code>--nbg-raise</code> 底）；存在激活条件 <b>或</b> 面板打开时高亮（<code>--nbg-sel</code> + <code>--nacc-tx</code>）。</li>
+      <li>计数：激活条件数 N &gt; 0 时，按钮内显示蓝色计数丸（状态组 + 类型组条件合计）。</li>
+      <li>图标：漏斗 <code>i-filter</code>（沿用 v2 图标体系；调研笔记中的 ⚙ 为占位符，避免与 side-foot「设置」齿轮混淆）。</li>
+      <li>点击 = 开关 popover；<code>aria-expanded</code> 同步。</li>
+    </ul>
+
+    <h3><span class="no">2</span>激活条件 chips</h3>
+    <ul>
+      <li>紧随筛选按钮右侧，每个激活条件一条 chip：<b>条件图标</b>（状态组）/ <b>kind 色点</b>（类型组）+ 文案 + <b>×</b>。</li>
+      <li>× = 单条移除；chips 与 popover 勾选实时双向同步；<b>单行横排、超宽横向滚动</b>（硬性布局约束：不换行、不挤压树区高度）。</li>
+      <li>演示见场景 B（已注入 + 决策 两条）与场景 D（置顶 + 敏感 两条）。</li>
+    </ul>
+
+    <h3><span class="no">3</span>popover 分组面板</h3>
+    <ul>
+      <li>锚定筛选按钮左对齐下挂，覆盖于列表之上；<b>点外部 / Esc / 「完成」</b>关闭；面板内点击不关闭。</li>
+      <li>两组：<b>状态</b>（置顶 / 已注入 / 曾注入 / 敏感，各带图标）+ <b>类型</b>（笔记 / 决策 / 待办 / 链接 / 引用，kind 色点）。</li>
+      <li>语义：<b>组内多选 = OR，跨组 = AND</b>；勾选<b>即时生效</b>（列表、chips、按钮计数、底部命中数同步刷新）。</li>
+      <li>每选项右侧计数 = 该条件<b>单条件</b>命中数（示意，帮助预判结果量）。</li>
+      <li>底部：<code>命中 N 条</code> 实时预览 + [清空]（清全部条件，面板保持打开）+ [完成]（关闭面板）。</li>
+      <li>「曾注入」口径：当前未注入但历史注入过（mock 字段 <code>everInjected</code>；实现端数据源 = 注入历史遥测，由 notes-filter-center 与 host 对齐）。当前已注入的笔记不匹配「曾注入」。</li>
+    </ul>
+
+    <h3><span class="no">4</span>独立排序控件（↕ 时间 / 引用 / 相关度）</h3>
+    <ul>
+      <li>筛选行右端独立按钮：↕ + 当前排序名；点击弹单选菜单（勾选标记 + 说明文字）。</li>
+      <li>排序与筛选<b>正交</b>：改排序不动条件，改条件不动排序。</li>
+      <li><code>时间</code> = 置顶优先 + 更新降序（即 v2 缺省 host 序）；<code>引用</code> = useCount 降序（v2「按引用」chip 迁入）；<code>相关度</code> = 搜索打分（本稿以 <code>useCount×2 + 注入/置顶加权</code> mock 示意，实现端接搜索 score）。</li>
+      <li>非缺省排序（或菜单打开）时按钮高亮提示。</li>
+    </ul>
+
+    <h3><span class="no">5</span>笔记行徽章带</h3>
+    <ul>
+      <li>标题行下方第二行为徽章带；<b>无徽章不渲染该行</b>（行保持单行紧凑）。</li>
+      <li>顺序固定：<span class="sw" style="background:var(--nwarn)"></span>置顶 → <span class="sw" style="background:var(--ndanger)"></span>敏感🔒 → <span class="sw" style="background:var(--nacc)"></span>已注入 → <span class="sw" style="background:var(--nt3)"></span>曾注入⏱ → 被引用 N。</li>
+      <li>配色：置顶 = <code>--nwarn</code>；敏感 = <code>--ndanger</code>；已注入 = <code>--nacc-tx</code> + <code>--nbg-sel</code> 底（已注入/曾注入互斥）；曾注入、被引用 = <code>--nt3</code> 中性。</li>
+      <li>全部徽章带 tooltip（hover 查看，如「被 Agent 引用（note_get 命中）N 次」）；<b>被引用 0 次不渲染</b>。</li>
+      <li>徽章带吸收 v2 行内的 inject bolt 与 use 徽章，视觉统一为一套 pill 语言。</li>
+    </ul>
+
+    <h3><span class="no">6</span>与 notes-ui-v2.html 对照（落地时 v2 <code>.chips</code> 行整体替换）</h3>
+    <table>
+      <tr><th>v2 元素</th><th>本稿去处</th></tr>
+      <tr><td>全部 / 待办 / 决策 / 引用 chips（单选）</td><td>popover <b>类型组</b>（升级为多选 OR；「全部」= 不勾任何条件）</td></tr>
+      <tr><td>置顶 chip</td><td>popover <b>状态组</b>（与已注入/曾注入/敏感并列）</td></tr>
+      <tr><td>按引用 chip</td><td>排序控件 <code>引用</code> 档</td></tr>
+      <tr><td>选择 chip（多选合并）</td><td>side-foot <code>选择</code>（本稿 foot 演示位）</td></tr>
+      <tr><td>新建 chip</td><td>brand 行右侧 <code>＋</code> 按钮</td></tr>
+      <tr><td>行内 inject bolt / use 徽章</td><td>行徽章带（置顶/敏感/已注入/曾注入/被引用）</td></tr>
+      <tr><td>文件夹 / 主题树、搜索框、编辑器区、多选合并交互</td><td><b>不变</b>（本稿略去树分组，聚焦筛选行与徽章带）</td></tr>
+    </table>
+
+    <h3><span class="no">7</span>交互细节</h3>
+    <ul>
+      <li>Esc 关闭顺序：排序菜单 → 筛选面板（均不干扰 v2 全局 Esc = 退出多选）。</li>
+      <li>面板打开时筛选按钮保持高亮（<code>aria-expanded="true"</code>）。</li>
+      <li>搜索框与筛选条件叠加 = AND（本稿已接线，可直接输入验证）。</li>
+      <li>空结果态：提示 + 「清空筛选条件」快捷链接。</li>
+      <li>浮层动画：120ms 上飘淡入（<code>popIn</code>）；暗/亮双主题经顶部「切换主题」验证。</li>
+    </ul>
+
+    <h3><span class="no">8</span>演示场景与自测</h3>
+    <ul>
+      <li>A · 常态（无筛选）/ B · 跨组 AND（已注入∩决策）/ C · 面板操作过程 / D · 组内 OR（置顶∪敏感）—— demobar 一键切换。</li>
+      <li>mock 数据 12 条，覆盖全部徽章组合（置顶+已注入+被引用 / 敏感 / 曾注入 / 纯被引用 / 无徽章等）。</li>
+      <li>自测：URL 加 <code>?selftest=1</code> 打开，控制台输出 <code>[selftest] PASS/FAIL</code> 明细（谓词语义 / 排序 / DOM 渲染 / 交互模拟）。</li>
+    </ul>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= 工具（与 v2 同款：插值一律先 esc） ================= */
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function icon(id,size){return '<svg class="ic"'+(size?' style="width:'+size+'px;height:'+size+'px"':'')+' aria-hidden="true"><use href="#'+id+'"/></svg>'}
+function fmtD(iso){var d=new Date(iso);function p(x){return(x<10?'0':'')+x}return p(d.getMonth()+1)+'-'+p(d.getDate())}
+var KCOLOR={note:'var(--kind-note)',decision:'var(--kind-decision)',todo:'var(--kind-todo)',link:'var(--kind-link)',quote:'var(--kind-quote)'};
+function kk(n){return n.kind||'note'}
+
+/* ================= mock 数据（12 条，覆盖全部徽章状态组合） ================= */
+var NOTES=[
+ { id:'n1',  title:'不动工约定',                          kind:'decision', topic:'其他',       status:'pinned', inject:true, injectRole:'convention', useCount:5,  updatedAt:'2026-09-26T02:00:00.000Z' },
+ { id:'n2',  title:'运维-高可用环境部署（机器/账号）',     kind:'note',     topic:'运维',       sensitive:true,                            useCount:0,  updatedAt:'2026-09-25T06:00:00.000Z' },
+ { id:'n10', title:'oa 环境配置',                          kind:'note',     topic:'运维',                                                useCount:7,  updatedAt:'2026-09-25T02:10:00.000Z' },
+ { id:'n4',  title:'openviking · 运维速记',                kind:'quote',    topic:'运维',       everInjected:true,                         useCount:2,  updatedAt:'2026-09-23T09:00:00.000Z' },
+ { id:'n7',  title:'DSH 插件发布指南',                     kind:'link',     topic:'DSH 插件开发',                                         useCount:1,  updatedAt:'2026-09-22T07:00:00.000Z' },
+ { id:'n3',  title:'客户端插件可用性红线',                 kind:'note',     topic:'DSH 插件开发', inject:true, injectRole:'reference',     useCount:3,  updatedAt:'2026-09-22T06:00:00.000Z' },
+ { id:'n12', title:'归档合并策略选型',                     kind:'decision', topic:'其他',                                                useCount:0,  updatedAt:'2026-09-20T02:00:00.000Z' },
+ { id:'n9',  title:'TODO: semantica 收编主仓库',           kind:'todo',     topic:'工程结构',   everInjected:true,                         useCount:0,  updatedAt:'2026-09-16T02:00:00.000Z' },
+ { id:'n5',  title:'TODO: oabanner 兼容评估',              kind:'todo',     topic:'数据管线',   status:'pinned',                           useCount:0,  updatedAt:'2026-09-17T03:00:00.000Z' },
+ { id:'n11', title:'工程结构调研',                         kind:'note',     topic:'工程结构',                                            useCount:0,  updatedAt:'2026-09-15T02:00:00.000Z' },
+ { id:'n6',  title:'55b0879a · 调试',                      kind:'quote',    topic:'调试',                                                useCount:12, updatedAt:'2026-09-29T01:00:00.000Z' },
+ { id:'n8',  title:'看板反馈记录约定',                     kind:'decision', topic:'其他',       inject:true, injectRole:'convention',      useCount:0,  updatedAt:'2026-09-28T08:00:00.000Z' }
+];
+
+/* ================= 筛选模型：组内 OR / 跨组 AND ================= */
+var GROUPS=[
+ { id:'status', title:'状态', rule:'组内多选 = OR', items:[
+   { id:'pinned',    label:'置顶',   icon:'i-pin',   pred:function(n){return n.status==='pinned'} },
+   { id:'injected',  label:'已注入', icon:'i-bolt',  pred:function(n){return n.inject===true} },
+   { id:'ever',      label:'曾注入', icon:'i-clock', pred:function(n){return n.everInjected===true&&n.inject!==true} },
+   { id:'sensitive', label:'敏感',   icon:'i-lock',  pred:function(n){return n.sensitive===true} }
+ ]},
+ { id:'kind', title:'类型', rule:'组内 OR · 与状态组 = AND', items:[
+   { id:'note',     label:'笔记', pred:function(n){return kk(n)==='note'} },
+   { id:'decision', label:'决策', pred:function(n){return kk(n)==='decision'} },
+   { id:'todo',     label:'待办', pred:function(n){return kk(n)==='todo'} },
+   { id:'link',     label:'链接', pred:function(n){return kk(n)==='link'} },
+   { id:'quote',    label:'引用', pred:function(n){return kk(n)==='quote'} }
+ ]}
+];
+var COND={};
+GROUPS.forEach(function(g){g.items.forEach(function(it){it.group=g.id;it.color=g.id==='kind'?KCOLOR[it.id]:'';COND[it.id]=it})});
+var SORTS=[
+ { id:'time', label:'时间',   desc:'置顶优先 · 更新降序' },
+ { id:'use',  label:'引用',   desc:'被引用次数降序' },
+ { id:'rel',  label:'相关度', desc:'搜索打分（mock 权重示意）' }
+];
+
+/* ================= 状态 ================= */
+var F={status:[],kind:[]};        /* 激活筛选条件（按组） */
+var sortBy='time';
+var popOpen=false,sortOpen=false;
+var q='',selId='',curScn='A';
+
+function activeCount(){return F.status.length+F.kind.length}
+function setFilter(f){F={status:f.status.slice(),kind:f.kind.slice()}}
+function relScore(n){return (n.useCount||0)*2+(n.inject?5:0)+(n.status==='pinned'?3:0)}
+function matches(n){
+  var okS=!F.status.length||F.status.some(function(v){return COND[v].pred(n)});   /* 状态组：组内 OR */
+  var okK=!F.kind.length||F.kind.indexOf(kk(n))>=0;                               /* 类型组：组内 OR */
+  if(!okS||!okK)return false;                                                     /* 跨组 AND */
+  if(q){var s=(n.title+' '+(n.topic||'')).toLowerCase();if(s.indexOf(q.toLowerCase())<0)return false}
+  return true;
+}
+function visible(){
+  var a=NOTES.filter(matches);
+  if(sortBy==='use')a.sort(function(x,y){return (y.useCount||0)-(x.useCount||0)||String(y.updatedAt).localeCompare(String(x.updatedAt))});
+  else if(sortBy==='rel')a.sort(function(x,y){return relScore(y)-relScore(x)||String(y.updatedAt).localeCompare(String(x.updatedAt))});
+  else a.sort(function(x,y){return ((y.status==='pinned'?1:0)-(x.status==='pinned'?1:0))||String(y.updatedAt).localeCompare(String(x.updatedAt))});
+  return a;
+}
+function sortLabel(){for(var i=0;i<SORTS.length;i++)if(SORTS[i].id===sortBy)return SORTS[i].label;return ''}
+
+/* ================= 渲染 ================= */
+function renderBar(){
+  var n=activeCount(),fb=$('filterBtn');
+  fb.classList.toggle('on',n>0||popOpen);
+  fb.setAttribute('aria-expanded',popOpen?'true':'false');
+  fb.innerHTML=icon('i-filter',11)+'<span>筛选</span>'+(n?'<span class="cnt">'+n+'</span>':'');
+  var h='';
+  GROUPS.forEach(function(g){
+    F[g.id].forEach(function(v){var m=COND[v];
+      h+='<span class="fchip" data-g="'+g.id+'" data-v="'+v+'" title="筛选条件：'+esc(g.title)+' / '+esc(m.label)+'（点 × 移除）">'
+        +(g.id==='kind'?'<span class="dot" style="background:'+m.color+'"></span>':icon(m.icon,10))
+        +esc(m.label)+'<span class="x" role="button" aria-label="移除条件 '+esc(m.label)+'">'+icon('i-x',9)+'</span></span>';
+    });
+  });
+  $('fchips').innerHTML=h;
+  var sb=$('sortBtn');
+  sb.classList.toggle('on',sortBy!=='time'||sortOpen);
+  sb.innerHTML=icon('i-sort',11)+'<span>'+esc(sortLabel())+'</span>';
+  var fp=$('fpop');fp.classList.toggle('open',popOpen);
+  if(popOpen)renderPop();
+  var sm=$('fsortMenu');sm.classList.toggle('open',sortOpen);
+  if(sortOpen)renderSortMenu();
+}
+function renderPop(){
+  var h='';
+  GROUPS.forEach(function(g){
+    h+='<div class="fg-h"><span>'+esc(g.title)+'</span><span class="fg-rule">'+esc(g.rule)+'</span></div>';
+    g.items.forEach(function(it){
+      var on=F[g.id].indexOf(it.id)>=0;
+      h+='<label class="fg-item"><input type="checkbox" data-g="'+g.id+'" data-v="'+it.id+'"'+(on?' checked':'')+'>'
+        +(g.id==='kind'?'<span class="dot" style="background:'+it.color+'"></span>':icon(it.icon,11))
+        +'<span class="fl">'+esc(it.label)+'</span><span class="cnt2">'+NOTES.filter(it.pred).length+'</span></label>';
+    });
+  });
+  h+='<div class="fpop-foot"><span class="pcnt">命中 '+visible().length+' 条</span><button class="pbtn" id="popClear">清空</button><button class="pbtn primary" id="popDone">完成</button></div>';
+  $('fpop').innerHTML=h;
+}
+function renderSortMenu(){
+  $('fsortMenu').innerHTML=SORTS.map(function(s){
+    return '<div class="fsort-item'+(sortBy===s.id?' on':'')+'" data-s="'+s.id+'"><span class="tick">'+icon('i-check',11)+'</span><span>'+esc(s.label)+'</span><span class="sd">'+esc(s.desc)+'</span></div>';
+  }).join('');
+}
+/* ④ 行徽章带：置顶 → 敏感 → 已注入 → 曾注入 → 被引用N（顺序固定；无徽章不渲染该行） */
+function badges(n){
+  var b='';
+  if(n.status==='pinned')b+='<span class="nbadge pin" title="置顶">'+icon('i-pin',9)+'置顶</span>';
+  if(n.sensitive)b+='<span class="nbadge lock" title="敏感笔记：内容含机密信息，注入/检索需显式确认">'+icon('i-lock',9)+'敏感</span>';
+  if(n.inject===true)b+='<span class="nbadge inj" title="已注入为系统提示词上下文 · 角色='+(n.injectRole==='reference'?'资料':'约定')+'">'+icon('i-bolt',9)+'已注入</span>';
+  else if(n.everInjected)b+='<span class="nbadge ever" title="历史注入过，当前未注入（mock 字段 everInjected；实现端数据源=注入历史遥测）">'+icon('i-clock',9)+'曾注入</span>';
+  if((n.useCount||0)>0)b+='<span class="nbadge use" title="被 Agent 引用（note_get 命中）'+n.useCount+' 次">'+icon('i-quote',9)+'被引用 '+n.useCount+'</span>';
+  return b;
+}
+function noteRow(n){
+  var b=badges(n);
+  return '<div class="note-row'+(selId===n.id?' sel':'')+'" data-note="'+n.id+'">'
+    +'<span class="kind" style="background:'+(KCOLOR[kk(n)]||KCOLOR.note)+'"></span>'
+    +'<div class="ncol"><div class="nl1"><span class="ti">'+esc(n.title||'无标题')+'</span>'
+    +'<span class="tp">'+esc(n.topic||'未分类')+' · '+fmtD(n.updatedAt)+'</span></div>'
+    +(b?'<div class="nbadges">'+b+'</div>':'')
+    +'</div></div>';
+}
+function renderTree(){
+  var vis=visible();
+  $('brandCnt').textContent=vis.length+' / '+NOTES.length+' 条';
+  var h='<div class="sec-h">'+icon('i-filter',11)+' 全部笔记<span class="cnt2">'+vis.length+' 条</span></div>';
+  vis.forEach(function(n){h+=noteRow(n)});
+  if(!vis.length)h+='<div class="empty">无匹配笔记'+(activeCount()?'<br><span class="lnk" id="emptyClear">清空筛选条件</span>':'')+'</div>';
+  $('tree').innerHTML=h;
+}
+function renderAll(){renderBar();renderTree()}
+
+/* ================= 交互 ================= */
+var _toastT=null;
+function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(_toastT);_toastT=setTimeout(function(){t.classList.remove('show')},1800)}
+$('filterBtn').addEventListener('click',function(ev){ev.stopPropagation();popOpen=!popOpen;if(popOpen)sortOpen=false;renderBar()});
+$('sortBtn').addEventListener('click',function(ev){ev.stopPropagation();sortOpen=!sortOpen;if(sortOpen)popOpen=false;renderBar()});
+/* popover：勾选即时生效；清空/完成 */
+$('fpop').addEventListener('change',function(ev){
+  var cb=ev.target;if(!cb.matches||!cb.matches('input[type=checkbox]'))return;
+  var g=cb.dataset.g,v=cb.dataset.v,i=F[g].indexOf(v);
+  if(cb.checked&&i<0)F[g].push(v);
+  if(!cb.checked&&i>=0)F[g].splice(i,1);
+  renderAll();
+});
+$('fpop').addEventListener('click',function(ev){
+  if(ev.target.closest('#popClear')){setFilter({status:[],kind:[]});renderAll();toast('已清空全部筛选条件')}
+  else if(ev.target.closest('#popDone')){popOpen=false;renderBar()}
+});
+/* 激活条件 chip：× 单条移除 */
+$('fchips').addEventListener('click',function(ev){
+  var x=ev.target.closest('.x');if(!x)return;
+  var c=x.parentElement,g=c.dataset.g,v=c.dataset.v,i=F[g].indexOf(v);
+  if(i>=0){F[g].splice(i,1);renderAll()}
+});
+/* 排序菜单 */
+$('fsortMenu').addEventListener('click',function(ev){
+  var it=ev.target.closest('.fsort-item');if(!it)return;
+  sortBy=it.dataset.s;sortOpen=false;renderAll();
+});
+/* 点外部关闭（mousedown 先于按钮 click，避免开关打架） */
+document.addEventListener('mousedown',function(ev){
+  if(popOpen&&!ev.target.closest('#filterBtn')&&!ev.target.closest('#fpop')){popOpen=false;renderBar()}
+  if(sortOpen&&!ev.target.closest('#sortWrap')){sortOpen=false;renderBar()}
+});
+/* Esc 关闭顺序：排序菜单 → 筛选面板 */
+document.addEventListener('keydown',function(ev){
+  if(ev.key!=='Escape')return;
+  if(sortOpen){sortOpen=false;renderBar()}
+  else if(popOpen){popOpen=false;renderBar()}
+});
+/* 列表：行点击选中（演示）；空结果「清空筛选条件」快捷链接 */
+$('tree').addEventListener('click',function(ev){
+  var lc=ev.target.closest('#emptyClear');
+  if(lc){setFilter({status:[],kind:[]});renderAll();return}
+  var r=ev.target.closest('.note-row');if(!r)return;
+  selId=r.dataset.note;renderTree();
+});
+$('q').addEventListener('input',function(){q=this.value;renderTree()});
+$('btnNew').addEventListener('click',function(){toast('新建笔记：本稿仅演示入口位置（自 v2 chips 行迁入）')});
+$('btnSelDemo').addEventListener('click',function(){toast('多选合并：本稿仅演示入口位置（自 v2 chips 行「选择」迁入）')});
+$('btnTheme').addEventListener('click',function(){var h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark'});
+$('scn').addEventListener('click',function(ev){var s=ev.target.closest('.s');if(s)loadScenario(s.dataset.s)});
+
+/* ================= 演示场景 ================= */
+var SCENARIOS={
+ A:{ desc:'无条件常态：按钮无计数、无 chips，时间序全量列表（覆盖全部徽章组合样本）。', F:{status:[],kind:[]}, pop:false },
+ B:{ desc:'跨组 AND：已注入 ∩ 决策 → 命中 2 条；筛选(2) + 两条 chips（× 可单条移除）。', F:{status:['injected'],kind:['decision']}, pop:false },
+ C:{ desc:'面板操作过程：①点「筛选」开面板 → ②分组勾选（即时生效）→ ③「完成」/点外部/Esc 关闭。', F:{status:['injected'],kind:['decision']}, pop:true },
+ D:{ desc:'组内 OR：状态组 置顶 ∪ 敏感 → 命中 3 条；若再勾类型则跨组 AND。', F:{status:['pinned','sensitive'],kind:[]}, pop:false }
+};
+function loadScenario(id){
+  var s=SCENARIOS[id];if(!s)return;
+  curScn=id;setFilter(s.F);sortBy='time';popOpen=s.pop;sortOpen=false;selId='';q='';$('q').value='';
+  Array.prototype.forEach.call(document.querySelectorAll('#scn .s'),function(x){x.classList.toggle('on',x.dataset.s===id)});
+  $('scnDesc').textContent=s.desc;
+  renderAll();
+}
+
+/* ================= 自测钩子（?selftest=1 → 控制台输出断言结果） ================= */
+function runSelfTest(){
+  var pass=0,fail=0;
+  function t(name,cond,extra){if(cond){pass++;console.log('[selftest] PASS '+name)}else{fail++;console.warn('[selftest] FAIL '+name,extra||'')}}
+  function ids(){return visible().map(function(n){return n.id}).join(',')}
+  function idset(){return visible().map(function(n){return n.id}).sort().join(',')}
+  /* —— 纯逻辑：过滤谓词 —— */
+  sortBy='time';setFilter({status:[],kind:[]});
+  t('无条件命中全部 '+NOTES.length+' 条',visible().length===NOTES.length,ids());
+  setFilter({status:['injected'],kind:['decision']});
+  t('跨组 AND：已注入∩决策 = {n1,n8}',idset()==='n1,n8',ids());
+  t('激活条件数 = 2',activeCount()===2);
+  setFilter({status:['pinned','sensitive'],kind:[]});
+  t('组内 OR：置顶∪敏感 = {n1,n2,n5}',idset()==='n1,n2,n5',ids());
+  setFilter({status:['ever'],kind:[]});
+  t('曾注入 = {n4,n9}（当前已注入不计入）',idset()==='n4,n9',ids());
+  setFilter({status:['sensitive'],kind:['note']});
+  t('敏感∩笔记 = {n2}',idset()==='n2',ids());
+  /* —— 排序 —— */
+  setFilter({status:[],kind:[]});
+  sortBy='use';t('引用排序首条 = n6（12 次）',visible()[0].id==='n6',visible()[0].id);
+  sortBy='rel';t('相关度排序首条 = n6（mock 加权最高）',visible()[0].id==='n6',visible()[0].id);
+  sortBy='time';t('时间排序首条 = n1（置顶优先）',visible()[0].id==='n1',visible()[0].id);
+  /* —— DOM 渲染 —— */
+  loadScenario('B');
+  t('B：筛选按钮计数丸 = 2',(function(){var c=document.querySelector('#filterBtn .cnt');return !!c&&c.textContent==='2'})());
+  t('B：chips 两条且各带 ×',document.querySelectorAll('#fchips .fchip').length===2&&document.querySelectorAll('#fchips .fchip .x').length===2);
+  t('B：列表 2 行',document.querySelectorAll('#tree .note-row').length===2);
+  t('B：徽章带渲染（n1 行含 置顶/已注入/被引用 5）',(function(){var r=document.querySelector('[data-note="n1"] .nbadges');return !!r&&r.innerHTML.indexOf('置顶')>=0&&r.innerHTML.indexOf('已注入')>=0&&r.innerHTML.indexOf('被引用 5')>=0})());
+  loadScenario('A');
+  t('A：无 chips、按钮无计数丸',document.querySelectorAll('#fchips .fchip').length===0&&!document.querySelector('#filterBtn .cnt'));
+  t('A：无徽章笔记不渲染徽章带行',(function(){var r=document.querySelector('[data-note="n11"]');return !!r&&!r.querySelector('.nbadges')})());
+  t('A：曾注入徽章渲染（n4）',(function(){var r=document.querySelector('[data-note="n4"] .nbadges');return !!r&&r.innerHTML.indexOf('曾注入')>=0})());
+  t('A：敏感徽章渲染（n2）',(function(){var r=document.querySelector('[data-note="n2"] .nbadges');return !!r&&r.innerHTML.indexOf('敏感')>=0})());
+  loadScenario('C');
+  t('C：popover 展开',document.querySelector('#fpop').classList.contains('open'));
+  t('C：面板 9 个勾选项（4 状态 + 5 类型）',document.querySelectorAll('#fpop input[type=checkbox]').length===9);
+  t('C：已注入/决策 呈勾选态',(function(){var a=document.querySelector('#fpop input[data-v="injected"]'),b=document.querySelector('#fpop input[data-v="decision"]');return !!(a&&b)&&a.checked&&b.checked})());
+  t('C：面板底部 清空/完成 按钮',!!document.querySelector('#popClear')&&!!document.querySelector('#popDone'));
+  /* —— 交互模拟 —— */
+  /* 注：label 包裹的 checkbox 走程序化 .click() 会因 label 激活行为二次触发而回弹（真实点击无此问题，
+     已用浏览器实测确认：真实点击勾选后 chips/命中数/列表即时同步）；自测改为此处置位 + 直派 change */
+  var cbNote=document.querySelector('#fpop input[data-v="note"]');
+  cbNote.checked=true;cbNote.dispatchEvent(new Event('change',{bubbles:true}));
+  t('勾选即时生效：C 基础上类型组 +笔记（组内 OR 扩宽）→ {n1,n3,n8}',idset()==='n1,n3,n8',ids());
+  t('底部命中数同步 = 3',(function(){var p=document.querySelector('#fpop .pcnt');return !!p&&p.textContent.indexOf('命中 3 条')>=0})());
+  document.querySelector('#popClear').click();
+  t('清空：条件归零且面板保持打开',activeCount()===0&&document.querySelector('#fpop').classList.contains('open'));
+  /* 空结果态：敏感(状态) + 决策(类型) → ∅ */
+  var cbSen2=document.querySelector('#fpop input[data-v="sensitive"]');
+  cbSen2.checked=true;cbSen2.dispatchEvent(new Event('change',{bubbles:true}));
+  var cbDec=document.querySelector('#fpop input[data-v="decision"]');
+  cbDec.checked=true;cbDec.dispatchEvent(new Event('change',{bubbles:true}));
+  t('敏感∩决策 = 0 条（空结果）',visible().length===0,ids());
+  t('空结果态渲染（含清空链接）',!!document.querySelector('#emptyClear'));
+  document.querySelector('#emptyClear').click();
+  t('空结果「清空筛选条件」链接生效',activeCount()===0&&visible().length===NOTES.length);
+  document.querySelector('#filterBtn').click();
+  document.querySelector('#popDone').click();
+  t('完成：面板关闭',!document.querySelector('#fpop').classList.contains('open'));
+  loadScenario('B');
+  document.querySelector('#fchips .fchip[data-v="injected"] .x').click();
+  t('chip ×：移除「已注入」后仅剩决策 → 命中 3 条',activeCount()===1&&visible().length===3,ids());
+  loadScenario('A');
+  document.querySelector('#sortBtn').click();
+  t('排序菜单展开且 3 项',document.querySelector('#fsortMenu').classList.contains('open')&&document.querySelectorAll('#fsortMenu .fsort-item').length===3);
+  document.querySelector('#fsortMenu .fsort-item[data-s="use"]').click();
+  t('选择「引用」排序生效且菜单关闭',sortBy==='use'&&visible()[0].id==='n6'&&!document.querySelector('#fsortMenu').classList.contains('open'));
+  loadScenario('C');
+  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));
+  t('Esc 关闭面板',!document.querySelector('#fpop').classList.contains('open'));
+  /* —— 转义 —— */
+  t('esc() 转义插值',esc('<img src=x onerror=1>')==='&lt;img src=x onerror=1&gt;');
+  console.log('[selftest] 完成：'+pass+' PASS / '+fail+' FAIL');
+  loadScenario('A');
+}
+
+/* ================= 启动 ================= */
+loadScenario('A');
+if(location.search.indexOf('selftest=1')>=0)runSelfTest();
+</script>
+</body>
+</html>

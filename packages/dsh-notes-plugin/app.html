@@ -46,19 +46,73 @@
   /* ===== 主体两栏 ===== */
   .app{flex:1;display:flex;min-height:0;padding:10px;gap:10px}
   .side{width:342px;flex-shrink:0;background:var(--npanel);border-radius:var(--nr-lg);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--nbd-soft)}
+  /* ===== 侧栏宽度拖拽条（4px，叠加在两栏 10px 间隙上不占位——宽 4px + 双侧 -7px margin 抵消 gap；hover/拖拽中高亮；双击重置缺省 342px） ===== */
+  .splitter{width:4px;margin:0 -7px;flex-shrink:0;cursor:col-resize;z-index:5;border-radius:2px;transition:background .15s}
+  .splitter:hover,.splitter.on{background:var(--nacc)}
+  body.split-drag,body.split-drag *{cursor:col-resize!important;user-select:none!important;-webkit-user-select:none!important}
   .brand{display:flex;align-items:center;gap:8px;padding:13px 14px 9px}
   .brand .logo{width:22px;height:22px;border-radius:6px;background:var(--nacc);display:grid;place-items:center;color:#fff}
   .brand b{font-size:13px} .brand .cnt{margin-left:auto;font-size:11px;color:var(--nt3)}
+  /* 新建入口（自旧 chips 行迁入 brand 行右侧，筛选中心落地口径⑥） */
+  .brand .add-new{color:var(--nt3);cursor:pointer;padding:2px;border-radius:4px;display:grid;place-items:center;flex-shrink:0}
+  .brand .add-new:hover{color:var(--nacc);background:var(--nbg-hover)}
+  .brand .add-new svg.ic{width:13px;height:13px}
   .quick{margin:0 10px 8px;display:flex;align-items:center;gap:7px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:6px 10px}
   .quick:focus-within{border-color:var(--nacc)}
   .quick input{flex:1;border:0;outline:0;background:transparent;color:var(--ntx);font:inherit;font-size:12px}
   .quick input::placeholder{color:var(--nt3)}
   .quick .kbd{font-family:var(--nmono);font-size:10px;background:var(--nbg);border:1px solid var(--nbd);border-radius:4px;padding:1px 5px;color:var(--nt3)}
-  .chips{display:flex;gap:5px;padding:0 10px 9px;flex-wrap:wrap}
-  .chip{font-size:11px;padding:2px 9px;border-radius:20px;border:1px solid var(--nbd);color:var(--nt2);cursor:pointer;display:flex;align-items:center;gap:4px}
-  .chip.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:500}
-  .chips .sp{flex:1}
-  .chip.new svg.ic{width:11px;height:11px}
+  /* ===== 筛选中心（design/notes-filter-center.html 定稿落地）：筛选按钮(N) + 激活条件 chips（单行横滚）+ 独立排序控件；popover 浮层不挤压树区 ===== */
+  /* 硬性布局约束：chips 过多单行横向滚动，树区高度不受影响（filterbar 不换行、flex-shrink:0；fpop/fsort-menu 均 absolute 浮层） */
+  .filterbar{position:relative;display:flex;align-items:center;gap:5px;padding:0 10px 9px;flex-wrap:nowrap;flex-shrink:0}
+  .fbtn-filter{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;color:var(--nt2);background:var(--nbg-raise);border:1px solid var(--nbd);border-radius:20px;padding:3px 11px;cursor:pointer;flex-shrink:0}
+  .fbtn-filter:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .fbtn-filter.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:600}
+  .fbtn-filter svg.ic{width:11px;height:11px}
+  .fbtn-filter .cnt{font-family:var(--nmono);font-size:9.5px;line-height:1.4;background:var(--nacc);color:#fff;border-radius:8px;padding:0 5px}
+  /* 激活条件 chips：单行横排，超宽横向滚动（不挤压树区高度）；× 单条移除，与 popover 勾选双向同步 */
+  .fchips{display:flex;gap:4px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:thin}
+  .fchip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 4px 2px 9px;border-radius:20px;background:var(--nbg-sel);color:var(--nacc-tx);flex-shrink:0;user-select:none;white-space:nowrap}
+  .fchip svg.ic{width:10px;height:10px}
+  .fchip .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .fchip .x{display:grid;place-items:center;width:14px;height:14px;border-radius:50%;cursor:pointer;opacity:.75}
+  .fchip .x:hover{opacity:1;background:var(--nbg-hover);color:var(--ntx)}
+  .fchip .x svg.ic{width:9px;height:9px}
+  /* 独立排序控件（右端；非缺省排序或菜单打开时高亮；与筛选正交，互不重置） */
+  .fsort-wrap{position:relative;flex-shrink:0}
+  .fsort-btn{display:inline-flex;align-items:center;gap:4px;font:inherit;font-size:11px;color:var(--nt2);background:transparent;border:1px solid var(--nbd);border-radius:20px;padding:3px 10px;cursor:pointer}
+  .fsort-btn:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .fsort-btn.on{color:var(--nacc-tx);border-color:var(--nacc)}
+  .fsort-btn svg.ic{width:11px;height:11px}
+  .fsort-menu{display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:90;min-width:190px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:4px}
+  .fsort-menu.open{display:block;animation:popIn .12s ease}
+  .fsort-item{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--nt2);padding:5px 9px;border-radius:var(--nr-sm);cursor:pointer;user-select:none}
+  .fsort-item:hover{background:var(--nbg-hover);color:var(--ntx)}
+  .fsort-item.on{color:var(--nacc-tx);font-weight:600}
+  .fsort-item .tick{width:12px;visibility:hidden;display:grid;place-items:center}
+  .fsort-item.on .tick{visibility:visible}
+  .fsort-item .sd{margin-left:auto;font-size:10px;color:var(--nt3);font-weight:400}
+  /* popover 分组面板（锚定筛选按钮下挂；覆盖树上、关闭即消失） */
+  .fpop{display:none;position:absolute;top:calc(100% + 4px);left:10px;z-index:80;width:238px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:6px 6px 0}
+  .fpop.open{display:block;animation:popIn .12s ease}
+  @keyframes popIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+  .fg-h{display:flex;align-items:baseline;justify-content:space-between;gap:6px;font-size:10px;color:var(--nt3);letter-spacing:.6px;padding:5px 8px 3px;text-transform:uppercase}
+  .fg-rule{font-size:9.5px;letter-spacing:0;text-transform:none;opacity:.85;white-space:nowrap}
+  .fg-item{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--nt2);padding:5px 8px;border-radius:var(--nr-sm);cursor:pointer;user-select:none}
+  .fg-item:hover{background:var(--nbg-hover);color:var(--ntx)}
+  .fg-item input{accent-color:var(--nacc);margin:0;flex-shrink:0}
+  .fg-item .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .fg-item svg.ic{width:11px;height:11px;color:var(--nt3)}
+  .fg-item .fl{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fg-item .cnt2{font-size:10px;color:var(--nt3);flex-shrink:0}
+  .fpop-foot{display:flex;align-items:center;gap:8px;border-top:1px solid var(--nbd-soft);margin-top:6px;padding:7px 2px 8px}
+  .fpop-foot .pcnt{flex:1;font-size:10.5px;color:var(--nt3)}
+  .pbtn{font:inherit;font-size:11px;padding:3px 14px;border-radius:var(--nr-sm);border:1px solid var(--nbd);background:var(--nbg-raise);color:var(--nt2);cursor:pointer}
+  .pbtn:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .pbtn.primary{background:var(--nacc);border-color:transparent;color:#fff;font-weight:600}
+  .pbtn.primary:hover{opacity:.9}
+  /* 搜索关键词高亮（先 esc 再包 <mark>，防 XSS——见 hl()） */
+  .note-row .ti mark{background:rgba(255,213,79,.35);color:inherit;border-radius:2px;padding:0 1px}
   .tree{flex:1;overflow-y:auto;padding:0 6px 8px;border-top:1px solid var(--nbd-soft)}
   .sec-h{display:flex;align-items:center;gap:5px;padding:10px 10px 4px;font-size:10.5px;font-weight:600;letter-spacing:.8px;color:var(--nt3);text-transform:uppercase}
   .sec-h .add{margin-left:auto;color:var(--nt3);cursor:pointer;padding:0 3px;border-radius:4px}
@@ -70,6 +124,12 @@
   .row.drop{outline:1.5px dashed var(--nacc);outline-offset:-2px}
   .caret{width:11px;flex-shrink:0;color:var(--nt3);display:grid;place-items:center;transition:transform .15s;cursor:pointer}
   .caret.open{transform:rotate(90deg)} .caret svg.ic{width:10px;height:10px}
+  /* 行尾视图过滤图标（文件夹/主题行共用：单击行主体=原地展开，视图过滤降级为行尾小图标；hover 浮现，激活常显） */
+  .vfilter{width:16px;height:16px;flex-shrink:0;display:grid;place-items:center;color:var(--nt3);border-radius:4px;cursor:pointer;opacity:0;transition:opacity .12s}
+  .row:hover .vfilter{opacity:1}
+  .vfilter:hover{color:var(--nacc);background:var(--nbg-hover)}
+  .vfilter.on{opacity:1;color:var(--nacc)}
+  .vfilter svg.ic{width:11px;height:11px}
   .row .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .row .n{font-size:10.5px;color:var(--nt3)}
   .ic-slot{width:15px;flex-shrink:0;display:grid;place-items:center;color:var(--nt2)}
@@ -109,9 +169,15 @@
   /* ===== P1 回收站（复用 arch-list/arch-row）：行内「恢复/彻底删除」小按钮 ===== */
   .arch-row .trash-act{margin-left:2px;padding:2px 10px;font-size:11px;flex-shrink:0}
   .arch-row .trash-act.danger{margin-left:0}
+  /* ===== 整理建议对话框（复用 arch-list/arch-row + trash-act）：三段分节标题 ===== */
+  .sg-sec{margin-bottom:4px}
+  .sg-sec-t{display:flex;align-items:center;gap:7px;padding:6px 2px;font-size:11.5px;font-weight:600;color:var(--ntx)}
+  .sg-sec-n{font-size:10.5px;font-weight:400;color:var(--nt3)}
+  .sg-sec-t .trash-act{margin-left:auto}
   .side-foot{padding:8px 10px;border-top:1px solid var(--nbd-soft);display:flex;gap:6px}
   .fbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;color:var(--nt2);background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:5px 0;cursor:pointer}
   .fbtn:hover{color:var(--nacc-tx);border-color:var(--nacc)} .fbtn svg.ic{width:12px;height:12px}
+  .fbtn.on{color:var(--nacc-tx);border-color:var(--nacc);background:var(--nbg-sel)}   /* 「选择」多选态高亮（自旧 chips 行迁入 side-foot） */
   /* ===== 编辑器 ===== */
   .ed{flex:1;background:var(--npanel);border-radius:var(--nr-lg);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--nbd-soft)}
   .ed.empty{align-items:center;justify-content:center;color:var(--nt3);gap:8px}
@@ -217,6 +283,8 @@
   .rich a.dsh-notes-wikilink:hover{background:var(--nbg-sel)}
   .note-row .wikimark{display:flex;flex-shrink:0;color:var(--nt3);align-items:center}
   .note-row .wikimark svg.ic{width:9px;height:9px}
+  /* 曾注入行徽章（injectEver 粘性标记：淡灰时钟，与已注入 bolt 蓝徽章互斥显示） */
+  .note-row .injevr{display:flex;flex-shrink:0;color:var(--nt3);align-items:center}
   .backlinks{border-top:1px solid var(--nbd-soft);padding:6px 24px;flex-shrink:0}
   .backlinks .bl-t{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;letter-spacing:.6px;color:var(--nt3);text-transform:uppercase}
   .backlinks .bl-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
@@ -271,6 +339,16 @@
   /* 设置卡片 */
   .set-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--nbd-soft)}
   .set-row:last-child{border-bottom:0}
+  /* ===== 注入预览 modal（设置卡片「注入预览」入口）：双 tab + 只读等宽文本 + 底部统计条（与原型 notes-ui-v2.html 同款） ===== */
+  .modal.injprev{width:640px}
+  .injprev-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .injprev-tabs{display:flex;gap:4px}
+  .injprev-tab{font:inherit;font-size:11.5px;padding:3px 14px;border-radius:20px;border:1px solid var(--nbd);background:transparent;color:var(--nt2);cursor:pointer}
+  .injprev-tab:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .injprev-tab.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:500}
+  .injprev-sess{margin-left:auto;width:auto;max-width:240px}
+  .injprev-text{font-family:var(--nmono);font-size:11px;line-height:1.65;background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:10px 12px;max-height:48vh;min-height:120px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0;color:var(--nt2)}
+  .injprev-stats{font-size:10.5px;color:var(--nt3);margin-top:10px;line-height:1.6}
   .set-label{flex:1;font-size:12.5px}
   .set-label .s{display:block;font-size:10.5px;color:var(--nt3);margin-top:2px;line-height:1.5}
   .set-ctrl{display:flex;align-items:center;gap:6px}
@@ -366,6 +444,10 @@
   <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M10 3l1.7 4.8 4.8 1.7-4.8 1.7L10 16l-1.7-4.8-4.8-1.7 4.8-1.7Z"/><path d="M17.5 14.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9Z"/></symbol>
   <!-- 敏感标记（sensitive 字段 toggle）：锁形图标 -->
   <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="9.5" rx="1.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></symbol>
+  <!-- 筛选中心新增图标（design/notes-filter-center.html）：曾注入时钟 / 排序 / chip × 移除 -->
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M8 5v14M8 5 4.5 8.5M8 5l3.5 3.5M16 19V5M16 19l3.5-3.5M16 19l-3.5-3.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
 </defs></svg>
 
 <div class="topbar">
@@ -380,24 +462,31 @@
 
 <div class="app">
   <aside class="side">
-    <div class="brand"><div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>笔记</b><span class="cnt" id="brandCnt"></span></div>
+    <div class="brand"><div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>笔记</b><span class="cnt" id="brandCnt"></span>
+      <!-- 新建入口（自旧 chips 行迁入 brand 行右侧，筛选中心口径⑥） -->
+      <span class="add-new" id="btnNew" title="新建笔记（Ctrl+N）"><svg class="ic"><use href="#i-plus"/></svg></span>
+    </div>
     <div class="quick"><svg class="ic"><use href="#i-search"/></svg><input id="q" placeholder="搜索笔记、标签、内容…"><span class="kbd">Ctrl K</span></div>
-    <div class="chips" id="chips">
-      <span class="chip on" data-k="all">全部</span><span class="chip" data-k="todo">待办</span><span class="chip" data-k="decision">决策</span><span class="chip" data-k="quote">引用</span>
-      <span class="chip" data-k="pinned"><svg class="ic" style="width:11px;height:11px"><use href="#i-pin"/></svg>置顶</span>
-      <span class="chip" id="chipSortUse" title="按被引用次数排序（note_get 命中计数；再点恢复按更新时间）"><svg class="ic"><use href="#i-quote"/></svg>按引用</span>
-      <span class="chip" id="btnSelMode" title="多选笔记：勾选后可合并为一篇（Esc 退出）"><svg class="ic"><use href="#i-check"/></svg>选择</span>
-      <span class="sp"></span>
-      <span class="chip new" id="btnNew"><svg class="ic"><use href="#i-plus"/></svg>新建</span>
+    <!-- 筛选中心行（design/notes-filter-center.html）：筛选按钮(N) + 激活条件 chips（单行横滚，× 单条移除）+ 独立排序控件；popover 浮层不挤压树区 -->
+    <div class="filterbar" id="filterbar">
+      <button class="fbtn-filter" id="btnFilter" aria-haspopup="true" aria-expanded="false" title="筛选中心：分组勾选条件（组内 OR / 跨组 AND）"><svg class="ic"><use href="#i-filter"/></svg><span>筛选</span><span class="cnt" id="filterBd" style="display:none"></span></button>
+      <div class="fchips" id="fchips"></div>
+      <div class="fsort-wrap" id="sortWrap">
+        <button class="fsort-btn" id="btnSort" title="排序（与筛选正交，互不重置）"></button>
+        <div class="fsort-menu" id="fsortMenu"></div>
+      </div>
+      <div class="fpop" id="fpop" role="dialog" aria-label="筛选条件"></div>
     </div>
     <div class="tree" id="tree"></div>
+    <!-- 底部：回收站 + 选择（多选合并，自旧 chips 行迁入）+ 设置；导出/导入 → 设置卡片「数据」区，整理建议 → 设置卡片「整理建议」行 -->
     <div class="side-foot">
-      <div class="fbtn" id="btnExport"><svg class="ic"><use href="#i-up"/></svg>导出</div>
-      <div class="fbtn" id="btnImport"><svg class="ic"><use href="#i-down"/></svg>导入</div>
       <div class="fbtn" id="btnTrash" title="回收站：查看已删除的笔记，可恢复或彻底删除"><svg class="ic"><use href="#i-trash"/></svg>回收站</div>
+      <div class="fbtn" id="btnSelMode" title="多选笔记：勾选后可合并为一篇（Esc 退出）"><svg class="ic"><use href="#i-check"/></svg>选择</div>
       <div class="fbtn" id="btnSettings"><svg class="ic"><use href="#i-gear"/></svg>设置</div>
     </div>
   </aside>
+  <!-- 侧栏宽度拖拽条（4px，叠加在两栏间隙上不占位）：拖拽调整 / 双击重置缺省宽 -->
+  <div class="splitter" id="splitter" title="拖拽调整侧栏宽度（双击重置）"></div>
 
   <section class="ed empty" id="ed">
     <svg class="ic"><use href="#i-note"/></svg>
@@ -438,9 +527,57 @@ var STATUS_LABEL = { active: '进行中', pinned: '置顶', resolved: '已解决
 var notes = [];              // slim 列表缓存（常驻内存；写操作后静默回填）
 var folders = [];            // 虚拟文件夹清单 [{id,name,order,count}]
 var view = { type: 'all', id: '' };   // all | folder | topic
-var kindF = 'all';           // all | note/todo/... | pinned
-var sortBy = 'time';         // P2 使用遥测：time=按更新（缺省，与 host _list 一致）| use=按被引用次数降序
+/* ===== 筛选中心状态（design/notes-filter-center.html 落地）：组内 OR / 跨组 AND；与文件夹/主题视图/搜索 AND 叠加；localStorage 持久化 ===== */
+var _fs = loadFilters();               // 持久化恢复（dsh-notes-app-filters）
+var filters = _fs.filters;             // {pinned, injected, injectEver, sensitive, kinds[]}（injectEver 由 notes-inject-filter 提供，feature-detect）
+var sortBy = _fs.sortBy;               // time=按更新（缺省，与 host _list 一致）| use=按被引用次数降序 | rel=相关度（搜索时：标题>标签>正文，同级 updatedAt 降序）
+var filterOpen = false;      // 筛选 popover 浮层开关
+var sortOpen = false;        // 排序菜单浮层开关
+/* 筛选中心条件模型（四端同构：client-impl.js / 本页 / 原型 / check.js 断言一致） */
+var FILTER_STATUS = [
+  { id: 'pinned', label: '置顶', icon: 'i-pin', pred: function (n) { return n.status === 'pinned' } },
+  { id: 'injected', label: '已注入', icon: 'i-bolt', pred: function (n) { return n.inject === true } },
+  { id: 'injectEver', label: '曾注入', icon: 'i-clock', pred: function (n) { return n.injectEver === true } },   /* 含已注入；字段由 notes-inject-filter 提供 */
+  { id: 'sensitive', label: '敏感', icon: 'i-lock', pred: function (n) { return n.sensitive === true } }
+];
+var FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote'];
+var FILTER_SORTS = [
+  { id: 'time', label: '时间', desc: '置顶优先 · 更新降序（默认）' },
+  { id: 'use', label: '引用', desc: '被引用次数降序' },
+  { id: 'rel', label: '相关度', desc: '搜索打分（搜索时生效）' }
+];
+function loadFilters() {
+  var F = { pinned: false, injected: false, injectEver: false, sensitive: false, kinds: [] };
+  try {
+    var v = localStorage.getItem('dsh-notes-app-filters');
+    if (!v) return { filters: F, sortBy: 'time' };
+    var s = JSON.parse(v) || {};
+    if (s.filters) {
+      ['pinned', 'injected', 'injectEver', 'sensitive'].forEach(function (k) { F[k] = s.filters[k] === true });
+      if (Array.isArray(s.filters.kinds)) F.kinds = s.filters.kinds.filter(function (k) { return !!KIND[k] });
+    }
+    return { filters: F, sortBy: (s.sortBy === 'use' || s.sortBy === 'rel') ? s.sortBy : 'time' };
+  } catch (e) { return { filters: F, sortBy: 'time' } }
+}
+function saveFilters() { try { localStorage.setItem('dsh-notes-app-filters', JSON.stringify({ filters: filters, sortBy: sortBy })) } catch (e) {} }
+function filtersActiveCount() { var n = filters.kinds.length; FILTER_STATUS.forEach(function (s) { if (filters[s.id]) n++ }); return n }
+/* 曾注入条件 feature-detect：列表 slim 含 injectEver 字段才显示该选项（host 未提供时隐藏；存量激活条件仍渲染 chip 可 × 移除） */
+function hasInjectEver() { return notes.some(function (n) { return n.injectEver !== undefined }) }
+/* 筛选谓词（纯函数，check.js 提取做语义回归）：状态组组内 OR、类型组组内 OR、跨组 AND */
+function matchFilters(n, F) {
+  var st = [];
+  if (F.pinned) st.push(n.status === 'pinned');
+  if (F.injected) st.push(n.inject === true);
+  if (F.injectEver) st.push(n.injectEver === true);
+  if (F.sensitive) st.push(n.sensitive === true);
+  if (st.length && st.indexOf(true) < 0) return false;
+  if (F.kinds.length && F.kinds.indexOf(n.kind || 'note') < 0) return false;
+  return true;
+}
+function clearFilters() { filters = { pinned: false, injected: false, injectEver: false, sensitive: false, kinds: [] }; saveFilters() }
+function sortLabel() { for (var i = 0; i < FILTER_SORTS.length; i++) if (FILTER_SORTS[i].id === sortBy) return FILTER_SORTS[i].label; return '时间' }
 var searchText = '', searchIds = null; // searchIds=null=仅本地过滤；数组=host 全文命中 ∪ 本地命中
+var searchMeta = {};         // host notes-search 返回的命中字段（noteId → ['title'|'tags'|'body']），相关度排序数据源
 var selId = null, edNote = null;       // edNote = 当前选中笔记完整体（含 body）
 var edLoading = false;                 /* 正文异步加载中：doSave 省略 body 字段（防竞态清空正文） */
 var dragId = null, saveTimer = null, searchTimer = null;
@@ -454,6 +591,7 @@ var richSyncTimer = null, degTimer = null;
 var imgDraft = null, imgUploading = false; // 图片插入弹窗草稿 + 上传中标记（三入口共用：粘贴/拖拽/工具栏按钮）
 var sessList = [], sessPending = [];   // 注入范围浮层会话源（notes-sessions）
 var foldOpen = loadFoldOpen();         // 文件夹折叠态（localStorage；缺省全展开）
+var topicOpen = {};                    // 主题过滤行原地展开态（点行主体=展开/收起子列表；session 内有效，不持久化）
 var scopeOpen = false;
 /* ===== 显式归档 UI + 手动笔记多选合并（契约：notes-archive-preview / notes-archive {groups:[{memberIds,title?}]} / notes-archive-undo） ===== */
 var selMode = false, selIds = {};      // 列表多选态 + 勾选集合（noteId → true；与搜索/过滤共存，按 id 记账）
@@ -463,6 +601,8 @@ var organizing = false, organizeUndo = null;   // organizeUndo = 一次撤销栈
 var pruneState = null;                 // 资产清理对话框状态：{ data:null=扫描中, checked:{name:false=取消勾选}, pending }
 /* ===== P1 回收站（notes-list {includeDeleted:true} + notes-restore/notes-purge）===== */
 var trashState = null;                 // 回收站对话框状态：{ list:null=加载中, pending:执行中的笔记 id }
+/* ===== 整理建议（notes-suggest 三类候选：速记组/过期未引用/孤儿——只提名不自动执行）===== */
+var suggestState = null;               // 整理建议对话框状态：{ data:null=分析中, pending:批量软删执行中 }
 /* ===== P2 笔记双链：全库正文惰性索引（列表瘦身不含 body；后台 notes-get 小批量补齐，驱动行尾双链标记与反向链接面板；host 不改）===== */
 var wikiBodies = {};                   // noteId → { body, updatedAt }
 var wikiIdxGen = 0;                    // 索引构建代际：列表刷新作废旧任务
@@ -738,6 +878,17 @@ function sanitizeFragment(frag) {
   var box = document.createElement('div'); walk(frag, box); return box
 }
 // ===== end 双模式编辑器内核 v3 =====
+// 搜索关键词 <mark> 高亮（搜索体验升级；与原型 notes-ui-v2.html 同源，check.js 断言一致）。
+// 安全红线：先 esc 再包 <mark>——标题/查询词都先经 esc 转义，正则只对转义后文本起作用，插入的仅 <mark> 标签本身；
+// 禁止直接 innerHTML 拼原文（本函数输出可安全进 innerHTML：原文中的脚本标签/img onerror 等已被转义为纯文本）。
+// （置于内核块外：内核三端逐字节一致断言不覆盖本函数）
+function hl(text, q) {
+  var s = esc(text == null ? '' : text);
+  var qs = esc(String(q == null ? '' : q).trim());
+  if (!s || !qs) return s;
+  var re = new RegExp('(' + qs.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+  return s.replace(re, '<mark>$1</mark>');
+}
 function icon(id, sz) { return '<svg class="ic"' + (sz ? ' style="width:' + sz + 'px;height:' + sz + 'px"' : '') + '><use href="#' + id + '"/></svg>' }
 function fname(id) { var f = folders.find(function (x) { return x.id === id }); return f ? f.name : '' }
 function shortSid(sid) { return sid ? String(sid).replace(/^session-/, '').slice(0, 8) : '' }
@@ -793,13 +944,13 @@ function ensureWikiIndex() {
 }
 /* 行尾双链标记：缓存正文优先，索引未到时 preview（host slim 前 200 字符）兜底 */
 function hasWikiLinks(n) { var c = wikiBodies[n.id]; return extractWikiTargets(c ? c.body : (n.preview || '')).length > 0; }
-/* 双链跳转：解析 → 选中；目标被当前视图/kind 过滤藏掉时退回「全部」（搜索词不动，保留用户上下文） */
+/* 双链跳转：解析 → 选中；目标被当前视图/筛选中心条件藏掉时退回「全部」（搜索词不动，保留用户上下文） */
 function jumpToWikiTarget(target) {
   var n = resolveWikiTarget(target);
   if (!n) { toast('未找到链接目标：' + target); return; }
   var vis = (view.type === 'all' || (view.type === 'folder' && (n.folder || '') === view.id) || (view.type === 'topic' && (n.topic || '') === view.id))
-    && (kindF === 'all' || (kindF === 'pinned' && isPinned(n)) || (n.kind || 'note') === kindF);
-  if (!vis) { view = { type: 'all', id: '' }; kindF = 'all'; }
+    && matchFilters(n, filters);
+  if (!vis) { view = { type: 'all', id: '' }; clearFilters(); }
   selectNote(n.id);
 }
 /* 反向链接面板：全库正文含 [[当前id]]/[[当前标题]] 的其他笔记（点击跳转；索引未热提示「索引中…」） */
@@ -825,7 +976,15 @@ function renderBacklinks() {
   host.querySelectorAll('.bl-item').forEach(function (el) { el.addEventListener('click', function () { jumpToWikiTarget(el.getAttribute('data-bl')); }); });
 }
 function loadFolders() {
-  return rpc('notes-folders').then(function (res) { if (res && res.folders) folders = res.folders }).catch(function () {})
+  return rpc('notes-folders').then(function (res) {
+    if (res && res.folders) {
+      folders = res.folders;
+      /* 清洗陈旧折叠态：剔除已删除文件夹的 id 残留（folders 异步到达后执行；foldOpen 语义=仅记折叠 id，残留虽不影响渲染但会持续累积） */
+      var changed = false;
+      Object.keys(foldOpen).forEach(function (k) { if (!folders.some(function (f) { return f.id === k })) { delete foldOpen[k]; changed = true } });
+      if (changed) saveFoldOpen();
+    }
+  }).catch(function () {})
 }
 // 注入范围浮层会话源：titlesPending 时 1.5s 重拉直到补齐（0.1.7 首屏提速契约）
 var sessPullTimer = null;
@@ -839,12 +998,11 @@ function pullSessions() {
   }).catch(function () {})
 }
 
-/* ================= 视图求值：文件夹 ∩ 主题 ∩ 类型 ∩ 搜索（四维 AND） ================= */
+/* ================= 视图求值：文件夹 ∩ 主题 ∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索 ================= */
 function matches(n) {
   if (view.type === 'topic') { if ((n.topic || '') !== view.id) return false }
   else if (view.type === 'folder') { if ((n.folder || '') !== view.id) return false }
-  if (kindF === 'pinned' && !isPinned(n)) return false;
-  if (kindF !== 'all' && kindF !== 'pinned' && (n.kind || 'note') !== kindF) return false;
+  if (!matchFilters(n, filters)) return false;
   if (searchText) {
     var q = searchText.toLowerCase();
     var local = ((n.title || '') + ' ' + (n.preview || '') + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ') + ' ' + fname(n.folder)).toLowerCase().indexOf(q) >= 0;
@@ -853,6 +1011,69 @@ function matches(n) {
   }
   return true;
 }
+
+/* ================= 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0，如仅 topic 命中)；同级 updatedAt 降序（比较在 renderTree） ================= */
+function relRank(n, q) {
+  var m = searchMeta[n.id];   /* host notes-search 返回的 matches 命中字段（全文口径）优先；无则按本地字段估算（preview 仅前 200 字，正文命中可能低估） */
+  if (m && m.length) { if (m.indexOf('title') >= 0) return 3; if (m.indexOf('tags') >= 0) return 2; if (m.indexOf('body') >= 0) return 1; return 0 }
+  if ((n.title || '').toLowerCase().indexOf(q) >= 0) return 3;
+  if ((n.tags || []).join(' ').toLowerCase().indexOf(q) >= 0) return 2;
+  if ((n.preview || '').toLowerCase().indexOf(q) >= 0) return 1;
+  return 0;
+}
+
+/* ================= 筛选中心（design/notes-filter-center.html）：筛选按钮(N) + 激活 chips + 独立排序控件 + popover 分组面板 ================= */
+/* 控制行渲染：按钮计数丸 + 激活条件 chips（× 单条移除）+ 排序按钮/菜单 + popover 开关 */
+function renderFilterBar() {
+  var n = filtersActiveCount(), fb = $('btnFilter');
+  fb.classList.toggle('on', n > 0 || filterOpen);
+  fb.setAttribute('aria-expanded', filterOpen ? 'true' : 'false');
+  $('filterBd').style.display = n > 0 ? '' : 'none';
+  $('filterBd').textContent = n;
+  var h = '';
+  FILTER_STATUS.forEach(function (s) {
+    if (!filters[s.id]) return;
+    h += '<span class="fchip" data-ft="' + s.id + '" title="筛选条件：状态 / ' + s.label + '（点 × 移除）">' + icon(s.icon, 10) + s.label + '<span class="x" role="button" aria-label="移除条件 ' + s.label + '">' + icon('i-x', 9) + '</span></span>';
+  });
+  filters.kinds.forEach(function (k) {
+    h += '<span class="fchip" data-fk="' + k + '" title="筛选条件：类型 / ' + KIND[k] + '（点 × 移除）"><span class="dot" style="background:' + (KCOLOR[k] || KCOLOR.note) + '"></span>' + KIND[k] + '<span class="x" role="button" aria-label="移除条件 ' + KIND[k] + '">' + icon('i-x', 9) + '</span></span>';
+  });
+  $('fchips').innerHTML = h;
+  var sb = $('btnSort');
+  sb.classList.toggle('on', sortBy !== 'time' || sortOpen);
+  sb.innerHTML = icon('i-sort', 11) + '<span>' + sortLabel() + '</span>';
+  $('fsortMenu').classList.toggle('open', sortOpen);
+  if (sortOpen) renderSortMenu();
+  var fp = $('fpop');
+  fp.classList.toggle('open', filterOpen);
+  if (filterOpen) renderFilterPop();
+}
+/* popover 分组面板：状态组（多选，曾注入 feature-detect）+ 类型组（多选）；组内 OR / 跨组 AND；勾选即时生效；底部 命中 N 条 + 清空/完成 */
+function renderFilterPop() {
+  var p = $('fpop'); if (!p) return;
+  var showEver = hasInjectEver();
+  var h = '<div class="fg-h"><span>状态</span><span class="fg-rule">组内多选 = OR</span></div>';
+  FILTER_STATUS.forEach(function (s) {
+    if (s.id === 'injectEver' && !showEver) return;   /* feature-detect：slim 无 injectEver 字段时不显示 */
+    h += '<label class="fg-item"><input type="checkbox" data-ft="' + s.id + '"' + (filters[s.id] === true ? ' checked' : '') + '>'
+      + icon(s.icon, 11) + '<span class="fl">' + s.label + '</span><span class="cnt2">' + notes.filter(s.pred).length + '</span></label>';
+  });
+  h += '<div class="fg-h"><span>类型</span><span class="fg-rule">组内 OR · 与状态组 = AND</span></div>';
+  FILTER_KINDS.forEach(function (k) {
+    h += '<label class="fg-item"><input type="checkbox" data-fk="' + k + '"' + (filters.kinds.indexOf(k) >= 0 ? ' checked' : '') + '>'
+      + '<span class="dot" style="background:' + (KCOLOR[k] || KCOLOR.note) + '"></span><span class="fl">' + KIND[k] + '</span><span class="cnt2">' + notes.filter(function (n) { return (n.kind || 'note') === k }).length + '</span></label>';
+  });
+  h += '<div class="fpop-foot"><span class="pcnt">命中 ' + notes.filter(matches).length + ' 条</span><button class="pbtn" id="popClear">清空</button><button class="pbtn primary" id="popDone">完成</button></div>';
+  p.innerHTML = h;
+}
+/* 独立排序菜单（单选；排序与筛选正交，互不重置） */
+function renderSortMenu() {
+  $('fsortMenu').innerHTML = FILTER_SORTS.map(function (s) {
+    return '<div class="fsort-item' + (sortBy === s.id ? ' on' : '') + '" data-fs="' + s.id + '"><span class="tick">' + icon('i-check', 11) + '</span><span>' + s.label + '</span><span class="sd">' + s.desc + '</span></div>';
+  }).join('');
+}
+/* 过滤条件变化且搜索词非空：重跑防抖搜索（host notes-search 组合过滤口径同步） */
+function reSearch() { if (searchText.trim()) { clearTimeout(searchTimer); searchTimer = setTimeout(doSearch, 250) } }
 
 /* ================= 侧栏树 ================= */
 function noteRow(n, inFolderCtx) {
@@ -864,8 +1085,10 @@ function noteRow(n, inFolderCtx) {
   return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + (selMode && selIds[n.id] ? ' pick' : '') + '" data-note="' + n.id + '" draggable="true">'
     + (selMode ? '<input type="checkbox" class="pick-check"' + (selIds[n.id] ? ' checked' : '') + '>' : '')
     + '<span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>'
-    + '<span class="ti">' + (isPinned(n) ? '<svg class="ic pin"><use href="#i-pin"/></svg> ' : '') + esc(n.title || '无标题') + '</span>'
+    + '<span class="ti">' + (isPinned(n) ? '<svg class="ic pin"><use href="#i-pin"/></svg> ' : '') + hl(n.title || '无标题', searchText) + '</span>'
     + (n.inject ? '<span style="color:var(--nacc);display:flex" title="注入为上下文 · ' + (n.injectRole === 'reference' ? '资料' : '约定') + '">' + icon('i-bolt', 10) + '</span>' : '')
+    /* 曾注入徽章（injectEver 粘性标记：历史上开启过注入、现已关闭；已注入由 bolt 表达不重复显示；不满足不渲染） */
+    + (!n.inject && n.injectEver === true ? '<span class="injevr" title="曾注入：历史上开启过上下文注入（现已关闭）">' + icon('i-clock', 9) + '</span>' : '')
     /* 使用遥测（P2）：被引用徽章（0 次不显示） */
     + ((n.useCount || 0) > 0 ? '<span class="use" title="被 Agent 引用（note_get 命中）' + n.useCount + ' 次">' + icon('i-quote', 9) + n.useCount + '</span>' : '')
     /* 双链标记（P2）：正文含 [[..]] 时行尾显示链接图标（缓存正文优先，preview 兜底） */
@@ -874,14 +1097,16 @@ function noteRow(n, inFolderCtx) {
 }
 function renderTree() {
   var vis = notes.filter(matches);
-  /* 排序（P2 使用遥测）：缺省保持 host 序（pinned → updatedAt）；「按引用」= useCount 降序（同数按 updatedAt 兜底），分组内顺序随过滤数组 */
+  /* 排序：缺省保持 host 序（pinned → updatedAt）；「按引用」= useCount 降序（同数按 updatedAt 兜底）；「相关度」= 标题命中>标签>正文（同级 updatedAt 降序），分组内顺序随过滤数组 */
   if (sortBy === 'use') vis.sort(function (a, b) { return ((b.useCount || 0) - (a.useCount || 0)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) });
-  $('brandCnt').textContent = (view.type === 'all' && kindF === 'all' && !searchText ? notes.length : vis.length) + ' 条';
+  var qRel = searchText.trim().toLowerCase();
+  if (sortBy === 'rel' && qRel) vis.sort(function (a, b) { return (relRank(b, qRel) - relRank(a, qRel)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) });
+  $('brandCnt').textContent = (view.type === 'all' && filtersActiveCount() === 0 && !searchText ? notes.length : vis.length) + ' 条';
   var h = '';
   var vt = view.type === 'topic' ? ('主题 · ' + view.id) : view.type === 'folder' ? ('文件夹 · ' + fname(view.id)) : '全部笔记';
   h += '<div class="sec-h">' + icon('i-filter', 11) + esc(vt) + (view.type === 'topic' ? ' <span style="letter-spacing:0;text-transform:none;font-weight:500">（跨文件夹 ' + vis.length + ' 条）</span>' : '') + (view.type !== 'all' ? '<span class="add" id="viewClear" title="清除视图过滤">✕</span>' : '') + '</div>';
-  /* 置顶聚合组（置顶筛选时不再重复展示） */
-  if (kindF !== 'pinned') {
+  /* 置顶聚合组（筛选中心「置顶」条件激活时不再重复展示） */
+  if (!filters.pinned) {
     var pins = vis.filter(isPinned);
     if (pins.length) { h += '<div class="sec-h">' + icon('i-pin', 11) + ' 置顶</div>'; pins.forEach(function (n) { h += noteRow(n, false) }) }
   }
@@ -890,10 +1115,12 @@ function renderTree() {
   folders.forEach(function (f) {
     var kids = vis.filter(function (n) { return (n.folder || '') === f.id });
     var open = foldOpen[f.id] !== false;
+    /* 行主体单击=原地展开/折叠（事件委托处理）；行尾 vfilter 图标=进入/退出文件夹视图（不抢占单击） */
     h += '<div class="row head' + (view.type === 'folder' && view.id === f.id ? ' on' : '') + '" data-fold="' + f.id + '" data-drop="1">'
       + '<span class="caret' + (open ? ' open' : '') + '">' + icon('i-chev') + '</span>'
       + '<span class="ic-slot">' + icon('i-folder', 13) + '</span>'
-      + '<span class="nm">' + esc(f.name) + '</span><span class="n">' + (view.type === 'topic' || searchText || kindF !== 'all' ? kids.length : (f.count != null ? f.count : kids.length)) + '</span></div>';
+      + '<span class="nm">' + esc(f.name) + '</span><span class="n">' + (view.type === 'topic' || searchText || filtersActiveCount() > 0 ? kids.length : (f.count != null ? f.count : kids.length)) + '</span>'
+      + '<span class="vfilter' + (view.type === 'folder' && view.id === f.id ? ' on' : '') + '" title="文件夹视图（仅看此文件夹）">' + icon('i-filter', 11) + '</span></div>';
     if (open && kids.length) { h += '<div class="nested">'; kids.forEach(function (n) { h += noteRow(n, true) }); h += '</div>' }
   });
   /* 未分类（topic 分组平铺） */
@@ -914,18 +1141,26 @@ function renderTree() {
   notes.forEach(function (n) { if (n.topic) allTopics[n.topic] = (allTopics[n.topic] || 0) + 1 });
   Object.keys(allTopics).sort().forEach(function (t) {
     var on = view.type === 'topic' && view.id === t;
-    h += '<div class="row' + (on ? ' on' : '') + '" data-topic="' + esc(t) + '"><span class="ic-slot">' + icon('i-topic', 12) + '</span><span class="nm">' + esc(t) + '</span><span class="n">' + allTopics[t] + '</span></div>';
+    var tOpen = !!topicOpen[t];
+    /* 行主体单击=原地展开/收起该主题子列表（topicOpen，不持久化）；行尾 vfilter 图标=主题视图（跨文件夹过滤） */
+    h += '<div class="row topic-row' + (on ? ' on' : '') + '" data-topic="' + esc(t) + '">'
+      + '<span class="caret' + (tOpen ? ' open' : '') + '">' + icon('i-chev') + '</span>'
+      + '<span class="ic-slot">' + icon('i-topic', 12) + '</span><span class="nm">' + esc(t) + '</span><span class="n">' + allTopics[t] + '</span>'
+      + '<span class="vfilter' + (on ? ' on' : '') + '" title="主题视图（跨文件夹过滤）">' + icon('i-filter', 11) + '</span></div>';
+    if (tOpen) {
+      var tkids = vis.filter(function (n) { return (n.topic || '') === t });
+      if (tkids.length) { h += '<div class="nested">'; tkids.forEach(function (n) { h += noteRow(n, false) }); h += '</div>' }
+    }
   });
-  if (!vis.length) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">无匹配笔记</div>';
+  /* 空结果态：提示 + 「清空筛选条件」快捷链接（筛选中心口径⑦） */
+  if (!vis.length) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">无匹配笔记' + (filtersActiveCount() ? ' · <span class="add" id="emptyClear" style="letter-spacing:0">清空筛选条件</span>' : '') + '</div>';
   $('tree').innerHTML = h;
-  $('chips').querySelectorAll('.chip[data-k]').forEach(function (c) {
-    c.classList.toggle('on', kindF === c.dataset.k);
-    c.onclick = function () { kindF = c.dataset.k; render() };
-  });
   var vc = $('viewClear'); if (vc) vc.onclick = function () { view = { type: 'all', id: '' }; render() };
+  var ec = $('emptyClear'); if (ec) ec.onclick = function () { clearFilters(); render(); renderFilterBar(); if (searchText.trim()) reSearch() };
   var af = $('addFolder'); if (af) af.onclick = function (ev) { ev.stopPropagation(); doCreateFolder() };
   $('btnSelMode').classList.toggle('on', selMode);
-  $('chipSortUse').classList.toggle('on', sortBy === 'use');
+  /* 筛选中心控制行：按钮计数丸 / 激活 chips / 排序按钮 / popover 随每次树渲染同步（列表到达后 feature-detect 与命中数才准） */
+  renderFilterBar();
   renderSelBar();
 }
 /* 多选操作条：已选 N 条 | 合并 | 取消（多选态常显于左下角） */
@@ -937,12 +1172,18 @@ function renderSelBar() {
 }
 /* 树事件委托（挂一次；drag 事件均冒泡） */
 $('tree').addEventListener('click', function (ev) {
-  var caret = ev.target.closest('.caret');
+  var vf = ev.target.closest('.vfilter');
   var frow = ev.target.closest('[data-fold]');
-  if (caret && frow) { var f = frow.dataset.fold; foldOpen[f] = foldOpen[f] === false ? true : false; saveFoldOpen(); renderTree(); return }
-  if (frow) { view = { type: 'folder', id: frow.dataset.fold }; foldOpen[frow.dataset.fold] = true; saveFoldOpen(); render(); return }
+  /* 文件夹行：行尾过滤图标=进入/退出文件夹视图；行主体（含 caret）=原地展开/折叠（「点哪个展开哪个」） */
+  if (vf && frow) { var fid = frow.dataset.fold; view = view.type === 'folder' && view.id === fid ? { type: 'all', id: '' } : { type: 'folder', id: fid }; foldOpen[fid] = true; saveFoldOpen(); render(); return }
+  if (frow) { var f = frow.dataset.fold; foldOpen[f] = foldOpen[f] === false ? true : false; saveFoldOpen(); renderTree(); return }
   var trow = ev.target.closest('[data-topic]');
-  if (trow) { var t = trow.dataset.topic; view = view.type === 'topic' && view.id === t ? { type: 'all', id: '' } : { type: 'topic', id: t }; render(); return }
+  if (trow) {
+    var t = trow.dataset.topic;
+    /* 主题行：行尾过滤图标=主题视图（跨文件夹过滤）；行主体=原地展开/收起该主题子列表 */
+    if (vf) { view = view.type === 'topic' && view.id === t ? { type: 'all', id: '' } : { type: 'topic', id: t }; render(); return }
+    topicOpen[t] = !topicOpen[t]; renderTree(); return
+  }
   var nrow = ev.target.closest('[data-note]');
   if (nrow) {
     /* 多选态：行点击=勾选/取消（不打开笔记），并重渲染刷新复选框与操作条计数 */
@@ -1039,18 +1280,20 @@ function openFolderMenu(x, y, fid) {
   if (!f) return;
   var host = $('ctxHost');
   host.innerHTML = '<div class="ctxmenu" id="ctxMenu">'
+    + '<div class="mi" data-a="view">' + icon('i-filter') + '进入文件夹视图</div>'
     + '<div class="mi" data-a="rename">' + icon('i-note') + '重命名</div>'
     + '<div class="mi" data-a="up">' + icon('i-up') + '上移</div>'
     + '<div class="mi" data-a="down">' + icon('i-down') + '下移</div>'
     + '<div class="mi danger" data-a="del">' + icon('i-trash') + '删除</div></div>';
   var m = $('ctxMenu');
   m.style.left = Math.min(x, innerWidth - 170) + 'px';
-  m.style.top = Math.min(y, innerHeight - 160) + 'px';
+  m.style.top = Math.min(y, innerHeight - 190) + 'px';
   m.addEventListener('click', function (ev) {
     var mi = ev.target.closest('.mi'); if (!mi) return;
     closeCtx();
     var a = mi.dataset.a;
-    if (a === 'rename') doRenameFolder(f);
+    if (a === 'view') { view = { type: 'folder', id: f.id }; foldOpen[f.id] = true; saveFoldOpen(); render(); }
+    else if (a === 'rename') doRenameFolder(f);
     else if (a === 'up') doReorderFolder(f, -1);
     else if (a === 'down') doReorderFolder(f, 1);
     else if (a === 'del') doDeleteFolder(f);
@@ -1060,6 +1303,8 @@ function closeCtx() { $('ctxHost').innerHTML = '' }
 document.addEventListener('mousedown', function (ev) {
   if (!ev.target.closest('.ctxmenu')) closeCtx();
   if (!ev.target.closest('#scopeWrap')) { if (scopeOpen) { scopeOpen = false; renderScopePanel() } }
+  /* 筛选中心浮层：点击外部关闭（popover + 排序菜单均在 #filterbar 内，同一选择器覆盖） */
+  if (!ev.target.closest('#filterbar')) { if (filterOpen || sortOpen) { filterOpen = false; sortOpen = false; renderFilterBar() } }
 });
 
 /* ================= 选中与编辑器 ================= */
@@ -1565,6 +1810,8 @@ function renderMeta() {
     + (role !== 'off' ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="选择注入范围（可多选）">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
     + '<span class="meta-chip tgl' + (n.recall !== false ? ' on' : '') + '" id="mRecall" title="关闭后不出现在注入给 Agent 的目录中">' + icon('i-eye') + '目录可见</span>'
     + '<span class="meta-chip tgl' + (n.sensitive === true ? ' on' : '') + '" id="mSens" title="敏感内容：注入系统提示时正文按行打码（键保留值遮蔽），Agent 用 note_get 取原文">' + icon('i-lock') + '敏感</span>'
+    /* 曾注入徽章（injectEver 粘性标记：单向只升不降，不随关闭回退；当前已注入时由上方注入角色段表达，不重复显示） */
+    + (n.injectEver === true && !n.inject ? '<span class="meta-chip" title="曾注入：历史上开启过上下文注入（现已关闭；injectEver 为粘性标记，不随关闭回退）">' + icon('i-clock') + '曾注入</span>' : '')
     + '<span class="meta-sp"></span>'
     /* 双模式两段开关（原型 .modeseg + tipwrap 降级 tooltip）：源码 ⇄ 富文本；降级态富文本段置灰 */
     + '<span class="tipwrap' + (degraded.ok ? '' : ' deg') + '">'
@@ -1718,8 +1965,8 @@ function doDeleteNote(id) {
 $('btnNew').addEventListener('click', function () {
   var seedFolder = view.type === 'folder' ? view.id : '';
   var seedTopic = view.type === 'topic' ? view.id : '';
-  var kind0 = kindF !== 'all' && kindF !== 'pinned' ? kindF : 'note';
-  /* 二期 kind 模板骨架：按当前类型过滤选定的 kind 预填（note=空自由格式） */
+  var kind0 = filters.kinds.length === 1 ? filters.kinds[0] : 'note';
+  /* 二期 kind 模板骨架：筛选中心类型组恰选 1 个时按该 kind 预填（note=空自由格式） */
   var payload = { title: '', body: KIND_TEMPLATES[kind0] || '', kind: kind0 };
   if (seedFolder) payload.folder = seedFolder;
   if (seedTopic) payload.topic = seedTopic;
@@ -1730,18 +1977,32 @@ $('btnNew').addEventListener('click', function () {
   }).catch(function (e) { toast('创建失败：' + (e && e.message || e)) });
 });
 
-/* ================= 搜索：本地即时过滤 + 250ms 防抖 notes-search 并集 ================= */
+/* ================= 搜索：本地即时过滤 + 250ms 防抖 notes-search 并集（kind/sensitive/inject 组合过滤随 sArgs 同步 host；matches 命中字段供相关度排序） ================= */
+function doSearch() {
+  var q = searchText.trim();
+  if (!q) { searchIds = null; searchMeta = {}; return }
+  var sArgs = { query: q };
+  /* 筛选中心组合过滤同步 host：类型组恰选 1 个时可传 kind；状态组仅单条件独活时可传 sensitive/inject
+     （多选 OR / 曾注入 语义 host 无法表达，由本地 matchFilters 兜底全量语义） */
+  if (filters.kinds.length === 1) sArgs.kind = filters.kinds[0];
+  var stOn = FILTER_STATUS.filter(function (s) { return filters[s.id] }).map(function (s) { return s.id });
+  if (stOn.length === 1 && stOn[0] === 'sensitive') sArgs.sensitive = true;
+  if (stOn.length === 1 && stOn[0] === 'injected') sArgs.inject = true;
+  rpc('notes-search', sArgs).then(function (res) {
+    if (res && res.notes && $('q').value.trim() === q) {
+      searchIds = res.notes.map(function (n) { return n.id });
+      searchMeta = {};
+      res.notes.forEach(function (n) { if (n.matches) searchMeta[n.id] = n.matches });
+      render();
+    }
+  }).catch(function () {})
+}
 $('q').addEventListener('input', function () {
   searchText = this.value;
   render();
   clearTimeout(searchTimer);
-  var q = searchText.trim();
-  if (!q) { searchIds = null; return }
-  searchTimer = setTimeout(function () {
-    rpc('notes-search', { query: q }).then(function (res) {
-      if (res && res.notes && $('q').value.trim() === q) { searchIds = res.notes.map(function (n) { return n.id }); render() }
-    }).catch(function () {})
-  }, 250);
+  if (!searchText.trim()) { searchIds = null; searchMeta = {}; return }
+  searchTimer = setTimeout(doSearch, 250);
 });
 
 /* ================= modal 框架 ================= */
@@ -1864,8 +2125,10 @@ function openSettings() {
       + '<span class="s" id="setGaugeT">当前注入约 ' + lastChars + ' 字符' + (budgetNum > 0 ? ' / 预算约 ' + budgetNum + ' 字符' : '（不限）') + '</span>'
       + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div></div>'
       + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">数据<span class="s">全库目录快照导出 / 从快照目录导入（只增改不删，导入前自动全量备份）</span></div><div class="set-ctrl"><button class="mbtn" id="setExport">导出全部</button><button class="mbtn" id="setImport">导入…</button></div></div>'
-      + '<div class="set-row"><div class="set-label">资产清理<span class="s">扫描 assets/ 中未被任何笔记引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删）</span></div><div class="set-ctrl"><button class="mbtn" id="setPrune">清理…</button></div></div>';
+      + '<div class="set-row"><div class="set-label">注入预览<span class="s">查看 Agent 实际收到的注入文本（约定 + 目录）：敏感打码 / 时效标注 / 预算截断效果即所见；可按会话过滤</span></div><div class="set-ctrl"><button class="mbtn" id="setInjectPreview">预览…</button></div></div>'
+      + '<div class="set-row"><div class="set-label">数据<span class="s">全库目录快照导出 / 从快照目录导入（只增改不删，导入前自动全量备份）/ 回收站兜底（恢复或彻底删除）</span></div><div class="set-ctrl"><button class="mbtn" id="setExport">导出全部</button><button class="mbtn" id="setImport">导入…</button><button class="mbtn" id="setTrash">回收站</button></div></div>'
+      + '<div class="set-row"><div class="set-label">资产清理<span class="s">扫描 assets/ 中未被任何笔记引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删）</span></div><div class="set-ctrl"><button class="mbtn" id="setPrune">清理…</button></div></div>'
+      + '<div class="set-row"><div class="set-label">整理建议<span class="s">速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）</span></div><div class="set-ctrl"><button class="mbtn" id="setSuggest">打开</button></div></div>';
     var sel = $('setLlmSel');
     if (sel) sel.onchange = function () {
       var v = this.value;
@@ -1898,7 +2161,10 @@ function openSettings() {
     };
     $('setExport').onclick = function () { openExport() };
     $('setImport').onclick = function () { openImport() };
+    $('setTrash').onclick = function () { openTrash() };
     $('setPrune').onclick = function () { openPrune() };
+    $('setInjectPreview').onclick = function () { openInjectPreview() };
+    $('setSuggest').onclick = function () { openSuggest() };
   }).catch(function (e) { modalErr('设置加载失败：' + (e && e.message || e)) });
 }
 function saveSettings(patch, okMsg) {
@@ -1906,6 +2172,56 @@ function saveSettings(patch, okMsg) {
     if (res && res.error) { modalErr(res.error); return }
     if (okMsg) toast(okMsg);
   }).catch(function (e) { modalErr('保存失败：' + (e && e.message || e)) });
+}
+/* ================= 注入预览（设置卡片「注入预览」入口）：notes-inject-preview 纯复用 host 注入渲染 =================
+   双 tab（约定/目录）+ 会话过滤下拉（notes-sessions 数据源，含「全局」）+ 底部统计条（总字符/打码/时效标注/预算截断）；
+   文本区只读等宽展示（textContent 赋值，无注入面）。 */
+var injectPreviewState = { tab: 'conv', sid: '', data: null };
+function openInjectPreview() {
+  injectPreviewState = { tab: 'conv', sid: '', data: null };
+  openModal(
+    '<div class="modal-t">' + icon('i-eye', 13) + ' 注入预览<span class="sub">Agent 实际收到的注入文本 · 只读</span></div>'
+    + '<div class="injprev-bar"><div class="injprev-tabs">'
+    + '<button class="injprev-tab on" id="injprevTabConv">约定</button><button class="injprev-tab" id="injprevTabCat">目录</button></div>'
+    + '<select class="minput injprev-sess" id="injprevSess" title="按会话过滤注入范围（injectTo 命中口径）；全局 = 所有会话共享的笔记"><option value="">全局</option></select></div>'
+    + '<pre class="injprev-text" id="injprevText">加载中…</pre>'
+    + '<div class="injprev-stats" id="injprevStats"></div>'
+    + '<div class="modal-err" id="mErr" style="display:none"></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="injprevClose">关闭</button></div>'
+  );
+  $('modal').classList.add('injprev');
+  $('injprevClose').onclick = closeModal;
+  $('injprevTabConv').onclick = function () { injectPreviewState.tab = 'conv'; renderInjectPreview() };
+  $('injprevTabCat').onclick = function () { injectPreviewState.tab = 'cat'; renderInjectPreview() };
+  $('injprevSess').onchange = function () { injectPreviewState.sid = this.value; injectPreviewState.data = null; renderInjectPreview(); loadInjectPreview() };
+  /* 会话下拉数据源：notes-sessions（与注入范围浮层同源） */
+  rpc('notes-sessions', {}).then(function (res) {
+    var sel = $('injprevSess'); if (!sel) return;
+    var ss = (res && res.sessions) || [];
+    sel.innerHTML = '<option value="">全局</option>' + ss.map(function (s) { return '<option value="' + esc(s.short || '') + '">' + esc((s.short || '') + (s.name ? ' · ' + s.name : '')) + '</option>' }).join('');
+    sel.value = injectPreviewState.sid;
+  }).catch(function () {});
+  loadInjectPreview();
+}
+function loadInjectPreview() {
+  rpc('notes-inject-preview', injectPreviewState.sid ? { sessionId: injectPreviewState.sid } : {}).then(function (res) {
+    if (res && res.error) { modalErr(res.error); return }
+    injectPreviewState.data = res || null;
+    renderInjectPreview();
+  }).catch(function (e) { modalErr('预览加载失败：' + (e && e.message || e)) });
+}
+function renderInjectPreview() {
+  var st = injectPreviewState, d = st.data;
+  var tc = $('injprevTabConv'), tk = $('injprevTabCat');
+  if (tc) tc.className = 'injprev-tab' + (st.tab === 'conv' ? ' on' : '');
+  if (tk) tk.className = 'injprev-tab' + (st.tab === 'cat' ? ' on' : '');
+  var tx = $('injprevText');
+  if (tx) {
+    var body = d ? (st.tab === 'cat' ? (d.catalog || '') : (d.conventions || '')) : '加载中…';
+    tx.textContent = body || (st.tab === 'cat' ? '（无目录内容）' : '（无约定内容）');
+  }
+  var s = d && d.stats, se = $('injprevStats');
+  if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.catalogChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') : '';
 }
 function openExport() {
   var last = '';
@@ -1994,8 +2310,6 @@ function doImportExecute() {
   }).catch(function (e) { modalErr('导入失败：' + (e && e.message || e)); $('iOk').disabled = false; $('iOk').textContent = '执行导入' });
 }
 $('btnSettings').addEventListener('click', openSettings);
-$('btnExport').addEventListener('click', openExport);
-$('btnImport').addEventListener('click', openImport);
 $('btnTrash').addEventListener('click', openTrash);
 
 /* ================= 二期 孤儿资产清理（设置卡片「资产清理」入口）：dry-run 预览（零写入）→ 勾选 → 白名单执行 =================
@@ -2113,6 +2427,97 @@ function doTrashPurge(id, title) {
     toast('已彻底删除');
     loadTrash(); loadNotes(true);
   }).catch(function (e) { if (trashState) { trashState.pending = ''; modalErr('删除失败：' + (e && e.message || e)); renderTrashList() } });
+}
+
+/* ================= 整理建议（设置卡片「整理建议」行入口）：notes-suggest（dry-run 零写入）三段式 modal =================
+   契约：{ archiveCandidates:速记组（结构与 notes-archive-preview 同源）, staleCandidates:过期未引用, orphanCandidates:孤儿（仅展示）, generatedAt }
+   红线：只提名不自动执行——速记组「去归档」直达归档预览对话框；过期未引用「一键批量软删除」confirm 后才逐条 notes-delete（软删可恢复）；
+   孤儿候选是启发式判定（可能误伤），不提供批量操作，逐条跳转人工过目。 */
+function openSuggest() {
+  suggestState = { data: null, pending: false };
+  openModal(
+    '<div class="modal-t">' + icon('i-sparkle', 13) + ' 整理建议<span class="sub">只提名不自动执行 · 软删除可恢复</span></div>'
+    + '<div id="suggestList"><div class="modal-hint">分析中…</div></div>'
+    + '<div class="modal-err" id="mErr" style="display:none"></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="suggestClose">关闭</button></div>'
+  );
+  $('suggestClose').onclick = function () { if (!suggestState || !suggestState.pending) { closeModal(); suggestState = null } };
+  loadSuggest();
+}
+function loadSuggest() {
+  rpc('notes-suggest', {}).then(function (res) {
+    if (!suggestState) return;
+    if (res && res.error) { suggestState.data = { archiveCandidates: [], staleCandidates: [], orphanCandidates: [] }; renderSuggestList(); modalErr(res.error); return }
+    suggestState.data = res || { archiveCandidates: [], staleCandidates: [], orphanCandidates: [] };
+    renderSuggestList();
+  }).catch(function (e) { if (suggestState) { suggestState.data = { archiveCandidates: [], staleCandidates: [], orphanCandidates: [] }; renderSuggestList(); modalErr('分析失败：' + (e && e.message || e)) } });
+}
+/* 三段式列表（复用 arch-list/arch-row）：① 速记组（「去归档」直达归档预览，数据同源）② 过期未引用（一键批量软删 confirm）③ 可能无用（仅展示，逐条「查看」跳转） */
+function renderSuggestList() {
+  var host = $('suggestList'); if (!host || !suggestState) return;
+  var d = suggestState.data;
+  if (!d) { host.innerHTML = '<div class="modal-hint">分析中…</div>'; return }
+  var arch = d.archiveCandidates || [], stale = d.staleCandidates || [], orphans = d.orphanCandidates || [];
+  if (!arch.length && !stale.length && !orphans.length) { host.innerHTML = '<div class="modal-hint">库很干净，无需整理。</div>'; return }
+  var h = '';
+  /* ① 可整理的速记组 */
+  h += '<div class="sg-sec"><div class="sg-sec-t">可整理的速记组<span class="sg-sec-n">' + arch.length + ' 组</span>'
+    + (arch.length ? '<button class="mbtn trash-act" id="sgGoArch">去归档</button>' : '') + '</div>';
+  h += arch.length
+    ? '<div class="arch-list">' + arch.map(function (g) {
+        var span = g.dateSpan && g.dateSpan.from ? (g.dateSpan.from === g.dateSpan.to ? g.dateSpan.from : g.dateSpan.from + ' ~ ' + g.dateSpan.to) : '';
+        return '<div class="arch-row"><span class="ti" title="' + esc(g.title) + '">' + esc(g.title) + '</span>'
+          + '<span class="meta">' + esc(span) + ' · ' + g.members.length + ' 条 · ' + fmtBytes(g.totalBytes) + ((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : '') + '</span></div>'
+      }).join('') + '</div>'
+    : '<div class="modal-hint">没有可归档的速记组（同一会话 ≥2 条速记才会成组）。</div>';
+  h += '</div>';
+  /* ② 过期未引用（useCount=0 且超 staleDays；一键批量软删 confirm 后才执行） */
+  h += '<div class="sg-sec"><div class="sg-sec-t">过期未引用<span class="sg-sec-n">' + stale.length + ' 条</span>'
+    + (stale.length ? '<button class="mbtn danger trash-act" id="sgBatchDel"' + (suggestState.pending ? ' disabled' : '') + '>' + (suggestState.pending ? '删除中…' : '一键批量软删除') + '</button>' : '') + '</div>';
+  h += stale.length
+    ? '<div class="arch-list">' + stale.map(function (n) {
+        return '<div class="arch-row"><span class="ti" title="' + esc(n.title || 'Untitled') + '">' + esc(n.title || 'Untitled') + '</span>'
+          + '<span class="meta">' + esc(n.topic || '未分类') + ' · ' + n.staleDays + ' 天未更新</span></div>'
+      }).join('') + '</div>'
+    : '<div class="modal-hint">没有过期且从未被引用的笔记。</div>';
+  h += '</div>';
+  /* ③ 可能无用（孤儿候选：启发式判定可能误伤——仅展示逐条「查看」，不提供批量操作） */
+  h += '<div class="sg-sec"><div class="sg-sec-t">可能无用<span class="sg-sec-n">' + orphans.length + ' 条</span></div>';
+  h += orphans.length
+    ? '<div class="arch-list">' + orphans.map(function (n) {
+        return '<div class="arch-row"><span class="ti" title="' + esc(n.title || 'Untitled') + '">' + esc(n.title || 'Untitled') + '</span>'
+          + '<span class="meta">' + esc(n.topic || '未分类') + ' · ' + esc(n.updatedAt ? String(n.updatedAt).slice(0, 10) : '—') + '</span>'
+          + '<button class="mbtn trash-act sg-view" data-id="' + esc(n.id) + '">查看</button></div>'
+      }).join('') + '</div>'
+    : '<div class="modal-hint">没有孤儿笔记（无双链关联且从未被引用）。</div>';
+  h += '</div>';
+  h += '<div class="modal-hint">判定口径：过期 = 超过时效阈值（设置卡片可调）且从未被引用；可能无用 = 无 [[双链]] 关联、未注入、从未被引用的进行中普通笔记（启发式，请逐条过目）。</div>';
+  host.innerHTML = h;
+  var go = $('sgGoArch'); if (go) go.onclick = function () { closeModal(); suggestState = null; openArchive() };   /* 直达归档预览（数据与 notes-archive-preview 同源） */
+  var bd = $('sgBatchDel'); if (bd) bd.onclick = doSuggestBatchDelete;
+  host.querySelectorAll('.sg-view').forEach(function (el) {
+    el.onclick = function () { var id = el.dataset.id; closeModal(); suggestState = null; selectNote(id) };
+  });
+}
+/* 过期未引用一键批量软删：confirm 确认后才执行；逐条 notes-delete（软删，回收站可恢复）；删后刷新建议 + 列表 */
+function doSuggestBatchDelete() {
+  if (!suggestState || suggestState.pending || !suggestState.data) return;
+  var list = suggestState.data.staleCandidates || [];
+  if (!list.length) return;
+  if (!confirm('一键批量软删除：' + list.length + ' 条过期且从未被引用的笔记将移入回收站（可恢复）。\n确认删除？')) return;
+  suggestState.pending = true; renderSuggestList();
+  var ok = 0, fail = 0, chain = Promise.resolve();
+  list.forEach(function (n) {
+    chain = chain.then(function () {
+      return rpc('notes-delete', { id: n.id }).then(function (res) { if (res && res.error) fail++; else ok++ }, function () { fail++ });
+    });
+  });
+  chain.then(function () {
+    if (!suggestState) return;
+    suggestState.pending = false;
+    toast('已软删除 ' + ok + ' 条（回收站可恢复）' + (fail ? '，失败 ' + fail + ' 条' : ''));
+    loadSuggest(); afterArchiveRefresh();
+  });
 }
 
 /* ================= 快速记录卡片（v2）：正文划选松手触发 ================= */
@@ -2294,9 +2699,63 @@ function doMergeConfirm() {
 $('btnRefresh').addEventListener('click', function () { searchIds = null; loadNotes(); if (sessList.length) pullSessions(); toast('已刷新') });
 $('btnArchive').addEventListener('click', openArchive);
 $('btnSelMode').addEventListener('click', function () { selMode = !selMode; selIds = {}; renderTree() });
-$('chipSortUse').addEventListener('click', function () { sortBy = sortBy === 'use' ? 'time' : 'use'; renderTree() });
+/* ================= 筛选中心交互（popover 开关 / 勾选即时生效 / chip × 单条移除 / 排序菜单） ================= */
+$('btnFilter').addEventListener('click', function (ev) { ev.stopPropagation(); filterOpen = !filterOpen; if (filterOpen) sortOpen = false; renderFilterBar() });
+$('btnSort').addEventListener('click', function (ev) { ev.stopPropagation(); sortOpen = !sortOpen; if (sortOpen) filterOpen = false; renderFilterBar() });
+/* popover：勾选即时生效（组内 OR / 跨组 AND；条件变化持久化 + 有搜索词时重搜） */
+$('fpop').addEventListener('change', function (ev) {
+  var cb = ev.target; if (!cb.matches || !cb.matches('input[type=checkbox]')) return;
+  if (cb.dataset.ft) filters[cb.dataset.ft] = cb.checked;
+  else if (cb.dataset.fk) { var i = filters.kinds.indexOf(cb.dataset.fk); if (cb.checked && i < 0) filters.kinds.push(cb.dataset.fk); if (!cb.checked && i >= 0) filters.kinds.splice(i, 1) }
+  saveFilters(); render(); reSearch();
+});
+$('fpop').addEventListener('click', function (ev) {
+  if (ev.target.closest('#popClear')) { clearFilters(); render(); renderFilterBar(); reSearch(); toast('已清空全部筛选条件') }
+  else if (ev.target.closest('#popDone')) { filterOpen = false; renderFilterBar() }
+});
+/* 激活条件 chip：× 单条移除（与 popover 勾选双向同步） */
+$('fchips').addEventListener('click', function (ev) {
+  var x = ev.target.closest('.x'); if (!x) return;
+  var c = x.parentElement;
+  if (c.dataset.ft) filters[c.dataset.ft] = false;
+  else if (c.dataset.fk) { var i = filters.kinds.indexOf(c.dataset.fk); if (i >= 0) filters.kinds.splice(i, 1) }
+  saveFilters(); render(); reSearch();
+});
+/* 排序菜单：单选，选择即关闭（与筛选条件正交，互不重置） */
+$('fsortMenu').addEventListener('click', function (ev) {
+  var it = ev.target.closest('.fsort-item'); if (!it) return;
+  sortBy = it.dataset.fs; sortOpen = false; saveFilters(); render();
+});
 $('selCancel').addEventListener('click', function () { selMode = false; selIds = {}; renderTree() });
 $('selMerge').addEventListener('click', openMerge);
+/* ================= 侧栏宽度拖拽条（4px 分隔条：拖拽调整 / localStorage 记忆 / 双击重置缺省） ================= */
+/* clamp 200px–60%（相对 .app 容器宽）；localStorage key 独立于浮动面板 */
+var SIDE_W_KEY = 'dsh-notes-app-sidebar-w', SIDE_W_DEFAULT = 342;
+var sideEl = document.querySelector('.app .side'), splitterEl = $('splitter');
+function clampSideW(w) { return Math.max(200, Math.min(Math.round(document.querySelector('.app').getBoundingClientRect().width * 0.6), Math.round(w))) }
+function applySideW(w) { sideEl.style.width = clampSideW(w) + 'px' }
+function loadSideW() { try { var v = parseInt(localStorage.getItem(SIDE_W_KEY), 10); if (v >= 200) applySideW(v) } catch (e) {} }
+function saveSideW(w) { try { if (w == null) localStorage.removeItem(SIDE_W_KEY); else localStorage.setItem(SIDE_W_KEY, String(w)) } catch (e) {} }
+splitterEl.addEventListener('mousedown', function (ev) {
+  ev.preventDefault();
+  var sx = ev.clientX, sw = sideEl.getBoundingClientRect().width;
+  splitterEl.classList.add('on'); document.body.classList.add('split-drag');   /* 拖拽期间禁文本选择 + 强制 col-resize */
+  /* mousemove 挂 document、mouseup 移除监听防泄漏 */
+  function onMove(ev2) { applySideW(sw + ev2.clientX - sx) }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    splitterEl.classList.remove('on'); document.body.classList.remove('split-drag');
+    saveSideW(sideEl.getBoundingClientRect().width);
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+});
+/* 双击分隔条 = 重置缺省宽度（并清除持久化） */
+splitterEl.addEventListener('dblclick', function () { applySideW(SIDE_W_DEFAULT); saveSideW(null) });
+/* 窗口 resize 按新 60% 上限复核（不回写持久化，窗口放大后恢复原宽） */
+window.addEventListener('resize', function () { applySideW(sideEl.getBoundingClientRect().width) });
+loadSideW();
 function applyTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem('dsh-notes-app-theme', t) } catch (e) {} }
 $('btnTheme').addEventListener('click', function () { applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark') });
 try { var savedTheme = localStorage.getItem('dsh-notes-app-theme'); if (savedTheme === 'light' || savedTheme === 'dark') applyTheme(savedTheme) } catch (e) {}
@@ -2307,12 +2766,14 @@ document.addEventListener('keydown', function (ev) {
   /* v3：Ctrl+/ 双模式切换（源码⇄富文本）；降级时 switchMode 内部拦截并 toast（弹窗打开时不切） */
   if ((ev.ctrlKey || ev.metaKey) && ev.key === '/') { ev.preventDefault(); if (edNote && !$('modalHost').firstChild) switchMode(edMode === 'source' ? 'rich' : 'source'); return }
   if (ev.key === 'Escape') {
-    if ($('modalHost').firstChild) { closeModal(); archState = null; trashState = null; return }   /* 归档预览/合并/回收站对话框走 modalHost，Esc 统一关 */
+    if ($('modalHost').firstChild) { closeModal(); archState = null; trashState = null; suggestState = null; return }   /* 归档预览/合并/回收站/整理建议对话框走 modalHost，Esc 统一关 */
+    if (sortOpen) { sortOpen = false; renderFilterBar(); return }   /* 排序菜单 Esc（优先于筛选 popover） */
+    if (filterOpen) { filterOpen = false; renderFilterBar(); return }   /* 筛选 popover Esc 关闭 */
     if (scopeOpen) { scopeOpen = false; renderScopePanel(); return }
     if (capEl) { closeCap(); return }
     if ($('ctxHost').firstChild) { closeCtx(); return }
     if (selMode) { selMode = false; selIds = {}; renderTree(); return }   /* Esc 退出多选态 */
-    if (!document.activeElement || !document.activeElement.isContentEditable) { searchText = ''; searchIds = null; $('q').value = ''; render() }
+    if (!document.activeElement || !document.activeElement.isContentEditable) { searchText = ''; searchIds = null; searchMeta = {}; $('q').value = ''; render() }
   }
 });
 
