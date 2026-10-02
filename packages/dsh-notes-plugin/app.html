@@ -117,6 +117,8 @@
   .sec-h{display:flex;align-items:center;gap:5px;padding:10px 10px 4px;font-size:10.5px;font-weight:600;letter-spacing:.8px;color:var(--nt3);text-transform:uppercase}
   .sec-h .add{margin-left:auto;color:var(--nt3);cursor:pointer;padding:0 3px;border-radius:4px}
   .sec-h .add:hover{color:var(--nacc);background:var(--nbg-hover)}
+  /* 分组头计数丸（置顶/未分类；过滤激活时 = 命中数） */
+  .sec-h .cnt2{margin-left:auto;font-size:10px;font-weight:400;letter-spacing:0;text-transform:none}
   .row{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:var(--nr-sm);color:var(--nt2);cursor:default;user-select:none}
   .row:hover{background:var(--nbg-hover);color:var(--ntx)}
   .row.head{font-size:11.5px;font-weight:600}
@@ -592,6 +594,7 @@ var imgDraft = null, imgUploading = false; // 图片插入弹窗草稿 + 上传�
 var sessList = [], sessPending = [];   // 注入范围浮层会话源（notes-sessions）
 var foldOpen = loadFoldOpen();         // 文件夹折叠态（localStorage；缺省全展开）
 var topicOpen = {};                    // 主题过滤行原地展开态（点行主体=展开/收起子列表；session 内有效，不持久化）
+var topicSecOpen = false;              // 主题过滤区整体折叠态（缺省折叠：常态只显示「主题 (N)」一行，点分组头展开；session 内记忆，不持久化）
 var scopeOpen = false;
 /* ===== 显式归档 UI + 手动笔记多选合并（契约：notes-archive-preview / notes-archive {groups:[{memberIds,title?}]} / notes-archive-undo） ===== */
 var selMode = false, selIds = {};      // 列表多选态 + 勾选集合（noteId → true；与搜索/过滤共存，按 id 记账）
@@ -1102,55 +1105,57 @@ function renderTree() {
   var qRel = searchText.trim().toLowerCase();
   if (sortBy === 'rel' && qRel) vis.sort(function (a, b) { return (relRank(b, qRel) - relRank(a, qRel)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) });
   $('brandCnt').textContent = (view.type === 'all' && filtersActiveCount() === 0 && !searchText ? notes.length : vis.length) + ' 条';
+  /* 过滤激活（视图/筛选中心/搜索任一）：含命中的文件夹/主题强制展开（纯渲染态，不写回 foldOpen/topicOpen——清除过滤即恢复手动折叠态），分组计数切换为命中数 */
+  var filtering = view.type !== 'all' || !!searchText || filtersActiveCount() > 0;
   var h = '';
   var vt = view.type === 'topic' ? ('主题 · ' + view.id) : view.type === 'folder' ? ('文件夹 · ' + fname(view.id)) : '全部笔记';
   h += '<div class="sec-h">' + icon('i-filter', 11) + esc(vt) + (view.type === 'topic' ? ' <span style="letter-spacing:0;text-transform:none;font-weight:500">（跨文件夹 ' + vis.length + ' 条）</span>' : '') + (view.type !== 'all' ? '<span class="add" id="viewClear" title="清除视图过滤">✕</span>' : '') + '</div>';
   /* 置顶聚合组（筛选中心「置顶」条件激活时不再重复展示） */
   if (!filters.pinned) {
     var pins = vis.filter(isPinned);
-    if (pins.length) { h += '<div class="sec-h">' + icon('i-pin', 11) + ' 置顶</div>'; pins.forEach(function (n) { h += noteRow(n, false) }) }
+    if (pins.length) { h += '<div class="sec-h">' + icon('i-pin', 11) + ' 置顶<span class="cnt2">' + pins.length + '</span></div>'; pins.forEach(function (n) { h += noteRow(n, false) }) }
   }
   /* 文件夹组 */
   h += '<div class="sec-h">文件夹<span class="add" id="addFolder" title="新建文件夹">' + icon('i-plus', 12) + '</span></div>';
   folders.forEach(function (f) {
     var kids = vis.filter(function (n) { return (n.folder || '') === f.id });
-    var open = foldOpen[f.id] !== false;
+    /* 过滤激活自动展开：含命中笔记的文件夹强制展开（不写回 foldOpen，清除过滤即恢复手动折叠态）；无命中保持折叠、计数 0 */
+    var open = (foldOpen[f.id] !== false) || (filtering && kids.length > 0);
     /* 行主体单击=原地展开/折叠（事件委托处理）；行尾 vfilter 图标=进入/退出文件夹视图（不抢占单击） */
     h += '<div class="row head' + (view.type === 'folder' && view.id === f.id ? ' on' : '') + '" data-fold="' + f.id + '" data-drop="1">'
       + '<span class="caret' + (open ? ' open' : '') + '">' + icon('i-chev') + '</span>'
       + '<span class="ic-slot">' + icon('i-folder', 13) + '</span>'
-      + '<span class="nm">' + esc(f.name) + '</span><span class="n">' + (view.type === 'topic' || searchText || filtersActiveCount() > 0 ? kids.length : (f.count != null ? f.count : kids.length)) + '</span>'
+      + '<span class="nm">' + esc(f.name) + '</span><span class="n">' + (filtering ? kids.length : (f.count != null ? f.count : kids.length)) + '</span>'
       + '<span class="vfilter' + (view.type === 'folder' && view.id === f.id ? ' on' : '') + '" title="文件夹视图（仅看此文件夹）">' + icon('i-filter', 11) + '</span></div>';
     if (open && kids.length) { h += '<div class="nested">'; kids.forEach(function (n) { h += noteRow(n, true) }); h += '</div>' }
   });
-  /* 未分类（topic 分组平铺） */
-  h += '<div class="sec-h" data-drop-out="1" title="拖笔记到此处移出文件夹">未分类</div><div class="nested">';
+  /* 未入夹笔记：根级直显（平铺，不再按主题二次分组——主题聚合由底部「主题过滤」区承担，不重复聚合）；
+     分组头保留为「移出文件夹」drop 落点（data-drop-out）+ 计数（过滤激活 = 命中数，否则 = 未入夹总数）；为空仍渲染占位，保证任何时刻有可拖出落点 */
   var unfiled = vis.filter(function (n) { return !n.folder });
-  var topics = {};
-  unfiled.forEach(function (n) { var k = n.topic || '未分类'; (topics[k] = topics[k] || []).push(n) });
-  Object.keys(topics).sort().forEach(function (t) {
-    h += '<div class="row head" style="font-size:10.5px;color:var(--nt3)">' + icon('i-topic', 11) + '<span class="nm">' + esc(t) + '</span><span class="n">' + topics[t].length + '</span></div><div class="nested">';
-    topics[t].forEach(function (n) { h += noteRow(n, false) });
-    h += '</div>';
-  });
+  h += '<div class="sec-h" data-drop-out="1" title="拖笔记到此处移出文件夹">未分类<span class="cnt2">' + unfiled.length + '</span></div>';
+  unfiled.forEach(function (n) { h += noteRow(n, false) });
   if (!unfiled.length) h += '<div class="row" style="color:var(--nt3);font-size:11px">（空）</div>';
-  h += '</div>';
-  /* 主题全局过滤器 */
-  h += '<div class="sec-h">' + icon('i-topic', 11) + ' 主题过滤<span class="add" style="cursor:default">跨文件夹</span></div>';
+  /* 主题全局过滤器（整区默认折叠：常态只显示「主题 (N)」一行，点分组头展开/收起（topicSecOpen，session 记忆不持久化）；
+     展开行为与置顶折叠组同款：过滤激活且有主题命中时纯计算 OR 自动展开（不写回 topicSecOpen——清除过滤即恢复），计数切换为命中主题数） */
   var allTopics = {};
   notes.forEach(function (n) { if (n.topic) allTopics[n.topic] = (allTopics[n.topic] || 0) + 1 });
-  Object.keys(allTopics).sort().forEach(function (t) {
+  var topicNames = Object.keys(allTopics).sort();
+  var topicHitSet = {};
+  vis.forEach(function (n) { if (n.topic) topicHitSet[n.topic] = true });
+  var topicHitCount = Object.keys(topicHitSet).length;
+  var tSecOpen = topicSecOpen || (filtering && topicHitCount > 0);
+  h += '<div class="sec-h" data-tsec="1" style="cursor:pointer"><span class="caret' + (tSecOpen ? ' open' : '') + '">' + icon('i-chev') + '</span>' + icon('i-topic', 11) + ' 主题 (' + (filtering ? topicHitCount : topicNames.length) + ')<span class="add" style="cursor:default">跨文件夹</span></div>';
+  if (tSecOpen) topicNames.forEach(function (t) {
     var on = view.type === 'topic' && view.id === t;
-    var tOpen = !!topicOpen[t];
+    var tkids = vis.filter(function (n) { return (n.topic || '') === t });
+    /* 过滤激活自动展开：含命中的主题行强制展开（不写回 topicOpen，清除过滤即恢复）；计数同步切换为命中数 */
+    var tOpen = !!topicOpen[t] || (filtering && tkids.length > 0);
     /* 行主体单击=原地展开/收起该主题子列表（topicOpen，不持久化）；行尾 vfilter 图标=主题视图（跨文件夹过滤） */
     h += '<div class="row topic-row' + (on ? ' on' : '') + '" data-topic="' + esc(t) + '">'
       + '<span class="caret' + (tOpen ? ' open' : '') + '">' + icon('i-chev') + '</span>'
-      + '<span class="ic-slot">' + icon('i-topic', 12) + '</span><span class="nm">' + esc(t) + '</span><span class="n">' + allTopics[t] + '</span>'
+      + '<span class="ic-slot">' + icon('i-topic', 12) + '</span><span class="nm">' + esc(t) + '</span><span class="n">' + (filtering ? tkids.length : allTopics[t]) + '</span>'
       + '<span class="vfilter' + (on ? ' on' : '') + '" title="主题视图（跨文件夹过滤）">' + icon('i-filter', 11) + '</span></div>';
-    if (tOpen) {
-      var tkids = vis.filter(function (n) { return (n.topic || '') === t });
-      if (tkids.length) { h += '<div class="nested">'; tkids.forEach(function (n) { h += noteRow(n, false) }); h += '</div>' }
-    }
+    if (tOpen && tkids.length) { h += '<div class="nested">'; tkids.forEach(function (n) { h += noteRow(n, false) }); h += '</div>' }
   });
   /* 空结果态：提示 + 「清空筛选条件」快捷链接（筛选中心口径⑦） */
   if (!vis.length) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">无匹配笔记' + (filtersActiveCount() ? ' · <span class="add" id="emptyClear" style="letter-spacing:0">清空筛选条件</span>' : '') + '</div>';
@@ -1177,6 +1182,9 @@ $('tree').addEventListener('click', function (ev) {
   /* 文件夹行：行尾过滤图标=进入/退出文件夹视图；行主体（含 caret）=原地展开/折叠（「点哪个展开哪个」） */
   if (vf && frow) { var fid = frow.dataset.fold; view = view.type === 'folder' && view.id === fid ? { type: 'all', id: '' } : { type: 'folder', id: fid }; foldOpen[fid] = true; saveFoldOpen(); render(); return }
   if (frow) { var f = frow.dataset.fold; foldOpen[f] = foldOpen[f] === false ? true : false; saveFoldOpen(); renderTree(); return }
+  /* 主题过滤区分组头：点击=整区展开/收起（topicSecOpen；列表内主题行原地展开行为不变） */
+  var tsec = ev.target.closest('[data-tsec]');
+  if (tsec) { topicSecOpen = !topicSecOpen; renderTree(); return }
   var trow = ev.target.closest('[data-topic]');
   if (trow) {
     var t = trow.dataset.topic;

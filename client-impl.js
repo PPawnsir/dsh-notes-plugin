@@ -584,6 +584,8 @@ return {
         const [foldersExpanded, setFoldersExpanded] = React.useState(loadFoldersExpanded)
         // 主题过滤行原地展开态（点行主体=展开/收起该主题子列表；object map，session 内有效，不持久化；缺省折叠）
         const [topicExpanded, setTopicExpanded] = React.useState({})
+        // 主题过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「主题 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
+        const [topicSecOpen, setTopicSecOpen] = React.useState(false)
         const [folderInputOpen, setFolderInputOpen] = React.useState(false)   // 文件夹分组头 ＋ → 内联输入
         const [folderInputText, setFolderInputText] = React.useState('')
         const [folderMenu, setFolderMenu] = React.useState(null)   // 文件夹项右键菜单：{ x, y, folder }（面板内坐标）或 null
@@ -2030,7 +2032,6 @@ return {
         if (!autoSaveRef.current) autoSaveRef.current = timer.debounce(() => { if (selectedRef.current) doSave() }, 900)
         function triggerAutoSave() { if (autoSaveRef.current) autoSaveRef.current() }
         if (!open) return null
-        function groupByTopic(list) { const map = new Map(); for (const n of list) { const t = n.topic || '未分类'; if (!map.has(t)) map.set(t, []); map.get(t).push(n) } return Array.from(map.entries()) }
         // 搜索关键词 <mark> 高亮（防 XSS）：q 先做正则元字符转义，split 片段全是纯文本、经 React 转义渲染后再包 mark 元素——绝不用 innerHTML 拼原文
         function highlight(text, q) { if (!q || !text) return text; const s = String(text); const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); const parts = s.split(new RegExp('(' + esc + ')', 'gi')); if (parts.length === 1) return s; return parts.map((p, i) => i % 2 === 1 ? e('mark', { key: i, className: 'dsh-notes-mark' }, p) : p) }
         function folderName(fid) { const f = folders.find(x => x.id === fid); return f ? f.name : '' }
@@ -2093,7 +2094,7 @@ return {
             hasWikiLinks(n) ? e('span', { className: 'dsh-notes-note-wiki dsh-nt', 'data-tooltip': '含双链 [[…]]（详情富文本中可点击跳转）' }, I('link', 9)) : null,
             tail)
         }
-        // ===== 侧栏树（原型 renderTree 翻译）：视图头 → 置顶组 → 文件夹组（nested 子笔记）→ 未分类（主题二级分组）→ 主题全局过滤 =====
+        // ===== 侧栏树（原型 renderTree 翻译）：视图头 → 置顶组 → 文件夹组（nested 子笔记）→ 未入夹根级平铺（drop 移出落点）→ 主题全局过滤 =====
         const treeIds = []
         const treeEls = []
         // 筛选中心：激活条件数 = 状态组勾选数 + 类型组勾选数（排序档位不计入）
@@ -2111,7 +2112,8 @@ return {
         // 置顶组：置顶笔记仍在其所属位置显示（带 pin 视觉），本组是跨文件夹的置顶聚合视图（可折叠，PINNED_KEY 持久化）
         const pinnedAll = filtered.filter(n => n.status === 'pinned')
         if (pinnedAll.length > 0) {
-          const pinOpen = isFolderExpanded(PINNED_KEY)
+          // 过滤激活自动展开：含命中的置顶组强制展开（纯计算 OR，不写回 foldersExpanded——清除过滤即恢复手动折叠态）
+          const pinOpen = isFolderExpanded(PINNED_KEY) || (filtersActive && pinnedAll.length > 0)
           treeEls.push(e('div', { key: 'sec-pinned', className: 'dsh-notes-sec-h dsh-notes-sec-toggle', onClick: () => toggleFolder(PINNED_KEY) },
             e('span', { className: 'dsh-notes-caret' + (pinOpen ? ' open' : '') }, I('chev', 10)),
             I('pin', 11),
@@ -2130,11 +2132,12 @@ return {
           e('span', { className: 'dsh-notes-sec-h-t' }, '文件夹'),
           e('span', { className: 'dsh-notes-sec-h-add dsh-nt', 'data-tooltip': '新建文件夹', onClick: (ev) => { ev.stopPropagation(); setFolderInputText(''); setFolderInputOpen(true) } }, I('plus', 12))))
         for (const f of folders) {
-          const fOpen = isFolderExpanded(f.id)
           const kidsAll = filtered.filter(n => (n.folder || '') === f.id)
           const kids = paged.filter(n => (n.folder || '') === f.id)
-          // 计数口径（原型）：主题视图下显示命中数；其余显示文件夹总数
-          const cnt = view.type === 'topic' ? kidsAll.length : (f.count || 0)
+          // 过滤激活自动展开：含命中笔记的文件夹强制视为展开（纯计算 OR，不写回 foldersExpanded——清除过滤即恢复手动折叠态）；无命中文件夹保持折叠
+          const fOpen = isFolderExpanded(f.id) || (filtersActive && kidsAll.length > 0)
+          // 计数口径：过滤激活（视图/筛选中心/搜索任一）显示命中数（无命中显示 0）；否则显示文件夹总数
+          const cnt = filtersActive ? kidsAll.length : (f.count || 0)
           treeEls.push(renamingId === f.id
             ? e('div', { key: 'folder-' + f.id, className: 'dsh-notes-folder-row' },
                 e('span', { className: 'dsh-notes-caret' }, I('chev', 10)),
@@ -2155,21 +2158,15 @@ return {
             e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
             e('input', { className: 'dsh-notes-folder-rename', placeholder: '文件夹名…', value: folderInputText, autoFocus: true, onChange: (ev) => setFolderInputText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doCreateFolder() } else if (ev.key === 'Escape') { ev.preventDefault(); setFolderInputOpen(false) } }, onBlur: () => { if (!folderInputText.trim()) setFolderInputOpen(false) } })))
         }
-        // 未分类：整区包一层 .dsh-notes-unfiled-drop 容器作为「移出」drop 目标（拖到本区任意位置 = 移出文件夹）；
-        // 内部按主题二级分组（原型：分组头 + nested 子笔记）；为空时仍渲染容器，保证任何时刻都有可拖出的落点
+        // 未入夹笔记：根级直显——无 folder 的笔记平铺在树根部（不再按主题二次分组；主题聚合由底部「主题过滤」区承担，不重复聚合）；
+        // 整区包一层 .dsh-notes-unfiled-drop 容器作为「移出」drop 目标（拖到本区任意位置 = 移出文件夹）；
+        // 分组头保留为落点锚 + 计数（过滤激活时 = 命中数，否则 = 未入夹总数）；为空仍渲染容器，保证任何时刻都有可拖出的落点
         const unfiled = paged.filter(n => !(n.folder || ''))
-        const unfiledKids = []
-        for (const [topic, topicNotes] of groupByTopic(unfiled)) {
-          unfiledKids.push(e('div', { key: 'tg-' + topic, className: 'dsh-notes-row head dsh-notes-topic-g' },
-            e('span', { className: 'dsh-notes-ic-slot' }, I('topic', 11)),
-            e('span', { className: 'dsh-notes-row-nm' }, topic === '分类中' ? '识别中' : topic),
-            e('span', { className: 'dsh-notes-row-n' }, topicNotes.length)))
-          topicNotes.forEach(n => { treeIds.push(n.id) })
-          unfiledKids.push(e('div', { key: 'tgk-' + topic, className: 'dsh-notes-nested' }, topicNotes.map(n => renderNoteRow(n, false))))
-        }
+        const unfiledAll = filtered.filter(n => !(n.folder || ''))
+        const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })
         if (!unfiled.length) unfiledKids.push(e('div', { key: 'empty-u', className: 'dsh-notes-row dsh-notes-tree-empty' }, '（空）'))
         treeEls.push(e('div', { key: 'unfiled-drop', className: 'dsh-notes-unfiled-drop', onDragOver: onUnfiledDragOver, onDragLeave: onUnfiledDragLeave, onDrop: onUnfiledDrop },
-          e('div', { className: 'dsh-notes-sec-h' }, e('span', { className: 'dsh-notes-sec-h-t' }, '未分类')),
+          e('div', { className: 'dsh-notes-sec-h' }, e('span', { className: 'dsh-notes-sec-h-t' }, '未分类'), e('span', { className: 'dsh-notes-sec-h-n' }, unfiledAll.length)),
           unfiledKids))
         // 主题全局过滤（原型底部区）：全库主题 + 计数；点行主体 = 原地展开/收起该主题的笔记子列表（topicExpanded，不持久化）；
         // 主题视图（跨文件夹过滤）降级为行尾过滤图标按钮（不抢占单击）
@@ -2177,17 +2174,27 @@ return {
         notes.forEach(n => { if (n.topic) allTopics[n.topic] = (allTopics[n.topic] || 0) + 1 })
         const topicNames = Object.keys(allTopics).sort()
         if (topicNames.length) {
-          treeEls.push(e('div', { key: 'sec-topics', className: 'dsh-notes-sec-h' },
+          // 整区默认折叠（notes-topic-collapse）：常态只显示「主题 (N)」一行（N=主题数），点分组头展开/收起（topicSecOpen，session 记忆不持久化）；
+          // 展开行为与置顶折叠组（PINNED_KEY）同款：过滤激活且有主题命中时纯计算 OR 自动展开（不写回 topicSecOpen——清除过滤即恢复手动折叠态），
+          // 头部计数同步切换为命中主题数（folders「过滤激活=命中数」同口径）
+          const topicHitSet = {}
+          filtered.forEach(n => { if (n.topic) topicHitSet[n.topic] = true })
+          const topicHitCount = Object.keys(topicHitSet).length
+          const topicSecOpenEff = topicSecOpen || (filtersActive && topicHitCount > 0)
+          treeEls.push(e('div', { key: 'sec-topics', className: 'dsh-notes-sec-h dsh-notes-sec-toggle', onClick: () => setTopicSecOpen(!topicSecOpen) },
+            e('span', { className: 'dsh-notes-caret' + (topicSecOpenEff ? ' open' : '') }, I('chev', 10)),
             I('topic', 11),
-            e('span', { className: 'dsh-notes-sec-h-t' }, '主题过滤'),
+            e('span', { className: 'dsh-notes-sec-h-t' }, '主题 (' + (filtersActive ? topicHitCount : topicNames.length) + ')'),
             e('span', { className: 'dsh-notes-sec-h-sub' }, '跨文件夹')))
-          topicNames.forEach(tn => {
-            const tOpen = !!topicExpanded[tn]
+          if (topicSecOpenEff) topicNames.forEach(tn => {
+            const tkidsAll = filtered.filter(n => (n.topic || '') === tn)
+            // 过滤激活自动展开：含命中的主题行强制展开（纯计算 OR，不写回 topicExpanded——清除过滤即恢复）；计数同步切换为命中数
+            const tOpen = !!topicExpanded[tn] || (filtersActive && tkidsAll.length > 0)
             treeEls.push(e('div', { key: 'tp-' + tn, className: 'dsh-notes-row dsh-notes-topic-row' + (view.type === 'topic' && view.id === tn ? ' on' : ''), onClick: () => toggleTopicExpanded(tn) },
               e('span', { className: 'dsh-notes-caret' + (tOpen ? ' open' : '') }, I('chev', 10)),
               e('span', { className: 'dsh-notes-ic-slot' }, I('topic', 12)),
               e('span', { className: 'dsh-notes-row-nm' }, tn === '分类中' ? '识别中' : tn),
-              e('span', { className: 'dsh-notes-row-n' }, allTopics[tn]),
+              e('span', { className: 'dsh-notes-row-n' }, filtersActive ? tkidsAll.length : allTopics[tn]),
               e('span', { className: 'dsh-notes-row-vfilter dsh-nt' + (view.type === 'topic' && view.id === tn ? ' on' : ''), 'data-tooltip': '主题视图（跨文件夹过滤）', onClick: (ev) => { ev.stopPropagation(); setView(view.type === 'topic' && view.id === tn ? { type: 'all', id: '' } : { type: 'topic', id: tn }) } }, I('filter', 11))))
             if (tOpen) {
               const tkids = paged.filter(n => (n.topic || '') === tn)

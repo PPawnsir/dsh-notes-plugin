@@ -257,14 +257,14 @@ async function main() {
     assert(clientSrc.indexOf('dsh-notes-chip') < 0 && clientSrc.indexOf('dsh-notes-filter-panel') < 0 && clientSrc.indexOf('dsh-notes-fp-opt') < 0, '旧 chips 行/旧筛选面板类已移除')
     assert(clientSrc.indexOf("'仅置顶'") < 0 && clientSrc.indexOf("'仅敏感'") < 0 && clientSrc.indexOf("'仅注入'") < 0, '旧单选开关文案已移除')
   })
-  await t('树结构：视图头 + 置顶组 + 文件夹组 + 未分类主题分组 + 主题全局过滤区', () => {
+  await t('树结构：视图头 + 置顶组 + 文件夹组 + 未入夹根级直显区 + 主题全局过滤区', () => {
     assert(clientSrc.indexOf('dsh-notes-sec-h') >= 0, 'sec-h 分组头')
     assert(clientSrc.indexOf('全部笔记') >= 0 && clientSrc.indexOf("'主题 · ' + view.id") >= 0 && clientSrc.indexOf("'文件夹 · ' + folderName(view.id)") >= 0, '视图头文案（全部/主题/文件夹）')
     assert(clientSrc.indexOf('（跨文件夹 ') >= 0, '主题视图头含「跨文件夹 N 条」')
     assert(clientSrc.indexOf('PINNED_KEY') >= 0 && clientSrc.indexOf("'置顶'") >= 0, '置顶折叠组（PINNED_KEY 持久化）')
     assert(clientSrc.indexOf('dsh-notes-nested') >= 0, 'nested 子笔记容器')
-    assert(clientSrc.indexOf('未分类') >= 0, '未分类分组')
-    assert(clientSrc.indexOf('主题过滤') >= 0 && clientSrc.indexOf('跨文件夹') >= 0, '主题全局过滤区')
+    assert(clientSrc.indexOf('未分类') >= 0, '未入夹根级直显区（未分类 分组头 + 平铺笔记行）')
+    assert(clientSrc.indexOf("'主题 (' + (filtersActive ? topicHitCount : topicNames.length) + ')'") >= 0 && clientSrc.indexOf('跨文件夹') >= 0, '主题全局过滤区（默认折叠「主题 (N)」一行）')
     assert(clientSrc.indexOf('dsh-notes-topic-row') >= 0, '主题过滤行')
   })
   await t('视图求值：view 单选 ∩ 筛选中心（组内 OR / 跨组 AND）∩ 搜索', () => {
@@ -2653,13 +2653,14 @@ async function main() {
     assert(clientSrc.indexOf('新建文件夹') >= 0, '含「新建文件夹」入口（分组头 ＋ tooltip）')
     assert(clientPkgSrc.indexOf('notes-folders') >= 0, '发布包 client.js 含 notes-folders RPC 调用')
   })
-  await t('client 树渲染逻辑（v2：视图头 / 置顶折叠组 / 文件夹嵌套 / 未分类主题二级分组 / 主题全局过滤区 + 新建落位）', () => {
+  await t('client 树渲染逻辑（v2：视图头 / 置顶折叠组 / 文件夹嵌套 / 未入夹根级直显 / 主题全局过滤区 + 新建落位）', () => {
     assert(clientSrc.indexOf('const treeMode') < 0, 'v2 恒为树渲染（旧 treeMode 平铺退化已移除）')
     assert(/if \(n\.folder\) expandFolder\(n\.folder\)/.test(clientSrc), '选中笔记所在文件夹自动展开')
     assert(/function toggleFolder\(id\)/.test(clientSrc) && /function isFolderExpanded\(id\)/.test(clientSrc) && /function expandFolder\(id\)/.test(clientSrc), '折叠切换/判定/自动展开 helper 存在')
     assert(clientSrc.indexOf("className: 'dsh-notes-nested'") >= 0, '文件夹/主题分组子笔记 nested 渲染')
     assert(clientSrc.indexOf("folderSel === 'pinned'") < 0 && clientSrc.indexOf("folderSel !== 'all'") < 0, 'folderSel 过滤分支已移除')
-    assert(clientSrc.indexOf('groupByTopic(unfiled)') >= 0, '未分类按主题二级分组')
+    assert(clientSrc.indexOf('groupByTopic') < 0, '未分类主题二级分组已移除（未入夹笔记根级直显平铺，主题聚合由「主题过滤」区承担不重复）')
+    assert(clientSrc.indexOf("const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })") >= 0, '未入夹笔记根级平铺直渲（无主题分组头/nested 包裹）')
     assert(clientSrc.indexOf('notes.forEach(n => { if (n.topic) allTopics[n.topic]') >= 0, '主题过滤区统计全库主题（不按当前过滤）')
     assert(/setView\(view\.type === 'topic' && view\.id === tn \? \{ type: 'all', id: '' \} : \{ type: 'topic', id: tn \}\)/.test(clientSrc), '主题行尾过滤图标切换主题视图/全部（行主体单击已让位原地展开）')
     assert(/setView\(view\.type === 'folder' && view\.id === f\.id \? \{ type: 'all', id: '' \} : \{ type: 'folder', id: f\.id \}\)/.test(clientSrc), '文件夹行尾过滤图标切换文件夹视图/全部（行主体单击已让位原地展开）')
@@ -2697,6 +2698,76 @@ async function main() {
       assert(pair[1].indexOf('.vfilter{') >= 0 && pair[1].indexOf('.vfilter.on{') >= 0, pair[0] + ' vfilter 样式')
       assert(pair[1].indexOf('进入文件夹视图') >= 0, pair[0] + ' 文件夹右键菜单含「进入文件夹视图」')
       assert(/delete foldOpen\[k\]/.test(pair[1]), pair[0] + ' foldOpen 陈旧 id 清洗（loadFolders）')
+    }
+  })
+  await t('树修正（notes-tree-root-expand）：未入夹根级直显 + 过滤命中自动展开 + 命中计数（四端同步）', () => {
+    const appSrcX = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
+    const protoSrcX = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
+    // ① 根级直显：无 folder 笔记平铺在树根部（文件夹列表之后）；未分类主题二次分组兜底已移除（主题聚合由「主题过滤」区承担，不重复聚合）
+    assert(clientSrc.indexOf('groupByTopic') < 0, 'client-impl 未分类主题二次分组（groupByTopic）已移除')
+    assert(clientSrc.indexOf("const unfiled = paged.filter(n => !(n.folder || ''))") >= 0, 'client-impl 未入夹笔记 = 无 folder 过滤集')
+    assert(clientSrc.indexOf("const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })") >= 0, 'client-impl 未入夹笔记根级平铺直渲（无主题分组头/nested 包裹）')
+    assert(clientSrc.indexOf("'tg-' + topic") < 0 && clientSrc.indexOf('dsh-notes-topic-g') < 0, 'client-impl 未分类主题分组头渲染已移除')
+    // ② drop 移出落点保持：.dsh-notes-unfiled-drop 容器 + 三处理器不变；分组头保留为落点锚 + 计数（过滤激活 = 命中数 / 否则 = 未入夹总数）
+    assert(clientSrc.indexOf("className: 'dsh-notes-unfiled-drop', onDragOver: onUnfiledDragOver, onDragLeave: onUnfiledDragLeave, onDrop: onUnfiledDrop") >= 0, 'client-impl 未入夹区 drop 移出落点保持')
+    assert(clientSrc.indexOf("e('span', { className: 'dsh-notes-sec-h-t' }, '未分类'), e('span', { className: 'dsh-notes-sec-h-n' }, unfiledAll.length)") >= 0, 'client-impl 未入夹分组头计数（sec-h-n）')
+    // ③ 过滤命中自动展开（纯计算 OR，不写回折叠态——清除过滤即恢复手动折叠）+ 命中计数：置顶组/文件夹/主题行
+    assert(clientSrc.indexOf("const pinOpen = isFolderExpanded(PINNED_KEY) || (filtersActive && pinnedAll.length > 0)") >= 0, '置顶组过滤命中自动展开')
+    assert(clientSrc.indexOf("const fOpen = isFolderExpanded(f.id) || (filtersActive && kidsAll.length > 0)") >= 0, '文件夹过滤命中自动展开（无命中保持折叠）')
+    assert(clientSrc.indexOf("const cnt = filtersActive ? kidsAll.length : (f.count || 0)") >= 0, '文件夹计数：过滤激活 = 命中数（无命中 0）/ 否则 = 总数')
+    assert(clientSrc.indexOf("const tOpen = !!topicExpanded[tn] || (filtersActive && tkidsAll.length > 0)") >= 0, '主题行过滤命中自动展开')
+    assert(clientSrc.indexOf("filtersActive ? tkidsAll.length : allTopics[tn]") >= 0, '主题行计数：过滤激活 = 命中数 / 否则 = 全库数')
+    // 恢复断言：自动展开为纯计算（isFolderExpanded OR），折叠态写入口仍只有 toggleFolder/expandFolder——过滤清除即恢复手动折叠
+    assert(/function toggleFolder\(id\)/.test(clientSrc) && /function expandFolder\(id\)/.test(clientSrc), '折叠态写入口保持（toggleFolder/expandFolder）')
+    // ④ 发布包 client.js 同步（需先跑 scripts/build-dist.cjs）
+    for (const k of ["const fOpen = isFolderExpanded(f.id) || (filtersActive && kidsAll.length > 0)", "const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })", "const tOpen = !!topicExpanded[tn] || (filtersActive && tkidsAll.length > 0)", "const cnt = filtersActive ? kidsAll.length : (f.count || 0)"]) {
+      assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺「' + k.slice(0, 34) + '…」（需先跑 scripts/build-dist.cjs）')
+    }
+    assert(clientPkgSrc.indexOf('groupByTopic') < 0, '发布包 lib/client.js groupByTopic 已移除（需先跑 scripts/build-dist.cjs）')
+    // ⑤ app.html / 原型 notes-ui-v2.html 同步（同一套 DOM/CSS/交互口径）
+    for (const pair of [['app.html', appSrcX], ['原型 notes-ui-v2.html', protoSrcX]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("var filtering = view.type !== 'all' || !!searchText || filtersActiveCount() > 0;") >= 0, label + ' 过滤激活标记（视图/筛选中心/搜索任一）')
+      assert(s.indexOf("var open = (foldOpen[f.id] !== false) || (filtering && kids.length > 0);") >= 0, label + ' 文件夹过滤命中自动展开（不写回 foldOpen）')
+      assert(s.indexOf("(filtering ? kids.length : (f.count != null ? f.count : kids.length))") >= 0, label + ' 文件夹计数：过滤激活 = 命中数')
+      assert(s.indexOf("var tOpen = !!topicOpen[t] || (filtering && tkids.length > 0);") >= 0, label + ' 主题行过滤命中自动展开（不写回 topicOpen）')
+      assert(s.indexOf("(filtering ? tkids.length : allTopics[t])") >= 0, label + ' 主题行计数：过滤激活 = 命中数')
+      assert(s.indexOf("' 置顶<span class=\"cnt2\">' + pins.length + '</span></div>'") >= 0, label + ' 置顶组计数')
+      assert(s.indexOf(">未分类<span class=\"cnt2\">' + unfiled.length + '</span></div>'") >= 0, label + ' 未入夹分组头计数 + drop 落点锚保留')
+      assert(s.indexOf("unfiled.forEach(function (n) { h += noteRow(n, false) });") >= 0, label + ' 未入夹笔记根级平铺直渲')
+      assert(s.indexOf('未分类</div><div class="nested">') < 0 && s.indexOf('var topics = {};') < 0, label + ' 未分类主题二次分组兜底已移除')
+      assert(s.indexOf('.sec-h .cnt2{margin-left:auto;font-size:10px;font-weight:400;letter-spacing:0;text-transform:none}') >= 0, label + ' 分组头计数丸样式（.sec-h .cnt2）')
+      assert(s.indexOf('data-drop-out="1"') >= 0, label + ' drop 移出落点保留（data-drop-out）')
+    }
+  })
+  await t('主题过滤区默认折叠（notes-topic-collapse）：常态「主题 (N)」一行 + 点击展开 + 过滤命中自动展开+计数（四端同步）', () => {
+    const appSrcC = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
+    const protoSrcC = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
+    // ① client：整区折叠态（缺省折叠，session 记忆不持久化）+ 分组头 sec-toggle 点击展开/收起（置顶折叠组 PINNED_KEY 同款机制）
+    assert(/const \[topicSecOpen, setTopicSecOpen\] = React\.useState\(false\)/.test(clientSrc), 'topicSecOpen state（缺省折叠，session 记忆不持久化）')
+    assert(clientSrc.indexOf("key: 'sec-topics', className: 'dsh-notes-sec-h dsh-notes-sec-toggle', onClick: () => setTopicSecOpen(!topicSecOpen)") >= 0, '主题区分组头 = sec-toggle 点击展开/收起')
+    assert(clientSrc.indexOf("'dsh-notes-caret' + (topicSecOpenEff ? ' open' : '')") >= 0, '分组头 caret 随展开态旋转')
+    // ② 常态只显示「主题 (N)」一行（N=主题数）；过滤激活计数切换为命中主题数（folders「过滤激活=命中数」同口径）
+    assert(clientSrc.indexOf("'主题 (' + (filtersActive ? topicHitCount : topicNames.length) + ')'") >= 0, '常态「主题 (N)」一行；过滤激活计数=命中主题数')
+    assert(clientSrc.indexOf('const topicHitCount = Object.keys(topicHitSet).length') >= 0, '命中主题数统计（filtered 口径）')
+    // ③ 过滤命中自动展开：纯计算 OR，不写回 topicSecOpen（清除过滤即恢复手动折叠态）；列表仅展开时渲染
+    assert(clientSrc.indexOf('const topicSecOpenEff = topicSecOpen || (filtersActive && topicHitCount > 0)') >= 0, '过滤命中自动展开（纯计算 OR，不写回）')
+    assert(clientSrc.indexOf('if (topicSecOpenEff) topicNames.forEach(tn => {') >= 0, '主题列表折叠门控（仅展开时渲染）')
+    // 列表内行为不变：主题行原地展开/收起子列表（topicExpanded）+ 行尾主题视图过滤图标
+    assert(clientSrc.indexOf('onClick: () => toggleTopicExpanded(tn)') >= 0 && clientSrc.indexOf("key: 'tpk-' + tn") >= 0, '列表内主题行原地展开行为不变')
+    // ④ 发布包 lib/client.js 同步（需先跑 scripts/build-dist.cjs）
+    for (const k of ['const topicSecOpenEff = topicSecOpen || (filtersActive && topicHitCount > 0)', "'主题 (' + (filtersActive ? topicHitCount : topicNames.length) + ')'", 'if (topicSecOpenEff) topicNames.forEach(tn => {']) {
+      assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺「' + k.slice(0, 30) + '…」（需先跑 scripts/build-dist.cjs）')
+    }
+    // ⑤ app.html / 原型 notes-ui-v2.html 同步（同一套 DOM/交互口径）
+    for (const pair of [['app.html', appSrcC], ['原型 notes-ui-v2.html', protoSrcC]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('var topicSecOpen = false;') >= 0, label + ' topicSecOpen 缺省折叠（session 记忆不持久化）')
+      assert(s.indexOf('data-tsec="1"') >= 0 && s.indexOf('var tSecOpen = topicSecOpen || (filtering && topicHitCount > 0);') >= 0, label + ' 分组头单行 + 过滤命中自动展开（纯计算不写回）')
+      assert(s.indexOf("' 主题 (' + (filtering ? topicHitCount : topicNames.length)") >= 0, label + ' 常态「主题 (N)」计数；过滤激活=命中主题数')
+      assert(s.indexOf('if (tSecOpen) topicNames.forEach(function (t) {') >= 0, label + ' 主题列表折叠门控（仅展开时渲染）')
+      assert(/topicSecOpen = !topicSecOpen; renderTree\(\); return/.test(s), label + ' 树事件委托：点分组头切换 topicSecOpen')
+      assert(s.indexOf('topicOpen[t] = !topicOpen[t]') >= 0, label + ' 列表内主题行原地展开行为不变（topicOpen）')
     }
   })
   await t('client 移动到文件夹 + 文件夹右键管理（v2 纯文字标签，开发版 + 发布包同步）', () => {
