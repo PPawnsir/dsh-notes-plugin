@@ -80,12 +80,35 @@
   .note-row .ti{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .note-row .tp{font-size:10px;color:var(--nt3);flex-shrink:0;max-width:70px;overflow:hidden;text-overflow:ellipsis}
   .note-row .pin{width:10px;height:10px;flex-shrink:0;color:var(--nwarn)}
+  /* 使用遥测（P2）：行尾被引用徽章（quote 图标 + 计数；0 次不渲染） */
+  .note-row .use{display:flex;align-items:center;gap:2px;font-size:10px;color:var(--nt3);flex-shrink:0}
+  .note-row .use svg.ic{width:9px;height:9px}
   .note-row.dim{opacity:.45}
   .nested{margin-left:13px;padding-left:9px;border-left:1px solid var(--nbd-soft)}
   .nested .note-row{padding:3.5px 8px;font-size:12.5px}
   .fbadge{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nt3);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;padding:0 5px;flex-shrink:0}
   .fbadge svg.ic{width:9px;height:9px}
   .note-row.drag{opacity:.35}
+  /* ===== 多选合并（「选择」chip → 行首复选框 → 底部浮动操作条） ===== */
+  .note-row.pick{background:var(--nbg-sel)}
+  .pick-check{flex-shrink:0;accent-color:var(--nacc);cursor:pointer;margin:0}
+  .selbar{position:fixed;left:22px;bottom:22px;z-index:110;width:316px;display:flex;align-items:center;gap:8px;background:var(--npanel);border:1px solid var(--nbd);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.30);padding:8px 12px}
+  .selbar .n{flex:1;font-size:11.5px;color:var(--nt2)}
+  /* ===== 归档预览对话框（组勾选/成员展开；复用 mask/modal） ===== */
+  .arch-list{border:1px solid var(--nbd-soft);border-radius:var(--nr-md);margin-bottom:10px;max-height:300px;overflow-y:auto}
+  .arch-group+.arch-group{border-top:1px solid var(--nbd-soft)}
+  .arch-group.off{opacity:.5}
+  .arch-row{display:flex;align-items:center;gap:7px;padding:7px 9px;font-size:12px}
+  .arch-row .caret{cursor:pointer}
+  .arch-row .ti{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-weight:600}
+  .arch-row .meta{font-size:10.5px;color:var(--nt3);flex-shrink:0}
+  .arch-members{padding:2px 9px 8px 34px}
+  .arch-member{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--nt2);padding:2px 0}
+  .arch-member .ti{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .arch-member .dt{font-size:10px;color:var(--nt3);flex-shrink:0}
+  /* ===== P1 回收站（复用 arch-list/arch-row）：行内「恢复/彻底删除」小按钮 ===== */
+  .arch-row .trash-act{margin-left:2px;padding:2px 10px;font-size:11px;flex-shrink:0}
+  .arch-row .trash-act.danger{margin-left:0}
   .side-foot{padding:8px 10px;border-top:1px solid var(--nbd-soft);display:flex;gap:6px}
   .fbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;color:var(--nt2);background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:5px 0;cursor:pointer}
   .fbtn:hover{color:var(--nacc-tx);border-color:var(--nacc)} .fbtn svg.ic{width:12px;height:12px}
@@ -118,11 +141,83 @@
   .meta-act.on{color:var(--nwarn)}
   .meta-act.danger:hover{color:var(--ndanger)}
   .meta-act svg.ic{width:12px;height:12px}
-  .ed-body{flex:1;overflow-y:auto;padding:18px 24px;font-size:13px;line-height:1.75;outline:none;white-space:pre-wrap}
-  .ed-body:empty::before{content:"正文…（Markdown）";color:var(--nt3)}
-  .ed-body code{font-family:var(--nmono);font-size:11.5px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;padding:1px 5px}
+  /* 二期 ✨整理按钮：整理中态（忙） */
+  .meta-act.organize-btn.busy{opacity:.62;cursor:default;pointer-events:none}
+  /* ===== 双模式编辑器 v3（原型 design/notes-editor-v3.html；与面板 styles.css 同款无前缀；色板走上方 html[data-theme] 块，此处不加主题块以守住 v2 色板同步断言） ===== */
+  .ed-main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+  .src{flex:1;width:100%;resize:none;border:0;outline:0;background:transparent;color:var(--ntx);font-family:var(--nmono);font-size:12.5px;line-height:1.8;padding:14px 24px 24px}
+  .src::placeholder{color:var(--nt3)}
+  .deg{margin:10px 24px 0;display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:var(--nwarn);background:var(--nbg-raise);border-left:3px solid var(--nwarn);border-radius:var(--nr-md);padding:8px 12px;line-height:1.6;flex-shrink:0}
+  .deg svg.ic{width:13px;height:13px;margin-top:2px;flex-shrink:0}
+  .deg .rs{color:var(--nt2);word-break:break-all}
+  .modeseg{display:inline-flex;gap:2px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:20px;padding:2px;flex-shrink:0}
+  .modeseg .seg{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11.5px;padding:3px 13px;border-radius:16px;color:var(--nt2);cursor:pointer;border:0;background:transparent;white-space:nowrap}
+  .modeseg .seg:hover:not(.on):not(.dis){color:var(--ntx);background:var(--nbg-hover)}
+  .modeseg .seg.on{background:var(--nbg-sel);color:var(--nacc-tx);font-weight:600}
+  .modeseg .seg.dis{opacity:.42;cursor:not-allowed}
+  .modeseg .seg svg.ic{width:12px;height:12px}
+  .ed-meta .kbd{font-family:var(--nmono);font-size:10px;background:var(--nbg);border:1px solid var(--nbd);border-radius:4px;padding:1px 5px;color:var(--nt3);align-self:center}
+  .tipwrap{position:relative;display:inline-flex}
+  .tip{position:absolute;bottom:calc(100% + 8px);right:-8px;z-index:80;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-sm);box-shadow:0 8px 24px rgba(0,0,0,.35);color:var(--nwarn);font-size:11px;padding:5px 10px;white-space:nowrap;display:none;pointer-events:none}
+  .tipwrap.deg:hover .tip{display:block} /* 仅降级态悬停禁用段时出现 */
+  .rich-scroll{flex:1;min-height:0;overflow-y:auto;position:relative;display:flex;flex-direction:column}
+  .rtb{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:2px;padding:7px 24px;background:var(--npanel);border-bottom:1px solid var(--nbd-soft);flex-shrink:0}
+  .rtb-btn{width:27px;height:26px;display:grid;place-items:center;border-radius:var(--nr-sm);color:var(--nt2);cursor:pointer;border:0;background:transparent;font:inherit;padding:0}
+  .rtb-btn:hover{background:var(--nbg-hover);color:var(--ntx)}
+  .rtb-btn.on{background:var(--nbg-sel);color:var(--nacc-tx)}
+  .rtb-btn svg.ic{width:14px;height:14px}
+  .rtb-sep{width:1px;height:16px;background:var(--nbd);margin:0 6px;flex-shrink:0}
+  .rtb .sync{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--nt3);white-space:nowrap}
+  .rtb .sync .sd{width:6px;height:6px;border-radius:50%;background:var(--nwarn)}
+  html[data-theme="dark"] .rtb .sync.ok .sd{background:#56c88f}
+  html[data-theme="light"] .rtb .sync.ok .sd{background:#2f9e6e}
+  .rich{flex:1;padding:14px 24px 64px;outline:none;font-size:13px;line-height:1.75;min-height:calc(100% - 40px);caret-color:var(--nacc)}
+  .rich:empty::before{content:"正文…（富文本，编辑后失焦自动同步源码）";color:var(--nt3)}
+  .rich p{margin:0 0 14px;word-break:break-word}
+  .rich h1{font-size:19px;font-weight:700;margin:24px 0 12px;letter-spacing:.3px}
+  .rich h2{font-size:16.5px;font-weight:600;margin:20px 0 10px;letter-spacing:.2px}
+  .rich h3{font-size:14.5px;font-weight:600;margin:16px 0 8px}
+  .rich h1:first-child,.rich h2:first-child,.rich h3:first-child,.rich p:first-child{margin-top:0}
+  .rich ul,.rich ol{margin:0 0 14px;padding-left:24px}
+  .rich li{margin-bottom:5px;word-break:break-word}
+  .rich blockquote{margin:0 0 14px;padding:10px 16px;border-left:3px solid var(--nbd);background:var(--nbg-raise);border-radius:0 var(--nr-sm) var(--nr-sm) 0;color:var(--nt2)}
+  .rich blockquote p{margin:0}
+  .rich pre{background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:14px 16px;margin:0 0 14px;overflow-x:auto;font-family:var(--nmono);font-size:12.5px;line-height:1.65;position:relative;white-space:pre-wrap}
+  .rich pre[data-lang]::before{content:attr(data-lang);position:absolute;top:6px;right:10px;font-size:10px;color:var(--nt3);font-family:var(--nmono)}
+  .rich pre code{background:none;border:none;padding:0;font-size:inherit}
+  .rich code{font-family:var(--nmono);font-size:12px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;padding:1px 6px}
+  .rich a{color:var(--nacc);text-decoration:none;border-bottom:1px solid transparent}
+  .rich a:hover{border-bottom-color:var(--nacc)}
+  .rich strong{font-weight:600}
+  .rich hr{border:0;border-top:1px solid var(--nbd);margin:20px 0}
+  .rich img{max-width:min(460px,100%);border-radius:var(--nr-md);border:1px solid var(--nbd-soft);display:block;margin:4px 0;cursor:default}
+  .rich p img{display:inline-block;vertical-align:middle;margin:0}
+  .rich img:hover{outline:2px solid var(--nacc);outline-offset:1px}
+  .rich-wrap.drop .rich{outline:2px dashed var(--nacc);outline-offset:-6px;border-radius:var(--nr-md)}
+  /* 图片插入弹窗（upzone/pv/prog 原型同款，modal 复用现有容器） */
+  .upzone{border:1.5px dashed var(--nbd);border-radius:var(--nr-md);padding:13px;text-align:center;color:var(--nt3);font-size:11.5px;line-height:1.7;cursor:pointer}
+  .upzone:hover{border-color:var(--nacc);color:var(--nt2)}
+  .uppv{display:flex;gap:10px;align-items:center;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:8px 10px;margin-bottom:10px}
+  .uppv img{width:72px;height:44px;object-fit:cover;border-radius:4px;flex-shrink:0}
+  .uppv .nm{font-size:11.5px;color:var(--ntx);word-break:break-all}
+  .uppv .sz{font-size:10px;color:var(--nt3);margin-top:2px}
+  .prog{height:4px;background:var(--nbg-raise);border-radius:2px;overflow:hidden;margin-top:12px;display:none}
+  .prog.on{display:block}
+  .prog i{display:block;height:100%;width:40%;background:var(--nacc);border-radius:2px;animation:imgup-ind 1s ease-in-out infinite alternate}
+  @keyframes imgup-ind{from{margin-left:0;width:30%}to{margin-left:70%;width:30%}}
   .ed-foot{padding:8px 24px 12px;display:flex;gap:14px;font-size:10.5px;color:var(--nt3);border-top:1px solid var(--nbd-soft)}
   .ed-foot .saved{margin-left:auto;color:var(--nt2)}
+  /* ===== P2 笔记双链：[[..]] 渲染锚 + 行尾双链标记 + 反向链接面板 ===== */
+  .rich a.dsh-notes-wikilink{color:var(--nacc);text-decoration:none;border-bottom:1px dashed var(--nacc);cursor:pointer;border-radius:3px;padding:0 1px}
+  .rich a.dsh-notes-wikilink:hover{background:var(--nbg-sel)}
+  .note-row .wikimark{display:flex;flex-shrink:0;color:var(--nt3);align-items:center}
+  .note-row .wikimark svg.ic{width:9px;height:9px}
+  .backlinks{border-top:1px solid var(--nbd-soft);padding:6px 24px;flex-shrink:0}
+  .backlinks .bl-t{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;letter-spacing:.6px;color:var(--nt3);text-transform:uppercase}
+  .backlinks .bl-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+  .backlinks .bl-item{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:20px;padding:2px 9px;cursor:pointer}
+  .backlinks .bl-item:hover{background:var(--nbg-hover);border-color:var(--nacc)}
+  .backlinks .bl-empty{margin-top:4px;font-size:11px;color:var(--nt3)}
   /* ===== 注入范围浮层 ===== */
   .scope-wrap{position:relative}
   .scope-panel{position:absolute;top:calc(100% + 6px);left:0;z-index:60;min-width:210px;max-width:300px;max-height:260px;overflow-y:auto;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:6px}
@@ -145,6 +240,12 @@
   .disp-rec-i{margin-top:4px;color:var(--nt2);font-size:11px;white-space:pre-wrap}
   .disp-done-btn{margin-top:5px;font-size:11px;color:var(--nacc-tx);background:transparent;border:1px solid var(--nbd);border-radius:var(--nr-sm);padding:2px 10px;cursor:pointer}
   .disp-done-btn:hover{border-color:var(--nacc)}
+  /* ===== P3 派发闭环徽章（详情 meta chips 行）：pending=有待回执（橙色脉冲图标），done=全部已回执（灰） ===== */
+  .disp-badge{user-select:none}
+  .disp-badge.pending{color:var(--nwarn);border-color:var(--nwarn)}
+  .disp-badge.pending .ic{animation:dispPulse 1.6s ease-in-out infinite}
+  .disp-badge.done{color:var(--nt3)}
+  @keyframes dispPulse{0%,100%{opacity:1}50%{opacity:.35}}
   /* ===== 通用 modal ===== */
   .mask{position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.45);display:grid;place-items:center}
   .modal{width:460px;max-width:calc(100vw - 60px);max-height:82vh;overflow-y:auto;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-lg);box-shadow:0 16px 48px rgba(0,0,0,.5);padding:16px}
@@ -247,6 +348,19 @@
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 3v4h-4"/></symbol>
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/></symbol>
+  <symbol id="i-code-block" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></symbol>
+  <symbol id="i-bold" viewBox="0 0 24 24"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></symbol>
+  <symbol id="i-italic" viewBox="0 0 24 24"><path d="M19 4h-9M14 20H5M15 4 9 20"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+  <symbol id="i-ul" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-ol" viewBox="0 0 24 24"><path d="M11 6h10M11 12h10M11 18h10M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></symbol>
+  <symbol id="i-quote" viewBox="0 0 24 24"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19Z"/><path d="M12 10v4M12 17.5v.01"/></symbol>
+  <!-- 二期 ✨整理（AI 按 kind 模板重写正文）图标：双星 -->
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M10 3l1.7 4.8 4.8 1.7-4.8 1.7L10 16l-1.7-4.8-4.8-1.7 4.8-1.7Z"/><path d="M17.5 14.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9Z"/></symbol>
+  <!-- 敏感标记（sensitive 字段 toggle）：锁形图标 -->
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="9.5" rx="1.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></symbol>
 </defs></svg>
 
 <div class="topbar">
@@ -254,6 +368,7 @@
   <span class="sub">全窗口笔记页 · 与 DSH 浮动面板同源数据（/dsh-notes RPC）</span>
   <span class="sp"></span>
   <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg>刷新</button>
+  <button class="tbtn" id="btnArchive" title="归档：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）"><svg class="ic"><use href="#i-check"/></svg>归档</button>
   <button class="tbtn" id="btnTheme">切换主题</button>
   <a class="tbtn" href="/" title="返回 DSH 主界面"><svg class="ic"><use href="#i-home"/></svg>DSH 主界面</a>
 </div>
@@ -265,6 +380,8 @@
     <div class="chips" id="chips">
       <span class="chip on" data-k="all">全部</span><span class="chip" data-k="todo">待办</span><span class="chip" data-k="decision">决策</span><span class="chip" data-k="quote">引用</span>
       <span class="chip" data-k="pinned"><svg class="ic" style="width:11px;height:11px"><use href="#i-pin"/></svg>置顶</span>
+      <span class="chip" id="chipSortUse" title="按被引用次数排序（note_get 命中计数；再点恢复按更新时间）"><svg class="ic"><use href="#i-quote"/></svg>按引用</span>
+      <span class="chip" id="btnSelMode" title="多选笔记：勾选后可合并为一篇（Esc 退出）"><svg class="ic"><use href="#i-check"/></svg>选择</span>
       <span class="sp"></span>
       <span class="chip new" id="btnNew"><svg class="ic"><use href="#i-plus"/></svg>新建</span>
     </div>
@@ -272,6 +389,7 @@
     <div class="side-foot">
       <div class="fbtn" id="btnExport"><svg class="ic"><use href="#i-up"/></svg>导出</div>
       <div class="fbtn" id="btnImport"><svg class="ic"><use href="#i-down"/></svg>导入</div>
+      <div class="fbtn" id="btnTrash" title="回收站：查看已删除的笔记，可恢复或彻底删除"><svg class="ic"><use href="#i-trash"/></svg>回收站</div>
       <div class="fbtn" id="btnSettings"><svg class="ic"><use href="#i-gear"/></svg>设置</div>
     </div>
   </aside>
@@ -286,6 +404,7 @@
 <div id="capHost"></div>
 <div id="modalHost"></div>
 <div id="ctxHost"></div>
+<div class="selbar" id="selbar" style="display:none"><span class="n" id="selbarN">已选 0 条</span><button class="mbtn primary" id="selMerge">合并</button><button class="mbtn" id="selCancel">取消</button></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -301,25 +420,271 @@ function rpc(method, args) {
 /* ================= 常量与状态 ================= */
 var KIND = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用' };
 var KCOLOR = { note: 'var(--kind-note)', decision: 'var(--kind-decision)', todo: 'var(--kind-todo)', link: 'var(--kind-link)', quote: 'var(--kind-quote)' };
+/* 二期：kind 模板骨架（新建预填）——与 host-impl.js / index.mjs / client-impl.js / 原型同一份（check.js 断言一致）；
+   note 为自由格式（空骨架）；机器/运维信息类由 ✨整理按内容套用机器模板（建时无法预判内容，不进 KIND_TEMPLATES） */
+var KIND_TEMPLATES = {
+  note: '',
+  decision: '## 背景\n\n（问题与上下文）\n\n## 结论\n\n（最终选择）\n\n## 理由\n\n（权衡与依据）\n',
+  todo: '- [ ] （待办事项）\n',
+  link: '## 链接\n\n（URL）\n\n## 说明\n\n（用途与要点）\n',
+  quote: '> （引用原文）\n\n—— （出处）\n'
+};
 var STATUS_LABEL = { active: '进行中', pinned: '置顶', resolved: '已解决', superseded: '已取代' };
 var notes = [];              // slim 列表缓存（常驻内存；写操作后静默回填）
 var folders = [];            // 虚拟文件夹清单 [{id,name,order,count}]
 var view = { type: 'all', id: '' };   // all | folder | topic
 var kindF = 'all';           // all | note/todo/... | pinned
+var sortBy = 'time';         // P2 使用遥测：time=按更新（缺省，与 host _list 一致）| use=按被引用次数降序
 var searchText = '', searchIds = null; // searchIds=null=仅本地过滤；数组=host 全文命中 ∪ 本地命中
 var selId = null, edNote = null;       // edNote = 当前选中笔记完整体（含 body）
 var edLoading = false;                 /* 正文异步加载中：doSave 省略 body 字段（防竞态清空正文） */
 var dragId = null, saveTimer = null, searchTimer = null;
+/* ===== 双模式编辑器 v3 状态（原型 design/notes-editor-v3.html）===== */
+var edMode = 'source';                 // 'source' 源码 | 'rich' 富文本（受限 WYSIWYG）；Ctrl+/ 或 meta 行两段开关切换
+var richDirty = false;                 // 富文本编辑中（未序列化回源码）
+var composing = false;                 // IME 组合输入中（期间不序列化）
+var savedRange = null;                 // 富文本选区缓存（工具栏/弹窗操作后恢复）
+var degraded = { ok: true, reasons: [] };  // 白名单降级分析（analyzeMarkdown 内核）
+var richSyncTimer = null, degTimer = null;
+var imgDraft = null, imgUploading = false; // 图片插入弹窗草稿 + 上传中标记（三入口共用：粘贴/拖拽/工具栏按钮）
 var sessList = [], sessPending = [];   // 注入范围浮层会话源（notes-sessions）
 var foldOpen = loadFoldOpen();         // 文件夹折叠态（localStorage；缺省全展开）
 var scopeOpen = false;
+/* ===== 显式归档 UI + 手动笔记多选合并（契约：notes-archive-preview / notes-archive {groups:[{memberIds,title?}]} / notes-archive-undo） ===== */
+var selMode = false, selIds = {};      // 列表多选态 + 勾选集合（noteId → true；与搜索/过滤共存，按 id 记账）
+var archState = null;                  // 归档预览对话框状态：{ groups:null=加载中, checked:{sid:false=取消勾选}, expand:{sid:true}, pending }
+/* ===== 二期 ✨整理（notes-ai-organize 按 kind 模板重写正文，可撤销）+ 孤儿资产清理（notes-assets-prune） ===== */
+var organizing = false, organizeUndo = null;   // organizeUndo = 一次撤销栈（整理前正文字符串 | null）
+var pruneState = null;                 // 资产清理对话框状态：{ data:null=扫描中, checked:{name:false=取消勾选}, pending }
+/* ===== P1 回收站（notes-list {includeDeleted:true} + notes-restore/notes-purge）===== */
+var trashState = null;                 // 回收站对话框状态：{ list:null=加载中, pending:执行中的笔记 id }
+/* ===== P2 笔记双链：全库正文惰性索引（列表瘦身不含 body；后台 notes-get 小批量补齐，驱动行尾双链标记与反向链接面板；host 不改）===== */
+var wikiBodies = {};                   // noteId → { body, updatedAt }
+var wikiIdxGen = 0;                    // 索引构建代际：列表刷新作废旧任务
 
 /* ================= 基础工具 ================= */
 function $(id) { return document.getElementById(id) }
-function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+// ===== 双模式编辑器内核 v3（规格：design/notes-editor-v3.html；app.html/发布包 lib/client.js 同块同步，check.js 断言三端一致）=====
+// 安全红线：esc() 先把 & < > " ' 转为实体，绝不用 innerHTML 直插原文；代码块内容同样转义
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\x22/g, '&quot;').replace(/\x27/g, '&#39;')
+}
+// 资产显示路由：正文相对路径 ![](assets/xxx) → GET /dsh-notes/asset?file=assets/xxx（静态包 index.mjs 路由下发二进制）；
+// img 用 data-md-src 记原始相对路径，序列化时还原（显示 URL 不进 Markdown）
+function assetDisplaySrc(mdSrc) { return '/dsh-notes/asset?file=' + encodeURIComponent(mdSrc) }
+// ===== P2 双链 [[target]]：target 不含方括号/换行。解析放 client（渲染时按当前库匹配；host 不改）=====
+// 口径：[[n-xxx]] 精确 id 优先，其次 [[标题]] 全库标题精确匹配；解析不到 → 纯文本。反向链接扫描复用同一正则口径
+var WIKI_RE = /\[\[([^\[\]\n]+)\]\]/g
+function extractWikiTargets(text) { var out = [], m; WIKI_RE.lastIndex = 0; while ((m = WIKI_RE.exec(String(text == null ? '' : text)))) { out.push(m[1]); if (out.length >= 500) break } return out }
+function wikiLinksTo(body, id, title) { var ts = extractWikiTargets(body); return ts.indexOf(id) >= 0 || (!!title && ts.indexOf(title) >= 0) }
+// 反转义（esc 的逆）：行内文本已转义，双链 target 解析前须还原（否则含 & 的标题永不命中）
+function unesc(s) { return String(s).replace(/&(amp|lt|gt|quot|#39);/g, function (m, k) { return k === 'amp' ? '&' : k === 'lt' ? '<' : k === 'gt' ? '>' : k === 'quot' ? '"' : "'" }) }
+// Markdown → 富文本 HTML（受限 WYSIWYG 渲染方向）。白名单：h1-h3/段落/ul/ol/引用/围栏代码块/分隔线；行内 粗体/斜体/行内码/链接(仅 http/https)/图片(仅 assets/ 前缀)/双链 [[id或标题]]（wikiResolve 解析，不中按纯文本）
+function renderMarkdown(md, wikiResolve) {
+  var src = String(md || '')
+  if (!src.trim()) return ''
+  var lines = src.replace(/\r\n/g, '\n').split('\n')
+  var out = []
+  var i = 0
+  var inUl = false, inOl = false
+  function closeLists() { if (inUl) { out.push('</ul>'); inUl = false } if (inOl) { out.push('</ol>'); inOl = false } }
+  // 行内：反斜杠转义（占位符法，与序列化器 escapeMd 互逆）→ 图片（先于链接；仅 assets/ 前缀放行，其余原样呈现纯文本）→ 行内码 → 粗体 → 斜体 → 链接 → 双链 [[..]]
+  function inline(s) {
+    var t = esc(s), ph = []
+    t = t.replace(/\\([\\\x60*\[\]])/g, function (m, c) { ph.push(c); return '\uE000' + (ph.length - 1) + '\uE001' })
+    t = t.replace(/!\[([^\]]*)\]\(([^\s)]+)\)/g, function (m, alt, isrc) {
+      if (!/^assets\/[^\s?#]+$/.test(isrc)) return m
+      return '<img src="' + esc(assetDisplaySrc(isrc)) + '" data-md-src="' + isrc + '" alt="' + alt + '">'
+    })
+    t = t.replace(/\x60([^\x60]+)\x60/g, function (m, c) { return '<code>' + c + '</code>' })
+    t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    t = t.replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    // P2 双链：[[target]] → 可点击锚（data-wiki 记原始 target 供序列化还原；点击跳转由调用侧委托绑定）；wikiResolve 解析不到 → 纯文本
+    t = t.replace(/\[\[([^\[\]\n]+)\]\]/g, function (m, w) {
+      var r = typeof wikiResolve === 'function' ? wikiResolve(unesc(w)) : null
+      if (!r) return m
+      var label = r.title ? esc(r.title) : w
+      return '<a class="dsh-notes-wikilink" data-wiki="' + w + '" href="#wiki" title="' + label + '">' + label + '</a>'
+    })
+    t = t.replace(/\uE000(\d+)\uE001/g, function (m, n) { return esc(ph[+n]) })
+    return t
+  }
+  var HR = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/
+  var STOP = /^(#{1,3}\s|\x60\x60\x60|>\s?|[-*+]\s|\d+\.\s|\s*(?:-{3,}|\*{3,}|_{3,})\s*$)/
+  while (i < lines.length) {
+    var line = lines[i]
+    // 围栏代码块
+    if (/^\x60\x60\x60/.test(line)) {
+      closeLists()
+      var lang = line.replace(/^\x60\x60\x60/, '').trim()
+      var codeLines = []
+      i++
+      while (i < lines.length && !/^\x60\x60\x60/.test(lines[i])) { codeLines.push(lines[i]); i++ }
+      i++
+      out.push('<pre' + (lang ? ' data-lang="' + esc(lang) + '"' : '') + '><code>' + esc(codeLines.join('\n')) + '</code></pre>')
+      continue
+    }
+    // 分隔线
+    if (HR.test(line)) { closeLists(); out.push('<hr>'); i++; continue }
+    // 标题 # ~ ###
+    var hm = line.match(/^(#{1,3})\s+(.*)$/)
+    if (hm) {
+      closeLists()
+      var lvl = hm[1].length
+      out.push('<h' + lvl + '>' + inline(hm[2]) + '</h' + lvl + '>')
+      i++
+      continue
+    }
+    // 引用块
+    if (/^>\s?/.test(line)) {
+      closeLists()
+      var quoteLines = []
+      while (i < lines.length && /^>\s?/.test(lines[i])) { quoteLines.push(lines[i].replace(/^>\s?/, '')); i++ }
+      out.push('<blockquote>' + inline(quoteLines.join(' ')) + '</blockquote>')
+      continue
+    }
+    // 无序列表
+    if (/^[-*+]\s+/.test(line)) {
+      if (inOl) { out.push('</ol>'); inOl = false }
+      if (!inUl) { out.push('<ul>'); inUl = true }
+      out.push('<li>' + inline(line.replace(/^[-*+]\s+/, '')) + '</li>')
+      i++
+      continue
+    }
+    // 有序列表
+    if (/^\d+\.\s+/.test(line)) {
+      if (inUl) { out.push('</ul>'); inUl = false }
+      if (!inOl) { out.push('<ol>'); inOl = true }
+      out.push('<li>' + inline(line.replace(/^\d+\.\s+/, '')) + '</li>')
+      i++
+      continue
+    }
+    // 空行
+    if (line.trim() === '') { closeLists(); i++; continue }
+    // 段落（连续非空非特殊行合并）
+    closeLists()
+    var paraLines = []
+    while (i < lines.length && lines[i].trim() !== '' && !STOP.test(lines[i])) { paraLines.push(lines[i]); i++ }
+    out.push('<p>' + inline(paraLines.join(' ')) + '</p>')
+  }
+  closeLists()
+  return out.join('\n')
+}
+// ===== 序列化器（富文本 DOM → Markdown）：renderMarkdown 的逆函数，只产出白名单语法 =====
+// 行内：escapeMd 与渲染器占位符转义互逆（2*3、a[b]、反引号均可无损往返）
+function escapeMd(t) { return String(t).replace(/\\/g, '\\\\').replace(/([\x60*\[\]])/g, '\\$1') }
+function serializeInline(node) {
+  var s = ''
+  node.childNodes.forEach(function (ch) {
+    if (ch.nodeType === 3) { s += escapeMd(ch.nodeValue); return }
+    if (ch.nodeType !== 1) return
+    var tag = ch.tagName
+    if (tag === 'BR') { s += ' '; return }
+    if (tag === 'STRONG' || tag === 'B') { var b = serializeInline(ch); if (b.trim()) s += '**' + b + '**'; return }
+    if (tag === 'EM' || tag === 'I') { var em = serializeInline(ch); if (em.trim()) s += '*' + em + '*'; return }
+    if (tag === 'CODE') { var c = ch.textContent.replace(/\x60/g, '\\\x60'); s += '`' + c + '`'; return }
+    // P2 双链：data-wiki 锚序列化回 [[原始 target]]（显示标题不进 Markdown，目标改名后 target 不漂移）
+    if (tag === 'A') { var wk = ch.getAttribute('data-wiki'); if (wk != null) { s += '[[' + wk + ']]'; return } var href = ch.getAttribute('href') || ''; s += '[' + serializeInline(ch) + '](' + href + ')'; return }
+    if (tag === 'IMG') { s += '![' + (ch.getAttribute('alt') || '') + '](' + (ch.getAttribute('data-md-src') || ch.getAttribute('src') || '') + ')'; return }
+    if (tag === 'SCRIPT' || tag === 'STYLE') return
+    s += serializeInline(ch) // SPAN/FONT/MARK 等未知行内 → 拆壳保留文本
+  })
+  return s
+}
+// 列表序列化：一个列表 = 一个块（item 间单换行，块间才空行）；嵌套列表拍平为同级（白名单只承诺一级）
+function serializeList(listEl) {
+  var items = [], ordered = listEl.tagName === 'OL', idx = 0
+  listEl.childNodes.forEach(function (li) {
+    if (li.nodeType !== 1 || li.tagName !== 'LI') return
+    idx++
+    var marker = ordered ? (idx + '. ') : '- '
+    var inlineParts = '', nested = []
+    li.childNodes.forEach(function (c) {
+      if (c.nodeType === 1 && (c.tagName === 'UL' || c.tagName === 'OL')) nested.push(c)
+      else inlineParts += (c.nodeType === 3 ? escapeMd(c.nodeValue) : serializeInlineWrap(c))
+    })
+    items.push(marker + inlineParts.trim())
+    nested.forEach(function (nl) { items.push(serializeList(nl)) })
+  })
+  return items.join('\n')
+}
+function serializeInlineWrap(node) { var d = document.createElement('span'); d.appendChild(node.cloneNode(true)); return serializeInline(d) }
+function serializeRich(root) {
+  var out = []
+  root.childNodes.forEach(function (el) {
+    if (el.nodeType === 3) { var t0 = escapeMd(el.nodeValue).trim(); if (t0) out.push(t0); return }
+    if (el.nodeType !== 1) return
+    var tag = el.tagName
+    if (tag === 'H1' || tag === 'H2' || tag === 'H3') { var t1 = serializeInline(el).trim(); if (t1) out.push('#'.repeat(+tag[1]) + ' ' + t1) }
+    else if (tag === 'P' || tag === 'DIV') {
+      var imgs = el.querySelectorAll('img'), onlyImg = imgs.length === 1 && !el.textContent.trim()
+      if (onlyImg) { out.push(serializeInline(el).trim()) }
+      else { var t2 = serializeInline(el).trim(); if (t2) out.push(t2) }
+    }
+    else if (tag === 'UL' || tag === 'OL') { var lst = serializeList(el); if (lst) out.push(lst) }
+    else if (tag === 'BLOCKQUOTE') {
+      var blocks = el.querySelectorAll('p,div')
+      if (blocks.length) { blocks.forEach(function (b) { var t3 = serializeInline(b).trim(); if (t3) out.push('> ' + t3) }) }
+      else { var t4 = serializeInline(el).trim(); if (t4) out.push('> ' + t4) }
+    }
+    else if (tag === 'PRE') {
+      var lang = el.getAttribute('data-lang') || ''
+      var code = el.textContent.replace(/\n+$/, '')
+      out.push('```' + lang + '\n' + code + '\n```')
+    }
+    else if (tag === 'HR') { out.push('---') }
+    else if (tag === 'IMG') { out.push(serializeInlineWrap(el)) }
+    else { var t5 = serializeInline(el).trim(); if (t5) out.push(t5) }
+  })
+  return out.join('\n\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+// 往返自检归一化：行尾空白/多余空行不视为差异
+function normMd(s) { return String(s || '').replace(/\r\n/g, '\n').split('\n').map(function (l) { return l.replace(/\s+$/, '') }).join('\n').replace(/\n{3,}/g, '\n\n').trim() }
+// ===== 白名单降级分析：正文含白名单外结构 → 富文本入口置灰；围栏代码块内容不参与判定 =====
+var DEG_RULES = [
+  { key: 'table', label: '表格', re: /^\s*\|.*\|\s*$|^\s*[:|-]+\|[:| -]+\s*$/ },
+  { key: 'nestedQuote', label: '嵌套引用', re: /^\s*>(?:\s*>)+/ },
+  { key: 'h4', label: '四级及以下标题', re: /^\s*#{4,6}\s/ },
+  { key: 'task', label: '任务列表', re: /^\s*[-*+]\s+\[[ xX]\]/ },
+  { key: 'html', label: '行内 HTML', re: /<\/?[a-zA-Z][^>\n]*>/ }
+]
+function analyzeMarkdown(md) {
+  var found = {}, order = []
+  String(md || '').split('\n').forEach(function (ln, idx) {
+    if (/^\x60\x60\x60/.test(ln)) { analyzeMarkdown._in = !analyzeMarkdown._in; return }
+    if (analyzeMarkdown._in) return
+    DEG_RULES.forEach(function (r) {
+      if (!found[r.key] && r.re.test(ln)) { found[r.key] = { label: r.label, line: idx + 1, sample: ln.trim().slice(0, 36) }; order.push(found[r.key]) }
+    })
+  })
+  analyzeMarkdown._in = false
+  return { ok: order.length === 0, reasons: order }
+}
+// ===== 粘贴 HTML 白名单清洗：h4-6 降为段落，table/div 拆壳，script/style 丢弃，链接仅 http/https =====
+function sanitizeFragment(frag) {
+  var KEEP_B = { P: 1, H1: 1, H2: 1, H3: 1, UL: 1, OL: 1, LI: 1, BLOCKQUOTE: 1, PRE: 1, BR: 1, HR: 1, STRONG: 1, B: 1, EM: 1, I: 1, CODE: 1, IMG: 1 }
+  function walk(node, out) {
+    node.childNodes.forEach(function (ch) {
+      if (ch.nodeType === 3) { out.appendChild(document.createTextNode(ch.nodeValue)); return }
+      if (ch.nodeType !== 1) return
+      var tag = ch.tagName
+      if (tag === 'SCRIPT' || tag === 'STYLE') return
+      if (tag === 'A') { var wk = ch.getAttribute('data-wiki'); if (wk != null) { var wa = document.createElement('a'); wa.setAttribute('class', 'dsh-notes-wikilink'); wa.setAttribute('data-wiki', wk); wa.setAttribute('href', '#wiki'); walk(ch, wa); out.appendChild(wa); return } var href = ch.getAttribute('href') || ''; if (/^https?:/.test(href)) { var a = document.createElement('a'); a.href = href; walk(ch, a); out.appendChild(a) } else walk(ch, out); return }
+      if (tag === 'IMG') { var isrc = ch.getAttribute('data-md-src') || ''; if (!/^assets\/[^\s?#]+$/.test(isrc)) return; var im = document.createElement('img'); im.src = assetDisplaySrc(isrc); im.setAttribute('data-md-src', isrc); im.alt = ch.alt || ''; out.appendChild(im); return }
+      if (/^H[4-6]$/.test(tag)) { var p = document.createElement('p'); walk(ch, p); out.appendChild(p); return }
+      if (KEEP_B[tag]) { var el = document.createElement(tag.toLowerCase()); walk(ch, el); out.appendChild(el); return }
+      walk(ch, out) // 其他标签拆壳
+    })
+  }
+  var box = document.createElement('div'); walk(frag, box); return box
+}
+// ===== end 双模式编辑器内核 v3 =====
 function icon(id, sz) { return '<svg class="ic"' + (sz ? ' style="width:' + sz + 'px;height:' + sz + 'px"' : '') + '><use href="#' + id + '"/></svg>' }
 function fname(id) { var f = folders.find(function (x) { return x.id === id }); return f ? f.name : '' }
 function shortSid(sid) { return sid ? String(sid).replace(/^session-/, '').slice(0, 8) : '' }
+/* P3 派发闭环：单条派发完成判定（dispatchStatus==='done' 或存量 done===true 向后兼容） */
+function isDispDone(d) { return !!(d && (d.dispatchStatus === 'done' || d.done === true)) }
 function fmtDT(iso) { return iso ? String(iso).slice(0, 16).replace('T', ' ') : '' }
 function fmtD(iso) { return iso ? String(iso).slice(5, 10) : '' }
 function isPinned(n) { return n && n.status === 'pinned' }
@@ -338,8 +703,68 @@ function loadNotes(silent) {
   return rpc('notes-list').then(function (res) {
     if (res && res.notes) notes = res.notes;
     return loadFolders();
-  }).then(function () { renderTree(); })
+  }).then(function () { ensureWikiIndex(); renderTree(); })
     .catch(function (e) { if (!silent) toast('列表加载失败：' + (e && e.message || e)) });
+}
+/* ===== P2 笔记双链：解析 / 索引 / 跳转 / 反向链接（内核 extractWikiTargets/wikiLinksTo 同一口径；库已在内存，host 不改）===== */
+/* 渲染时解析：[[n-xxx]] 精确 id 优先，其次 [[标题]] 全库标题精确匹配；均不中 → null（渲染为纯文本） */
+function resolveWikiTarget(target) {
+  var t = String(target || '');
+  if (!t) return null;
+  return notes.find(function (n) { return n.id === t; }) || notes.find(function (n) { return (n.title || '') === t; }) || null;
+}
+/* 渲染器行内扩展入参（renderMarkdown 第二参）：命中 → {id,title}（锚显示标题）；不中 → null（纯文本） */
+function wikiResolve(w) { var n = resolveWikiTarget(w); return n ? { id: n.id, title: n.title || '' } : null; }
+/* 全库正文索引：补缺/过期（updatedAt 漂移）条目，4 路并发后台拉取；整批完成一次性重渲染（防逐条刷新闪烁/滚动跳动） */
+function ensureWikiIndex() {
+  var gen = ++wikiIdxGen;
+  var stale = notes.filter(function (n) { var c = wikiBodies[n.id]; return !c || c.updatedAt !== (n.updatedAt || ''); });
+  if (!stale.length) return;
+  var idx = 0, done = 0;
+  function fin() { done++; if (done === stale.length && gen === wikiIdxGen) { renderTree(); renderBacklinks(); } }
+  function worker() {
+    if (gen !== wikiIdxGen || idx >= stale.length) return;
+    var n = stale[idx++];
+    rpc('notes-get', { id: n.id }).then(function (res) {
+      if (gen !== wikiIdxGen) return;
+      if (res && res.note) wikiBodies[n.id] = { body: res.note.body || '', updatedAt: res.note.updatedAt || n.updatedAt || '' };
+      fin(); worker();
+    }).catch(function () { fin(); worker(); });
+  }
+  for (var k = 0; k < 4 && k < stale.length; k++) worker();
+}
+/* 行尾双链标记：缓存正文优先，索引未到时 preview（host slim 前 200 字符）兜底 */
+function hasWikiLinks(n) { var c = wikiBodies[n.id]; return extractWikiTargets(c ? c.body : (n.preview || '')).length > 0; }
+/* 双链跳转：解析 → 选中；目标被当前视图/kind 过滤藏掉时退回「全部」（搜索词不动，保留用户上下文） */
+function jumpToWikiTarget(target) {
+  var n = resolveWikiTarget(target);
+  if (!n) { toast('未找到链接目标：' + target); return; }
+  var vis = (view.type === 'all' || (view.type === 'folder' && (n.folder || '') === view.id) || (view.type === 'topic' && (n.topic || '') === view.id))
+    && (kindF === 'all' || (kindF === 'pinned' && isPinned(n)) || (n.kind || 'note') === kindF);
+  if (!vis) { view = { type: 'all', id: '' }; kindF = 'all'; }
+  selectNote(n.id);
+}
+/* 反向链接面板：全库正文含 [[当前id]]/[[当前标题]] 的其他笔记（点击跳转；索引未热提示「索引中…」） */
+function renderBacklinks() {
+  var host = $('backlinksHost');
+  if (!host) return;
+  if (!edNote) { host.innerHTML = ''; return; }
+  var warm = notes.every(function (n) { return !!wikiBodies[n.id]; });
+  var bl = [];
+  notes.forEach(function (n) {
+    if (n.id === edNote.id) return;   // 自链不算反向链接
+    var c = wikiBodies[n.id];
+    if (!c) return;                   // 索引未到的条目暂不计（标题行已提示索引中）
+    if (wikiLinksTo(c.body, edNote.id, edNote.title || '')) bl.push(n);
+  });
+  var h = '<div class="bl-t">' + icon('i-link', 11) + ' 反向链接' + (warm ? '（' + bl.length + '）' : '（索引中…）') + '</div>';
+  if (bl.length) {
+    h += '<div class="bl-list">' + bl.map(function (n) {
+      return '<span class="bl-item" data-bl="' + n.id + '" title="跳转到「' + esc(n.title || '无标题') + '」"><span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>' + esc(n.title || '无标题') + '</span>';
+    }).join('') + '</div>';
+  } else if (warm) { h += '<div class="bl-empty">暂无其他笔记用 [[…]] 链接到这里</div>'; }
+  host.innerHTML = h;
+  host.querySelectorAll('.bl-item').forEach(function (el) { el.addEventListener('click', function () { jumpToWikiTarget(el.getAttribute('data-bl')); }); });
 }
 function loadFolders() {
   return rpc('notes-folders').then(function (res) { if (res && res.folders) folders = res.folders }).catch(function () {})
@@ -377,13 +802,22 @@ function noteRow(n, inFolderCtx) {
   if (view.type === 'topic' && n.folder) tail += '<span class="fbadge">' + icon('i-folder', 9) + esc(fname(n.folder)) + '</span>';
   else if (inFolderCtx && n.topic) tail += '<span class="tp" title="主题：' + esc(n.topic) + '">' + esc(n.topic) + '</span>';
   else tail += '<span class="tp">' + fmtD(n.updatedAt) + '</span>';
-  return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + '" data-note="' + n.id + '" draggable="true">'
+  /* 多选态：行首复选框 + pick 高亮（行点击=勾选，由树事件委托统一处理） */
+  return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + (selMode && selIds[n.id] ? ' pick' : '') + '" data-note="' + n.id + '" draggable="true">'
+    + (selMode ? '<input type="checkbox" class="pick-check"' + (selIds[n.id] ? ' checked' : '') + '>' : '')
     + '<span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>'
     + '<span class="ti">' + (isPinned(n) ? '<svg class="ic pin"><use href="#i-pin"/></svg> ' : '') + esc(n.title || '无标题') + '</span>'
-    + (n.inject ? '<span style="color:var(--nacc);display:flex" title="注入为上下文 · ' + (n.injectRole === 'reference' ? '资料' : '约定') + '">' + icon('i-bolt', 10) + '</span>' : '') + tail + '</div>';
+    + (n.inject ? '<span style="color:var(--nacc);display:flex" title="注入为上下文 · ' + (n.injectRole === 'reference' ? '资料' : '约定') + '">' + icon('i-bolt', 10) + '</span>' : '')
+    /* 使用遥测（P2）：被引用徽章（0 次不显示） */
+    + ((n.useCount || 0) > 0 ? '<span class="use" title="被 Agent 引用（note_get 命中）' + n.useCount + ' 次">' + icon('i-quote', 9) + n.useCount + '</span>' : '')
+    /* 双链标记（P2）：正文含 [[..]] 时行尾显示链接图标（缓存正文优先，preview 兜底） */
+    + (hasWikiLinks(n) ? '<span class="wikimark" title="含双链 [[…]]（详情富文本中可点击跳转）">' + icon('i-link', 9) + '</span>' : '')
+    + tail + '</div>';
 }
 function renderTree() {
   var vis = notes.filter(matches);
+  /* 排序（P2 使用遥测）：缺省保持 host 序（pinned → updatedAt）；「按引用」= useCount 降序（同数按 updatedAt 兜底），分组内顺序随过滤数组 */
+  if (sortBy === 'use') vis.sort(function (a, b) { return ((b.useCount || 0) - (a.useCount || 0)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) });
   $('brandCnt').textContent = (view.type === 'all' && kindF === 'all' && !searchText ? notes.length : vis.length) + ' 条';
   var h = '';
   var vt = view.type === 'topic' ? ('主题 · ' + view.id) : view.type === 'folder' ? ('文件夹 · ' + fname(view.id)) : '全部笔记';
@@ -432,6 +866,16 @@ function renderTree() {
   });
   var vc = $('viewClear'); if (vc) vc.onclick = function () { view = { type: 'all', id: '' }; render() };
   var af = $('addFolder'); if (af) af.onclick = function (ev) { ev.stopPropagation(); doCreateFolder() };
+  $('btnSelMode').classList.toggle('on', selMode);
+  $('chipSortUse').classList.toggle('on', sortBy === 'use');
+  renderSelBar();
+}
+/* 多选操作条：已选 N 条 | 合并 | 取消（多选态常显于左下角） */
+function renderSelBar() {
+  var n = Object.keys(selIds).length;
+  $('selbar').style.display = selMode ? 'flex' : 'none';
+  $('selbarN').textContent = '已选 ' + n + ' 条';
+  $('selMerge').disabled = n < 2;
 }
 /* 树事件委托（挂一次；drag 事件均冒泡） */
 $('tree').addEventListener('click', function (ev) {
@@ -442,7 +886,11 @@ $('tree').addEventListener('click', function (ev) {
   var trow = ev.target.closest('[data-topic]');
   if (trow) { var t = trow.dataset.topic; view = view.type === 'topic' && view.id === t ? { type: 'all', id: '' } : { type: 'topic', id: t }; render(); return }
   var nrow = ev.target.closest('[data-note]');
-  if (nrow) selectNote(nrow.dataset.note);
+  if (nrow) {
+    /* 多选态：行点击=勾选/取消（不打开笔记），并重渲染刷新复选框与操作条计数 */
+    if (selMode) { var nid = nrow.dataset.note; if (selIds[nid]) delete selIds[nid]; else selIds[nid] = true; renderTree(); return }
+    selectNote(nrow.dataset.note);
+  }
 });
 $('tree').addEventListener('contextmenu', function (ev) {
   var frow = ev.target.closest('[data-fold]');
@@ -452,6 +900,7 @@ $('tree').addEventListener('contextmenu', function (ev) {
 });
 $('tree').addEventListener('dragstart', function (ev) {
   var nrow = ev.target.closest('[data-note]'); if (!nrow) return;
+  if (selMode) { ev.preventDefault(); return }   /* 多选态禁用拖拽（点击=勾选，不挪文件夹） */
   dragId = nrow.dataset.note; nrow.classList.add('drag');
   try { ev.dataTransfer.setData('text/plain', dragId); ev.dataTransfer.effectAllowed = 'move' } catch (e) {}
 });
@@ -557,20 +1006,36 @@ document.addEventListener('mousedown', function (ev) {
 
 /* ================= 选中与编辑器 ================= */
 function selectNote(id) {
+  /* 双模式：切换笔记前把富文本在途编辑序列化落回 edNote.body 并立即保存（防 900ms debounce 打到新笔记上） */
+  if (edMode === 'rich' && richDirty && edNote) { syncFromRich('切换笔记'); doSave(); }
   selId = id; scopeOpen = false;
   var n = notes.find(function (x) { return x.id === id });
   if (n && n.folder) { foldOpen[n.folder] = true; saveFoldOpen() }
   edNote = n ? Object.assign({}, n, { body: '' }) : null;
+  degraded = { ok: true, reasons: [] };   /* 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果） */
   edLoading = true;   /* 正文异步加载中：doSave 省略 body，防改名触发保存把空正文写盘 */
   renderTree(); renderEd();
   if (n) {
     rpc('notes-get', { id: id }).then(function (res) {
-      if (res && res.note && selId === id) { edNote = res.note; fillEdBody(); renderEdFoot(); }
+      if (res && res.note && selId === id) {
+        edNote = res.note;
+        wikiBodies[id] = { body: edNote.body || '', updatedAt: res.note.updatedAt || '' };   /* 双链索引即时新鲜（不等后台补缺） */
+        /* 正文到达后跑降级分析；富文本模式下新正文含白名单外语法 → 回落源码模式 */
+        degraded = analyzeMarkdown(edNote.body || '');
+        if (edMode === 'rich' && !degraded.ok) { edMode = 'source'; toast('含高级语法（' + degraded.reasons.map(function (r) { return r.label }).join('、') + '），请在源码模式编辑'); renderEd(); }
+        else { fillEdBody(); renderEdFoot(); refreshDegradeUI(); renderBacklinks(); }
+      }
       edLoading = false;
     }).catch(function () { edLoading = false })
   }
 }
-function fillEdBody() { if (edNote) $('edBody').textContent = edNote.body || '' }
+/* 正文填充双模式：源码 → textarea.value；富文本 → 内核渲染进 contenteditable（填充前清 dirty，防回填被当编辑） */
+function fillEdBody() {
+  if (!edNote) return;
+  var body = edNote.body || '';
+  if ($('edSrc')) $('edSrc').value = body;
+  if (edMode === 'rich' && $('edRich')) { richDirty = false; $('edRich').innerHTML = renderMarkdown(body, wikiResolve); setSyncStatus(false); }
+}
 function triggerSave() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 900) }
 function doSave() {
   if (!edNote || !selId) return;
@@ -581,7 +1046,7 @@ function doSave() {
   var upd = {
     id: selId, title: edNote.title, tags: tags,
     kind: edNote.kind, status: edNote.status, inject: edNote.inject === true,
-    injectTo: edNote.injectTo || [], recall: edNote.recall !== false
+    injectTo: edNote.injectTo || [], recall: edNote.recall !== false, sensitive: edNote.sensitive === true
   };
   if (!edLoading) upd.body = edNote.body;   /* 正文加载中省略 body（host 对 undefined 保留原内容，防竞态清空正文） */
   if (upd.inject) upd.injectRole = edNote.injectRole === 'reference' ? 'reference' : 'convention';   /* 非 off 才带 injectRole（payload 禁 undefined） */
@@ -590,6 +1055,8 @@ function doSave() {
     if (res && res.error) { toast(res.error); return }
     $('edSaved').textContent = '✓ 已自动保存 ' + new Date().toTimeString().slice(0, 5);
     edNote._tagsStr = null;
+    wikiBodies[selId] = { body: edNote.body || '', updatedAt: '' };   /* 双链索引：自有正文即时新鲜（updatedAt 置空 → loadNotes 后索引复核） */
+    renderBacklinks();
     loadNotes(true);
   }).catch(function (e) { toast('保存失败：' + (e && e.message || e)) });
 }
@@ -611,6 +1078,7 @@ function renderEd() {
   }
   var n = edNote;
   ed.className = 'ed';
+  /* 双模式编辑器 v3（原型 design/notes-editor-v3.html）：ed-h + disp + ed-main（降级横幅 + 源码 textarea / 富文本 rich-scroll）+ ed-foot */
   ed.innerHTML =
     '<div class="ed-h">'
     + '<div class="ed-crumb" id="edCrumb"></div>'
@@ -618,12 +1086,395 @@ function renderEd() {
     + '<div class="ed-meta" id="edMeta"></div>'
     + '</div>'
     + '<div class="disp" id="dispHost"></div>'
-    + '<div class="ed-body" id="edBody" contenteditable="true" spellcheck="false"></div>'
-    + '<div class="ed-foot"><span id="edCreated"></span><span id="edUpdated"></span><span id="edSource"></span><span class="saved" id="edSaved"></span></div>';
-  renderCrumb(); renderMeta(); renderDispatches(); fillEdBody(); renderEdFoot();
+    + '<div class="ed-main">'
+    + '<div class="deg" id="degBanner" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div>检测到<b>白名单外语法</b>，富文本编辑不可用（仍可源码编辑）：<span class="rs" id="degReasons"></span><br>删净对应语法后，「富文本」入口会实时恢复可用。</div></div>'
+    + '<textarea class="src" id="edSrc" spellcheck="false" placeholder="正文…（Markdown）"' + (edMode === 'source' ? '' : ' style="display:none"') + '></textarea>'
+    + '<div class="rich-scroll rich-wrap" id="richScroll"' + (edMode === 'rich' ? '' : ' style="display:none"') + '>'
+    + '<div class="rtb" id="rtb">'
+    + '<button class="rtb-btn" data-a="bold" title="加粗 **text**">' + icon('i-bold', 14) + '</button>'
+    + '<button class="rtb-btn" data-a="italic" title="斜体 *text*">' + icon('i-italic', 14) + '</button>'
+    + '<button class="rtb-btn" data-a="code" title="行内码 `text`">' + icon('i-code-block', 14) + '</button>'
+    + '<button class="rtb-btn" data-a="link" title="链接 [text](url)">' + icon('i-link', 14) + '</button>'
+    + '<span class="rtb-sep"></span>'
+    + '<button class="rtb-btn" data-a="ul" title="无序列表">' + icon('i-ul', 14) + '</button>'
+    + '<button class="rtb-btn" data-a="ol" title="有序列表">' + icon('i-ol', 14) + '</button>'
+    + '<button class="rtb-btn" data-a="quote" title="引用块">' + icon('i-quote', 14) + '</button>'
+    + '<span class="rtb-sep"></span>'
+    + '<button class="rtb-btn" data-a="image" title="插入图片 ![](assets/..)（也可 Ctrl+V 粘贴 / 拖拽文件）">' + icon('i-image', 14) + '</button>'
+    + '<span class="sync' + (richDirty ? '' : ' ok') + '" id="syncPill"><span class="sd"></span><span id="syncTxt">' + (richDirty ? '编辑中…' : '已同步源码') + '</span></span>'
+    + '</div>'
+    + '<div class="rich" id="edRich" contenteditable="true" spellcheck="false"></div>'
+    + '</div>'
+    + '</div>'
+    + '<div class="backlinks" id="backlinksHost"></div>'
+    + '<div class="ed-foot"><span id="footMode">' + (edMode === 'source' ? '源码模式' : '富文本模式') + '</span><span id="edCreated"></span><span id="edUpdated"></span><span id="edSource"></span><span class="saved" id="edSaved"></span></div>';
+  renderCrumb(); renderMeta(); renderDispatches(); fillEdBody(); renderEdFoot(); refreshDegradeUI(); renderBacklinks();
   $('edTitle').textContent = n.title === 'Untitled' ? '' : (n.title || '');
   $('edTitle').addEventListener('input', function () { if (!edNote) return; edNote.title = this.textContent.trim() || 'Untitled'; triggerSave() });
-  $('edBody').addEventListener('input', function () { if (!edNote) return; edNote.body = this.textContent; triggerSave() });
+  bindEditorArea();
+}
+/* 编辑区事件绑定（renderEd 重建 DOM 后重挂；元素级监听随重建不累积，document 级 selectionchange 在启动区挂一次） */
+function bindEditorArea() {
+  var ta = $('edSrc');
+  if (ta) {
+    ta.addEventListener('input', function () { if (!edNote) return; edNote.body = this.value; triggerSave(); scheduleDegAnalyze(); });
+    /* 图片入口①/②（源码模式）：粘贴/拖拽图片文件 → 同一上传弹窗 → 光标处插 Markdown 文本 */
+    ta.addEventListener('paste', function (ev) { var cd = ev.clipboardData; if (cd && cd.files && cd.files.length && /^image\//.test(cd.files[0].type)) { ev.preventDefault(); pickImageFile(cd.files[0]); } });
+    ta.addEventListener('dragover', function (ev) { ev.preventDefault(); });
+    ta.addEventListener('drop', function (ev) { var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]; if (!f) return; ev.preventDefault(); if (!/^image\//.test(f.type)) { toast('仅支持图片文件'); return } pickImageFile(f); });
+  }
+  var rich = $('edRich'), wrap = $('richScroll');
+  if (rich && wrap && edMode === 'rich') bindRich(rich, wrap);
+}
+/* 富文本事件（原型 bindRich）：编辑期间不重渲染（防 IME 打断/光标丢失），失焦/900ms 防抖序列化回源码 */
+function bindRich(rich, wrap) {
+  try { document.execCommand('styleWithCSS', false, false); } catch (e) {} /* 强制语义标签 <b>/<i>，序列化器可识别 */
+  rich.addEventListener('input', function () { richDirty = true; setSyncStatus(true); scheduleRichSync(); keepSel(); });
+  rich.addEventListener('compositionstart', function () { composing = true; clearTimeout(richSyncTimer); });
+  rich.addEventListener('compositionend', function () { composing = false; richDirty = true; setSyncStatus(true); scheduleRichSync(); });
+  rich.addEventListener('blur', function () { if (richDirty) syncFromRich('失焦'); });
+  rich.addEventListener('keyup', updateToolbarState);
+  rich.addEventListener('mouseup', function () { keepSel(); updateToolbarState(); });
+  /* P2 双链：富文本内点击 [[..]] 锚 → 跳转选中目标笔记（阻止默认 #wiki 哈希跳转；_wikiBound 守卫防模式切换重复绑定） */
+  if (!rich._wikiBound) {
+    rich._wikiBound = true;
+    rich.addEventListener('click', function (ev) {
+      var a = ev.target && ev.target.closest ? ev.target.closest('a[data-wiki]') : null;
+      if (!a) return;
+      ev.preventDefault(); ev.stopPropagation();
+      jumpToWikiTarget(a.getAttribute('data-wiki') || '');
+    });
+  }
+  /* 图片入口①：Ctrl+V 粘贴（clipboardData.files）；其余粘贴：HTML → 白名单清洗，纯文本 → 纯文本插入 */
+  rich.addEventListener('paste', function (ev) {
+    var cd = ev.clipboardData;
+    if (cd && cd.files && cd.files.length && /^image\//.test(cd.files[0].type)) { ev.preventDefault(); keepSel(); pickImageFile(cd.files[0]); return; }
+    var html = cd ? cd.getData('text/html') : '';
+    if (html) { ev.preventDefault(); insertSanitizedHtml(html); return; }
+    var txt = cd ? cd.getData('text/plain') : '';
+    if (txt) { ev.preventDefault(); document.execCommand('insertText', false, txt); }
+  });
+  /* 图片入口②：拖拽文件进富文本 */
+  wrap.addEventListener('dragover', function (ev) { ev.preventDefault(); wrap.classList.add('drop'); });
+  wrap.addEventListener('dragleave', function () { wrap.classList.remove('drop'); });
+  wrap.addEventListener('drop', function (ev) {
+    ev.preventDefault(); wrap.classList.remove('drop');
+    var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+    if (!f) return;
+    if (!/^image\//.test(f.type)) { toast('仅支持图片文件'); return; }
+    keepSel(); pickImageFile(f);
+  });
+  /* 工具栏：mousedown 阻止默认（保住选区/焦点） */
+  wrap.querySelectorAll('.rtb-btn').forEach(function (b) {
+    b.addEventListener('mousedown', function (ev) { ev.preventDefault(); toolbarAction(b.getAttribute('data-a')); });
+  });
+}
+/* 同步态徽标（原型 syncPill）：编辑中…（橙点）/ 已同步源码（绿点） */
+function setSyncStatus(editing) {
+  var pill = $('syncPill'); if (!pill) return;
+  pill.className = 'sync' + (editing ? '' : ' ok');
+  if ($('syncTxt')) $('syncTxt').textContent = editing ? '编辑中…' : '已同步源码';
+}
+/* 富文本 → 源码序列化（原型 syncFromRich）：内容无损最高优先——有变化才回写 body 并走既有 doSave 自动保存 */
+function syncFromRich(why) {
+  if (edMode !== 'rich' || !edNote) return;
+  var rich = $('edRich'); if (!rich) return;
+  var md2 = serializeRich(rich);
+  richDirty = false; setSyncStatus(false);
+  if (md2 !== (edNote.body || '')) { edNote.body = md2; if ($('edSrc')) $('edSrc').value = md2; triggerSave(); }
+}
+function scheduleRichSync() {
+  if (composing) return;
+  clearTimeout(richSyncTimer);
+  richSyncTimer = setTimeout(function () { if (richDirty) syncFromRich('防抖'); }, 900);
+}
+/* 源码模式编辑后 450ms 防抖降级分析（原型 onSourceInput）：降级态翻转时 toast 告知 */
+function scheduleDegAnalyze() {
+  clearTimeout(degTimer);
+  degTimer = setTimeout(function () {
+    var a = analyzeMarkdown(edNote ? edNote.body || '' : '');
+    var was = degraded.ok;
+    degraded = a; refreshDegradeUI();
+    if (was !== a.ok) toast(a.ok ? '富文本模式已恢复可用' : '检测到白名单外语法 → 富文本入口置灰');
+  }, 450);
+}
+/* 降级 UI（原型 refreshDegradeUI）：横幅 + 富文本段置灰 + hover tooltip（.tipwrap.deg 控制） */
+function refreshDegradeUI() {
+  var d = degraded, seg = $('segRich');
+  if (seg) seg.classList.toggle('dis', !d.ok);
+  var ms = $('modeSeg'), tw = ms ? ms.closest('.tipwrap') : null;
+  if (tw) tw.classList.toggle('deg', !d.ok);
+  var bn = $('degBanner'); if (bn) bn.style.display = d.ok ? 'none' : 'flex';
+  if (!d.ok) {
+    if ($('degReasons')) $('degReasons').textContent = d.reasons.map(function (r) { return r.label + '（第 ' + r.line + ' 行：' + r.sample + '）' }).join('、');
+    if ($('richTip')) $('richTip').textContent = '含高级语法（' + d.reasons.map(function (r) { return r.label }).join('、') + '），请在源码模式编辑';
+  }
+}
+/* 模式切换（原型 setMode）：进富文本前跑降级分析；离开富文本先把在途编辑序列化落回源码 */
+function switchMode(m) {
+  if (m === edMode) return;
+  if (m === 'rich') {
+    degraded = analyzeMarkdown(edNote ? edNote.body || '' : '');
+    refreshDegradeUI();
+    if (!degraded.ok) { toast('含高级语法（' + degraded.reasons.map(function (r) { return r.label }).join('、') + '），请在源码模式编辑'); return; }
+    richDirty = false;
+    edMode = 'rich';
+    renderModeUI();
+    var rich = $('edRich');
+    rich.innerHTML = renderMarkdown(edNote ? edNote.body || '' : '', wikiResolve);
+    bindRich(rich, $('richScroll'));
+    setSyncStatus(false);
+  } else {
+    if (richDirty) syncFromRich('切换模式');
+    edMode = 'source';
+    renderModeUI();
+  }
+}
+function renderModeUI() {
+  var ms = $('modeSeg');
+  if (ms) ms.querySelectorAll('.seg').forEach(function (s) { s.classList.toggle('on', s.getAttribute('data-m') === edMode); });
+  if ($('edSrc')) $('edSrc').style.display = edMode === 'source' ? 'block' : 'none';
+  if ($('richScroll')) $('richScroll').style.display = edMode === 'rich' ? 'flex' : 'none';
+  if ($('footMode')) $('footMode').textContent = edMode === 'source' ? '源码模式' : '富文本模式';
+}
+/* 富文本选区缓存/恢复（工具栏 mousedown 阻止默认保住选区；弹窗关闭后恢复） */
+function keepSel() { var sel = window.getSelection(); if (sel && sel.rangeCount > 0) { try { savedRange = sel.getRangeAt(0).cloneRange(); } catch (e) {} } }
+function restoreSel() {
+  var sel = window.getSelection(); if (!sel) return;
+  sel.removeAllRanges();
+  if (savedRange) { try { sel.addRange(savedRange); return; } catch (e) {} }
+  var rich = $('edRich'); if (!rich) return;
+  var r = document.createRange(); r.selectNodeContents(rich); r.collapse(false); sel.addRange(r);
+}
+/* 富文本工具栏（原型 toolbarAction）：execCommand 语义标签（styleWithCSS:false → <b>/<i>，序列化器可识别） */
+function toolbarAction(a) {
+  restoreSel();
+  var rich = $('edRich'); if (rich) rich.focus();
+  if (a === 'bold') document.execCommand('bold');
+  else if (a === 'italic') document.execCommand('italic');
+  else if (a === 'ul') document.execCommand('insertUnorderedList');
+  else if (a === 'ol') document.execCommand('insertOrderedList');
+  else if (a === 'quote') document.execCommand('formatBlock', false, 'blockquote');
+  else if (a === 'code') {
+    var sel = window.getSelection(), txt = sel && !sel.isCollapsed ? String(sel) : '';
+    if (!txt) { toast('先选中要设为行内码的文字'); return; }
+    document.execCommand('insertHTML', false, '<code>' + esc(txt) + '</code>');
+  }
+  else if (a === 'link') {
+    var sel2 = window.getSelection();
+    if (!sel2 || sel2.isCollapsed) { toast('先选中要加链接的文字'); return; }
+    keepSel(); openLinkModal(String(sel2)); return;
+  }
+  else if (a === 'image') { keepSel(); openImgModal(null); return; }
+  keepSel(); richDirty = true; setSyncStatus(true); scheduleRichSync(); updateToolbarState();
+}
+function updateToolbarState() {
+  if (edMode !== 'rich' || !$('rtb')) return;
+  var map = { bold: 'bold', italic: 'italic', ul: 'insertUnorderedList', ol: 'insertOrderedList' };
+  document.querySelectorAll('#rtb .rtb-btn').forEach(function (b) {
+    var a = b.getAttribute('data-a'), on = false;
+    try { if (map[a]) on = document.queryCommandState(map[a]); } catch (e) {}
+    if (a === 'quote' || a === 'code') {
+      var sel = window.getSelection(), n = sel && sel.rangeCount ? sel.anchorNode : null;
+      if (n && n.nodeType === 3) n = n.parentNode;
+      on = !!(n && n.closest && n.closest(a === 'quote' ? 'blockquote' : 'code'));
+    }
+    b.classList.toggle('on', !!on);
+  });
+}
+/* 富文本粘贴 HTML 白名单清洗插入（原型 insertSanitizedHtml；清洗规则见内核 sanitizeFragment） */
+function insertSanitizedHtml(html) {
+  var doc = new DOMParser().parseFromString(html, 'text/html');
+  var clean = sanitizeFragment(doc.body);
+  var sel = window.getSelection();
+  if (sel && sel.rangeCount) {
+    var r = sel.getRangeAt(0); r.deleteContents();
+    var frag = document.createDocumentFragment(), n, nodes = [];
+    while ((n = clean.firstChild)) nodes.push(n);
+    nodes.forEach(function (x) { frag.appendChild(x); });
+    r.insertNode(frag);
+  }
+  richDirty = true; setSyncStatus(true); scheduleRichSync();
+}
+/* ===== 图片插入流（三入口共用：粘贴/拖拽/工具栏按钮 → 弹窗预览+alt → notes-asset-upload → 光标处插入） ===== */
+/* ---- 二期 图片压缩：>1MB 的 PNG/JPEG 上传前前端 canvas 降质转 JPEG（GIF/WebP 不动，保动画/透明语义）----
+   策略：长边封顶 2560px → 质量阶梯 0.85→0.45 逐档试；仍超 1MB 则长边 0.8 递减（下限 800px）；
+   PNG 透明底刷白（JPEG 无 alpha）；任何一步失败 → cb(null) 回退原图上传。压缩产物 <1MB 即收。 */
+var IMG_COMPRESS_THRESHOLD = 1024 * 1024;
+function compressImageData(dataURL, cb) {
+  try {
+    var img = new Image();
+    img.onload = function () {
+      try {
+        var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        if (!w || !h) { cb(null); return }
+        var MAX_DIM = 2560;
+        if (Math.max(w, h) > MAX_DIM) { var r = MAX_DIM / Math.max(w, h); w = Math.round(w * r); h = Math.round(h * r) }
+        var canvas = document.createElement('canvas');
+        var c2d = canvas.getContext('2d');
+        if (!c2d) { cb(null); return }
+        var qs = [0.85, 0.75, 0.65, 0.55, 0.45];
+        var out = '', bytes = 0, round = 0;
+        while (round < 8) {
+          canvas.width = w; canvas.height = h;
+          c2d.fillStyle = '#ffffff'; c2d.fillRect(0, 0, w, h);
+          c2d.drawImage(img, 0, 0, w, h);
+          out = canvas.toDataURL('image/jpeg', qs[Math.min(round, qs.length - 1)]);
+          bytes = Math.max(0, Math.round((out.length - 23) * 3 / 4));   /* 去掉 data:image/jpeg;base64, 头估算字节 */
+          if (bytes <= IMG_COMPRESS_THRESHOLD) { cb({ dataURL: out, bytes: bytes }); return }
+          round++;
+          if (round >= qs.length && (w > 800 || h > 800)) { w = Math.max(800, Math.round(w * 0.8)); h = Math.max(800, Math.round(h * 0.8)); round = qs.length - 1; }
+        }
+        cb(out ? { dataURL: out, bytes: bytes } : null);   /* 兜底：尽力压缩产物（可能仍 >1MB，5MB 上限内可用） */
+      } catch (err) { cb(null) }
+    };
+    img.onerror = function () { cb(null) };
+    img.src = dataURL;
+  } catch (err) { cb(null) }
+}
+/* 图片文件校验 + 读 dataURL → 打开弹窗（mime 白名单 png/jpeg/gif/webp、≤5MB，与 host 口径一致）；
+   二期：>1MB 的 PNG/JPEG 先走 compressImageData 压缩转 JPEG 再进弹窗（弹窗大小行显示「已压缩 原 → 现」） */
+function pickImageFile(f) {
+  if (!f) return;
+  var MIME_OK = { 'image/png': 1, 'image/jpeg': 1, 'image/gif': 1, 'image/webp': 1 };
+  if (!MIME_OK[f.type]) { toast('仅支持 PNG/JPEG/GIF/WebP 图片'); return; }
+  if (f.size > 5 * 1024 * 1024) { toast('图片超过 5MB 上限'); return; }
+  var rd = new FileReader();
+  rd.onload = function () {
+    var base = { name: f.name || ('pasted-' + Date.now() + '.png'), dataURL: String(rd.result), mime: f.type, size: f.size, alt: (f.name || '').replace(/\.[^.]+$/, '') };
+    if (f.size > IMG_COMPRESS_THRESHOLD && (f.type === 'image/png' || f.type === 'image/jpeg')) {
+      compressImageData(base.dataURL, function (res) {
+        if (res && res.dataURL) openImgModal({ name: base.name.replace(/\.[^.]+$/, '') + '.jpg', dataURL: res.dataURL, mime: 'image/jpeg', size: res.bytes, origSize: f.size, alt: base.alt });
+        else openImgModal(base);   /* 压缩失败回退原图（不阻塞上传） */
+      });
+    } else openImgModal(base);
+  };
+  rd.onerror = function () { toast('图片读取失败'); };
+  rd.readAsDataURL(f);
+}
+function openImgModal(draft) { imgDraft = draft || { name: '', dataURL: '', mime: '', size: 0, alt: '' }; renderImgModal(); }
+function renderImgModal() {
+  openModal(
+    '<div class="modal-t">' + icon('i-image', 13) + ' 插入图片<span class="sub">上传到笔记库 assets/（PNG/JPEG/GIF/WebP，≤5MB；>1MB 的 PNG/JPG 自动压缩转 JPEG）</span></div>'
+    + (imgDraft.dataURL
+      ? '<div class="uppv"><img src="' + imgDraft.dataURL + '" alt=""><div><div class="nm">' + esc(imgDraft.name) + '</div><div class="sz">' + (imgDraft.origSize ? '已压缩 ' + fmtBytes(imgDraft.origSize) + ' → ' : '') + (imgDraft.size ? fmtBytes(imgDraft.size) + ' · ' : '') + esc(imgDraft.mime) + '</div></div></div>'
+        + '<input class="minput" id="upAlt" placeholder="替代文本 alt（可留空）" value="' + esc(imgDraft.alt) + '">'
+      : '<div class="upzone" id="upZone">点击选择 <b>本地图片文件</b>（也可直接把图片文件拖进编辑区，或 Ctrl+V 粘贴）<input type="file" id="upFile" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none"></div>')
+    + '<div class="prog" id="upProg"><i></i></div>'
+    + '<div class="modal-err" id="mErr" style="display:none"></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="upCancel">取消</button><button class="mbtn primary" id="upOk"' + (imgDraft.dataURL ? '' : ' disabled') + '>上传并插入</button></div>'
+  );
+  $('upCancel').onclick = function () { if (!imgUploading) closeModal(); };
+  if (!imgDraft.dataURL) {
+    $('upZone').onclick = function () { $('upFile').click(); };
+    $('upFile').onchange = function () { var f = this.files && this.files[0]; if (f) pickImageFile(f); };
+    return;
+  }
+  $('upOk').onclick = doUploadImage;
+}
+/* 上传并插入：notes-asset-upload RPC → assets/<ts>-<安全名>；成功 → 光标处插入 ![](assets/…)；失败留在弹窗内报错可重试 + toast */
+function doUploadImage() {
+  if (!imgDraft || !imgDraft.dataURL || imgUploading) return;
+  imgUploading = true;
+  $('upOk').disabled = true; $('upOk').textContent = '上传中…';
+  $('upProg').classList.add('on');
+  var alt = $('upAlt') ? $('upAlt').value.trim() : '';
+  rpc('notes-asset-upload', { name: imgDraft.name, data: imgDraft.dataURL, mime: imgDraft.mime }).then(function (res) {
+    imgUploading = false;
+    if (res && res.error) { toast('图片上传失败：' + res.error); modalErr(res.error); $('upOk').disabled = false; $('upOk').textContent = '上传并插入'; $('upProg').classList.remove('on'); return; }
+    var file = res && res.file;
+    if (!file) { modalErr('上传返回异常（缺 file 字段）'); $('upOk').disabled = false; $('upOk').textContent = '上传并插入'; $('upProg').classList.remove('on'); return; }
+    closeModal();
+    insertImageMd(file, alt);
+    toast('已插入图片：' + file);
+  }).catch(function (e) {
+    imgUploading = false;
+    toast('图片上传失败：' + (e && e.message || e)); modalErr('上传失败：' + (e && e.message || e));
+    if ($('upOk')) { $('upOk').disabled = false; $('upOk').textContent = '上传并插入'; }
+    if ($('upProg')) $('upProg').classList.remove('on');
+  });
+}
+/* 光标处插入图片（原型 applyInsertImage）：源码模式插 Markdown 文本，富文本模式插 img 节点（随后序列化同步回源码） */
+function insertImageMd(mdSrc, alt) {
+  if (edMode === 'rich') {
+    restoreSel();
+    var rich = $('edRich'); if (!rich) return;
+    rich.focus();
+    var img = document.createElement('img');
+    img.src = assetDisplaySrc(mdSrc); img.setAttribute('data-md-src', mdSrc); img.alt = alt;
+    var sel = window.getSelection(), range = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+    var blk = range ? range.startContainer : null;
+    if (blk && blk.nodeType === 3) blk = blk.parentNode;
+    var p = blk && blk.closest ? blk.closest('p') : null;
+    if (p && !p.textContent.trim() && !p.querySelector('img')) p.appendChild(img);   /* 空段落 → 直接放入 */
+    else if (range) { range.deleteContents(); range.insertNode(img); }               /* 光标处内联插入 */
+    else rich.appendChild(img);
+    richDirty = true; syncFromRich('插入图片');
+  } else {
+    var ta = $('edSrc');
+    var cur = edNote ? edNote.body || '' : '';
+    var pos = ta && ta.selectionStart != null ? ta.selectionStart : cur.length;
+    var ins = '![' + alt + '](' + mdSrc + ')';
+    var next = cur.slice(0, pos) + ins + cur.slice(pos);
+    if (edNote) edNote.body = next;
+    if (ta) ta.value = next;
+    triggerSave(); scheduleDegAnalyze();
+    setTimeout(function () { try { var t2 = $('edSrc'); if (t2) { t2.focus(); t2.setSelectionRange(pos + ins.length, pos + ins.length); } } catch (e) {} }, 60);
+  }
+}
+/* 链接弹窗（原型 openLinkModal）：仅 http/https */
+function openLinkModal(selText) {
+  openModal(
+    '<div class="modal-t">' + icon('i-link', 13) + ' 插入链接<span class="sub">选中文字：' + esc(selText.slice(0, 24)) + (selText.length > 24 ? '…' : '') + '</span></div>'
+    + '<input class="minput" id="lkUrl" placeholder="https://…" value="https://">'
+    + '<div class="modal-err" id="mErr" style="display:none"></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="lkCancel">取消</button><button class="mbtn primary" id="lkOk">插入</button></div>'
+  );
+  $('lkUrl').focus(); $('lkUrl').setSelectionRange(8, 8);
+  $('lkCancel').onclick = closeModal;
+  $('lkOk').onclick = function () {
+    var url = $('lkUrl').value.trim();
+    if (!/^https?:\/\//.test(url)) { modalErr('仅支持 http/https 链接'); return; }
+    closeModal(); restoreSel();
+    var rich = $('edRich'); if (rich) rich.focus();
+    document.execCommand('createLink', false, url);
+    keepSel(); richDirty = true; setSyncStatus(true); scheduleRichSync();
+  };
+}
+/* ===== 二期 ✨整理：当前草稿经 notes-ai-organize（notes-quick-instruct 同款 LLM 通道）按 kind 模板结构化重写 =====
+   契约：host 只返回重写正文不落盘；页面替换正文后走既有 triggerSave 自动保存；原正文进一次撤销栈（toast「撤销」恢复）。
+   容错：正文为空/加载中/整理中不重入；error 或空返回一律不动原文。 */
+function doAiOrganize() {
+  if (!edNote || organizing) return;
+  if (edLoading) { toast('正文加载中，稍后再整理'); return }
+  if (edMode === 'rich' && richDirty) syncFromRich('整理前同步');   /* 富文本在途编辑先落回源码 */
+  var body = edNote.body || '';
+  if (!body.trim()) { toast('正文为空，无可整理内容'); return }
+  organizing = true; renderMeta();
+  rpc('notes-ai-organize', { body: body, kind: edNote.kind || 'note', title: edNote.title === 'Untitled' ? '' : (edNote.title || '') }).then(function (res) {
+    organizing = false; renderMeta();
+    if (res && res.error) { toast('整理失败：' + res.error); return }
+    if (!res || !res.body || !res.body.trim()) { toast('整理返回为空，原文未动'); return }
+    organizeUndo = body;   /* 一次撤销栈：只保留最近一次整理前的正文 */
+    applyOrganizedBody(res.body);
+    toast('已按「' + (KIND[edNote.kind] || '笔记') + '」模板整理', { label: '撤销', fn: undoAiOrganize });
+  }).catch(function (e) { organizing = false; renderMeta(); toast('整理失败：' + (e && e.message || e)) });
+}
+/* 重写正文落进编辑器双模式：源码 textarea.value；富文本重渲染内核产物（白名单外语法则回落源码模式） */
+function applyOrganizedBody(text) {
+  if (!edNote) return;
+  edNote.body = text;
+  degraded = analyzeMarkdown(text);
+  if (edMode === 'rich' && !degraded.ok) { edMode = 'source'; renderEd(); }   /* 如 todo 模板含任务列表语法 → 自动落源码模式 */
+  else { fillEdBody(); refreshDegradeUI(); }
+  triggerSave();   /* 走既有 900ms 防抖自动保存（notes-update） */
+}
+/* 撤销最近一次整理（一次撤销栈，用后即清） */
+function undoAiOrganize() {
+  if (organizeUndo == null) { toast('没有可撤销的整理'); return }
+  var b = organizeUndo; organizeUndo = null;
+  applyOrganizedBody(b);
+  toast('已恢复整理前正文');
 }
 function renderCrumb() {
   var n = edNote; if (!n) return;
@@ -644,13 +1495,29 @@ function renderMeta() {
     + '<span class="meta-chip" title="主题（host LLM 可异步回填；改后自动保存）">' + icon('i-topic') + '<input id="mTopicInput" size="8" placeholder="主题" value="' + esc(n.topic === '分类中' ? '' : (n.topic || '')) + '"></span>'
     + '<span class="meta-chip" title="标签，逗号分隔">' + icon('i-filter') + '<input id="mTagsInput" size="10" placeholder="标签…" value="' + esc(tagsStr) + '"></span>'
     + (fname(n.folder) ? '<span class="meta-chip">' + icon('i-folder') + esc(fname(n.folder)) + '</span>' : '')
+    /* 使用遥测（P2）：详情 meta chip「被引用 N 次」（0 次不显示） */
+    + ((n.useCount || 0) > 0 ? '<span class="meta-chip" title="使用遥测：被 Agent 引用（note_get 命中）次数">' + icon('i-quote') + '被引用 ' + n.useCount + ' 次</span>' : '')
+    /* P3 派发闭环徽章：有派发记录时聚合显示（pending=有待回执 / done=全部已回执），点击展开派发历史 */
+    + (function () { var ds = n.dispatches || []; if (!ds.length) return ''; var openN = ds.filter(function (d) { return !isDispDone(d) }).length; return '<span class="meta-chip disp-badge ' + (openN ? 'pending' : 'done') + '" id="mDispBadge" title="' + (openN ? ('派发中：' + openN + ' 条待回执（共 ' + ds.length + ' 条）· 目标会话处理完转 idle 或笔记置 resolved 时自动回执；点击查看派发历史') : ('全部 ' + ds.length + ' 条派发已回执 · 点击查看派发历史')) + '">' + icon(openN ? 'i-play' : 'i-check') + esc(openN ? ('派发中 ' + openN + '/' + ds.length) : '派发已回执') + '</span>' })()
     + '<span class="meta-chip role-seg" id="mRole">' + icon('i-bolt')
     + '<span class="seg' + (role === 'off' ? ' on' : '') + '" data-role="off" title="不注入系统提示">关闭</span>'
     + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="须遵守的行为规则">约定</span>'
     + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="事实性补充信息，Agent 按需取用">资料</span></span>'
     + (role !== 'off' ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="选择注入范围（可多选）">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
     + '<span class="meta-chip tgl' + (n.recall !== false ? ' on' : '') + '" id="mRecall" title="关闭后不出现在注入给 Agent 的目录中">' + icon('i-eye') + '目录可见</span>'
+    + '<span class="meta-chip tgl' + (n.sensitive === true ? ' on' : '') + '" id="mSens" title="敏感内容：注入系统提示时正文按行打码（键保留值遮蔽），Agent 用 note_get 取原文">' + icon('i-lock') + '敏感</span>'
     + '<span class="meta-sp"></span>'
+    /* 双模式两段开关（原型 .modeseg + tipwrap 降级 tooltip）：源码 ⇄ 富文本；降级态富文本段置灰 */
+    + '<span class="tipwrap' + (degraded.ok ? '' : ' deg') + '">'
+    + '<span class="modeseg" id="modeSeg">'
+    + '<button class="seg' + (edMode === 'source' ? ' on' : '') + '" data-m="source" title="Markdown 源码编辑">' + icon('i-code-block', 12) + '源码</button>'
+    + '<button class="seg' + (edMode === 'rich' ? ' on' : '') + (degraded.ok ? '' : ' dis') + '" data-m="rich" id="segRich" title="富文本（受限 WYSIWYG，Ctrl+/ 切换）">' + icon('i-eye', 12) + '富文本</button>'
+    + '</span>'
+    + '<span class="tip" id="richTip">含高级语法，请在源码模式编辑</span>'
+    + '</span>'
+    + '<span class="kbd">Ctrl+/</span>'
+    /* 二期 ✨整理：AI 按当前 kind 模板重写正文（notes-ai-organize；替换后 toast 可撤销一次） */
+    + '<span class="meta-act organize-btn' + (organizing ? ' busy' : '') + '" id="mOrganize" title="' + (organizing ? 'AI 整理中…' : 'AI 整理：按「' + (KIND[edNote.kind] || KIND.note) + '」模板重写正文（替换后可撤销）') + '">' + icon('i-sparkle') + (organizing ? '整理中…' : '整理') + '</span>'
     + '<span class="meta-act" id="mDispatch" title="派发待办到活跃会话">' + icon('i-play') + '派发</span>'
     + (n.sessionId ? '<span class="meta-act" id="mSrc" title="来源会话">' + icon('i-ext') + '来源</span>' : '')
     + '<span class="meta-act' + (isPinned(n) ? ' on' : '') + '" id="mPin" title="' + (isPinned(n) ? '取消置顶' : '置顶') + '">' + icon('i-pin') + '</span>'
@@ -672,11 +1539,25 @@ function renderMeta() {
   var trig = $('scopeTrig');
   if (trig) trig.onclick = function (ev) { ev.stopPropagation(); scopeOpen = !scopeOpen; if (scopeOpen && !sessList.length) pullSessions(); renderScopePanel() };
   $('mRecall').onclick = function () { edNote.recall = edNote.recall === false; triggerSave(); renderMeta(); toast(edNote.recall !== false ? '已加入 Agent 目录' : '已从 Agent 目录隐藏') };
+  $('mSens').onclick = function () { edNote.sensitive = edNote.sensitive !== true; triggerSave(); renderMeta(); toast(edNote.sensitive === true ? '已标记敏感（注入时自动脱敏）' : '已取消敏感标记') };
   $('mDispatch').onclick = function () { openDispatch() };
+  /* P3 派发闭环徽章：点击展开派发历史并滚动到位 */
+  var dBadge = $('mDispBadge');
+  if (dBadge) dBadge.onclick = function () { var host = $('dispHost'); if (!host) return; host.dataset.open = '1'; renderDispatches(); try { host.scrollIntoView({ block: 'nearest' }) } catch (e) {} };
+  $('mOrganize').onclick = function () { if (!organizing) doAiOrganize() };
   var src = $('mSrc');
   if (src) src.onclick = function () { toast('来源会话 ' + shortSid(edNote.sessionId) + '（' + edNote.sessionId + '）· 页面无跳转能力，请回 DSH 主界面打开') };
   $('mPin').onclick = function () { edNote.status = isPinned(edNote) ? 'active' : 'pinned'; triggerSave(); renderMeta(); renderTree(); toast(isPinned(edNote) ? '已置顶' : '已取消置顶') };
   $('mDel').onclick = function () { doDeleteNote(edNote.id) };
+  /* 双模式两段开关点击（降级态点富文本段 → toast 原因，不切换） */
+  var ms = $('modeSeg');
+  if (ms) ms.querySelectorAll('.seg').forEach(function (seg) {
+    seg.onclick = function () {
+      var m = seg.getAttribute('data-m');
+      if (m === 'rich' && seg.classList.contains('dis')) { toast(($('richTip') && $('richTip').textContent) || '含高级语法，请在源码模式编辑'); return; }
+      switchMode(m);
+    };
+  });
   renderScopePanel();
 }
 /* 注入范围浮层（指定会话多选；缺省=所有会话，契约同面板 toggleScope） */
@@ -717,11 +1598,11 @@ function renderDispatches() {
   if (open) {
     ds.map(function (d, i) { return { d: d, i: i } }).reverse().forEach(function (r) {
       var d = r.d;
-      h += '<div class="disp-rec' + (d.done ? ' done' : '') + '"><div class="disp-rec-top">'
-        + (d.done ? '✓ ' : '<span class="dot"></span>') + esc(d.sessionName || d.sessionId)
-        + '<span class="disp-rec-m">' + (d.done ? '已完成 · ' : '待处理 · ') + (d.mode === 'new' ? '新会话' : (d.workspace || '已有会话')) + (d.at ? ' · ' + fmtDT(d.at) : '') + '</span></div>'
+      h += '<div class="disp-rec' + (isDispDone(d) ? ' done' : '') + '"><div class="disp-rec-top">'
+        + (isDispDone(d) ? '✓ ' : '<span class="dot"></span>') + esc(d.sessionName || d.sessionId)
+        + '<span class="disp-rec-m">' + (isDispDone(d) ? '已完成 · ' : '待处理 · ') + (d.mode === 'new' ? '新会话' : (d.workspace || '已有会话')) + (d.at ? ' · ' + fmtDT(d.at) : '') + '</span></div>'
         + (d.instruction ? '<div class="disp-rec-i">要求：' + esc(d.instruction) + '</div>' : '')
-        + (!d.done ? '<button class="disp-done-btn" data-di="' + r.i + '">标记完成</button>' : '') + '</div>';
+        + (!isDispDone(d) ? '<button class="disp-done-btn" data-di="' + r.i + '">标记完成</button>' : '') + '</div>';
     });
   }
   host.innerHTML = h;
@@ -743,9 +1624,18 @@ function renderEdFoot() {
 }
 function refreshSelected() {
   if (!selId) return;
+  /* 双模式：重建前先落盘富文本在途编辑（renderEd 会重建编辑器 DOM，不序列化则丢未回写内容） */
+  if (edMode === 'rich' && richDirty) syncFromRich('刷新回填');
   var id = selId;
   rpc('notes-get', { id: id }).then(function (res) {
-    if (res && res.note && selId === id) { var body = edNote ? edNote.body : ''; edNote = res.note; if (document.activeElement !== $('edBody')) edNote.body = res.note.body; else edNote.body = body; renderEd(); }
+    if (res && res.note && selId === id) {
+      var editing = document.activeElement && (document.activeElement === $('edSrc') || document.activeElement === $('edRich') || document.activeElement === $('edTitle'));
+      var body = edNote ? edNote.body : '';
+      edNote = res.note;
+      if (editing) edNote.body = body;   /* 编辑中不覆盖正文（防焦点内回填顶掉击键） */
+      degraded = analyzeMarkdown(edNote.body || '');
+      renderEd();
+    }
   }).catch(function () {})
 }
 function doDeleteNote(id) {
@@ -769,12 +1659,14 @@ function doDeleteNote(id) {
 $('btnNew').addEventListener('click', function () {
   var seedFolder = view.type === 'folder' ? view.id : '';
   var seedTopic = view.type === 'topic' ? view.id : '';
-  var payload = { title: '', body: '', kind: kindF !== 'all' && kindF !== 'pinned' ? kindF : 'note' };
+  var kind0 = kindF !== 'all' && kindF !== 'pinned' ? kindF : 'note';
+  /* 二期 kind 模板骨架：按当前类型过滤选定的 kind 预填（note=空自由格式） */
+  var payload = { title: '', body: KIND_TEMPLATES[kind0] || '', kind: kind0 };
   if (seedFolder) payload.folder = seedFolder;
   if (seedTopic) payload.topic = seedTopic;
   rpc('notes-create', payload).then(function (res) {
     if (res && res.error) { toast(res.error); return }
-    toast('已创建笔记（主题/文件夹随当前视图）');
+    toast(KIND_TEMPLATES[kind0] ? '已创建笔记（含' + KIND[kind0] + '模板骨架）' : '已创建笔记（主题/文件夹随当前视图）');
     loadNotes(true).then(function () { if (res && res.id) selectNote(res.id) });
   }).catch(function (e) { toast('创建失败：' + (e && e.message || e)) });
 });
@@ -886,6 +1778,11 @@ function openSettings() {
     var models = res.models || [];
     var l = settings.llm || null;
     var catalogOn = settings.catalogEnabled !== false;
+    /* P1 注入增强：时效衰减提醒阈值（天，缺省 90，0=关闭）+ 注入体积预算（约/字符数，缺省 0=不限）+ 仪表（lastInjectChars） */
+    var staleDays = typeof settings.staleDays === 'number' ? settings.staleDays : 90;
+    var budgetNum = typeof settings.injectBudgetChars === 'number' ? settings.injectBudgetChars : 0;
+    var lastChars = typeof res.lastInjectChars === 'number' ? res.lastInjectChars : 0;
+    var gaugePct = budgetNum > 0 ? Math.min(100, Math.round(lastChars / budgetNum * 100)) : 0;
     var llmCtrl;
     if (models.length) {
       llmCtrl = '<select class="minput" id="setLlmSel">'
@@ -903,7 +1800,13 @@ function openSettings() {
     $('setBody').innerHTML =
       '<div class="set-row"><div class="set-label">LLM 模型<span class="s">笔记自动分类 / 指令提取使用的模型</span></div><div class="set-ctrl">' + llmCtrl + '</div></div>'
       + '<div class="set-row"><div class="set-label">笔记目录注入<span class="s">向 Agent 系统提示注入笔记目录（一行一条），供其规划时参考并按需 note_get 取全文</span></div><div class="set-ctrl"><label class="set-check"><input type="checkbox" id="setCatalog"' + (catalogOn ? ' checked' : '') + '> ' + (catalogOn ? '已开启' : '已关闭') + '</label></div></div>'
-      + '<div class="set-row"><div class="set-label">数据<span class="s">全库目录快照导出 / 从快照目录导入（只增改不删，导入前自动全量备份）</span></div><div class="set-ctrl"><button class="mbtn" id="setExport">导出全部</button><button class="mbtn" id="setImport">导入…</button></div></div>';
+      + '<div class="set-row"><div class="set-label">时效衰减提醒<span class="s">目录行对超过 N 天未更新的笔记/链接追加「 ⚠ N 天未更新」标注（提醒参考资料可能过期）；0 = 关闭</span></div><div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>'
+      + '<div class="set-row"><div class="set-label">注入体积预算<span class="s">单次注入笔记全文的上限（约，按字符数近似）；约定条目永不截断，资料条目从最旧开始省略；0 = 不限</span>'
+      + '<span class="s" id="setGaugeT">当前注入约 ' + lastChars + ' 字符' + (budgetNum > 0 ? ' / 预算约 ' + budgetNum + ' 字符' : '（不限）') + '</span>'
+      + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div></div>'
+      + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>'
+      + '<div class="set-row"><div class="set-label">数据<span class="s">全库目录快照导出 / 从快照目录导入（只增改不删，导入前自动全量备份）</span></div><div class="set-ctrl"><button class="mbtn" id="setExport">导出全部</button><button class="mbtn" id="setImport">导入…</button></div></div>'
+      + '<div class="set-row"><div class="set-label">资产清理<span class="s">扫描 assets/ 中未被任何笔记引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删）</span></div><div class="set-ctrl"><button class="mbtn" id="setPrune">清理…</button></div></div>';
     var sel = $('setLlmSel');
     if (sel) sel.onchange = function () {
       var v = this.value;
@@ -922,8 +1825,21 @@ function openSettings() {
       saveSettings({ catalogEnabled: !!this.checked }, this.checked ? '已开启笔记目录注入' : '已关闭笔记目录注入');
       this.parentNode.lastChild.textContent = this.checked ? ' 已开启' : ' 已关闭';
     };
+    /* P1 时效衰减提醒阈值：失焦/Enter 即保存（非负整数；0 = 关闭；非法输入报错不落盘） */
+    $('setStale').onchange = function () {
+      var v = String(this.value).trim();
+      if (!/^\d+$/.test(v)) { modalErr('时效提醒阈值需为非负整数（0 = 关闭）'); return }
+      saveSettings({ staleDays: parseInt(v, 10) }, +v === 0 ? '已关闭时效衰减提醒' : '已保存：超过 ' + v + ' 天未更新的资料将在目录标注 ⚠');
+    };
+    /* P1 注入体积预算（约，字符数）：失焦/Enter 即保存（非负整数；0 = 不限） */
+    $('setBudget').onchange = function () {
+      var v = String(this.value).trim();
+      if (!/^\d+$/.test(v)) { modalErr('注入体积预算需为非负整数（0 = 不限）'); return }
+      saveSettings({ injectBudgetChars: parseInt(v, 10) }, +v === 0 ? '已关闭注入体积预算（不限）' : '已保存：注入预算约 ' + v + ' 字符');
+    };
     $('setExport').onclick = function () { openExport() };
     $('setImport').onclick = function () { openImport() };
+    $('setPrune').onclick = function () { openPrune() };
   }).catch(function (e) { modalErr('设置加载失败：' + (e && e.message || e)) });
 }
 function saveSettings(patch, okMsg) {
@@ -1021,12 +1937,131 @@ function doImportExecute() {
 $('btnSettings').addEventListener('click', openSettings);
 $('btnExport').addEventListener('click', openExport);
 $('btnImport').addEventListener('click', openImport);
+$('btnTrash').addEventListener('click', openTrash);
+
+/* ================= 二期 孤儿资产清理（设置卡片「资产清理」入口）：dry-run 预览（零写入）→ 勾选 → 白名单执行 =================
+   契约：notes-assets-prune 缺省 dryRun=true 返回 { orphans:[{name,bytes}], totalBytes, referenced, tombstoned, notes }；
+   执行 dryRun:false + files 白名单（host 调用内重扫实时孤儿防漂移；软删除笔记的引用也计入保护，宁留勿删）。 */
+function openPrune() {
+  pruneState = { data: null, checked: {}, pending: false };
+  openModal(
+    '<div class="modal-t">' + icon('i-trash', 13) + ' 资产清理<span class="sub">预览勾选后才删除 · 宁留勿删</span></div>'
+    + '<div class="modal-hint">assets/ 中未被任何笔记正文引用的文件（已删除笔记的引用仍计入保护）。</div>'
+    + '<div id="pruneList"><div class="modal-hint">扫描中…</div></div>'
+    + '<div class="modal-err" id="mErr" style="display:none"></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="pruneCancel">取消</button><button class="mbtn danger" id="pruneOk" disabled>删除所选</button></div>'
+  );
+  $('pruneCancel').onclick = function () { if (!pruneState || !pruneState.pending) { closeModal(); pruneState = null } };
+  $('pruneOk').onclick = doPruneConfirm;
+  rpc('notes-assets-prune', { dryRun: true }).then(function (res) {
+    if (!pruneState) return;
+    if (res && res.error) { pruneState.data = { orphans: [] }; renderPruneList(); modalErr(res.error); return }
+    pruneState.data = res || { orphans: [] };
+    renderPruneList();
+  }).catch(function (e) { if (pruneState) { pruneState.data = { orphans: [] }; renderPruneList(); modalErr('扫描失败：' + (e && e.message || e)) } });
+}
+/* 孤儿清单（复用归档预览的列表样式 arch-list/arch-row）：行 = 复选框（缺省全勾）+ 文件名 + 字节数；底部统计 + 确认计数 */
+function renderPruneList() {
+  var host = $('pruneList'); if (!host || !pruneState) return;
+  var d = pruneState.data, ok = $('pruneOk');
+  if (!d) return;
+  var orphans = d.orphans || [];
+  if (!orphans.length) { host.innerHTML = '<div class="modal-hint">没有孤儿资产（assets/ 全部文件均被引用）。</div>'; if (ok) { ok.disabled = true; ok.textContent = '删除所选（0 项）' } return }
+  var checked = orphans.filter(function (o) { return pruneState.checked[o.name] !== false });
+  var checkedBytes = checked.reduce(function (s, o) { return s + (o.bytes || 0) }, 0);
+  var h = (d.notes != null ? '<div class="modal-hint" style="margin-bottom:6px">已扫描 ' + d.notes + ' 条笔记：引用中 ' + (d.referenced || 0) + ' 个，历史清理占位 ' + (d.tombstoned || 0) + ' 个。</div>' : '')
+    + '<div class="arch-list">'
+    + orphans.map(function (o) {
+        return '<div class="arch-row"><input type="checkbox" class="arch-check" data-name="' + esc(o.name) + '"' + (pruneState.checked[o.name] !== false ? ' checked' : '') + '>'
+          + '<span class="ti" title="' + esc(o.name) + '">' + esc(o.name) + '</span><span class="meta">' + fmtBytes(o.bytes) + '</span></div>'
+      }).join('') + '</div>';
+  host.innerHTML = h;
+  if (ok) { ok.disabled = pruneState.pending || checked.length === 0; ok.textContent = '删除所选（' + checked.length + ' 项 · ' + fmtBytes(checkedBytes) + '）' }
+  host.querySelectorAll('.arch-check').forEach(function (el) { el.onchange = function () { pruneState.checked[el.dataset.name] = !el.checked; renderPruneList() } });
+}
+function doPruneConfirm() {
+  if (!pruneState || !pruneState.data || pruneState.pending) return;
+  var files = (pruneState.data.orphans || []).filter(function (o) { return pruneState.checked[o.name] !== false }).map(function (o) { return o.name });
+  if (!files.length) return;
+  pruneState.pending = true; var ok = $('pruneOk'); if (ok) { ok.disabled = true; ok.textContent = '删除中…' }
+  rpc('notes-assets-prune', { dryRun: false, files: files }).then(function (res) {
+    if (res && res.error) { pruneState.pending = false; modalErr(res.error); renderPruneList(); return }
+    closeModal(); pruneState = null;
+    toast('已清理 ' + ((res && res.deleted || []).length) + ' 个孤儿资产，释放 ' + fmtBytes((res && res.freedBytes) || 0));
+  }).catch(function (e) { if (pruneState) { pruneState.pending = false; modalErr('删除失败：' + (e && e.message || e)); renderPruneList() } });
+}
+
+/* ================= P1 回收站（侧栏底部「回收站」入口）：notes-list {includeDeleted:true} 过滤 deleted → 恢复（notes-restore）/ 彻底删除（notes-purge） =================
+   彻底删除双确认：点「彻底删除」→ confirm「彻底删除不可恢复」确认才执行；host 侧安全闸只接受已软删除的笔记。 */
+function openTrash() {
+  trashState = { list: null, pending: '' };
+  openModal(
+    '<div class="modal-t">' + icon('i-trash', 13) + ' 回收站<span class="sub">软删除的笔记 · 恢复可找回 · 彻底删除不可恢复</span></div>'
+    + '<div id="trashList"><div class="modal-hint">加载中…</div></div>'
+    + '<div class="modal-err" id="mErr" style="display:none"></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="trashClose">关闭</button></div>'
+  );
+  $('trashClose').onclick = function () { if (!trashState || !trashState.pending) { closeModal(); trashState = null } };
+  loadTrash();
+}
+function loadTrash() {
+  rpc('notes-list', { includeDeleted: true }).then(function (res) {
+    if (!trashState) return;
+    if (res && res.error) { trashState.list = []; renderTrashList(); modalErr(res.error); return }
+    trashState.list = ((res && res.notes) || []).filter(function (n) { return n.deleted === true });
+    trashState.list.sort(function (a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) });   /* 删除时间（updatedAt 近似）降序 */
+    renderTrashList();
+  }).catch(function (e) { if (trashState) { trashState.list = []; renderTrashList(); modalErr('加载失败：' + (e && e.message || e)) } });
+}
+/* 回收站列表（复用归档预览的列表样式 arch-list/arch-row）：行 = 标题 + 删除时间（updatedAt 近似）+ 恢复 / 彻底删除按钮 */
+function renderTrashList() {
+  var host = $('trashList'); if (!host || !trashState) return;
+  var list = trashState.list || [];
+  if (!list.length) { host.innerHTML = '<div class="modal-hint">回收站为空（删除的笔记会出现在这里）。</div>'; return }
+  host.innerHTML = '<div class="arch-list">'
+    + list.map(function (n) {
+        return '<div class="arch-row"><span class="ti" title="' + esc(n.title || 'Untitled') + '">' + esc(n.title || 'Untitled') + '</span>'
+          + '<span class="meta">删于 ' + esc(n.updatedAt ? String(n.updatedAt).slice(0, 10) : '—') + '</span>'
+          + '<button class="mbtn trash-act" data-id="' + esc(n.id) + '" data-act="restore"' + (trashState.pending ? ' disabled' : '') + '>恢复</button>'
+          + '<button class="mbtn danger trash-act" data-id="' + esc(n.id) + '" data-act="purge"' + (trashState.pending ? ' disabled' : '') + '>彻底删除</button></div>'
+      }).join('') + '</div>';
+  host.querySelectorAll('.trash-act').forEach(function (el) {
+    el.onclick = function () {
+      var id = el.dataset.id, n = list.find(function (x) { return x.id === id });
+      if (el.dataset.act === 'restore') doTrashRestore(id); else doTrashPurge(id, n && n.title);
+    };
+  });
+}
+function doTrashRestore(id) {
+  if (!trashState || trashState.pending) return;
+  trashState.pending = id; renderTrashList();
+  rpc('notes-restore', { id: id }).then(function (res) {
+    if (!trashState) return;
+    trashState.pending = '';
+    if (res && res.error) { modalErr(res.error); renderTrashList(); return }
+    toast('已恢复');
+    loadTrash(); loadNotes(true);
+  }).catch(function (e) { if (trashState) { trashState.pending = ''; modalErr('恢复失败：' + (e && e.message || e)); renderTrashList() } });
+}
+function doTrashPurge(id, title) {
+  if (!trashState || trashState.pending) return;
+  if (!confirm('彻底删除不可恢复：「' + (title || id) + '」\n删除后正文与归档备份将一并移除，确认彻底删除？')) return;
+  trashState.pending = id; renderTrashList();
+  rpc('notes-purge', { id: id }).then(function (res) {
+    if (!trashState) return;
+    trashState.pending = '';
+    if (res && res.error) { modalErr(res.error); renderTrashList(); return }
+    toast('已彻底删除');
+    loadTrash(); loadNotes(true);
+  }).catch(function (e) { if (trashState) { trashState.pending = ''; modalErr('删除失败：' + (e && e.message || e)); renderTrashList() } });
+}
 
 /* ================= 快速记录卡片（v2）：正文划选松手触发 ================= */
 var capEl = null, capText = '';
 document.addEventListener('mouseup', function (ev) {
   if (capEl && capEl.contains(ev.target)) return;
-  if (ev.target.closest && ev.target.closest('input,textarea,select,.modal,.ctxmenu')) return;
+  /* .rich/.rtb 排除：富文本编辑器的划选归工具栏所有（加粗/链接等），不弹速记卡（v3） */
+  if (ev.target.closest && ev.target.closest('input,textarea,select,.modal,.ctxmenu,.rich,.rtb')) return;
   var sel = window.getSelection();
   var txt = sel && !sel.isCollapsed ? String(sel).trim() : '';
   if (!txt || txt.length < 2) return;
@@ -1075,7 +2110,8 @@ function saveCap() {
     : rpc('notes-quick', { text: text, sessionId: '', cwd: '', kind: 'quote' });
   call.then(function (res) {
     if (res && res.error) { toast(res.error); return }
-    toast(res && res.merged ? '已合并进今日速记' : '已记录为引用（主题分类由 host LLM 异步回填）');
+    /* 敏感命中：host 已直接落 sensitive=true（注入自动脱敏），toast 追加标注告知 */
+    toast((res && res.merged ? '已合并进今日速记' : '已记录为引用（主题分类由 host LLM 异步回填）') + (res && res.sensitiveSuggested ? '，已标记敏感（注入自动脱敏）' : ''));
     loadNotes(true).then(function () { if (res && res.id && !res.merged) selectNote(res.id) });
     /* 分类异步回填：延迟静默重拉两次，标题/主题自动刷新可见 */
     setTimeout(function () { loadNotes(true) }, 4000);
@@ -1084,8 +2120,124 @@ function saveCap() {
 }
 function closeCap() { if (capEl) { capEl.remove(); capEl = null } if (window.getSelection) window.getSelection().removeAllRanges() }
 
-/* ================= 顶栏：刷新 / 主题 ================= */
+/* ================= 显式归档：预览对话框（勾选才执行）+ toast 撤销 + 多选合并 ================= */
+function fmtBytes(n) { n = +n || 0; return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB' }
+function openArchive() {
+  archState = { groups: null, checked: {}, expand: {}, pending: false };
+  renderArchModal();
+  rpc('notes-archive-preview', {}).then(function (res) {
+    if (!archState) return;
+    if (res && res.error) { archState.groups = []; renderArchList(); modalErr(res.error); return }
+    archState.groups = (res && res.quickGroups) || [];
+    renderArchList();
+  }).catch(function (e) { if (archState) { archState.groups = []; renderArchList(); modalErr('预览加载失败：' + (e && e.message || e)) } });
+}
+function archCheckedCount() { return archState && archState.groups ? archState.groups.filter(function (g) { return archState.checked[g.sessionId] !== false }).length : 0 }
+function renderArchModal() {
+  openModal(
+    '<div class="modal-t">' + icon('i-check', 13) + ' 归档预览<span class="sub">勾选后才执行 · 合并可撤销</span></div>'
+    + '<div class="modal-hint">速记按会话分组，勾选的组合并成一篇归档笔记（原笔记备份后软删除）。</div>'
+    + '<div id="archList"><div class="modal-hint">加载中…</div></div>'
+    + '<div class="modal-hint">手动笔记不受影响；如需合并手动笔记，请在列表多选后右键合并。</div>'
+    + '<div class="modal-err" id="mErr" style="display:none"></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="archCancel">取消</button><button class="mbtn primary" id="archOk" disabled>归档所选</button></div>'
+  );
+  $('archCancel').onclick = function () { closeModal(); archState = null };
+  $('archOk').onclick = doArchiveConfirm;
+}
+/* 组列表：复选框（缺省全勾）+ caret 展开成员明细（标题+日期）+ 组标题 + dateSpan · N 条 · totalBytes */
+function renderArchList() {
+  var host = $('archList'); if (!host || !archState) return;
+  var gs = archState.groups || [];
+  var ok = $('archOk');
+  if (!gs.length) { host.innerHTML = '<div class="modal-hint">没有可归档的速记组（同一会话 ≥2 条速记才会成组）。</div>'; if (ok) { ok.disabled = true; ok.textContent = '归档所选（0 组）' } return }
+  var h = '<div class="arch-list">';
+  gs.forEach(function (g) {
+    var ck = archState.checked[g.sessionId] !== false;
+    var open = archState.expand[g.sessionId] === true;
+    var span = g.dateSpan && g.dateSpan.from ? (g.dateSpan.from === g.dateSpan.to ? g.dateSpan.from : g.dateSpan.from + ' ~ ' + g.dateSpan.to) : '';
+    h += '<div class="arch-group' + (ck ? '' : ' off') + '">'
+      + '<div class="arch-row">'
+      + '<input type="checkbox" class="arch-check" data-sid="' + esc(g.sessionId) + '"' + (ck ? ' checked' : '') + '>'
+      + '<span class="caret' + (open ? ' open' : '') + '" data-exp="' + esc(g.sessionId) + '">' + icon('i-chev', 10) + '</span>'
+      + '<span class="ti" title="' + esc(g.title) + '">' + esc(g.title) + '</span>'
+      + '<span class="meta">' + esc(span) + ' · ' + g.members.length + ' 条 · ' + fmtBytes(g.totalBytes) + ((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : '') + '</span></div>'
+      + (open ? '<div class="arch-members">' + g.members.map(function (m) { return '<div class="arch-member"><span class="ti">' + esc(m.title || '无标题') + '</span><span class="dt">' + esc(String(m.updatedAt || '').slice(0, 10)) + '</span></div>' }).join('') + '</div>' : '')
+      + '</div>';
+  });
+  host.innerHTML = h + '</div>';
+  if (ok) { ok.disabled = archCheckedCount() === 0; ok.textContent = '归档所选（' + archCheckedCount() + ' 组）' }
+  host.querySelectorAll('.arch-check').forEach(function (el) { el.onchange = function () { archState.checked[el.dataset.sid] = el.checked; renderArchList() } });
+  host.querySelectorAll('[data-exp]').forEach(function (el) { el.onclick = function () { var sid = el.dataset.exp; archState.expand[sid] = !archState.expand[sid]; renderArchList() } });
+}
+/* 归档/合并后公共收尾：被合并笔记从列表消失——若正打开的笔记被合并则回空态；静默刷新列表 */
+function afterArchiveRefresh() {
+  loadNotes(true).then(function () {
+    if (selId && !notes.some(function (n) { return n.id === selId })) { selId = null; edNote = null; renderEd() }
+    render();
+  });
+}
+/* 确认归档：勾选组 → notes-archive 白名单组（host 先全量校验再动手）→ toast「已合并 N 组」+ 撤销按钮 */
+function doArchiveConfirm() {
+  if (!archState || archState.pending) return;
+  var gs = (archState.groups || []).filter(function (g) { return archState.checked[g.sessionId] !== false });
+  if (!gs.length) return;
+  archState.pending = true; var ok = $('archOk'); if (ok) { ok.disabled = true; ok.textContent = '归档中…' }
+  /* payload 禁 undefined：白名单组不带 title（用 host 默认标题规则） */
+  rpc('notes-archive', { groups: gs.map(function (g) { return { memberIds: g.members.map(function (m) { return m.id }) } }) }).then(function (res) {
+    if (res && res.error) { archState.pending = false; modalErr(res.error); if (ok) { ok.disabled = false; ok.textContent = '归档所选（' + archCheckedCount() + ' 组）' } return }
+    closeModal(); archState = null;
+    toast('已合并 ' + (res && res.merged || 0) + ' 组', { label: '撤销', fn: doArchiveUndo });
+    afterArchiveRefresh();
+  }).catch(function (e) { if (archState) { archState.pending = false; modalErr('归档失败：' + (e && e.message || e)); if (ok) { ok.disabled = false; ok.textContent = '归档所选（' + archCheckedCount() + ' 组）' } } });
+}
+/* 撤销最近一次归档（undo 事务文件）：归档笔记软删 + 成员批量恢复 */
+function doArchiveUndo() {
+  rpc('notes-archive-undo', {}).then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    toast(res && res.undone ? '已撤销归档' : '没有可撤销的归档');
+    afterArchiveRefresh();
+  }).catch(function (e) { toast('撤销失败：' + (e && e.message || e)) });
+}
+/* 多选合并：操作条「合并」→ 标题输入（默认 = 所选最早更新笔记的 topic）→ notes-archive 单组 */
+function openMerge() {
+  var ids = Object.keys(selIds);
+  if (ids.length < 2) { toast('至少选择 2 条笔记'); return }
+  var sel = notes.filter(function (n) { return selIds[n.id] }).sort(function (a, b) { return String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')) });
+  openModal(
+    '<div class="modal-t">' + icon('i-note', 13) + ' 合并所选笔记</div>'
+    + '<div class="modal-hint">把所选的 ' + ids.length + ' 条笔记合并为一篇（正文按更新时间分节拼接，原笔记软删除，可撤销）。</div>'
+    + '<input class="minput" id="mergeTitle" value="' + esc((sel[0] && sel[0].topic) || '合并笔记') + '" placeholder="合并后标题…">'
+    + '<div class="modal-err" id="mErr" style="display:none"></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="mgCancel">取消</button><button class="mbtn primary" id="mgOk">合并</button></div>'
+  );
+  $('mgCancel').onclick = closeModal;
+  $('mgOk').onclick = doMergeConfirm;
+  var ti = $('mergeTitle'); ti.focus();
+  ti.onkeydown = function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); doMergeConfirm() } };
+}
+function doMergeConfirm() {
+  var ids = Object.keys(selIds);
+  var t = $('mergeTitle').value.trim();
+  if (ids.length < 2 || !t) return;
+  var g = { memberIds: ids }; if (t) g.title = t;   /* payload 禁 undefined：空标题不传 title 字段 */
+  $('mgOk').disabled = true; $('mgOk').textContent = '合并中…';
+  rpc('notes-archive', { groups: [g] }).then(function (res) {
+    if (res && res.error) { modalErr(res.error); $('mgOk').disabled = false; $('mgOk').textContent = '合并'; return }
+    closeModal();
+    selMode = false; selIds = {}; renderTree();
+    toast('已合并所选 ' + ids.length + ' 条', { label: '撤销', fn: doArchiveUndo });
+    afterArchiveRefresh();
+  }).catch(function (e) { modalErr('合并失败：' + (e && e.message || e)); $('mgOk').disabled = false; $('mgOk').textContent = '合并' });
+}
+
+/* ================= 顶栏：刷新 / 归档 / 主题 ================= */
 $('btnRefresh').addEventListener('click', function () { searchIds = null; loadNotes(); if (sessList.length) pullSessions(); toast('已刷新') });
+$('btnArchive').addEventListener('click', openArchive);
+$('btnSelMode').addEventListener('click', function () { selMode = !selMode; selIds = {}; renderTree() });
+$('chipSortUse').addEventListener('click', function () { sortBy = sortBy === 'use' ? 'time' : 'use'; renderTree() });
+$('selCancel').addEventListener('click', function () { selMode = false; selIds = {}; renderTree() });
+$('selMerge').addEventListener('click', openMerge);
 function applyTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem('dsh-notes-app-theme', t) } catch (e) {} }
 $('btnTheme').addEventListener('click', function () { applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark') });
 try { var savedTheme = localStorage.getItem('dsh-notes-app-theme'); if (savedTheme === 'light' || savedTheme === 'dark') applyTheme(savedTheme) } catch (e) {}
@@ -1093,16 +2245,26 @@ try { var savedTheme = localStorage.getItem('dsh-notes-app-theme'); if (savedThe
 /* ================= 键盘 ================= */
 document.addEventListener('keydown', function (ev) {
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'k') { ev.preventDefault(); $('q').focus(); return }
+  /* v3：Ctrl+/ 双模式切换（源码⇄富文本）；降级时 switchMode 内部拦截并 toast（弹窗打开时不切） */
+  if ((ev.ctrlKey || ev.metaKey) && ev.key === '/') { ev.preventDefault(); if (edNote && !$('modalHost').firstChild) switchMode(edMode === 'source' ? 'rich' : 'source'); return }
   if (ev.key === 'Escape') {
-    if ($('modalHost').firstChild) { closeModal(); return }
+    if ($('modalHost').firstChild) { closeModal(); archState = null; trashState = null; return }   /* 归档预览/合并/回收站对话框走 modalHost，Esc 统一关 */
     if (scopeOpen) { scopeOpen = false; renderScopePanel(); return }
     if (capEl) { closeCap(); return }
     if ($('ctxHost').firstChild) { closeCtx(); return }
+    if (selMode) { selMode = false; selIds = {}; renderTree(); return }   /* Esc 退出多选态 */
     if (!document.activeElement || !document.activeElement.isContentEditable) { searchText = ''; searchIds = null; $('q').value = ''; render() }
   }
 });
 
 /* ================= 启动 ================= */
+/* v3：document 级 selectionchange 挂一次（renderEd 重建编辑器 DOM 时元素级监听随元素重建，document 级不累积） */
+document.addEventListener('selectionchange', function () {
+  var rich = $('edRich');
+  if (!rich || edMode !== 'rich') return;
+  var sel = window.getSelection();
+  if (sel && sel.rangeCount && rich.contains(sel.anchorNode)) { keepSel(); updateToolbarState(); }
+});
 function render() { renderTree(); if (edNote) renderMeta() }
 loadNotes();
 </script>

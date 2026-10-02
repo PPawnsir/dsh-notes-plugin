@@ -1,0 +1,539 @@
+﻿
+[1m1. 静态校验（syntax + 结构）[0m
+  [32m✓[0m host.js 语法
+  [32m✓[0m client.js 语法
+  [32m✓[0m host-impl.js 语法
+  [32m✓[0m client-impl.js 语法
+  [32m✓[0m host 引导壳关键结构
+  [32m✓[0m client 引导壳关键结构
+  [32m✓[0m CSS 外置
+  [32m✓[0m token 语义映射 bg-layer 系 + 鲜蓝强调（开发版/发布包/原型/app.html 四处同步）
+  [32m✓[0m T1.1 工具瘦身 9→3
+
+[1m1.2 P2 静态包 host（packages/dsh-notes/index.mjs）静态校验[0m
+  [32m✓[0m index.mjs 存在
+  [32m✓[0m index.mjs 是 ESM（export name/inject/apply，无 bootstrap return）
+  [32m✓[0m index.mjs 顶部 import node 内置模块
+  [32m✓[0m index.mjs 存储路径为 ~/.dsh/notes（不再从插件目录派生）
+  [32m✓[0m index.mjs 含一次性数据迁移逻辑（只复制不删除）
+  [32m✓[0m index.mjs RPC 主通道 harness.handle + 兜底 webServer 路由
+  [32m✓[0m index.mjs 工具走 harness.defineTool/registerTool（保留内联 defineTool 兜底）
+  [32m✓[0m index.mjs 发布版不再写 .last-host-load 开发心跳
+  [32m✓[0m index.mjs 保留 31 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 资产上传
+
+[1m1.5 T1.2 列表懒加载分页[0m
+  [32m✓[0m client-impl 含 PAGE_SIZE 常量
+  [32m✓[0m client-impl 含 visibleCount 状态
+  [32m✓[0m client-impl 含滚动加载判定
+  [32m✓[0m client-impl 用 paged 切片渲染
+  [32m✓[0m client-impl 有 hasMore 判定
+  [32m✓[0m 分页切片：0 条
+  [32m✓[0m 分页切片：恰好 50 条（hasMore=false）
+  [32m✓[0m 分页切片：51 条（首屏 50，hasMore=true）
+  [32m✓[0m 分页切片：滚动后 +50
+  [32m✓[0m 分页切片：越界安全（visibleCount > 总数）
+
+[1m1.6 T1.4 键盘快捷键[0m
+  [32m✓[0m client-impl 含 keydown 监听
+  [32m✓[0m Ctrl+K 聚焦搜索
+  [32m✓[0m Ctrl+N 打开新建笔记 modal
+  [32m✓[0m Escape 关闭
+  [32m✓[0m j/k 或 方向键导航
+  [32m✓[0m Enter 打开聚焦项
+  [32m✓[0m 输入框内不响应导航键
+  [32m✓[0m 聚焦样式 .focused 存在
+  [32m✓[0m Ctrl+K 直接聚焦侧栏搜索框（v2 常显搜索，无展开态）
+
+[1m1.7 UI v2 client 渲染结构（两栏 + 主题全局过滤 + SVG 图标）[0m
+  [32m✓[0m client-impl 含 kind 标签映射
+  [32m✓[0m SVG 图标 helper I() + 内联图标集（原型 15 symbol + check/tag/swap）
+  [32m✓[0m emoji 全移除（面板内图标全部 SVG）
+  [32m✓[0m 两栏布局骨架（侧栏 + 编辑器通栏）
+  [32m✓[0m 品牌行 + 计数 + 侧栏底部 导出/导入/设置 三入口
+  [32m✓[0m kind chips + 置顶 chip + 新建 chip（侧栏）
+  [32m✓[0m 树结构：视图头 + 置顶组 + 文件夹组 + 未分类主题分组 + 主题全局过滤区
+  [32m✓[0m 视图求值：view 单选 ∩ kind ∩ 置顶 ∩ 搜索（四维 AND）
+  [32m✓[0m 笔记行：kind 色点 + 标题(+pin) + 注入 bolt + 行尾（主题字/文件夹徽章/日期）
+  [32m✓[0m 编辑器：面包屑 + 大标题 + meta chips 行 + 正文 + 底部状态
+  [32m✓[0m 编辑器 meta：注入三态分段控件 + 目录可见 toggle + 派发/来源/置顶/删除
+  [32m✓[0m client-impl 含 status 类名分支
+  [32m✓[0m client-impl 选区捕获传 kind=quote
+  [32m✓[0m 快速记录卡片 v2 结构（cap-h + 识别为引用徽章 + cap-pv 预览 + cap-in 输入 + 三按钮）
+  [32m✓[0m 快速记录卡片 v2 样式走 token（无硬编码白底/深色字）
+  [32m✓[0m client-impl 注入为独立三态控件+逐级范围浮层
+  [32m✓[0m 注入范围重构：schema 描述去工作区/全局维度（host-impl / index.mjs 双边）+ 发布包同步
+  [32m✓[0m 注入三态 edRole 链路：state/ref/selectNote 映射/doSave payload（开发版 + 发布包）
+  [32m✓[0m app.html + 原型三态同步：分段控件/role 映射/保存 payload/mock 链路
+  [32m✓[0m client 旧「注入为约定」单义文案清零（三态升级为 关闭/约定/资料）
+  [32m✓[0m 改名防竞态：正文加载中 doSave 省略 body（面板 + app.html + 发布包）
+  [32m✓[0m client-impl 派发对话框（已有/新建会话）
+  [32m✓[0m client-impl 派发历史可折叠（默认折叠，点标题行展开）
+  [32m✓[0m styles.css 含 kind/status 视觉（v2 token 化）
+  [32m✓[0m 入口 v2：头部描边胶囊 + FAB 卡片式 tridots（无计数徽章，开发版/发布包/原型同步）
+
+[1m1.8 新建笔记 modal（＋ / Ctrl+N 输标题创建）[0m
+  [32m✓[0m ＋ 按钮点击弹新建 modal（tooltip=新建笔记（Ctrl+N））
+  [32m✓[0m 新建 modal 结构：居中卡片 + 标题输入 + 取消/创建
+  [32m✓[0m 标题输入交互：Enter 提交 / Esc 关 modal / 点遮罩关闭
+  [32m✓[0m 创建流程：notes-create 输标题建笔记 → 刷新 → 选中新笔记 → 聚焦正文
+  [32m✓[0m 顶栏速记已移除（capOpen/doCapture/capture 样式清零）
+  [32m✓[0m 新建 modal 样式走 token（dsh-notes-newnote-* 系列）
+  [32m✓[0m 使用说明与空态文案已改为新建标题（无速记输入框残留文案）
+
+[1m2. Host 全链路逻辑（内存 mock）[0m
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+
+[1m3. 工具 schema 校验[0m
+  [32m✓[0m note_search 已注册
+  [32m✓[0m note_get 已注册
+  [32m✓[0m note_manage 已注册
+  [32m✓[0m note_search.output.render 存在
+  [32m✓[0m note_get.output.render 存在
+  [32m✓[0m note_manage.output.render 存在
+  [32m✓[0m note_search.parameters 含 query/tag/topic
+  [32m✓[0m note_get.parameters 含 id
+  [32m✓[0m note_manage.parameters 含 action
+
+[1m4. 核心 RPC 行为[0m
+  [32m✓[0m 创建返回 id
+  [32m✓[0m 列表瘦身（不含 body）
+  [32m✓[0m 缓存：第二次 list 零磁盘读
+  [32m✓[0m get 带正文
+  [32m✓[0m update 不读盘（缓存命中）
+  [32m✓[0m update 后列表 topic 已变
+
+[1m5. 快速记录：合并窗口 + 异步分类[0m
+  [32m✓[0m 首次 quick 创建新笔记
+  [32m✓[0m 同 session 窗口内合并
+  [32m✓[0m 异步分类填主题
+  [32m✓[0m 标题含分类主题
+  [32m✓[0m 合并后正文含两段
+  [32m✓[0m 跨 session 不合并
+
+[1m6. 搜索[0m
+  [32m✓[0m notes-search RPC 命中正文且瘦身
+
+[1m7. 软删除 + 恢复[0m
+  [32m✓[0m 删除后列表隐藏
+  [32m✓[0m 恢复后列表可见
+
+[1m8. 显式归档：行为变更冒烟（手动笔记不再自动分组）[0m
+  [32m✓[0m preview（dry-run）：零写入 + 手动笔记不进速记组
+  [32m✓[0m 无 groups 归档：只合速记组（本库速记均单条 → merged=0），手动笔记不动
+  [32m✓[0m 手动笔记仍在列表（行为变更：不再按标签自动分组）
+  [32m✓[0m 空归档零副作用：不写 .bak / 不覆盖 undo 文件
+  [32m✓[0m 双侧归档源码同步：preview/参数化/undo 齐备 + 旧手动分组已删除 + 行为变更写进工具描述
+
+[1m8.5 显式归档行为矩阵（独立实例）[0m
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m preview：速记按 sessionId 分组（≥2），手动/单条/已删不进组，dry-run 零写入
+  [32m✓[0m 无 groups 归档：只合速记组 + 默认标题 + .bak 备份 + undo 事务落盘
+  [32m✓[0m undo 往返：成员批量还原 + 归档笔记软删 + undo 清空；二次 undo → undone=0
+  [32m✓[0m 参数化校验：单成员/重复/不存在 整体报错不动手（无半归档）
+  [32m✓[0m 参数化白名单：多组一次归档 + title 覆盖 + undo 只保留最近一次（整次撤销）
+
+[1m9. 启动 + 遥测[0m
+  [32m✓[0m host-impl 应用成功（31 RPC handlers，含 notes-settings-get/set + 导入导出 + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge）
+  [32m✓[0m notes-src handler 可用
+  [32m✓[0m notes-css handler 可用
+  [32m✓[0m notes-perf handler 可用
+
+[1m10. note_manage 工具：六种 action 路由[0m
+  [32m✓[0m manage.create 返回 id
+  [32m✓[0m manage.create 的笔记可 get
+  [32m✓[0m manage.list 按 tag 过滤
+  [32m✓[0m manage.update 改 topic
+  [32m✓[0m manage.delete 软删除
+  [32m✓[0m manage.restore 恢复
+  [32m✓[0m manage.archive 无 groups：只合速记组，返回 merged 计数
+  [32m✓[0m manage.archive 显式 groups 合并手动组（白名单 + title 覆盖）
+  [32m✓[0m manage.archive groups 校验失败返回 error（m1 已归档不存在于活跃库）
+  [32m✓[0m manage 未知 action 返回错误
+  [32m✓[0m manage.delete 缺 id 返回错误
+  [32m✓[0m manage.create 缺 body 返回错误
+
+[1m11. T2.1 kind + T2.2 status 字段[0m
+  [32m✓[0m kind 默认 note（向后兼容）
+  [32m✓[0m create 指定 kind/status
+  [32m✓[0m update 改 kind/status
+  [32m✓[0m list 按 kind 过滤
+  [32m✓[0m pinned 置顶排序
+  [32m✓[0m slim 结果含 kind/status
+  [32m✓[0m 旧笔记无 kind/status 字段时兜底为默认值
+
+[1m12. T2.3 工作区约定自动注入[0m
+  [32m✓[0m systemPrompt.context 已注册（order 130）
+  [32m✓[0m 无 convention 笔记时约定文本为空
+  [32m✓[0m inject=true 笔记注入文本（双角色新文案：缺省进约定桶，单桶只出该桶标题）
+  [32m✓[0m inject 缺省 false 不注入（独立字段，不靠标签）
+  [32m✓[0m 旧文件兼容：无 inject 字段但含 convention 标签的文件回退注入
+  [32m✓[0m injectRole 字段往返：create 带 reference → get/list/front-matter 一致
+  [32m✓[0m injectRole 缺省/非法值回退 convention（create 不传 / 非法值 / 旧文件无字段）
+  [32m✓[0m inject=false 时 injectRole 不落盘（避免脏数据）
+  [32m✓[0m role 分桶文案：两桶并列（约定桶 + 资料桶各自引导词）
+  [32m✓[0m note_manage 工具路由透传 injectRole（create/update）+ schema 参数
+  [32m✓[0m notes-update RPC 透传 injectRole（显式改 / 不传不动）
+  [32m✓[0m 双侧 injectRole 字段链路 + 分桶文案同步（host-impl / index.mjs 源码结构）
+  [32m✓[0m 跨工作区 convention 同样注入（注入无工作区维度）
+  [32m✓[0m deleted 的约定不注入
+
+[1m13. injectTo 注入范围（多选数组）[0m
+  [32m✓[0m injectTo=[global] 存量值兼容 = 所有会话注入
+  [32m✓[0m injectTo=[workspace] 存量值兼容 = 所有会话注入
+  [32m✓[0m injectTo=[不匹配会话] 不注入
+  [32m✓[0m injectTo=[当前会话短id] 注入
+  [32m✓[0m injectTo=[] 缺省 = 所有会话注入
+
+[1m14. notes-sessions 会话名[0m
+  [32m✓[0m notes-sessions 返回带名字的会话
+  [32m✓[0m notes-sessions 排除子 agent 会话
+  [32m✓[0m notes-sessions 排除已归档会话
+
+[1m15. 任务派发（系统提示注入形式）[0m
+  [32m✓[0m notes-active-sessions 返回活跃主会话
+  [32m✓[0m notes-dispatch 注入上下文+触发工作（agent.send）
+  [32m✓[0m notes-dispatch 目标未打开返回 needOpen
+  [32m✓[0m notes-dispatch-done 标记完成停止注入
+  [32m✓[0m notes-dispatch 缺少目标会话报错
+  [32m✓[0m dispatches 字段 front-matter 往返
+  [32m✓[0m note_manage dispatch 无目标时列出活跃会话
+  [32m✓[0m note_manage dispatch 注入上下文+触发工作
+
+[1m16. T3 选区指令记录（notes-quick-instruct）[0m
+  [32m✓[0m notes-quick-instruct handler 已注册
+  [32m✓[0m notes-quick-instruct 返回 ok + applied
+  [32m✓[0m notes-quick-instruct 选区原文原样为 body
+  [32m✓[0m notes-quick-instruct 备注不进笔记 body
+  [32m✓[0m notes-quick-instruct 元数据应用到笔记
+  [32m✓[0m notes-quick-instruct 不走合并窗口（独立笔记）
+  [32m✓[0m notes-quick-instruct 空备注走 notes-quick 逻辑
+  [32m✓[0m notes-quick-instruct LLM 解析失败回退等价 notes-quick
+
+[1m16.5 0.1.7 会话元数据缓存（派发会话列表提速）[0m
+  [32m✓[0m host-impl 含会话元数据缓存结构（模块级 Map + TTL 10min + 后台补齐）
+  [32m✓[0m index.mjs 双边同步同款缓存结构
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m 冷缓存首次调用：立即返回 live 会话 + titlesPending/pendingIds（不阻塞首屏）
+  [32m✓[0m 缓存命中：第二次调用零 readTitleSnapshots 增量 + 无 titlesPending
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m TTL 过期重读（补丁实例 10min→80ms）：旧标题兜底展示 + 后台刷新 + titlesPending 复现
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m notes-sessions 同源同形：冷缓存也带 titlesPending（注入范围浮层不空等）
+  [32m✓[0m client 占位渲染 + titlesPending 轮询重拉（结构）
+
+[1m17. P2 静态包 host 全链路（ESM import + webServer RPC 路由）[0m
+  [32m✓[0m index.mjs 可被 ESM import（语法 + 顶层无副作用）
+notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\notes , llm = true , adm = true , rpc = /dsh-notes , app = /dsh-notes-app , asset = /dsh-notes/asset
+  [32m✓[0m harness 缺失时兜底：3 条 exact 路由（RPC + 全窗口页面 + 资产）+ ctx.tools 3 工具 + 约定注入 order130 + 目录注入 order131
+  [32m✓[0m GET /dsh-notes-app 返回 app.html（200 + text/html; charset=utf-8）
+  [32m✓[0m POST /dsh-notes-app 返回 405（页面路由只服务 GET/HEAD）
+notes: migrated 1 legacy note(s) → C:\Users\USER708201\.dsh\notes
+  [32m✓[0m notes-asset-upload（静态包 RPC）：落盘 assets/<ts>-<安全名> 且内容为 base64 文本
+notes: workspace backfill done, fixed=0 skipped=0
+  [32m✓[0m GET /dsh-notes/asset 命中：200 + image/png + 解码回原始字节 + immutable 缓存
+  [32m✓[0m GET /dsh-notes/asset 防穿越/形态/白名单/404
+  [32m✓[0m RPC 200 + 首次启动迁移开发版笔记到 ~/.dsh/notes
+  [32m✓[0m notes-create 走静态包 RPC
+  [32m✓[0m notes-get 返回正文
+  [32m✓[0m notes-update 生效
+  [32m✓[0m notes-quick 合并窗口 + 异步分类回填
+  [32m✓[0m notes-search 命中
+  [32m✓[0m notes-delete / notes-restore 软删除往返
+  [32m✓[0m notes-conventions 读到迁移笔记的 inject 约定
+  [32m✓[0m 静态包 injectRole 链路：create reference → get/front-matter/双桶文案/update 一致
+  [32m✓[0m notes:catalog 目录注入行为（静态包）：普通笔记进目录、约定去重、标题行+轻推行
+  [32m✓[0m notes-sessions / notes-active-sessions / notes-workspaces 可用
+  [32m✓[0m notes-active-sessions 缓存命中：再次调用零 readTitleSnapshots 增量（静态包模块级缓存）
+notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\notes , llm = false , adm = false , rpc = /dsh-notes , app = /dsh-notes-app , asset = /dsh-notes/asset
+  [32m✓[0m index.mjs 冷缓存首屏：titlesPending + pendingIds，补齐后零重读（?coldcache 独立 ESM 实例）
+notes: workspace backfill done, fixed=0 skipped=0
+  [32m✓[0m notes-dispatch 派发到 live 会话 + 记录 dispatches
+  [32m✓[0m 静态包显式归档全链路：preview → 无参仅速记 → 显式 groups 手动组 → undo → notes-perf / notes-ping
+  [32m✓[0m notes-src / notes-css handler 保留（静态资产可回退读取）
+  [32m✓[0m notes-css 从候选路径读到真实 styles.css
+  [32m✓[0m 静态包 3 工具可执行（note_search / note_get / note_manage）
+  [32m✓[0m notes-folders RPC（webServer 路由）：create/list 计数 + folders.json 落盘
+  [32m✓[0m 静态包 folder 字段链路：create 带 folder → get/list/front-matter 一致 + 过滤
+  [32m✓[0m 静态包 note_manage move/create 名称解析 + 移出往返
+  [32m✓[0m 静态包 folders.json 损坏兜底：空清单 + 主流程不受影响
+notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\notes , llm = true , adm = true , rpc = /dsh-notes , app = /dsh-notes-app , asset = /dsh-notes/asset
+  [32m✓[0m harness 主通道：handle 经 harness.handle 注册（host.call 链路可用）
+notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\notes , llm = false , adm = false , rpc = /dsh-notes , app = /dsh-notes-app , asset = /dsh-notes/asset
+  [32m✓[0m harness 存在时工具走 harness.defineTool/registerTool（不回退 ctx.tools，无重复注册）
+
+[1m17.5 设置持久化 + LLM 模型选配（settings RPC + 设置卡片）[0m
+  [32m✓[0m 设置入口存在（v2 侧栏底部 fbtn：gear 图标 + tooltip 设置）
+  [32m✓[0m 设置卡片 class 存在（client-impl + 发布包 + styles.css 三处同步）
+  [32m✓[0m 设置卡片通用结构（settingsRows 数组 map 渲染：加设置项 = 加行）
+  [32m✓[0m client 经 RPC 读写设置（notes-settings-get / notes-settings-set）
+  [32m✓[0m index.mjs 注册 settings RPC + settings.json 持久化函数
+  [32m✓[0m classifyTopic/extractInstruction 优先读设置模型（源码结构）
+  [32m✓[0m notes-settings-get：初始空设置 + models 目录（llm 探针）
+  [32m✓[0m notes-settings-set：保存 llm override 并持久化 settings.json
+  [32m✓[0m notes-settings-set 参数校验：缺 provider/model 报错且不写盘
+notes: workspace backfill done, fixed=0 skipped=0
+notes: workspace backfill done, fixed=0 skipped=0
+  [32m✓[0m extractInstruction 优先读设置模型（不跟随会话）
+  [32m✓[0m classifyTopic 优先读设置模型（不跟随会话）
+  [32m✓[0m llm=null 恢复跟随会话（回退 adm.currentSelection）
+  [32m✓[0m classifyTopic 恢复后也回退跟随会话
+  [32m✓[0m settings.json 不污染笔记列表（_list 只认 .md）
+
+[1m18. P3 静态包 client（packages/dsh-notes/lib/client.js）[0m
+  [32m✓[0m lib/client.js 存在且是 __ModuleLoader__ CJS 工厂形态
+  [32m✓[0m lib/client.js 用 require('react') 取 React（无全局 React 依赖）
+  [32m✓[0m lib/client.js RPC 走 fetch('/dsh-notes')（与 index.mjs RPC_PATH 一致）
+  [32m✓[0m lib/client.js 样式用 document.createElement('style') 注入（无 styles.insert）
+  [32m✓[0m lib/client.js 定时器走 ctx.get('timer') + ctx.effect（无 ctx.interval 快捷方式）
+node : [dsh-notes] slots service unavailable
+At line:1 char:129
++ ... = [System.Text.UTF8Encoding]::new($false); node check.js 2>&1 | Out-F ...
++                                                ~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([dsh-notes] slots service unavailable:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[dsh-notes] timer service unavailable
+  [32m✓[0m lib/client.js 服务获取全部 ctx.get + 守卫（inject 只声明 slots）
+  [32m✓[0m lib/client.js 功能面完整（UI v2 全保留）
+notes plugin: client ready
+  [32m✓[0m lib/client.js React 树可构建（createElement 递归渲染，无 JSX）
+  [32m✓[0m lib/client.js 快速记录卡片 v2（复制按钮 + primary 样式类）
+  [32m✓[0m lib/client.js 是 scripts/build-dist.cjs 的产物且可复现
+
+[1m19. 双模式编辑器 v3 内核（往返保真 + XSS + 降级）[0m
+  [32m✓[0m 内核函数可提取（esc/renderMarkdown/serializeRich/analyzeMarkdown/sanitizeFragment）
+  [32m✓[0m 往返保真：白名单 Markdown render→serialize→render 不变（10 用例，含原型自测 7 条 + 场景 A/C 正文）
+  [32m✓[0m 降级分析：白名单外结构检出（表格/嵌套引用/h4/任务列表/行内 HTML）+ 围栏代码块豁免
+  [32m✓[0m XSS 红线：渲染全量转义 + 图片仅 assets/ 前缀放行（javascript:/外链/引号注入全拒绝）
+  [32m✓[0m 粘贴清洗 sanitizeFragment：script/style 丢弃 + h4-6 降段落 + table 拆壳 + 非 assets 图片丢弃
+  [32m✓[0m 内核纯净性：不碰 edBody/自动保存/RPC（纯函数集合，副作用全在调用侧）
+
+[1m20. 列表项右键菜单（ctxmenu）[0m
+  [32m✓[0m 列表项 onContextMenu 处理器存在
+  [32m✓[0m ctxmenu 结构与样式存在
+  [32m✓[0m 菜单含置顶/已解决/删除三动作（v2 纯文字 + SVG 图标）
+  [32m✓[0m 旧悬浮删除按钮已移除
+
+[1m21. 虚拟文件夹（folder 字段 + folders.json + notes-folders + move）[0m
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m host-impl folder 字段全链路（FM 写入 / 解析 / 瘦身 / 更新）
+  [32m✓[0m index.mjs folder 字段全链路 + notes-folders 注册（静态包与开发版同源）
+  [32m✓[0m host-impl folders.json 清单模块 + notes-folders RPC 注册
+  [32m✓[0m 工具 schema：note_manage 含 move action + folder 参数；note_search 含 folder 参数
+  [32m✓[0m client 树状文件夹结构（folder-row 节点 + 折叠态持久化 + notes-folders 加载，发布包同步）
+  [32m✓[0m client 树渲染逻辑（v2：视图头 / 置顶折叠组 / 文件夹嵌套 / 未分类主题二级分组 / 主题全局过滤区 + 新建落位）
+  [32m✓[0m client 移动到文件夹 + 文件夹右键管理（v2 纯文字标签，开发版 + 发布包同步）
+  [32m✓[0m styles.css 树状文件夹样式（v2 token 化，开发版 + 发布包同步）
+  [32m✓[0m notes-folders list 初始兜底：folders.json 缺失 → 空清单 + unfiled 计数（不抛错）
+  [32m✓[0m notes-folders create：落盘 folders.json + order 递增；缺 name 报错
+  [32m✓[0m folder 字段数据往返：create 带 folder → get/list/磁盘 front-matter 一致
+  [32m✓[0m 旧文件无 folder 字段兜底为未分类（向后兼容）
+  [32m✓[0m notes-list folder 过滤：按 id 命中 / 空串 = 未分类
+  [32m✓[0m notes-folders list 计数口径：移入后 count/unfiled 联动
+  [32m✓[0m notes-folders rename：改名生效 + 不存在 id/缺 name 报错
+  [32m✓[0m notes-folders reorder：入列按序重排 + 未入列追加尾部 + order 归一化
+  [32m✓[0m notes-folders delete：其下笔记回退未分类（reset 计数 + folder 清空）
+  [32m✓[0m notes-folders 未知 op 报错
+  [32m✓[0m note_manage move：按 id/名称移动 + 移出未分类 + 参数校验
+  [32m✓[0m note_manage create/list 带 folder（create 按 id 落位；list 名称/id 兼容，'' = 未分类）
+  [32m✓[0m note_search folder 过滤（名称命中 / '' 未分类 / 不存在报错）
+  [32m✓[0m update 不动 folder：note_manage.update 保持原值，notes-update 显式改
+  [32m✓[0m 悬空引用兜底：folder 指向清单外 id 按未分类对待（计数/过滤口径一致）
+  [32m✓[0m folders.json 损坏/结构非法兜底：清单空 + 笔记主流程不受影响
+  [32m✓[0m 拖拽：笔记行 draggable + dragstart 记录 noteId（ref 防闭包过期 + dataTransfer）
+  [32m✓[0m 拖拽：文件夹行 drop 目标（dragover preventDefault + drop-hint 高亮 + drop 移入）
+  [32m✓[0m 拖拽：未分类区 drop 目标 = 移出文件夹；非法目标无动作；dragend 兜底清理
+  [32m✓[0m 拖拽样式：.dragging 半透明 + .drop-hint 虚线描边（原型 .row.drop）+ 未分类区容器（开发版 + 发布包同步）
+  [32m✓[0m 发布包 client.js 同步拖拽链路（需先跑 scripts/build-dist.cjs）
+
+[1m22. 笔记目录索引注入（recall 通道，host 双侧同步）[0m
+  [32m✓[0m 双侧注册 notes:catalog order 131 + catalogText + 40 封顶 + 文案
+  [32m✓[0m 双侧 recall 字段链路（buildFM / noteFromParsed / persistNote / slim / _update / 工具 schema）
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m notes:catalog context 注册（order 131 紧邻约定注入 130 之后，开发版）
+  [32m✓[0m 空库目录文本为空串（不注入，绝不返回 undefined）
+  [32m✓[0m 目录标题行 + 一行一条格式 + 末尾轻推行
+  [32m✓[0m 排序：pinned 优先 → updatedAt 降序；目录不再标注 ←工作区来源
+  [32m✓[0m 准入排除：resolved / superseded / recall=false / 约定去重
+  [32m✓[0m recall 字段 front-matter 往返 + 缺省 true
+  [32m✓[0m note_manage update 可改 recall（false 出目录 / true 回目录）
+  [32m✓[0m 旧文件无 recall 字段缺省进目录（向后兼容）
+  [32m✓[0m note_manage schema 含 recall 参数
+  [32m✓[0m catalogEnabled 总开关：默认开 → 关即空 → settings.json 落盘 → 校验非布尔 → 重开恢复
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = false , adm = false
+  [32m✓[0m 40 条封顶 + 溢出提示行（…另有 N 条较早笔记）
+
+[1m22.5 笔记目录索引注入（静态包 index.mjs 行为）[0m
+notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\notes , llm = true , adm = true , rpc = /dsh-notes , app = /dsh-notes-app , asset = /dsh-notes/asset
+  [32m✓[0m 静态包注册 notes:catalog order 131（无迁移干扰的干净库）
+notes: workspace backfill done, fixed=0 skipped=0
+  [32m✓[0m 静态包目录行为：create 进目录 / recall=false 排除 / update 可改
+  [32m✓[0m 静态包 catalogEnabled 总开关（notes-settings-set 经 webServer 路由）
+
+[1m22.6 笔记目录注入 client UI 开关（catalogEnabled 总开关 + recall 逐条）[0m
+  [32m✓[0m 设置卡片含「笔记目录注入」总开关行（settingsRows 加行，勾选即保存）
+  [32m✓[0m 编辑器逐条「目录可见」开关（v2 meta chip tgl，edRecall 链路照抄编辑字段模式）
+  [32m✓[0m 开关样式类三处同步（client-impl + 发布包 client.js + styles.css）
+  [32m✓[0m 发布包 client.js 同步目录开关链路（需先跑 scripts/build-dist.cjs）
+
+[1m23. 笔记导入/导出（目录快照 + 预览分类 + 全量备份 + 覆盖策略 + folders 合并）[0m
+  [32m✓[0m 双侧注册 3 个 RPC + 核心函数 + 目录命名约定（host-impl / index.mjs）
+  [32m✓[0m 双侧图片资产段同步：上传 RPC + mime 白名单 + 5MB 上限 + 重名序号 + 导出/导入/备份连带
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m 开发版注册 31 个 RPC（含 notes-export / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge）
+  [32m✓[0m notes-export：全库快照（n-*.md + folders.json）到 <dir>\dsh-notes-export-<ts>
+  [32m✓[0m notes-export 参数校验：缺 dir 报错 / dir 是文件报错
+  [32m✓[0m notes-import-preview：全 same 基线 + folders.new=0 + 不写任何东西
+  [32m✓[0m notes-import-preview：same/diff/added 分类 + deleted 标注 + folders 新增统计
+  [32m✓[0m notes-import-preview 参数与目录校验
+  [32m✓[0m notes-import：先全量备份 → added 入库 / same 跳过 / diff 默认跳过 / folders 合并只增不删
+  [32m✓[0m notes-import 幂等：二次导入全 same / folders 无新增；overwrite=true 才覆盖 diff
+  [32m✓[0m notes-import 参数与目录校验（不建备份）
+  [32m✓[0m notes-asset-upload：mime 白名单 / 超 5MB / 非法 base64 / 空 data 拒绝
+  [32m✓[0m notes-asset-upload：落盘 assets/<yyyyMMdd-HHmmss>-<安全名> + 重名追加序号 + dataURL 前缀容忍
+  [32m✓[0m assets/ 不被当笔记枚举（列表/搜索不受污染）
+  [32m✓[0m notes-export 连带 assets/ 快照（逐字节一致）
+  [32m✓[0m notes-import 合并 assets（同名跳过）+ 备份连带 assets
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m 旧结构零回归：无 assets/ 旧库导出 assets=0；无 assets 旧导出导入 assetsMerged=0
+
+[1m23.5 笔记导入/导出（静态包 index.mjs 行为）[0m
+notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\notes , llm = false , adm = false , rpc = /dsh-notes , app = /dsh-notes-app , asset = /dsh-notes/asset
+notes: workspace backfill done, fixed=0 skipped=0
+  [32m✓[0m 静态包导入/导出全链路（导出 → 预览分类 → 备份 → 默认跳过 diff → overwrite 覆盖 → folders 合并）
+
+[1m24. 半独立笔记页 /dsh-notes-app（app.html v2 定稿改造 + webServer GET 路由）[0m
+  [32m✓[0m app.html 存在且非空
+  [32m✓[0m app.html 页面标识：title=dsh-notes + 全窗口布局 + 主题 token
+  [32m✓[0m app.html 数据层：fetch /dsh-notes POST {method,args}，无原型 mock 残留
+  [32m✓[0m app.html 复用全部现有 RPC（list/get/create/update/delete/restore/folders/search/quick/quick-instruct/settings/import-export/dispatch/sessions/asset-upload）
+  [32m✓[0m app.html 关键交互结构：树/编辑器/快速记录卡片/派发对话框/设置/导入导出/注入范围浮层
+  [32m✓[0m app.html 页面特化：来源会话降级 toast + 快速记录传空 sessionId/cwd + 返回 DSH 入口
+  [32m✓[0m app.html 内联脚本语法可解析（new Function 编译级校验）
+  [32m✓[0m 原型同步（DEVELOPMENT.md UI 约定）：notes-ui-v2.html 与 app.html 共享同一套 UI/交互，仅数据层不同
+  [32m✓[0m index.mjs 注册 GET /dsh-notes-app 页面路由（exact + app.html 读盘 + text/html）
+  [32m✓[0m index.mjs 注册 GET /dsh-notes/asset 资产路由（防穿越 + 白名单 mime + immutable + base64 解码下发）
+
+[1m25. 双模式编辑器 v3 双端落地（三端同步 + 结构 + 图片契约 + 原型回写）[0m
+  [32m✓[0m 内核三端字节一致（client-impl.js / app.html / 发布包 lib/client.js，去公共缩进比较）
+  [32m✓[0m 面板双模式结构（开发版+发布包）：modeseg 两段开关 + Ctrl+/ + 富文本非受控 + 900ms 防抖 + 降级置灰 + IME 保护
+  [32m✓[0m 面板图片三入口契约：粘贴/拖拽/按钮 → 弹窗 → notes-asset-upload {name,data,mime} → 光标处插入 ![](assets/…)
+  [32m✓[0m app.html 双模式结构：modeseg/rtb/rich/src/deg + 三入口 + 上传契约 + Ctrl+/ + 速记卡排除
+  [32m✓[0m 资产显示契约：assetDisplaySrc 走 GET /dsh-notes/asset?file= 路由（三端）
+  [32m✓[0m styles.css 双模式样式 + 发布包 lib/styles.css 逐字节同步 + 旧预览样式移除
+  [32m✓[0m 原型回写同步（design/notes-editor-v3.html）：assets/ 前缀守卫 + 900ms 防抖 + 真实契约注释 + 源码模式图片入口
+  [32m✓[0m 速记卡片排除富文本划选（面板 + 发布包；选区归编辑器工具栏）
+
+[1m26. 显式归档 UI（引导气泡 + 预览对话框 + toast 撤销 + 多选合并）[0m
+  [32m✓[0m 归档按钮改为预览入口 + 引导 tooltip（开发版 + 发布包）
+  [32m✓[0m 旧「直接执行归档」逻辑清零（点击不再无参直调 notes-archive）
+  [32m✓[0m 归档预览对话框结构（开发版 + 发布包）：组勾选 + 成员展开 + 手动笔记提示 + 确认按钮计数
+  [32m✓[0m 归档执行链路：preview dry-run → 勾选组白名单 payload（禁 undefined）→ toast 带撤销 → undo RPC
+  [32m✓[0m Esc 链路：归档预览/合并对话框/多选态入栈
+  [32m✓[0m 手动笔记多选合并（开发版 + 发布包）：选择 chip + 行复选框 + 操作条 + 标题输入 + 单组 payload
+  [32m✓[0m 归档/多选样式（styles.css + 发布包 lib/styles.css 同步）
+  [32m✓[0m app.html 同款：归档按钮（引导 title）+ 预览对话框 + 多选合并 + toast 撤销 + Esc
+  [32m✓[0m 原型 notes-ui-v2.html 硬性同步：归档按钮 tooltip + 预览对话框 + 多选操作条 + mock 归档 RPC
+
+[1m27. 二期增强（AI 整理 + kind 骨架 + 资产清理 + 图片压缩）[0m
+  [32m✓[0m host 双侧：KIND_TEMPLATES + MACHINE_TEMPLATE + AI_ORGANIZE_MAX_CHARS 同源常量
+  [32m✓[0m host 双侧：notes-ai-organize prompt 设计（先规则 → 模板示例全文 → 本篇类型/草稿）+ 围栏剥离 + 不落盘
+  [32m✓[0m host 双侧：notes-assets-prune 契约（dryRun 缺省 true 零写入 + 软删除引用计入 + files 白名单 + 调用内重扫）
+  [32m✓[0m notes-ai-organize 行为：ok 路径剥离 ``` 围栏 + 尾随换行；空正文/超长/未配置模型报错
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = false
+  [32m✓[0m notes-ai-organize 行为：无设置且无会话模型可跟随 → error（原文不动）
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m notes-assets-prune 行为：dryRun 缺省零写入；软删除引用计入保护；墓碑排除；字节数=base64 解码
+  [32m✓[0m notes-assets-prune 行为：files 白名单执行（开发版墓碑式清空）+ 白名单外跳过 + 保护资产不动
+  [32m✓[0m 二期 client 同源常量 + ✨整理按钮链路（开发版 + 发布包）
+  [32m✓[0m 二期 kind 模板骨架（新建 modal 类型选择 + 预填 body；开发版 + 发布包）
+  [32m✓[0m 二期 图片压缩（>1MB PNG/JPEG → canvas 降质转 JPEG；开发版 + 发布包）
+  [32m✓[0m 二期 资产清理 UI（设置卡片入口 + dry-run 预览 + 白名单执行 + Esc + danger 按钮；开发版 + 发布包）
+  [32m✓[0m 二期 样式（styles.css + 发布包 lib/styles.css 同步）
+  [32m✓[0m app.html 二期同款：KIND_TEMPLATES + ✨整理 + 压缩 + 资产清理 + i-sparkle
+  [32m✓[0m 原型 notes-ui-v2.html 二期硬性同步：模板/整理/清理 + mock RPC + i-sparkle
+  [32m✓[0m 原型 notes-editor-v3.html 二期回写：✨整理演示 + 契约注释 + i-sparkle
+  [32m✓[0m README/DEVELOPMENT 二期同步（功能清单 + RPC 计数）
+
+[1m27.5 敏感信息脱敏注入（sensitive 字段 + 注入打码 + 识别建议）[0m
+  [32m✓[0m sensitive-helpers 标记块双包逐字节一致 + 可 eval（三函数导出）
+  [32m✓[0m maskSensitiveLine R1 键值行：键保留/值遮蔽/结构不变（冒号/全角/等号/列表前缀/ssh/引号键）
+  [32m✓[0m maskSensitiveLine R2 空白裸令牌：敏感词后形似凭据的令牌遮蔽（周围结构保留）
+  [32m✓[0m 误报对照：散文/配置/URL/纯小写单词不遮蔽
+  [32m✓[0m 打码幂等：二次打码结果不变（占位符不再二次遮蔽）
+  [32m✓[0m maskSensitiveBody R3 私钥块：BEGIN/END 行保留、中间体遮蔽 + 多行混合正文
+  [32m✓[0m suggestSensitive：命中三规则 true / 干净文本 false
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m sensitive 字段往返：create 带 true → get/list/front-matter 一致
+  [32m✓[0m sensitive 缺省 false：create 不传 → get false + front-matter 恒写 false
+  [32m✓[0m notes-update RPC 透传 sensitive（显式改 true/false；不传不动）
+  [32m✓[0m note_manage 透传 sensitive：schema 含字段 + create/update 路由 + 敏感建议回传
+  [32m✓[0m 存量/导入文件兼容：front-matter 带 sensitive: true 的原文落盘文件解析生效
+  [32m✓[0m conventionText 对 sensitive=true 笔记正文按行打码 + 尾部计数行
+  [32m✓[0m sensitive=false 的注入笔记不打码（对照）
+  [32m✓[0m catalogText 对 sensitive=true 条目标题打码 + 🔒 标记 + 尾部计数行
+  [32m✓[0m notes-quick 命中敏感模式：直接落 sensitive=true + 返回 sensitiveSuggested（磁盘原文不动）
+  [32m✓[0m notes-quick 干净文本：不落敏感不建议
+  [32m✓[0m notes-quick 合并窗口：后一条命中 → 原速记升级为敏感
+  [32m✓[0m 归档合并敏感继承：任一成员 sensitive=true → 归档笔记敏感
+  [32m✓[0m 双侧 sensitive 字段链路 + 注入打码源码同步（host-impl / index.mjs）
+  [32m✓[0m client-impl.js 敏感 toggle 链路（edSens state/ref + toggleSens + lock chip + doSave 携带 + selectNote 回填）
+  [32m✓[0m 发布包 lib/client.js 同步敏感 toggle 链路（需先跑 scripts/build-dist.cjs）
+  [32m✓[0m client/app.html 速记 toast 敏感标注（sensitiveSuggested 命中告知）
+  [32m✓[0m app.html 敏感 toggle：i-lock symbol + mSens chip + doSave 携带 sensitive
+
+[1m28. P1 回收站（trash 列表 + 恢复/彻底删除 + notes-purge）[0m
+  [32m✓[0m host 双侧：notes-purge RPC + notes-list includeDeleted 参数化 + 墓碑跳过 + slim deleted 标记
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m notes-list includeDeleted：缺省排除 deleted；includeDeleted:true 含 deleted 且 slim 携带标记
+  [32m✓[0m notes-purge 安全闸：未软删除的笔记拒绝彻底删除 + 缺 id 报错
+  [32m✓[0m notes-purge 彻底删除：.md 与 .bak 墓碑化 + 回收站列表消失 + 缓存失效 + 不可恢复
+  [32m✓[0m 恢复往返：回收站恢复后回到正常列表（notes-restore）
+  [32m✓[0m 静态包：notes-list includeDeleted + notes-purge + 不可恢复（RPC 路由链路）
+  [32m✓[0m 回收站 UI（client-impl + 发布包 lib/client.js）：侧栏入口 + modal + 恢复/彻底删除 + Esc + toast
+  [32m✓[0m 回收站样式（styles.css + 发布包 lib/styles.css 同步）
+  [32m✓[0m app.html 回收站同款：btnTrash 入口 + openTrash + notes-purge + confirm 双确认 + toast
+  [32m✓[0m 原型 notes-ui-v2.html 回收站硬性同步：UI 标记 + mock includeDeleted/purge + 演示数据
+
+[1m29. P1 注入增强（staleDays 时效标注 + injectBudgetChars 预算截断）[0m
+  [32m✓[0m host 双侧：staleDays/injectBudgetChars helper + 默认值 + settings-set 校验 + 文案
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m staleDays 时效标注：kind=note/link 超期行尾「 ⚠ N 天未更新」；todo/新鲜条目不标
+  [32m✓[0m staleDays 设置往返：落盘回读 → 阈值放宽不标 → 0 关闭 → null 恢复缺省 90 → 非法值报错
+  [32m✓[0m injectBudgetChars 预算截断：资料桶从最旧整条省略 + 提示行；约定桶永不截断；lastInjectChars 随渲染更新
+notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\notes , llm = true , adm = true , rpc = /dsh-notes , app = /dsh-notes-app , asset = /dsh-notes/asset
+notes: workspace backfill done, fixed=0 skipped=0
+  [32m✓[0m 静态包：staleDays/injectBudgetChars 往返 + ⚠ 标注 + 预算截断 + 约定不截断（rpc 路由链路）
+  [32m✓[0m 设置卡片：「时效衰减提醒」+「注入体积预算」两行（失焦/Enter 即保存 + 仪表 + 「约」文案）
+  [32m✓[0m app.html + 原型设置卡同款两行 + 仪表（双端 UI 标记一致 + mock 演示值）
+
+[1m30. P2 使用遥测（note_get 引用计数 + 防抖批量落盘 + 排序 + UI）[0m
+  [32m✓[0m use-telemetry 标记块双包逐字节一致（host-impl / index.mjs）
+  [32m✓[0m host 双侧：useCount 字段链路 + 60s 防抖 + 卸载 flush + note_get 命中 + 归档合计/继承
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m note_get 命中计数：内存即时 +1（响应即见），60s 防抖期内零写盘；notes-get RPC 不计数
+  [32m✓[0m 防抖批量落盘：3 次命中 flush 仅 1 次写盘；front-matter 恒写 useCount；updatedAt 不动
+  [32m✓[0m 归档预览组行合计引用数（totalUseCount）+ 合并归档继承成员引用合计
+  [32m✓[0m 插件卸载 flush：防抖窗口内未落盘计数立即写盘；防抖定时器清除不二次触发；已删成员跳过
+notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\notes , llm = true , adm = true , rpc = /dsh-notes , app = /dsh-notes-app , asset = /dsh-notes/asset
+notes: workspace backfill done, fixed=0 skipped=0
+  [32m✓[0m 静态包：note_get 命中计数 + 60s 防抖批量落盘 + 卸载 flush（webServer 路由链路）
+  [32m✓[0m 按引用排序比较器行为：useCount 降序，同数按 updatedAt 兜底（从 client-impl 源码提取真实比较器执行）
+  [32m✓[0m 按引用排序 chip + 状态同步（client-impl / 发布包 lib/client.js / app.html / 原型）
+  [32m✓[0m 被引用显示链路：行尾徽章 + 详情 meta chip + 归档预览合计（0 次不显示；client/app/原型/样式 四端）
+
+[1m31. P2 笔记双链（[[..]] + 反向链接）[0m
+  [32m✓[0m 双链渲染：id/标题精确命中 → 可点击锚（data-wiki 记原始 target，显示标题）；解析不到/无 resolver → 纯文本
+  [32m✓[0m 双链 XSS 红线：target/标题全量转义（esc/unesc 互逆，含 & 标题可命中且不成注入）
+  [32m✓[0m 双链往返保真：[[target]] → 锚 → 序列化回 [[target]]（显示标题不进 Markdown；二轮渲染逐字节一致）
+  [32m✓[0m extractWikiTargets / wikiLinksTo 口径：多目标提取 + 转义括号豁免 + 反向链接精确匹配（[[该id]] 或 [[该标题]]）
+  [32m✓[0m 粘贴清洗保留双链锚（data-wiki 重建），非 http 普通链接仍拆壳
+  [32m✓[0m 面板双链结构：解析 + 索引 + 跳转 + 行尾标记 + 反向链接面板 + 富文本点击委托（开发版 + 发布包）
+  [32m✓[0m app.html 双链结构：解析 + 索引 + 跳转 + 行尾标记 + 反向链接面板 + 富文本点击（与面板同款，双端同步）
+  [32m✓[0m 双链样式双端：styles.css ⇄ 发布包 lib/styles.css + app.html 内嵌样式
+  [32m✓[0m host 不改契约：双链解析/扫描全在 client（host-impl / index.mjs 零双链逻辑）
+
+[1m=== 结果 ===[0m
+  passed: 406
+  failed: 0
+  reads:  110 / writes: 100（in-memory mock）
