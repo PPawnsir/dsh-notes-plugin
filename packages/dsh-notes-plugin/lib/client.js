@@ -135,6 +135,8 @@ window.__ModuleLoader__.load({
     // 反转义（esc 的逆）：行内文本已转义，双链 target 解析前须还原（否则含 & 的标题永不命中）
     function unesc(s) { return String(s).replace(/&(amp|lt|gt|quot|#39);/g, function (m, k) { return k === 'amp' ? '&' : k === 'lt' ? '<' : k === 'gt' ? '>' : k === 'quot' ? '"' : "'" }) }
     // Markdown → 富文本 HTML（受限 WYSIWYG 渲染方向）。白名单：h1-h3/段落/ul/ol/引用/围栏代码块/分隔线；行内 粗体/斜体/行内码/链接(仅 http/https)/图片(仅 assets/ 前缀)/双链 [[id或标题]]（wikiResolve 解析，不中按纯文本）
+    // L1：行内原始 HTML 不解释——esc() 先行转为字面文本（<input type="date"> 原样显示，零注入面），序列化逐字还原
+    // L2：GFM 表格（表头行+对齐分隔行）只读渲染为 <table contenteditable="false">，原始源码逐字记 data-md-src，序列化原样回吐
     function renderMarkdown(md, wikiResolve) {
       var src = String(md || '')
       if (!src.trim()) return ''
@@ -167,6 +169,27 @@ window.__ModuleLoader__.load({
       }
       var HR = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/
       var STOP = /^(#{1,3}\s|\x60\x60\x60|>\s?|[-*+]\s|\d+\.\s|\s*(?:-{3,}|\*{3,}|_{3,})\s*$)/
+      // L2 GFM 表格：表头行（含 |）+ 紧跟对齐分隔行（每格 :?-+:?，行内至少一个 |）→ 只读 <table>；
+      // 原始源码逐字记 data-md-src（含对齐分隔行），serializeRich 原样回吐——渲染只影响显示，round-trip 逐字一致是硬约束
+      // 单元格切分：\| 转义管道不切列（私用区占位 \uE002 防误切，显示还原为 |；原始源码只经 data-md-src 回吐）
+      function splitTblRow(line) {
+        var t = String(line).trim().replace(/\\\|/g, '\uE002').replace(/^\|/, '').replace(/\|$/, '')
+        return t.split('|').map(function (c) { return c.replace(/\uE002/g, '|').trim() })
+      }
+      // 对齐分隔行判定：命中返回逐列对齐（left/center/right/'' 数组），否则 null
+      function parseTblDelims(line) {
+        var l = String(line)
+        if (l.indexOf('|') < 0 || !/^\s*\|?[\s:|-]*$/.test(l)) return null
+        var cells = splitTblRow(l), aligns = []
+        for (var k = 0; k < cells.length; k++) {
+          var m = cells[k].match(/^(:?)-+(:?)$/)
+          if (!m) return null
+          aligns.push(m[1] && m[2] ? 'center' : m[1] ? 'left' : m[2] ? 'right' : '')
+        }
+        return aligns.length ? aligns : null
+      }
+      // 表格起点：当前行含 | 且下一行是对齐分隔行（段落累积遇此同样断开，防表格被段落吞并丢换行）
+      function isTblStart(idx) { return lines[idx].indexOf('|') >= 0 && idx + 1 < lines.length && !!parseTblDelims(lines[idx + 1]) }
       while (i < lines.length) {
         var line = lines[i]
         // 围栏代码块
@@ -215,12 +238,30 @@ window.__ModuleLoader__.load({
           i++
           continue
         }
+        // L2 GFM 表格（只读渲染）：表头 + 对齐分隔行 + 表体（连续含 | 的非空白行；格数不齐补空/截尾仅影响显示，源码不动）
+        if (isTblStart(i)) {
+          closeLists()
+          var tblRaw = [lines[i], lines[i + 1]]
+          var aligns = parseTblDelims(lines[i + 1])
+          var headCells = splitTblRow(lines[i])
+          i += 2
+          var bodyRows = []
+          while (i < lines.length && lines[i].trim() !== '' && lines[i].indexOf('|') >= 0 && !STOP.test(lines[i])) { tblRaw.push(lines[i]); bodyRows.push(splitTblRow(lines[i])); i++ }
+          var cols = Math.max(headCells.length, aligns.length)
+          var alAt = function (k2) { var al = aligns[k2] || ''; return al ? ' style="text-align:' + al + '"' : '' }
+          var ths = []
+          for (var hk = 0; hk < cols; hk++) ths.push('<th' + alAt(hk) + '>' + inline(headCells[hk] || '') + '</th>')
+          var trs = ''
+          bodyRows.forEach(function (r) { var tds = []; for (var bk = 0; bk < cols; bk++) tds.push('<td' + alAt(bk) + '>' + inline(r[bk] || '') + '</td>'); trs += '<tr>' + tds.join('') + '</tr>' })
+          out.push('<table class="dsh-notes-table" contenteditable="false" data-md-src="' + esc(tblRaw.join('\n')) + '"><thead><tr>' + ths.join('') + '</tr></thead><tbody>' + trs + '</tbody></table>')
+          continue
+        }
         // 空行
         if (line.trim() === '') { closeLists(); i++; continue }
-        // 段落（连续非空非特殊行合并）
+        // 段落（连续非空非特殊行合并；表格起点同样断开）
         closeLists()
         var paraLines = []
-        while (i < lines.length && lines[i].trim() !== '' && !STOP.test(lines[i])) { paraLines.push(lines[i]); i++ }
+        while (i < lines.length && lines[i].trim() !== '' && !STOP.test(lines[i]) && !isTblStart(i)) { paraLines.push(lines[i]); i++ }
         out.push('<p>' + inline(paraLines.join(' ')) + '</p>')
       }
       closeLists()
@@ -288,6 +329,8 @@ window.__ModuleLoader__.load({
           var code = el.textContent.replace(/\n+$/, '')
           out.push('```' + lang + '\n' + code + '\n```')
         }
+        // L2 只读表格：data-md-src 逐字回吐原始表格源码（含对齐分隔行）；无源码记录的外来表格按文本拆壳兜底
+        else if (tag === 'TABLE') { var tsrc = el.getAttribute('data-md-src'); if (tsrc) out.push(tsrc); else { var t6 = serializeInline(el).trim(); if (t6) out.push(t6) } }
         else if (tag === 'HR') { out.push('---') }
         else if (tag === 'IMG') { out.push(serializeInlineWrap(el)) }
         else { var t5 = serializeInline(el).trim(); if (t5) out.push(t5) }
@@ -297,18 +340,28 @@ window.__ModuleLoader__.load({
     // 往返自检归一化：行尾空白/多余空行不视为差异
     function normMd(s) { return String(s || '').replace(/\r\n/g, '\n').split('\n').map(function (l) { return l.replace(/\s+$/, '') }).join('\n').replace(/\n{3,}/g, '\n\n').trim() }
     // ===== 白名单降级分析：正文含白名单外结构 → 富文本入口置灰；围栏代码块内容不参与判定 =====
+    // L1 放宽：行内原始 HTML 不再降级——inline() 首步 esc() 已把它渲染成转义字面文本（无注入面），序列化经文本节点逐字还原，
+    // 单行往返逐字一致；保留降级的只剩「多行 HTML 块」（段落合并会丢换行、逐字往返不保）与下方歧义结构
+    // L2 放宽：GFM 表格不再降级——renderMarkdown 只读渲染（contenteditable=false + 对齐样式），serializeRich 经 data-md-src 逐字回吐
     var DEG_RULES = [
-      { key: 'table', label: '表格', re: /^\s*\|.*\|\s*$|^\s*[:|-]+\|[:| -]+\s*$/ },
       { key: 'nestedQuote', label: '嵌套引用', re: /^\s*>(?:\s*>)+/ },
       { key: 'h4', label: '四级及以下标题', re: /^\s*#{4,6}\s/ },
-      { key: 'task', label: '任务列表', re: /^\s*[-*+]\s+\[[ xX]\]/ },
-      { key: 'html', label: '行内 HTML', re: /<\/?[a-zA-Z][^>\n]*>/ }
+      { key: 'task', label: '任务列表', re: /^\s*[-*+]\s+\[[ xX]\]/ }
     ]
+    // 多行 HTML 块判定行：行首（可缩进）即 <tag>/</tag>。单行 <tag> 行（含行内代码里的标签）按字面量渲染、逐字往返，放行；
+    // 连续 ≥2 个此类行才构成多行 HTML 块 → 降级（记段首行号/样本）
+    var HTML_BLOCK_LINE = /^\s*<\/?[a-zA-Z][^>\n]*>/
     function analyzeMarkdown(md) {
       var found = {}, order = []
+      var htmlRun = 0, htmlRunStart = -1, htmlRunSample = ''
       String(md || '').split('\n').forEach(function (ln, idx) {
-        if (/^\x60\x60\x60/.test(ln)) { analyzeMarkdown._in = !analyzeMarkdown._in; return }
+        if (/^\x60\x60\x60/.test(ln)) { analyzeMarkdown._in = !analyzeMarkdown._in; htmlRun = 0; htmlRunStart = -1; return }
         if (analyzeMarkdown._in) return
+        if (HTML_BLOCK_LINE.test(ln)) {
+          if (htmlRun === 0) { htmlRunStart = idx; htmlRunSample = ln.trim().slice(0, 36) }
+          htmlRun++
+          if (htmlRun === 2 && !found.htmlBlock) { found.htmlBlock = { label: '多行 HTML 块', line: htmlRunStart + 1, sample: htmlRunSample }; order.push(found.htmlBlock) }
+        } else { htmlRun = 0; htmlRunStart = -1 }
         DEG_RULES.forEach(function (r) {
           if (!found[r.key] && r.re.test(ln)) { found[r.key] = { label: r.label, line: idx + 1, sample: ln.trim().slice(0, 36) }; order.push(found[r.key]) }
         })
@@ -522,7 +575,7 @@ window.__ModuleLoader__.load({
         // editorMode：'source' 源码 | 'rich' 富文本；默认源码；Ctrl+/ 或 meta 行两段开关切换
         const [editorMode, setEditorModeState] = React.useState('source')
         const editorModeRef = React.useRef('source')
-        // 白名单降级分析（analyzeMarkdown 内核）：正文含表格/嵌套引用/h4+/任务列表/行内 HTML → 富文本入口置灰
+        // 白名单降级分析（analyzeMarkdown 内核）：正文含嵌套引用/h4+/任务列表/多行 HTML 块 → 富文本入口置灰（行内 HTML 自 L1、表格自 L2 起不再降级——表格只读渲染 + 序列化逐字回吐）
         const [degraded, setDegraded] = React.useState({ ok: true, reasons: [] })
         const degradedRef = React.useRef({ ok: true, reasons: [] })
         // 图片插入弹窗：null | { name, dataURL, mime, size, alt, uploading, error }（三入口共用：粘贴/拖拽/工具栏按钮）
@@ -1430,11 +1483,16 @@ window.__ModuleLoader__.load({
           const onMouseUp = () => { keepSel(); updateToolbarState() }
           const onSelChange = () => { const sel = window.getSelection(); if (sel && sel.rangeCount && el.contains(sel.anchorNode)) { keepSel(); updateToolbarState() } }
           // P2 双链：富文本内点击 [[..]] 锚 → 跳转选中目标笔记（阻止默认 #wiki 哈希跳转；跳前序列化在途编辑落回源码）
+          // L2 只读表格：点击表格区块 → toast 提示（contenteditable=false 原子岛屿，富文本内不做表格编辑）
           const onWikiClick = (ev) => {
             const a = ev.target && ev.target.closest ? ev.target.closest('a[data-wiki]') : null
-            if (!a || !el.contains(a)) return
-            ev.preventDefault(); ev.stopPropagation()
-            if (jumpWikiRef.current) jumpWikiRef.current(a.getAttribute('data-wiki') || '')
+            if (a && el.contains(a)) {
+              ev.preventDefault(); ev.stopPropagation()
+              if (jumpWikiRef.current) jumpWikiRef.current(a.getAttribute('data-wiki') || '')
+              return
+            }
+            const tb = ev.target && ev.target.closest ? ev.target.closest('table.dsh-notes-table') : null
+            if (tb && el.contains(tb)) showToast('表格为只读，请切换源码模式编辑该区域')
           }
           // 图片入口①：Ctrl+V 粘贴（clipboardData.files）；其余粘贴：HTML → 白名单清洗，纯文本 → 纯文本插入
           const onPaste = (ev) => {

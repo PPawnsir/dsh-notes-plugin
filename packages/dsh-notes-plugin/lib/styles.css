@@ -451,6 +451,11 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 /* ===== P2 笔记双链：[[..]] 渲染锚 + 行尾双链标记 + 反向链接面板 ===== */
 .dsh-notes-rich a.dsh-notes-wikilink{color:var(--nacc);text-decoration:none;border-bottom:1px dashed var(--nacc);cursor:pointer;border-radius:3px;padding:0 1px}
 .dsh-notes-rich a.dsh-notes-wikilink:hover{background:var(--nbg-sel);border-bottom-color:transparent}
+/* ===== L2 GFM 表格只读渲染（contenteditable=false 原子岛屿；原始源码经 data-md-src 逐字回吐，富文本内不编辑） ===== */
+.dsh-notes-rich table.dsh-notes-table{border-collapse:collapse;margin:0 0 14px;cursor:not-allowed}
+.dsh-notes-rich table.dsh-notes-table th,.dsh-notes-rich table.dsh-notes-table td{border:1px solid var(--nbd);padding:5px 12px;font-size:12.5px;line-height:1.6;text-align:left}
+.dsh-notes-rich table.dsh-notes-table th{background:var(--nbg-raise);font-weight:600;color:var(--ntx)}
+.dsh-notes-rich table.dsh-notes-table td{color:var(--nt2)}
 .dsh-notes-note-wiki{display:grid;place-items:center;width:12px;flex-shrink:0;color:var(--nt3)}
 .dsh-notes-note-wiki .dsh-ic{width:9px;height:9px}
 .dsh-notes-backlinks{border-top:1px solid var(--nbd-soft);padding:6px 24px;flex-shrink:0}

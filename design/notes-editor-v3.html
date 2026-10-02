@@ -10,10 +10,12 @@
   范围：仅「正文编辑器」区域的双模式演进（源码 textarea ⇄ 富文本 contenteditable），
         外壳（顶栏/token/图标/meta 行）沿用 design/notes-ui-v2.html 定稿语言。
   覆盖三个演示场景（demobar 切换）：
-    A 正常流  —— 白名单语法全量（h1-h3/段落/列表/引用/代码块/分隔线/行内格式/图片），
-                 双模式切换 + 编辑防抖序列化回源码，往返一致。
-    B 降级流  —— 正文含白名单外结构（表格/嵌套引用/h4/任务列表）→ 富文本入口置灰 +
+    A 正常流  —— 白名单语法全量（h1-h3/段落/列表/引用/代码块/分隔线/行内格式/图片 + L2 起 GFM 表格只读渲染），
+                 双模式切换 + 编辑防抖序列化回源码，往返一致（含表格样本：发布记录表）。
+    B 降级流  —— 正文含白名单外结构（嵌套引用/h4/任务列表/多行 HTML 块）→ 富文本入口置灰 +
                  tooltip「含高级语法，请在源码模式编辑」；源码可编辑，删净后实时恢复。
+                 （L1 起行内原始 HTML 不再降级：esc 转义字面量渲染 + 序列化逐字还原，场景 B 以多行 HTML 块示意；
+                 L2 起 GFM 表格也不再降级：只读渲染 + 源码逐字回吐，场景 B 的机器表即按只读表格呈现。）
     C 图片流  —— 工具栏图片按钮 / Ctrl+V 粘贴 / 拖拽文件 → 弹出上传示意 → 光标处插入
                  ![](assets/..)；富文本里显示真实图片。
   约定（与 v2 相同）：原生 JS + SVG 图标 + DSH token 配色；数据层纯内存 mock；
@@ -40,6 +42,17 @@
     · 图片压缩：>1MB 的 PNG/JPEG 上传前前端 canvas 降质转 JPEG（长边 ≤2560px、质量 0.85→0.45 阶梯、
       透明底刷白；GIF/WebP 不动），压缩失败回退原图；弹窗大小行显示「已压缩 原 → 现」。原型不演示压缩本身。
     · kind 模板骨架：新建笔记按类型预填 KIND_TEMPLATES（面板新建 modal 可选类型；app.html 随类型过滤芯片）。
+  门禁放宽 L1（notes-editor-html-l1 落地口径回写）：
+    · 行内原始 HTML 不再触发整篇降级——渲染按 esc() 转义字面量呈现（无 XSS），序列化经文本节点逐字还原，
+      单行/行内代码里的标签（如 `<input type="date">`）往返逐字一致；实战案例：含一处行内 HTML 的笔记曾被整篇锁源码。
+    · 降级黑名单收窄为：多行 HTML 块（连续 ≥2 行以 <tag> 开头的非代码块内容）+ 表格/嵌套引用/h4/任务列表歧义结构。
+  门禁放宽 L2（notes-editor-table-l2 落地口径回写）：
+    · GFM 表格不再触发整篇降级——表头行（含 |）+ 对齐分隔行（:---/---:/:---:）渲染为只读
+      <table class="dsh-notes-table" contenteditable="false">，对齐信息保留为单元格 text-align 样式；
+      点击表格 toast「表格为只读，请切换源码模式编辑该区域」，富文本内不做表格编辑（成本收益不匹配）。
+    · 序列化硬约束：表格原始源码逐字记 data-md-src（含对齐分隔行），serializeRich 原样回吐，round-trip 逐字一致；
+      单元格内 \| 转义管道不切列（私用区占位防误切，显示还原为 |）。
+    · 降级黑名单移除「表格」，保留降级的只剩：多行 HTML 块 + 嵌套引用/h4/任务列表歧义结构。
 -->
 <style>
   :root{
@@ -154,6 +167,11 @@
   .rich p img{display:inline-block;vertical-align:middle;margin:0}
   .rich img:hover{outline:2px solid var(--nacc);outline-offset:1px}
   .rich-wrap.drop .rich{outline:2px dashed var(--nacc);outline-offset:-6px;border-radius:var(--nr-md)}
+  /* L2 GFM 表格只读渲染（与实现两端同款；原始源码经 data-md-src 逐字回吐，富文本内不编辑） */
+  .rich table.dsh-notes-table{border-collapse:collapse;margin:0 0 14px;cursor:not-allowed}
+  .rich table.dsh-notes-table th,.rich table.dsh-notes-table td{border:1px solid var(--nbd);padding:5px 12px;font-size:12.5px;line-height:1.6;text-align:left}
+  .rich table.dsh-notes-table th{background:var(--nbg-raise);font-weight:600}
+  .rich table.dsh-notes-table td{color:var(--nt2)}
   .ed-foot{padding:7px 24px;display:flex;gap:14px;font-size:10.5px;color:var(--nt3);border-top:1px solid var(--nbd-soft)}
   .ed-foot .saved{margin-left:auto;color:var(--nt2)}
   /* ===== 往返演示面板（底部） ===== */
@@ -361,9 +379,10 @@ var MOCK_UPLOADS=[
 function displaySrc(mdSrc){return ASSETS[mdSrc]||placeholderUri(mdSrc)}
 
 /* ================= Markdown 渲染器（源码 → 富文本 DOM）=================
-   基线 = client-impl.js renderMarkdown（esc 先行，零注入面）；v3 扩展三处：
+   基线 = client-impl.js renderMarkdown（esc 先行，零注入面）；v3 扩展四处：
    ① 分隔线 ---/*** /___ → <hr>  ② 图片 ![alt](src) → 真实 <img>（data-md-src 记原始路径）
-   ③ 行内反斜杠转义 \* \` \[ \] \\（占位符法，与序列化器 escapeMd 互逆，保证往返稳定） */
+   ③ 行内反斜杠转义 \* \` \[ \] \\（占位符法，与序列化器 escapeMd 互逆，保证往返稳定）
+   ④ L2 GFM 表格 → 只读 <table contenteditable="false">（原始源码逐字记 data-md-src，序列化原样回吐） */
 function renderMarkdown(md){
   var src=String(md||'');
   if(!src.trim())return '';
@@ -387,6 +406,20 @@ function renderMarkdown(md){
   }
   var HR=/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
   var STOP=/^(#{1,3}\s|\x60\x60\x60|>\s?|[-*+]\s|\d+\.\s|\s*(?:-{3,}|\*{3,}|_{3,})\s*$)/;
+  // ④ L2 GFM 表格：表头行（含 |）+ 紧跟对齐分隔行（每格 :?-+:?，行内至少一个 |）→ 只读 <table>；
+  // 原始源码逐字记 data-md-src（含对齐分隔行），serializeRich 原样回吐——渲染只影响显示，round-trip 逐字一致是硬约束
+  // 单元格切分：\| 转义管道不切列（私用区占位 \uE002 防误切，显示还原为 |；原始源码只经 data-md-src 回吐）
+  function splitTblRow(line){var t=String(line).trim().replace(/\\\|/g,'\uE002').replace(/^\|/,'').replace(/\|$/,'');return t.split('|').map(function(c){return c.replace(/\uE002/g,'|').trim()})}
+  // 对齐分隔行判定：命中返回逐列对齐（left/center/right/'' 数组），否则 null
+  function parseTblDelims(line){
+    var l=String(line);
+    if(l.indexOf('|')<0||!/^\s*\|?[\s:|-]*$/.test(l))return null;
+    var cells=splitTblRow(l),aligns=[];
+    for(var k=0;k<cells.length;k++){var m=cells[k].match(/^(:?)-+(:?)$/);if(!m)return null;aligns.push(m[1]&&m[2]?'center':m[1]?'left':m[2]?'right':'')}
+    return aligns.length?aligns:null;
+  }
+  // 表格起点：当前行含 | 且下一行是对齐分隔行（段落累积遇此同样断开，防表格被段落吞并丢换行）
+  function isTblStart(idx){return lines[idx].indexOf('|')>=0&&idx+1<lines.length&&!!parseTblDelims(lines[idx+1])}
   while(i<lines.length){
     var line=lines[i];
     if(/^\x60\x60\x60/.test(line)){ // 围栏代码块
@@ -417,9 +450,25 @@ function renderMarkdown(md){
       if(!inOl){out.push('<ol>');inOl=true}
       out.push('<li>'+inline(line.replace(/^\d+\.\s+/,''))+'</li>');i++;continue;
     }
+    // ④ L2 GFM 表格（只读渲染）：表头 + 对齐分隔行 + 表体（连续含 | 的非空白行；格数不齐补空/截尾仅影响显示，源码不动）
+    if(isTblStart(i)){
+      closeLists();
+      var tblRaw=[lines[i],lines[i+1]],aligns=parseTblDelims(lines[i+1]),headCells=splitTblRow(lines[i]);
+      i+=2;
+      var bodyRows=[];
+      while(i<lines.length&&lines[i].trim()!==''&&lines[i].indexOf('|')>=0&&!STOP.test(lines[i])){tblRaw.push(lines[i]);bodyRows.push(splitTblRow(lines[i]));i++}
+      var cols=Math.max(headCells.length,aligns.length);
+      var alAt=function(k2){var al=aligns[k2]||'';return al?' style="text-align:'+al+'"':''};
+      var ths=[];
+      for(var hk=0;hk<cols;hk++)ths.push('<th'+alAt(hk)+'>'+inline(headCells[hk]||'')+'</th>');
+      var trs='';
+      bodyRows.forEach(function(r){var tds=[];for(var bk=0;bk<cols;bk++)tds.push('<td'+alAt(bk)+'>'+inline(r[bk]||'')+'</td>');trs+='<tr>'+tds.join('')+'</tr>'});
+      out.push('<table class="dsh-notes-table" contenteditable="false" data-md-src="'+esc(tblRaw.join('\n'))+'"><thead><tr>'+ths.join('')+'</tr></thead><tbody>'+trs+'</tbody></table>');
+      continue;
+    }
     if(line.trim()===''){closeLists();i++;continue}
     closeLists();var para=[];
-    while(i<lines.length&&lines[i].trim()!==''&&!STOP.test(lines[i])){para.push(lines[i]);i++}
+    while(i<lines.length&&lines[i].trim()!==''&&!STOP.test(lines[i])&&!isTblStart(i)){para.push(lines[i]);i++}
     out.push('<p>'+inline(para.join(' '))+'</p>');
   }
   closeLists();
@@ -488,6 +537,8 @@ function serializeRich(root){
       var code=el.textContent.replace(/\n+$/,'');
       out.push('```'+lang+'\n'+code+'\n```');
     }
+    // L2 只读表格：data-md-src 逐字回吐原始表格源码（含对齐分隔行）；无源码记录的外来表格按文本拆壳兜底
+    else if(tag==='TABLE'){var tsrc=el.getAttribute('data-md-src');if(tsrc)out.push(tsrc);else{var t6=serializeInline(el).trim();if(t6)out.push(t6)}}
     else if(tag==='HR'){out.push('---')}
     else if(tag==='IMG'){out.push(serializeInlineWrap(el))}
     else{var t5=serializeInline(el).trim();if(t5)out.push(t5)}
@@ -510,19 +561,28 @@ function roundtripCheck(md){
 }
 
 /* ================= 白名单降级分析 =================
-   正文含白名单外结构 → 富文本入口置灰；围栏代码块内容不参与判定。 */
+   正文含白名单外结构 → 富文本入口置灰；围栏代码块内容不参与判定。
+   L1 放宽：行内原始 HTML 不再降级——inline() 首步 esc() 已把它渲染成转义字面文本（无注入面），序列化逐字还原；
+   保留降级的只剩「多行 HTML 块」（连续 ≥2 行以 <tag> 开头，段落合并会丢换行）与下方歧义结构。
+   L2 放宽：GFM 表格不再降级——只读渲染（contenteditable=false + 对齐样式），序列化经 data-md-src 逐字回吐。 */
 var DEG_RULES=[
-  {key:'table',label:'表格',re:/^\s*\|.*\|\s*$|^\s*[:|-]+\|[:| -]+\s*$/},
   {key:'nestedQuote',label:'嵌套引用',re:/^\s*>(?:\s*>)+/},
   {key:'h4',label:'四级及以下标题',re:/^\s*#{4,6}\s/},
-  {key:'task',label:'任务列表',re:/^\s*[-*+]\s+\[[ xX]\]/},
-  {key:'html',label:'行内 HTML',re:/<\/?[a-zA-Z][^>\n]*>/}
+  {key:'task',label:'任务列表',re:/^\s*[-*+]\s+\[[ xX]\]/}
 ];
+/* 多行 HTML 块判定行：行首（可缩进）即 <tag>/</tag>；单行放行（字面量渲染、逐字往返），连续 ≥2 行构成块 */
+var HTML_BLOCK_LINE=/^\s*<\/?[a-zA-Z][^>\n]*>/;
 function analyzeMarkdown(md){
   var found={},order=[];
+  var htmlRun=0,htmlRunStart=-1,htmlRunSample='';
   String(md||'').split('\n').forEach(function(ln,idx){
-    if(/^\x60\x60\x60/.test(ln)){analyzeMarkdown._in=!analyzeMarkdown._in;return}
+    if(/^\x60\x60\x60/.test(ln)){analyzeMarkdown._in=!analyzeMarkdown._in;htmlRun=0;htmlRunStart=-1;return}
     if(analyzeMarkdown._in)return;
+    if(HTML_BLOCK_LINE.test(ln)){
+      if(htmlRun===0){htmlRunStart=idx;htmlRunSample=ln.trim().slice(0,36)}
+      htmlRun++;
+      if(htmlRun===2&&!found.htmlBlock){found.htmlBlock={label:'多行 HTML 块',line:htmlRunStart+1,sample:htmlRunSample};order.push(found.htmlBlock)}
+    }else{htmlRun=0;htmlRunStart=-1}
     DEG_RULES.forEach(function(r){
       if(!found[r.key]&&r.re.test(ln)){found[r.key]={label:r.label,line:idx+1,sample:ln.trim().slice(0,36)};order.push(found[r.key])}
     });
@@ -535,9 +595,9 @@ function analyzeMarkdown(md){
 var KIND_LABEL={note:'笔记',decision:'决策',todo:'待办',link:'链接',quote:'引用'};
 var SCENARIOS={
   A:{title:'DSH 插件发布清单',topic:'DSH 插件开发',kind:'note',
-     body:'# DSH 插件发布清单\n\n发布前按顺序走完 **四个阶段**，任何一步 *失败* 都不要继续往下走。\n\n## 1. 版本对齐\n\n- 根 package.json 与包内 version 一致\n- README 表格同步到 *最新行*\n- 运行 `node scripts/sync-pkg-readme.cjs` 更新 npm 页面文档\n\n## 2. 验证\n\n1. npm pack 干跑检查 files 白名单\n2. 实测基线版本加载通过\n3. CI publish.yml 绿灯\n\n> 可用性是底线：上下文切换后的在途响应覆盖、渲染 bailout、时区偏移都要回归。\n\n### 3. 参考命令\n\n```bash\nnpm pack --dry-run\nnode scripts/sync-pkg-readme.cjs\n```\n\n发布记录见 [插件仓库](https://example.com/dsh-notes)，配图：\n\n![发布流程示意](assets/release-flow.svg)\n\n---\n\n*完成于 2026-09-30 · 下次发版前复核*'},
+     body:'# DSH 插件发布清单\n\n发布前按顺序走完 **四个阶段**，任何一步 *失败* 都不要继续往下走。\n\n## 1. 版本对齐\n\n- 根 package.json 与包内 version 一致\n- README 表格同步到 *最新行*\n- 运行 `node scripts/sync-pkg-readme.cjs` 更新 npm 页面文档\n\n## 2. 验证\n\n1. npm pack 干跑检查 files 白名单\n2. 实测基线版本加载通过\n3. CI publish.yml 绿灯\n\n> 可用性是底线：上下文切换后的在途响应覆盖、渲染 bailout、时区偏移都要回归。\n\n### 3. 参考命令\n\n```bash\nnpm pack --dry-run\nnode scripts/sync-pkg-readme.cjs\n```\n\n发布记录见 [插件仓库](https://example.com/dsh-notes)，配图：\n\n![发布流程示意](assets/release-flow.svg)\n\n## 4. 发布记录\n\n| 版本 | 日期 | 状态 |\n| --- | :---: | ---: |\n| 0.1.6 | 2026-09-15 | 已发布 |\n| 0.1.7 | 2026-09-28 | 当前 |\n\n---\n\n*完成于 2026-09-30 · 下次发版前复核*'},
   B:{title:'o2oa 环境机器清单',topic:'运维',kind:'note',
-     body:'# o2oa 环境机器清单\n\n## 机器表\n\n| 机器 | IP | 用途 |\n| --- | --- | --- |\n| OFF-OA-rzfx-001 | 10.102.90.138 | 应用节点 |\n| OFF-OA-rzfx-002 | 10.102.90.2 | 应用节点 |\n\n## 部署备注\n\n> 数据库：he3pg-xxx.internal:5432\n> > 密码策略 90 天轮换，详见运维手册\n\n#### 附：端口约定\n\n- [ ] 8300 管理台\n- [x] 8088 门户'},
+     body:'# o2oa 环境机器清单\n\n## 机器表\n\n| 机器 | IP | 用途 |\n| --- | --- | --- |\n| OFF-OA-rzfx-001 | 10.102.90.138 | 应用节点 |\n| OFF-OA-rzfx-002 | 10.102.90.2 | 应用节点 |\n\n## 部署备注\n\n> 数据库：he3pg-xxx.internal:5432\n> > 密码策略 90 天轮换，详见运维手册\n\n#### 附：端口约定\n\n- [ ] 8300 管理台\n- [x] 8088 门户\n\n## 遗留 HTML 片段\n\n<div class="legacy">\n<span>旧系统拷贝的标记</span>\n</div>'},
   C:{title:'面板截图归档',topic:'DSH 插件开发',kind:'note',
      body:'# 面板截图归档\n\nv2 面板三视图，**选中态**配色已按实机 token 校准：\n\n![面板-列表态](assets/panel-list.png)\n\n![面板-编辑态](assets/panel-edit.png)\n\n> 后续截图统一走 `assets/` 目录，命名 panel-*.png。\n\n用工具栏「图片」按钮、Ctrl+V 粘贴或拖拽文件到富文本区即可插入新图。'}
 };
@@ -796,6 +856,11 @@ function bindRich(){
   rich.addEventListener('blur',function(){if(state.richDirty)syncFromRich('失焦')});
   rich.addEventListener('keyup',updateToolbarState);
   rich.addEventListener('mouseup',function(){keepSel();updateToolbarState()});
+  // L2 只读表格：点击表格区块 → toast 提示（contenteditable=false 原子岛屿；实现两端同款文案）
+  rich.addEventListener('click',function(e){
+    var tb=e.target&&e.target.closest?e.target.closest('table.dsh-notes-table'):null;
+    if(tb&&rich.contains(tb))toast('表格为只读，请切换源码模式编辑该区域');
+  });
   document.addEventListener('selectionchange',function(){
     var sel=window.getSelection();
     if(sel&&sel.rangeCount&&rich.contains(sel.anchorNode)){keepSel();updateToolbarState()}
@@ -951,17 +1016,39 @@ function runSelfTest(){
     {n:'链接',md:'见 [插件仓库](https://example.com/dsh) 说明。'},
     {n:'图片（资产路径还原）',md:'![发布流程](assets/release-flow.svg)\n\n文字 ![内联图](assets/panel-list.png) 混排。'},
     {n:'特殊字符转义往返',md:'计算 2*3 和 a[b] 以及 `x\\`y` 与 C:\\path 不走格式。'},
-    {n:'h2/h3',md:'## 二级\n\n### 三级'}
+    {n:'h2/h3',md:'## 二级\n\n### 三级'},
+    // L1：行内原始 HTML 字面量渲染 + 逐字往返（实战样本：行内代码含 <input type="date"> 曾整篇降级）
+    {n:'行内 HTML 字面量逐字往返（L1）',md:'而 `<input type="date">` 给的是本地日期，裸标签 <div class="x"> 亦然。',verbatim:true}
   ];
   cases.forEach(function(c){
     var rt=roundtripCheck(c.md);
-    t(c.n,rt.same,'\n--- 原始 ---\n'+c.md+'\n--- 序列化 ---\n'+rt.md2+'\n--- 二轮序列化 ---\n'+rt.md3);
+    t(c.n,rt.same&&(!c.verbatim||rt.md2===c.md),'\n--- 原始 ---\n'+c.md+'\n--- 序列化 ---\n'+rt.md2+'\n--- 二轮序列化 ---\n'+rt.md3);
   });
   // 降级分析
   var d=analyzeMarkdown(SCENARIOS.B.body);
-  t('场景B检出 表格/嵌套引用/h4/任务列表',!d.ok&&d.reasons.length===4,JSON.stringify(d.reasons));
-  t('场景A白名单通过',analyzeMarkdown(SCENARIOS.A.body).ok);
+  t('场景B检出 嵌套引用/h4/任务列表/多行 HTML 块（L2 起表格只读渲染，不再计入降级）',!d.ok&&d.reasons.length===4&&d.reasons.map(function(r){return r.label}).join(',')==='嵌套引用,四级及以下标题,任务列表,多行 HTML 块',JSON.stringify(d.reasons));
+  t('场景A白名单通过（含 L2 只读表格样本）',analyzeMarkdown(SCENARIOS.A.body).ok);
   t('场景C白名单通过',analyzeMarkdown(SCENARIOS.C.body).ok);
+  // L2 门禁放宽：GFM 表格只读渲染（不再降级）+ 序列化逐字回吐 + 对齐样式 + 转义管道
+  var TBL='| 机器 | IP | 状态 |\n| :--- | :---: | ---: |\n| **主**节点 | 10.102.90.138 | 在线 |\n| a\\|b 转义管 | x | y |';
+  var th=renderMarkdown(TBL);
+  t('L2 表格只读渲染（table/th/td + contenteditable=false + 对齐样式 + data-md-src 记源码）',
+    th.indexOf('<table class="dsh-notes-table" contenteditable="false" data-md-src="')>=0
+    &&th.indexOf('<th style="text-align:left">机器</th>')>=0
+    &&th.indexOf('<th style="text-align:center">IP</th>')>=0
+    &&th.indexOf('<th style="text-align:right">状态</th>')>=0
+    &&th.indexOf('<td style="text-align:left"><strong>主</strong>节点</td>')>=0
+    &&th.indexOf('a|b 转义管')>=0,th);
+  var tbd=document.createElement('div');tbd.innerHTML=th;
+  t('L2 表格 round-trip 逐字一致（硬约束：含对齐分隔行原样回吐）',serializeRich(tbd)===TBL,'\n--- 序列化 ---\n'+serializeRich(tbd));
+  t('L2 表格不再降级',analyzeMarkdown(TBL).ok);
+  var MIXT='# 发布记录\n\n开头段落 **粗**。\n\n| 版本 | 日期 |\n| --- | --- |\n| 0.1.6 | 2026-09-15 |\n| 0.1.7 | 2026-09-28 |\n\n- 收尾项';
+  var tmx=document.createElement('div');tmx.innerHTML=renderMarkdown(MIXT);
+  t('L2 表格+周边混合内容逐字一致',serializeRich(tmx)===MIXT,'\n--- 序列化 ---\n'+serializeRich(tmx));
+  // L1 门禁收窄：行内/单行 HTML 放行；多行 HTML 块（连续 ≥2 行以 <tag> 开头）仍降级；围栏代码块豁免
+  t('行内 HTML 不再降级（L1）',analyzeMarkdown('而 `<input type="date">` 给的是本地日期。').ok&&analyzeMarkdown('# t\n\n<div>html</div>').ok);
+  t('多行 HTML 块仍降级',(function(){var dh=analyzeMarkdown('<div class="legacy">\n<span>旧标记</span>\n</div>');return !dh.ok&&dh.reasons.length===1&&dh.reasons[0].label==='多行 HTML 块'})());
+  t('围栏代码块内多行 HTML 豁免',analyzeMarkdown('```html\n<div>\n<span>x</span>\n</div>\n```').ok);
   // 场景正文整体往返
   ['A','C'].forEach(function(k){
     var rt=roundtripCheck(SCENARIOS[k].body);

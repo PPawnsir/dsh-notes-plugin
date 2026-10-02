@@ -1,4 +1,4 @@
-﻿
+
 [1m1. 静态校验（syntax + 结构）[0m
   [32m✓[0m host.js 语法
   [32m✓[0m client.js 语法
@@ -19,7 +19,7 @@
   [32m✓[0m index.mjs RPC 主通道 harness.handle + 兜底 webServer 路由
   [32m✓[0m index.mjs 工具走 harness.defineTool/registerTool（保留内联 defineTool 兜底）
   [32m✓[0m index.mjs 发布版不再写 .last-host-load 开发心跳
-  [32m✓[0m index.mjs 保留 31 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 资产上传
+  [32m✓[0m index.mjs 保留 32 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传
 
 [1m1.5 T1.2 列表懒加载分页[0m
   [32m✓[0m client-impl 含 PAGE_SIZE 常量
@@ -133,7 +133,7 @@ notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = 
   [32m✓[0m 参数化白名单：多组一次归档 + title 覆盖 + undo 只保留最近一次（整次撤销）
 
 [1m9. 启动 + 遥测[0m
-  [32m✓[0m host-impl 应用成功（31 RPC handlers，含 notes-settings-get/set + 导入导出 + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge）
+  [32m✓[0m host-impl 应用成功（32 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge）
   [32m✓[0m notes-src handler 可用
   [32m✓[0m notes-css handler 可用
   [32m✓[0m notes-perf handler 可用
@@ -199,6 +199,17 @@ notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = 
   [32m✓[0m note_manage dispatch 无目标时列出活跃会话
   [32m✓[0m note_manage dispatch 注入上下文+触发工作
 
+[1m15.5 P3 派发闭环（调研 + 状态回写）[0m
+  [32m✓[0m 保底联动：notes-update 置 resolved 自动回执全部未闭环派发
+  [32m✓[0m 保底联动：note_manage update resolved 回执 + 消息明示
+  [32m✓[0m 保底联动幂等/不误伤：重复 resolved 零回执；非 resolved 更新不动派发
+  [32m✓[0m 事件回执：agent/status idle → 该会话未闭环派发 dispatchStatus=done（receipt=idle）
+  [32m✓[0m 事件回执不误伤：只回执该会话的派发；无 agent 的 payload 静默跳过
+  [32m✓[0m dispatch-loop 标记块双包逐字节一致（host-impl / index.mjs）
+  [32m✓[0m dispatch-loop 静态结构：ctx.on 守卫 + agent/status 订阅 + 三通道回执
+  [32m✓[0m 派发消息含完成回执指引（引导 agent resolved 闭环）
+  [32m✓[0m 详情徽章三端落地（client-impl / app.html / 原型）+ 样式（styles.css / lib/styles.css）
+
 [1m16. T3 选区指令记录（notes-quick-instruct）[0m
   [32m✓[0m notes-quick-instruct handler 已注册
   [32m✓[0m notes-quick-instruct 返回 ok + applied
@@ -248,6 +259,7 @@ notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\note
   [32m✓[0m index.mjs 冷缓存首屏：titlesPending + pendingIds，补齐后零重读（?coldcache 独立 ESM 实例）
 notes: workspace backfill done, fixed=0 skipped=0
   [32m✓[0m notes-dispatch 派发到 live 会话 + 记录 dispatches
+  [32m✓[0m 静态包 P3 派发闭环：dispatchStatus=sent → resolved 保底联动 → idle 事件回执
   [32m✓[0m 静态包显式归档全链路：preview → 无参仅速记 → 显式 groups 手动组 → undo → notes-perf / notes-ping
   [32m✓[0m notes-src / notes-css handler 保留（静态资产可回退读取）
   [32m✓[0m notes-css 从候选路径读到真实 styles.css
@@ -272,8 +284,8 @@ notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\note
   [32m✓[0m notes-settings-set：保存 llm override 并持久化 settings.json
   [32m✓[0m notes-settings-set 参数校验：缺 provider/model 报错且不写盘
 notes: workspace backfill done, fixed=0 skipped=0
-notes: workspace backfill done, fixed=0 skipped=0
   [32m✓[0m extractInstruction 优先读设置模型（不跟随会话）
+notes: workspace backfill done, fixed=0 skipped=0
   [32m✓[0m classifyTopic 优先读设置模型（不跟随会话）
   [32m✓[0m llm=null 恢复跟随会话（回退 adm.currentSelection）
   [32m✓[0m classifyTopic 恢复后也回退跟随会话
@@ -287,8 +299,8 @@ notes: workspace backfill done, fixed=0 skipped=0
   [32m✓[0m lib/client.js 定时器走 ctx.get('timer') + ctx.effect（无 ctx.interval 快捷方式）
 node : [dsh-notes] slots service unavailable
 At line:1 char:129
-+ ... = [System.Text.UTF8Encoding]::new($false); node check.js 2>&1 | Out-F ...
-+                                                ~~~~~~~~~~~~~~~~~~
++ ... g]::new($false); node check.js > $env:TEMP\check-out.txt 2>&1; Write- ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: ([dsh-notes] slots service unavailable:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
@@ -303,7 +315,8 @@ notes plugin: client ready
 [1m19. 双模式编辑器 v3 内核（往返保真 + XSS + 降级）[0m
   [32m✓[0m 内核函数可提取（esc/renderMarkdown/serializeRich/analyzeMarkdown/sanitizeFragment）
   [32m✓[0m 往返保真：白名单 Markdown render→serialize→render 不变（10 用例，含原型自测 7 条 + 场景 A/C 正文）
-  [32m✓[0m 降级分析：白名单外结构检出（表格/嵌套引用/h4/任务列表/行内 HTML）+ 围栏代码块豁免
+  [32m✓[0m L1 行内 HTML：转义字面量渲染（无 XSS）+ 序列化逐字还原 + 不再降级（真实样本锁死）
+  [32m✓[0m 降级分析：白名单外结构检出（表格/嵌套引用/h4/任务列表/多行 HTML 块）+ 行内 HTML 放行 + 围栏代码块豁免
   [32m✓[0m XSS 红线：渲染全量转义 + 图片仅 assets/ 前缀放行（javascript:/外链/引号注入全拒绝）
   [32m✓[0m 粘贴清洗 sanitizeFragment：script/style 丢弃 + h4-6 降段落 + table 拆壳 + 非 assets 图片丢弃
   [32m✓[0m 内核纯净性：不碰 edBody/自动保存/RPC（纯函数集合，副作用全在调用侧）
@@ -380,7 +393,7 @@ notes: workspace backfill done, fixed=0 skipped=0
   [32m✓[0m 双侧注册 3 个 RPC + 核心函数 + 目录命名约定（host-impl / index.mjs）
   [32m✓[0m 双侧图片资产段同步：上传 RPC + mime 白名单 + 5MB 上限 + 重名序号 + 导出/导入/备份连带
 notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
-  [32m✓[0m 开发版注册 31 个 RPC（含 notes-export / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge）
+  [32m✓[0m 开发版注册 32 个 RPC（含 notes-export / notes-export-single / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge + P3 单文件导出）
   [32m✓[0m notes-export：全库快照（n-*.md + folders.json）到 <dir>\dsh-notes-export-<ts>
   [32m✓[0m notes-export 参数校验：缺 dir 报错 / dir 是文件报错
   [32m✓[0m notes-import-preview：全 same 基线 + folders.new=0 + 不写任何东西
@@ -401,6 +414,25 @@ notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = 
 notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\notes , llm = false , adm = false , rpc = /dsh-notes , app = /dsh-notes-app , asset = /dsh-notes/asset
 notes: workspace backfill done, fixed=0 skipped=0
   [32m✓[0m 静态包导入/导出全链路（导出 → 预览分类 → 备份 → 默认跳过 diff → overwrite 覆盖 → folders 合并）
+
+[1m23.6 P3 单文件导出（scope 拼接 + 图片内联 + 体积告警 + 双包同步）[0m
+  [32m✓[0m 双侧注册 notes-export-single + _exportSingle + 命名/告警常量（host-impl / index.mjs）
+  [32m✓[0m export-single 标记块双包逐字节一致 + 可 eval（五函数/两常量导出）
+  [32m✓[0m utf8Bytes：ascii / CJK / emoji 代理对 / 空串
+  [32m✓[0m assetMimeFromName：白名单扩展名反查（大小写不敏感）+ 非白名单/无扩展名 → 空
+  [32m✓[0m inlineAssetsInBody：命中内联 data URL / 缺失保留原引用并计数 / 非图片形态不动 / 空正文
+  [32m✓[0m singleExportScopeLabel：tag > folder > 缺省全部
+  [32m✓[0m buildSingleExport 拼接结构：文档头 + 目录页 + 每篇「# 标题 + front-matter + 正文」+ 篇间分隔线
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  [32m✓[0m notes-export-single 全部 scope：单文件拼接 + 图片内联 + 缺失保留 + 结构完整 + 小体积无 warning
+  [32m✓[0m notes-export-single scope 过滤：文件夹（id/名称双兼容）/ 标签
+  [32m✓[0m notes-export-single toc:false 无目录页 + 软删除笔记不导出
+  [32m✓[0m notes-export-single 参数校验：缺 dir / dir 是文件 / format 非 md / 文件夹不存在
+  [32m✓[0m notes-export-single >20MB 告警仍导出（指引：图片内联体积可能大）
+notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\notes , llm = false , adm = false , rpc = /dsh-notes , app = /dsh-notes-app , asset = /dsh-notes/asset
+notes: workspace backfill done, fixed=0 skipped=0
+  [32m✓[0m 静态包 notes-export-single 全链路（拼接 + 图片内联 + scope 过滤 + 文件命名）
+  [32m✓[0m client 设置卡片「数据」区「导出单文件…」入口 + modal（scope 三选一/目录/目录页开关）+ RPC 调用
 
 [1m24. 半独立笔记页 /dsh-notes-app（app.html v2 定稿改造 + webServer GET 路由）[0m
   [32m✓[0m app.html 存在且非空
@@ -534,6 +566,6 @@ notes: workspace backfill done, fixed=0 skipped=0
   [32m✓[0m host 不改契约：双链解析/扫描全在 client（host-impl / index.mjs 零双链逻辑）
 
 [1m=== 结果 ===[0m
-  passed: 406
+  passed: 431
   failed: 0
-  reads:  110 / writes: 100（in-memory mock）
+  reads:  116 / writes: 122（in-memory mock）

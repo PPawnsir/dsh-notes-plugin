@@ -2368,7 +2368,7 @@ async function main() {
   const v3MiniDocument = { createElement: t2 => new V3El(t2), createTextNode: v => new V3Text(v) }
   let kernelFn = null
   await t('内核函数可提取（esc/renderMarkdown/serializeRich/analyzeMarkdown/sanitizeFragment）', () => {
-    kernelFn = new Function('document', kernelBlock + '\nreturn { esc: esc, assetDisplaySrc: assetDisplaySrc, renderMarkdown: renderMarkdown, serializeRich: serializeRich, serializeInline: serializeInline, escapeMd: escapeMd, normMd: normMd, analyzeMarkdown: analyzeMarkdown, DEG_RULES: DEG_RULES, sanitizeFragment: sanitizeFragment, WIKI_RE: WIKI_RE, extractWikiTargets: extractWikiTargets, wikiLinksTo: wikiLinksTo, unesc: unesc }')(v3MiniDocument)
+    kernelFn = new Function('document', kernelBlock + '\nreturn { esc: esc, assetDisplaySrc: assetDisplaySrc, renderMarkdown: renderMarkdown, serializeRich: serializeRich, serializeInline: serializeInline, escapeMd: escapeMd, normMd: normMd, analyzeMarkdown: analyzeMarkdown, DEG_RULES: DEG_RULES, HTML_BLOCK_LINE: HTML_BLOCK_LINE, sanitizeFragment: sanitizeFragment, WIKI_RE: WIKI_RE, extractWikiTargets: extractWikiTargets, wikiLinksTo: wikiLinksTo, unesc: unesc }')(v3MiniDocument)
     for (const fn of ['esc', 'renderMarkdown', 'serializeRich', 'analyzeMarkdown', 'sanitizeFragment', 'assetDisplaySrc', 'extractWikiTargets', 'wikiLinksTo', 'unesc']) assert(typeof kernelFn[fn] === 'function', fn + ' 可调用')
   })
   // 往返自检（与原型 roundtripCheck 同一不变量）：① 显示保真 render∘serialize∘render 逐字节一致 ② 定点稳定（md2===md3）
@@ -2382,7 +2382,7 @@ async function main() {
   await t('往返保真：白名单 Markdown render→serialize→render 不变（10 用例，含原型自测 7 条 + 场景 A/C 正文）', () => {
     assert(kernelFn, 'kernelFn 可用')
     // 原型 design/notes-editor-v3.html runSelfTest 同款 7 用例 + 图片 alt 尖括号 + 场景 A/C 整文
-    const SCEN_A = '# DSH 插件发布清单\n\n发布前按顺序走完 **四个阶段**，任何一步 *失败* 都不要继续往下走。\n\n## 1. 版本对齐\n\n- 根 package.json 与包内 version 一致\n- README 表格同步到 *最新行*\n- 运行 `node scripts/sync-pkg-readme.cjs` 更新 npm 页面文档\n\n## 2. 验证\n\n1. npm pack 干跑检查 files 白名单\n2. 实测基线版本加载通过\n3. CI publish.yml 绿灯\n\n> 可用性是底线：上下文切换后的在途响应覆盖、渲染 bailout、时区偏移都要回归。\n\n### 3. 参考命令\n\n```bash\nnpm pack --dry-run\nnode scripts/sync-pkg-readme.cjs\n```\n\n发布记录见 [插件仓库](https://example.com/dsh-notes)，配图：\n\n![发布流程示意](assets/release-flow.svg)\n\n---\n\n*完成于 2026-09-30 · 下次发版前复核*'
+    const SCEN_A = '# DSH 插件发布清单\n\n发布前按顺序走完 **四个阶段**，任何一步 *失败* 都不要继续往下走。\n\n## 1. 版本对齐\n\n- 根 package.json 与包内 version 一致\n- README 表格同步到 *最新行*\n- 运行 `node scripts/sync-pkg-readme.cjs` 更新 npm 页面文档\n\n## 2. 验证\n\n1. npm pack 干跑检查 files 白名单\n2. 实测基线版本加载通过\n3. CI publish.yml 绿灯\n\n> 可用性是底线：上下文切换后的在途响应覆盖、渲染 bailout、时区偏移都要回归。\n\n### 3. 参考命令\n\n```bash\nnpm pack --dry-run\nnode scripts/sync-pkg-readme.cjs\n```\n\n发布记录见 [插件仓库](https://example.com/dsh-notes)，配图：\n\n![发布流程示意](assets/release-flow.svg)\n\n## 4. 发布记录\n\n| 版本 | 日期 | 状态 |\n| --- | :---: | ---: |\n| 0.1.6 | 2026-09-15 | 已发布 |\n| 0.1.7 | 2026-09-28 | 当前 |\n\n---\n\n*完成于 2026-09-30 · 下次发版前复核*'
     const SCEN_C = '# 面板截图归档\n\nv2 面板三视图，**选中态**配色已按实机 token 校准：\n\n![面板-列表态](assets/panel-list.png)\n\n![面板-编辑态](assets/panel-edit.png)\n\n> 后续截图统一走 `assets/` 目录，命名 panel-*.png。\n\n用工具栏「图片」按钮、Ctrl+V 粘贴或拖拽文件到富文本区即可插入新图。'
     const cases = [
       ['标题/粗体/斜体/行内码', '# 标题 A\n\n带 **粗体** 和 *斜体* 还有 `code` 的段落。'],
@@ -2401,13 +2401,86 @@ async function main() {
       assert(rt.same, '往返差异 @' + name + '\n--- 序列化 ---\n' + rt.md2 + '\n--- 二轮 ---\n' + rt.md3 + (rt.h1 !== rt.h2 ? '\n--- h1 ---\n' + rt.h1 + '\n--- h2 ---\n' + rt.h2 : ''))
     }
   })
-  await t('降级分析：白名单外结构检出（表格/嵌套引用/h4/任务列表/行内 HTML）+ 围栏代码块豁免', () => {
+  await t('L1 行内 HTML：转义字面量渲染（无 XSS）+ 序列化逐字还原 + 不再降级（真实样本锁死）', () => {
     assert(kernelFn, 'kernelFn 可用')
-    // 原型场景 B 同款：4 类各检出一次（行内 HTML 另测）
-    const dB = kernelFn.analyzeMarkdown('# o2oa 环境机器清单\n\n| 机器 | IP |\n| --- | --- |\n\n> a\n> > b\n\n#### 附\n\n- [ ] x\n- [x] y')
-    assert(!dB.ok && dB.reasons.length === 4, '场景B 检出 4 类（实得 ' + JSON.stringify(dB.reasons) + '）')
-    assert(dB.reasons.map(r => r.label).join(',') === '表格,嵌套引用,四级及以下标题,任务列表', '检出标签与行号')
-    assert(kernelFn.analyzeMarkdown('# t\n\n<div>html</div>').reasons.some(r => r.label === '行内 HTML'), '行内 HTML 检出')
+    // 首条 = 实战样本 n-muc4p3jdydlc 第 69 行原文（行内代码含 <input type="date">，旧门禁下整篇降级锁源码）
+    const cases = [
+      '**根因**：混用 UTC 表示和本地日期——`iso.slice(0,10)` 切出来是 UTC 日期，`toISOString()` 也是 UTC，而 `<input type="date">` 给的是本地日期。',
+      '使用 <input type="date"> 与 <div class="x"> 标签。',
+      '属性双引号与 &：<input type="text" value="a&b"> 原样呈现。',
+      "属性单引号 <input type='text'> 与收尾 </div>。",
+      '# 标题里的 <span> 标签',
+      '- 列表项里的 <input> 标签',
+      '> 引用里的 <br> 标签',
+      '<div>独占一行的裸标签</div>',
+      'a < b 且 c > d（比较运算不是标签）'
+    ]
+    for (const md of cases) {
+      const h1 = kernelFn.renderMarkdown(md)
+      // 字面量渲染：产物中用户输入的 < 全部转为 &lt; 实体，无可解析裸标签（XSS 面为零）
+      assert(!/<(input|div|span|br)\b/.test(h1.replace(/&lt;/g, '')), '渲染产物不含裸 HTML 标签 @' + md.slice(0, 24))
+      assert(h1.indexOf('&lt;') >= 0, '渲染产物为转义字面量 @' + md.slice(0, 24))
+      // 逐字往返：源码 → 渲染 → 序列化 === 源码（escapeMd 不动 <>，文本节点逐字还原）
+      const md2 = kernelFn.serializeRich(v3ParseHtml(h1))
+      assert.strictEqual(md2, md, '逐字往返一致 @' + md.slice(0, 24) + '\n--- 序列化 ---\n' + md2)
+      // 显示保真 + 定点稳定
+      const h2 = kernelFn.renderMarkdown(md2)
+      assert.strictEqual(h2, h1, '二轮渲染逐字节一致 @' + md.slice(0, 24))
+      assert.strictEqual(kernelFn.serializeRich(v3ParseHtml(h2)), md2, '序列化定点稳定 @' + md.slice(0, 24))
+      // 不再降级
+      assert(kernelFn.analyzeMarkdown(md).ok, '行内 HTML 不再触发降级 @' + md.slice(0, 24))
+    }
+  })
+  await t('L2 GFM 表格：只读渲染（th/td/对齐/contenteditable=false）+ 序列化逐字回吐 + 混合内容/异形/转义管道/XSS + 不再降级', () => {
+    assert(kernelFn, 'kernelFn 可用')
+    // ① 渲染断言：table.dsh-notes-table 只读岛屿 + th/td + 三向对齐样式 + data-md-src 记原始源码
+    const TBL = '| 机器 | IP | 状态 |\n| :--- | :---: | ---: |\n| **主**节点 | 10.102.90.138 | 在线 |\n| a\\|b 转义管 | x | y |'
+    const h1 = kernelFn.renderMarkdown(TBL)
+    assert(h1.indexOf('<table class="dsh-notes-table" contenteditable="false" data-md-src="') >= 0, '只读表格容器（contenteditable=false + data-md-src 记源码）')
+    assert(h1.indexOf('<th style="text-align:left">机器</th>') >= 0 && h1.indexOf('<th style="text-align:center">IP</th>') >= 0 && h1.indexOf('<th style="text-align:right">状态</th>') >= 0, '表头三向对齐样式（:---/ :---: /---:）')
+    assert(h1.indexOf('<td style="text-align:left"><strong>主</strong>节点</td>') >= 0, '单元格行内渲染（粗体进单元格）')
+    assert(h1.indexOf('a|b 转义管') >= 0 && (h1.match(/<td/g) || []).length === 6, '\\| 转义管道不切列（2 行 × 3 列 = 6 个 td）、显示还原为 |')
+    // ② round-trip 逐字一致（硬约束）：序列化 = data-md-src 逐字回吐（含对齐分隔行）
+    const md2 = kernelFn.serializeRich(v3ParseHtml(h1))
+    assert.strictEqual(md2, TBL, '表格源码逐字回吐（含对齐分隔行）\n--- 序列化 ---\n' + md2)
+    // 显示保真 + 定点稳定
+    const h2 = kernelFn.renderMarkdown(md2)
+    assert.strictEqual(h2, h1, '二轮渲染逐字节一致')
+    assert.strictEqual(kernelFn.serializeRich(v3ParseHtml(h2)), md2, '序列化定点稳定')
+    // ③ 混合内容：表格嵌在标题/段落/列表之间，整篇逐字一致
+    const MIX = '# 发布记录\n\n开头段落 **粗**。\n\n| 版本 | 日期 |\n| --- | --- |\n| 0.1.6 | 2026-09-15 |\n| 0.1.7 | 2026-09-28 |\n\n- 收尾项\n\n> 引用收尾'
+    const m2 = kernelFn.serializeRich(v3ParseHtml(kernelFn.renderMarkdown(MIX)))
+    assert.strictEqual(m2, MIX, '表格+周边混合内容逐字一致\n--- 序列化 ---\n' + m2)
+    // ④ 不再降级（黑名单已移除「表格」）
+    assert(kernelFn.analyzeMarkdown(TBL).ok && kernelFn.analyzeMarkdown(MIX).ok, '表格不再触发降级')
+    // ⑤ 异形表格（无外框管道、表头/分隔行格数不齐、表体多格）同样只读渲染且源码逐字（补齐/截尾仅影响显示）
+    const WEIRD = 'a | b | c\n- | -\n1 | 2 | 3 | 4'
+    assert.strictEqual(kernelFn.serializeRich(v3ParseHtml(kernelFn.renderMarkdown(WEIRD))), WEIRD, '异形表格逐字回吐')
+    assert(kernelFn.analyzeMarkdown(WEIRD).ok, '异形表格不降级')
+    // ⑥ XSS：单元格内容与源码记录全量转义，恶意内容也逐字回吐
+    const EVIL = '| a |\n| --- |\n| <img onerror=alert(1)> |'
+    const eh = kernelFn.renderMarkdown(EVIL)
+    assert(eh.indexOf('<img onerror') < 0 && eh.indexOf('&lt;img') >= 0, '单元格恶意 HTML 转义为字面量')
+    assert(v3ParseHtml(eh).querySelectorAll('img').length === 0, '渲染产物零 img 节点（data-md-src 只是字符串属性）')
+    assert.strictEqual(kernelFn.serializeRich(v3ParseHtml(eh)), EVIL, '恶意内容表格逐字回吐')
+  })
+  await t('降级分析：白名单外结构检出（嵌套引用/h4/任务列表/多行 HTML 块）+ L2 表格放行 + 行内 HTML 放行 + 围栏代码块豁免', () => {
+    assert(kernelFn, 'kernelFn 可用')
+    // 原型场景 B 同款：正文仍含 GFM 表格（L2 起只读渲染、不再降级），降级检出 4 类（不含表格）
+    const dB = kernelFn.analyzeMarkdown('# o2oa 环境机器清单\n\n| 机器 | IP |\n| --- | --- |\n\n> a\n> > b\n\n#### 附\n\n- [ ] x\n- [x] y\n\n<div class="legacy">\n<span>旧系统拷贝的标记</span>\n</div>')
+    assert(!dB.ok && dB.reasons.length === 4, '场景B 检出 4 类（表格不再计入；实得 ' + JSON.stringify(dB.reasons) + '）')
+    assert(dB.reasons.map(r => r.label).join(',') === '嵌套引用,四级及以下标题,任务列表,多行 HTML 块', '检出标签与顺序')
+    // L2：表格放行（只读渲染 + 序列化逐字回吐，行为级断言见 L2 专项用例）
+    assert(kernelFn.analyzeMarkdown('| 机器 | IP |\n| --- | --- |\n| A | 10.0.0.1 |').ok, 'GFM 表格不再降级（L2）')
+    // L1：行内/单行 HTML 放行（从黑名单移除「行内 HTML」）
+    assert(kernelFn.analyzeMarkdown('# t\n\n<div>html</div>').ok, '单行裸标签独占一行放行')
+    assert(kernelFn.analyzeMarkdown('而 `<input type="date">` 给的是本地日期。').ok, '行内代码含 HTML 放行（实战样本）')
+    assert(kernelFn.analyzeMarkdown('<div>a</div>\n\n<div>b</div>').ok, '空行隔开的单行标签放行')
+    // 多行 HTML 块仍降级：连续 ≥2 行以 <tag>/</tag> 开头（段落合并丢换行、逐字往返不保）
+    const dH = kernelFn.analyzeMarkdown('<div class="legacy">\n<span>旧系统拷贝的标记</span>\n</div>')
+    assert(!dH.ok && dH.reasons.length === 1 && dH.reasons[0].label === '多行 HTML 块' && dH.reasons[0].line === 1, '多行 HTML 块检出（记段首行号）')
+    assert(!kernelFn.analyzeMarkdown('<div>a</div>\n<div>b</div>').ok, '连续两行裸标签构成多行 HTML 块')
+    assert(kernelFn.analyzeMarkdown('```html\n<div>\n<span>x</span>\n</div>\n```').ok, '围栏代码块内多行 HTML 豁免')
     assert(kernelFn.analyzeMarkdown('```\n| a | b |\n```\n\n> > 在代码块外才算\n```\n正文').ok === false, '代码块外的嵌套引用仍检出')
     assert(kernelFn.analyzeMarkdown('```\n| a | b |\n> > 嵌套引用\n#### h4\n```').ok, '围栏代码块内容不参与判定（豁免）')
     assert(kernelFn.analyzeMarkdown('# 标题\n\n正常 **段落**').ok, '白名单正文通过')
@@ -3879,7 +3952,7 @@ async function main() {
     const cssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
     const cssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const pair of [['styles.css', cssDev], ['发布包 lib/styles.css', cssPkg]]) {
-      for (const cls of ['.dsh-notes-modeseg{', '.dsh-notes-modeseg-seg{', '.dsh-notes-modeseg-seg.dis{', '.dsh-notes-deg{', '.dsh-notes-rtb{', '.dsh-notes-rtb-btn{', '.dsh-notes-rich{', '.dsh-notes-rich img{', '.dsh-notes-rich-wrap.drop', '.dsh-notes-imgup-zone{', '.dsh-notes-imgup-prog{']) {
+      for (const cls of ['.dsh-notes-modeseg{', '.dsh-notes-modeseg-seg{', '.dsh-notes-modeseg-seg.dis{', '.dsh-notes-deg{', '.dsh-notes-rtb{', '.dsh-notes-rtb-btn{', '.dsh-notes-rich{', '.dsh-notes-rich img{', '.dsh-notes-rich-wrap.drop', '.dsh-notes-imgup-zone{', '.dsh-notes-imgup-prog{', '.dsh-notes-rich table.dsh-notes-table{', '.dsh-notes-rich table.dsh-notes-table th']) {
         assert(pair[1].indexOf(cls) >= 0, pair[0] + ' 缺双模式样式：' + cls)
       }
       assert(pair[1].indexOf('--nok') >= 0, pair[0] + ' --nok 同步态绿点 token')
@@ -3894,6 +3967,29 @@ async function main() {
     assert(protoV3.indexOf('notes-asset-upload') >= 0 && protoV3.indexOf('/dsh-notes/asset?file=assets/xxx') >= 0, '原型头部注释含真实上传/显示契约')
     assert(protoV3.indexOf("$('srcTa').addEventListener('paste'") >= 0 && protoV3.indexOf("$('srcTa').addEventListener('drop'") >= 0, '原型源码模式粘贴/拖拽图片入口已回写')
     assert(protoV3.indexOf('selftest=1') >= 0 && protoV3.indexOf('roundtripCheck') >= 0, '原型自测钩子保留')
+    // L1 门禁放宽回写：DEG_RULES 移除「行内 HTML」、新增多行 HTML 块判定 + 场景 B 降级示例改含多行 HTML 块 + 自测覆盖
+    assert(protoV3.indexOf('HTML_BLOCK_LINE') >= 0 && protoV3.indexOf('多行 HTML 块') >= 0, '原型多行 HTML 块降级规则已回写')
+    assert(protoV3.indexOf("label:'行内 HTML'") < 0, '原型黑名单已移除「行内 HTML」')
+    assert(protoV3.indexOf('<div class="legacy">\\n<span>旧系统拷贝的标记</span>\\n</div>') >= 0, '原型场景 B 含多行 HTML 块降级示例')
+    assert(protoV3.indexOf('行内 HTML 字面量逐字往返') >= 0 && protoV3.indexOf('多行 HTML 块仍降级') >= 0, '原型自测含 L1 用例')
+    // L2 门禁放宽回写：黑名单移除「表格」+ 只读渲染（dsh-notes-table/contenteditable=false/data-md-src）+ 场景 A 表格样本 + 点击提示 + 样式 + 自测覆盖
+    assert(protoV3.indexOf("key:'table'") < 0 && protoV3.indexOf("label:'表格'") < 0, '原型黑名单已移除「表格」（L2）')
+    assert(protoV3.indexOf('splitTblRow') >= 0 && protoV3.indexOf('parseTblDelims') >= 0 && protoV3.indexOf('isTblStart') >= 0, '原型表格解析三件套已回写')
+    assert(protoV3.indexOf('<table class="dsh-notes-table" contenteditable="false" data-md-src="') >= 0, '原型表格只读渲染形态已回写')
+    assert(protoV3.indexOf('| 版本 | 日期 | 状态 |') >= 0, '原型场景 A 含表格样本（L2 正常流演示）')
+    assert(protoV3.indexOf('表格为只读，请切换源码模式编辑该区域') >= 0, '原型只读表格点击提示已回写')
+    assert(protoV3.indexOf('.rich table.dsh-notes-table{') >= 0, '原型表格只读样式已回写')
+    assert(protoV3.indexOf('L2 表格 round-trip 逐字一致') >= 0 && protoV3.indexOf('L2 表格不再降级') >= 0, '原型自测含 L2 用例')
+  })
+  await t('L2 表格只读交互：点击表格区块 toast 提示 + 黑名单移除（面板双端 + app.html）', () => {
+    for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
+      assert(pair[1].indexOf("ev.target.closest('table.dsh-notes-table')") >= 0, pair[0] + ' 富文本表格点击委托')
+      assert(pair[1].indexOf('表格为只读，请切换源码模式编辑该区域') >= 0, pair[0] + ' 只读 toast 文案')
+      assert(pair[1].indexOf("{ key: 'table', label: '表格'") < 0, pair[0] + ' 降级黑名单已移除表格（L2）')
+    }
+    assert(v3AppSrc.indexOf("ev.target.closest('table.dsh-notes-table')") >= 0 && v3AppSrc.indexOf('表格为只读，请切换源码模式编辑该区域') >= 0, 'app.html 表格点击 toast')
+    assert(v3AppSrc.indexOf("{ key: 'table', label: '表格'") < 0, 'app.html 黑名单已移除表格')
+    assert(v3AppSrc.indexOf('.rich table.dsh-notes-table{') >= 0, 'app.html 表格只读样式')
   })
   await t('速记卡片排除富文本划选（面板 + 发布包；选区归编辑器工具栏）', () => {
     for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
