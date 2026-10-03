@@ -84,18 +84,19 @@ dsh plugin --profile web remove dsh-notes-plugin       # 卸载（不删数据�
 - **检索**：面板搜索框（本地即时过滤 + 250ms 防抖全文兜底，取并集）、筛选中心（「筛选(N)」按钮 + 分组 popover——状态组 置顶/已注入/曾注入/敏感 与类型组五 kind 均多选，组内 OR 跨组 AND，激活条件 chips 可单独移除，曾注入按 slim 字段 feature-detect；排序独立控件 时间/引用/相关度，条件与排序持久化记忆）、`note_search` 工具
 - **键盘流**：`Ctrl+K` 搜索、`Ctrl+N` 新建、`j/k`/`↑↓` 移动、`Enter` 打开、`Esc` 关闭（输入框内不抢键）
 - **归档整理（显式）**：标题栏「归档」先 dry-run 预览（`notes-archive-preview`，含引导气泡），勾选速记组后才合并（`notes-archive` 白名单组，host 先全量校验再动手；toast 可撤销一次 `notes-archive-undo`）；手动笔记已摘出自动分组（防误并），用列表「选择」多选合并；原笔记软删除（`.bak` 备份）可恢复
-- **整理建议器**：设置卡片「整理建议」——`notes-suggest` dry-run 零写入提名三类候选：速记归档组 / 过期未引用（kind=note/link 且超 `staleDays` 且从未被 `note_get` 命中）/ 孤儿笔记（无 `[[双链]]` 出链与反向链接、未注入、零引用的普通笔记）；只提名不执行——直达归档预览 / confirm 后批量软删 / 孤儿仅展示逐条跳转
+- **整理建议器**：设置卡片「整理建议」——`notes-suggest` dry-run 零写入提名四类候选：速记归档组 / 过期未引用（kind=note/link 且超 `staleDays` 且从未被 `note_get` 命中）/ 孤儿笔记（无 `[[双链]]` 出链与反向链接、未注入、零引用的普通笔记）/ 日志卫生（工作记忆 v0：超 7 天周聚合 + 超 90 天月聚合提名）；只提名不执行——直达归档预览 / confirm 后批量软删 / 孤儿仅展示逐条跳转 / 日志卫生仅展开明细
+- **工作记忆 v0（工作日志沉淀）**：设置卡片「工作记忆」区「启用沉淀引导」——创建一条预填约定笔记（`inject=true`、`tag memory-guide` 发现键、作用域三档可选），引导 Agent 在任务收尾或你说「记一下今天的工作」时把会话结论写为 `kind=log` 工作日志（模板四节：做了什么/改动/遗留与后续/相关笔记双链）；日志默认隐身——`inject` 硬关闭、目录缺省不进、默认列表与默认搜索不含（筛选中心类型「日志」为专入口），永不被过期/孤儿清理提名；超窗旧日志由整理建议器「日志卫生」段按 工作区×周/月 提名聚合（只提名不执行，窗口在设置卡片可调）；启用时做语义重叠检查（命中「记录/日志/总结/反馈」类已注入约定需确认），停用 = 关闭该约定注入（规格 `design/agent-memory-v0.md`）
 - **编辑器双模式（源码 ⇄ 富文本）**：meta 行两段开关或 `Ctrl+/` 切换——富文本为受限 WYSIWYG（白名单：h1-h3 / 列表 / 引用 / 围栏代码块 / 粗斜体 / 行内码 / 链接（仅 http/https）/ 图片 / 双链，render ⇄ serialize 双向 round-trip 无损，900ms 防抖回写源码）；富文本工具栏（加粗/斜体/链接/图片）+ 粘贴 HTML 白名单清洗（h4-6 降段落、script/style 丢弃）；含白名单外语法时富文本入口置灰 + 横幅给出原因，删净即恢复
 - **富文本门禁放宽**：行内 HTML（`<b>`/`<i>` 等）字面渲染、GFM 表格只读渲染（`contenteditable=false` 原子岛屿，序列化逐字回吐）——不再整篇降级，仅多行 HTML 块 / 嵌套引用等歧义结构才禁用富文本
 - **✨ 整理（AI 按模板重写）**：编辑器 meta 行「整理」按钮——当前草稿经 `notes-ai-organize`（`notes-quick-instruct` 同款 LLM 通道）按 `kind` 模板结构化重写（决策→背景/结论/理由，待办→checkbox，链接→链接/说明，引用→引用块/出处，机器/运维信息→环境/机器清单/账号/门户）；替换后走自动保存，toast 可撤销一次；正文超 12000 字报错引导分段
 - **kind 模板骨架**：新建笔记按类型预填骨架（同上模板；`note` 为自由格式空正文）——面板新建 modal 可选类型，全窗口页随筛选中心类型组（恰选 1 个时按该类型预填）
 - **图片支持**：正文 `![](assets/xxx)` 相对路径引用（`assets/` 目录落盘），粘贴 / 拖拽 / 工具栏按钮三入口上传（`notes-asset-upload`：mime 白名单 png/jpeg/gif/webp、≤5MB；`GET /dsh-notes/asset` 供 `<img>` 加载，防路径穿越）；超过 1MB 的 PNG/JPEG 上传前在前端 canvas 降质转 JPEG（长边 ≤2560px、质量阶梯 0.85→0.45、透明底刷白；GIF/WebP 不动以保动画/透明），上传弹窗显示「已压缩 原 → 现」；归档备份与导入导出连带资产
 - **资产清理**：设置卡片「资产清理」——`notes-assets-prune` 扫描 `assets/` 中未被任何笔记正文引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删），dry-run 预览勾选后才删除；发布版静态包走真删除，开发版为清空占位（0 字节墓碑）
-- **回收站**：侧栏底部「回收站」（面板与全窗口页同入口）——列出软删除的笔记（`notes-list` 参数化 `includeDeleted`），逐条「恢复」（`notes-restore`）或「彻底删除」（`notes-purge`，confirm 双确认「彻底删除不可恢复」）；彻底删除仅限已软删除笔记（host 安全闸），`.md` 与归档备份 `.md.bak` 一并移除——发布版静态包走真删除，开发版为清空占位（0 字节墓碑，全链路视作不存在）
+- **回收站**：侧栏底部「回收站」（面板与全窗口页同入口）——列出软删除的笔记（`notes-list` 参数化 `includeDeleted`），逐条「恢复」（`notes-restore`）或「彻底删除」（`notes-purge`，confirm 双确认「彻底删除不可恢复」）；彻底删除仅限已软删除笔记（host 安全闸），`.md` 与归档备份 `.md.bak` 及 `.history/<id>` 快照历史一并移除——发布版静态包走真删除，开发版为清空占位（0 字节墓碑，全链路视作不存在）
 - **敏感笔记脱敏**：编辑器 meta 行 🔒 toggle（`sensitive=true`）——注入系统提示时正文按行打码（键名与结构保留、值遮蔽为 `******（敏感，note_get <id> 获取）`，agent 须 `note_get` 取原文；目录注入标题同样打码并加 🔒 标记）；命中密码/密钥模式自动识别——速记直接落 `sensitive=true`，手动创建回传 `sensitiveSuggested` 建议（不强制）
-- **注入增强**：时效衰减提醒（目录行对超 `staleDays`（缺省 90 天，0=关闭）未更新的 note/link 尾注 ⚠）+ 注入体积预算（`injectBudgetChars` 字符预算，超限截断并标注）+ 设置卡片「注入预览」（`notes-inject-preview` 实时渲染注入产物 + 脱敏/时效/截断统计，缺省全局视角、可按会话过滤）+ `injectEver` 曾注入粘性标记（只升不降，驱动筛选中心「曾注入」与列表行徽章）
+- **注入增强**：时效衰减提醒（目录行对超 `staleDays`（缺省 90 天，0=关闭）未更新的 note/link 尾注 ⚠）+ 注入体积预算（`injectBudgetChars` 字符预算，超限截断并标注）+ 设置卡片「注入预览」（`notes-inject-preview` 实时渲染注入产物 + 脱敏/时效/截断统计，三档视角：缺省全局 / 工作区并集 / 单会话过滤）+ `injectEver` 曾注入粘性标记（只升不降，驱动筛选中心「曾注入」与列表行徽章）
 - **双链与反向链接**：正文 `[[id或标题]]` 互链（id 精确优先、标题全库精确匹配，解析不到按纯文本）——列表行尾双链标记、富文本内点击跳转目标笔记、详情区「反向链接」面板列出全库指向当前笔记的其他条目（全库惰性索引，未热时提示「索引中…」）
-- **导入 / 导出**：设置卡片「数据」区入口——全库目录快照（含 `folders.json`，不打包不压缩，目录即格式）；「导出单文件…」按范围（全部/文件夹/标签）把笔记拼接为单个自包含 Markdown（每篇 = 标题 + 元信息块 + 正文，可选目录页，图片 base64 内联，可直接分享；单文件超 20MB 告警但仍照常导出）；导入两步式：先预览（新增/相同/不同分类 + 文件夹合并统计）再执行，默认跳过内容不同的冲突、勾选后才覆盖；执行前自动备份，只增改不删
+- **导入 / 导出**：设置卡片「数据」区入口——全库目录快照（含 `folders.json`，不打包不压缩，目录即格式；`.history` 版本历史默认不含，RPC `notes-export` 传 `includeHistory: true` 连带）；「导出单文件…」按范围（全部/文件夹/标签）把笔记拼接为单个自包含 Markdown（每篇 = 标题 + 元信息块 + 正文，可选目录页，图片 base64 内联，可直接分享；单文件超 20MB 告警但仍照常导出）；导入两步式：先预览（新增/相同/不同分类 + 文件夹合并统计）再执行，默认跳过内容不同的冲突、勾选后才覆盖；执行前自动备份（含 `.history`），只增改不删；导入合并 `.history` 仅对新增笔记连带，同 id 冲突跳过历史合并
 - **Apple Notes 质感**：0 圆角列表项、纯背景选中、hover 才显操作、自动保存（底部提示「已自动保存 HH:MM」）、暗色模式适配
 - **半独立应用**：浏览器直接访问 `/dsh-notes-app`（与 DSH Web 同源——把 DSH 页面地址的路径换成 `/dsh-notes-app` 即可）打开全窗口笔记页——包内 `app.html` 与面板共享 UI v2 和同一套 RPC 数据层，不进会话也能管理笔记（记录 / 文件夹 / 派发 / 导入导出 / 设置全可用）
 - **性能**：内存缓存（写入同步回填，列表命中零磁盘读）+ 正文按需加载 + 懒加载分页（每屏 50 条）；面板位置/尺寸/列宽持久化到 `localStorage`
@@ -124,11 +125,16 @@ dsh plugin --profile web remove dsh-notes-plugin       # 卸载（不删数据�
 ~/.dsh/notes/
   n-xxxxxxxx.md        # 一条笔记 = 一个文件
   n-xxxxxxxx.md.bak    # 归档/覆盖时的备份
+  .history/            # 快照式版本历史（每次保存前自动快照上一版；详见「版本历史」）
+    n-xxxxxxxx/        # 按笔记分目录
+      2026-09-17T06-02-34.123Z.ab1.cd2.md   # <UTC 时间戳>.<内容 hash>.md（纯文本，不压缩不加密）
   assets/              # 图片资产（base64 文本落盘；正文以 ![](assets/xxx) 相对路径引用；孤儿资产可用「设置 → 资产清理」清理）
   folders.json         # 虚拟文件夹清单 [{id, name, order}]（缺失/损坏自动兜底为空清单，不影响笔记主流程）
   settings.json        # 面板设置（LLM 模型选配、catalogEnabled 目录注入总开关、staleDays 时效阈值、injectBudgetChars 注入预算等）
   perf-report.json     # 面板性能遥测（可随时删除）
 ```
+
+**版本历史（快照式）**：每次保存落盘前，host 自动把被替换的上一版快照进 `.history/<笔记 id>/`（与编辑器防抖对齐，一次真实保存 = 一份快照；无变化的重复保存按内容 hash 去重跳过）。保留策略：1 小时内每版全留 → 当天每小时 1 版 → 7 天内每天 1 版 → 超 7 天淘汰；单笔记最多 20 版；全库 `.history` 总预算 50MB（超限时跨笔记淘汰最旧快照）。回收站「彻底删除」会连带清空该笔记的整棵历史。历史是本地安全网：导出默认**不含** `.history`（RPC `notes-export` 加 `includeHistory: true` 才连带），导入前自动备份恒含历史，导入合并仅对库内不存在的新笔记连带其历史（同 id 冲突跳过，两库历史不混杂）。
 
 首次启动若检测到旧的开发版笔记目录（`<repo>/notes/`），会**一次性复制**缺失的文件到 `~/.dsh/notes`（只复制、不删除，同名跳过）。
 
@@ -173,17 +179,17 @@ deleted: "false"       # 软删除标记
 ## 源码与开发
 
 - 仓库：<https://github.com/PPawnsir/dsh-notes-plugin>
-- 本包（`packages/dsh-notes-plugin/`）由开发版 bootstrap 插件生成：`index.mjs` 为 host 端 ESM 静态包，`lib/client.js` 由 `scripts/build-dist.cjs` 从 `client-impl.js` 机械转换（带转换计数断言，漏改即中止），`app.html` 为 `/dsh-notes-app` 全窗口笔记页（与 `design/notes-ui-v2.html` 原型共享同一套 UI/交互，仅数据层不同）
+- 本包（`packages/dsh-notes-plugin/`）由开发版 bootstrap 插件生成：`index.mjs` 为 host 端 ESM 静态包，`lib/client.js` 由 `scripts/build-dist.cjs` 从 `src/client-impl.js` 机械转换（带转换计数断言，漏改即中止），`app.html` 为 `/dsh-notes-app` 全窗口笔记页（与 `design/notes-ui-v2.html` 原型共享同一套 UI/交互，仅数据层不同）
 - 回归测试（内存 mock，不触碰真实笔记）：
 
 ```sh
-node scripts/build-dist.cjs           # 改完 client-impl.js 后刷新 lib/client.js
+node scripts/build-dist.cjs           # 改完 src/client-impl.js 后刷新 lib/client.js
 node --check packages/dsh-notes-plugin/index.mjs
 node --check packages/dsh-notes-plugin/lib/client.js
-node check.js                         # 486 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录注入 + 导入导出 + 半独立页 + 双模式编辑器 + 敏感脱敏 + 注入增强 + 遥测/双链）
+node check.js                         # 507 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录注入 + 导入导出 + 半独立页 + 双模式编辑器 + 敏感脱敏 + 注入增强 + 遥测/双链 + 快照式历史引擎）
 ```
 
-详见 [DEVELOPMENT.md](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/DEVELOPMENT.md) 与 [tests/e2e.md](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/tests/e2e.md)。
+详见 [DEVELOPMENT.md](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/DEVELOPMENT.md)。
 
 ## License
 

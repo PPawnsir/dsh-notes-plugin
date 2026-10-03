@@ -6,6 +6,10 @@ notes-backup-*/
 .last-host-load
 perf-report.json
 debug.log
+*.log
+
+# 本地插件市场注册缓存（本机生成，不进版本库）
+data/
 
 # 依赖与系统
 node_modules/

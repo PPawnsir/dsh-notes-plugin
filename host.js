@@ -12,7 +12,7 @@ return {
     ctx.effect(() => () => { cancelled = true })
     ;(async () => {
       try {
-        const ft = await fs.resolve(PLUGIN_DIR + '\\host-impl.js')
+        const ft = await fs.resolve(PLUGIN_DIR + '\\src\\host-impl.js')
         const src = await fs.readText(ft)
         if (cancelled) return
         // pluginDir 作为参数注入，impl 内所有路径都从它派生（可移植）

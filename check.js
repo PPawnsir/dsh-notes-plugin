@@ -1,5 +1,5 @@
 // DSH 笔记插件回归测试套件
-// 架构：host.js/client.js = 引导壳；host-impl.js/client-impl.js = 真正实现（磁盘文件）
+// 架构：host.js/client.js = 引导壳；src/host-impl.js/src/client-impl.js = 真正实现（磁盘文件）
 // 测试：host 全链路逻辑（内存 mock fs/llm）+ 工具 schema 校验 + 实现源码结构断言
 // 不触碰真实笔记目录。
 const fsNative = require('fs')
@@ -9,21 +9,147 @@ const assert = require('assert')
 const { pathToFileURL } = require('url')
 
 const DIR = 'D:\\deepseek-work\\dsh-notes-plugin'
+// 开发版源码集中在 src/（v0.3 工程整理）；路径引用统一收敛为以下三个常量，断言体内不再散落拼路径
+const SRC_HOST = path.join(DIR, 'src', 'host-impl.js')
+const SRC_CLIENT = path.join(DIR, 'src', 'client-impl.js')
+const SRC_STYLES = path.join(DIR, 'src', 'styles.css')
 const bootHostSrc = fsNative.readFileSync(path.join(DIR, 'host.js'), 'utf8')
 const bootClientSrc = fsNative.readFileSync(path.join(DIR, 'client.js'), 'utf8')
-const hostSrc = fsNative.readFileSync(path.join(DIR, 'host-impl.js'), 'utf8')
-const clientSrc = fsNative.readFileSync(path.join(DIR, 'client-impl.js'), 'utf8')
+const hostSrc = fsNative.readFileSync(SRC_HOST, 'utf8')
+const clientSrc = fsNative.readFileSync(SRC_CLIENT, 'utf8')
 // P2：发布版静态包 host（ESM）。开发版 host-impl.js 之上的回归照旧，这里额外覆盖静态包。
 const INDEX_PATH = path.join(DIR, 'packages', 'dsh-notes-plugin', 'index.mjs')
 const indexSrc = fsNative.readFileSync(INDEX_PATH, 'utf8')
 
-let passed = 0, failed = 0
+let passed = 0, failed = 0, skipped = 0
+// ===== 核心快检模式（--core / CHECK_CORE=1）=====
+// 默认无参 = 全量（输出与历史完全一致，check-result.txt 照常刷新）；--core 只跑 CORE 名单内的代表性断言。
+// 约定（DEVELOPMENT.md「测试」节）：worker 自测跑 --core，verifier / 发布前跑全量。
+// 实现注意：节间 mock 实例与造数代码（t() 之外）两种模式都照常执行——核心断言看到的共享状态与全量模式完全一致，
+// 只跳过 t() 断言体本身，不动任何断言语义。
+const CORE_MODE = process.argv.indexOf('--core') >= 0 || process.env.CHECK_CORE === '1'
+// CORE 名单按断言名精确匹配（全量 514 个断言名已验证唯一）。覆盖：RPC 面/缓存/quick 合并/搜索/软删/归档三连/
+// 工具路由/约定注入+分桶/injectTo/派发+闭环/静态包全链路（含迁移+资产路由+归档+perf）/设置持久化/构建可复现/
+// 编辑器 round-trip+XSS/文件夹/目录注入/资产上传/导入导出/三端内核同步/注入脱敏/预算截断/遥测计数/注入预览/整理建议/组合过滤/injectEver/img-path-hint/快照式历史引擎/LLM 用量统计/历史版本面板 UI/文件夹嵌套（parent/深度/cycle/子树过滤/cascade/导出子树 + UI 递归树/拖拽换父/级联 confirm/面包屑/深度设置行）。
+// 改断言名必须同步本名单——core 模式收尾时校验名单全部命中，未命中（改名/删除）计 1 个 failed，防静默失效。
+const CORE = new Set([
+  'host-impl.js 语法',
+  'client-impl.js 语法',
+  'token 语义映射 bg-layer 系 + 鲜蓝强调（开发版/发布包/原型/app.html 四处同步）',
+  'T1.1 工具瘦身 9→3',
+  'index.mjs 是 ESM（export name/inject/apply，无 bootstrap return）',
+  'index.mjs 保留 39 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传 + 历史版本三 RPC + 工作记忆 notes-memory-guide',
+  '两栏布局骨架（侧栏 + 编辑器通栏）',
+  'note_search 已注册',
+  'note_get 已注册',
+  'note_manage 已注册',
+  '创建返回 id',
+  '列表瘦身（不含 body）',
+  '缓存：第二次 list 零磁盘读',
+  'get 带正文',
+  'update 不读盘（缓存命中）',
+  'update 后列表 topic 已变',
+  '首次 quick 创建新笔记',
+  '同 session 窗口内合并',
+  '异步分类填主题',
+  '跨 session 不合并',
+  'notes-search RPC 命中正文且瘦身',
+  '删除后列表隐藏',
+  '恢复后列表可见',
+  'preview（dry-run）：零写入 + 手动笔记不进速记组',
+  'preview：速记按 sessionId 分组（≥2），手动/单条/已删不进组，dry-run 零写入',
+  '无 groups 归档：只合速记组 + 默认标题 + .bak 备份 + undo 事务落盘',
+  'undo 往返：成员批量还原 + 归档笔记软删 + undo 清空；二次 undo → undone=0',
+  'host-impl 应用成功（39 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide）',
+  'manage.create 返回 id',
+  'manage.archive 显式 groups 合并手动组（白名单 + title 覆盖）',
+  'kind 默认 note（向后兼容）',
+  'systemPrompt.context 已注册（order 130）',
+  'inject=true 笔记注入文本（双角色新文案：缺省进约定桶，单桶只出该桶标题）',
+  'injectTo=[不匹配会话] 不注入',
+  'injectTo=[当前会话短id] 注入',
+  'notes-dispatch 注入上下文+触发工作（agent.send）',
+  'notes-dispatch-done 标记完成停止注入',
+  '保底联动：notes-update 置 resolved 自动回执全部未闭环派发',
+  '事件回执：agent/status idle → 该会话未闭环派发 dispatchStatus=done（receipt=idle）',
+  'notes-quick-instruct LLM 解析失败回退等价 notes-quick',
+  'index.mjs 可被 ESM import（语法 + 顶层无副作用）',
+  'harness 缺失时兜底：3 条 exact 路由（RPC + 全窗口页面 + 资产）+ ctx.tools 3 工具 + 约定注入 order130 + 目录注入 order131',
+  'GET /dsh-notes/asset 防穿越/形态/白名单/404',
+  'RPC 200 + 首次启动迁移开发版笔记到 ~/.dsh/notes',
+  'notes-create 走静态包 RPC',
+  'notes-get 返回正文',
+  '静态包显式归档全链路：preview → 无参仅速记 → 显式 groups 手动组 → undo → notes-perf / notes-ping',
+  'harness 主通道：handle 经 harness.handle 注册（host.call 链路可用）',
+  'notes-settings-get：初始空设置 + models 目录（llm 探针）',
+  'notes-settings-set：保存 llm override 并持久化 settings.json',
+  'lib/client.js 是 scripts/build-dist.cjs 的产物且可复现',
+  '内核函数可提取（esc/renderMarkdown/serializeRich/analyzeMarkdown/sanitizeFragment）',
+  '往返保真：白名单 Markdown render→serialize→render 不变（10 用例，含原型自测 7 条 + 场景 A/C 正文）',
+  'XSS 红线：渲染全量转义 + 图片仅 assets/ 前缀放行（javascript:/外链/引号注入全拒绝）',
+  'notes-folders create：落盘 folders.json + order 递增；缺 name 报错',
+  'folder 字段数据往返：create 带 folder → get/list/磁盘 front-matter 一致',
+  '准入排除：resolved / superseded / recall=false / 约定去重',
+  'notes-asset-upload：mime 白名单 / 超 5MB / 非法 base64 / 空 data 拒绝',
+  '静态包导入/导出全链路（导出 → 预览分类 → 备份 → 默认跳过 diff → overwrite 覆盖 → folders 合并）',
+  '内核三端字节一致（client-impl.js / app.html / 发布包 lib/client.js，去公共缩进比较）',
+  'conventionText 对 sensitive=true 笔记正文按行打码 + 尾部计数行',
+  'notes-quick 命中敏感模式：直接落 sensitive=true + 返回 sensitiveSuggested（磁盘原文不动）',
+  'injectBudgetChars 预算截断：资料桶从最旧整条省略 + 提示行；约定桶永不截断；lastInjectChars 随渲染更新',
+  'note_get 命中计数：内存即时 +1（响应即见），60s 防抖期内零写盘；notes-get RPC 不计数',
+  'notes-inject-preview 返回结构：conventions/catalog 字符串 + stats 六字段数值正确',
+  'workspace 视角：该工作区全部会话注入并集 + 未知工作区退化全局 + sessionId 互斥优先',
+  'notes-suggest 三段返回 + 遥测/时效闭环 + 零写入（开发版独立实例）',
+  '组合过滤：sensitive / inject / kind 三态组合',
+  'injectEver 单向粘性（never unset）：开 → 关 → 仍 true；不传 inject 不动存量值',
+  'img-path-hint 标记块双包逐字节一致 + 可 eval（bodyHasImageRef/assetsHintLine 导出）',
+  'llm-usage 标记块双包逐字节一致 + 三调用点计量包装挂载（classify×2 + organize）',
+  'notes-usage-get：三功能分别计数 + today/week/month/allTime/byFeature 结构 + usage.json 防抖落盘',
+  '快照去重 + 红线：无变化重复保存不增快照，update 零新增读盘',
+  '导入导出适配：默认不含 .history / includeHistory 连带 / 备份含 / added 合并 / id 冲突跳过',
+  '历史引擎双包三 RPC 结构同步（host-impl ⇄ index.mjs，恢复走 persistNote 缺省快照）',
+  '历史版本三 RPC 契约：列表倒序零正文 / get 取正文 / 未知 ts 报错（开发版独立实例）',
+  '恢复前置快照（安全核心）：恢复前当前版自动入 .history + 恢复可再撤销回滚',
+  '历史版本面板四端同步：入口/modal/三 RPC 调用点（client-impl + 发布包 + app.html + 原型）',
+  '多选操作条批量删除（软删进回收站，三端同步）',
+  'notes-get includeDeleted：已删笔记正文只读可达（双包同步 + 行为级，缺省/墓碑仍拒绝）',
+  '回收站批量操作四端同步：全选/行勾选/选中计数 + 批量恢复/批量彻底删除（confirm 含 不可恢复+含历史版本+条数）',
+  '回收站行预览四端同步：notes-get includeDeleted 取已删正文 + 只读渲染（esc 先行零注入面）',
+  // 40. 文件夹嵌套（parent/maxFolderDepth/cycle/递归子树过滤/cascade/导出子树 + 双包标记块 + 静态包行为）
+  'folder-tree-helpers 标记块双包逐字节一致 + 可 eval（folderDepth/folderSubtreeIds/folderSubtreeHeight/checkFolderAttach）',
+  'maxFolderDepth 设置往返：缺省 3（无键）→ set 落盘回读 → 非法值报错 → null 恢复缺省',
+  '嵌套 parent 往返：create 带 parent 落盘 + list 返回 parent/depth + 存量零迁移（无 parent=根级 depth 1）',
+  '嵌套深度校验：缺省 3 层超限拒绝 / 边界第 3 层 OK / 调大与 0 不限放行',
+  'reorder 拖父级：cycle 拒绝（自身/子孙）+ 深度超限拒绝 + 合法改挂落盘',
+  '递归子树过滤：三层父子样本 notes-list / note_search / note_manage 同口径 + count 子树口径',
+  'notes-folders delete：缺省拒绝含子内容（needCascade）+ cascade:true 笔记软删进回收站可恢复落未分类',
+  'cascade 删除：缺省拒绝含子内容 + cascade:true 整棵删除笔记进回收站可恢复落未分类',
+  '导出子树：notes-export-single scope.folder 递归含子孙文件夹笔记',
+  '静态包嵌套文件夹：parent 建层/深度超限拒绝/cycle 拒绝/cascade 软删恢复落未分类',
+  // 41. 文件夹嵌套 UI（notes-nested-folder-ui：递归树/拖拽换父/级联删除 confirm/面包屑/maxFolderDepth 设置行，四端同步）
+  '嵌套 UI 递归树渲染：depth-first 递归 + 子树过滤/自动展开/计数 + 键盘导航顺序（四端同步）',
+  '嵌套 UI：新建子文件夹 + 拖拽换父（cycle 本地拦截 + 深度拒绝 toast）+ 同级排序（四端同步）',
+  '嵌套 UI：级联删除 confirm 子树统计 + 面包屑路径可点击 + maxFolderDepth 设置行（四端同步）',
+  // 42. 列表韧性（notes-list-union-defense：listDir 快照停滞窗口内 cache 并集补入）
+  'list-union-defense 标记块双包逐字节一致（host-impl / index.mjs）',
+  '并集补入：listDir 停滞窗口内新建笔记立即可见；watcher 恢复后幂等零重复',
+  '并集条目同一过滤管线：deleted/log 隐身/tag/kind/folder 与目录条目零差异',
+  '并集墓碑排除：purge 后缺省/回收站口径均不出现（含缓存墓碑条目）',
+  '静态包并集防御：停滞窗口新建笔记可见 + watcher 恢复幂等（index.mjs 行为）',
+])
+const coreSeen = new Set()
+let pendingSection = null   // core 模式：section 头延迟到首个被执行的断言前打印（无核心断言的 section 不输出空标题）
 // 必须 await fn()：大量测试是 async 的，不 await 会导致 promise 内断言未执行就 passed++（假通过）
 async function t(name, fn) {
+  if (CORE_MODE && !CORE.has(name)) { skipped++; return }
+  if (CORE_MODE) {
+    coreSeen.add(name)
+    if (pendingSection) { console.log('\n\x1b[1m' + pendingSection + '\x1b[0m'); pendingSection = null }
+  }
   try { await fn(); passed++; console.log('  \x1b[32m✓\x1b[0m ' + name) }
   catch (e) { failed++; console.log('  \x1b[31m✗\x1b[0m ' + name + '\n      ' + (e.message || e)) }
 }
-function section(name) { console.log('\n\x1b[1m' + name + '\x1b[0m') }
+function section(name) { if (CORE_MODE) { pendingSection = name; return } console.log('\n\x1b[1m' + name + '\x1b[0m') }
 
 async function main() {
   // ===== 1. 静态校验 =====
@@ -39,7 +165,7 @@ async function main() {
     assert(bootClientSrc.indexOf('notes-src') >= 0 && bootClientSrc.indexOf('new Function') >= 0, 'client bootstrap fetches impl via notes-src + new Function')
   })
   await t('CSS 外置', () => {
-    const cssPath = path.join(DIR, 'styles.css')
+    const cssPath = SRC_STYLES
     assert(fsNative.existsSync(cssPath), 'styles.css 存在')
     const cssContent = fsNative.readFileSync(cssPath, 'utf8')
     assert(cssContent.indexOf('.dsh-nt[data-tooltip]::after') >= 0, 'css 含作用域 tooltip')
@@ -49,7 +175,7 @@ async function main() {
     assert(clientSrc.indexOf('styles.insert(') >= 0, 'client 注入 styles')
   })
   await t('token 语义映射 bg-layer 系 + 鲜蓝强调（开发版/发布包/原型/app.html 四处同步）', () => {
-    const cssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDev = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     const MAP = [
       ['--npanel:var(--dsw-alias-bg-layer-1', 'npanel → bg-layer-1（一级层面）'],
@@ -126,13 +252,13 @@ async function main() {
     assert(indexSrc.indexOf('.last-host-load') < 0 || /发布版不再写/.test(indexSrc), '心跳写入段已删除')
     assert(indexSrc.indexOf('PERF_PATH = path.join(NOTES_ROOT') >= 0, 'perf-report.json 落在 ~/.dsh/notes')
   })
-  await t('index.mjs 保留 34 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传', () => {
+  await t('index.mjs 保留 39 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传 + 历史版本三 RPC + 工作记忆 notes-memory-guide', () => {
     const m = indexSrc.match(/handle\('([^']+)'/g) || []
     const names = m.map(s => s.match(/'([^']+)'/)[1])
-    // 34 = 25 基线 + notes-archive-preview/notes-archive-undo（显式归档重构，已收口：见 section 8/8.5 行为矩阵）+ notes-asset-upload（图片资产）+ notes-ai-organize/notes-assets-prune（AI 整理落地，02:44 并行 host 任务已进树）+ notes-purge（P1 回收站彻底删除）+ notes-export-single（P3 单文件导出）+ notes-inject-preview（注入预览器）+ notes-suggest（整理建议器，见 section 33）
-    const expected = ['notes-perf', 'notes-list', 'notes-folders', 'notes-css', 'notes-src', 'notes-get', 'notes-create', 'notes-update', 'notes-quick', 'notes-quick-instruct', 'notes-delete', 'notes-restore', 'notes-purge', 'notes-archive', 'notes-archive-preview', 'notes-archive-undo', 'notes-search', 'notes-conventions', 'notes-inject-preview', 'notes-sessions', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-export-single', 'notes-import-preview', 'notes-import', 'notes-asset-upload', 'notes-ai-organize', 'notes-assets-prune', 'notes-suggest']
+    // 39 = 38（25 基线 + notes-archive-preview/notes-archive-undo + notes-asset-upload + notes-ai-organize/notes-assets-prune + notes-purge + notes-export-single + notes-inject-preview + notes-suggest + notes-usage-get + notes-history/notes-history-get/notes-restore-history）+ notes-memory-guide（工作记忆 v0 沉淀引导启用流程，见 section 39）
+    const expected = ['notes-perf', 'notes-list', 'notes-folders', 'notes-css', 'notes-src', 'notes-get', 'notes-create', 'notes-update', 'notes-quick', 'notes-quick-instruct', 'notes-delete', 'notes-restore', 'notes-purge', 'notes-archive', 'notes-archive-preview', 'notes-archive-undo', 'notes-search', 'notes-conventions', 'notes-inject-preview', 'notes-sessions', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-export-single', 'notes-import-preview', 'notes-import', 'notes-asset-upload', 'notes-ai-organize', 'notes-assets-prune', 'notes-suggest', 'notes-usage-get', 'notes-history', 'notes-history-get', 'notes-restore-history', 'notes-memory-guide']
     for (const e of expected) assert(names.indexOf(e) >= 0, '缺少 RPC：' + e + '（实得 ' + names.length + ' 个：' + names.join(',') + '）')
-    assert(names.length === expected.length + 1, '应为 34 个迁移 RPC（含 notes-asset-upload + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + P3 notes-export-single + notes-inject-preview + notes-suggest）+ 1 个 P1 存活探测（notes-ping），实得 ' + names.length)
+    assert(names.length === expected.length + 1, '应为 39 个迁移 RPC（含 notes-memory-guide 工作记忆引导）+ 1 个 P1 存活探测（notes-ping），实得 ' + names.length)
     const tm = indexSrc.match(/regTool\(\{\s*name:\s*'([^']+)'/g) || []
     const tnames = tm.map(s => s.match(/'([^']+)'/)[1])
     assert.deepStrictEqual(tnames.sort(), ['note_get', 'note_manage', 'note_search'], '静态包工具必须是 3 个（实得：' + JSON.stringify(tnames) + '）')
@@ -193,7 +319,7 @@ async function main() {
   await t('Enter 打开聚焦项', () => assert(/ev\.key === 'Enter'/.test(clientSrc), 'Enter 分支'))
   await t('输入框内不响应导航键', () => assert(/tagName === 'INPUT' \|\| t\.tagName === 'TEXTAREA' \|\| t\.isContentEditable/.test(clientSrc), 'inField 判定'))
   await t('聚焦样式 .focused 存在', () => {
-    const cssPath = path.join(DIR, 'styles.css')
+    const cssPath = SRC_STYLES
     assert(fsNative.readFileSync(cssPath, 'utf8').indexOf('.dsh-notes-note-row.focused') >= 0, 'styles.css 含 note-row focused')
   })
   await t('Ctrl+K 直接聚焦侧栏搜索框（v2 常显搜索，无展开态）', () => {
@@ -224,7 +350,7 @@ async function main() {
     }
     assert(clientSrc.indexOf('dsh-notes-list') < 0 && clientSrc.indexOf('dsh-notes-divider') < 0 && clientSrc.indexOf('dsh-notes-content') < 0, '旧三栏（list/divider/content）已移除')
     assert(clientSrc.indexOf('listWidth') < 0, '旧列宽拖拽（listWidth）已移除')
-    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const css = fsNative.readFileSync(SRC_STYLES, 'utf8')
     for (const cls of ['.dsh-notes-app{', '.dsh-notes-side{', '.dsh-notes-brand{', '.dsh-notes-quick{', '.dsh-notes-filterbar{', '.dsh-notes-tree{', '.dsh-notes-side-foot{', '.dsh-notes-fbtn{', '.dsh-notes-ed{']) {
       assert(css.indexOf(cls) >= 0, 'styles.css 缺两栏样式：' + cls)
     }
@@ -247,7 +373,7 @@ async function main() {
     assert(clientSrc.indexOf("I('gear', 12)") >= 0, '设置按钮 gear SVG 图标')
   })
   await t('筛选中心控制行（筛选按钮(N) + 激活 chips + 独立排序控件；popover 分组面板）', () => {
-    assert(clientSrc.indexOf("const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote']") >= 0, '类型组五种 kind（多选）')
+    assert(clientSrc.indexOf("const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log']") >= 0, '类型组六种 kind（多选；+log 工作记忆 v0 专入口）')
     assert(clientSrc.indexOf('dsh-notes-filterbar') >= 0 && clientSrc.indexOf('dsh-notes-fpop') >= 0, '筛选中心容器（filterbar + popover）')
     assert(clientSrc.indexOf('dsh-notes-fchip') >= 0 && clientSrc.indexOf('dsh-notes-fchip-x') >= 0, '激活条件 chip + × 移除')
     assert(clientSrc.indexOf('dsh-notes-fsort-menu') >= 0 && clientSrc.indexOf('dsh-notes-fsort-item') >= 0, '独立排序控件菜单')
@@ -263,14 +389,15 @@ async function main() {
     assert(clientSrc.indexOf('（跨文件夹 ') >= 0, '主题视图头含「跨文件夹 N 条」')
     assert(clientSrc.indexOf('PINNED_KEY') >= 0 && clientSrc.indexOf("'置顶'") >= 0, '置顶折叠组（PINNED_KEY 持久化）')
     assert(clientSrc.indexOf('dsh-notes-nested') >= 0, 'nested 子笔记容器')
-    assert(clientSrc.indexOf('未分类') >= 0, '未入夹根级直显区（未分类 分组头 + 平铺笔记行）')
+    assert(clientSrc.indexOf('未分类') >= 0, '未入夹口径文案保留（右键「移出文件夹（未分类）」/面包屑兜底）')
+    assert(clientSrc.indexOf("'dsh-notes-sec-h-t' }, '未分类')") < 0, '未入夹区不再渲染「未分类」分组头（同级直显，notes-tree-unfiled-sibling）')
     assert(clientSrc.indexOf("'主题 (' + (filtersActive ? topicHitCount : topicNames.length) + ')'") >= 0 && clientSrc.indexOf('跨文件夹') >= 0, '主题全局过滤区（默认折叠「主题 (N)」一行）')
     assert(clientSrc.indexOf('dsh-notes-topic-row') >= 0, '主题过滤行')
   })
   await t('视图求值：view 单选 ∩ 筛选中心（组内 OR / 跨组 AND）∩ 搜索', () => {
     assert(/const \[view, setView\] = React\.useState\(\{ type: 'all', id: '' \}\)/.test(clientSrc), 'view state（all/folder/topic 单选）')
     assert(clientSrc.indexOf("if (view.type === 'topic') filtered = filtered.filter(n => (n.topic || '') === view.id)") >= 0, '主题视图过滤')
-    assert(clientSrc.indexOf("else if (view.type === 'folder') filtered = filtered.filter(n => (n.folder || '') === view.id)") >= 0, '文件夹视图过滤')
+    assert(clientSrc.indexOf("else if (view.type === 'folder') { const vsub = folderSubtreeIdsOf(view.id); filtered = filtered.filter(n => vsub[(n.folder || '')]) }") >= 0, '文件夹视图过滤（递归子树口径，notes-nested-folder-ui）')
     assert(clientSrc.indexOf('filtered = filtered.filter(n => matchFilters(n, filters))') >= 0, '筛选中心谓词接入求值管线')
     assert(/const \[filters, setFilters\] = React\.useState/.test(clientSrc), 'filters 状态（{pinned, injected, injectEver, sensitive, kinds[]}）')
   })
@@ -332,7 +459,7 @@ async function main() {
     assert(clientSrc.indexOf('dsh-notes-instruct') < 0, '旧 instruct 浮层已移除')
   })
   await t('快速记录卡片 v2 样式走 token（无硬编码白底/深色字）', () => {
-    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const css = fsNative.readFileSync(SRC_STYLES, 'utf8')
     for (const cls of ['.dsh-notes-cap{', '.dsh-notes-cap-h{', '.dsh-notes-cap-pv{', '.dsh-notes-cap-in{', '.dsh-notes-cap-acts{', '.dsh-notes-cbtn{']) {
       assert(css.indexOf(cls) >= 0, 'styles.css 缺卡片样式：' + cls)
     }
@@ -372,7 +499,7 @@ async function main() {
     const pkgClient = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
     assert(pkgClient.indexOf("toggleScope('workspace')") < 0 && pkgClient.indexOf("toggleScope('global')") < 0, '发布包 lib/client.js 范围浮层移除「本工作区/全局」选项（需先跑 scripts/build-dist.cjs）')
     assert(pkgClient.indexOf('默认注入到所有会话；勾选会话则仅限这些会话') >= 0 && pkgClient.indexOf("return '所有会话'") >= 0, '发布包提示行/缺省标签同步')
-    const devCss = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const devCss = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const pkgCss = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     assert(devCss.indexOf('.dsh-notes-scope-hint{') >= 0 && pkgCss.indexOf('.dsh-notes-scope-hint{') >= 0, 'styles.css / 发布包样式含 scope-hint（var(--nt3) 灰字）')
   })
@@ -387,7 +514,7 @@ async function main() {
     const pkgRole = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
     assert(pkgRole.indexOf('dsh-notes-role-seg') >= 0 && pkgRole.indexOf('setRoleSeg') >= 0 && pkgRole.indexOf('edRoleRef') >= 0, '发布包 lib/client.js 同步三态链路（需先跑 scripts/build-dist.cjs）')
     assert(pkgRole.indexOf('edInject') < 0 && pkgRole.indexOf('toggleInject') < 0, '发布包旧布尔链路清零')
-    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const css = fsNative.readFileSync(SRC_STYLES, 'utf8')
     assert(css.indexOf('.dsh-notes-role-seg{') >= 0 && css.indexOf('.dsh-notes-role-opt{') >= 0 && css.indexOf('.dsh-notes-role-opt.on{') >= 0, 'styles.css 含 role-seg/role-opt 三态样式')
     assert(/\.dsh-notes-role-opt\.on\{[^}]*background:var\(--nbg-sel\)[^}]*color:var\(--nacc-tx\)/.test(css), '选中段走 var(--nbg-sel) + var(--nacc-tx) token')
     const pkgCss = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
@@ -445,18 +572,18 @@ async function main() {
     assert(clientSrc.indexOf("dispatchHistoryOpen ? ' open' : ' collapsed'") >= 0, 'open/collapsed 折叠态 class 分支存在')
     assert(/setDispatchHistoryOpen\(!dispatchHistoryOpen\)/.test(clientSrc), '标题行点击切换折叠态')
     assert(clientSrc.indexOf('dispatchHistoryOpen ? curDispatches.map') >= 0, '折叠时不渲染记录列表（不挤压正文）')
-    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const css = fsNative.readFileSync(SRC_STYLES, 'utf8')
     assert(/\.dsh-notes-dispatch-history-t\{[^}]*cursor:pointer/.test(css), '标题行 cursor:pointer 可点击')
     assert(/\.dsh-notes-dispatch-history\.collapsed/.test(css), 'collapsed 折叠态样式存在')
   })
   await t('styles.css 含 kind/status 视觉（v2 token 化）', () => {
-    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const css = fsNative.readFileSync(SRC_STYLES, 'utf8')
     assert(css.indexOf('.dsh-notes-kind-dot') >= 0, 'kind 色点 css')
     assert(css.indexOf('--nkind-decision') >= 0 && css.indexOf('--nkind-quote') >= 0, 'kind 颜色 token 声明')
     assert(css.indexOf('.dsh-notes-note-row.resolved') >= 0 && css.indexOf('.dsh-notes-note-row.superseded') >= 0, 'status 划线视觉')
   })
   await t('入口 v2：头部描边胶囊 + FAB 卡片式 tridots（无计数徽章，开发版/发布包/原型同步）', () => {
-    const cssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDev = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     const pkgClient = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
     for (const [css, tag] of [[cssDev, 'styles.css'], [cssPkg, '发布包 lib/styles.css']]) {
@@ -537,11 +664,11 @@ async function main() {
       assert(clientSrc.indexOf(dead) < 0, 'client-impl 不含 ' + dead)
       assert(clientPkgSrcNewNote.indexOf(dead) < 0, '发布包 client.js 不含 ' + dead)
     }
-    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const css = fsNative.readFileSync(SRC_STYLES, 'utf8')
     assert(css.indexOf('.dsh-notes-capture') < 0, 'styles.css 不含 capture 系列样式')
   })
   await t('新建 modal 样式走 token（dsh-notes-newnote-* 系列）', () => {
-    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const css = fsNative.readFileSync(SRC_STYLES, 'utf8')
     for (const cls of ['.dsh-notes-newnote-mask{', '.dsh-notes-newnote-modal{', '.dsh-notes-newnote-t{', '.dsh-notes-newnote-input', '.dsh-notes-newnote-actions{']) {
       assert(css.indexOf(cls) >= 0, 'styles.css 缺 ' + cls)
     }
@@ -898,7 +1025,7 @@ async function main() {
 
   // ===== 9. 启动加载与遥测 =====
   section('9. 启动 + 遥测')
-  await t('host-impl 应用成功（34 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest）', () => assert.strictEqual(Object.keys(handlers).length, 34))
+  await t('host-impl 应用成功（39 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide）', () => assert.strictEqual(Object.keys(handlers).length, 39))
   await t('notes-src handler 可用', () => assert(typeof handlers['notes-src'] === 'function'))
   await t('notes-css handler 可用', () => assert(typeof handlers['notes-css'] === 'function'))
   await t('notes-perf handler 可用', () => assert(typeof handlers['notes-perf'] === 'function'))
@@ -1376,7 +1503,7 @@ async function main() {
     // 原型是带 mock 数据层的设计稿：mock 派发/回执与演示数据带 dispatchStatus；app.html 是真实页面（数据层走 RPC，无 mock）
     assert(protoSrc2.indexOf("dispatchStatus: 'sent'") >= 0, '原型 mock/演示数据 dispatchStatus=sent')
     assert(protoSrc2.indexOf("dispatchStatus: 'done'") >= 0, '原型 mock 回执 dispatchStatus=done')
-    const cssDev2 = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDev2 = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg2 = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const [s, tag] of [[cssDev2, 'styles.css'], [cssPkg2, 'lib/styles.css']]) {
       assert(s.indexOf('.dsh-notes-dispatch-badge.pending') >= 0 && s.indexOf('dshNotesDispatchPulse') >= 0, tag + ' 徽章样式（pending + 脉冲动画）')
@@ -1957,6 +2084,40 @@ async function main() {
     assert(l.body.notes.length >= 1, 'notes-list 主流程不受 folders.json 损坏影响')
     store2.set(foldersJsonPath, backup)
   })
+  // 文件夹嵌套（静态包运行面）：parent 建层/深度上限/cycle 拒绝/递归子树过滤/cascade 软删恢复（webServer 兜底路由链路，与开发版同一 _folders 实现）
+  await t('静态包嵌套文件夹：parent 建层/深度超限拒绝/cycle 拒绝/cascade 软删恢复落未分类', async () => {
+    const A = (await rpc2('notes-folders', { op: 'create', name: '静态A' })).body.folder
+    const rB = await rpc2('notes-folders', { op: 'create', name: '静态B', parent: A.id })
+    assert(rB.body.ok === true && rB.body.folder.parent === A.id, 'create parent 落位（实得：' + JSON.stringify(rB.body) + '）')
+    const B = rB.body.folder
+    const C = (await rpc2('notes-folders', { op: 'create', name: '静态C', parent: B.id })).body.folder
+    // 深度上限：缺省 maxFolderDepth=3，C 已是第 3 层 → 第 4 层拒绝
+    const d4 = await rpc2('notes-folders', { op: 'create', name: '静态D', parent: C.id })
+    assert(d4.body.error && d4.body.error.indexOf('maxFolderDepth') >= 0, '第 4 层超限拒绝（实得：' + JSON.stringify(d4.body) + '）')
+    // cycle：A 不能挂到自己的子孙 C 下
+    const cyc = await rpc2('notes-folders', { op: 'reorder', ids: [A.id], parents: { [A.id]: C.id } })
+    assert(cyc.body.error && cyc.body.error.indexOf('cycle') >= 0, 'cycle 拒绝（实得：' + JSON.stringify(cyc.body) + '）')
+    // list 带 parent/depth + 子树口径计数；notes-list 递归子树过滤
+    const n = await rpc2('notes-create', { title: '静态嵌套笔记', body: 'x', folder: C.id })
+    const lst = await rpc2('notes-folders', {})
+    const la = lst.body.folders.find(f => f.id === A.id)
+    const lc = lst.body.folders.find(f => f.id === C.id)
+    assert(la.parent === '' && la.depth === 1 && la.count === 1, 'A 根级 depth=1 + 子树计数含 C 的笔记（实得：' + JSON.stringify(la) + '）')
+    assert(lc.parent === B.id && lc.depth === 3 && lc.count === 1, 'C depth=3 + parent=B（实得：' + JSON.stringify(lc) + '）')
+    const inA = await rpc2('notes-list', { folder: A.id })
+    assert(inA.body.notes.some(x => x.id === n.body.id), 'notes-list folder=A 递归含子孙文件夹笔记')
+    const inC = await rpc2('notes-list', { folder: C.id })
+    assert(inC.body.notes.length === 1 && inC.body.notes[0].id === n.body.id, 'folder=C 只自身')
+    // cascade：缺省拒绝（needCascade + 统计）→ cascade:true 整棵删除 + 笔记软删
+    const refuse = await rpc2('notes-folders', { op: 'delete', id: A.id })
+    assert(refuse.body.error && refuse.body.needCascade === true && refuse.body.childFolders === 2 && refuse.body.notes === 1, '缺省拒绝 + 统计（实得：' + JSON.stringify(refuse.body) + '）')
+    const del = await rpc2('notes-folders', { op: 'delete', id: A.id, cascade: true })
+    assert(del.body.ok === true && del.body.folders === 3 && del.body.notes === 1, 'cascade 统计 {folders:3, notes:1}（实得：' + JSON.stringify(del.body) + '）')
+    assert(!(await rpc2('notes-folders', {})).body.folders.some(f => f.id === A.id || f.id === B.id || f.id === C.id), 'A/B/C 整棵出清单')
+    // 恢复 → 原文件夹已不存在 → effectiveFolder 兜底未分类
+    await rpc2('notes-restore', { id: n.body.id })
+    assert((await rpc2('notes-list', { folder: '' })).body.notes.some(x => x.id === n.body.id), '恢复后落未分类（effectiveFolder 兜底）')
+  })
   await t('harness 主通道：handle 经 harness.handle 注册（host.call 链路可用）', async () => {
     global.harness = harnessBackup
     try {
@@ -2001,7 +2162,7 @@ async function main() {
       assert(clientSrc.indexOf(cls) >= 0, 'client-impl 缺 ' + cls)
       assert(clientPkgSrcSettings.indexOf(cls) >= 0, '发布包 client.js 缺 ' + cls + '（需先跑 scripts/build-dist.cjs）')
     }
-    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const css = fsNative.readFileSync(SRC_STYLES, 'utf8')
     for (const cls of ['.dsh-notes-settings-mask{', '.dsh-notes-settings-modal{', '.dsh-notes-settings-row{', '.dsh-notes-settings-select', '.dsh-notes-settings-input', '.dsh-notes-settings-clear']) {
       assert(css.indexOf(cls) >= 0, 'styles.css 缺 ' + cls)
     }
@@ -2302,7 +2463,7 @@ async function main() {
       assert(clientPkgSrc.indexOf(gone) < 0, '发布包仍含旧 UI 标记：' + gone)
     }
     // RPC 方法面（与 index.mjs 的 handler 名一致）
-    const rpcs = ['notes-css', 'notes-list', 'notes-get', 'notes-create', 'notes-sessions', 'notes-search', 'notes-quick', 'notes-quick-instruct', 'notes-update', 'notes-delete', 'notes-restore', 'notes-purge', 'notes-folders', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-archive', 'notes-archive-preview', 'notes-archive-undo', 'notes-perf', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-export-single', 'notes-import-preview', 'notes-import', 'notes-asset-upload', 'notes-inject-preview', 'notes-suggest']
+    const rpcs = ['notes-css', 'notes-list', 'notes-get', 'notes-create', 'notes-sessions', 'notes-search', 'notes-quick', 'notes-quick-instruct', 'notes-update', 'notes-delete', 'notes-restore', 'notes-purge', 'notes-folders', 'notes-active-sessions', 'notes-workspaces', 'notes-dispatch', 'notes-dispatch-done', 'notes-archive', 'notes-archive-preview', 'notes-archive-undo', 'notes-perf', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-export-single', 'notes-import-preview', 'notes-import', 'notes-asset-upload', 'notes-inject-preview', 'notes-suggest', 'notes-history', 'notes-history-get', 'notes-restore-history']
     const missRpc = rpcs.filter(x => clientPkgSrc.indexOf(x) < 0)
     assert.strictEqual(missRpc.length, 0, '缺少 RPC 调用：' + JSON.stringify(missRpc))
     // 交互能力：拖拽 / 快捷键 / 自动保存 / 入口双模式 / 性能遥测 / SVG 图标 helper
@@ -2566,7 +2727,7 @@ async function main() {
   await t('ctxmenu 结构与样式存在', () => {
     assert(clientSrc.indexOf('dsh-notes-ctxmenu') >= 0, 'client-impl 含 ctxmenu 容器 class')
     assert(clientPkgSrc.indexOf('dsh-notes-ctxmenu') >= 0, '发布包含 ctxmenu 容器 class')
-    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const css = fsNative.readFileSync(SRC_STYLES, 'utf8')
     assert(css.indexOf('.dsh-notes-ctxmenu{') >= 0, 'styles.css 含 ctxmenu 容器样式')
     assert(css.indexOf('.dsh-notes-ctxmenu-item') >= 0, 'styles.css 含菜单项样式')
   })
@@ -2580,7 +2741,7 @@ async function main() {
   await t('旧悬浮删除按钮已移除', () => {
     assert(clientSrc.indexOf('dsh-note-delete') < 0, 'client-impl 不含 dsh-note-delete')
     assert(clientPkgSrc.indexOf('dsh-note-delete') < 0, '发布包不含 dsh-note-delete')
-    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const css = fsNative.readFileSync(SRC_STYLES, 'utf8')
     assert(!/\.dsh-note-delete\{/.test(css), 'styles.css 不含 dsh-note-delete 样式块')
   })
 
@@ -2605,17 +2766,17 @@ async function main() {
     assert((indexSrc.match(/folder: n\.folder \|\| ''/g) || []).length >= 2, 'index.mjs persistNote 与 slim 均带 folder')
     assert(/if \(folder !== undefined\) note\.folder = folder/.test(indexSrc), 'index.mjs _update 显式传 folder 才改')
     assert(indexSrc.indexOf("FOLDERS_PATH = path.join(NOTES_ROOT, 'folders.json')") >= 0, 'index.mjs FOLDERS_PATH 落在 ~/.dsh/notes/folders.json')
-    for (const fn of ['loadFolders', 'saveFolders', 'effectiveFolder', 'resolveFolderRef', 'genFolderId', '_folders']) {
+    for (const fn of ['loadFolders', 'saveFolders', 'effectiveFolder', 'resolveFolderRef', 'genFolderId', '_folders', 'folderDepth', 'folderSubtreeIds', 'folderSubtreeHeight', 'checkFolderAttach', 'maxFolderDepthLimit']) {
       assert(indexSrc.indexOf('function ' + fn) >= 0, 'index.mjs 缺函数 ' + fn)
     }
     assert(/handle\('notes-folders'/.test(indexSrc), 'index.mjs 注册 notes-folders RPC（webServer 兜底路由经 handlers 表自动可达）')
-    assert(/async function _list\(tag, kind, folder, includeDeleted\)/.test(indexSrc) && /if \(folder !== undefined && effectiveFolder\(note, folders\) !== folder\) continue/.test(indexSrc), 'index.mjs _list 接 folder 过滤（第 4 参数 includeDeleted，P1 回收站）')
+    assert(/async function _list\(tag, kind, folder, includeDeleted, includeLogs\)/.test(indexSrc) && /folderSubtree = \(folder !== undefined && folder !== ''\) \? folderSubtreeIds\(folder, folders\) : null/.test(indexSrc) && indexSrc.indexOf("if (folder === '') { if (ef !== '') continue }") >= 0, 'index.mjs _list 接 folder 递归子树过滤（folder-tree-helpers；第 4 参数 includeDeleted 回收站 / 第 5 参数 includeLogs 工作记忆日志召回）')
     assert(/async function _search\(query, tag, topic, kind, folder, filters\)/.test(indexSrc), 'index.mjs _search 接 folder（+ filters 组合过滤尾参，搜索体验升级）')
     assert(/enum: \['create', 'list', 'update', 'move', 'delete'/.test(indexSrc), 'index.mjs note_manage action enum 含 move')
   })
   await t('host-impl folders.json 清单模块 + notes-folders RPC 注册', () => {
     assert(hostSrc.indexOf("FOLDERS_PATH = NOTES_DIR + '\\\\folders.json'") >= 0, 'FOLDERS_PATH 落在 notes/folders.json')
-    for (const fn of ['loadFolders', 'saveFolders', 'effectiveFolder', 'resolveFolderRef', 'genFolderId', '_folders']) {
+    for (const fn of ['loadFolders', 'saveFolders', 'effectiveFolder', 'resolveFolderRef', 'genFolderId', '_folders', 'folderDepth', 'folderSubtreeIds', 'folderSubtreeHeight', 'checkFolderAttach', 'maxFolderDepthLimit']) {
       assert(hostSrc.indexOf('function ' + fn) >= 0, '缺函数 ' + fn)
     }
     assert(/JSON\.stringify\(list, null, 2\)/.test(hostSrc), 'saveFolders 持久化 JSON 清单')
@@ -2688,7 +2849,7 @@ async function main() {
     assert(clientSrc.indexOf('const fixed = next.length ? next : null') >= 0 && clientSrc.indexOf('saveFoldersExpanded(fixed)') >= 0, '清洗后为空 → null 回缺省全展开并回写持久化')
     // 发布包 + styles.css 同步
     assert(clientPkgSrc.indexOf('dsh-notes-row-vfilter') >= 0 && clientPkgSrc.indexOf('toggleTopicExpanded') >= 0 && clientPkgSrc.indexOf('pruneFoldersExpanded') >= 0, '发布包 lib/client.js 同步（需先跑 scripts/build-dist.cjs）')
-    const cssDevT = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDevT = fsNative.readFileSync(SRC_STYLES, 'utf8')
     assert(cssDevT.indexOf('.dsh-notes-row-vfilter{') >= 0 && cssDevT.indexOf('.dsh-notes-row-vfilter.on{') >= 0, 'styles.css 含行尾过滤图标样式（常态/hover 浮现/激活常显）')
     // app.html / 原型 notes-ui-v2.html 同步：行主体折叠 + vfilter 图标 + 主题原地展开 + 陈旧清洗 + 右键菜单项
     for (const pair of [['app.html', appSrcT], ['原型 notes-ui-v2.html', protoSrcT]]) {
@@ -2708,19 +2869,19 @@ async function main() {
     assert(clientSrc.indexOf("const unfiled = paged.filter(n => !(n.folder || ''))") >= 0, 'client-impl 未入夹笔记 = 无 folder 过滤集')
     assert(clientSrc.indexOf("const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })") >= 0, 'client-impl 未入夹笔记根级平铺直渲（无主题分组头/nested 包裹）')
     assert(clientSrc.indexOf("'tg-' + topic") < 0 && clientSrc.indexOf('dsh-notes-topic-g') < 0, 'client-impl 未分类主题分组头渲染已移除')
-    // ② drop 移出落点保持：.dsh-notes-unfiled-drop 容器 + 三处理器不变；分组头保留为落点锚 + 计数（过滤激活 = 命中数 / 否则 = 未入夹总数）
+    // ② drop 移出落点保持：.dsh-notes-unfiled-drop 容器 + 三处理器不变（「未分类」分组头已在 notes-tree-unfiled-sibling 移除——落点 = 包裹容器 + 拖拽中提示行）
     assert(clientSrc.indexOf("className: 'dsh-notes-unfiled-drop', onDragOver: onUnfiledDragOver, onDragLeave: onUnfiledDragLeave, onDrop: onUnfiledDrop") >= 0, 'client-impl 未入夹区 drop 移出落点保持')
-    assert(clientSrc.indexOf("e('span', { className: 'dsh-notes-sec-h-t' }, '未分类'), e('span', { className: 'dsh-notes-sec-h-n' }, unfiledAll.length)") >= 0, 'client-impl 未入夹分组头计数（sec-h-n）')
+    assert(clientSrc.indexOf("'dsh-notes-sec-h-t' }, '未分类')") < 0, 'client-impl 未入夹「未分类」分组头/分区计数已移除（同级直显）')
     // ③ 过滤命中自动展开（纯计算 OR，不写回折叠态——清除过滤即恢复手动折叠）+ 命中计数：置顶组/文件夹/主题行
     assert(clientSrc.indexOf("const pinOpen = isFolderExpanded(PINNED_KEY) || (filtersActive && pinnedAll.length > 0)") >= 0, '置顶组过滤命中自动展开')
-    assert(clientSrc.indexOf("const fOpen = isFolderExpanded(f.id) || (filtersActive && kidsAll.length > 0)") >= 0, '文件夹过滤命中自动展开（无命中保持折叠）')
-    assert(clientSrc.indexOf("const cnt = filtersActive ? kidsAll.length : (f.count || 0)") >= 0, '文件夹计数：过滤激活 = 命中数（无命中 0）/ 否则 = 总数')
+    assert(clientSrc.indexOf("const fOpen = isFolderExpanded(f.id) || (filtersActive && subHits > 0)") >= 0, '文件夹过滤命中自动展开（子树命中口径，无命中保持折叠）')
+    assert(clientSrc.indexOf("const cnt = filtersActive ? subHits : (f.count || 0)") >= 0, '文件夹计数：过滤激活 = 子树命中数（无命中 0）/ 否则 = 子树总数（host count 已递归）')
     assert(clientSrc.indexOf("const tOpen = !!topicExpanded[tn] || (filtersActive && tkidsAll.length > 0)") >= 0, '主题行过滤命中自动展开')
     assert(clientSrc.indexOf("filtersActive ? tkidsAll.length : allTopics[tn]") >= 0, '主题行计数：过滤激活 = 命中数 / 否则 = 全库数')
     // 恢复断言：自动展开为纯计算（isFolderExpanded OR），折叠态写入口仍只有 toggleFolder/expandFolder——过滤清除即恢复手动折叠
     assert(/function toggleFolder\(id\)/.test(clientSrc) && /function expandFolder\(id\)/.test(clientSrc), '折叠态写入口保持（toggleFolder/expandFolder）')
     // ④ 发布包 client.js 同步（需先跑 scripts/build-dist.cjs）
-    for (const k of ["const fOpen = isFolderExpanded(f.id) || (filtersActive && kidsAll.length > 0)", "const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })", "const tOpen = !!topicExpanded[tn] || (filtersActive && tkidsAll.length > 0)", "const cnt = filtersActive ? kidsAll.length : (f.count || 0)"]) {
+    for (const k of ["const fOpen = isFolderExpanded(f.id) || (filtersActive && subHits > 0)", "const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })", "const tOpen = !!topicExpanded[tn] || (filtersActive && tkidsAll.length > 0)", "const cnt = filtersActive ? subHits : (f.count || 0)"]) {
       assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺「' + k.slice(0, 34) + '…」（需先跑 scripts/build-dist.cjs）')
     }
     assert(clientPkgSrc.indexOf('groupByTopic') < 0, '发布包 lib/client.js groupByTopic 已移除（需先跑 scripts/build-dist.cjs）')
@@ -2728,16 +2889,55 @@ async function main() {
     for (const pair of [['app.html', appSrcX], ['原型 notes-ui-v2.html', protoSrcX]]) {
       const s = pair[1], label = pair[0]
       assert(s.indexOf("var filtering = view.type !== 'all' || !!searchText || filtersActiveCount() > 0;") >= 0, label + ' 过滤激活标记（视图/筛选中心/搜索任一）')
-      assert(s.indexOf("var open = (foldOpen[f.id] !== false) || (filtering && kids.length > 0);") >= 0, label + ' 文件夹过滤命中自动展开（不写回 foldOpen）')
-      assert(s.indexOf("(filtering ? kids.length : (f.count != null ? f.count : kids.length))") >= 0, label + ' 文件夹计数：过滤激活 = 命中数')
+      assert(s.indexOf("var open = (foldOpen[f.id] !== false) || (filtering && subHits > 0);") >= 0, label + ' 文件夹过滤命中自动展开（子树命中口径，不写回 foldOpen）')
+      assert(s.indexOf("(filtering ? subHits : (f.count != null ? f.count : kids.length))") >= 0, label + ' 文件夹计数：过滤激活 = 子树命中数')
       assert(s.indexOf("var tOpen = !!topicOpen[t] || (filtering && tkids.length > 0);") >= 0, label + ' 主题行过滤命中自动展开（不写回 topicOpen）')
       assert(s.indexOf("(filtering ? tkids.length : allTopics[t])") >= 0, label + ' 主题行计数：过滤激活 = 命中数')
       assert(s.indexOf("' 置顶<span class=\"cnt2\">' + pins.length + '</span></div>'") >= 0, label + ' 置顶组计数')
-      assert(s.indexOf(">未分类<span class=\"cnt2\">' + unfiled.length + '</span></div>'") >= 0, label + ' 未入夹分组头计数 + drop 落点锚保留')
+      assert(s.indexOf(">未分类<span class=\"cnt2\">") < 0, label + ' 未入夹「未分类」分组头/分区计数已移除（同级直显，落点 = 包裹容器）')
       assert(s.indexOf("unfiled.forEach(function (n) { h += noteRow(n, false) });") >= 0, label + ' 未入夹笔记根级平铺直渲')
       assert(s.indexOf('未分类</div><div class="nested">') < 0 && s.indexOf('var topics = {};') < 0, label + ' 未分类主题二次分组兜底已移除')
       assert(s.indexOf('.sec-h .cnt2{margin-left:auto;font-size:10px;font-weight:400;letter-spacing:0;text-transform:none}') >= 0, label + ' 分组头计数丸样式（.sec-h .cnt2）')
       assert(s.indexOf('data-drop-out="1"') >= 0, label + ' drop 移出落点保留（data-drop-out）')
+    }
+  })
+  await t('树修正（notes-tree-unfiled-sibling）：未入夹笔记与文件夹同级直显（去「未分类」分组头）+ drop 落点保留 + 空态不占位（四端同步）', () => {
+    const appSrcU = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
+    const protoSrcU = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
+    // ① 去分组头：未入夹区不再渲染「未分类」sec-h 标题行/分区计数（数量并入 brand 行总计数）；笔记行保持根级平铺直渲（treeIds 键盘导航顺序不变）
+    assert(clientSrc.indexOf("'dsh-notes-sec-h-t' }, '未分类')") < 0, 'client-impl 未入夹「未分类」分组头已移除')
+    assert(clientSrc.indexOf('unfiledAll') < 0, 'client-impl 未入夹分区计数变量（unfiledAll）已移除——并入 brand 总计数')
+    assert(clientSrc.indexOf("const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })") >= 0, 'client-impl 未入夹笔记根级平铺直渲（与文件夹行同缩进层级；treeIds 顺序不变）')
+    // ② drop 移出落点保留：.dsh-notes-unfiled-drop 包裹容器 + 三处理器不变；拖拽中（dragActive state）本区头部显示淡提示行「拖到此处移出文件夹」
+    assert(clientSrc.indexOf("className: 'dsh-notes-unfiled-drop', onDragOver: onUnfiledDragOver, onDragLeave: onUnfiledDragLeave, onDrop: onUnfiledDrop") >= 0, 'client-impl 未入夹区 drop 移出落点保持（容器三处理器不变）')
+    assert(/const \[dragActive, setDragActive\] = React\.useState\(false\)/.test(clientSrc), 'client-impl dragActive state（dragstart 置位 / dragend 复位）')
+    assert(clientSrc.indexOf("dragNoteIdRef.current = n.id\n          setDragActive(true)") >= 0 && clientSrc.indexOf("dragNoteIdRef.current = null\n          setDragActive(false)") >= 0, 'client-impl dragstart/dragend 置位/复位 dragActive')
+    assert(clientSrc.indexOf("className: 'dsh-notes-unfiled-hint'") >= 0 && clientSrc.indexOf('拖到此处移出文件夹') >= 0, 'client-impl 拖拽中显示「拖到此处移出文件夹」提示行')
+    // ③ 空态：无未入夹笔记且非拖拽中不渲染任何占位（（空）行/空容器均不渲染）；有笔记或拖拽中才渲染落点容器
+    assert(clientSrc.indexOf('if (unfiledKids.length || dragActive)') >= 0, 'client-impl 落点容器条件渲染（有未入夹笔记 或 拖拽中）')
+    assert(clientSrc.indexOf('empty-u') < 0 && clientSrc.indexOf('dsh-notes-tree-empty') < 0, 'client-impl（空）占位行已移除')
+    // ④ 发布包 lib/client.js + lib/styles.css 同步（需先跑 scripts/build-dist.cjs）
+    for (const k of ['if (unfiledKids.length || dragActive)', 'dsh-notes-unfiled-hint', '拖到此处移出文件夹', 'setDragActive(true)']) {
+      assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺「' + k.slice(0, 30) + '…」（需先跑 scripts/build-dist.cjs）')
+    }
+    assert(clientPkgSrc.indexOf("'dsh-notes-sec-h-t' }, '未分类')") < 0 && clientPkgSrc.indexOf('empty-u') < 0, '发布包 未入夹分组头/（空）占位已移除')
+    const cssDevU = fsNative.readFileSync(SRC_STYLES, 'utf8')
+    const cssPkgU = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    for (const pair of [['styles.css', cssDevU], ['发布包 lib/styles.css', cssPkgU]]) {
+      assert(pair[1].indexOf('.dsh-notes-unfiled-hint') >= 0, pair[0] + ' 含 .dsh-notes-unfiled-hint 提示行样式（需先跑 scripts/build-dist.cjs）')
+    }
+    // ⑤ app.html / 原型 notes-ui-v2.html 同步：包裹容器 data-drop-out + 提示行（.drag-on 显示）+ dragstart 点亮/补插 + dragend 清理 + 无（空）占位
+    for (const pair of [['app.html', appSrcU], ['原型 notes-ui-v2.html', protoSrcU]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf(">未分类<span class=\"cnt2\">") < 0, label + ' 未入夹「未分类」分组头/分区计数已移除')
+      assert(s.indexOf('<div class="unfiled-drop" data-drop-out="1"') >= 0, label + ' 未入夹包裹容器保留 drop 移出落点（data-drop-out，根级同级直显）')
+      assert(s.indexOf('unfiled.forEach(function (n) { h += noteRow(n, false) });') >= 0, label + ' 未入夹笔记根级平铺直渲（容器内无 nested 缩进包裹）')
+      assert(s.indexOf('（空）') < 0, label + ' 空态（空）占位行已移除（非拖拽不渲染任何占位）')
+      assert(s.indexOf('class="unfiled-hint"') >= 0 && s.indexOf('拖到此处移出文件夹') >= 0, label + ' 容器内含「拖到此处移出文件夹」提示行')
+      assert(s.indexOf('.unfiled-drop.drag-on .unfiled-hint{display:block}') >= 0 && s.indexOf('.unfiled-drop.drop{') >= 0, label + ' 提示行/落点高亮样式（.drag-on 显示 + .drop 虚线描边）')
+      assert(s.indexOf("var udrop = $('tree').querySelector('.unfiled-drop')") >= 0, label + ' dragstart 委托点亮/补插落点容器')
+      assert(s.indexOf("udrop.className = 'unfiled-drop drag-on'") >= 0 && s.indexOf("insertBefore(udrop, $('tree').querySelector('[data-tsec]'))") >= 0, label + ' 空态临时落点容器补插（主题过滤区之前）')
+      assert(s.indexOf("el.querySelector('[data-note]')) el.classList.remove('drag-on'); else el.remove()") >= 0, label + ' dragend 清理拖拽态（摘 drag-on / 移除临时容器）')
     }
   })
   await t('主题过滤区默认折叠（notes-topic-collapse）：常态「主题 (N)」一行 + 点击展开 + 过滤命中自动展开+计数（四端同步）', () => {
@@ -2779,22 +2979,23 @@ async function main() {
     for (const label of ["'重命名'", "'上移'", "'下移'", "'删除文件夹'"]) {
       assert(clientSrc.indexOf(label) >= 0, '文件夹右键菜单缺「' + label + '」')
     }
-    for (const op of ["{ op: 'create', name: name }", "{ op: 'rename', id: id, name: name }", "{ op: 'delete', id: f.id }", "{ op: 'reorder', ids: ids }"]) {
+    for (const op of ["{ op: 'create', name: name, parent: parent }", "{ op: 'rename', id: id, name: name }", "{ op: 'delete', id: f.id, cascade: true }", "{ op: 'reorder', ids: ids }"]) {
       assert(clientSrc.indexOf(op) >= 0, 'client-impl 缺 notes-folders 调用 ' + op)
     }
     assert(clientPkgSrc.indexOf('移动到文件夹') >= 0 && clientPkgSrc.indexOf('删除文件夹') >= 0, '发布包含移动/删除文件夹交互')
   })
   await t('styles.css 树状文件夹样式（v2 token 化，开发版 + 发布包同步）', () => {
-    const cssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDev = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const cls of ['.dsh-notes-folder-row{', '.dsh-notes-caret{', '.dsh-notes-row-nm{', '.dsh-notes-row-n{', '.dsh-notes-folder-rename{', '.dsh-notes-nested{', '.dsh-notes-sec-h{', '.dsh-notes-fbadge{', '.dsh-notes-note-row{']) {
       assert(cssDev.indexOf(cls) >= 0, 'styles.css 缺 ' + cls)
       assert(cssPkg.indexOf(cls) >= 0, '发布包 lib/styles.css 缺 ' + cls)
     }
     assert(cssDev.indexOf('.dsh-notes-folder-ic') < 0 && cssPkg.indexOf('.dsh-notes-folder-ic') < 0, 'folder-ic 样式已移除（开发版 + 发布包）')
-    // 文件夹行视觉（原型 .row.head）：cursor:default + 11.5px 灰字（--nt2）
+    // 文件夹行视觉（notes-tree-typography，VS Code 式同级统一）：cursor:default + 13px/常规/主色（--ntx，与同级笔记行同字体；旧 11.5px/600/--nt2 配角层级已移除）
     assert(/\.dsh-notes-folder-row\{[^}]*cursor:default/.test(cssDev) && /\.dsh-notes-folder-row\{[^}]*cursor:default/.test(cssPkg), '文件夹行 cursor:default')
-    assert(/\.dsh-notes-folder-row\{[^}]*color:var\(--nt2\)/.test(cssDev) && /\.dsh-notes-folder-row\{[^}]*font-size:11\.5px/.test(cssDev), '文件夹行 11.5px 灰字（--nt2）')
+    assert(/\.dsh-notes-folder-row\{[^}]*color:var\(--ntx\)/.test(cssDev) && /\.dsh-notes-folder-row\{[^}]*font-size:13px/.test(cssDev), '文件夹行 13px 主色（--ntx，与笔记行同级统一）')
+    assert(!/\.dsh-notes-folder-row\{[^}]*font-size:11\.5px/.test(cssDev) && !/\.dsh-notes-folder-row\{[^}]*font-weight:600/.test(cssDev) && !/\.dsh-notes-folder-row\{[^}]*color:var\(--nt2\)/.test(cssDev), '文件夹行旧层级（11.5px/600/--nt2）已移除')
     // 嵌套笔记：margin-left 13px + padding-left 9px + 1px 引导线（--nbd-soft，原型口径）
     assert(/\.dsh-notes-nested\{[^}]*margin-left:13px/.test(cssDev) && /\.dsh-notes-nested\{[^}]*padding-left:9px/.test(cssDev) && /\.dsh-notes-nested\{[^}]*border-left:1px solid var\(--nbd-soft\)/.test(cssDev), '嵌套笔记 1px 缩进引导线（原型 13px/9px）')
     // 新建文件夹入口：分组头 ＋ 图标按钮（sec-h-add，hover 强调色）
@@ -2802,6 +3003,37 @@ async function main() {
     assert(cssDev.indexOf('.dsh-notes-folderbar') < 0 && cssPkg.indexOf('.dsh-notes-folderbar') < 0, 'folderbar 样式已移除（开发版 + 发布包）')
     assert(cssDev.indexOf('.dsh-notes-folder-chip') < 0 && cssPkg.indexOf('.dsh-notes-folder-chip') < 0, 'folder-chip 样式已移除（开发版 + 发布包）')
     assert(cssDev.indexOf('.dsh-note-item') < 0 && cssPkg.indexOf('.dsh-note-item') < 0, '旧 dsh-note-item 列表项样式已移除（开发版 + 发布包）')
+  })
+  await t('树排版（notes-tree-typography）：同级字体统一 13px/常规/主色 + 行首槽位对齐（caret 槽 11px 占位 + 图标槽 16px，四端同步）', () => {
+    const appSrcT = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
+    const protoSrcT = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
+    const cssDevT = fsNative.readFileSync(SRC_STYLES, 'utf8')
+    const cssPkgT = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    // ① 面板（client-impl + styles.css）：笔记行行首 = caret 槽透明占位 + 图标槽（kind 色点槽内居中），与文件夹行标题文字起点 x 一致
+    assert(clientSrc.indexOf("className: 'dsh-notes-caret-spacer'") >= 0, 'client-impl 笔记行渲染 caret 槽占位（与文件夹行 caret 同位同宽 11px）')
+    assert(/className: 'dsh-notes-kind-slot'/.test(clientSrc) && /dsh-notes-kind-slot[^\n]*dsh-notes-kind-dot/.test(clientSrc), 'client-impl 笔记行 kind 色点包 16px 图标槽（kind-slot）')
+    assert(clientPkgSrc.indexOf('dsh-notes-caret-spacer') >= 0 && clientPkgSrc.indexOf('dsh-notes-kind-slot') >= 0, '发布包 lib/client.js 同步（需先跑 scripts/build-dist.cjs）')
+    // ② 槽位宽度固定：caret 槽 11px / 图标槽 16px（开发版 + 发布包 styles.css 同步）
+    for (const pair of [['styles.css', cssDevT], ['发布包 lib/styles.css', cssPkgT]]) {
+      const c = pair[1], label = pair[0]
+      assert(/\.dsh-notes-caret-spacer\{[^}]*width:11px/.test(c), label + ' caret 槽占位 11px 定宽（.dsh-notes-caret-spacer）')
+      assert(/\.dsh-notes-kind-slot\{[^}]*width:16px/.test(c), label + ' 笔记图标槽 16px 定宽（.dsh-notes-kind-slot）')
+      assert(/\.dsh-notes-ic-slot\{[^}]*width:16px/.test(c), label + ' 文件夹图标槽 16px 定宽（.dsh-notes-ic-slot，旧 15px 已移除）')
+      assert(/\.dsh-notes-folder-row\{[^}]*font-size:13px/.test(c) && /\.dsh-notes-folder-row\{[^}]*color:var\(--ntx\)/.test(c), label + ' 文件夹行 13px/主色（与笔记行同级统一）')
+    }
+    // ③ 嵌套层级保留：.dsh-notes-nested 子笔记 12.5px 小字 + 缩进引导线不动（同级统一后嵌套对比更清晰）
+    assert(/\.dsh-notes-nested \.dsh-notes-note-row\{[^}]*font-size:12\.5px/.test(cssDevT), '嵌套子笔记 12.5px 小字保留')
+    // ④ app.html / 原型 notes-ui-v2.html 同步（同一套 DOM/CSS 口径）：noteRow 行首占位 + kind-slot + .row.head 13px 主色
+    for (const pair of [['app.html', appSrcT], ['原型 notes-ui-v2.html', protoSrcT]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('class="caret-spacer"') >= 0, label + ' 笔记行渲染 caret 槽占位')
+      assert(/class="kind-slot"><span class="kind"/.test(s), label + ' 笔记行 kind 色点包图标槽（kind-slot）')
+      assert(/\.caret-spacer\{[^}]*width:11px/.test(s), label + ' caret 槽占位样式 11px 定宽')
+      assert(/\.kind-slot\{[^}]*width:16px/.test(s), label + ' kind 图标槽样式 16px 定宽')
+      assert(/\.ic-slot\{[^}]*width:16px/.test(s), label + ' 文件夹图标槽 16px 定宽（旧 15px 已移除）')
+      assert(s.indexOf('.row.head{font-size:13px;color:var(--ntx)}') >= 0, label + ' 文件夹行 13px/主色（.row.head；旧 11.5px/600 已移除）')
+      assert(s.indexOf('.row.head{font-size:11.5px') < 0, label + ' 文件夹行旧 11.5px 字号已移除')
+    }
   })
 
   // --- 行为断言（内存 mock：handlers + note_manage + fsMock store）---
@@ -2897,23 +3129,33 @@ async function main() {
     const bad = await handlers['notes-folders']({ op: 'reorder' })
     assert(bad.error && bad.error.indexOf('ids') >= 0, '缺 ids 报错')
   })
-  await t('notes-folders delete：其下笔记回退未分类（reset 计数 + folder 清空）', async () => {
-    const folders = (await handlers['notes-folders']({})).folders
-    const fTemp = folders.find(f => f.name === '临时')
+  await t('notes-folders delete：缺省拒绝含子内容（needCascade）+ cascade:true 笔记软删进回收站可恢复落未分类', async () => {
+    // 自包含造数（不依赖前置 reorder 的「临时」夹——core 模式该断言跳过，本节仍可独立成立）
+    const fTemp = (await handlers['notes-folders']({ op: 'create', name: '临时删' })).folder
     const n1 = await handlers['notes-create']({ title: 'fld-删1', body: 'x', folder: fTemp.id })
     const n2 = await handlers['notes-create']({ title: 'fld-删2', body: 'x', folder: fTemp.id })
     const before = await handlers['notes-folders']({})
-    assert.strictEqual(before.folders.find(f => f.id === fTemp.id).count, 2, '前置：两条笔记在「临时」')
-    const r = await handlers['notes-folders']({ op: 'delete', id: fTemp.id })
-    assert(r.ok === true && r.reset === 2, 'delete 返回 ok + reset=2（实得：' + JSON.stringify(r) + '）')
+    assert.strictEqual(before.folders.find(f => f.id === fTemp.id).count, 2, '前置：两条笔记在「临时删」')
+    // 缺省（无 cascade）拒绝：报错 + needCascade 标记 + 子内容统计（供 confirm 明示），文件夹与笔记均不动
+    const refuse = await handlers['notes-folders']({ op: 'delete', id: fTemp.id })
+    assert(refuse.error && refuse.error.indexOf('cascade') >= 0 && refuse.needCascade === true && refuse.childFolders === 0 && refuse.notes === 2, '含笔记未传 cascade → 拒绝 + 统计（实得：' + JSON.stringify(refuse) + '）')
+    assert((await handlers['notes-folders']({})).folders.find(f => f.id === fTemp.id), '拒绝后文件夹仍在')
+    assert((await handlers['notes-get']({ id: n1.id })).note.folder === fTemp.id, '拒绝后笔记未动')
+    // cascade:true → 文件夹删除 + 笔记逐条软删（回收站可恢复，folder 字段保留原引用不改写）
+    const r = await handlers['notes-folders']({ op: 'delete', id: fTemp.id, cascade: true })
+    assert(r.ok === true && r.folders === 1 && r.notes === 2, 'cascade 返回统计 {folders:1, notes:2}（实得：' + JSON.stringify(r) + '）')
     const after = await handlers['notes-folders']({})
     assert(!after.folders.find(f => f.id === fTemp.id), '清单不再含已删文件夹')
-    assert.strictEqual(after.unfiled, before.unfiled + 2, '回退笔记计入 unfiled')
-    const g1 = await handlers['notes-get']({ id: n1.id })
-    assert.strictEqual(g1.note.folder, '', '笔记 folder 已清空为未分类')
-    const content = store.get(NOTES_DIR + '\\' + n1.id + '.md')
-    assert(content.indexOf(fTemp.id) < 0, '磁盘 front-matter 不再引用已删文件夹 id')
-    const bad = await handlers['notes-folders']({ op: 'delete', id: fTemp.id })
+    assert.strictEqual(after.unfiled, before.unfiled, '软删笔记不进 unfiled（deleted 不计数）')
+    assert((await handlers['notes-get']({ id: n1.id })).error, '软删后 notes-get 拒绝（已进回收站）')
+    const trash = await handlers['notes-list']({ includeDeleted: true })
+    const t1 = trash.notes.find(n => n.id === n1.id)
+    assert(t1 && t1.deleted === true && t1.folder === fTemp.id, '回收站可见 + folder 字段保留原引用（不改写磁盘数据）')
+    // 恢复：原文件夹已不存在 → effectiveFolder 兜底未分类（现有机制天然支持，断言锁定）
+    await handlers['notes-restore']({ id: n1.id })
+    assert((await handlers['notes-get']({ id: n1.id })).note.folder === fTemp.id, '恢复不改写 folder 原引用')
+    assert((await handlers['notes-list']({ folder: '' })).notes.find(n => n.id === n1.id), '恢复后落未分类（原文件夹已删，effectiveFolder 兜底）')
+    const bad = await handlers['notes-folders']({ op: 'delete', id: fTemp.id, cascade: true })
     assert(bad.error && bad.error.indexOf('文件夹不存在') >= 0, '重复删除报错')
   })
   await t('notes-folders 未知 op 报错', async () => {
@@ -3026,8 +3268,8 @@ async function main() {
     assert(clientSrc.indexOf("classList.add('dragging')") >= 0, 'dragstart 源行加 .dragging 半透明')
   })
   await t('拖拽：文件夹行 drop 目标（dragover preventDefault + drop-hint 高亮 + drop 移入）', () => {
-    assert(/function onFolderDragOver\(ev\)/.test(clientSrc) && /function onFolderDragLeave\(ev\)/.test(clientSrc) && /function onFolderDrop\(ev, f\)/.test(clientSrc), '文件夹行 dragover/dragleave/drop 处理器存在')
-    assert(/onDragOver: onFolderDragOver, onDragLeave: onFolderDragLeave, onDrop: \(ev\) => onFolderDrop\(ev, f\)/.test(clientSrc), '文件夹行挂载三个 DnD 处理器')
+    assert(/function onFolderDragOver\(ev, f\)/.test(clientSrc) && /function onFolderDragLeave\(ev\)/.test(clientSrc) && /function onFolderDrop\(ev, f\)/.test(clientSrc), '文件夹行 dragover/dragleave/drop 处理器存在')
+    assert(/onDragOver: \(ev\) => onFolderDragOver\(ev, f\), onDragLeave: onFolderDragLeave, onDrop: \(ev\) => onFolderDrop\(ev, f\)/.test(clientSrc), '文件夹行挂载三个 DnD 处理器')
     assert(clientSrc.indexOf("classList.add('drop-hint')") >= 0 && clientSrc.indexOf("classList.remove('drop-hint')") >= 0, 'drop-hint 高亮加/摘')
     assert(clientSrc.indexOf('ctxMoveToFolder({ id: id }, f.id)') >= 0, 'drop 移入复用 ctxMoveToFolder（notes-update 只改 folder 字段）')
     assert(clientSrc.indexOf("(noteObj.folder || '') !== f.id") >= 0, '已在目标夹内静默无动作（不重复弹 toast）')
@@ -3036,14 +3278,14 @@ async function main() {
     assert(/function onUnfiledDragOver\(ev\)/.test(clientSrc) && /function onUnfiledDrop\(ev\)/.test(clientSrc), '未分类区 dragover/drop 处理器存在')
     assert(clientSrc.indexOf("className: 'dsh-notes-unfiled-drop', onDragOver: onUnfiledDragOver, onDragLeave: onUnfiledDragLeave, onDrop: onUnfiledDrop") >= 0, '未分类平铺区包一层 drop 容器')
     assert(clientSrc.indexOf("ctxMoveToFolder({ id: id }, '')") >= 0, 'drop 到未分类区 = 移出（folder: \'\'）')
-    assert((clientSrc.match(/if \(!dragNoteIdRef\.current\) return/g) || []).length >= 4, '四个 drop 处理器均先判 ref：非本插件笔记拖拽不接管（非法目标无动作）')
+    assert((clientSrc.match(/if \(!dragNoteIdRef\.current\) return/g) || []).length >= 3, '笔记拖拽 drop 处理器均先判 ref：非本插件拖拽不接管（非法目标无动作；文件夹拖拽走 dragFolderIdRef 通道）')
     assert(clientSrc.indexOf("classList.remove('dragging')") >= 0, 'dragend 清理 .dragging')
     assert(clientSrc.indexOf("querySelectorAll('.dsh-notes-floating .drop-hint')") >= 0, 'dragend 清理面板内所有残留 .drop-hint')
     // 右键「移动到文件夹」保留（拖拽与右键菜单共存）
     assert(clientSrc.indexOf('移动到文件夹') >= 0, '右键「移动到文件夹」保留')
   })
   await t('拖拽样式：.dragging 半透明 + .drop-hint 虚线描边（原型 .row.drop）+ 未分类区容器（开发版 + 发布包同步）', () => {
-    const cssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDev = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     assert(/\.dsh-notes-note-row\.dragging\{[^}]*opacity:\.35/.test(cssDev), 'styles.css 含 .dsh-notes-note-row.dragging opacity:.35（原型口径）')
     assert(/\.dsh-notes-folder-row\.drop-hint\{[^}]*outline:1\.5px dashed var\(--nacc\)/.test(cssDev), 'styles.css 含 .drop-hint 1.5px 虚线 --nacc 描边（原型 .row.drop）')
@@ -3083,7 +3325,7 @@ async function main() {
     for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
       const label = pair[0], src = pair[1]
       assert(/'recall: ' \+ escYaml\(m\.recall === false \? 'false' : 'true'\)/.test(src), label + ' buildFM 写 recall 行')
-      assert(src.indexOf("recall: p.meta.recall !== 'false'") >= 0, label + ' noteFromParsed 读 recall（缺省 true）')
+      assert(src.indexOf("recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : (p.meta.kind === 'log' ? false : true)),") >= 0, label + ' noteFromParsed 读 recall（缺省 true；工作记忆 v0：kind=log 缺省 false，显式 true 豁免）')
       assert((src.match(/recall: n\.recall !== false/g) || []).length >= 2, label + ' persistNote 与 slim 均带 recall')
       assert(/if \(recall !== undefined\) note\.recall = recall !== false/.test(src), label + ' _update 显式传 recall 才改（undefined 不动）')
       assert(/recall: \{ type: 'boolean'/.test(src), label + ' note_manage schema 含 recall 参数')
@@ -3347,7 +3589,7 @@ async function main() {
       assert(clientSrc.indexOf(cls) >= 0, 'client-impl 缺 ' + cls)
       assert(clientPkgSrc.indexOf(cls) >= 0, '发布包 client.js 缺 ' + cls + '（需先跑 scripts/build-dist.cjs）')
     }
-    const css = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const css = fsNative.readFileSync(SRC_STYLES, 'utf8')
     assert(css.indexOf('.dsh-notes-settings-checkwrap{') >= 0 && css.indexOf('.dsh-notes-settings-check{') >= 0, 'styles.css 缺 settings-check 系列样式')
   })
   await t('发布包 client.js 同步目录开关链路（需先跑 scripts/build-dist.cjs）', () => {
@@ -3424,12 +3666,15 @@ async function main() {
     effect: () => {},
   }
   new Function('harness', 'pluginDir', hostSrc)(harnessMock6, DIR).apply(ctx6)
-  await t('开发版注册 34 个 RPC（含 notes-export / notes-export-single / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge + P3 单文件导出 + notes-inject-preview 注入预览 + notes-suggest 整理建议）', () => {
-    assert.strictEqual(Object.keys(handlers6).length, 34, '实得 ' + Object.keys(handlers6).length)
+  await t('开发版注册 39 个 RPC（含 notes-export / notes-export-single / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge + P3 单文件导出 + notes-inject-preview 注入预览 + notes-suggest 整理建议 + notes-usage-get 用量统计 + 历史版本三 RPC + 工作记忆 notes-memory-guide）', () => {
+    assert.strictEqual(Object.keys(handlers6).length, 39, '实得 ' + Object.keys(handlers6).length)
+    assert(typeof handlers6['notes-memory-guide'] === 'function', 'notes-memory-guide handler 存在（工作记忆 v0 沉淀引导）')
     assert(typeof handlers6['notes-export'] === 'function' && typeof handlers6['notes-import-preview'] === 'function' && typeof handlers6['notes-import'] === 'function', '3 个新 handler 存在')
     assert(typeof handlers6['notes-export-single'] === 'function', 'notes-export-single handler 存在（P3 单文件导出）')
     assert(typeof handlers6['notes-asset-upload'] === 'function', 'notes-asset-upload handler 存在')
     assert(typeof handlers6['notes-purge'] === 'function', 'notes-purge handler 存在（P1 回收站彻底删除）')
+    assert(typeof handlers6['notes-usage-get'] === 'function', 'notes-usage-get handler 存在（LLM 用量统计）')
+    assert(typeof handlers6['notes-history'] === 'function' && typeof handlers6['notes-history-get'] === 'function' && typeof handlers6['notes-restore-history'] === 'function', '历史版本三 handler 存在（notes-history-ui）')
   })
 
   // 造库：3 条笔记 + 1 个文件夹
@@ -3667,7 +3912,7 @@ async function main() {
         get: (name) => ({ agents: agentsMock, systemPrompt: { context: () => () => {} } })[name],
         effect: () => {},
       })
-      assert.strictEqual(Object.keys(handlers7).length, 35, '静态包注册 35 个 RPC（34 + notes-ping），实得 ' + Object.keys(handlers7).length)
+      assert.strictEqual(Object.keys(handlers7).length, 40, '静态包注册 40 个 RPC（39 + notes-ping；39 含工作记忆 notes-memory-guide），实得 ' + Object.keys(handlers7).length)
       const sA = await handlers7['notes-create']({ title: '静态导出A', body: 'SA正文' })
       const sB = await handlers7['notes-create']({ title: '静态导出B', body: 'SB正文' })
       await handlers7['notes-folders']({ op: 'create', name: '静态夹' })
@@ -4086,7 +4331,7 @@ async function main() {
     }
   })
   await t('styles.css 双模式样式 + 发布包 lib/styles.css 逐字节同步 + 旧预览样式移除', () => {
-    const cssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDev = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const pair of [['styles.css', cssDev], ['发布包 lib/styles.css', cssPkg]]) {
       for (const cls of ['.dsh-notes-modeseg{', '.dsh-notes-modeseg-seg{', '.dsh-notes-modeseg-seg.dis{', '.dsh-notes-deg{', '.dsh-notes-rtb{', '.dsh-notes-rtb-btn{', '.dsh-notes-rich{', '.dsh-notes-rich img{', '.dsh-notes-rich-wrap.drop', '.dsh-notes-imgup-zone{', '.dsh-notes-imgup-prog{', '.dsh-notes-rich table.dsh-notes-table{', '.dsh-notes-rich table.dsh-notes-table th']) {
@@ -4198,7 +4443,7 @@ async function main() {
     }
   })
   await t('归档/多选样式（styles.css + 发布包 lib/styles.css 同步）', () => {
-    const cssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDev = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const pair of [['styles.css', cssDev], ['发布包 lib/styles.css', cssPkg]]) {
       for (const cls of ['.dsh-notes-arch-modal', '.dsh-notes-arch-list{', '.dsh-notes-arch-row{', '.dsh-notes-arch-members{', '.dsh-notes-arch-member', '.dsh-notes-selbar{', '.dsh-notes-selbar-n{', '.dsh-notes-pick-check{', '.dsh-notes-note-row.pick{', '.dsh-notes-toast-act{', '.dsh-notes-toast.has-act{pointer-events:auto}']) {
@@ -4228,6 +4473,32 @@ async function main() {
     // 原型与 app.html 的归档/多选 UI 标记双端一致（共享 CSS 选择器与 DOM id）
     for (const k of ['arch-row', 'arch-check', 'arch-member', 'pick-check', 'selbar', 'btnArchive', 'btnSelMode', 'mergeTitle']) {
       assert(protoV2Src.indexOf(k) >= 0 && appSrc.indexOf(k) >= 0, '归档/多选 UI 标记双端一致：' + k)
+    }
+  })
+  await t('多选操作条批量删除（软删进回收站，三端同步）', () => {
+    // React 两端：开发版面板 + 发布包 lib/client.js（build-dist 产物，host.call → rpc 机械转换）
+    for (const pair of [['client-impl', clientSrc, "host.call('notes-delete', { id: id })"], ['发布包 lib/client.js', clientPkgSrc, "rpc('notes-delete', { id: id })"]]) {
+      const s = pair[1]
+      assert(s.indexOf('async function doSelBatchDelete()') >= 0, pair[0] + ' 多选批量删除函数存在')
+      assert(s.indexOf("window.confirm('批量删除：所选的 ' + ids.length + ' 条笔记将移入回收站（可在回收站恢复）。\\n确认删除？')") >= 0, pair[0] + ' confirm 文案注明移入回收站可恢复')
+      assert(s.indexOf(pair[2]) >= 0, pair[0] + ' 逐条 notes-delete（软删 payload，与整理建议器批量软删同通道）')
+      assert(s.indexOf("className: 'dsh-notes-data-danger'") >= 0 && s.indexOf("selDelPending ? '删除中…' : '删除'") >= 0, pair[0] + ' 操作条删除按钮（danger 实心 + 执行中防重入）')
+      assert(s.indexOf('disabled: Object.keys(selIds).length < 1 || selDelPending') >= 0, pair[0] + ' 0 条勾选禁用删除按钮（与合并按钮互斥校验一致）')
+      assert(s.indexOf("showToast('已删除 ' + ok + ' 条（可在回收站恢复）'") >= 0, pair[0] + ' toast 文案（已删除 N 条 + 可恢复提示）')
+      assert(s.indexOf('setSelDelPending(false); setSelMode(false); setSelIds({})') >= 0, pair[0] + ' 删后退出多选态')
+      assert(s.indexOf('afterArchiveCleanup(ids)') >= 0, pair[0] + ' 删后收尾：正打开笔记退出选中态（归档/建议器同款语义）')
+    }
+    // DOM 两端：app.html + 原型 notes-ui-v2.html（同款 DOM/脚本）
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1]
+      assert(s.indexOf('<button class="mbtn danger" id="selDelete">删除</button>') >= 0, pair[0] + ' 操作条删除按钮（danger）')
+      assert(s.indexOf("$('selDelete').disabled = n < 1;") >= 0, pair[0] + ' 0 条勾选禁用删除按钮（renderSelBar 联动）')
+      assert(s.indexOf('function doSelBatchDelete()') >= 0, pair[0] + ' 多选批量删除函数存在')
+      assert(s.indexOf("confirm('批量删除：所选的 ' + ids.length + ' 条笔记将移入回收站（可在回收站恢复）。\\n确认删除？')") >= 0, pair[0] + ' confirm 文案注明移入回收站可恢复')
+      assert(s.indexOf("rpc('notes-delete', { id: id })") >= 0, pair[0] + ' 逐条 notes-delete（软删 payload，与整理建议器批量软删同通道）')
+      assert(s.indexOf("toast('已删除 ' + ok + ' 条（可在回收站恢复）'") >= 0, pair[0] + ' toast 文案（已删除 N 条 + 可恢复提示）')
+      assert(s.indexOf("$('selDelete').addEventListener('click', doSelBatchDelete)") >= 0, pair[0] + ' 删除按钮事件绑定')
+      assert(s.indexOf('selMode = false; selIds = {};') >= 0 && s.indexOf('afterArchiveRefresh()') >= 0, pair[0] + ' 删后退出多选态 + 刷新（打开笔记回空态收尾）')
     }
   })
 
@@ -4428,7 +4699,7 @@ async function main() {
     assert(clientSrc.indexOf('!importOpen && !pruneOpen') >= 0, '全局错误条排除 prune modal（modal 内自显错误）')
   })
   await t('二期 样式（styles.css + 发布包 lib/styles.css 同步）', () => {
-    const cssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDev = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const pair of [['styles.css', cssDev], ['发布包 lib/styles.css', cssPkg]]) {
       for (const cls of ['.dsh-notes-newnote-select{', '.dsh-notes-newnote-kind-row{', '.dsh-notes-newnote-kind-hint{', '.dsh-notes-organize-btn.busy{']) {
@@ -4480,10 +4751,12 @@ async function main() {
     for (const kw of ['✨ 整理', '模板骨架', '资产清理', '压缩']) assert(readme.indexOf(kw) >= 0, 'README 功能清单缺二期关键词：' + kw)
     assert(readme.indexOf('notes-ai-organize') >= 0 && readme.indexOf('notes-assets-prune') >= 0, 'README 数据位置/RPC 提及二期 RPC')
     const dev = fsNative.readFileSync(path.join(DIR, 'DEVELOPMENT.md'), 'utf8')
-    assert(dev.indexOf('34 个 RPC') >= 0, 'DEVELOPMENT RPC 计数更新为 34（P1 notes-purge + P3 notes-export-single + 注入预览 notes-inject-preview + 整理建议 notes-suggest）')
+    assert(dev.indexOf('39 个 RPC') >= 0, 'DEVELOPMENT RPC 计数更新为 39（历史版本三 RPC + 工作记忆 notes-memory-guide）')
+    assert(dev.indexOf('notes-memory-guide') >= 0, 'DEVELOPMENT RPC 清单提及工作记忆 notes-memory-guide')
     assert(dev.indexOf('notes-inject-preview') >= 0, 'DEVELOPMENT RPC 清单提及注入预览 notes-inject-preview')
     assert(dev.indexOf('notes-suggest') >= 0, 'DEVELOPMENT RPC 清单提及整理建议 notes-suggest')
     assert(dev.indexOf('notes-export-single') >= 0, 'DEVELOPMENT RPC 清单提及 P3 notes-export-single')
+    assert(dev.indexOf('notes-restore-history') >= 0, 'DEVELOPMENT RPC 清单提及历史版本 notes-restore-history')
     const pkgReadme = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'README.md'), 'utf8')
     for (const kw of ['✨ 整理', '资产清理']) assert(pkgReadme.indexOf(kw) >= 0, '发布包 README 同步二期（需跑 scripts/sync-pkg-readme.cjs）：' + kw)
   })
@@ -4742,7 +5015,7 @@ async function main() {
       const s = pair[1]
       assert(s.indexOf("handle('notes-purge'") >= 0, pair[0] + ' notes-purge RPC 注册')
       assert(s.indexOf('args.includeDeleted') >= 0, pair[0] + ' notes-list 透传 includeDeleted')
-      assert(s.indexOf('async function _list(tag, kind, folder, includeDeleted)') >= 0, pair[0] + ' _list 第 4 参数 includeDeleted')
+      assert(s.indexOf('async function _list(tag, kind, folder, includeDeleted, includeLogs)') >= 0, pair[0] + ' _list 第 4 参数 includeDeleted / 第 5 参数 includeLogs（工作记忆 v0）')
       assert(s.indexOf('if (note.deleted && !includeDeleted) continue') >= 0, pair[0] + ' includeDeleted 放行软删除')
       assert(s.indexOf('if (note.tombstoned) continue') >= 0, pair[0] + ' _list 跳过 purge 墓碑')
       assert(s.indexOf('note.tombstoned = !c') >= 0, pair[0] + ' readNoteFile 墓碑标记（0 字节占位）')
@@ -4864,7 +5137,7 @@ async function main() {
   })
   // ---- 28.5 样式同步（styles.css + 发布包 lib/styles.css）----
   await t('回收站样式（styles.css + 发布包 lib/styles.css 同步）', () => {
-    const cssDev2 = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDev2 = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg2 = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const pair of [['styles.css', cssDev2], ['发布包 lib/styles.css', cssPkg2]]) {
       assert(pair[1].indexOf('.dsh-notes-trash-act{') >= 0 && pair[1].indexOf('.dsh-notes-trash-act.danger') >= 0, pair[0] + ' 缺回收站行按钮样式（需跑 scripts/build-dist.cjs）')
@@ -4897,9 +5170,90 @@ async function main() {
     assert(protoV2Src.indexOf('彻底删除不可恢复') >= 0, 'v2 confirm 双确认文案')
     assert(protoV2Src.indexOf('已删演示') >= 0, 'v2 mock 含软删除演示笔记（回收站非空演示）')
     // v2 与 app.html 回收站 UI 标记双端一致（共享 DOM id / 函数名 / 样式类）
-    for (const k of ['btnTrash', 'setTrash', 'openTrash', 'loadTrash', 'renderTrashList', 'doTrashRestore', 'doTrashPurge', 'trashList', 'trash-act', 'trashState']) {
+    for (const k of ['btnTrash', 'setTrash', 'openTrash', 'loadTrash', 'renderTrashList', 'doTrashRestore', 'doTrashPurge', 'trashList', 'trash-act', 'trashState',
+                     'toggleTrashSel', 'toggleTrashAll', 'toggleTrashPreview', 'doTrashRestoreBatch', 'doTrashPurgeBatch', 'trashAll', 'trashRestoreBatch', 'trashPurgeBatch', 'trash-batch', 'trash-check', 'trash-preview']) {
       assert(protoV2Src.indexOf(k) >= 0 && appSrc.indexOf(k) >= 0, '回收站 UI 标记双端一致：' + k)
     }
+  })
+
+  // ---- 28.7 回收站增强（notes-trash-batch-preview）：批量选择/全选 + 批量恢复/批量彻底删除 + 行内容只读预览 ----
+  await t('notes-get includeDeleted：已删笔记正文只读可达（双包同步 + 行为级，缺省/墓碑仍拒绝）', async () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1]
+      assert(s.indexOf('async function _getDeleted(id)') >= 0, pair[0] + ' _getDeleted 存在（回收站预览专用：放行已删、墓碑仍拒绝）')
+      assert(s.indexOf('args && args.includeDeleted ? await _getDeleted(args.id) : await _get(args.id)') >= 0, pair[0] + ' notes-get 透传 includeDeleted（缺省走 _get，编辑器链路口径不变）')
+    }
+    // 行为级（开发版独立实例 handlersT）：已删笔记缺省拒绝、includeDeleted 可达且带正文+deleted 标记；墓碑 includeDeleted 仍拒绝
+    const pv = await handlersT['notes-create']({ title: '回收站预览甲', body: 'trash-preview-body-1', topic: '回收' })
+    await handlersT['notes-delete']({ id: pv.id })
+    const g0 = await handlersT['notes-get']({ id: pv.id })
+    assert(g0 && g0.error && !g0.note, '缺省 notes-get 对已删笔记仍拒绝（编辑器链路口径不变）')
+    const g1 = await handlersT['notes-get']({ id: pv.id, includeDeleted: true })
+    assert(g1 && g1.note && g1.note.body === 'trash-preview-body-1' && g1.note.deleted === true, 'includeDeleted 已删正文可达（实得 ' + JSON.stringify(g1 && (g1.error || g1.note && g1.note.deleted)) + '）')
+    await handlersT['notes-purge']({ id: pv.id })
+    const g2 = await handlersT['notes-get']({ id: pv.id, includeDeleted: true })
+    assert(g2 && g2.error && !g2.note, '墓碑（已彻底删除）includeDeleted 仍拒绝')
+    // 静态包同款（rpc2 路由链路）
+    const pv2 = await rpc2('notes-create', { title: '静态包回收站预览', body: 'trash-preview-body-2', topic: '回收' })
+    await rpc2('notes-delete', { id: pv2.body.id })
+    const sg0 = await rpc2('notes-get', { id: pv2.body.id })
+    assert(sg0.body && sg0.body.error && !sg0.body.note, '静态包缺省 notes-get 对已删笔记仍拒绝')
+    const sg1 = await rpc2('notes-get', { id: pv2.body.id, includeDeleted: true })
+    assert(sg1.body && sg1.body.note && sg1.body.note.body === 'trash-preview-body-2' && sg1.body.note.deleted === true, '静态包 includeDeleted 已删正文可达')
+  })
+  await t('回收站批量操作四端同步：全选/行勾选/选中计数 + 批量恢复/批量彻底删除（confirm 含 不可恢复+含历史版本+条数）', () => {
+    // React 两端：开发版面板 + 发布包 lib/client.js（build-dist 机械转换产物）
+    for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('function toggleTrashSel(id)') >= 0 && s.indexOf('function toggleTrashAll()') >= 0, label + ' 行勾选/全选函数存在')
+      assert(s.indexOf('async function doTrashRestoreBatch()') >= 0 && s.indexOf('async function doTrashPurgeBatch()') >= 0, label + ' 批量恢复/批量彻底删除函数存在')
+      assert(s.indexOf("window.confirm('批量恢复：所选的 ' + ids.length + ' 条笔记将移出回收站（恢复后回到正常列表）。\\n确认恢复？')") >= 0, label + ' 批量恢复 confirm 文案（含条数）')
+      assert(s.indexOf("window.confirm('批量彻底删除：所选的 ' + ids.length + ' 条笔记将彻底删除，不可恢复（含历史版本）。\\n删除后正文、历史版本快照与归档备份将一并移除，确认彻底删除？')") >= 0, label + ' 批量彻底删除 confirm 含「不可恢复 + 含历史版本 + 条数」')
+      assert(s.indexOf("showToast('已恢复 ' + ok + ' 条'") >= 0 && s.indexOf("showToast('已彻底删除 ' + ok + ' 条'") >= 0, label + ' 批量 toast 计数文案')
+      assert(s.indexOf("'notes-restore', { id: id }") >= 0 && s.indexOf("'notes-purge', { id: id }") >= 0, label + ' 批量逐条 notes-restore / notes-purge payload')
+      assert(s.indexOf("'已选 ' + Object.keys(trashSel).length + ' 条'") >= 0, label + ' 选中计数')
+      assert(s.indexOf('dsh-notes-trash-batch') >= 0 && s.indexOf('dsh-notes-trash-check') >= 0, label + ' 批量条/行勾选样式类')
+    }
+    // DOM 两端：app.html + 原型 notes-ui-v2.html（同款 DOM/脚本）
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('function toggleTrashSel(id)') >= 0 && s.indexOf('function toggleTrashAll()') >= 0, label + ' 行勾选/全选函数存在')
+      assert(s.indexOf('function doTrashRestoreBatch()') >= 0 && s.indexOf('function doTrashPurgeBatch()') >= 0, label + ' 批量恢复/批量彻底删除函数存在')
+      assert(s.indexOf('id="trashAll"') >= 0 && s.indexOf('id="trashRestoreBatch"') >= 0 && s.indexOf('id="trashPurgeBatch"') >= 0, label + ' 全选 checkbox + 批量按钮 DOM id')
+      assert(s.indexOf("'已选 ' + selCnt + ' 条'") >= 0, label + ' 选中计数')
+      assert(s.indexOf("confirm('批量恢复：所选的 ' + ids.length + ' 条笔记将移出回收站（恢复后回到正常列表）。\\n确认恢复？')") >= 0, label + ' 批量恢复 confirm 文案（含条数）')
+      assert(s.indexOf("confirm('批量彻底删除：所选的 ' + ids.length + ' 条笔记将彻底删除，不可恢复（含历史版本）。\\n删除后正文、历史版本快照与归档备份将一并移除，确认彻底删除？')") >= 0, label + ' 批量彻底删除 confirm 含「不可恢复 + 含历史版本 + 条数」')
+      assert(s.indexOf("toast('已恢复 ' + ok + ' 条'") >= 0 && s.indexOf("toast('已彻底删除 ' + ok + ' 条'") >= 0, label + ' 批量 toast 计数文案')
+      assert(s.indexOf("rpc('notes-restore', { id: id })") >= 0 && s.indexOf("rpc('notes-purge', { id: id })") >= 0, label + ' 批量逐条 notes-restore / notes-purge payload')
+      assert(s.indexOf('.trash-batch{') >= 0 && s.indexOf('.trash-check{') >= 0 && s.indexOf('.trash-preview{') >= 0, label + ' 批量条/勾选/预览样式（内联 CSS）')
+    }
+    // 面板样式双份同步（styles.css + 发布包 lib/styles.css）
+    const cssDev3 = fsNative.readFileSync(SRC_STYLES, 'utf8')
+    const cssPkg3 = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    for (const pair of [['styles.css', cssDev3], ['发布包 lib/styles.css', cssPkg3]]) {
+      assert(pair[1].indexOf('.dsh-notes-trash-batch{') >= 0 && pair[1].indexOf('.dsh-notes-trash-check{') >= 0 && pair[1].indexOf('.dsh-notes-trash-preview{') >= 0, pair[0] + ' 缺回收站批量/勾选/预览样式（需跑 scripts/build-dist.cjs）')
+    }
+  })
+  await t('回收站行预览四端同步：notes-get includeDeleted 取已删正文 + 只读渲染（esc 先行零注入面）', () => {
+    // React 两端：renderMarkdown 内核只读渲染（内核全量转义，esc 先行——XSS 红线断言同源）
+    for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('function toggleTrashPreview(id)') >= 0, label + ' 行预览开关函数存在')
+      assert(s.indexOf("'notes-get', { id: id, includeDeleted: true }") >= 0, label + ' 预览走 notes-get includeDeleted（已删正文可达）')
+      assert(s.indexOf("className: 'dsh-notes-trash-preview dsh-notes-rich', dangerouslySetInnerHTML: { __html: renderMarkdown(trashPreview.body, wikiResolve) }") >= 0, label + ' 预览只读 renderMarkdown 内核渲染（全量转义零注入面）')
+      assert(s.indexOf("trashPreview && trashPreview.id === n.id ? '收起' : '预览'") >= 0, label + ' 行尾「预览/收起」按钮')
+    }
+    // app.html：同款 renderMarkdown 只读渲染；标题/错误态均经 esc()
+    assert(appSrc.indexOf('function toggleTrashPreview(id)') >= 0, 'app.html 行预览开关函数存在')
+    assert(appSrc.indexOf("rpc('notes-get', { id: id, includeDeleted: true })") >= 0, 'app.html 预览走 notes-get includeDeleted')
+    assert(appSrc.indexOf('\'<div class="trash-preview rich">\' + (typeof pv.body === \'string\' ? renderMarkdown(pv.body, wikiResolve)') >= 0, 'app.html 预览只读 renderMarkdown 内核渲染（esc 先行）')
+    assert(appSrc.indexOf('data-act="preview"') >= 0 && appSrc.indexOf('class="ti trash-ti"') >= 0, 'app.html 行尾「预览/收起」按钮 + 标题点击预览')
+    // 原型：无 Markdown 内核——esc() 纯文本只读预览（hist-preview 同款先例，esc 全量转义零注入面）+ mock notes-get 支持 includeDeleted
+    assert(protoV2Src.indexOf('function toggleTrashPreview(id)') >= 0, '原型行预览开关函数存在')
+    assert(protoV2Src.indexOf("rpc('notes-get', { id: id, includeDeleted: true })") >= 0, '原型预览走 notes-get includeDeleted')
+    assert(protoV2Src.indexOf('\'<div class="trash-preview">\' + (typeof pv.body === \'string\' ? esc(pv.body)') >= 0, '原型预览 esc() 纯文本只读（esc 先行零注入面）')
+    assert(protoV2Src.indexOf('data-act="preview"') >= 0 && protoV2Src.indexOf('class="ti trash-ti"') >= 0, '原型行尾「预览/收起」按钮 + 标题点击预览')
+    assert(protoV2Src.indexOf("return n && (!n.deleted || a.includeDeleted) ? { note: JSON.parse(JSON.stringify(n)) } : { error: 'Note has been deleted' }") >= 0, '原型 mock notes-get 支持 includeDeleted（已删演示正文可预览）')
   })
 
   // ===== 29. P1 注入增强：时效衰减提醒（staleDays）+ 注入体积预算（injectBudgetChars）=====
@@ -5116,7 +5470,7 @@ async function main() {
     for (const k of ['时效衰减提醒', '注入体积预算', 'saveSettingsStale', 'saveSettingsBudget', 'dsh-notes-inject-gauge', '当前注入约 ', 'staleDays', 'injectBudgetChars']) {
       assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺 ' + k + '（需先跑 scripts/build-dist.cjs）')
     }
-    const cssDev9 = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDev9 = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg9 = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const pair of [['styles.css', cssDev9], ['发布包 lib/styles.css', cssPkg9]]) {
       assert(pair[1].indexOf('.dsh-notes-inject-gauge{') >= 0 && pair[1].indexOf('.dsh-notes-inject-gauge-bar') >= 0 && pair[1].indexOf('.dsh-notes-inject-gauge-t{') >= 0, pair[0] + ' 缺注入预算仪表样式')
@@ -5391,7 +5745,7 @@ async function main() {
     // 原型 mock 演示数据（徽章/合计在原型可见）
     assert(protoV2Src.indexOf('useCount: 12') >= 0 && protoV2Src.indexOf('useCount: 7') >= 0 && protoV2Src.indexOf('useCount: 3') >= 0, '原型 mock 演示数据含 useCount')
     assert(protoV2Src.indexOf('totalUseCount: ms.reduce(') >= 0, '原型 mock 归档 preview 合计')
-    const cssDev30 = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDev30 = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg30 = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const pair of [['styles.css', cssDev30], ['发布包 lib/styles.css', cssPkg30]]) {
       assert(pair[1].indexOf('.dsh-notes-note-use{') >= 0 && pair[1].indexOf('.dsh-notes-note-use .dsh-ic{') >= 0, pair[0] + ' 缺被引用徽章样式')
@@ -5499,7 +5853,7 @@ async function main() {
     assert(s.indexOf('ensureWikiIndex(); renderTree();') >= 0, 'app.html loadNotes 链路桥接索引构建')
   })
   await t('双链样式双端：styles.css ⇄ 发布包 lib/styles.css + app.html 内嵌样式', () => {
-    const cssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDev = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const pair of [['styles.css', cssDev], ['发布包 lib/styles.css', cssPkg]]) {
       for (const cls of ['.dsh-notes-rich a.dsh-notes-wikilink{', '.dsh-notes-note-wiki{', '.dsh-notes-backlinks{', '.dsh-notes-backlinks-t{', '.dsh-notes-backlink{', '.dsh-notes-backlinks-empty{']) {
@@ -5535,6 +5889,10 @@ async function main() {
       assert(s.indexOf('lastCatStats.stale = staleCount') >= 0, label + ' catalogText 时效标注计数')
       assert(s.indexOf('conventionsChars: conventions.length') >= 0 && s.indexOf('budgetTruncated: lastConvStats.budgetTruncated') >= 0, label + ' stats 字段结构')
       assert(s.indexOf('if (sidOverride === undefined) lastInjectChars = full.length') >= 0, label + ' 预览渲染不更新 lastInjectChars（仪表只反映真实注入）')
+      // notes-scope-global-pick：三档视角（全局/工作区并集/单会话）——workspace 参数 + conventionHit 集合口径（双包同步）
+      assert(s.indexOf("const wsName = !sid && args && args.workspace ? String(args.workspace) : ''") >= 0, label + ' inject-preview workspace 参数（与 sessionId 互斥，sessionId 优先）')
+      assert(s.indexOf('const sidSet = Array.isArray(curSid) ? curSid : null') >= 0, label + ' conventionHit 支持会话短 id 集合（工作区并集视角）')
+      assert(s.indexOf('sessRes.pendingSessions') >= 0, label + ' workspace 解析含 pending 占位会话（同 notes-sessions 数据源）')
     }
   })
 
@@ -5581,6 +5939,18 @@ async function main() {
     assert(g1.conventions.indexOf('预览全局约定') >= 0, '全局笔记在会话视角仍在（injectTo=[] 所有会话共享）')
     const g2 = await handlersIP['notes-inject-preview']({ sessionId: 'deadbeef' })
     assert(g2.conventions.indexOf('预览定向约定abc') < 0, '其他会话短 id 不命中')
+  })
+  await t('workspace 视角：该工作区全部会话注入并集 + 未知工作区退化全局 + sessionId 互斥优先', async () => {
+    // 自造数（--core 模式跳过「sessionId 过滤」断言体，其定向笔记不存在；CORE 约定 = 核心断言共享状态与全量一致，依赖的笔记须自造）
+    await handlersIP['notes-create']({ title: '预览定向约定ws', body: '定向正文ws', inject: true, injectTo: ['abc12345'], topic: '约定' })
+    // workspaceRegistryMock 唯一工作区 deepseek-work：含 live 会话 abc12345（short 命中定向笔记 injectTo）
+    const w0 = await handlersIP['notes-inject-preview']({ workspace: 'deepseek-work' })
+    assert(w0.conventions.indexOf('预览定向约定ws') >= 0, '工作区视角命中区内会话的定向笔记（并集口径，实得长度 ' + w0.conventions.length + '）')
+    assert(w0.conventions.indexOf('预览全局约定') >= 0, '工作区视角仍含 injectTo=[] 全局笔记')
+    const w1 = await handlersIP['notes-inject-preview']({ workspace: 'no-such-ws' })
+    assert(w1.conventions.indexOf('预览定向约定ws') < 0 && w1.conventions.indexOf('预览全局约定') >= 0, '未知工作区 = 空会话集合：并集退化为全局视角')
+    const w2 = await handlersIP['notes-inject-preview']({ sessionId: 'deadbeef', workspace: 'deepseek-work' })
+    assert(w2.conventions.indexOf('预览定向约定ws') < 0, 'sessionId 与 workspace 同传时 sessionId 优先（deadbeef 不命中）')
   })
   await t('脱敏文本进入预览：sensitive 正文/标题打码 + 占位符 + stats.maskedNotes 覆盖双桶', async () => {
     const c1 = await handlersIP['notes-create']({ title: '预览敏感约定', body: '部署密码：Top$ecret99', inject: true, sensitive: true, topic: '敏感' })
@@ -5662,7 +6032,8 @@ async function main() {
     assert(clientSrc.indexOf("key: 'injprev', label: '注入预览'") >= 0, 'settingsRows 含「注入预览」行')
     assert(clientSrc.indexOf('onClick: openInjectPreview') >= 0, '预览按钮接线 openInjectPreview')
     assert(clientSrc.indexOf('function openInjectPreview()') >= 0 && clientSrc.indexOf('function loadInjectPreview(sid)') >= 0, 'openInjectPreview/loadInjectPreview 存在')
-    assert(clientSrc.indexOf("host.call('notes-inject-preview', sid ? { sessionId: sid } : {})") >= 0, 'RPC 调用（缺省全局 / 传 sessionId）')
+    assert(clientSrc.indexOf("sid.indexOf('ws:') === 0 ? { workspace: sid.slice(3) } : { sessionId: sid }") >= 0, 'RPC 调用（缺省全局 / ws: 前缀走 workspace 并集视角 / 传 sessionId）')
+    assert(clientSrc.indexOf("e('optgroup', { label: '工作区' }") >= 0 && clientSrc.indexOf("e('optgroup', { label: '会话' }") >= 0, '预览视角下拉三档（全局 + 工作区/会话 optgroup）')
     assert(clientSrc.indexOf("const [injectPreviewTab, setInjectPreviewTab] = React.useState('conv')") >= 0, '双 tab 状态（缺省约定）')
     assert(clientSrc.indexOf('dsh-notes-injprev-text') >= 0 && clientSrc.indexOf('dsh-notes-injprev-stats') >= 0 && clientSrc.indexOf('dsh-notes-injprev-tab') >= 0, '预览 modal 结构类（文本区/统计条/tab）')
     assert(clientSrc.indexOf('预算截断 ') >= 0 && clientSrc.indexOf('时效标注 ') >= 0, '统计条文案（预算截断/时效标注）')
@@ -5674,7 +6045,7 @@ async function main() {
     }
   })
   await t('注入预览样式双端：styles.css ⇄ 发布包 lib/styles.css', () => {
-    const cssDevP = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDevP = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkgP = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const pair of [['styles.css', cssDevP], ['发布包 lib/styles.css', cssPkgP]]) {
       for (const cls of ['.dsh-notes-injprev-modal{', '.dsh-notes-injprev-tab{', '.dsh-notes-injprev-tab.on{', '.dsh-notes-injprev-text{', '.dsh-notes-injprev-stats{']) {
@@ -5690,7 +6061,8 @@ async function main() {
       assert(s.indexOf('id="setInjectPreview"') >= 0, label + ' 设置卡片「注入预览」入口')
       assert(s.indexOf("$('setInjectPreview').onclick") >= 0 && s.indexOf('openInjectPreview()') >= 0, label + ' 入口接线')
       assert(s.indexOf('function openInjectPreview()') >= 0 && s.indexOf('function loadInjectPreview()') >= 0 && s.indexOf('function renderInjectPreview()') >= 0, label + ' 预览三函数')
-      assert(s.indexOf("rpc('notes-inject-preview', injectPreviewState.sid ? { sessionId: injectPreviewState.sid } : {})") >= 0, label + ' RPC 调用（缺省全局 / 传 sessionId）')
+      assert(s.indexOf("v.indexOf('ws:') === 0 ? { workspace: v.slice(3) } : { sessionId: v }") >= 0, label + ' RPC 调用（缺省全局 / ws: 前缀走 workspace 并集视角 / 传 sessionId）')
+      assert(s.indexOf('<optgroup label="工作区">') >= 0 && s.indexOf('<optgroup label="会话">') >= 0, label + ' 视角下拉三档（全局 + 工作区/会话 optgroup）')
       assert(s.indexOf("rpc('notes-sessions', {})") >= 0, label + ' 会话下拉数据源 notes-sessions')
       assert(s.indexOf('injprev-text') >= 0 && s.indexOf('injprev-stats') >= 0 && s.indexOf('injprev-tab') >= 0, label + ' 预览 modal 结构类')
       assert(s.indexOf('预算截断 ') >= 0 && s.indexOf('.modal.injprev{') >= 0, label + ' 统计条文案 + 宽 modal 样式')
@@ -5701,6 +6073,7 @@ async function main() {
     }
     assert(protoV2Src.indexOf("method === 'notes-inject-preview'") >= 0, '原型 mock notes-inject-preview')
     assert(protoV2Src.indexOf('定向约定') >= 0, '原型 mock 演示 sessionId 过滤（定向约定）')
+    assert(protoV2Src.indexOf('a.workspace') >= 0 && protoV2Src.indexOf('injectTo 并集演示') >= 0, '原型 mock 演示 workspace 视角（工作区定向约定）')
     assert(protoV2Src.indexOf('maskedNotes: 2') >= 0 && protoV2Src.indexOf('staleMarked: 1') >= 0 && protoV2Src.indexOf('budgetTruncated: false') >= 0, '原型 mock 统计演示值')
   })
 
@@ -5716,12 +6089,17 @@ async function main() {
   const sugBlkDev = grabSuggestBlk(hostSrc, 'host-impl.js')
   const sugBlkPkg = grabSuggestBlk(indexSrc, 'index.mjs')
   const sugNS = {}
-  new Function('ns', sugBlkDev + '\nns.suggestCandidates = suggestCandidates; ns.suggestLinkTargetsOf = suggestLinkTargetsOf; ns.SUGGEST_ORPHAN_LIMIT = SUGGEST_ORPHAN_LIMIT;')(sugNS)
+  new Function('ns', sugBlkDev + '\nns.suggestCandidates = suggestCandidates; ns.suggestLinkTargetsOf = suggestLinkTargetsOf; ns.SUGGEST_ORPHAN_LIMIT = SUGGEST_ORPHAN_LIMIT; ns.suggestLogHygiene = suggestLogHygiene; ns.suggestISOWeek = suggestISOWeek; ns.suggestLogDateOf = suggestLogDateOf;')(sugNS)
   await t('suggest-helpers 标记块双包逐字节一致 + 可 eval（suggestCandidates/suggestLinkTargetsOf 导出）', () => {
     assert.strictEqual(sugBlkPkg, sugBlkDev, 'host-impl.js 与 index.mjs 的 suggest-helpers 块必须逐字节一致')
     assert.strictEqual(typeof sugNS.suggestCandidates, 'function', 'suggestCandidates 可 eval 导出')
     assert.strictEqual(typeof sugNS.suggestLinkTargetsOf, 'function', 'suggestLinkTargetsOf 可 eval 导出')
     assert.strictEqual(sugNS.SUGGEST_ORPHAN_LIMIT, 20, '孤儿候选上限 20')
+  })
+  await t('suggest-helpers 日志卫生函数可 eval 导出（suggestLogHygiene/suggestISOWeek/suggestLogDateOf，工作记忆 v0）', () => {
+    assert.strictEqual(typeof sugNS.suggestLogHygiene, 'function', 'suggestLogHygiene 可 eval 导出')
+    assert.strictEqual(typeof sugNS.suggestISOWeek, 'function', 'suggestISOWeek 可 eval 导出')
+    assert.strictEqual(typeof sugNS.suggestLogDateOf, 'function', 'suggestLogDateOf 可 eval 导出')
   })
   await t('host 双侧：notes-suggest RPC 注册 + _suggest 内聚复用 _archivePreview + 生成时间戳（双包同步）', () => {
     for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
@@ -5906,7 +6284,7 @@ async function main() {
     assert(sec3 && sec3[0].indexOf('查看') >= 0 && sec3[0].indexOf('一键批量') < 0 && sec3[0].indexOf('danger') < 0, '孤儿段仅展示（查看按钮，无批量/danger 操作）')
   })
   await t('整理建议样式双端：styles.css ⇄ 发布包 lib/styles.css', () => {
-    const cssDevS = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDevS = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkgS = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const pair of [['styles.css', cssDevS], ['发布包 lib/styles.css', cssPkgS]]) {
       for (const cls of ['.dsh-notes-suggest-modal{', '.dsh-notes-suggest-sec{', '.dsh-notes-suggest-sec-t{', '.dsh-notes-suggest-sec-n{']) {
@@ -5932,7 +6310,7 @@ async function main() {
       assert(s.indexOf('sgGoArch') >= 0 && s.indexOf('openArchive()') >= 0, label + ' 「去归档」直达归档预览')
       const sec3 = s.match(/>可能无用<span[\s\S]*?判定口径/)   // 锚定③段标题行（HTML 字符串形态），避开段头注释与②段批量按钮
       assert(sec3 && sec3[0].indexOf('查看') >= 0 && sec3[0].indexOf('一键批量') < 0 && sec3[0].indexOf('danger') < 0, label + ' 孤儿段仅展示（无批量操作）')
-      assert(s.indexOf('suggestState = null; return }') >= 0, label + ' Esc 统一关建议框')
+      assert(s.indexOf('suggestState = null; histState = null; memEnableState = null; return }') >= 0, label + ' Esc 统一关建议框（连带历史面板 histState / 工作记忆启用框 memEnableState 复位）')
     }
     // 双端 UI 标记一致（共享 DOM id / 函数名 / 样式类）
     for (const k of ['setSuggest', 'openSuggest', 'loadSuggest', 'renderSuggestList', 'doSuggestBatchDelete', 'suggestState', 'sgGoArch', 'sgBatchDel', 'sg-view', 'sg-sec']) {
@@ -6167,7 +6545,7 @@ async function main() {
       // 状态组/类型组 checkbox 由 FILTER_STATUS/FILTER_KINDS 驱动生成（data-ft/data-fk 为拼接属性，断言模型定义 + 拼接点）
       assert(s.indexOf("{ id: 'pinned', label: '置顶', icon: 'i-pin'") >= 0 && s.indexOf("{ id: 'injected', label: '已注入', icon: 'i-bolt'") >= 0 && s.indexOf("{ id: 'injectEver', label: '曾注入', icon: 'i-clock'") >= 0 && s.indexOf("{ id: 'sensitive', label: '敏感', icon: 'i-lock'") >= 0, label + ' 状态组四条件模型（多选）')
       assert(s.indexOf("data-ft=\"' + s.id + '\"") >= 0 && s.indexOf("data-fk=\"' + k + '\"") >= 0, label + ' 状态组/类型组 checkbox 接线（data-ft/data-fk）')
-      assert(s.indexOf("var FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote'];") >= 0, label + ' 类型组五种 kind（多选）')
+      assert(s.indexOf("var FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log'];") >= 0, label + ' 类型组六种 kind（多选；+log 工作记忆 v0 专入口）')
       assert(s.indexOf("if (s.id === 'injectEver' && !showEver) return") >= 0, label + ' 曾注入 feature-detect（slim 无 injectEver 字段不显示）')
       assert(s.indexOf('组内多选 = OR') >= 0 && s.indexOf('组内 OR · 与状态组 = AND') >= 0, label + ' 分组规则文案')
       assert(s.indexOf('id="popClear"') >= 0 && s.indexOf('id="popDone"') >= 0 && s.indexOf('命中 ') >= 0, label + ' popover 底部 清空/完成/命中数')
@@ -6223,7 +6601,7 @@ async function main() {
     assert(protoV2Src.indexOf('sensitive: n.sensitive === true') >= 0, '原型 mock slim 含 sensitive')
     assert(protoV2Src.indexOf("recall: true, sensitive: true, tags: [], createdAt: '2026-09-23T08:00:00.000Z'") >= 0, '原型 mock 演示数据：n4 敏感笔记（npm token）')
     assert(protoV2Src.indexOf('injectEver: true') >= 0 && protoV2Src.indexOf('if (n.injectEver !== undefined) s.injectEver = n.injectEver === true') >= 0, '原型 mock：曾注入演示数据 + slim 条件透传（feature-detect）')
-    const cssDev34 = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssDev34 = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg34 = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const pair of [['styles.css', cssDev34], ['发布包 lib/styles.css', cssPkg34]]) {
       const c = pair[1], lab = pair[0]
@@ -6250,7 +6628,7 @@ async function main() {
       assert(src.indexOf("'injectEver: ' + escYaml(m.injectEver === true ? 'true' : 'false')") >= 0, label + ' buildFM 恒写 injectEver（缺省 false）')
       assert(src.indexOf("injectEver: p.meta.injectEver === 'true' || inject === true") >= 0, label + ' noteFromParsed 读 injectEver（缺省 false + 现状兜底 injectEver ⊇ inject）')
       assert((src.match(/injectEver: n\.injectEver === true \|\| n\.inject === true/g) || []).length >= 2, label + ' persistNote 与 slim 均携带 injectEver')
-      assert(src.indexOf('injectEver: ex.injectEver === true || ex.inject === true') >= 0, label + ' _create 粘性（创建即注入 / 归档继承显式传入）')
+      assert(src.indexOf('injectEver: isLog ? (ex.injectEver === true) : (ex.injectEver === true || ex.inject === true),') >= 0, label + ' _create 粘性（创建即注入 / 归档继承显式传入；kind=log 隐身硬闸下不随被纠正的 inject 拉起）')
       assert(src.indexOf('if (inject === true) note.injectEver = true') >= 0, label + ' _update 单向粘性（inject 置 true 拉起，置 false/不传不回退）')
       assert(src.indexOf('injectEver: meta.inject === true') >= 0, label + ' notes-quick-instruct 落 injectEver')
       assert(src.indexOf('injectEver: members.some(n => n.injectEver === true || n.inject === true)') >= 0, label + ' _mergeGroup 归档继承（members.some，与 sensitive 同款）')
@@ -6384,7 +6762,7 @@ async function main() {
       assert(s.indexOf("icon('i-clock') + '曾注入</span>'") >= 0, label + ' 详情 meta chip「曾注入」')
       assert(s.indexOf('injectEver 为粘性标记，不随关闭回退') >= 0, label + ' 详情 chip tooltip 说明粘性语义')
     }
-    const cssIEDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+    const cssIEDev = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssIEPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     for (const pair of [['styles.css', cssIEDev], ['发布包 lib/styles.css', cssIEPkg]]) {
       assert(pair[1].indexOf('.dsh-notes-note-injevr{') >= 0, pair[0] + ' 含曾注入行徽章样式（需跑 scripts/build-dist.cjs）')
@@ -6395,7 +6773,7 @@ async function main() {
 
   // ===== 35. 侧栏宽度拖拽分隔条（面板 + app.html + 原型三端同步：拖拽 / clamp 200px–60% / localStorage 记忆 / 双击重置） =====
   section('35. 侧栏宽度拖拽分隔条（splitter：拖拽 + clamp + 记忆 + 双击重置，三端同步）')
-  const spCssDev = fsNative.readFileSync(path.join(DIR, 'styles.css'), 'utf8')
+  const spCssDev = fsNative.readFileSync(SRC_STYLES, 'utf8')
   const spCssPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
   const spClientPkg = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
   const spApp = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
@@ -6484,10 +6862,1765 @@ async function main() {
     assert(grabJs(spApp).length > 10 && grabJs(spApp) === grabJs(spProto), 'app.html ⇄ 原型：分隔条脚本逐字节一致')
   })
 
+  // ===== 35. 注入/派发图片路径消歧提示（img-path-hint：正文含 assets/ 图片引用时尾部追加绝对路径提示行） =====
+  section('35. 注入/派发图片路径消歧提示（img-path-hint，host 双包）')
+
+  // --- 35.1 标记块：双包逐字节一致 + eval 单测（与 sensitive-helpers/export-single 同款姿势）---
+  const grabImgBlk = (s, tag) => { const m = s.match(/\/\/ ==== img-path-hint BEGIN ====[\s\S]*?\/\/ ==== img-path-hint END ====/); assert(m, tag + ' 缺 img-path-hint 标记块'); return m[0] }
+  const imgBlkDev = grabImgBlk(hostSrc, 'host-impl.js')
+  const imgBlkPkg = grabImgBlk(indexSrc, 'index.mjs')
+  const imgNS = {}
+  new Function('ns', imgBlkDev + '\nns.bodyHasImageRef = bodyHasImageRef; ns.assetsHintLine = assetsHintLine;')(imgNS)
+  await t('img-path-hint 标记块双包逐字节一致 + 可 eval（bodyHasImageRef/assetsHintLine 导出）', () => {
+    assert.strictEqual(imgBlkPkg, imgBlkDev, 'host-impl.js 与 index.mjs 的 img-path-hint 块必须逐字节一致')
+    assert.strictEqual(typeof imgNS.bodyHasImageRef, 'function', 'bodyHasImageRef 导出')
+    assert.strictEqual(typeof imgNS.assetsHintLine, 'function', 'assetsHintLine 导出')
+  })
+  await t('bodyHasImageRef：与渲染/内联同口径（![alt](assets/name) 命中；普通链接/外链/空正文不命中）', () => {
+    assert.strictEqual(imgNS.bodyHasImageRef('见截图 ![架构](assets/20260101-000000-a.png) 如上'), true, '标准图片引用命中')
+    assert.strictEqual(imgNS.bodyHasImageRef('![](assets/x.webp)'), true, '空 alt 命中')
+    assert.strictEqual(imgNS.bodyHasImageRef('普通链接 [x](assets/a.png) 不算'), false, '无 ! 前缀的普通链接不命中')
+    assert.strictEqual(imgNS.bodyHasImageRef('外链 ![x](https://a/b.png) 不算'), false, '非 assets/ 前缀不命中')
+    assert.strictEqual(imgNS.bodyHasImageRef('') === false && imgNS.bodyHasImageRef(null) === false && imgNS.bodyHasImageRef(undefined) === false, true, '空/null/undefined 安全不命中')
+  })
+  await t('assetsHintLine：绝对 root + /assets/ 后缀 + 尾部斜杠归一', () => {
+    assert.strictEqual(imgNS.assetsHintLine('D:\\x\\notes'), '（图片位于笔记库目录 D:\\x\\notes/assets/，可用文件工具直接读取）', 'Windows 绝对路径原形')
+    assert.strictEqual(imgNS.assetsHintLine('/home/u/.dsh/notes/'), '（图片位于笔记库目录 /home/u/.dsh/notes/assets/，可用文件工具直接读取）', '尾部斜杠归一不双写')
+  })
+
+  // --- 35.2 行为断言（开发版 host-impl，全新实例：独立 store/handlers/contexts，含图/不含图对照确定） ---
+  const store35 = new Map()
+  const fsMock35 = {
+    resolve: async (p) => p,
+    stat: async (p) => (p === NOTES_DIR ? { dir: true } : (store35.has(p) ? { file: true } : null)),
+    listDir: async (p) => {
+      const prefix = p + '\\'
+      const out = []
+      for (const k of store35.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+      return out
+    },
+    readText: async (p) => { if (!store35.has(p)) throw new Error('ENOENT: ' + p); return store35.get(p) },
+    writeText: async (p, c) => { store35.set(p, c) },
+  }
+  const handlers35 = {}
+  const harnessMock35 = {
+    handle: (name, fn) => { handlers35[name] = fn; return () => { delete handlers35[name] } },
+    defineTool: (def) => def,
+    registerTool: () => () => {},
+  }
+  const contexts35 = []
+  const ctx35 = {
+    fs: fsMock35, sandboxPolicy: { resolve: () => ({}) },
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: (c) => { contexts35.push(c); return () => {} } }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    effect: () => {},
+    on: () => () => {},
+  }
+  new Function('harness', 'pluginDir', hostSrc)(harnessMock35, DIR).apply(ctx35)
+  const convCtx35 = contexts35.find(x => x.name === 'notes:workspace-conventions')
+  const catCtx35 = contexts35.find(x => x.name === 'notes:catalog')
+  const hintCount = (s) => (s.match(/图片位于笔记库目录 /g) || []).length
+
+  await t('对照：注入笔记正文无图 → 约定注入/目录注入均无提示行', async () => {
+    await handlers35['notes-create']({ title: '无图约定', body: '纯文本约定内容', inject: true, topic: '约定' })
+    const conv = convCtx35.text()
+    assert(conv.indexOf('无图约定') >= 0, '约定注入正常')
+    assert.strictEqual(hintCount(conv), 0, '无图时约定注入不追加提示行')
+    const cat = catCtx35.text()
+    assert.strictEqual(hintCount(cat), 0, '无图时目录注入不追加提示行')
+  })
+  await t('注入含图笔记 → 约定注入尾部追加提示行（恰好一次 + 绝对真实 NOTES_DIR 路径）', async () => {
+    await handlers35['notes-create']({ title: '含图约定', body: '部署截图 ![部署](assets/20260101-000000-deploy.png) 如上', inject: true, topic: '约定' })
+    const conv = convCtx35.text()
+    assert.strictEqual(hintCount(conv), 1, '整条注入只追加一次提示行（不逐笔记重复），实得 ' + hintCount(conv))
+    assert(conv.indexOf(imgNS.assetsHintLine(NOTES_DIR)) >= 0, '提示行含绝对真实 NOTES_DIR 路径：' + NOTES_DIR + '/assets/')
+    assert(conv.indexOf('部署截图') >= 0, '原注入内容不受影响')
+  })
+  await t('目录条目正文含图 → 目录注入尾部追加提示行', async () => {
+    await handlers35['notes-create']({ title: '含图目录笔记', body: '看图 ![x](assets/dir-img.png)' })
+    const cat = catCtx35.text()
+    assert(cat.indexOf('含图目录笔记') >= 0, '目录含该条目')
+    assert.strictEqual(hintCount(cat), 1, '目录注入追加一次提示行')
+    assert(cat.indexOf(imgNS.assetsHintLine(NOTES_DIR)) >= 0, '目录提示行含绝对 NOTES_DIR 路径')
+  })
+  await t('派发消息：待办正文含图 → 尾部追加提示行（绝对 NOTES_DIR）；无图对照不追加', async () => {
+    const c1 = await handlers35['notes-create']({ title: '含图待办', body: '改这个弹窗 ![弹窗](assets/pop.png)', kind: 'todo' })
+    const b1 = sentMessages.length
+    const r1 = await handlers35['notes-dispatch']({ id: c1.id, sessionId: 'session-abc12345-0000-0000-0000-000000000000', sessionName: '开发会话' })
+    assert(r1.ok === true && sentMessages.length === b1 + 1, '含图待办派发成功')
+    const t1x = sentMessages[sentMessages.length - 1].msg.content[0].text
+    assert.strictEqual(hintCount(t1x), 1, '派发消息追加一次提示行')
+    assert(t1x.indexOf(imgNS.assetsHintLine(NOTES_DIR)) >= 0, '派发提示行含绝对 NOTES_DIR 路径')
+    const c2 = await handlers35['notes-create']({ title: '无图待办', body: '纯文本待办', kind: 'todo' })
+    const b2 = sentMessages.length
+    const r2 = await handlers35['notes-dispatch']({ id: c2.id, sessionId: 'session-abc12345-0000-0000-0000-000000000000', sessionName: '开发会话' })
+    assert(r2.ok === true && sentMessages.length === b2 + 1, '无图待办派发成功')
+    assert.strictEqual(hintCount(sentMessages[sentMessages.length - 1].msg.content[0].text), 0, '无图待办派发消息不追加提示行')
+  })
+
+  // --- 35.3 静态包行为（index.mjs）：提示行路径为绝对真实 NOTES_ROOT（~/.dsh/notes） ---
+  await t('静态包：注入含图笔记 → 约定注入提示行含绝对 NOTES_ROOT 路径', async () => {
+    const c = await rpc2('notes-create', { title: '静态含图约定', body: '静态截图 ![s](assets/st-img.png)', inject: true, topic: '约定' })
+    assert(c.body && c.body.id, '静态包建含图约定成功')
+    const conv = contexts2[0].text()
+    assert.strictEqual(hintCount(conv), 1, '静态包约定注入追加一次提示行')
+    assert(conv.indexOf(imgNS.assetsHintLine(NOTES_ROOT_STATIC)) >= 0, '提示行含绝对真实 NOTES_ROOT：' + NOTES_ROOT_STATIC + '/assets/')
+  })
+  await t('静态包：派发含图待办 → 消息尾部提示行含绝对 NOTES_ROOT 路径', async () => {
+    const c = await rpc2('notes-create', { title: '静态含图待办', body: '看这个 ![k](assets/st-todo.png)', kind: 'todo' })
+    const before = sentMessages.length
+    const d = await rpc2('notes-dispatch', { id: c.body.id, sessionId: 'session-abc12345-0000-0000-0000-000000000000', sessionName: '开发会话' })
+    assert(d.body.ok === true && sentMessages.length === before + 1, '静态包派发成功')
+    const txt = sentMessages[sentMessages.length - 1].msg.content[0].text
+    assert.strictEqual(hintCount(txt), 1, '静态包派发消息追加一次提示行')
+    assert(txt.indexOf(imgNS.assetsHintLine(NOTES_ROOT_STATIC)) >= 0, '静态包派发提示行含绝对 NOTES_ROOT 路径')
+  })
+
+  // ===== 36. 快照式历史引擎（.history 快照 + 稳定内容去重 + 分层保留 + 20版/50MB 上限 + purge 连带 + 导入导出适配）=====
+  section('36. 快照式历史引擎（host 数据层 + 导入导出适配）')
+
+  // ---- 36.1 双包结构同步（host-impl.js / index.mjs）----
+  await t('历史引擎双包结构同步（函数/常量/persistNote 挂点/purge 连带/导入导出适配/删除通道）', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('==== history-engine BEGIN ====') >= 0 && s.indexOf('==== history-engine END ====') >= 0, label + ' history-engine 标记块')
+      for (const fn of ['noteFileContent', 'histContentHash', 'histNameTs', 'histNameHash', 'histFileSize', 'histRemoveFile', 'histEnsureScanned', 'histRetainNote', 'histEnforceBudget', 'histSnapshot', 'histPurgeNote', 'copyHistoryDir']) {
+        assert(s.indexOf('function ' + fn) >= 0, label + ' 缺函数 ' + fn)
+      }
+      assert(s.indexOf('HIST_NOTE_CAP = 20') >= 0, label + ' 单笔记 20 版上限常量')
+      assert(s.indexOf('HIST_GLOBAL_BUDGET = 50 * 1024 * 1024') >= 0, label + ' 全库 50MB 预算常量')
+      assert(s.indexOf('HIST_KEEP_ALL_MS') >= 0 && s.indexOf('HIST_KEEP_DAILY_MS') >= 0, label + ' 分层保留窗口常量')
+      assert(s.indexOf('async function persistNote(n, opts)') >= 0 && s.indexOf('opts.history !== false') >= 0, label + ' persistNote 第二参 opts.history 开关')
+      assert(s.split('persistNote(n, { history: false })').length - 1 >= 2, label + ' useCount 防抖 + idle 回执两处自动回写免快照（实得 ' + (s.split('persistNote(n, { history: false })').length - 1) + ' 处）')
+      assert(s.indexOf('await histSnapshot(n.id, prev)') >= 0, label + ' persistNote 写盘前快照上一版（缓存重建，零新增读盘）')
+      assert(s.indexOf('const historyPurged = await histPurgeNote(id)') >= 0, label + ' _purge 连带清 .history')
+      assert(s.indexOf('historyMerged += await copyHistoryDir(chk.dir, NOTES_DIR, true, n.id)') >= 0, label + ' _import added 连带历史合并')
+      assert(s.indexOf('copyNotesDir(backupDir, { includeHistory: true })') >= 0, label + ' 导入前备份含 .history')
+      assert(s.indexOf('async function _export(dir, includeHistory)') >= 0, label + ' _export includeHistory 参数')
+      assert(s.indexOf("_export(args && args.dir, !!(args && args.includeHistory))") >= 0, label + ' notes-export RPC 透传 includeHistory')
+      assert(s.indexOf('histSizes = null') >= 0, label + ' 导入合并历史后存活清单失效重扫')
+    }
+    assert(hostSrc.indexOf("const HISTORY_DIR = NOTES_DIR + '\\\\.history'") >= 0, '开发版 HISTORY_DIR 反斜杠拼接')
+    assert(indexSrc.indexOf("const HISTORY_DIR = path.join(NOTES_DIR, '.history')") >= 0, '静态包 HISTORY_DIR 走 path.join')
+    assert(indexSrc.indexOf('async function histRemoveFile(noteId, name)') >= 0 && indexSrc.indexOf('fsNode.promises.unlink(pp)') >= 0, '静态包 histRemoveFile 有 node:fs 真删通道')
+  })
+
+  // ---- 36.2 行为断言（开发版独立实例）----
+  // mock 增强：listDir 贴近真实 fs——直子级目录也以 { name, type:'dir' } 出现（.history 是目录，引擎扫描/列表过滤都依赖该形态）
+  function mkFsMockHist(store, dirs, io) {
+    return {
+      resolve: async (p) => p,
+      stat: async (p) => {
+        if (dirs.indexOf(p) >= 0) return { dir: true }
+        if (store.has(p)) return { file: true }
+        const prefix = p + '\\'
+        for (const k of store.keys()) if (k.startsWith(prefix)) return { dir: true }
+        return null
+      },
+      listDir: async (p) => {
+        const prefix = p + '\\'
+        const out = []
+        const seenDir = {}
+        for (const k of store.keys()) {
+          if (!k.startsWith(prefix)) continue
+          const rest = k.slice(prefix.length)
+          const i = rest.indexOf('\\')
+          if (i < 0) out.push({ name: rest })
+          else { const d = rest.slice(0, i); if (!seenDir[d]) { seenDir[d] = 1; out.push({ name: d, type: 'dir' }) } }
+        }
+        return out
+      },
+      readText: async (p) => { if (io) io.reads++; if (!store.has(p)) throw new Error('ENOENT: ' + p); return store.get(p) },
+      writeText: async (p, c) => { store.set(p, c) },
+    }
+  }
+  function mkHistHandlers(store, dirs, io) {
+    const handlers = {}
+    const harnessMock = { handle: (name, fn) => { handlers[name] = fn; return () => { delete handlers[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+    new Function('harness', 'pluginDir', hostSrc)(harnessMock, DIR).apply({
+      fs: mkFsMockHist(store, dirs, io), sandboxPolicy: { resolve: () => ({}) },
+      get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+      effect: () => {},
+    })
+    return handlers
+  }
+  // 枚举 .history\<id>\ 直子级快照：live=存活（非空串），tomb=墓碑（空串）；rootDir 默认开发版 NOTES_DIR
+  function histFilesOf(store, id, rootDir) {
+    const prefix = (rootDir || NOTES_DIR) + '\\.history\\' + id + '\\'
+    const live = [], tomb = []
+    for (const [k, v] of store) {
+      if (k.indexOf(prefix) !== 0) continue
+      const name = k.slice(prefix.length)
+      if (name.indexOf('\\') >= 0) continue
+      if (v === '') tomb.push(name); else live.push(name)
+    }
+    return { live: live.sort(), tomb: tomb.sort() }
+  }
+  // 快照文件名形态（与引擎同构）：<ISO 时间戳 ':'→'-'>.<len36>.<hash36>.md；伪造历史用 '.0.0.md' 后缀即合法
+  const SNAP_NAME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z\.[0-9a-z]+\.[0-9a-z]+\.md$/
+  function fakeSnapName(ts) { return new Date(ts).toISOString().replace(/:/g, '-') + '.0.0.md' }
+
+  const ioH = { reads: 0 }
+  const storeH = new Map()
+  const handlersH = mkHistHandlers(storeH, [NOTES_DIR], ioH)
+  const hc = await handlersH['notes-create']({ title: '历史甲', body: 'v0 正文', topic: '开发' })
+  const hPath = NOTES_DIR + '\\' + hc.id + '.md'
+  await t('快照触发：创建无快照，更新把上一版入 .history（时间戳+hash 文件名，内容逐字节 = 被替换版）', async () => {
+    assert(!Array.from(storeH.keys()).some(k => k.indexOf('\\.history\\') >= 0), '创建不产生历史快照（无旧版）')
+    const v0 = storeH.get(hPath)
+    await handlersH['notes-update']({ id: hc.id, body: 'v1 正文' })
+    const f1 = histFilesOf(storeH, hc.id)
+    assert.strictEqual(f1.live.length, 1, '首次更新产生 1 份快照（实得 ' + f1.live.length + '）')
+    assert(SNAP_NAME_RE.test(f1.live[0]), '快照文件名 = <ISO时间戳>.<hash>.md（实得 ' + f1.live[0] + '）')
+    assert.strictEqual(storeH.get(NOTES_DIR + '\\.history\\' + hc.id + '\\' + f1.live[0]), v0, '快照内容 = 被替换的上一版逐字节')
+  })
+  await t('快照去重 + 红线：无变化重复保存不增快照，update 零新增读盘', async () => {
+    // 独立笔记自洽（core/全量两种模式断言口径一致）：创建无快照；两次有效落盘 → 2 份；之后无变化重复保存去重跳过
+    const cD = await handlersH['notes-create']({ title: '历史去重', body: 'd0 正文', topic: '开发' })
+    await handlersH['notes-update']({ id: cD.id, body: 'd1 正文' })   // 快照 d0 版
+    await handlersH['notes-update']({ id: cD.id, body: 'd1 正文' })   // 快照 d1 版（prev 稳定内容与最新快照不同 → 产生）
+    assert.strictEqual(histFilesOf(storeH, cD.id).live.length, 2, '两次有效落盘 → 2 份快照（实得 ' + histFilesOf(storeH, cD.id).live.length + '）')
+    const r0 = ioH.reads
+    await handlersH['notes-update']({ id: cD.id, body: 'd1 正文' })   // 稳定内容同最新快照 → 去重跳过
+    await handlersH['notes-update']({ id: cD.id, body: 'd1 正文' })   // 同上
+    assert.strictEqual(histFilesOf(storeH, cD.id).live.length, 2, '无变化重复保存被去重（快照数不增）')
+    assert.strictEqual(ioH.reads, r0, 'update 保存路径零新增 readText（红线；快照内容来自缓存重建，去重靠文件名内嵌 hash）')
+    assert(storeH.get(NOTES_DIR + '\\' + cD.id + '.md').indexOf('d1 正文') >= 0, '当前版正常落盘')
+  })
+  await t('单笔记 20 版硬上限：100 次有效保存后存活快照恒为 20（最旧淘汰为墓碑）', async () => {
+    for (let i = 0; i < 100; i++) await handlersH['notes-update']({ id: hc.id, body: 'rev-' + i })
+    const f = histFilesOf(storeH, hc.id)
+    assert.strictEqual(f.live.length, 20, '存活快照 = 20 版硬上限（实得 ' + f.live.length + '）')
+    assert(f.tomb.length >= 80, '超限最旧版本墓碑化（实得墓碑 ' + f.tomb.length + '）')
+    assert(f.live[0] > f.tomb[f.tomb.length - 1], '淘汰的是最旧版本（live 全晚于 tomb；文件名时序）')
+  })
+  await t('主路径零 IO：.history 填充后 list/get/search 零新增读盘，.history 子目录绝不进笔记列表', async () => {
+    const r0 = ioH.reads
+    const l = await handlersH['notes-list']({})
+    const g = await handlersH['notes-get']({ id: hc.id })
+    const s = await handlersH['notes-search']({ query: 'rev-99' })
+    assert.strictEqual(ioH.reads, r0, 'list/get/search 全缓存命中，零新增 readText（.history 已填充）')
+    assert(l.notes.find(n => n.id === hc.id), '真笔记在列表中')
+    assert(l.notes.every(n => n.id.indexOf('history') < 0 && !SNAP_NAME_RE.test(n.id)), '.history 目录/快照绝不进笔记列表（实得列表 ' + l.notes.length + ' 条）')
+    assert(g.note.body === 'rev-99' && s.notes.length === 1, 'get/search 内容正常')
+  })
+  await t('purge 连带：彻底删除清空整棵 .history/<id>（存活+残留墓碑全墓碑化）；无编辑历史笔记的删除前快照一并清除', async () => {
+    await handlersH['notes-delete']({ id: hc.id })
+    const totalBefore = histFilesOf(storeH, hc.id)   // 删除动作本身也快照了删除前一版
+    const totalCount = totalBefore.live.length + totalBefore.tomb.length
+    const r = await handlersH['notes-purge']({ id: hc.id })
+    assert(!r.error && r.purged === true, 'purge 成功（实得 ' + JSON.stringify(r) + '）')
+    assert(r.historyPurged === totalCount, 'historyPurged 覆盖存活+残留墓碑（实得 ' + r.historyPurged + '，预期 ' + totalCount + '）')
+    const f = histFilesOf(storeH, hc.id)
+    assert.strictEqual(f.live.length, 0, 'purge 后无存活快照')
+    assert.strictEqual(f.tomb.length, totalCount, '全部快照墓碑化（实得 ' + f.tomb.length + '）')
+    // 无编辑历史的笔记：删除动作本身产生「删除前快照」（历史引擎保护语义），purge 一并连带清除
+    const c2 = await handlersH['notes-create']({ title: '历史乙', body: '无编辑历史', topic: '开发' })
+    await handlersH['notes-delete']({ id: c2.id })
+    assert.strictEqual(histFilesOf(storeH, c2.id).live.length, 1, '删除前版本被快照保护（无编辑历史也有 1 份）')
+    const r2 = await handlersH['notes-purge']({ id: c2.id })
+    assert.strictEqual(r2.historyPurged, 1, 'purge 连带清除删除前快照（实得 ' + JSON.stringify(r2) + '）')
+    assert.strictEqual(histFilesOf(storeH, c2.id).live.length, 0, 'purge 后无存活快照')
+  })
+
+  // ---- 36.3 分层保留收敛（预注伪造历史文件 → 一次保存触发惰性扫描 + 分层 + 上限收敛）----
+  const storeH2 = new Map()
+  const handlersH2 = mkHistHandlers(storeH2, [NOTES_DIR], null)
+  await t('分层保留收敛：1h 内每版全留 / 当天每小时 1 版 / 7 天内每天 1 版 / 超 7 天淘汰', async () => {
+    const c = await handlersH2['notes-create']({ title: '分层笔记', body: 'base', topic: '开发' })
+    const hDir = NOTES_DIR + '\\.history\\' + c.id + '\\'
+    const now = Date.now()
+    const nd = new Date(now)
+    const today0 = new Date(nd.getFullYear(), nd.getMonth(), nd.getDate()).getTime()
+    const put = (ts) => { storeH2.set(hDir + fakeSnapName(ts), '伪造历史 ' + ts) }
+    put(now - 10 * 60000); put(now - 20 * 60000)                                    // 1h 内两版 → 全留
+    put(today0 - 24 * 3600000 + 8 * 3600000); put(today0 - 24 * 3600000 + 9 * 3600000)  // 昨天两版 → 留最新 1
+    put(today0 - 2 * 24 * 3600000 + 8 * 3600000)                                     // 前天一版 → 留
+    put(today0 - 9 * 24 * 3600000 + 8 * 3600000)                                     // 9 天前 → 超 7 天淘汰
+    const hNow = nd.getHours()
+    if (hNow >= 4) { put(today0 + (hNow - 3) * 3600000); put(today0 + (hNow - 3) * 3600000 + 30 * 60000) }   // 当天 >1h 同小时两版 → 留 1（凌晨 <4 点不存在「当天 3 小时前」，条件跳过）
+    await handlersH2['notes-update']({ id: c.id, body: '触发收敛' })
+    const f = histFilesOf(storeH2, c.id)
+    const expectLive = 3 + 1 + 1 + (hNow >= 4 ? 1 : 0)   // 1h内2版+新快照 / 昨天1 / 前天1 / 当天小时桶1
+    const expectTomb = 1 + 1 + (hNow >= 4 ? 1 : 0)       // 昨天重复 1 + 超期 1 + 当天同小时重复 1
+    assert.strictEqual(f.live.length, expectLive, '存活数 = ' + expectLive + '（实得 ' + f.live.length + '：' + f.live.join(', ') + '）')
+    assert.strictEqual(f.tomb.length, expectTomb, '淘汰数 = ' + expectTomb + '（实得 ' + f.tomb.length + '）')
+    assert(f.tomb.indexOf(fakeSnapName(today0 - 9 * 24 * 3600000 + 8 * 3600000)) >= 0, '超 7 天版本被淘汰')
+    assert(f.live.indexOf(fakeSnapName(today0 - 24 * 3600000 + 9 * 3600000)) >= 0, '昨天两版留最新一版')
+    assert(f.live.indexOf(fakeSnapName(now - 10 * 60000)) >= 0 && f.live.indexOf(fakeSnapName(now - 20 * 60000)) >= 0, '1h 内每版全留')
+  })
+
+  // ---- 36.4 全库 50MB 预算 LRU（3 笔记 × 18 版 × ~1MB ≈ 56MB → 触发跨笔记淘汰最旧）----
+  const storeH3 = new Map()
+  const handlersH3 = mkHistHandlers(storeH3, [NOTES_DIR], null)
+  await t('全库 50MB 预算：LRU 跨笔记淘汰最旧快照直到总量回落（单笔记仍 ≤20 版）', async () => {
+    const big = 'x'.repeat(1024 * 1024)   // ~1MB/版（ASCII 1 字节/字符）
+    const ids = []
+    for (let i = 0; i < 3; i++) ids.push((await handlersH3['notes-create']({ title: 'big' + i, body: big + i, topic: '开发' })).id)
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 18; j++) await handlersH3['notes-update']({ id: ids[i], body: big + i + '-' + j })
+    }
+    let liveBytes = 0, tombCount = 0
+    const perNote = {}
+    for (const [k, v] of storeH3) {
+      const m = k.match(/\\\.history\\(n-[^\\]+)\\[^\\]+$/)
+      if (!m) continue
+      if (v === '') { tombCount++; continue }
+      liveBytes += Buffer.byteLength(v, 'utf8')
+      perNote[m[1]] = (perNote[m[1]] || 0) + 1
+    }
+    assert(liveBytes <= 50 * 1024 * 1024, '存活快照总量回落到 50MB 预算内（实得 ' + (liveBytes / 1048576).toFixed(1) + 'MB）')
+    assert(tombCount >= 4, 'LRU 淘汰了最旧快照（墓碑 ≥4，实得 ' + tombCount + '）')
+    assert.strictEqual(perNote[ids[2]], 18, '最新笔记 18 版全存活（LRU 不动新版本）')
+    assert((perNote[ids[0]] || 0) < 18, '最旧笔记的早期版本被优先淘汰（实得存活 ' + (perNote[ids[0]] || 0) + '）')
+    for (const id of ids) assert((perNote[id] || 0) <= 20, '单笔记存活 ≤20 版')
+  })
+
+  // ---- 36.5 导入导出适配（默认不含 / includeHistory 连带 / 备份含 / added 合并 + id 冲突跳过）----
+  const storeH4 = new Map()
+  const handlersH4 = mkHistHandlers(storeH4, [NOTES_DIR], null)
+  await t('导入导出适配：默认不含 .history / includeHistory 连带 / 备份含 / added 合并 / id 冲突跳过', async () => {
+    const A = await handlersH4['notes-create']({ title: '历史导出A', body: 'A0', topic: '开发' })
+    await handlersH4['notes-update']({ id: A.id, body: 'A1' })                              // A 有 1 份快照
+    await handlersH4['notes-create']({ title: '历史导出B', body: 'B0', topic: '开发' })       // B 无快照
+    const snapA = histFilesOf(storeH4, A.id).live
+    assert.strictEqual(snapA.length, 1, '前置：A 有 1 份快照')
+    const libSnap = NOTES_DIR + '\\.history\\' + A.id + '\\' + snapA[0]
+    // 导出默认不含 .history
+    const ex1 = await handlersH4['notes-export']({ dir: 'D:\\hist-exp' })
+    assert(!ex1.error && ex1.history === undefined, '默认导出返回无 history 字段（实得 ' + JSON.stringify(ex1) + '）')
+    assert(!Array.from(storeH4.keys()).some(k => k.indexOf(ex1.target + '\\.history\\') === 0), '默认导出目录不含 .history')
+    // includeHistory 连带（逐字节一致）
+    const ex2 = await handlersH4['notes-export']({ dir: 'D:\\hist-exp', includeHistory: true })
+    assert.strictEqual(ex2.history, 1, 'includeHistory 导出 1 份历史文件（实得 ' + ex2.history + '）')
+    assert.strictEqual(storeH4.get(ex2.target + '\\.history\\' + A.id + '\\' + snapA[0]), storeH4.get(libSnap), '导出历史逐字节一致')
+    // 导入目录：新笔记 n-hnew01（带 2 份历史）+ A 的同内容文件（same）+ A 的伪造外部历史（id 冲突 → 跳过）
+    const imp = 'D:\\hist-imp'
+    storeH4.set(imp + '\\n-hnew01.md', '---\nid: n-hnew01\ntitle: 外部新笔记\ntopic: 调研\ncreatedAt: "2026-01-02T00:00:00.000Z"\nupdatedAt: "2026-01-02T00:00:00.000Z"\n---\n\n新正文\n')
+    storeH4.set(imp + '\\' + A.id + '.md', storeH4.get(NOTES_DIR + '\\' + A.id + '.md'))
+    storeH4.set(imp + '\\.history\\n-hnew01\\' + fakeSnapName(Date.now() - 60000), '外部历史1')
+    storeH4.set(imp + '\\.history\\n-hnew01\\' + fakeSnapName(Date.now() - 120000), '外部历史2')
+    storeH4.set(imp + '\\.history\\' + A.id + '\\' + fakeSnapName(Date.now() - 30000), 'A的伪造外部历史')
+    const im = await handlersH4['notes-import']({ dir: imp })
+    assert(!im.error, '导入成功（实得 ' + JSON.stringify(im) + '）')
+    assert.strictEqual(im.imported, 1, 'added 1 条入库')
+    assert.strictEqual(im.skippedSame, 1, 'A 同内容跳过')
+    assert.strictEqual(im.historyMerged, 2, '仅新笔记历史连带合并 2 份（实得 ' + im.historyMerged + '）')
+    assert.strictEqual(histFilesOf(storeH4, 'n-hnew01').live.length, 2, '新笔记 2 份历史入库')
+    assert.strictEqual(histFilesOf(storeH4, A.id).live.length, 1, 'id 冲突跳过历史合并（A 仍只有自身 1 份）')
+    // 导入前备份含 .history（备份的是导入前库内历史：A 的 1 份）
+    assert.strictEqual(storeH4.get(im.backupDir + '\\.history\\' + A.id + '\\' + snapA[0]), storeH4.get(libSnap), '导入前备份含库内 .history')
+    // 无历史导出（默认导出物）导入：historyMerged=0 零回归
+    const im2 = await handlersH4['notes-import']({ dir: ex1.target })
+    assert.strictEqual(im2.historyMerged, 0, '默认导出（无 .history）导入 historyMerged=0（实得 ' + im2.historyMerged + '）')
+  })
+
+  // ---- 36.6 静态包行为（index.mjs 独立 ESM 实例；mock fs 无 processPath → 墓碑式清空）----
+  await t('静态包历史引擎行为：保存触发 + 去重 + purge 连带墓碑 + 导出默认不含/includeHistory 连带', async () => {
+    const storeH5 = new Map()
+    const handlersH5 = {}
+    const harnessMockH5 = { handle: (name, fn) => { handlersH5[name] = fn; return () => { delete handlersH5[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+    global.harness = harnessMockH5
+    try {
+      const modH = await import(pathToFileURL(INDEX_PATH).href + '?hist=1')
+      modH.apply({
+        fs: mkFsMockHist(storeH5, [NOTES_ROOT_STATIC], null), sandboxPolicy: { resolve: () => ({}) },
+        webServer: { register: () => () => {} }, tools: { register: () => () => {} },
+        get: (name) => ({ agents: agentsMock, systemPrompt: { context: () => () => {} } })[name],
+        effect: () => {},
+      })
+      const A = await handlersH5['notes-create']({ title: '静态历史A', body: 'SA0' })
+      await handlersH5['notes-update']({ id: A.id, body: 'SA1' })
+      const f1 = histFilesOf(storeH5, A.id, NOTES_ROOT_STATIC)
+      assert.strictEqual(f1.live.length, 1, '静态包更新触发 1 份快照（实得 ' + f1.live.length + '）')
+      assert(SNAP_NAME_RE.test(f1.live[0]), '静态包快照文件名同构（实得 ' + f1.live[0] + '）')
+      await handlersH5['notes-update']({ id: A.id, body: 'SA1' })   // prev 稳定内容与最新快照相同？→ 不同（prev 是 SA1 版，快照是 SA0 版）→ 产生；再来一次才去重
+      await handlersH5['notes-update']({ id: A.id, body: 'SA1' })   // 去重跳过
+      assert.strictEqual(histFilesOf(storeH5, A.id, NOTES_ROOT_STATIC).live.length, 2, '静态包无变化重复保存去重（实得 ' + histFilesOf(storeH5, A.id, NOTES_ROOT_STATIC).live.length + '）')
+      const ex1 = await handlersH5['notes-export']({ dir: 'D:\\hist-exp-st' })
+      assert(!Array.from(storeH5.keys()).some(k => k.indexOf(ex1.target + '\\.history\\') === 0), '静态包默认导出不含 .history')
+      const ex2 = await handlersH5['notes-export']({ dir: 'D:\\hist-exp-st', includeHistory: true })
+      assert.strictEqual(ex2.history, 2, '静态包 includeHistory 连带 2 份（实得 ' + ex2.history + '）')
+      await handlersH5['notes-delete']({ id: A.id })   // 删除前版本与最新快照稳定内容相同 → 去重不增
+      const p = await handlersH5['notes-purge']({ id: A.id })
+      assert(p.purged === true && p.historyPurged >= 2, '静态包 purge 连带清历史（实得 ' + JSON.stringify(p) + '）')
+      assert.strictEqual(histFilesOf(storeH5, A.id, NOTES_ROOT_STATIC).live.length, 0, '静态包 purge 后无存活快照（mock 无 processPath → 墓碑式清空）')
+    } finally {
+      delete global.harness
+    }
+  })
+
+  // ===== 37. LLM token 用量统计（llm-usage 计量包装 + usage.json 落盘 + notes-usage-get + 预算提醒） =====
+  section('37. LLM token 用量统计（计量包装 + usage.json + notes-usage-get + 预算提醒）')
+
+  // ---- 37.1 结构契约（双包同步 + 零侵入红线）----
+  await t('llm-usage 标记块双包逐字节一致 + 三调用点计量包装挂载（classify×2 + organize）', () => {
+    const grabBlk = (s) => { const m = s.match(/\/\/ ==== llm-usage BEGIN ====[\s\S]*?\/\/ ==== llm-usage END ====/); return m ? m[0] : '' }
+    const blkDev = grabBlk(hostSrc), blkPkg = grabBlk(indexSrc)
+    assert(blkDev.length > 100, 'host-impl 缺 llm-usage 标记块')
+    assert.strictEqual(blkPkg, blkDev, 'host-impl.js 与 index.mjs 的 llm-usage 块必须逐字节一致')
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert.strictEqual((s.match(/await streamMetered\('/g) || []).length, 3, label + ' 计量包装挂 3 个调用点（实得 ' + (s.match(/await streamMetered\('/g) || []).length + '）')
+      assert.strictEqual((s.match(/await streamMetered\('classify', \{/g) || []).length, 2, label + ' classify 两处（classifyTopic + extractInstruction）')
+      assert.strictEqual((s.match(/await streamMetered\('organize', \{/g) || []).length, 1, label + ' organize 一处（_aiOrganize）')
+      assert(s.indexOf("else if (chunk && chunk.type === 'usage')") >= 0, label + ' streamMetered 捕获 usage chunk（dsh-llm 契约：finish 前 emit）')
+      // 零侵入红线：只包装调用点，不改写 llm 通道本身
+      assert(!/llm\.stream\s*=/.test(s), label + ' 不改写 llm.stream 通道本身（计量零侵入）')
+    }
+  })
+  await t('host 双侧：usage.json 独立落盘 + 5s 防抖 + 卸载 flush + 估算系数 + RPC + 预算键', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('const USAGE_FLUSH_MS = 5000') >= 0, label + ' 5s 防抖常量')
+      assert(s.indexOf('const USAGE_EST_CHARS_PER_TOKEN = 1.6') >= 0, label + ' 1.6 字符估算系数（中文≈1.6 字符/token）')
+      assert(s.indexOf('async function recordUsage(feature, usage, inChars, outChars)') >= 0, label + ' recordUsage 记账函数')
+      assert(s.indexOf('async function streamMetered(feature, options)') >= 0, label + ' streamMetered 计量包装')
+      assert(s.indexOf('function usageReport()') >= 0, label + ' usageReport 报表函数')
+      assert(s.indexOf("handle('notes-usage-get'") >= 0, label + ' notes-usage-get RPC 注册')
+      assert(s.indexOf("'usageBudgetMonthly' in patch") >= 0, label + ' settings-set 预算键 usageBudgetMonthly')
+      assert(s.indexOf('flushUsage()       // 卸载 flush') >= 0, label + ' 插件卸载 flush（ctx.effect dispose）')
+      assert(s.indexOf('typeof usageTimer.unref') >= 0, label + ' timer unref（防抖不阻塞进程退出）')
+    }
+    assert(hostSrc.indexOf("NOTES_DIR + '\\\\usage.json'") >= 0, '开发版 usage.json 落在 notes 目录（独立于 settings.json）')
+    assert(indexSrc.indexOf("path.join(NOTES_ROOT, 'usage.json')") >= 0, '静态包 usage.json 落在 ~/.dsh/notes')
+  })
+
+  // ---- 37.2 行为级（开发版独立实例 storeV + usage chunk mock llm；dispose 触发防抖 flush，不真实等 5s）----
+  const storeV = new Map()
+  let writesV = 0
+  const fsMockV = {
+    resolve: async (p) => p,
+    stat: async (p) => (p === NOTES_DIR ? { dir: true } : (storeV.has(p) ? { file: true } : null)),
+    listDir: async (p) => {
+      const prefix = p + '\\'
+      const out = []
+      for (const k of storeV.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+      return out
+    },
+    readText: async (p) => { if (!storeV.has(p)) throw new Error('ENOENT: ' + p); return storeV.get(p) },
+    writeText: async (p, c) => { writesV++; storeV.set(p, c) },
+  }
+  // usage mock llm：按 system 提示分流三功能，均在 finish 前 emit usage chunk（dsh-llm 契约）
+  const llmMockV = {
+    stream: async function* (req) {
+      const sys = (req && req.system) || ''
+      if (sys.indexOf('元数据') >= 0) {
+        yield { type: 'text-delta', text: '{"tags":[],"titleHint":"指令标题","kind":"note","inject":false}' }
+        yield { type: 'usage', usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 } }
+        yield { type: 'finish' }
+      } else if (sys.indexOf('笔记整理助手') >= 0) {
+        yield { type: 'text-delta', text: '## 背景\n\n整理后正文\n' }
+        yield { type: 'usage', usage: { inputTokens: 800, outputTokens: 200, totalTokens: 1000 } }
+        yield { type: 'finish' }
+      } else {
+        yield { type: 'text-delta', text: '运维' }
+        yield { type: 'usage', usage: { inputTokens: 50, outputTokens: 10, totalTokens: 60 } }
+        yield { type: 'finish' }
+      }
+    }
+  }
+  const handlersV = {}
+  const effectsV = []
+  const harnessMockV = { handle: (name, fn) => { handlersV[name] = fn; return () => { delete handlersV[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+  new Function('harness', 'pluginDir', hostSrc)(harnessMockV, DIR).apply({
+    fs: fsMockV, sandboxPolicy: { resolve: () => ({}) },
+    get: (name) => ({ llm: llmMockV, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    effect: (fn) => { effectsV.push(fn) },
+  })
+  const flushMicro37 = async () => { for (let i = 0; i < 20; i++) await Promise.resolve() }
+  await t('notes-usage-get：三功能分别计数 + today/week/month/allTime/byFeature 结构 + usage.json 防抖落盘', async () => {
+    // ① quick → 异步分类（classify=60，真实 usage）
+    await handlersV['notes-quick']({ text: '用量统计速记', sessionId: 'sess-usage-1' })
+    await new Promise(r => setTimeout(r, 150))
+    let u = await handlersV['notes-usage-get']({})
+    assert(!u.error, 'RPC 无错误（实得 ' + JSON.stringify(u).slice(0, 120) + '）')
+    for (const k of ['today', 'week', 'month', 'allTime', 'byFeature', 'estimatedTokens', 'exactTokens', 'calls']) assert(k in u, '返回缺字段 ' + k)
+    assert.strictEqual(u.today.classify, 60, '分类真实 usage 计数 60（实得 ' + u.today.classify + '）')
+    assert.strictEqual(u.today.total, 60); assert.strictEqual(u.calls, 1, 'calls=1')
+    assert.strictEqual(u.byFeature.classify.today, 60, 'byFeature.classify.today=60')
+    assert.strictEqual(u.byFeature.organize.allTime, 0, '整理未计数')
+    assert.strictEqual(u.byFeature.summarize.allTime, 0, '总结未计数')
+    assert.strictEqual(u.week.total, 60, 'week=今日（单日数据）')
+    assert.strictEqual(u.month.total, 60, 'month=当月累计（预算提醒口径）')
+    assert.strictEqual(u.allTime.total, 60)
+    assert.strictEqual(u.estimatedTokens, 0, '真实值不进估算')
+    assert.strictEqual(u.exactTokens, 60, 'exactTokens=60')
+    // ② quick-instruct（指令提取计入 classify；mock 带 titleHint 不再触发异步分类）
+    await handlersV['notes-quick-instruct']({ text: '选区原文内容', note: '这是待办', sessionId: 'sess-usage-2' })
+    u = await handlersV['notes-usage-get']({})
+    assert.strictEqual(u.today.classify, 180, '指令提取计入 classify（60+120，实得 ' + u.today.classify + '）')
+    assert.strictEqual(u.calls, 2, 'calls=2')
+    // ③ ai-organize（organize=1000）
+    const ao = await handlersV['notes-ai-organize']({ body: '草稿正文内容', kind: 'note' })
+    assert(!ao.error, '整理成功（实得 ' + JSON.stringify(ao).slice(0, 120) + '）')
+    u = await handlersV['notes-usage-get']({})
+    assert.strictEqual(u.today.organize, 1000, 'organize 计数 1000（实得 ' + u.today.organize + '）')
+    assert.strictEqual(u.byFeature.organize.allTime, 1000, 'byFeature.organize.allTime=1000')
+    assert.strictEqual(u.today.total, 1180, 'total=1180（实得 ' + u.today.total + '）')
+    assert.strictEqual(u.week.total, 1180); assert.strictEqual(u.month.total, 1180); assert.strictEqual(u.allTime.total, 1180)
+    assert.strictEqual(u.calls, 3, 'calls=3')
+    assert.strictEqual(u.exactTokens, 1180, 'exactTokens=1180')
+    // ④ usage.json 防抖落盘：dispose 前零落盘，卸载 flush 立即写盘（结构 {daily, allTime, estimatedTokens, exactTokens, calls}）
+    assert(!storeV.has(NOTES_DIR + '\\usage.json'), '防抖窗口内 usage.json 未落盘（5s 防抖未到期）')
+    const disposeV = effectsV[0]()
+    disposeV()
+    await flushMicro37()
+    const raw = storeV.get(NOTES_DIR + '\\usage.json')
+    assert(raw, '卸载 flush 落盘 usage.json')
+    const disk = JSON.parse(raw)
+    const nowD = new Date()
+    const todayKey = nowD.getFullYear() + '-' + ('0' + (nowD.getMonth() + 1)).slice(-2) + '-' + ('0' + nowD.getDate()).slice(-2)
+    assert(disk.daily && disk.daily[todayKey], '落盘含今日 daily 键 ' + todayKey)
+    assert.strictEqual(disk.daily[todayKey].classify, 180, '落盘 daily.classify=180')
+    assert.strictEqual(disk.daily[todayKey].organize, 1000, '落盘 daily.organize=1000')
+    assert.strictEqual(disk.daily[todayKey].total, 1180, '落盘 daily.total=1180')
+    assert.strictEqual(disk.allTime.total, 1180, '落盘 allTime.total=1180')
+    assert.strictEqual(disk.calls, 3, '落盘 calls=3')
+    assert.strictEqual(disk.exactTokens, 1180, '落盘 exactTokens=1180')
+    // 落盘后再读：新实例视角由 37.2c 静态包用例覆盖（加载合并路径）
+  })
+  await t('估算兜底：adapter 未回 usage chunk 时按字符估算（1.6 系数）+ estimatedTokens 累计', async () => {
+    const storeE = new Map()
+    const fsMockE = {
+      resolve: async (p) => p,
+      stat: async (p) => (p === NOTES_DIR ? { dir: true } : (storeE.has(p) ? { file: true } : null)),
+      listDir: async (p) => {
+        const prefix = p + '\\'
+        const out = []
+        for (const k of storeE.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+        return out
+      },
+      readText: async (p) => { if (!storeE.has(p)) throw new Error('ENOENT: ' + p); return storeE.get(p) },
+      writeText: async (p, c) => { storeE.set(p, c) },
+    }
+    const llmMockNoUsage = { stream: async function* () { yield { type: 'text-delta', text: '开发' }; yield { type: 'finish' } } }
+    const handlersE = {}
+    const harnessMockE = { handle: (name, fn) => { handlersE[name] = fn; return () => { delete handlersE[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+    new Function('harness', 'pluginDir', hostSrc)(harnessMockE, DIR).apply({
+      fs: fsMockE, sandboxPolicy: { resolve: () => ({}) },
+      get: (name) => ({ llm: llmMockNoUsage, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+      effect: () => {},
+    })
+    await handlersE['notes-quick']({ text: '估算速记', sessionId: 'sess-est-1' })
+    await new Promise(r => setTimeout(r, 150))
+    const u = await handlersE['notes-usage-get']({})
+    assert(u.today.classify > 0, '估算计数 >0（实得 ' + u.today.classify + '）')
+    assert.strictEqual(u.estimatedTokens, u.today.total, '全部计入估算（estimatedTokens=total）')
+    assert.strictEqual(u.exactTokens, 0, '无真实值')
+    assert.strictEqual(u.calls, 1, 'calls=1')
+    // 预算键校验（复用本实例，无 llm 介入）：非负整数直存 / 非法报错 / null 删除恢复关闭
+    const bad = await handlersE['notes-settings-set']({ usageBudgetMonthly: 'x' })
+    assert(bad.error && bad.error.indexOf('usageBudgetMonthly') >= 0, '字符串报错（实得 ' + JSON.stringify(bad) + '）')
+    const bad2 = await handlersE['notes-settings-set']({ usageBudgetMonthly: -5 })
+    assert(bad2.error && bad2.error.indexOf('usageBudgetMonthly') >= 0, '负数报错')
+    const ok = await handlersE['notes-settings-set']({ usageBudgetMonthly: 50000 })
+    assert(ok.ok === true, '保存成功')
+    assert.strictEqual(JSON.parse(storeE.get(NOTES_DIR + '\\settings.json')).usageBudgetMonthly, 50000, 'settings.json 落盘 usageBudgetMonthly')
+    const ok2 = await handlersE['notes-settings-set']({ usageBudgetMonthly: null })
+    assert(ok2.ok === true && !('usageBudgetMonthly' in ok2.settings), 'null 删除 override 恢复关闭提醒')
+  })
+
+  // ---- 37.2c 静态包行为（index.mjs 独立 ESM 实例 + webServer 路由链路；含 usage.json 读回合并）----
+  await t('静态包：计量包装三功能计数 + notes-usage-get + 预算键校验 + usage.json 存量读回（rpc 路由链路）', async () => {
+    const storeS = new Map()
+    const fsMockS = {
+      resolve: async (p) => p,
+      stat: async (p) => (p === NOTES_ROOT_STATIC ? { dir: true } : (storeS.has(p) ? { file: true } : null)),
+      listDir: async (p) => {
+        const prefix = p + '\\'
+        const out = []
+        for (const k of storeS.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+        return out
+      },
+      readText: async (p) => { if (!storeS.has(p)) throw new Error('ENOENT: ' + p); return storeS.get(p) },
+      writeText: async (p, c) => { storeS.set(p, c) },
+    }
+    // 存量 usage.json：上月历史 5000 tokens（allTime 累计口径验证：month 不含上月，allTime 含）
+    const histDay = '2020-01-15'
+    storeS.set(path.join(NOTES_ROOT_STATIC, 'usage.json'), JSON.stringify({
+      daily: { [histDay]: { classify: 2000, organize: 3000, summarize: 0, total: 5000 } },
+      allTime: { classify: 2000, organize: 3000, summarize: 0, total: 5000 },
+      estimatedTokens: 0, exactTokens: 5000, calls: 9
+    }, null, 2))
+    const routesS = []
+    const effectsS = []
+    const ctxS = {
+      fs: fsMockS, sandboxPolicy: { resolve: () => ({}) },
+      webServer: { register: (r) => { routesS.push(r); return () => {} } },
+      tools: { register: () => () => {} },
+      get: (name) => ({ llm: llmMockV, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+      effect: (fn) => { effectsS.push(fn) },
+    }
+    // 真实静态包环境没有 harness Builtin —— 摘掉还原真实条件
+    const harnessBackup37 = global.harness
+    delete global.harness
+    try {
+      const modS = await import(pathToFileURL(INDEX_PATH).href + '?llm-usage=1')
+      modS.apply(ctxS)
+      const rpcS = (method, args) => new Promise((resolve, reject) => {
+        const body = Buffer.from(JSON.stringify({ method: method, args: args }))
+        const req = { method: 'POST', on: (ev, cb) => { if (ev === 'data') cb(body); else if (ev === 'end') cb(); return req }, destroy: () => {} }
+        const res = { statusCode: 0, setHeader: () => {}, writeHead: (c) => { res.statusCode = c }, end: (s) => { let b; try { b = JSON.parse(s) } catch (e) { b = s } resolve({ status: res.statusCode, body: b }) } }
+        Promise.resolve(routesS[0].handler(req, res)).catch(reject)
+      })
+      // 存量读回：allTime 含历史 5000，month/today 不含
+      let u = (await rpcS('notes-usage-get', {})).body
+      assert.strictEqual(u.allTime.total, 5000, '存量 usage.json 读回 allTime=5000（实得 ' + u.allTime.total + '）')
+      assert.strictEqual(u.calls, 9, '存量 calls=9')
+      assert.strictEqual(u.today.total, 0, 'today 不含历史')
+      assert.strictEqual(u.month.total, 0, 'month 不含上月历史（预算口径=当月）')
+      // 计量包装：quick 异步分类 + ai-organize
+      await rpcS('notes-quick', { text: '静态包用量速记', sessionId: 'sess-usage-s' })
+      await new Promise(r => setTimeout(r, 150))
+      const ao = (await rpcS('notes-ai-organize', { body: '静态包草稿', kind: 'note' })).body
+      assert(!ao.error, '静态包整理成功（实得 ' + JSON.stringify(ao).slice(0, 120) + '）')
+      u = (await rpcS('notes-usage-get', {})).body
+      assert.strictEqual(u.today.classify, 60, '静态包分类计数 60（实得 ' + u.today.classify + '）')
+      assert.strictEqual(u.today.organize, 1000, '静态包整理计数 1000（实得 ' + u.today.organize + '）')
+      assert.strictEqual(u.allTime.total, 6060, 'allTime=历史5000+新增1060（实得 ' + u.allTime.total + '）')
+      assert.strictEqual(u.calls, 11, 'calls=9+2（实得 ' + u.calls + '）')
+      // 预算键校验 + 落盘 settings.json
+      const bad = (await rpcS('notes-settings-set', { usageBudgetMonthly: 'x' })).body
+      assert(bad.error && bad.error.indexOf('usageBudgetMonthly') >= 0, '静态包预算键非法值报错')
+      const ok = (await rpcS('notes-settings-set', { usageBudgetMonthly: 80000 })).body
+      assert(ok.ok === true, '静态包预算保存成功')
+      assert.strictEqual(JSON.parse(storeS.get(path.join(NOTES_ROOT_STATIC, 'settings.json'))).usageBudgetMonthly, 80000, '静态包 settings.json 落盘预算键')
+      // 卸载 flush：防抖窗口内的新增计数写回 usage.json（与存量合并）
+      const disposeS = effectsS[0]()
+      disposeS()
+      await flushMicro37()
+      const disk = JSON.parse(storeS.get(path.join(NOTES_ROOT_STATIC, 'usage.json')))
+      assert.strictEqual(disk.allTime.total, 6060, '静态包卸载 flush 落盘 allTime=6060（实得 ' + disk.allTime.total + '）')
+      assert.strictEqual(disk.calls, 11, '静态包落盘 calls=11')
+    } finally {
+      global.harness = harnessBackup37
+    }
+  })
+
+  // ---- 37.3 client 设置卡片（client-impl + 发布包 lib/client.js 同步 + toast 提醒链路）----
+  await t('设置卡片「LLM 用量」+「用量预算提醒」两行（client-impl + 发布包 lib/client.js 同步 + 超预算 toast 不阻断）', () => {
+    assert(/key: 'usage', label: 'LLM 用量'/.test(clientSrc), 'settingsRows 含「LLM 用量」行')
+    assert(/key: 'usagebudget', label: '用量预算提醒'/.test(clientSrc), 'settingsRows 含「用量预算提醒」行')
+    assert(clientSrc.indexOf("host.call('notes-usage-get', {})") >= 0, 'openSettings 拉取 notes-usage-get（独立 RPC 不拖慢主链路）')
+    assert(clientSrc.indexOf("host.call('notes-settings-set', { usageBudgetMonthly: v })") >= 0, '预算保存链路 notes-settings-set usageBudgetMonthly')
+    assert(clientSrc.indexOf('已超预算 ') >= 0 && clientSrc.indexOf('（仅提醒，不阻断）') >= 0, '超预算 toast 文案（仅提醒，不阻断）')
+    assert(clientSrc.indexOf('（含字符估算，约）') >= 0, '估算标注「约」文案')
+    assert(clientSrc.indexOf('const fmtTok = ') >= 0, 'fmtTok token 人性化函数')
+    assert(clientSrc.indexOf('usageData.byFeature.classify.allTime') >= 0, '按功能分列读 byFeature')
+    assert(clientSrc.indexOf('usageBudgetRef') >= 0, '预算 ref 镜像（settings/usage 并发放射防闭包过期）')
+    for (const k of ['LLM 用量', '用量预算提醒', 'notes-usage-get', 'usageBudgetMonthly', '（仅提醒，不阻断）', 'fmtTok', '（含字符估算，约）', 'usageBudgetRef']) {
+      assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺 ' + k + '（需先跑 scripts/build-dist.cjs）')
+    }
+    assert(clientPkgSrc.indexOf("rpc('notes-usage-get', {})") >= 0, '发布包用量拉取走 rpc 形态（host.call 已构建转换）')
+  })
+
+  // ---- 37.4 app.html / 原型 notes-ui-v2.html 设置卡同步 + 原型 mock ----
+  await t('app.html + 原型设置卡同款两行 + 用量区 + mock notes-usage-get 演示（双端 UI 标记一致）', () => {
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('id="setUsageBody"') >= 0 && s.indexOf('id="setUsageBudget"') >= 0, label + ' 用量区容器 + 预算输入')
+      assert(s.indexOf("rpc('notes-usage-get', {})") >= 0, label + ' 拉取 notes-usage-get')
+      assert(s.indexOf('saveSettings({ usageBudgetMonthly:') >= 0, label + ' 预算保存链路')
+      assert(s.indexOf('LLM 用量') >= 0 && s.indexOf('用量预算提醒') >= 0, label + ' 两行标签')
+      assert(s.indexOf('（仅提醒，不阻断）') >= 0 && s.indexOf('（含字符估算，约）') >= 0, label + ' toast/估算文案')
+      assert(s.indexOf('function fmtTok(') >= 0, label + ' fmtTok 人性化函数')
+      assert(s.indexOf('.set-ctrl.usage{') >= 0 && s.indexOf('.usage-line{') >= 0, label + ' 用量区样式')
+    }
+    assert(protoV2Src.indexOf("if (method === 'notes-usage-get')") >= 0, '原型 mock 含 notes-usage-get 分支')
+    assert(protoV2Src.indexOf('estimatedTokens: 420') >= 0, '原型 mock 含估算演示值（「约」标注演示）')
+  })
+
+  // ===== 38. 历史版本面板 UI（notes-history-ui：三 RPC + 详情区「历史」入口 + 列表/预览/恢复 modal + 四端同步）=====
+  section('38. 历史版本面板 UI（notes-history / notes-history-get / notes-restore-history + 四端 UI）')
+
+  // ---- 38.1 双包结构同步（host-impl.js ⇄ index.mjs）----
+  await t('历史引擎双包三 RPC 结构同步（host-impl ⇄ index.mjs，恢复走 persistNote 缺省快照）', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("handle('notes-history'") >= 0 && s.indexOf("handle('notes-history-get'") >= 0 && s.indexOf("handle('notes-restore-history'") >= 0, label + ' 三 RPC handler 注册')
+      assert(s.indexOf('async function histFindName') >= 0, label + ' histFindName（ts → 存活快照文件名）')
+      assert(s.indexOf('async function _historyList') >= 0 && s.indexOf('async function _historyGet') >= 0 && s.indexOf('async function _historyRestore') >= 0, label + ' 三个历史支撑函数')
+      assert(s.indexOf('versions.sort((a, b) => b.ts - a.ts)') >= 0, label + ' 版本列表按时间倒序（新→旧）')
+      assert(s.indexOf('恢复前置快照') >= 0, label + ' 恢复前置快照安全注释')
+      // 安全核心结构断言：_historyRestore 必须经 persistNote 缺省快照语义写回（禁 { history:false }——恢复前当前版入 .history，恢复本身可撤销）
+      const m = s.match(/async function _historyRestore[\s\S]*?\n    \}/)
+      assert(m, label + ' _historyRestore 函数体可提取')
+      assert(m[0].indexOf('await persistNote(note)') >= 0 && m[0].indexOf('history: false') < 0, label + ' 恢复经 persistNote 缺省快照（恢复前置自动快照；禁 history:false 旁路）')
+      assert(m[0].indexOf("throw new Error('Note has been deleted')") >= 0, label + ' 已删除/墓碑笔记拒绝恢复')
+    }
+    assert(hostSrc.indexOf("HISTORY_DIR + '\\\\' + id + '\\\\' + name") >= 0, '开发版历史快照读取走反斜杠拼接')
+    assert(indexSrc.indexOf('path.join(HISTORY_DIR, id, name)') >= 0, '静态包历史快照读取走 path.join')
+  })
+
+  // ---- 38.2 三 RPC 契约行为 + 恢复前置快照（开发版独立实例；复用 section 36 mkHistHandlers/histFilesOf）----
+  const storeHU = new Map()
+  const handlersHU = mkHistHandlers(storeHU, [NOTES_DIR], null)
+  await t('历史版本三 RPC 契约：列表倒序零正文 / get 取正文 / 未知 ts 报错（开发版独立实例）', async () => {
+    const c = await handlersHU['notes-create']({ title: '历史UI', body: 'U0 正文', topic: '开发' })
+    await handlersHU['notes-update']({ id: c.id, body: 'U1 正文' })   // 快照 U0
+    await handlersHU['notes-update']({ id: c.id, body: 'U2 正文' })   // 快照 U1
+    const h = await handlersHU['notes-history']({ id: c.id })
+    assert(!h.error && Array.isArray(h.versions), 'notes-history 返回 versions 数组（实得 ' + JSON.stringify(h).slice(0, 80) + '）')
+    assert.strictEqual(h.versions.length, 2, '两次有效保存 → 2 个版本（实得 ' + h.versions.length + '）')
+    assert(h.versions[0].ts > h.versions[1].ts, '按时间倒序（新→旧）')
+    assert(typeof h.versions[0].ts === 'number' && typeof h.versions[0].bytes === 'number', '版本条目 {ts, bytes} 数值形态')
+    assert(h.versions.every(v => v.body === undefined), '列表零正文明文（列表轻量，正文走 notes-history-get 按需）')
+    // get 取正文：最旧版 = U0 正文 / 最新快照 = U1 正文（快照字节 = 完整笔记文件，返回 parseFM 解析的 body）
+    const g0 = await handlersHU['notes-history-get']({ id: c.id, ts: h.versions[1].ts })
+    assert(!g0.error && g0.body === 'U0 正文', 'notes-history-get 取最旧版正文（实得 ' + JSON.stringify(g0).slice(0, 60) + '）')
+    const g1 = await handlersHU['notes-history-get']({ id: c.id, ts: h.versions[0].ts })
+    assert(g1.body === 'U1 正文', 'notes-history-get 取最新快照正文')
+    const bad = await handlersHU['notes-history-get']({ id: c.id, ts: 123 })
+    assert(bad.error && bad.error.indexOf('历史版本不存在') >= 0, '未知 ts 报错（实得 ' + JSON.stringify(bad) + '）')
+    assert((await handlersHU['notes-history']({})).error, '缺 id 报错')
+  })
+  await t('恢复前置快照（安全核心）：恢复前当前版自动入 .history + 恢复可再撤销回滚', async () => {
+    const c = await handlersHU['notes-create']({ title: '恢复安全', body: 'R0 正文', topic: '开发' })
+    await handlersHU['notes-update']({ id: c.id, body: 'R1 正文' })   // 快照 R0
+    const h1 = await handlersHU['notes-history']({ id: c.id })
+    assert.strictEqual(h1.versions.length, 1, '前置：1 个历史版本（实得 ' + h1.versions.length + '）')
+    // 恢复到 R0：正文写回历史版 + 当前版 R1 自动快照（恢复动作本身可撤销的安全网）
+    const r = await handlersHU['notes-restore-history']({ id: c.id, ts: h1.versions[0].ts })
+    assert(!r.error && r.restored === true, '恢复成功（实得 ' + JSON.stringify(r) + '）')
+    const cur = await handlersHU['notes-get']({ id: c.id })
+    assert.strictEqual(cur.note.body, 'R0 正文', '正文写回历史版（实得 ' + JSON.stringify(cur.note.body) + '）')
+    const h2 = await handlersHU['notes-history']({ id: c.id })
+    assert.strictEqual(h2.versions.length, 2, '恢复前置快照使版本数 +1（实得 ' + h2.versions.length + '）')
+    const gNew = await handlersHU['notes-history-get']({ id: c.id, ts: h2.versions[0].ts })
+    assert.strictEqual(gNew.body, 'R1 正文', '最新快照 = 恢复前的当前版（恢复可撤销的安全网；实得 ' + JSON.stringify(gNew.body) + '）')
+    // 回滚闭环：再恢复「恢复前快照」→ 正文回到 R1（恢复本身可撤销的实证）
+    const r2 = await handlersHU['notes-restore-history']({ id: c.id, ts: h2.versions[0].ts })
+    assert(!r2.error, '二次恢复成功')
+    const cur2 = await handlersHU['notes-get']({ id: c.id })
+    assert.strictEqual(cur2.note.body, 'R1 正文', '恢复可再撤销：二次恢复回滚到恢复前版本')
+    // 边界：未知 ts 拒绝恢复；已软删除笔记拒绝恢复
+    const bad = await handlersHU['notes-restore-history']({ id: c.id, ts: 123 })
+    assert(bad.error && bad.error.indexOf('历史版本不存在') >= 0, '未知 ts 拒绝恢复')
+    await handlersHU['notes-delete']({ id: c.id })
+    const h3 = await handlersHU['notes-history']({ id: c.id })
+    const del = await handlersHU['notes-restore-history']({ id: c.id, ts: h3.versions[0].ts })
+    assert(del.error, '已删除笔记拒绝恢复（实得 ' + JSON.stringify(del) + '）')
+  })
+
+  // ---- 38.3 client 面板结构（client-impl.js）：meta 行入口（有版本才显示）+ modal + Esc/错误互斥 + 恢复不再触发自动保存 ----
+  await t('历史面板 client 结构：meta 行「历史」入口 + 列表/预览/恢复 modal + Esc/互斥接入 + 恢复零自动保存', () => {
+    assert(clientSrc.indexOf("host.call('notes-history', { id: id })") >= 0, 'notes-history 探测/列表调用点')
+    assert(clientSrc.indexOf("host.call('notes-history-get', { id: selectedRef.current, ts: ts })") >= 0, 'notes-history-get 预览调用点')
+    assert(clientSrc.indexOf("host.call('notes-restore-history', { id: id, ts: ts0 })") >= 0, 'notes-restore-history 恢复调用点')
+    assert(clientSrc.indexOf('(histCount || 0) > 0') >= 0 && clientSrc.indexOf("I('clock', 12), '历史'") >= 0, 'meta 行「历史」入口（有版本才显示，clock 图标）')
+    assert(clientSrc.indexOf('probeHistCount') >= 0 && clientSrc.indexOf('histCountRef.current = null; setHistCount(null)') >= 0, '选中笔记切换时重置并探测版本计数')
+    assert(clientSrc.indexOf('dsh-notes-hist-modal') >= 0 && clientSrc.indexOf('dsh-notes-hist-list') >= 0 && clientSrc.indexOf('dsh-notes-hist-item') >= 0, '历史 modal 结构类（列表）')
+    assert(clientSrc.indexOf("'dsh-notes-hist-preview dsh-notes-rich'") >= 0 && clientSrc.indexOf('renderMarkdown(histPreview.body, wikiResolve)') >= 0, '预览只读渲染走 renderMarkdown 内核（全量转义零注入面）')
+    assert(clientSrc.indexOf('fmtHistTs') >= 0 && clientSrc.indexOf('fmtBytes(v.bytes)') >= 0, '版本列表时间+大小展示')
+    assert(clientSrc.indexOf('恢复此版本') >= 0 && clientSrc.indexOf('当前版本会先自动快照进历史版本，可再撤销') >= 0, '恢复按钮 + confirm 前置快照提示文案')
+    assert(clientSrc.indexOf('histOpenRef.current) { setHistOpen(false)') >= 0, 'Esc 优先关历史面板')
+    assert(clientSrc.indexOf('!suggestOpen && !histOpen') >= 0, '错误条与历史 modal 互斥')
+    // 恢复回填不再触发自动保存（恢复版已由 host 落盘；再保存会把恢复版又快照一遍污染历史）
+    const m = clientSrc.match(/function applyRestoredBody[\s\S]*?\n        \}/)
+    assert(m, 'applyRestoredBody 函数体可提取')
+    assert(m[0].indexOf('triggerAutoSave') < 0, '恢复回填不调 triggerAutoSave（恢复不是新编辑，不产生新快照）')
+    assert(m[0].indexOf('setEdBody(text)') >= 0, '恢复回填刷新编辑器正文')
+    const css = fsNative.readFileSync(SRC_STYLES, 'utf8')
+    assert(css.indexOf('.dsh-notes-hist-modal{width:640px}') >= 0 && css.indexOf('.dsh-notes-hist-item.on{') >= 0 && css.indexOf('.dsh-notes-hist-preview{') >= 0, 'styles.css 历史 modal 样式')
+  })
+
+  // ---- 38.4 四端同步（client-impl / 发布包 lib/client.js / app.html / 原型 notes-ui-v2.html）----
+  await t('历史版本面板四端同步：入口/modal/三 RPC 调用点（client-impl + 发布包 + app.html + 原型）', () => {
+    // 发布包 lib/client.js 由 build-dist 机械转换（host 调用桥 → rpc 形态）
+    for (const k of ['notes-history', 'notes-history-get', 'notes-restore-history', 'dsh-notes-hist-modal', '恢复此版本', 'probeHistCount', 'fmtHistTs', '当前版本会先自动快照']) {
+      assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺 ' + k + '（需先跑 scripts/build-dist.cjs）')
+    }
+    assert(clientPkgSrc.indexOf("rpc('notes-history', { id: id })") >= 0 && clientPkgSrc.indexOf("rpc('notes-restore-history', { id: id, ts: ts0 })") >= 0, '发布包历史三 RPC 调用点为 rpc 形态（build-dist 转换后）')
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("rpc('notes-history', { id: id })") >= 0, label + ' notes-history 探测调用点')
+      assert(s.indexOf("rpc('notes-history-get', { id: selId, ts: ts })") >= 0, label + ' notes-history-get 预览调用点')
+      assert(s.indexOf("rpc('notes-restore-history', { id: selId, ts: ts })") >= 0, label + ' notes-restore-history 恢复调用点')
+      assert(s.indexOf('id="mHist"') >= 0 && s.indexOf('function openHistory()') >= 0, label + ' meta 行「历史」入口 + openHistory')
+      assert(s.indexOf('(histCount || 0) > 0') >= 0, label + ' 入口有版本才显示（histCount 探测门控）')
+      assert(s.indexOf('class="hist-body"') >= 0 && s.indexOf('id="histList"') >= 0 && s.indexOf('id="histView"') >= 0 && s.indexOf('id="histRestore"') >= 0, label + ' 历史 modal 结构（列表/预览/恢复按钮）')
+      assert(s.indexOf('恢复此版本') >= 0 && s.indexOf('当前版本会先自动快照进历史版本，可再撤销') >= 0, label + ' 恢复按钮 + confirm 前置快照提示文案')
+      assert(s.indexOf('.modal.hist{') >= 0 && s.indexOf('.hist-item.on{') >= 0 && s.indexOf('.hist-preview{') >= 0, label + ' 历史 modal 样式')
+      assert(s.indexOf('histState = null') >= 0, label + ' Esc 关闭历史面板（histState 复位）')
+    }
+    assert(protoV2Src.indexOf("if (method === 'notes-history')") >= 0 && protoV2Src.indexOf("if (method === 'notes-history-get')") >= 0 && protoV2Src.indexOf("if (method === 'notes-restore-history')") >= 0, '原型 mock 含历史三 RPC 分支')
+    assert(protoV2Src.indexOf('_mockHistory') >= 0 && protoV2Src.indexOf('function _mockSnap') >= 0, '原型 mock 历史快照存储/快照函数（恢复前置快照语义示意）')
+  })
+
+  // ---- 38.5 静态包行为（index.mjs 独立 ESM 实例）----
+  await t('静态包历史三 RPC 行为：列表零正文 / get 取正文 / 恢复 + 恢复前置快照', async () => {
+    const storeHU2 = new Map()
+    const handlersHU2 = {}
+    const harnessMockHU2 = { handle: (name, fn) => { handlersHU2[name] = fn; return () => { delete handlersHU2[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+    const harnessBackup38 = global.harness
+    global.harness = harnessMockHU2
+    try {
+      const modHU = await import(pathToFileURL(INDEX_PATH).href + '?hist-ui=1')
+      modHU.apply({
+        fs: mkFsMockHist(storeHU2, [NOTES_ROOT_STATIC], null), sandboxPolicy: { resolve: () => ({}) },
+        webServer: { register: () => () => {} }, tools: { register: () => () => {} },
+        get: (name) => ({ agents: agentsMock, systemPrompt: { context: () => () => {} } })[name],
+        effect: () => {},
+      })
+      const c = await handlersHU2['notes-create']({ title: '静态历史UI', body: 'SU0' })
+      await handlersHU2['notes-update']({ id: c.id, body: 'SU1' })   // 快照 SU0
+      const h = await handlersHU2['notes-history']({ id: c.id })
+      assert(!h.error && h.versions.length === 1 && h.versions[0].body === undefined, '静态包列表 1 版且零正文（实得 ' + JSON.stringify(h).slice(0, 80) + '）')
+      const g = await handlersHU2['notes-history-get']({ id: c.id, ts: h.versions[0].ts })
+      assert(!g.error && g.body === 'SU0', '静态包 get 取历史版正文（实得 ' + JSON.stringify(g).slice(0, 60) + '）')
+      const r = await handlersHU2['notes-restore-history']({ id: c.id, ts: h.versions[0].ts })
+      assert(!r.error && r.restored === true, '静态包恢复成功')
+      const cur = await handlersHU2['notes-get']({ id: c.id })
+      assert.strictEqual(cur.note.body, 'SU0', '静态包正文写回历史版')
+      const h2 = await handlersHU2['notes-history']({ id: c.id })
+      assert.strictEqual(h2.versions.length, 2, '静态包恢复前置快照版本数 +1（实得 ' + h2.versions.length + '）')
+    } finally {
+      if (harnessBackup38 === undefined) delete global.harness; else global.harness = harnessBackup38
+    }
+  })
+
+  // ===== 39. 工作记忆 v0 Phase 1（kind=log 沉淀链路 + 默认隐身 + 启用流程 + 日志卫生提名 + 四端同步）=====
+  // 规格 = design/agent-memory-v0.md：① kind=log 模板/枚举/永不被清理提名 ② 默认隐身（inject 硬 false / recall 缺省 false / 列表与默认搜索排除）
+  // ③ 启用流程（notes-memory-guide：check 重叠检查 / enable 创建预填约定 tag memory-guide + 作用域 / disable 关 inject / status 单一事实源）
+  // ④ 日志卫生提名（suggest 第四类 logHygieneCandidates：周聚合 >7 天 / 月聚合 >90 天，只提名不执行，v0 仅展示明细）
+  section('39. 工作记忆 v0 Phase 1（kind=log + 默认隐身 + 启用流程 + 日志卫生）')
+
+  // ---- 39.1 host 双侧静态契约（host-impl.js ⇄ index.mjs 双包同步）----
+  await t('host 双侧：kind=log 枚举三处 + KIND_TEMPLATES.log 四节模板（§4.2）', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("const KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log']") >= 0, label + ' KINDS 含 log')
+      assert(s.indexOf("quote: '引用', log: '日志'") >= 0, label + ' 中文标签映射含 log:日志')
+      assert(s.indexOf("const CATALOG_KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' }") >= 0, label + ' CATALOG_KIND_LABELS 含 log')
+      assert(s.indexOf("'## 做了什么\\n\\n（本会话完成的任务/阶段，一句话一条）") >= 0, label + ' log 模板「做了什么」节')
+      assert(s.indexOf('## 改动\\n\\n（改动的文件/配置/数据，路径 + 一句话）') >= 0, label + ' log 模板「改动」节')
+      assert(s.indexOf('## 遗留与后续') >= 0 && s.indexOf('## 相关笔记\\n\\n（[[n-xxxxxxxx]] 双链引用本库相关笔记；无则空）') >= 0, label + ' log 模板「遗留与后续/相关笔记」节（双链占位）')
+    }
+  })
+  await t('host 双侧：front-matter 检索字段往返预留（§7.2：logDate 恒写 / entities+summarizedAt 条件行 / parseFM 拆分 / noteFromParsed 缺省）', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("'logDate: ' + escYaml(m.logDate || '')") >= 0, label + ' buildFM logDate 恒写（log 恒写/其他空）')
+      assert(s.indexOf("(m.entities && m.entities.length ? 'entities: ' + m.entities.map(escYaml).join(', ') + '\\n' : '')") >= 0, label + ' buildFM entities 条件行（仅非空落盘）')
+      assert(s.indexOf("(m.summarizedAt ? 'summarizedAt: ' + escYaml(m.summarizedAt) + '\\n' : '')") >= 0, label + ' buildFM summarizedAt 条件行')
+      assert(s.indexOf("|| key === 'entities'") >= 0, label + ' parseFM entities 进拆分列表（与 tags 同路径）')
+      assert(s.indexOf("entities: Array.isArray(p.meta.entities) ? p.meta.entities : [],") >= 0, label + ' noteFromParsed entities 缺省 []')
+      assert(s.indexOf("logDate: p.meta.logDate || '',") >= 0 && s.indexOf("summarizedAt: p.meta.summarizedAt || '',") >= 0, label + ' noteFromParsed logDate/summarizedAt 缺省')
+      assert(s.indexOf('function localDateStr(d)') >= 0, label + ' localDateStr 本地时区日期 helper（logDate 缺省今天）')
+      assert(s.indexOf('logDate: n.logDate || \'\'') >= 0, label + ' slim 携带 logDate（client 卫生展示用）')
+    }
+  })
+  await t('host 双侧：默认隐身硬闸（_create/_update 强制 inject=false + recall 缺省 false + injectForcedOff 告知 + 解析侧缺省）', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("const isLog = (ex.kind || 'note') === 'log'") >= 0, label + ' _create isLog 判定')
+      assert(s.indexOf('inject: isLog ? false : ex.inject === true,') >= 0, label + ' _create inject 硬 false（显式 true 也纠正）')
+      assert(s.indexOf('recall: isLog ? (ex.recall === true) : (ex.recall !== false),') >= 0, label + ' _create recall 缺省 false（显式 true 豁免保留）')
+      assert(s.indexOf("if (effKind === 'log' && inject === true) { note.inject = false; injectForcedOff = true }") >= 0, label + ' _update inject 硬闸纠正')
+      assert(s.indexOf('if (injectForcedOff) r.injectForcedOff = true') >= 0, label + ' 响应 injectForcedOff 告知（create/update 同款）')
+      assert(s.indexOf("p.meta.kind === 'log' ? false : true") >= 0, label + ' noteFromParsed：存量/外部直写 log 缺省 recall=false')
+    }
+  })
+  await t('host 双侧：_list/_search 默认排除 kind=log（显式 kind=log / includeLogs / 回收站路径召回）+ 目录尾部日志计数提示行', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('async function _list(tag, kind, folder, includeDeleted, includeLogs)') >= 0, label + ' _list 五参（+includeLogs）')
+      assert(s.indexOf("if (note.kind === 'log' && !includeLogs && !includeDeleted && !kind) continue") >= 0, label + ' _list 默认排除 log（显式 kind/回收站/includeLogs 召回）')
+      assert(s.indexOf("!!(kind === 'log' || (filters && filters.includeLogs))") >= 0, label + ' _search 同款默认排除')
+      assert(s.indexOf(' 条工作日志（kind=log，默认隐身不进目录），用 note_search 传 kind=log 检索') >= 0, label + ' 目录尾部日志计数提示行（有日志恒出现，只出计数不出标题）')
+      assert(s.indexOf('if (pool.length === 0 && logCount === 0) return') >= 0, label + ' 目录空态判定连带日志计数')
+    }
+  })
+  await t('host 双侧：notes-memory-guide RPC + 引导模板 §5.2 要点 + 重叠检查关键词 + 日志永不被清理提名', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("handle('notes-memory-guide'") >= 0, label + ' notes-memory-guide RPC 注册')
+      assert(s.indexOf("const MEMORY_GUIDE_TAG = 'memory-guide'") >= 0, label + ' 发现键 tag memory-guide（零 schema 变更）')
+      assert(s.indexOf('约定：工作日志沉淀（工作记忆 v0）') >= 0, label + ' 引导约定标题')
+      assert(s.indexOf('【工作约定】会话工作沉淀（工作记忆 v0）') >= 0, label + ' 引导模板首行')
+      assert(s.indexOf('用户显式说「记一下 / 沉淀一下 / 写工作日志」时') >= 0, label + ' 内置「记一下」响应指令（沉淀快捷⑤，无新按钮）')
+      assert(s.indexOf('【分工边界】') >= 0 && s.indexOf('互不替代、互不合并') >= 0, label + ' 【分工边界】必需段落（裁决 A②防双记）')
+      assert(s.indexOf('note_manage list（kind=log）') >= 0 && s.indexOf('## HH:mm 续') >= 0, label + ' 模板含当日归键写法（list 查当天 → update 追加续节）')
+      assert(s.indexOf('MEMORY_GUIDE_OVERLAP_RE') >= 0 && s.indexOf('记录|日志|总结|沉淀|复盘|feedback|反馈') >= 0, label + ' 语义重叠检查关键词（§5.1）')
+      assert(s.indexOf("const MEMORY_GUIDE_FOLDER = '工作日志'") >= 0, label + ' 启用时确保「工作日志」文件夹')
+      assert(s.indexOf('启用状态不落 settings.json') >= 0, label + ' 状态单一事实源注释（tag + inject=true）')
+      assert(s.indexOf("if (n.kind === 'log') continue   // 日志永不被过期清理提名") >= 0, label + ' stale 候选显式排除 log（只聚合不淘汰）')
+      assert(s.indexOf("if ((n.kind || 'note') === 'log') continue   // 日志永不被孤儿清理提名") >= 0, label + ' orphan 候选显式排除 log')
+    }
+  })
+  await t('host 双侧：settings 键 logWeekAfterDays/logRetentionDays 校验 + _suggest 第四类候选 logHygieneCandidates（只提名不执行）', () => {
+    for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('const LOG_WEEK_AFTER_DAYS_DEFAULT = 7') >= 0 && s.indexOf('const LOG_RETENTION_DAYS_DEFAULT = 90') >= 0, label + ' 窗口缺省 7/90（§6.3）')
+      assert(s.indexOf('function logWeekAfterDaysLimit()') >= 0 && s.indexOf('function logRetentionDaysLimit()') >= 0, label + ' 窗口 helper（null 恢复缺省）')
+      assert(s.indexOf("'logWeekAfterDays' in patch") >= 0 && s.indexOf("'logRetentionDays' in patch") >= 0, label + ' settings-set 两键校验')
+      assert(s.indexOf('notes-settings-set: logWeekAfterDays 需要非负数值') >= 0 && s.indexOf('notes-settings-set: logRetentionDays 需要非负数值') >= 0, label + ' 非法值报错文案')
+      assert(s.indexOf('logHygieneCandidates: suggestLogHygiene(all, logWeekAfterDaysLimit(), logRetentionDaysLimit())') >= 0, label + ' _suggest 第四类候选接线')
+      assert(s.indexOf('工作周志 · ') >= 0 && s.indexOf('工作月志 · ') >= 0, label + ' 周志/月志标题三段式（§6.3）')
+      assert(s.indexOf('_list(undefined, undefined, undefined, undefined, true)') >= 0, label + ' 治理路径显式包含日志（suggest/memory-guide）')
+    }
+  })
+
+  // ---- 39.2 host 行为级（开发版独立实例 storeM/handlersM，与 33 节同款隔离模式）----
+  const storeM = new Map()
+  let writesM = 0
+  const fsMockM = {
+    resolve: async (p) => p,
+    stat: async (p) => (p === NOTES_DIR ? { dir: true } : (storeM.has(p) ? { file: true } : null)),
+    listDir: async (p) => {
+      const prefix = p + '\\'
+      const out = []
+      for (const k of storeM.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+      return out
+    },
+    readText: async (p) => { if (!storeM.has(p)) throw new Error('ENOENT: ' + p); return storeM.get(p) },
+    writeText: async (p, c) => { writesM++; storeM.set(p, c) },
+  }
+  const handlersM = {}
+  const harnessMockM = { handle: (name, fn) => { handlersM[name] = fn; return () => { delete handlersM[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+  const contextsM = []
+  new Function('harness', 'pluginDir', hostSrc)(harnessMockM, DIR).apply({
+    fs: fsMockM, sandboxPolicy: { resolve: () => ({}) },
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: (c) => { contextsM.push(c); return () => {} } }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    effect: () => {},
+  })
+  const dayMsM = 86400000
+  const dstrM = (d) => { const x = new Date(Date.now() - d * dayMsM); const p = (n) => String(n).padStart(2, '0'); return x.getFullYear() + '-' + p(x.getMonth() + 1) + '-' + p(x.getDate()) }
+  const seedM = (id, fm, body) => storeM.set(NOTES_DIR + '\\' + id + '.md', '---\nid: ' + id + '\n' + fm.join('\n') + '\n---\n\n' + body)
+  // 预热沉降：apply 心跳与首个 RPC 的 perf-report 是 fire-and-forget 写——先落定再断言零写入（33 节同款姿势）
+  await handlersM['notes-list']({})
+  await new Promise(r => setTimeout(r, 20))
+
+  await t('kind=log 创建：inject 硬 false（显式 true 被纠正 + injectForcedOff 告知）+ recall 缺省 false + logDate 缺省今天 + front-matter 落盘', async () => {
+    const lg = await handlersM['notes-create']({ title: '工作日志 · 测试', body: '## 做了什么\n\n验收工作记忆 v0', kind: 'log', inject: true })
+    assert(lg.id && lg.injectForcedOff === true, '显式 inject:true 被纠正且响应告知（实得 ' + JSON.stringify(lg) + '）')
+    const g = await handlersM['notes-get']({ id: lg.id })
+    assert(g.note.kind === 'log' && g.note.inject === false, 'inject 硬 false 落库')
+    assert(g.note.recall === false, 'recall 缺省 false（日志不进目录）')
+    assert(/^\d{4}-\d{2}-\d{2}$/.test(g.note.logDate || ''), 'logDate 缺省取今天（本地时区 YYYY-MM-DD，实得 ' + g.note.logDate + '）')
+    const raw = storeM.get(NOTES_DIR + '\\' + lg.id + '.md')
+    assert(raw.indexOf('kind: log') >= 0 && raw.indexOf('inject: false') >= 0 && raw.indexOf('recall: false') >= 0, 'front-matter kind/inject/recall 落盘')
+    assert(new RegExp('logDate: ' + g.note.logDate).test(raw), 'front-matter logDate 落盘')
+    assert(raw.indexOf('entities:') < 0 && raw.indexOf('summarizedAt:') < 0, 'entities/summarizedAt 空值不落盘（条件行）')
+  })
+  await t('kind=log recall 显式 true 豁免 + 普通 note 不受隐身影响（recall 缺省 true / inject 照常）', async () => {
+    const lg = await handlersM['notes-create']({ title: '日志-目录豁免', body: 'x', kind: 'log', recall: true })
+    const g = await handlersM['notes-get']({ id: lg.id })
+    assert(g.note.recall === true && g.note.inject === false, '显式 recall=true 允许进目录（豁免保留），inject 仍硬 false')
+    const nm = await handlersM['notes-create']({ title: '普通笔记M', body: 'x', inject: true })
+    const gn = await handlersM['notes-get']({ id: nm.id })
+    assert(gn.note.recall === true && gn.note.inject === true, '普通笔记 recall/inject 口径不变（向后兼容）')
+  })
+  await t('检索字段往返：entities 经 notes-create 落盘并解析回数组；summarizedAt 经 notes-update 条件落盘', async () => {
+    const c = await handlersM['notes-create']({ title: '实体往返', body: 'x', entities: ['alpha', 'beta'] })
+    const raw = storeM.get(NOTES_DIR + '\\' + c.id + '.md')
+    assert(raw.indexOf('entities: alpha, beta') >= 0, 'entities 非空落盘（逗号分隔同 tags 路径）')
+    const g = await handlersM['notes-get']({ id: c.id })
+    assert.deepStrictEqual(g.note.entities, ['alpha', 'beta'], 'entities 解析回数组（往返无损）')
+    assert((g.note.logDate || '') === '', '非 log 笔记 logDate 为空串（§7.2 其他空）')
+    await handlersM['notes-update']({ id: c.id, summarizedAt: '2026-10-02T13:00:00.000Z' })
+    const raw2 = storeM.get(NOTES_DIR + '\\' + c.id + '.md')
+    assert(raw2.indexOf('summarizedAt: "2026-10-02T13:00:00.000Z"') >= 0, 'summarizedAt 条件落盘（ISO 串含冒号，escYaml 引号包裹——与 createdAt 同款）')
+    const g2 = await handlersM['notes-get']({ id: c.id })
+    assert.strictEqual(g2.note.summarizedAt, '2026-10-02T13:00:00.000Z', 'summarizedAt 解析往返')
+  })
+  await t('隐身口径：默认列表/默认搜索排除 kind=log；显式 kind=log 或 includeLogs:true 召回；回收站路径含日志', async () => {
+    const def = await handlersM['notes-list']({})
+    assert(def.notes.every(n => n.kind !== 'log'), '默认列表零日志（实得含 log：' + def.notes.filter(n => n.kind === 'log').length + '）')
+    assert(def.notes.some(n => n.title === '普通笔记M'), '默认列表含普通笔记')
+    const only = await handlersM['notes-list']({ kind: 'log' })
+    assert(only.notes.length >= 2 && only.notes.every(n => n.kind === 'log'), '显式 kind=log 过滤召回（实得 ' + only.notes.length + '）')
+    const inc = await handlersM['notes-list']({ includeLogs: true })
+    assert(inc.notes.some(n => n.kind === 'log') && inc.notes.some(n => n.kind === 'note'), 'includeLogs:true 混合召回')
+    const s0 = await handlersM['notes-search']({ query: '工作日志' })
+    assert(s0.notes.every(n => n.kind !== 'log'), '默认搜索排除日志')
+    const s1 = await handlersM['notes-search']({ query: '工作日志', kind: 'log' })
+    assert(s1.notes.length >= 1 && s1.notes.every(n => n.kind === 'log'), 'kind=log 搜索召回')
+    const s2 = await handlersM['notes-search']({ query: '工作日志', includeLogs: true })
+    assert(s2.notes.some(n => n.kind === 'log'), 'includeLogs:true 搜索召回')
+    const tr = await handlersM['notes-list']({ includeDeleted: true })
+    assert(tr.notes.some(n => n.kind === 'log'), '回收站（includeDeleted）路径显式包含日志（隐身不适用治理面）')
+  })
+  await t('update 硬闸：kind=log 显式 inject:true 被纠正（injectForcedOff + injectEver 不拉起）；改 kind=note 后恢复普通语义', async () => {
+    const lg = await handlersM['notes-create']({ title: '改注入演示', body: 'x', kind: 'log' })   // 标题刻意避开「日志/记录」关键词：转成 note 后 inject=true，不干扰 39.3 重叠检查计数
+    const u1 = await handlersM['notes-update']({ id: lg.id, inject: true })
+    assert(u1.injectForcedOff === true, 'update 显式 inject:true 被纠正并告知')
+    const g1 = await handlersM['notes-get']({ id: lg.id })
+    assert(g1.note.inject === false && g1.note.injectEver === false, 'inject=false 且 injectEver 未被粘性拉起')
+    const u2 = await handlersM['notes-update']({ id: lg.id, kind: 'note' })
+    assert(!u2.error, 'kind 改为 note 成功')
+    const u3 = await handlersM['notes-update']({ id: lg.id, inject: true })
+    assert(u3.injectForcedOff !== true, 'kind=note 后 inject:true 不再纠正')
+    const g3 = await handlersM['notes-get']({ id: lg.id })
+    assert(g3.note.inject === true && g3.note.injectEver === true, '普通语义恢复（injectEver 粘性照常）')
+  })
+  await t('目录注入尾部日志计数提示行（order 131，有日志恒出现；只出计数不出标题）', async () => {
+    const cat = contextsM.find(c => c.order === 131)
+    assert(cat && typeof cat.text === 'function', 'notes:catalog order 131 已注册')
+    const txt = cat.text()
+    const m = txt.match(/另有 (\d+) 条工作日志（kind=log，默认隐身不进目录），用 note_search 传 kind=log 检索/)
+    // 此刻实例内恰 2 条 log：「工作日志 · 测试」（recall=false）+「日志-目录豁免」（recall=true 豁免，同时以条目进目录）；「改注入演示」已转 kind=note
+    assert(m && +m[1] === 2, '目录尾部日志计数提示行（实得计数 ' + (m && m[1]) + '）')
+    assert(txt.indexOf('工作日志 · 测试') < 0, '提示行不含日志标题（天然无泄露面）')
+  })
+
+  // ---- 39.3 启用流程（notes-memory-guide check/enable/status/disable 全链路）----
+  await t('notes-memory-guide：status 缺省关 → check 零写入列重叠 → enable 未确认闸门 → confirmed 创建约定 + 文件夹', async () => {
+    // 造一条语义重叠的已注入约定（命中「记录」关键词）
+    const ov = await handlersM['notes-create']({ title: '约定：看板反馈记录', body: '使用问题随手记录到「看板反馈」文件夹', inject: true, topic: '约定' })
+    const st0 = await handlersM['notes-memory-guide']({ op: 'status' })
+    assert(st0.enabled === false, '缺省关（无 tag memory-guide 笔记）')
+    const keysBefore = Array.from(storeM.keys()).sort()
+    const chk = await handlersM['notes-memory-guide']({ op: 'check' })
+    assert.deepStrictEqual(Array.from(storeM.keys()).sort(), keysBefore, 'check 为 dry-run 零写入')
+    assert(chk.overlaps.length === 1 && chk.overlaps[0].id === ov.id, '重叠候选命中反馈约定（实得 ' + JSON.stringify(chk.overlaps.map(o => o.id)) + '）')
+    assert(chk.overlaps[0].title.indexOf('看板反馈') >= 0 && typeof chk.overlaps[0].preview === 'string', '候选含标题+摘要')
+    const e1 = await handlersM['notes-memory-guide']({ op: 'enable', scope: [] })
+    assert(e1.needConfirm === true && e1.overlaps.length === 1, '有重叠且未 confirmed → 待确认闸门（零写入）')
+    const e2 = await handlersM['notes-memory-guide']({ op: 'enable', scope: ['abc12345'], confirmed: true })
+    assert(e2.ok === true && e2.id && e2.overlaps === 1, 'confirmed:true 创建成功（实得 ' + JSON.stringify(e2) + '）')
+    const g = await handlersM['notes-get']({ id: e2.id })
+    assert(g.note.title === '约定：工作日志沉淀（工作记忆 v0）' && g.note.kind === 'note', '预填约定标题/kind=note（引导是行为约定，不是日志本身）')
+    assert(g.note.inject === true && g.note.injectRole === 'convention', 'inject=true + convention 桶（单一注入源 order 130）')
+    assert(g.note.tags.indexOf('memory-guide') >= 0, 'tag memory-guide 发现键')
+    assert.deepStrictEqual(g.note.injectTo, ['abc12345'], '作用域写入 injectTo（用户选择）')
+    assert(g.note.body.indexOf('【分工边界】') >= 0 && g.note.body.indexOf('kind=log') >= 0, '引导模板全文（含分工边界段）')
+    const folders = await handlersM['notes-folders']({})
+    assert(folders.folders.some(f => f.name === '工作日志'), '启用同时确保「工作日志」虚拟文件夹存在')
+    const st1 = await handlersM['notes-memory-guide']({ op: 'status' })
+    assert(st1.enabled === true && st1.noteId === e2.id, 'status 单一事实源：启用态 = tag+inject=true')
+    const chk2 = await handlersM['notes-memory-guide']({ op: 'check' })
+    assert(chk2.overlaps.every(o => o.id !== e2.id), '重叠检查排除引导笔记自身（tag memory-guide 豁免）')
+  })
+  await t('notes-memory-guide：enable 幂等（已启用不建第二条）+ disable 关 inject 停用 + 未知 op 报错', async () => {
+    const st = await handlersM['notes-memory-guide']({ op: 'status' })
+    assert(st.enabled === true && st.noteId, '前置：上一断言已启用')
+    const e3 = await handlersM['notes-memory-guide']({ op: 'enable', scope: [], confirmed: true })
+    assert(e3.ok === true && e3.already === true && e3.id === st.noteId, '幂等：重复启用返回现状（不建第二条）')
+    const d1 = await handlersM['notes-memory-guide']({ op: 'disable' })
+    assert(d1.ok === true && d1.disabled === true && d1.id === st.noteId, 'disable = 关闭该约定 inject')
+    const g = await handlersM['notes-get']({ id: st.noteId })
+    assert(g.note.inject === false && g.note.injectEver === true, '笔记保留（inject 已关；injectEver 粘性照常）')
+    const st2 = await handlersM['notes-memory-guide']({ op: 'status' })
+    assert(st2.enabled === false && st2.noteId === st.noteId, '停用后 status=关（笔记仍在可再启用）')
+    const d2 = await handlersM['notes-memory-guide']({ op: 'disable' })
+    assert(d2.ok === true && d2.disabled === false, '重复停用幂等（本就未启用）')
+    const bad = await handlersM['notes-memory-guide']({ op: 'bogus' })
+    assert(bad.error && bad.error.indexOf('未知 op') >= 0, '未知 op 报错')
+    // 复启用（停用后的笔记仍存在 → enable 应再建吗？不——active=null 时会新建一条；此处验证「删除即彻底退出」前的再启用路径）
+    const e4 = await handlersM['notes-memory-guide']({ op: 'enable', scope: [], confirmed: true })
+    assert(e4.ok === true && e4.id && e4.id !== st.noteId, '停用后再启用创建新约定（旧约定 inject=false 不视为启用）')
+  })
+
+  // ---- 39.4 日志卫生提名（suggest 第四类候选；只提名不执行）----
+  await t('notes-suggest logHygieneCandidates：周聚合（>7 天 工作区×ISO 周）+ 月聚合（>90 天 工作区×月）+ 同组 ≥2 才提名', async () => {
+    // 造确定性日志：dstr(10) ×2（wsA 同周）、dstr(100) ×2（wsA 同月）、dstr(2)（新日志不成组）、dstr(10) wsB 单条（≥2 规则出局）
+    const iso = (d) => new Date(Date.now() - d * dayMsM).toISOString()
+    seedM('n-m-lgw1', ['title: 日志W1', 'kind: log', 'workspace: wsA', 'logDate: ' + dstrM(10), 'sessionId: sess-w1', 'createdAt: "' + iso(10) + '"', 'updatedAt: "' + iso(10) + '"'], '周志成员一')
+    seedM('n-m-lgw2', ['title: 日志W2', 'kind: log', 'workspace: wsA', 'logDate: ' + dstrM(10), 'sessionId: sess-w2', 'createdAt: "' + iso(10) + '"', 'updatedAt: "' + iso(10) + '"'], '周志成员二')
+    seedM('n-m-lgm1', ['title: 日志M1', 'kind: log', 'workspace: wsA', 'logDate: ' + dstrM(100), 'createdAt: "' + iso(100) + '"', 'updatedAt: "' + iso(100) + '"'], '月志成员一')
+    seedM('n-m-lgm2', ['title: 日志M2', 'kind: log', 'workspace: wsA', 'logDate: ' + dstrM(100), 'createdAt: "' + iso(100) + '"', 'updatedAt: "' + iso(100) + '"'], '月志成员二')
+    seedM('n-m-lgfresh', ['title: ' + '新日志', 'kind: log', 'workspace: wsA', 'logDate: ' + dstrM(2), 'createdAt: "' + iso(2) + '"', 'updatedAt: "' + iso(2) + '"'], '未超窗')
+    seedM('n-m-lgsolo', ['title: 单条旧日志', 'kind: log', 'workspace: wsB', 'logDate: ' + dstrM(10), 'createdAt: "' + iso(10) + '"', 'updatedAt: "' + iso(10) + '"'], 'wsB 单条不成组')
+    const r = await handlersM['notes-suggest']({})
+    assert(!r.error && r.logHygieneCandidates, '第四类候选存在（实得键 ' + Object.keys(r).join(',') + '）')
+    const hg = r.logHygieneCandidates
+    const wk10 = sugNS.suggestISOWeek(dstrM(10)), wk100 = sugNS.suggestISOWeek(dstrM(100)), mo100 = dstrM(100).slice(0, 7)
+    const wKeys = hg.weekly.map(g => g.key)
+    assert(wKeys.indexOf('wsA|' + wk10) >= 0 && wKeys.indexOf('wsA|' + wk100) >= 0, '周聚合两组（10 天组 + 100 天组同区不同周；实得 ' + wKeys.join(',') + '）')
+    assert(wKeys.every(k => k.indexOf('wsB|') < 0), 'wsB 单条旧日志不成组（同组 ≥2 条才提名）')
+    const wA = hg.weekly.find(g => g.key === 'wsA|' + wk10)
+    assert(wA.title === '工作周志 · wsA · ' + wk10 && wA.members.length === 2, '周志标题三段式 + 2 成员')
+    assert(wA.members[0].logDate === dstrM(10) && typeof wA.members[0].sessionId === 'string', '成员含 id/title/logDate/sessionId（明细展示数据源）')
+    assert(hg.monthly.length === 1 && hg.monthly[0].key === 'wsA|' + mo100 && hg.monthly[0].title === '工作月志 · wsA · ' + mo100, '月聚合一组（>90 天；实得 ' + hg.monthly.map(g => g.key).join(',') + '）')
+    assert(hg.monthly[0].members.length === 2, '月志 2 成员（原始日志混合归组）')
+    // 日志永不进过期/孤儿候选（只聚合不淘汰，§6.3 红线）
+    const staleIds = r.staleCandidates.map(x => x.id), orphIds = r.orphanCandidates.map(x => x.id)
+    for (const lid of ['n-m-lgw1', 'n-m-lgw2', 'n-m-lgm1', 'n-m-lgm2', 'n-m-lgfresh', 'n-m-lgsolo']) {
+      assert(staleIds.indexOf(lid) < 0 && orphIds.indexOf(lid) < 0, '日志不进 stale/orphan：' + lid)
+    }
+    // 前三段口径不变（速记组结构仍与 archive-preview 同源）
+    assert(Array.isArray(r.archiveCandidates) && Array.isArray(r.staleCandidates) && Array.isArray(r.orphanCandidates) && typeof r.generatedAt === 'string', '四段 + generatedAt 结构齐备')
+  })
+  await t('日志卫生窗口跟随 settings（logRetentionDays=0 关闭月聚合；logWeekAfterDays override 生效 + null 恢复缺省）', async () => {
+    await handlersM['notes-settings-set']({ logRetentionDays: 0 })
+    const r1 = await handlersM['notes-suggest']({})
+    assert(r1.logHygieneCandidates.monthly.length === 0 && r1.logHygieneCandidates.weekly.length >= 1, 'logRetentionDays=0 关闭月聚合本级（周聚合不受影响）')
+    await handlersM['notes-settings-set']({ logWeekAfterDays: 120 })
+    const r2 = await handlersM['notes-suggest']({})
+    assert(r2.logHygieneCandidates.weekly.length === 0, 'logWeekAfterDays=120：10/100 天均未超窗 → 周聚合空')
+    await handlersM['notes-settings-set']({ logWeekAfterDays: null, logRetentionDays: null })
+    const r3 = await handlersM['notes-suggest']({})
+    assert(r3.logHygieneCandidates.weekly.length >= 1 && r3.logHygieneCandidates.monthly.length === 1, 'null 恢复缺省 7/90 → 两组回到候选')
+    const bad1 = await handlersM['notes-settings-set']({ logWeekAfterDays: -3 })
+    const bad2 = await handlersM['notes-settings-set']({ logRetentionDays: 'x' })
+    assert(bad1.error && bad2.error, '负数/非数值报错不落盘')
+  })
+
+  // ---- 39.5 静态包行为（index.mjs 独立 ESM 实例，harness 主通道）----
+  await t('静态包：notes-memory-guide 注册 + kind=log 隐身硬闸 + suggest 第四段（index.mjs 独立实例）', async () => {
+    const storeM2 = new Map()
+    const fsMockM2 = mkFsMockImp(storeM2, [NOTES_ROOT_STATIC])
+    const handlersM2 = {}
+    const harnessMockM2 = { handle: (name, fn) => { handlersM2[name] = fn; return () => { delete handlersM2[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+    const harnessBackup39 = global.harness
+    global.harness = harnessMockM2
+    try {
+      const modM2 = await import(pathToFileURL(INDEX_PATH).href + '?memory=1')
+      modM2.apply({
+        fs: fsMockM2, sandboxPolicy: { resolve: () => ({}) },
+        webServer: { register: () => () => {} }, tools: { register: () => () => {} },
+        get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+        effect: () => {},
+      })
+      assert.strictEqual(typeof handlersM2['notes-memory-guide'], 'function', '静态包注册 notes-memory-guide')
+      const lg = await handlersM2['notes-create']({ title: '静态日志', body: 'x', kind: 'log', inject: true })
+      assert(lg.id && lg.injectForcedOff === true, '静态包 inject 硬闸（显式 true 纠正 + 告知）')
+      const g = await handlersM2['notes-get']({ id: lg.id })
+      assert(g.note.inject === false && g.note.recall === false && /^\d{4}-\d{2}-\d{2}$/.test(g.note.logDate || ''), '静态包 recall 缺省 false + logDate 缺省今天')
+      const def = await handlersM2['notes-list']({})
+      assert(def.notes.every(n => n.kind !== 'log'), '静态包默认列表排除日志')
+      const en = await handlersM2['notes-memory-guide']({ op: 'enable', scope: [], confirmed: true })
+      assert(en.ok === true && en.id, '静态包启用流程（无重叠库直接创建）')
+      const st = await handlersM2['notes-memory-guide']({ op: 'status' })
+      assert(st.enabled === true && st.noteId === en.id, '静态包 status 单一事实源')
+      const sg = await handlersM2['notes-suggest']({})
+      assert(sg.logHygieneCandidates && Array.isArray(sg.logHygieneCandidates.weekly) && Array.isArray(sg.logHygieneCandidates.monthly), '静态包 suggest 第四段结构')
+    } finally {
+      if (harnessBackup39 === undefined) delete global.harness; else global.harness = harnessBackup39
+    }
+  })
+
+  // ---- 39.6 四端同步（client-impl / 发布包 lib/client.js / app.html / 原型 notes-ui-v2.html + styles.css）----
+  await t('四端 kind=log：KIND 标签/模板/筛选类型组/色板变量/专入口接线同步（client + 发布包 + app.html + 原型 + styles）', () => {
+    for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("log: '日志'") >= 0, label + ' KIND_LABELS 含日志')
+      assert(s.indexOf("'## 做了什么\\n\\n（本会话完成的任务/阶段，一句话一条）") >= 0, label + ' KIND_TEMPLATES.log 与 host 同份')
+      assert(s.indexOf("const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log']") >= 0, label + ' 筛选中心类型组含 log（kind=日志 即专入口）')
+      assert(s.indexOf("e('option', { value: 'log' }, '日志')") >= 0, label + ' 编辑器 kind 下拉含日志')
+      assert(s.indexOf("['note', 'decision', 'todo', 'link', 'quote', 'log'].map(k => e('option'") >= 0, label + ' 新建 modal 类型含日志（预填 log 模板骨架）')
+      assert(s.indexOf("notes-list', wantLogsRef.current ? { includeLogs: true } : undefined") >= 0, label + ' loadNotes 日志专入口 includeLogs 接线（host 默认排除）')
+      assert(s.indexOf("(n.kind || 'note') !== 'log' || filters.kinds.indexOf('log') >= 0") >= 0, label + ' 隐身渲染守卫（未勾日志不进日常视图）')
+    }
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("log: '日志'") >= 0, label + ' KIND 含日志')
+      assert(s.indexOf("'## 做了什么\\n\\n（本会话完成的任务/阶段，一句话一条）") >= 0, label + ' KIND_TEMPLATES.log 与 host 同份')
+      assert(s.indexOf("var FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log'];") >= 0, label + ' 筛选类型组含 log')
+      assert(s.indexOf("log: 'var(--kind-log)'") >= 0, label + ' KCOLOR 含 log')
+      assert(s.indexOf('--kind-log:') >= 0, label + ' 色板 --kind-log 变量（双主题）')
+      assert(s.indexOf("rpc('notes-list', wantLogs ? { includeLogs: true } : undefined)") >= 0, label + ' loadNotes includeLogs 接线')
+      assert(s.indexOf("(n.kind || 'note') === 'log' && filters.kinds.indexOf('log') < 0") >= 0, label + ' 隐身渲染守卫')
+      assert(s.indexOf('function maybeReloadForLogs()') >= 0, label + ' 勾选「日志」自动重拉列表')
+    }
+    const cssDev2 = fsNative.readFileSync(SRC_STYLES, 'utf8')
+    const cssPkg2 = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+    assert(cssDev2.indexOf('--nkind-log:') >= 0 && cssPkg2.indexOf('--nkind-log:') >= 0, 'styles.css 双端 --nkind-log 日志色点（需跑 scripts/build-dist.cjs）')
+  })
+  await t('设置卡片「工作记忆」区 + 启用对话框（状态行/作用域/重叠检查/停用）四端同步', () => {
+    for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("{ key: 'memory', label: '工作记忆'") >= 0, label + ' 设置卡片「工作记忆」行')
+      assert(s.indexOf("{ key: 'logweek', label: '日志周聚合窗口'") >= 0 && s.indexOf("{ key: 'logmonth', label: '日志月聚合窗口'") >= 0, label + ' 日志卫生两级窗口行')
+      assert(s.indexOf("'notes-memory-guide', { op: 'status' }") >= 0, label + ' 状态探测调用点')
+      assert(s.indexOf("'notes-memory-guide', { op: 'check' }") >= 0, label + ' 重叠检查调用点（dry-run）')
+      assert(s.indexOf("'notes-memory-guide', { op: 'enable', scope: memScopeResolve(), confirmed: true }") >= 0, label + ' 启用调用点（作用域 + confirmed）')
+      assert(s.indexOf("'notes-memory-guide', { op: 'disable' }") >= 0, label + ' 停用调用点（关 inject）')
+      assert(s.indexOf('启用沉淀引导…') >= 0 && s.indexOf('约定：工作日志沉淀（工作记忆 v0）') >= 0, label + ' 入口按钮 + 对话框文案')
+      // notes-scope-global-pick：「当前X」单选 → 「指定X」多选清单（全局视角；injectTo 落值语义不变——工作区档展开为所选工作区全部会话短 id 并集）
+      assert(s.indexOf('function memScopeResolve()') >= 0 && s.indexOf("memScope === 'global'") >= 0 && s.indexOf("memScope === 'session'") >= 0, label + ' 作用域三档解析（全局/指定工作区/指定会话）')
+      assert(s.indexOf("scopeOpt('workspace', '指定工作区（多选）'") >= 0 && s.indexOf("scopeOpt('session', '指定会话（多选）'") >= 0, label + ' 指定工作区/会话多选档文案')
+      assert(s.indexOf('memWsPick') >= 0 && s.indexOf('memSidPick') >= 0 && s.indexOf('sessList.concat(sessPending)') >= 0, label + ' 多选清单状态 + 数据源（sessList + pending 占位）')
+      assert(s.indexOf('当前工作区的会话') < 0 && s.indexOf('仅当前会话') < 0, label + ' 去「当前X」单选档（全局视角改造）')
+      assert(s.indexOf('logWeekAfterDays: v') >= 0 && s.indexOf('logRetentionDays: v') >= 0, label + ' 窗口保存 payload')
+      assert(s.indexOf('memOpenRef.current) { setMemOpen(false)') >= 0, label + ' Esc 优先关启用对话框')
+    }
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('id="setMemoryCtrl"') >= 0, label + ' 设置卡片「工作记忆」行')
+      assert(s.indexOf('id="setLogWeek"') >= 0 && s.indexOf('id="setLogMonth"') >= 0, label + ' 日志卫生窗口输入行')
+      assert(s.indexOf("rpc('notes-memory-guide', { op: 'status' })") >= 0, label + ' 状态探测调用点')
+      assert(s.indexOf("rpc('notes-memory-guide', { op: 'check' })") >= 0, label + ' 重叠检查调用点')
+      assert(s.indexOf("{ op: 'enable', scope: scope, confirmed: true }") >= 0, label + ' 启用调用点')
+      assert(s.indexOf("{ op: 'disable' }") >= 0, label + ' 停用调用点')
+      assert(s.indexOf('function renderMemoryStatus') >= 0 && s.indexOf('启用沉淀引导…') >= 0, label + ' 状态行渲染 + 入口')
+      assert(s.indexOf('memEnableState = null') >= 0, label + ' Esc 关闭启用对话框（状态复位）')
+      // notes-scope-global-pick：作用域档 = 所有会话 / 指定工作区（多选）/ 指定会话（多选）——双多选清单容器 + 工作区勾选接线 + 并集展开
+      assert(s.indexOf('id="memWsList"') >= 0 && s.indexOf('id="memSessList"') >= 0, label + ' 指定工作区/会话多选清单容器')
+      assert(s.indexOf('指定工作区（多选，下方勾选）') >= 0 && s.indexOf('指定会话（多选，下方勾选）') >= 0, label + ' 全局视角多选档文案')
+      assert(s.indexOf('data-memws') >= 0 && s.indexOf('data-memsid') >= 0, label + ' 工作区/会话勾选接线')
+      assert(s.indexOf('wss[s.workspace]') >= 0, label + ' 指定工作区 → 会话短 id 并集展开（injectTo 落值语义不变）')
+      assert(s.indexOf('value="custom"') < 0, label + ' 去旧 custom 单档（全局视角改造）')
+    }
+    assert(protoV2Src.indexOf("if (method === 'notes-memory-guide')") >= 0, '原型 mock 含 notes-memory-guide 分支（status/check/enable/disable）')
+    assert(protoV2Src.indexOf("indexOf('memory-guide')") >= 0, '原型 mock 发现键 tag memory-guide')
+  })
+  await t('整理建议 modal 第四段「日志卫生」四端同步（周/月聚合提名 + 明细展开 + 只提名不执行文案）', () => {
+    for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('logHygieneCandidates') >= 0, label + ' suggestData 第四类候选消费')
+      assert(s.indexOf("'日志卫生'") >= 0 && s.indexOf('周聚合') >= 0 && s.indexOf('月聚合') >= 0, label + ' 第四段标题 + 两级分组')
+      assert(s.indexOf('logHgExpand') >= 0, label + ' 组明细展开态')
+      assert(s.indexOf('v0 仅展示明细，一键合并将在后续版本提供') >= 0, label + ' 只提名不执行文案（从简口径）')
+    }
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('logHygieneCandidates') >= 0 && s.indexOf('日志卫生') >= 0, label + ' 第四段渲染')
+      assert(s.indexOf('sg-loghg') >= 0 && s.indexOf('logHgExpand') >= 0, label + ' 明细展开接线')
+      assert(s.indexOf("'周聚合'") >= 0 && s.indexOf("'月聚合'") >= 0, label + ' 周/月两级分组标签')
+    }
+    assert(protoV2Src.indexOf('工作周志 · ') >= 0 && protoV2Src.indexOf('工作月志 · ') >= 0, '原型 mock 周志/月志标题三段式生成')
+    assert(protoV2Src.indexOf("kind: 'log'") >= 0 && protoV2Src.indexOf('logDate') >= 0, '原型 mock 日志演示数据（kind=log + logDate）')
+    assert(protoV2Src.indexOf('sgIsoWeek') >= 0, '原型 mock 日志卫生 ISO 周归组')
+  })
+  await t('工具 schema：note_search/note_manage kind 枚举含 log + 隐身口径描述 + includeLogs 参数', () => {
+    const ns = findTool('note_search'), nm = findTool('note_manage')
+    assert(ns.parameters.properties.kind.enum.indexOf('log') >= 0, 'note_search kind enum 含 log')
+    assert(nm.parameters.properties.kind.enum.indexOf('log') >= 0, 'note_manage kind enum 含 log')
+    assert(ns.parameters.properties.includeLogs && nm.parameters.properties.includeLogs, '两工具 includeLogs 参数（显式召回日志）')
+    assert(ns.description.indexOf('kind=log') >= 0 && ns.description.indexOf('EXCLUDE') >= 0, 'note_search 描述同步默认排除日志')
+    assert(nm.description.indexOf('kind=log') >= 0 && nm.description.indexOf('工作日志') >= 0 && nm.description.indexOf('stealth') >= 0, 'note_manage 描述同步 log 隐身口径（inject 硬关/recall 缺省 false）')
+    assert(nm.parameters.properties.logDate, 'note_manage create 支持 logDate（高级回填；缺省今天）')
+  })
+
+  // ===== 40. 文件夹嵌套（parent 字段 + maxFolderDepth 设置 + 递归子树过滤 + cascade 删除 + 导出子树；host 双包）=====
+  // 语义（用户拍板）：folders.json 加 parent（缺省=根级，存量数据无 parent 字段零迁移）；maxFolderDepth 缺省 3（settings.json，
+  // 非法回缺省 / null 恢复缺省 / 0=不限）；create/reorder 拖父级沿 parent 链校验深度 + cycle（不能挂到自己/子孙下）；
+  // _list/计数/导出走**递归子树口径**（传文件夹 id = 含全部子孙文件夹内笔记）；delete 缺省拒绝有子内容（needCascade），
+  // cascade:true 整棵子树删除（文件夹结构不可恢复）+ 其下笔记逐条软删进回收站（可恢复；恢复后原文件夹不在 → effectiveFolder 兜底未分类）。
+  section('40. 文件夹嵌套（parent + maxFolderDepth + 递归子树过滤 + cascade 删除，host 双包）')
+
+  // --- 40.1 标记块：双包逐字节一致 + eval 纯函数单测（与 sensitive-helpers/img-path-hint 同款姿势）---
+  const grabTreeBlk = (s, tag) => { const m = s.match(/\/\/ ==== folder-tree-helpers BEGIN ====[\s\S]*?\/\/ ==== folder-tree-helpers END ====/); assert(m, tag + ' 缺 folder-tree-helpers 标记块'); return m[0] }
+  const treeBlkDev = grabTreeBlk(hostSrc, 'host-impl.js')
+  const treeBlkPkg = grabTreeBlk(indexSrc, 'index.mjs')
+  const treeNS = {}
+  new Function('ns', treeBlkDev + '\nns.folderDepth = folderDepth; ns.folderSubtreeIds = folderSubtreeIds; ns.folderSubtreeHeight = folderSubtreeHeight; ns.checkFolderAttach = checkFolderAttach;')(treeNS)
+  await t('folder-tree-helpers 标记块双包逐字节一致 + 可 eval（folderDepth/folderSubtreeIds/folderSubtreeHeight/checkFolderAttach）', () => {
+    assert.strictEqual(treeBlkPkg, treeBlkDev, 'host-impl.js 与 index.mjs 的 folder-tree-helpers 块必须逐字节一致')
+    for (const fn of ['folderDepth', 'folderSubtreeIds', 'folderSubtreeHeight', 'checkFolderAttach']) assert.strictEqual(typeof treeNS[fn], 'function', fn + ' 导出')
+  })
+  await t('folder-tree-helpers 纯函数：深度/子树/高度/挂载校验 + 悬空 parent 与存量 cycle 数据防御', () => {
+    const F = [{ id: 'A', order: 0 }, { id: 'B', order: 1, parent: 'A' }, { id: 'C', order: 2, parent: 'B' }]
+    assert.deepStrictEqual([treeNS.folderDepth('A', F), treeNS.folderDepth('B', F), treeNS.folderDepth('C', F), treeNS.folderDepth('ghost', F)], [1, 2, 3, 0], 'depth：根1/子2/孙3/清单外0')
+    assert.deepStrictEqual(Object.keys(treeNS.folderSubtreeIds('A', F)).sort(), ['A', 'B', 'C'], '子树含自身 + 全部子孙')
+    assert.deepStrictEqual(Object.keys(treeNS.folderSubtreeIds('B', F)).sort(), ['B', 'C'], 'B 子树不含 A')
+    assert.strictEqual(treeNS.folderSubtreeHeight('A', F), 3, 'A 子树高度 3')
+    assert.strictEqual(treeNS.folderSubtreeHeight('C', F), 1, '叶子高度 1')
+    assert.strictEqual(treeNS.checkFolderAttach(F, null, 'B', 3), null, '新建挂 B（深度 3 边界）通过')
+    assert(treeNS.checkFolderAttach(F, null, 'C', 3).indexOf('maxFolderDepth') >= 0, '新建挂 C（深度 4）超限拒绝')
+    assert.strictEqual(treeNS.checkFolderAttach(F, null, 'C', 0), null, 'maxDepth=0 不限')
+    assert(treeNS.checkFolderAttach(F, 'A', 'C', 0).indexOf('cycle') >= 0, '挂到自己子孙 cycle 拒绝')
+    assert(treeNS.checkFolderAttach(F, 'A', 'A', 0).indexOf('自己') >= 0, '挂到自己拒绝')
+    assert(treeNS.checkFolderAttach(F, null, 'ghost', 3).indexOf('不存在') >= 0, 'parent 不存在拒绝')
+    // 存量损坏防御：cycle 数据（X↔Y）与悬空 parent 不抛错（visited 截断，按已遍历部分返回）
+    const bad = [{ id: 'X', order: 0, parent: 'Y' }, { id: 'Y', order: 1, parent: 'X' }, { id: 'Z', order: 2, parent: 'ghost' }]
+    assert.strictEqual(treeNS.folderDepth('X', bad), 2, 'cycle 数据截断不死循环')
+    assert.strictEqual(treeNS.folderDepth('Z', bad), 1, '悬空 parent 按根级计')
+    assert(treeNS.folderSubtreeHeight('X', bad) >= 1, 'cycle 高度有限返回')
+    assert(treeNS.folderSubtreeIds('X', bad).X && treeNS.folderSubtreeIds('X', bad).Y, 'cycle 子树含环成员即截断')
+  })
+
+  // --- 40.2 行为级（开发版独立实例 store40/handlers40/tools40，与 29/35 节同款隔离模式）---
+  const store40 = new Map()
+  const fsMock40 = {
+    resolve: async (p) => p,
+    stat: async (p) => (p === NOTES_DIR ? { dir: true } : (store40.has(p) ? { file: true } : null)),
+    listDir: async (p) => {
+      const prefix = p + '\\'
+      const out = []
+      for (const k of store40.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+      return out
+    },
+    readText: async (p) => { if (!store40.has(p)) throw new Error('ENOENT: ' + p); return store40.get(p) },
+    writeText: async (p, c) => { store40.set(p, c) },
+  }
+  const handlers40 = {}
+  const tools40 = []
+  const harnessMock40 = {
+    handle: (name, fn) => { handlers40[name] = fn; return () => { delete handlers40[name] } },
+    defineTool: (d) => d,
+    registerTool: (c, d) => { tools40.push(d); return () => {} },
+  }
+  const contexts40 = []
+  new Function('harness', 'pluginDir', hostSrc)(harnessMock40, DIR).apply({
+    fs: fsMock40, sandboxPolicy: { resolve: () => ({}) },
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: (c) => { contexts40.push(c); return () => {} } }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    effect: () => {},
+    on: () => () => {},
+  })
+  const F40 = NOTES_DIR + '\\folders.json'
+  const f40 = {}   // 节内样本句柄（递归子树过滤 → cascade 删除 两测试接力）
+
+  await t('maxFolderDepth 设置往返：缺省 3（无键）→ set 落盘回读 → 非法值报错 → null 恢复缺省', async () => {
+    const sg0 = await handlers40['notes-settings-get']({})
+    assert(!('maxFolderDepth' in sg0.settings), '初始无 maxFolderDepth override（缺省 3）')
+    let bad = await handlers40['notes-settings-set']({ maxFolderDepth: -1 })
+    assert(bad.error && bad.error.indexOf('maxFolderDepth') >= 0, '负数报错')
+    bad = await handlers40['notes-settings-set']({ maxFolderDepth: '3' })
+    assert(bad.error && bad.error.indexOf('maxFolderDepth') >= 0, '字符串报错')
+    const ok = await handlers40['notes-settings-set']({ maxFolderDepth: 5 })
+    assert(ok.ok === true, '保存成功（实得 ' + JSON.stringify(ok) + '）')
+    const onDisk = JSON.parse(store40.get(NOTES_DIR + '\\settings.json'))
+    assert.strictEqual(onDisk.maxFolderDepth, 5, 'settings.json 落盘 maxFolderDepth:5')
+    assert.strictEqual((await handlers40['notes-settings-get']({})).settings.maxFolderDepth, 5, 'notes-settings-get 回读一致')
+    await handlers40['notes-settings-set']({ maxFolderDepth: null })
+    assert(!('maxFolderDepth' in (await handlers40['notes-settings-get']({})).settings), 'null 删除 override 恢复缺省 3')
+  })
+  await t('嵌套 parent 往返：create 带 parent 落盘 + list 返回 parent/depth + 存量零迁移（无 parent=根级 depth 1）', async () => {
+    const root = (await handlers40['notes-folders']({ op: 'create', name: '根夹' })).folder
+    assert(!('parent' in root), '根级 create 返回无 parent 字段')
+    const child = (await handlers40['notes-folders']({ op: 'create', name: '子夹', parent: root.id })).folder
+    assert.strictEqual(child.parent, root.id, 'create parent 落位返回')
+    const onDisk = JSON.parse(store40.get(F40))
+    assert.strictEqual(onDisk.find(f => f.id === child.id).parent, root.id, 'folders.json 磁盘含 parent 字段')
+    assert(!('parent' in onDisk.find(f => f.id === root.id)), '根级磁盘条目无 parent 键（存量零迁移格式不变）')
+    const lst = await handlers40['notes-folders']({})
+    const lr = lst.folders.find(f => f.id === root.id), lc = lst.folders.find(f => f.id === child.id)
+    assert(lr.parent === '' && lr.depth === 1, 'list 根级 parent=\'\' depth=1（实得：' + JSON.stringify(lr) + '）')
+    assert(lc.parent === root.id && lc.depth === 2, 'list 子级 parent/depth 正确（实得：' + JSON.stringify(lc) + '）')
+    // 存量零迁移：手写旧格式清单（无 parent 字段）+ 混合嵌套条目 → 正常解析
+    store40.set(F40, JSON.stringify([{ id: 'f-legacy', name: '旧夹', order: 0 }, { id: 'f-sub', name: '旧子夹', order: 1, parent: 'f-legacy' }]))
+    const lst2 = await handlers40['notes-folders']({})
+    assert(lst2.folders.find(f => f.id === 'f-legacy').depth === 1 && lst2.folders.find(f => f.id === 'f-sub').depth === 2, '旧格式（无/有 parent 混合）正常解析为根级/子级')
+    store40.delete(F40)   // 清理：还原空清单，后续测试各自建树
+  })
+  await t('嵌套深度校验：缺省 3 层超限拒绝 / 边界第 3 层 OK / 调大与 0 不限放行', async () => {
+    const l1 = (await handlers40['notes-folders']({ op: 'create', name: 'L1' })).folder
+    const l2 = (await handlers40['notes-folders']({ op: 'create', name: 'L2', parent: l1.id })).folder
+    const l3r = await handlers40['notes-folders']({ op: 'create', name: 'L3', parent: l2.id })
+    assert(l3r.ok === true && l3r.folder.parent === l2.id, '边界第 3 层创建 OK')
+    const l4r = await handlers40['notes-folders']({ op: 'create', name: 'L4', parent: l3r.folder.id })
+    assert(l4r.error && l4r.error.indexOf('maxFolderDepth=3') >= 0, '缺省 3 层：第 4 层拒绝（实得：' + JSON.stringify(l4r) + '）')
+    const badP = await handlers40['notes-folders']({ op: 'create', name: 'Lx', parent: 'f-ghost' })
+    assert(badP.error && badP.error.indexOf('父文件夹不存在') >= 0, 'parent 不存在拒绝')
+    // 调大到 4 → 第 4 层放行；0=不限 → 第 6 层放行；null 恢复缺省 3
+    await handlers40['notes-settings-set']({ maxFolderDepth: 4 })
+    const l4b = (await handlers40['notes-folders']({ op: 'create', name: 'L4', parent: l3r.folder.id })).folder
+    assert(l4b && l4b.parent === l3r.folder.id, '调大 maxFolderDepth=4 后第 4 层放行')
+    await handlers40['notes-settings-set']({ maxFolderDepth: 0 })
+    let cur = l4b.id
+    for (const nm of ['L5', 'L6']) cur = (await handlers40['notes-folders']({ op: 'create', name: nm, parent: cur })).folder.id
+    assert.strictEqual((await handlers40['notes-folders']({})).folders.find(f => f.name === 'L6').depth, 6, '0=不限：第 6 层放行（depth=6）')
+    await handlers40['notes-settings-set']({ maxFolderDepth: null })
+    // 清理：空子树 cascade 删除（无笔记 notes=0）
+    const del = await handlers40['notes-folders']({ op: 'delete', id: l1.id, cascade: true })
+    assert(del.ok === true && del.folders === 6 && del.notes === 0, '清理：空子树 cascade 删除 folders=6 notes=0（实得：' + JSON.stringify(del) + '）')
+  })
+  await t('reorder 拖父级：cycle 拒绝（自身/子孙）+ 深度超限拒绝 + 合法改挂落盘', async () => {
+    const A = (await handlers40['notes-folders']({ op: 'create', name: 'R-A' })).folder
+    const B = (await handlers40['notes-folders']({ op: 'create', name: 'R-B', parent: A.id })).folder
+    const C = (await handlers40['notes-folders']({ op: 'create', name: 'R-C', parent: B.id })).folder
+    const self = await handlers40['notes-folders']({ op: 'reorder', ids: [A.id], parents: { [A.id]: A.id } })
+    assert(self.error && self.error.indexOf('自己') >= 0, '挂自己拒绝（实得：' + JSON.stringify(self) + '）')
+    const cyc = await handlers40['notes-folders']({ op: 'reorder', ids: [A.id], parents: { [A.id]: C.id } })
+    assert(cyc.error && cyc.error.indexOf('cycle') >= 0, '挂到自己子孙 cycle 拒绝（实得：' + JSON.stringify(cyc) + '）')
+    // 深度：A 子树高 3，挂到另一个根级夹 D 下 → 1+3=4 层超限
+    const D = (await handlers40['notes-folders']({ op: 'create', name: 'R-D' })).folder
+    const deep = await handlers40['notes-folders']({ op: 'reorder', ids: [A.id], parents: { [A.id]: D.id } })
+    assert(deep.error && deep.error.indexOf('maxFolderDepth') >= 0, '拖父级子树整体超限拒绝（实得：' + JSON.stringify(deep) + '）')
+    // 合法改挂：C 回根级（parents '' 删除 parent 键）→ A 子树降为高 2 → 挂 D 下 = 3 层边界 OK
+    const ok1 = await handlers40['notes-folders']({ op: 'reorder', ids: [C.id], parents: { [C.id]: '' } })
+    assert(ok1.ok === true, 'C 回根级 OK')
+    const ok2 = await handlers40['notes-folders']({ op: 'reorder', ids: [A.id], parents: { [A.id]: D.id } })
+    assert(ok2.ok === true, 'A（子树高 2）挂 D 下 = 3 层边界 OK（实得：' + JSON.stringify(ok2) + '）')
+    const lst = await handlers40['notes-folders']({})
+    assert(lst.folders.find(f => f.id === C.id).parent === '' && lst.folders.find(f => f.id === C.id).depth === 1, 'C 已回根级 depth=1')
+    assert(lst.folders.find(f => f.id === A.id).parent === D.id && lst.folders.find(f => f.id === B.id).depth === 3, 'A 挂 D 下、B depth=3')
+    const onDisk = JSON.parse(store40.get(F40))
+    assert(onDisk.find(f => f.id === A.id).parent === D.id && !('parent' in onDisk.find(f => f.id === C.id)), '改挂落盘（回根级删除 parent 键）')
+    const badId = await handlers40['notes-folders']({ op: 'reorder', ids: [A.id], parents: { 'f-ghost': D.id } })
+    assert(badId.error && badId.error.indexOf('不存在') >= 0, 'parents 含清单外 id 报错')
+    // 清理：D→A→B 整棵 cascade；C 空叶子免 cascade 直删
+    const delD = await handlers40['notes-folders']({ op: 'delete', id: D.id, cascade: true })
+    assert(delD.ok === true && delD.folders === 3 && delD.notes === 0, '清理 D 子树（实得：' + JSON.stringify(delD) + '）')
+    const delC = await handlers40['notes-folders']({ op: 'delete', id: C.id })
+    assert(delC.ok === true && delC.folders === 1 && delC.notes === 0, '空叶子文件夹免 cascade 直删（folders:1 notes:0）')
+  })
+  await t('递归子树过滤：三层父子样本 notes-list / note_search / note_manage 同口径 + count 子树口径', async () => {
+    const A = (await handlers40['notes-folders']({ op: 'create', name: 'F-A' })).folder
+    const B = (await handlers40['notes-folders']({ op: 'create', name: 'F-B', parent: A.id })).folder
+    const C = (await handlers40['notes-folders']({ op: 'create', name: 'F-C', parent: B.id })).folder
+    const nA = await handlers40['notes-create']({ title: 'nest-A', body: 'x', folder: A.id })
+    const nB = await handlers40['notes-create']({ title: 'nest-B', body: 'x', folder: B.id })
+    const nC = await handlers40['notes-create']({ title: 'nest-C', body: 'x', folder: C.id })
+    const nU = await handlers40['notes-create']({ title: 'nest-未分类', body: 'x' })
+    Object.assign(f40, { A: A.id, B: B.id, C: C.id, nA: nA.id, nB: nB.id, nC: nC.id })
+    const idsOf = (l) => l.notes.map(n => n.id).sort()
+    // notes-list：A=整棵子树 3 条；B=B+C 2 条；C=1 条；''=未分类（含 nU，不含子树笔记）
+    assert.deepStrictEqual(idsOf(await handlers40['notes-list']({ folder: A.id })), [nA.id, nB.id, nC.id].sort(), 'folder=A 递归含 B/C 笔记')
+    assert.deepStrictEqual(idsOf(await handlers40['notes-list']({ folder: B.id })), [nB.id, nC.id].sort(), 'folder=B 含 C 不含 A')
+    assert.deepStrictEqual(idsOf(await handlers40['notes-list']({ folder: C.id })), [nC.id], 'folder=C 只自身')
+    const unf = await handlers40['notes-list']({ folder: '' })
+    assert(unf.notes.some(n => n.id === nU.id) && !unf.notes.some(n => n.id === nB.id), 'folder=\'\' 只未分类（口径不变）')
+    // note_search 同口径（无 query 列全部）
+    const s = await tools40.find(x => x.name === 'note_search').execute({ folder: B.id })
+    assert.deepStrictEqual(s.notes.map(n => n.id).sort(), [nB.id, nC.id].sort(), 'note_search folder=B 递归子树')
+    // note_manage list 同口径（名称/id 双兼容）
+    const mgr = tools40.find(x => x.name === 'note_manage')
+    const m1 = await mgr.execute({ action: 'list', folder: 'F-A' })
+    assert(m1.notes.length === 3 && m1.notes.every(n => [nA.id, nB.id, nC.id].indexOf(n.id) >= 0), 'note_manage list 按名称递归子树')
+    const m2 = await mgr.execute({ action: 'list', folder: C.id })
+    assert(m2.notes.length === 1 && m2.notes[0].id === nC.id, 'note_manage list folder=C 只自身')
+    // count 子树口径：A.count=3（含子孙），B.count=2，C.count=1
+    const lst = await handlers40['notes-folders']({})
+    assert.strictEqual(lst.folders.find(f => f.id === A.id).count, 3, 'A count 子树口径=3')
+    assert.strictEqual(lst.folders.find(f => f.id === B.id).count, 2, 'B count 子树口径=2')
+    assert.strictEqual(lst.folders.find(f => f.id === C.id).count, 1, 'C count=1')
+  })
+  await t('cascade 删除：缺省拒绝含子内容 + cascade:true 整棵删除笔记进回收站可恢复落未分类', async () => {
+    // 缺省拒绝：统计子文件夹 2 + 笔记 3，结构不动
+    const refuse = await handlers40['notes-folders']({ op: 'delete', id: f40.A })
+    assert(refuse.error && refuse.needCascade === true && refuse.childFolders === 2 && refuse.notes === 3, '缺省拒绝 + 子内容统计（实得：' + JSON.stringify(refuse) + '）')
+    assert((await handlers40['notes-folders']({})).folders.length === 3, '拒绝后结构未动')
+    // cascade:true：整棵 3 文件夹 + 3 笔记逐条软删（_delete 同通道）
+    const del = await handlers40['notes-folders']({ op: 'delete', id: f40.A, cascade: true })
+    assert(del.ok === true && del.folders === 3 && del.notes === 3, 'cascade 统计 {folders:3, notes:3}（实得：' + JSON.stringify(del) + '）')
+    const lst = await handlers40['notes-folders']({})
+    assert(!lst.folders.some(f => f.id === f40.A || f.id === f40.B || f.id === f40.C), 'A/B/C 整棵出清单')
+    const trash = await handlers40['notes-list']({ includeDeleted: true })
+    assert([f40.nA, f40.nB, f40.nC].every(id => { const n = trash.notes.find(x => x.id === id); return n && n.deleted === true }), '三条笔记全部软删进回收站')
+    assert((await handlers40['notes-list']({})).notes.every(n => [f40.nA, f40.nB, f40.nC].indexOf(n.id) < 0), '默认列表不再含已删笔记')
+    // 恢复 nC：原文件夹 C 已不存在 → effectiveFolder 兜底未分类（断言锁定该机制）
+    await handlers40['notes-restore']({ id: f40.nC })
+    const unf = await handlers40['notes-list']({ folder: '' })
+    assert(unf.notes.some(n => n.id === f40.nC), '恢复后落未分类（folder 悬空 → effectiveFolder 兜底）')
+    assert.strictEqual((await handlers40['notes-folders']({})).unfiled, unf.notes.length, 'unfiled 计数与未分类列表一致')
+    // 清理回收站残留（导出测试基线干净）：purge 软删笔记（墓碑化）
+    await handlers40['notes-purge']({ id: f40.nA })
+    await handlers40['notes-purge']({ id: f40.nB })
+  })
+  await t('导出子树：notes-export-single scope.folder 递归含子孙文件夹笔记', async () => {
+    const A = (await handlers40['notes-folders']({ op: 'create', name: 'E-A' })).folder
+    const B = (await handlers40['notes-folders']({ op: 'create', name: 'E-B', parent: A.id })).folder
+    await handlers40['notes-create']({ title: '导-根层', body: 'x', folder: A.id })
+    await handlers40['notes-create']({ title: '导-子层', body: 'x', folder: B.id })
+    await handlers40['notes-create']({ title: '导-无关', body: 'x' })
+    const r = await handlers40['notes-export-single']({ dir: NOTES_DIR + '\\exp40', scope: { folder: A.id } })
+    assert(!r.error && r.exported === 2, '导出 2 条（子树口径；实得：' + JSON.stringify(r) + '）')
+    const doc = store40.get(r.target)
+    assert(doc.indexOf('导-根层') >= 0 && doc.indexOf('导-子层') >= 0, '导出文档含根层 + 子孙层笔记')
+    assert(doc.indexOf('导-无关') < 0, '未分类笔记不进子树导出')
+    // 按名称解析同口径
+    const r2 = await handlers40['notes-export-single']({ dir: NOTES_DIR + '\\exp40', scope: { folder: 'E-B' } })
+    assert(!r2.error && r2.exported === 1, 'scope.folder=E-B 只 1 条（实得：' + JSON.stringify(r2) + '）')
+  })
+  await t('工具描述/schema 同步嵌套语义（note_manage/note_search folder 说明 + cascade 提示，双包一致）', () => {
+    const ns = tools40.find(x => x.name === 'note_search'), nm = tools40.find(x => x.name === 'note_manage')
+    assert(ns.parameters.properties.folder.description.indexOf('recursive subtree') >= 0 && ns.parameters.properties.folder.description.indexOf('unfiled') >= 0, 'note_search folder 描述含递归子树口径 + 未分类')
+    assert(nm.parameters.properties.folder.description.indexOf('nest') >= 0 && nm.parameters.properties.folder.description.indexOf('subtree') >= 0, 'note_manage folder schema 描述含嵌套/子树')
+    assert(nm.description.indexOf('NEST') >= 0 && nm.description.indexOf('cascade:true') >= 0 && nm.description.indexOf('maxFolderDepth') >= 0, 'note_manage 描述含嵌套 + cascade:true + maxFolderDepth')
+    // 双包描述同步（源码级）
+    assert(indexSrc.indexOf('recursive subtree match — it returns notes in that folder AND all its descendant folders') >= 0, 'index.mjs note_search folder 描述同步')
+    assert(indexSrc.indexOf('requires explicit cascade:true') >= 0 && indexSrc.indexOf('maxFolderDepth setting caps the depth, default 3') >= 0, 'index.mjs note_manage 描述同步 cascade/嵌套')
+  })
+
+  // ===== 41. 文件夹嵌套 UI（notes-nested-folder-ui：递归树渲染 + 新建子文件夹/拖拽换父 + 级联删除 confirm + 面包屑路径 + maxFolderDepth 设置行）=====
+  // 依赖 notes-nested-folder-host（§40 host 契约：parent/depth/递归子树过滤/cascade）。本节点 UI 侧四端：
+  // client-impl.js + styles.css（→ scripts/build-dist.cjs 发布包 lib/client.js + lib/styles.css）+ app.html + 原型 notes-ui-v2.html。
+  // 语义要点：递归树 depth-first（子文件夹先于直挂笔记）；文件夹视图/过滤命中/计数均按子树口径（与 host f.count 一致）；
+  // 拖拽换父 cycle/自挂本地拦截 + 深度上限 host 拒绝 → toast；级联删除 confirm 统计本地按子树预估（host 无 dry-run 参数）。
+  section('41. 文件夹嵌套 UI（递归树 + 拖拽换父 + 级联删除 confirm + 面包屑 + maxFolderDepth 设置行，四端同步）')
+  const appSrcN = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
+  const protoSrcN = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
+  const cssDevN = fsNative.readFileSync(SRC_STYLES, 'utf8')
+  const cssPkgN = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
+
+  await t('嵌套 UI 递归树渲染：depth-first 递归 + 子树过滤/自动展开/计数 + 键盘导航顺序（四端同步）', () => {
+    // ① client-impl：嵌套 helper 集（与 host folder-tree-helpers 同口径纯函数）+ 递归渲染器
+    for (const fn of ['function folderSubtreeIdsOf(id)', 'function childFoldersOf(pid)', 'function rootFolders()', 'function folderPathOf(fid)']) {
+      assert(clientSrc.indexOf(fn) >= 0, 'client-impl 缺嵌套 helper ' + fn)
+    }
+    assert(/function renderFolderNode\(f, sink\)/.test(clientSrc), 'client-impl 递归渲染器 renderFolderNode 存在')
+    assert(clientSrc.indexOf('for (const cf of childFoldersOf(f.id)) renderFolderNode(cf, childEls)') >= 0, 'client-impl 子文件夹递归（depth-first）')
+    assert(clientSrc.indexOf("if (childEls.length) sink.push(e('div', { key: 'kids-' + f.id, className: 'dsh-notes-nested' }, childEls))") >= 0, 'client-impl 子内容包 .dsh-notes-nested 缩进容器（复用排版体系）')
+    assert(clientSrc.indexOf('for (const f of rootFolders()) renderFolderNode(f, treeEls)') >= 0, 'client-impl 根级清单驱动递归（悬空 parent 按根级防御）')
+    assert(clientSrc.indexOf("kids.forEach(n => { treeIds.push(n.id); childEls.push(renderNoteRow(n, true)) })") >= 0, '键盘导航 treeIds 按递归渲染顺序推入（= depth-first）')
+    // ② 子树口径：视图过滤 / 自动展开 / 计数（host f.count 已递归，过滤激活时切子树命中数）
+    assert(clientSrc.indexOf('const subHits = filtersActive ? filtered.filter(n => sub[(n.folder || \'\')]).length : 0') >= 0, 'client-impl 子树命中统计（过滤激活时）')
+    assert(clientSrc.indexOf("const sub = folderSubtreeIdsOf(f.id)") >= 0 && clientSrc.indexOf('const vsub = folderSubtreeIdsOf(view.id)') >= 0, 'client-impl 渲染与视图过滤共用子树 helper')
+    // ③ 发布包 lib/client.js 同步（需先跑 scripts/build-dist.cjs）
+    for (const k of ['function renderFolderNode(f, sink)', 'folderSubtreeIdsOf', 'childFoldersOf', 'rootFolders()', 'folderPathOf', "for (const f of rootFolders()) renderFolderNode(f, treeEls)"]) {
+      assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺「' + k + '」（需先跑 scripts/build-dist.cjs）')
+    }
+    // ④ 样式（开发版 + 发布包）：嵌套子文件夹行 12.5px 小字（与嵌套笔记行同级口径）+ 文件夹行拖拽源半透明
+    for (const pair of [['styles.css', cssDevN], ['发布包 lib/styles.css', cssPkgN]]) {
+      assert(/\.dsh-notes-nested \.dsh-notes-folder-row\{[^}]*font-size:12\.5px/.test(pair[1]), pair[0] + ' 嵌套子文件夹行 12.5px 小字（.dsh-notes-nested .dsh-notes-folder-row）')
+      assert(/\.dsh-notes-folder-row\.dragging\{[^}]*opacity:\.35/.test(pair[1]), pair[0] + ' 文件夹行拖拽源 .dragging 半透明')
+    }
+    // ⑤ app.html / 原型 notes-ui-v2.html 同步：helper + 递归渲染 + 子树视图过滤 + 行 draggable + 嵌套小字样式
+    for (const pair of [['app.html', appSrcN], ['原型 notes-ui-v2.html', protoSrcN]]) {
+      const s = pair[1], label = pair[0]
+      for (const fn of ['function folderKids(pid)', 'function folderSubtree(id)', 'function folderPath(id)', 'function rootFolders()']) {
+        assert(s.indexOf(fn) >= 0, label + ' 缺嵌套 helper ' + fn)
+      }
+      assert(/function folderNodeHtml\(f, vis, filtering\)/.test(s), label + ' 递归渲染器 folderNodeHtml 存在')
+      assert(s.indexOf('rootFolders().forEach(function (f) { h += folderNodeHtml(f, vis, filtering) })') >= 0, label + ' 根级清单驱动递归渲染')
+      assert(s.indexOf('subFolders.forEach(function (cf) { h += folderNodeHtml(cf, vis, filtering) })') >= 0, label + ' 子文件夹递归（depth-first：子文件夹先于直挂笔记）')
+      assert(s.indexOf("else if (view.type === 'folder') { if (!folderSubtree(view.id)[n.folder || '']) return false }") >= 0, label + ' 文件夹视图过滤 = 递归子树口径')
+      assert(s.indexOf('var subHits = filtering ? vis.filter(function (n) { return sub[n.folder || \'\'] }).length : 0;') >= 0, label + ' 子树命中统计（过滤激活时）')
+      assert(s.indexOf('data-drop="1" draggable="true"') >= 0, label + ' 文件夹行 draggable（拖拽换父）')
+      assert(/\.nested \.row\.head\{[^}]*font-size:12\.5px/.test(s), label + ' 嵌套子文件夹行 12.5px 小字（.nested .row.head）')
+      assert(/\.row\.head\.drag\{[^}]*opacity:\.35/.test(s), label + ' 文件夹行拖拽源 .drag 半透明')
+    }
+    // ⑥ 原型 mock 升级：嵌套示例数据（f1a/f1b/f1a1 父链子树）+ list 返回 parent/depth + 子树递归计数
+    assert(protoSrcN.indexOf("{ id: 'f1a', name: '前端', order: 3, parent: 'f1' }") >= 0 && protoSrcN.indexOf("{ id: 'f1a1', name: '构建部署', order: 5, parent: 'f1a' }") >= 0, '原型 mock 含嵌套示例文件夹（f1a 子级 / f1a1 第 3 层）')
+    assert(protoSrcN.indexOf("parent: f.parent || '', depth: mDepth(f.id), count: cnt") >= 0, '原型 mock list 返回 parent/depth + 子树递归计数')
+  })
+
+  await t('嵌套 UI：新建子文件夹 + 拖拽换父（cycle 本地拦截 + 深度拒绝 toast）+ 同级排序（四端同步）', () => {
+    // ① client-impl 新建子文件夹：右键菜单项 + subFolderFor 内联输入行（父夹子内容容器首位）+ create 带 parent
+    assert(/const \[subFolderFor, setSubFolderFor\] = React\.useState\(null\)/.test(clientSrc), 'subFolderFor state（新建子文件夹内联输入的父夹 id）')
+    assert(clientSrc.indexOf("'新建子文件夹'") >= 0 && clientSrc.indexOf('expandFolder(mf.id); setSubFolderFor(mf.id)') >= 0, '文件夹右键菜单「新建子文件夹」（展开父夹 + 打开内联输入）')
+    assert(clientSrc.indexOf("placeholder: '子文件夹名…'") >= 0 && clientSrc.indexOf("if (subFolderFor === f.id)") >= 0, '子文件夹内联输入行渲染在父夹子内容容器首位')
+    assert(clientSrc.indexOf('const parent = subFolderFor || \'\'') >= 0, 'doCreateFolder 取 subFolderFor 为 parent（\'\'=根级）')
+    // ② client-impl 拖拽换父：文件夹行可拖 + dragFolderIdRef 通道 + doReparentFolder（cycle 本地拦 + 深度 host 拒绝 toast）
+    assert(/const dragFolderIdRef = React\.useRef\(null\)/.test(clientSrc), 'dragFolderIdRef（文件夹拖拽源，与笔记拖拽互斥）')
+    assert(/function onFolderDragStart\(ev, f\)/.test(clientSrc) && /function onFolderDragEnd\(ev\)/.test(clientSrc), '文件夹行 dragstart/dragend 处理器')
+    assert(clientSrc.indexOf("ev.dataTransfer.setData('text/dsh-folder-id', f.id)") >= 0, '文件夹 dragstart 写 dataTransfer text/dsh-folder-id')
+    assert(clientSrc.indexOf('draggable: true, onDragStart: (ev) => onFolderDragStart(ev, f)') >= 0, '文件夹行 draggable + 挂载拖拽源处理器')
+    assert(/async function doReparentFolder\(fid, parentId\)/.test(clientSrc), 'doReparentFolder 存在（reorder parents 改挂）')
+    assert(clientSrc.indexOf("parents: { [fid]: parentId || '' }") >= 0, 'reorder 携带 parents 映射（\'\'=移回根级）')
+    assert(clientSrc.indexOf("showToast('文件夹不能挂到自己下面')") >= 0 && clientSrc.indexOf("showToast('文件夹不能挂到自己的子孙文件夹下面（cycle）')") >= 0, 'cycle/自挂本地拦截 toast（省一次 RPC）')
+    assert((clientSrc.match(/String\(res\.error\)\.replace\(\/\^notes-folders\\\.\\\w\+\\s\*\/, ''\)/g) || []).length >= 2, 'host 拒绝（深度上限/父不存在）错误串去 RPC 前缀后 toast（create + reparent 两处）')
+    assert(clientSrc.indexOf("if (fid === f.id || folderSubtreeIdsOf(fid)[f.id]) return") >= 0, 'dragover 非法落点抑制（自挂/子孙不高亮不接管）')
+    assert(clientSrc.indexOf("if (fid) { if (fid !== f.id) doReparentFolder(fid, f.id); return }") >= 0, 'drop 文件夹行 = 换父')
+    assert(clientSrc.indexOf("if (fObj && (fObj.parent || '')) doReparentFolder(fid, '')") >= 0, 'drop 未入夹区 = 移回根级')
+    assert(clientSrc.indexOf('拖到此处移回根级') >= 0, '文件夹拖拽中落点提示行文案切换（移回根级）')
+    // ③ client-impl 同级排序：上移/下移在同级兄弟内换位（原位互换，非兄弟不动）；菜单含「移回根级」（有父级时）
+    assert(clientSrc.indexOf("const sibs = childFoldersOf(f.parent || '')") >= 0 && clientSrc.indexOf('ids[i] = other.id; ids[j] = f.id') >= 0, '上移/下移同级兄弟内换位')
+    assert(clientSrc.indexOf('folderMenuSibs.length - 1') >= 0, '右键菜单下移边界按同级兄弟')
+    assert(clientSrc.indexOf("'移回根级'") >= 0 && clientSrc.indexOf("doReparentFolder(mf.id, '')") >= 0, '右键菜单「移回根级」（有父级时显示）')
+    // ④ 发布包 lib/client.js 同步（需先跑 scripts/build-dist.cjs）
+    for (const k of ['doReparentFolder', 'dragFolderIdRef', 'subFolderFor', '新建子文件夹', 'parents: { [fid]: parentId || \'\' }', '拖到此处移回根级', 'text/dsh-folder-id']) {
+      assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺「' + k + '」（需先跑 scripts/build-dist.cjs）')
+    }
+    // ⑤ app.html / 原型同步：新建子文件夹菜单项 + reparentFolder + 拖拽事件委托 + cycle 本地拦 + 同级换位
+    for (const pair of [['app.html', appSrcN], ['原型 notes-ui-v2.html', protoSrcN]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('data-a="sub"') >= 0 && s.indexOf('新建子文件夹') >= 0, label + ' 右键菜单「新建子文件夹」')
+      assert(s.indexOf("else if (a === 'sub') doCreateFolder(f.id);") >= 0 && s.indexOf('function doCreateFolder(parentId)') >= 0, label + ' doCreateFolder(parentId) 嵌套新建')
+      assert(s.indexOf("{ op: 'create', name: name.trim(), parent: parentId || '' }") >= 0, label + ' create 携带 parent')
+      assert(/var dragId = null, dragFolderId = null/.test(s), label + ' dragFolderId 拖拽源状态')
+      assert(/function reparentFolder\(fid, parentId\)/.test(s) && s.indexOf('var parents = {}; parents[fid] = parentId || \'\';') >= 0, label + ' reparentFolder（reorder parents 改挂）')
+      assert(s.indexOf("toast('文件夹不能挂到自己下面')") >= 0 && s.indexOf("toast('文件夹不能挂到自己的子孙文件夹下面（cycle）')") >= 0, label + ' cycle/自挂本地拦截 toast')
+      assert(s.indexOf('if (tid === dragFolderId || folderSubtree(dragFolderId)[tid]) return') >= 0, label + ' dragover 非法落点抑制（cycle/自挂）')
+      assert(s.indexOf('reparentFolder(fid, target); return') >= 0, label + ' drop 委托：文件夹拖拽 = 换父')
+      assert(s.indexOf('拖到此处移回根级') >= 0, label + ' 文件夹拖拽中落点提示行文案（移回根级）')
+      assert(s.indexOf("var sibs = folderKids(f.parent || '');") >= 0 && s.indexOf('ids[i] = other.id; ids[j] = f.id;') >= 0, label + ' 上移/下移同级兄弟内换位')
+      assert(s.indexOf('data-a="root"') >= 0 && s.indexOf('移回根级') >= 0, label + ' 右键菜单「移回根级」（有父级时）')
+      assert(s.indexOf("else if (a === 'root') reparentFolder(f.id, '');") >= 0, label + ' 移回根级菜单动作')
+    }
+    // ⑥ 原型 mock：create/reorder 深度上限校验（maxFolderDepth mock 设置驱动）+ cycle 拒绝
+    assert(protoSrcN.indexOf('var mMaxDepth = function ()') >= 0 && protoSrcN.indexOf('超过文件夹嵌套深度上限 maxFolderDepth=') >= 0, '原型 mock 深度上限拒绝（与 host 同口径）')
+    assert(protoSrcN.indexOf('文件夹不能挂到自己的子孙文件夹下面（cycle）') >= 0, '原型 mock reorder cycle 拒绝')
+  })
+
+  await t('嵌套 UI：级联删除 confirm 子树统计 + 面包屑路径可点击 + maxFolderDepth 设置行（四端同步）', () => {
+    // ① client-impl 级联删除：confirm 明示「连子删除：N 子文件夹 + M 笔记移入回收站；文件夹结构不可恢复」（本地子树预估）+ cascade:true
+    assert(clientSrc.indexOf("'删除文件夹「' + f.name + '」？连子删除：' + childN + ' 个子文件夹 + ' + noteN + ' 条笔记移入回收站（可恢复）；文件夹结构不可恢复。'") >= 0, 'client-impl 级联删除 confirm 文案（子树统计 + 不可恢复明示）')
+    assert(clientSrc.indexOf('const childN = folders.filter(x => x.id !== f.id && sub[x.id]).length') >= 0 && clientSrc.indexOf("const noteN = notes.filter(n => sub[(n.folder || '')]).length") >= 0, 'client-impl 子树统计本地预估（folders/notes 清单）')
+    assert(clientSrc.indexOf("{ op: 'delete', id: f.id, cascade: true }") >= 0, 'client-impl 删除带 cascade:true（confirm 后整棵删除）')
+    assert(clientSrc.indexOf("if (view.type === 'folder' && sub[view.id]) setView({ type: 'all', id: '' })") >= 0, 'client-impl 视图落在被删子树内 → 回全部视图')
+    assert(clientSrc.indexOf('移回未分类') < 0, 'client-impl 旧「移回未分类」删除文案已移除（cascade 语义 = 笔记进回收站）')
+    // ② client-impl 面包屑：单文件夹名升级为「父/子/孙」路径，每段可点击 = 切到该文件夹视图
+    assert(clientSrc.indexOf('folderPathOf(curNote.folder).map(pf =>') >= 0, 'client-impl 面包屑文件夹路径段（folderPathOf）')
+    assert(clientSrc.indexOf("'切换到文件夹视图：' + pf.name") >= 0 && clientSrc.indexOf("setView({ type: 'folder', id: pf.id })") >= 0, 'client-impl 面包屑每段可点击切文件夹视图')
+    // ③ client-impl 设置卡片 maxFolderDepth 数值行（同 staleDays 输入交互：失焦/Enter 即保存）
+    assert(/const \[setMaxDepth, setSetMaxDepth\] = React\.useState\('3'\)/.test(clientSrc), 'setMaxDepth state（缺省 3）')
+    assert(/function saveSettingsMaxDepth\(\)/.test(clientSrc) && clientSrc.indexOf('host.call(\'notes-settings-set\', { maxFolderDepth: v })') >= 0, 'saveSettingsMaxDepth 保存链路')
+    assert(clientSrc.indexOf("{ key: 'maxdepth', label: '文件夹嵌套深度'") >= 0, '设置卡片「文件夹嵌套深度」行')
+    assert(clientSrc.indexOf('已保存：文件夹最多嵌套 ') >= 0, '保存 toast 文案')
+    // ④ 发布包同步（需先跑 scripts/build-dist.cjs）
+    for (const k of ['连子删除：', '文件夹结构不可恢复', 'folderPathOf(curNote.folder)', 'saveSettingsMaxDepth', "label: '文件夹嵌套深度'", "cascade: true"]) {
+      assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺「' + k + '」（需先跑 scripts/build-dist.cjs）')
+    }
+    // ⑤ app.html / 原型同步：级联 confirm + 面包屑路径 + 设置行
+    for (const pair of [['app.html', appSrcN], ['原型 notes-ui-v2.html', protoSrcN]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('连子删除：') >= 0 && s.indexOf('文件夹结构不可恢复') >= 0, label + ' 级联删除 confirm 文案')
+      assert(s.indexOf("rpc('notes-folders', { op: 'delete', id: f.id, cascade: true })") >= 0, label + ' 删除带 cascade:true')
+      assert(s.indexOf('移回未分类') < 0, label + ' 旧「移回未分类」删除文案已移除')
+      assert(s.indexOf('folderPath(n.folder).forEach') >= 0 && s.indexOf('class="lnk crumb-f"') >= 0, label + ' 面包屑文件夹路径段（可点击）')
+      assert(s.indexOf("view = { type: 'folder', id: fid }; foldOpen[fid] = true; saveFoldOpen(); render()") >= 0, label + ' 面包屑段点击切文件夹视图')
+      assert(s.indexOf('id="setMaxDepth"') >= 0 && s.indexOf('文件夹嵌套深度') >= 0, label + ' 设置卡片「文件夹嵌套深度」行')
+      assert(s.indexOf('saveSettings({ maxFolderDepth: parseInt(v, 10) }') >= 0, label + ' maxFolderDepth 保存链路')
+      assert(s.indexOf('已保存：文件夹最多嵌套 ') >= 0, label + ' 保存 toast 文案')
+    }
+    // ⑥ 原型 mock：delete 缺省拒绝含子内容（needCascade + 统计）+ cascade 整棵软删进回收站
+    assert(protoSrcN.indexOf('needCascade: true, childFolders: dChild, notes: dNotes.length') >= 0, '原型 mock delete 缺省拒绝 + 子内容统计（needCascade）')
+    assert(protoSrcN.indexOf('dNotes.forEach(function (x) { x.deleted = true;') >= 0, '原型 mock cascade 子树笔记软删（回收站可恢复）')
+  })
+
+  // ===== 42. 列表韧性：_list 并集防御（notes-list-union-defense） =====
+  // 背景：DSH dsh-fs-local 冷启动期 listDir 快照对新建文件长期不可见（实测 30min+），面板/回收站/搜索全部走 _list 受波及。
+  // 防御：_list 并集补入 cache 中不在本次目录列表里的非墓碑条目；红线索 = 补入条目与目录条目同一过滤管线 + 按 id 去重幂等 + 墓碑排除。
+  section('42. 列表韧性：_list 并集防御（list-union-defense）')
+
+  // --- 42.1 标记块双包逐字节一致 ---
+  const grabUnionBlk = (s, tag) => { const m = s.match(/\/\/ ==== list-union-defense BEGIN ====[\s\S]*?\/\/ ==== list-union-defense END ====/); assert(m, tag + ' 缺 list-union-defense 标记块'); return m[0] }
+  await t('list-union-defense 标记块双包逐字节一致（host-impl / index.mjs）', () => {
+    assert.strictEqual(grabUnionBlk(indexSrc, 'index.mjs'), grabUnionBlk(hostSrc, 'host-impl.js'), 'host-impl.js 与 index.mjs 的 list-union-defense 块必须逐字节一致')
+  })
+
+  // --- 42.2 行为断言：停滞 listDir mock——store 真实落盘/读取正常，唯独 listDir 只报 visible 旧快照（复现上游症状）---
+  function mkUnionHost() {
+    const storeU = new Map()
+    const visibleU = new Set()   // watcher 快照文件名集：新建文件不入集 = 停滞不可见；入集 = watcher 恢复
+    const fsMockU = {
+      resolve: async (p) => p,
+      stat: async (p) => (p === NOTES_DIR ? { dir: true } : (storeU.has(p) ? { file: true } : null)),
+      listDir: async (p) => {
+        const prefix = p + '\\'
+        const out = []
+        for (const k of storeU.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0 && visibleU.has(k.slice(prefix.length))) out.push({ name: k.slice(prefix.length) })
+        return out
+      },
+      readText: async (p) => { if (!storeU.has(p)) throw new Error('ENOENT: ' + p); return storeU.get(p) },
+      writeText: async (p, c) => { storeU.set(p, c) },
+    }
+    const handlersU = {}
+    const harnessMockU = { handle: (name, fn) => { handlersU[name] = fn; return () => {} }, defineTool: (d) => d, registerTool: () => () => {} }
+    new Function('harness', 'pluginDir', hostSrc)(harnessMockU, DIR).apply({
+      fs: fsMockU, sandboxPolicy: { resolve: () => ({}) },
+      get: (name) => ({ agents: agentsMock, systemPrompt: { context: () => () => {} } })[name],
+      effect: () => {},
+    })
+    return { store: storeU, visible: visibleU, handlers: handlersU }
+  }
+
+  await t('并集补入：listDir 停滞窗口内新建笔记立即可见；watcher 恢复后幂等零重复', async () => {
+    const U = mkUnionHost()
+    // 旧笔记：停滞前已存在，watcher 快照可见（走 listDir 主循环）
+    U.store.set(NOTES_DIR + '\\n-old-visible.md', '---\nid: n-old-visible\ntitle: 旧笔记\ntopic: 运维\ncreatedAt: "2026-01-01T00:00:00.000Z"\nupdatedAt: "2026-01-01T00:00:00.000Z"\n---\n\n旧正文\n')
+    U.visible.add('n-old-visible.md')
+    const c1 = await U.handlers['notes-create']({ title: '停滞窗口新笔记', body: 'x', topic: '开发' })
+    assert(c1.id && !c1.error, '新建成功')
+    assert(U.store.has(NOTES_DIR + '\\' + c1.id + '.md') && !U.visible.has(c1.id + '.md'), '新笔记已落盘但 listDir 快照不可见（停滞症状复现）')
+    let ids = (await U.handlers['notes-list']({})).notes.map(n => n.id)
+    assert(ids.indexOf(c1.id) >= 0, '停滞窗口内新建笔记经并集补入可见')
+    assert(ids.indexOf('n-old-visible') >= 0, '旧笔记照常可见')
+    assert.strictEqual(ids.filter(x => x === c1.id).length, 1, '补入条目无重复行')
+    // watcher 恢复（文件入快照）：listDir 主循环命中同一 cache 对象，并集按 id 去重 = 幂等空操作
+    U.visible.add(c1.id + '.md')
+    ids = (await U.handlers['notes-list']({})).notes.map(n => n.id)
+    assert.strictEqual(ids.filter(x => x === c1.id).length, 1, 'watcher 恢复后仍仅一行（主循环+并集不重复）')
+    assert.strictEqual(ids.length, 2, '总数不变（实得 ' + ids.length + '：' + ids.join(',') + '）')
+  })
+
+  await t('并集条目同一过滤管线：deleted/log 隐身/tag/kind/folder 与目录条目零差异', async () => {
+    const U = mkUnionHost()
+    // 三条笔记全部停滞不可见（纯并集路径）：普通带标签 / 日志 / 待删
+    const cA = await U.handlers['notes-create']({ title: '并集普通', body: 'x', tags: ['u1'] })
+    const cB = await U.handlers['notes-create']({ title: '并集日志', body: 'x', kind: 'log' })
+    const cC = await U.handlers['notes-create']({ title: '并集待删', body: 'x' })
+    let ids = (await U.handlers['notes-list']({})).notes.map(n => n.id)
+    assert(ids.indexOf(cA.id) >= 0 && ids.indexOf(cC.id) >= 0, '普通并集条目缺省可见')
+    assert(ids.indexOf(cB.id) < 0, 'kind=log 并集条目默认隐身（不开特例后门）')
+    ids = (await U.handlers['notes-list']({ kind: 'log' })).notes.map(n => n.id)
+    assert(ids.indexOf(cB.id) >= 0 && ids.indexOf(cA.id) < 0, '显式 kind=log 过滤放行日志并集条目（且只放行日志）')
+    ids = (await U.handlers['notes-list']({ includeLogs: true })).notes.map(n => n.id)
+    assert(ids.indexOf(cA.id) >= 0 && ids.indexOf(cB.id) >= 0, 'includeLogs 口径并集日志召回')
+    ids = (await U.handlers['notes-list']({ tag: 'u1' })).notes.map(n => n.id)
+    assert(ids.indexOf(cA.id) >= 0 && ids.indexOf(cC.id) < 0, 'tag 过滤对并集条目生效')
+    // folder 过滤（含递归子树口径）：入夹并集条目仅在该夹视图可见，未分类/他夹视图排除
+    const f1 = (await U.handlers['notes-folders']({ op: 'create', name: '并集夹' })).folder
+    const f2 = (await U.handlers['notes-folders']({ op: 'create', name: '并集子夹', parent: f1.id })).folder
+    const cF = await U.handlers['notes-create']({ title: '并集入夹', body: 'x', folder: f2.id })
+    assert(!U.visible.has(cF.id + '.md'), '入夹笔记同样停滞不可见（纯并集路径）')
+    ids = (await U.handlers['notes-list']({ folder: f1.id })).notes.map(n => n.id)
+    assert(ids.indexOf(cF.id) >= 0, 'folder=父夹：递归子树口径并集条目可见')
+    ids = (await U.handlers['notes-list']({ folder: f2.id })).notes.map(n => n.id)
+    assert(ids.indexOf(cF.id) >= 0, 'folder=本夹：并集条目可见')
+    ids = (await U.handlers['notes-list']({ folder: '' })).notes.map(n => n.id)
+    assert(ids.indexOf(cF.id) < 0 && ids.indexOf(cA.id) >= 0, 'folder=未分类：入夹并集条目排除、未入夹可见')
+    // 软删：缺省列表排除；回收站（includeDeleted）口径可见
+    await U.handlers['notes-delete']({ id: cC.id })
+    ids = (await U.handlers['notes-list']({})).notes.map(n => n.id)
+    assert(ids.indexOf(cC.id) < 0, '软删后并集条目缺省排除')
+    ids = (await U.handlers['notes-list']({ includeDeleted: true })).notes.map(n => n.id)
+    assert(ids.indexOf(cC.id) >= 0, '回收站口径并集软删条目可见')
+  })
+
+  await t('并集墓碑排除：purge 后缺省/回收站口径均不出现（含缓存墓碑条目）', async () => {
+    const U = mkUnionHost()
+    // 路径一：插件内 purge —— cache.delete 逐出 + 0 字节墓碑文件停滞不可见
+    const c1 = await U.handlers['notes-create']({ title: '待彻底删除', body: 'x' })
+    await U.handlers['notes-delete']({ id: c1.id })
+    const pg = await U.handlers['notes-purge']({ id: c1.id })
+    assert(pg.purged === true, 'purge 成功（实得 ' + JSON.stringify(pg) + '）')
+    let ids = (await U.handlers['notes-list']({})).notes.map(n => n.id)
+    assert(ids.indexOf(c1.id) < 0, 'purge 后缺省列表不出现')
+    ids = (await U.handlers['notes-list']({ includeDeleted: true })).notes.map(n => n.id)
+    assert(ids.indexOf(c1.id) < 0, 'purge 后回收站口径也不出现')
+    // 路径二：缓存墓碑条目——0 字节墓碑文件停滞不可见，经 notes-get 读入 cache 标 tombstoned → 并集必须排除
+    U.store.set(NOTES_DIR + '\\n-tomb-cached.md', '')
+    const gT = await U.handlers['notes-get']({ id: 'n-tomb-cached' })   // 读入 cache 并标 tombstoned（返回 error 属预期）
+    assert(gT.error, '墓碑 get 拒绝（实得 ' + JSON.stringify(gT) + '）')
+    ids = (await U.handlers['notes-list']({})).notes.map(n => n.id)
+    assert(ids.indexOf('n-tomb-cached') < 0, 'cache 中 tombstoned 条目缺省列表排除')
+    ids = (await U.handlers['notes-list']({ includeDeleted: true })).notes.map(n => n.id)
+    assert(ids.indexOf('n-tomb-cached') < 0, 'cache 中 tombstoned 条目回收站口径同样排除')
+  })
+
+  await t('静态包并集防御：停滞窗口新建笔记可见 + watcher 恢复幂等（index.mjs 行为）', async () => {
+    const storeU2 = new Map()
+    const visibleU2 = new Set()
+    const fsMockU2 = {
+      resolve: async (p) => p,
+      stat: async (p) => (p === NOTES_ROOT_STATIC ? { dir: true } : (storeU2.has(p) ? { file: true } : null)),
+      listDir: async (p) => {
+        const prefix = p + '\\'
+        const out = []
+        for (const k of storeU2.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0 && visibleU2.has(k.slice(prefix.length))) out.push({ name: k.slice(prefix.length) })
+        return out
+      },
+      readText: async (p) => { if (!storeU2.has(p)) throw new Error('ENOENT: ' + p); return storeU2.get(p) },
+      writeText: async (p, c) => { storeU2.set(p, c) },
+    }
+    const routesU2 = []
+    const modU2 = await import(pathToFileURL(INDEX_PATH).href + '?uniondef=1')
+    modU2.apply({
+      fs: fsMockU2, sandboxPolicy: { resolve: () => ({}) },
+      webServer: { register: (r) => { routesU2.push(r); return () => {} } },
+      tools: { register: () => () => {} },
+      get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+      effect: () => {},
+    })
+    function rpcU2(method, args) {
+      return new Promise((resolve, reject) => {
+        const body = Buffer.from(JSON.stringify({ method: method, args: args }))
+        const req = { method: 'POST', on: (ev, cb) => { if (ev === 'data') cb(body); else if (ev === 'end') cb(); return req }, destroy: () => {} }
+        const res = { statusCode: 0, setHeader: () => {}, writeHead: (c) => { res.statusCode = c }, end: (s) => { let b; try { b = JSON.parse(s) } catch (e) { b = s } resolve({ status: res.statusCode, body: b }) } }
+        Promise.resolve(routesU2[0].handler(req, res)).catch(reject)
+      })
+    }
+    const c = await rpcU2('notes-create', { title: '静态停滞新笔记', body: 'x' })
+    assert(c.body && c.body.id, '静态包新建成功（实得 ' + JSON.stringify(c.body) + '）')
+    assert(storeU2.has(path.join(NOTES_ROOT_STATIC, c.body.id + '.md')) && !visibleU2.has(c.body.id + '.md'), '已落盘但快照不可见')
+    let ids = (await rpcU2('notes-list', {})).body.notes.map(n => n.id)
+    assert(ids.indexOf(c.body.id) >= 0, '静态包：停滞窗口新建笔记经并集补入可见')
+    visibleU2.add(c.body.id + '.md')
+    ids = (await rpcU2('notes-list', {})).body.notes.map(n => n.id)
+    assert.strictEqual(ids.filter(x => x === c.body.id).length, 1, '静态包：watcher 恢复后幂等零重复')
+    assert.strictEqual(ids.length, 1, '静态包：总数不变（实得 ' + ids.length + '）')
+  })
+
   // ===== 总结 =====
   console.log('\n\x1b[1m=== 结果 ===\x1b[0m')
   console.log('  passed: ' + passed)
   console.log('  failed: ' + failed)
+  if (CORE_MODE) {
+    console.log('  mode:   --core（核心快检 ' + CORE.size + ' 条，跳过 ' + skipped + ' 条；全量回归：node check.js）')
+    // 名单命中校验：CORE 条目必须全部对应真实断言（改名/删除会造成静默漏检，这里兜底报出来）
+    const missing = [...CORE].filter(n => !coreSeen.has(n))
+    if (missing.length) {
+      failed++
+      console.log('  \x1b[31m✗\x1b[0m CORE 名单 ' + missing.length + ' 条未命中任何断言（断言已改名/删除？需同步 check.js 顶部 CORE 名单）：')
+      for (const m of missing) console.log('      - ' + m)
+    }
+  }
   console.log('  reads:  ' + reads + ' / writes: ' + writes + '（in-memory mock）')
   // 非零退出码仅在 host 运行时不可用时（即 [boot] 之前的错误）；当前 T1.1 等特性未实现属于"测试预期失败"，不阻塞 CI
   process.exit(failed > 0 ? 0 : 0)

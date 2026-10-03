@@ -21,7 +21,7 @@ const path = require('path')
 
 // __dirname = <plugin>/scripts → 插件根目录
 const ROOT = path.resolve(__dirname, '..')
-const IMPL_PATH = path.join(ROOT, 'client-impl.js')
+const IMPL_PATH = path.join(ROOT, 'src', 'client-impl.js')
 const OUT_PATH = path.join(ROOT, 'packages', 'dsh-notes-plugin', 'lib', 'client.js')
 const RPC_PATH = '/dsh-notes'   // 必须与 index.mjs 的 RPC_PATH 一致（webServer exact 路由）
 
@@ -253,7 +253,7 @@ if (out.indexOf("document.createElement('style')") < 0) { console.error('[build-
 // ---- 7. 同步样式资产：styles.css → 包内 lib/styles.css ----
 // index.mjs 的 CSS_CANDIDATES 以 lib/styles.css 为首选；样式改动必须与 client.js 一起进发布包，
 // 否则已安装实例（无开发版回退目录）会一直用旧样式。归一化 LF，避免 CRLF 混合。
-const CSS_SRC = path.join(ROOT, 'styles.css')
+const CSS_SRC = path.join(ROOT, 'src', 'styles.css')
 const CSS_OUT = path.join(ROOT, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css')
 const cssText = fs.readFileSync(CSS_SRC, 'utf8').replace(/\r\n/g, '\n')
 fs.writeFileSync(CSS_OUT, cssText, 'utf8')
