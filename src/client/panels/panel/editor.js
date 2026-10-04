@@ -2,7 +2,7 @@
     // provides: usePanelEditor（ed* 字段态/历史计数/派发历史折叠/整理撤销栈 + selectNote/doSave/doDelete/AI 整理/历史恢复回填/三态开关/双模式运行时 +
     //           renderEditorEl 渲染函数（内含 editorEl/curNote/isInjected/面包屑/反向链接求值））
     // needs: kernel/state.js（selectedRef/editorModeRef/switchModeRef 跨域镜像 + setSelected/setFocusId/setError/setView/setSelIds/setScopeOpen/expandFolder/
-    //        folderPathOf/folderName/injectScopeLabel/loadNotes/later 转发别名）、kernel/constants.js（KIND_LABELS）、kernel/format.js（shortSid/isDispatchDone/notifyNotesChanged）、
+    //        folderPathOf/folderName/injectScopeLabel/loadNotes/later 转发别名）、kernel/constants.js（KIND_LABELS）、kernel/format.js（shortSid/isDispatchDone/fmtDT/schedFreqLabel/schedNextMs/schedPeerKey/relatedScheds/notifyNotesChanged）、
     //        kernel/bus.js（showToast）、kernel/icons.js（e/I）、editor-kernel.js（esc/renderMarkdown/serializeRich/analyzeMarkdown/sanitizeFragment/assetDisplaySrc/wikiLinksTo）、
     //        panel/wiki.js（jumpWikiRef/wikiBodiesRef 顶层绑定，序位在前）、modals/link.js（setLinkModal）+ modals/image.js（openImgModal/pickImageFile）+
     //        modals/dispatch.js（openDispatch/doDispatchDone）+ modals/history.js（openHistory）——序位在前；
@@ -33,6 +33,12 @@
         // 富文本同步态徽标（工具栏右侧）：false=已同步源码 / true=编辑中（防抖未回写）；同值 setState React 自动 bail，逐击键调无重渲染开销
         const [richSyncing, setRichSyncing] = React.useState(false)
         const [dispatchHistoryOpen, setDispatchHistoryOpen] = React.useState(false)   // 派发历史折叠态：默认折叠，点标题行展开
+        // ===== 派发计划块 + 关联调度清单（notes-034-sched-detail）：本笔记是 dispatch-schedule 约定 → meta 尾部计划块；
+        // 关联调度 = 标题去「定时」前缀匹配的其他调度约定（≤5 条，点击 selectNote 跳转）；数据源 = notes slim 缓存（contractType/schedule 字段，零新 RPC）=====
+        // schedPeerCacheRef/schedPeerTriedRef = log 型调度约定（front-matter 裸编辑旁路）会话级按需一次 includeLogs 兜底缓存
+        const [schedPeerVer, setSchedPeerVer] = React.useState(0)   // 兜底缓存到达驱动重算（wikiVer 同模式）
+        const schedPeerCacheRef = React.useRef(null)
+        const schedPeerTriedRef = React.useRef(false)
         // ===== 二期 ✨整理：notes-ai-organize 按 kind 模板重写正文；organizeUndoRef = 一次撤销栈（toast「撤销」恢复）=====
         const [organizing, setOrganizing] = React.useState(false)
         const organizeUndoRef = React.useRef(null)   // { body } | null
@@ -40,7 +46,12 @@
         const [histCount, setHistCount] = React.useState(null)    // 当前笔记历史版本数（null=未探测；0=无版本不显示入口）
         const keepQuickRef = React.useRef(false)
         const edBodyDomRef = React.useRef(null)      // 正文 textarea DOM（新建笔记创建后聚焦）
-        const edLoadingRef = React.useRef(false)     // 正文异步加载中（notes-get 未返回）：期间 doSave 省略 body 字段，防改名触发保存把空正文写盘
+        const edLoadingRef = React.useRef(false)     // 正文异步加载中（notes-get 在途）：AI 整理等入口的轻量互斥指示
+        // R-1 安全态双字段（P0 数据丢失防护，check 节 46 看守）：edBodyLoadedRef=正文提交闸（仅 notes-get 成功后置 true，doSave 才携带 body）；
+        // edLoadErr=加载失败安全态（锁定编辑 + doSave 整体暂停 + 横幅重试），绝不以空 body 为基底提交
+        const edBodyLoadedRef = React.useRef(false)
+        const [edLoadErr, setEdLoadErr] = React.useState('')
+        const edLoadErrRef = React.useRef('')        // doSave 闭包读最新值（与 histCountRef 同模式）
         // 双模式编辑器 DOM/运行时 ref（富文本非受控：编辑期间 React 不重渲染其内容，防 IME 打断/光标丢失）
         const richRef = React.useRef(null)           // 富文本 contenteditable DOM
         const richWrapRef = React.useRef(null)       // 富文本滚动容器（拖拽图片 drop 目标 + 工具栏宿主）
@@ -74,13 +85,22 @@
           setEdKind(n.kind || 'note'); setEdStatus(n.status || 'active'); setEdRole(n.inject ? (n.injectRole || 'convention') : 'off'); setEdScope(n.injectTo || []); setEdRecall(n.recall !== false); setEdSens(n.sensitive === true)
           setEdBody('')
           setDegraded({ ok: true, reasons: [] })   // 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果）
-          // 列表是瘦身数据，正文按需加载；加载期间 edLoadingRef=true，doSave 省略 body（防改名等保存把空正文写盘）
-          edLoadingRef.current = true
-          const id = n.id
           histCountRef.current = null; setHistCount(null)   // 换笔记重置「历史」入口可见性，随即探测版本计数
-          probeHistCount(id)
+          probeHistCount(n.id)
+          loadEdBody(n.id)
+        }
+        // R-1 安全态·正文加载（notes-get 独立成函数，「选中」与横幅「重试」共用）：
+        // 成功 → edBodyLoadedRef=true（doSave 唯一放行点）；失败（res.error / 空响应 / 网络异常）→ edLoadErr 安全态
+        // （锁定编辑 + 暂停自动保存），绝不以空 body 为基底提交；迟到响应（已切走）零副作用
+        function loadEdBody(id) {
+          edLoadingRef.current = true
+          edBodyLoadedRef.current = false
+          edLoadErrRef.current = ''; setEdLoadErr('')
           host.call('notes-get', { id: id }).then(res => {
-            if (res && res.note && selectedRef.current === id) {
+            if (selectedRef.current !== id) return
+            edLoadingRef.current = false
+            if (res && res.note) {
+              edBodyLoadedRef.current = true   // R-1 正文提交闸：全局唯一放行点
               const body = res.note.body || ''
               setEdBody(body)
               bumpWikiBody(id, body, res.note.updatedAt)   // 双链索引即时新鲜（不等后台补缺）
@@ -91,18 +111,30 @@
                 if (!a.ok) { setEditorModeState('source'); showToast('含高级语法（' + a.reasons.map(r => r.label).join('、') + '），请在源码模式编辑') }
                 else { richDirtyRef.current = false; try { if (richRef.current) richRef.current.innerHTML = renderMarkdown(body, wikiResolve) } catch (err) {} }
               }
+            } else {
+              const msg = '正文加载失败：' + (res && res.error ? res.error : '返回数据异常')
+              edLoadErrRef.current = msg; setEdLoadErr(msg)
+              showToast(msg + '（已锁定编辑，可点横幅重试）')
             }
+          }).catch(err => {
+            if (selectedRef.current !== id) return
             edLoadingRef.current = false
-          }).catch(() => { edLoadingRef.current = false })
+            const msg = '正文加载失败：' + String(err && err.message || err)
+            edLoadErrRef.current = msg; setEdLoadErr(msg)
+            showToast(msg + '（已锁定编辑，可点横幅重试）')
+          })
         }
         async function doSave() {
           const id = selectedRef.current
           if (!id) return
+          if (edLoadErrRef.current) return   // R-1 安全态：正文加载失败未恢复，自动保存整体暂停（横幅「重试」是唯一出口）
           setError('')
           const tags = (edTagsRef.current || '').split(/[,，;；]/).map(s => s.trim()).filter(Boolean)
           if (keepQuickRef.current && tags.indexOf('quick') < 0) tags.push('quick')
           const upd = { id: id, title: edTitleRef.current, tags: tags, kind: edKindRef.current, status: edStatusRef.current, inject: edRoleRef.current !== 'off', injectTo: edScopeRef.current, recall: edRecallRef.current, sensitive: edSensRef.current === true }
-          if (!edLoadingRef.current) upd.body = edBodyRef.current   // 正文加载中省略 body（host 对 undefined 保留原内容，防竞态清空正文）
+          // R-1 正文提交闸：仅 notes-get 成功加载过正文（edBodyLoadedRef）才携带 body（host 对 undefined 保留原内容，防竞态清空正文）；
+          // 已加载基础上清空为空串 = 用户有意为之，附 confirmClearBody:true 显式过 host 空覆盖兜底闸（empty-body-overwrite-guard）
+          if (edBodyLoadedRef.current) { upd.body = edBodyRef.current; if (upd.body === '') upd.confirmClearBody = true }
           if (upd.inject) upd.injectRole = edRoleRef.current   // 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘）
           if ((edTopicRef.current || '').trim()) upd.topic = edTopicRef.current.trim()
           try {
@@ -114,6 +146,8 @@
             if (histCountRef.current === 0) probeHistCount(id)   // 首次真实保存产生首份快照（0→1 转折点）→ 补探「历史」入口
           } catch (err) { setError(String(err.message || err)) }
         }
+        // 软删除（notes-034-c-confirm）：确认强度 = 不可恢复性——软删可恢复 → 轻：无 confirm 直接删，撤销 toast 兜底（回收站亦可恢复）；
+        // 不可恢复的 purge（回收站「彻底删除」）才保留双确认
         async function doDelete(id) {
           if (!id) return
           setError('')
@@ -121,9 +155,18 @@
             const res = await host.call('notes-delete', { id: id })
             if (res.error) { setError(res.error); return }
             if (selected === id) { setSelected(null); setEdTitle(''); setEdTopic(''); setEdTags(''); setEdBody('') }
-            showToast('已删除（可由 Agent 恢复）')
+            showToast('已删除（软删除）', { label: '撤销', fn: () => undoDelete(id) })
             await loadNotes(true); notifyNotesChanged()
           } catch (err) { setError(String(err.message || err)) }
+        }
+        // 单条软删撤销：notes-restore 恢复（与 app.html doDeleteNote 的撤销链路同款）
+        async function undoDelete(id) {
+          try {
+            const res = await host.call('notes-restore', { id: id })
+            if (res && res.error) { showToast(res.error); return }
+            showToast('已恢复')
+            await loadNotes(true); notifyNotesChanged()
+          } catch (err) { showToast('恢复失败：' + String(err.message || err)) }
         }
         // ===== 二期 ✨整理：当前草稿经 notes-ai-organize（notes-quick-instruct 同款 LLM 通道）按 kind 模板结构化重写 =====
         // 契约：host 只返回重写正文不落盘；client 替换编辑器内容后走既有自动保存；原正文进一次撤销栈（toast「撤销」恢复）。
@@ -186,6 +229,32 @@
           bumpWikiBody(id, text, '')
         }
         function jumpToSession(sessionId) { if (sessions && sessionId) { try { sessions.open(sessionId) } catch (err) {} } }
+        // ===== 派发计划块辅助（notes-034-sched-detail；与注入管理调度区同口径同数据源，schedBadgeEl/schedNextLabel 镜像）=====
+        // 上次结果徽章：lastError 红 / lastRun sent 绿 / 未触发灰
+        function schedPlanBadgeEl(n) {
+          const s = n.schedule
+          if (s.lastError) return e('span', { className: 'dsh-notes-sched-badge err dsh-nt', 'data-tooltip': s.lastError.message || '' }, I('x', 9), '失败 ' + fmtDT(s.lastError.at))
+          if (s.lastRun) return s.lastRun.status === 'sent'
+            ? e('span', { className: 'dsh-notes-sched-badge ok dsh-nt', 'data-tooltip': '回执走派发闭环链路（receiptId=' + (s.lastRun.receiptId || '') + '）' }, I('check', 9), '已派发 ' + fmtDT(s.lastRun.at))
+            : e('span', { className: 'dsh-notes-sched-badge err' }, I('x', 9), '失败 ' + fmtDT(s.lastRun.at))
+          return e('span', { className: 'dsh-notes-sched-badge' }, '未触发')
+        }
+        // 下次触发展示：暂停 → 已暂停；单次已触发 → 已触发；否则「下次 <本地时间>」（schedNextMs 本地渲染，锚点同 host schedDueAt 口径）
+        function schedPlanNextLabel(n) {
+          const s = n.schedule
+          if (s.enabled === false) return '已暂停'
+          if (s.at && s.lastFiredAt && Date.parse(s.lastFiredAt) >= Date.parse(s.at)) return '已触发（单次）'
+          const ms = schedNextMs(n)
+          return ms === null ? '—' : '下次 ' + fmtDT(new Date(ms).toISOString())
+        }
+        // 关联调度数据源：notes 缓存优先 + overlay 合并（log 型调度约定旁路兜底；overlay 只补缓存外条目，会话级缓存不重取）
+        function schedPeerSource() {
+          const extra = schedPeerCacheRef.current
+          if (!extra) return notes
+          const inList = {}
+          notes.forEach(n => { inList[n.id] = true })
+          return notes.concat(extra.filter(n => !inList[n.id]))
+        }
         // 注入三态切换：独立字段 inject + injectRole（off→inject:false；约定/资料→inject:true+injectRole），不碰标签
         // off→非off 时自动展开范围浮层（与原 toggle 开启行为一致）；切到 off 收起浮层
         function setRoleSeg(r) {
@@ -201,9 +270,10 @@
         // 敏感开关：独立字段 sensitive（缺省 false；开启后注入系统提示时正文按行打码，键保留值遮蔽，Agent 用 note_get 取原文）
         function toggleSens() { setEdSens(!edSens); triggerAutoSave() }
         // 范围多选：切换某个会话短 id 的选中态（缺省=所有会话；存量 'global'/'workspace' 值在首次勾选时规范化掉，host 端仍容错）
+        // 归一比对（notes-034-injectto-norm）：勾选态以 scopeHas 为准（存量长 id 也算已勾选）；取消勾选连同长 id 存量一并移除，保存落短 id（host 侧另有写入归一兜底）
         function toggleScope(key) {
           const cur = (edScopeRef.current || []).filter(t => t !== 'global' && t !== 'workspace')
-          const next = cur.indexOf(key) >= 0 ? cur.filter(t => t !== key) : cur.concat([key])
+          const next = scopeHas(cur, key) ? cur.filter(t => shortSid(t) !== key) : cur.concat([key])
           setEdScope(next)
           triggerAutoSave()
         }
@@ -416,6 +486,19 @@
             document.removeEventListener('selectionchange', onSelChange)
           }
         }, [editorMode, selected])
+        // 关联调度兜底（notes-034-sched-detail③）：详情涉及调度（自身是调度约定或缓存内已有匹配）且缓存口径不含 log 时，
+        // 会话级按需一次 notes-list includeLogs 补齐 log 型调度约定（front-matter 旁路）；常态零新 RPC（复用 notes slim 缓存）
+        React.useEffect(() => {
+          const cur = notes.find(n => n.id === selected)
+          if (!cur) return
+          if (!((cur.contractType || '') === 'dispatch-schedule' && cur.schedule) && !relatedScheds(cur, notes).length) return
+          if (schedPeerTriedRef.current) return
+          schedPeerTriedRef.current = true
+          if (notes.some(n => (n.kind || 'note') === 'log')) return   // 缓存已是 includeLogs 口径（含 log 行），主缓存即全量
+          host.call('notes-list', { includeLogs: true }).then(res => {
+            if (res && res.notes) { schedPeerCacheRef.current = res.notes; setSchedPeerVer(v => v + 1) }
+          }).catch(() => {})
+        }, [selected, notes])
         // ===== 显式归档：预览 → 勾选 → 执行 → toast 撤销 =====
         // 归档后清理：被合并的笔记从列表消失——清掉多选残留；若正打开的笔记被合并则退出编辑器选中态
         function afterArchiveCleanup(mergedMemberIds) {
@@ -463,6 +546,10 @@
           const curDispatches = (curNote && curNote.dispatches) || []
           // P3 派发闭环：待回执条数（驱动详情 meta 徽章）
           const dispatchOpenCount = curDispatches.filter(d => !isDispatchDone(d)).length
+          // ===== 派发计划块 + 关联调度清单（notes-034-sched-detail）：同 app.html renderMeta 尾部同款 =====
+          void schedPeerVer   // 兜底缓存到达驱动重算（wikiVer 同模式）
+          const curIsSched = !!(curNote && (curNote.contractType || '') === 'dispatch-schedule' && curNote.schedule)
+          const schedPeers = curNote ? relatedScheds(curNote, schedPeerSource()).slice(0, 5) : []   // 关联清单 ≤5 条（防极端刷屏，注入管理总览看全量）
           // ===== P2 反向链接：全库正文索引扫描（extractWikiTargets/wikiLinksTo 与内核同一口径）；索引未到的条目暂不计，标题行提示「索引中…」=====
           void wikiVer   // 索引版本号驱动本区重算（索引推进 → setWikiVer → 重渲染）
           const wikiWarm = notes.every(n => !!wikiBodiesRef.current[n.id])
@@ -487,7 +574,7 @@
               e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': '查看同主题全部笔记', onClick: jumpToTopicFilter }, curTopicName || '未分类'),
               e('span', { className: 'dsh-notes-crumb-sep' }, '/'),
               e('span', null, curNote.id)),
-            e('input', { className: 'dsh-notes-ed-title', placeholder: '无标题', value: edTitle, onChange: (ev) => { setEdTitle(ev.target.value); triggerAutoSave() } }),
+            e('input', { className: 'dsh-notes-ed-title', placeholder: '无标题', value: edTitle, readOnly: !!edLoadErr, onChange: (ev) => { setEdTitle(ev.target.value); triggerAutoSave() } }),
             e('div', { className: 'dsh-notes-ed-meta' },
               e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': '笔记类型' },
                 e('span', { className: 'dsh-notes-meta-dot', style: { background: 'var(--nkind-' + edKind + ')' } }),
@@ -539,14 +626,32 @@
               // 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数）
               (histCount || 0) > 0 ? e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); openHistory() }, 'data-tooltip': '历史版本（' + histCount + ' 个快照）：预览 / 一键恢复（恢复前当前版自动快照，可再撤销）' }, I('clock', 12), '历史') : null,
               e('span', { className: 'dsh-notes-meta-act' + (edStatus === 'pinned' ? ' on' : '') + ' dsh-nt', onClick: () => { setEdStatus(edStatus === 'pinned' ? 'active' : 'pinned'); triggerAutoSave() }, 'data-tooltip': edStatus === 'pinned' ? '取消置顶' : '置顶' }, I('pin', 12)),
-              e('span', { className: 'dsh-notes-meta-act danger dsh-nt', onClick: () => doDelete(selected), 'data-tooltip': '删除（软删除，可恢复）' }, I('trash', 12)))),
+              e('span', { className: 'dsh-notes-meta-act danger dsh-nt', onClick: () => doDelete(selected), 'data-tooltip': '删除（软删除，可恢复）' }, I('trash', 12)),
+              // 派发计划块 + 关联调度清单（notes-034-sched-detail）：meta 尾部全宽行；无调度笔记零渲染（null = 零 DOM 痕迹红线）
+              (curIsSched || schedPeers.length) ? e('div', { className: 'dsh-notes-sched-plan' },
+                curIsSched ? e('div', { className: 'dsh-notes-sched-plan-row' + (curNote.schedule.enabled === false ? ' paused' : '') },
+                  e('span', { className: 'dsh-notes-sched-plan-t' }, I('clock', 10), '派发计划'),
+                  e('span', { className: 'dsh-notes-sched-freq' }, schedFreqLabel(curNote.schedule)),
+                  e('span', { className: 'dsh-notes-sched-target dsh-nt', 'data-tooltip': curNote.schedule.target || '' }, '→ ' + shortSid(curNote.schedule.target)),
+                  e('span', { className: 'dsh-notes-sched-nf' }, schedPlanNextLabel(curNote)),
+                  schedPlanBadgeEl(curNote),
+                  curNote.schedule.enabled === false ? e('span', { className: 'dsh-notes-sched-badge off' }, '已暂停') : null) : null,
+                schedPeers.map(p => {
+                  const ps = p.schedule, pp = ps.enabled === false
+                  return e('div', { key: p.id, className: 'dsh-notes-sched-plan-row dsh-notes-sched-peer dsh-nt' + (pp ? ' paused' : ''), 'data-tooltip': '跳转到调度约定「' + (p.title || '无标题') + '」', onClick: () => { const t = notes.find(x => x.id === p.id); if (t) selectNote(t); else showToast('未找到调度约定：' + p.id) } },
+                    e('span', { className: 'dsh-notes-sched-plan-t' }, I('clock', 10), '关联调度'),
+                    e('span', { className: 'dsh-notes-sched-peer-t' }, p.title || '无标题'),
+                    e('span', { className: 'dsh-notes-sched-freq' }, schedFreqLabel(ps)),
+                    e('span', { className: 'dsh-notes-sched-nf' }, schedPlanNextLabel(p)),
+                    pp ? e('span', { className: 'dsh-notes-sched-badge off' }, '已暂停') : null)
+                })) : null)),
           curDispatches.length ? e('div', { className: 'dsh-notes-dispatch-history' + (dispatchHistoryOpen ? ' open' : ' collapsed') },
             e('div', { className: 'dsh-notes-dispatch-history-t', onClick: () => setDispatchHistoryOpen(!dispatchHistoryOpen), role: 'button', 'aria-expanded': dispatchHistoryOpen ? 'true' : 'false' },
               I('chev', 9, 'dsh-notes-hist-caret' + (dispatchHistoryOpen ? ' open' : '')), '派发历史（' + curDispatches.length + '）'),
             dispatchHistoryOpen ? curDispatches.map((d, origIdx) => ({ d: d, origIdx: origIdx })).reverse().map(({ d, origIdx }) => e('div', { key: origIdx, className: 'dsh-notes-dispatch-rec' + (isDispatchDone(d) ? ' done' : '') },
               e('div', { className: 'dsh-notes-dispatch-rec-top' },
                 e('span', { className: 'dsh-notes-dispatch-rec-t' }, isDispatchDone(d) ? [I('check', 10, 'dsh-notes-hist-done'), ' ' + (d.sessionName || d.sessionId)] : [e('span', { key: 'dot', className: 'dsh-notes-dispatch-dot' }), ' ' + (d.sessionName || d.sessionId)]),
-                e('span', { className: 'dsh-notes-dispatch-rec-m' }, (isDispatchDone(d) ? '已完成 · ' : '待处理 · ') + (d.mode === 'new' ? '新会话' : (d.workspace || '已有会话')) + (d.at ? ' · ' + String(d.at).slice(5, 16).replace('T', ' ') : ''))),
+                e('span', { className: 'dsh-notes-dispatch-rec-m' }, (isDispatchDone(d) ? '已完成 · ' : '待处理 · ') + (d.mode === 'new' ? '新会话' : (d.workspace || '已有会话')) + (d.at ? ' · ' + fmtDT(d.at).slice(5) : ''))),
               d.instruction ? e('div', { className: 'dsh-notes-dispatch-rec-i' }, '要求：' + d.instruction) : null,
               !isDispatchDone(d) ? e('button', { className: 'dsh-notes-dispatch-done-btn', onClick: () => doDispatchDone(origIdx) }, '标记完成') : null)) : null)
           : null,
@@ -556,10 +661,16 @@
             e('div', null,
               e('div', null, '检测到', e('b', null, '白名单外语法'), '，富文本编辑不可用（仍可源码编辑）：'),
               e('div', { className: 'dsh-notes-deg-rs' }, degraded.reasons.map(r => r.label + '（第 ' + r.line + ' 行：' + r.sample + '）').join('、')))) : null,
+          // R-1 安全态横幅（正文加载失败）：锁定编辑 + 暂停自动保存 + 重试入口（复用降级横幅 .dsh-notes-deg 样式）
+          edLoadErr ? e('div', { className: 'dsh-notes-deg dsh-notes-load-err' },
+            I('warn', 13),
+            e('div', null,
+              e('div', null, edLoadErr, ' — 已锁定编辑并暂停自动保存（防止空内容覆盖原文）。'),
+              e('div', null, e('span', { className: 'dsh-notes-meta-act', style: { cursor: 'pointer' }, onClick: () => { if (selectedRef.current) loadEdBody(selectedRef.current) } }, '重试')))) : null,
           // 正文双模式（原型 .src / .rich-scroll）：源码 textarea ⇄ 富文本 contenteditable（非受控，编辑期间不重渲染）
           editorMode === 'source'
             ? e('textarea', {
-                ref: edBodyDomRef, className: 'dsh-notes-ed-body', placeholder: '正文…（Markdown）', value: edBody,
+                ref: edBodyDomRef, className: 'dsh-notes-ed-body', placeholder: '正文…（Markdown）', value: edBody, readOnly: !!edLoadErr,
                 onChange: (ev) => { setEdBody(ev.target.value); triggerAutoSave(); scheduleDegAnalyze() },
                 // 图片入口①/②（源码模式）：粘贴/拖拽图片文件 → 同一上传弹窗 → 光标处插 Markdown 文本
                 onPaste: (ev) => { const cd = ev.clipboardData; if (cd && cd.files && cd.files.length && cd.files[0].type.indexOf('image/') === 0) { ev.preventDefault(); pickImageFile(cd.files[0]) } },
@@ -579,7 +690,7 @@
                   e('span', { className: 'dsh-notes-rtb-sep' }),
                   e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'image', 'data-tooltip': '插入图片 ![](assets/..)（也可 Ctrl+V 粘贴 / 拖拽文件）', onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('image') } }, I('image', 14)),
                   e('span', { className: 'dsh-notes-rtb-sync' + (richSyncing ? '' : ' ok') }, e('span', { className: 'dsh-notes-rtb-sync-sd' }), richSyncing ? '编辑中…' : '已同步源码')),
-                e('div', { ref: richRef, className: 'dsh-notes-rich', contentEditable: true, spellCheck: false, suppressContentEditableWarning: true })),
+                e('div', { ref: richRef, className: 'dsh-notes-rich', contentEditable: edLoadErr ? false : true, spellCheck: false, suppressContentEditableWarning: true })),
           // P2 反向链接面板：全库正文含 [[当前id]]/[[当前标题]] 的其他笔记（点击跳转；索引未热提示「索引中…」）
           e('div', { className: 'dsh-notes-backlinks' },
             e('div', { className: 'dsh-notes-backlinks-t' }, I('link', 11), '反向链接' + (wikiWarm ? '（' + backlinks.length + '）' : '（索引中…）')),
@@ -589,8 +700,8 @@
               : (wikiWarm ? e('div', { className: 'dsh-notes-backlinks-empty' }, '暂无其他笔记用 [[…]] 链接到这里') : null)),
           e('div', { className: 'dsh-notes-ed-foot' },
             e('span', { className: 'dsh-notes-ed-foot-i' }, editorMode === 'source' ? '源码模式' : '富文本模式'),
-            e('span', { className: 'dsh-notes-ed-foot-i' }, '创建 ' + (curNote.createdAt ? String(curNote.createdAt).slice(0, 10) : '—')),
-            e('span', { className: 'dsh-notes-ed-foot-i' }, '更新 ' + (curNote.updatedAt ? String(curNote.updatedAt).slice(0, 10) : '—')),
+            e('span', { className: 'dsh-notes-ed-foot-i' }, '创建 ' + (curNote.createdAt ? fmtDT(curNote.createdAt).slice(0, 10) : '—')),
+            e('span', { className: 'dsh-notes-ed-foot-i' }, '更新 ' + (curNote.updatedAt ? fmtDT(curNote.updatedAt).slice(0, 10) : '—')),
             curNote.sessionId ? e('span', { className: 'dsh-notes-ed-foot-i' }, '来源 会话 ' + shortSid(curNote.sessionId)) : null,
             e('span', { className: 'dsh-notes-ed-saved' + (savedAt ? ' show' : '') }, savedAt ? '已自动保存 ' + new Date(savedAt).toTimeString().slice(0, 5) : ''),
             e('span', { className: 'dsh-notes-ed-foot-i' }, (edBody || '').length + ' 字')))

@@ -2,6 +2,7 @@
    回收站增强（notes-trash-batch-preview）：批量选择/全选 + 批量恢复/批量彻底删除 + 行内容只读预览——
    批量条 = 全选 + 选中计数 + 恢复所选/彻底删除所选；行 = 勾选框 + 标题（点击预览）+ 删除时间 + 预览/恢复/彻底删除；
    彻底删除双确认：点「彻底删除」→ confirm「彻底删除不可恢复」确认才执行（批量同款口径 + 条数 + 含历史版本）；host 侧安全闸只接受已软删除的笔记；
+   确认强度 = 不可恢复性（notes-034-c-confirm）：purge 不可恢复 → 重（双确认保留）；软删可恢复 → 轻（列表侧删除已无 confirm，撤销 toast 兜底）；
    行预览 = notes-get {id, includeDeleted:true} 取已删正文 → renderMarkdown 只读渲染（esc 先行，零注入面）。 */
 function openTrash() {
   trashState = { list: null, pending: '', sel: {}, preview: null };
@@ -45,7 +46,7 @@ function renderTrashList() {
         var pv = trashState.preview && trashState.preview.id === n.id ? trashState.preview : null;
         var html = '<div class="arch-row"><input type="checkbox" class="trash-check" data-id="' + esc(n.id) + '"' + (trashState.sel[n.id] ? ' checked' : '') + (trashState.pending ? ' disabled' : '') + '>'
           + '<span class="ti trash-ti" data-id="' + esc(n.id) + '" title="' + esc(n.title || 'Untitled') + '（点击预览正文，只读）">' + esc(n.title || 'Untitled') + '</span>'
-          + '<span class="meta">删于 ' + esc(n.updatedAt ? String(n.updatedAt).slice(0, 10) : '—') + '</span>'
+          + '<span class="meta">删于 ' + esc(n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—') + '</span>'
           + '<button class="mbtn trash-act" data-id="' + esc(n.id) + '" data-act="preview"' + (trashState.pending ? ' disabled' : '') + '>' + (pv ? '收起' : '预览') + '</button>'
           + '<button class="mbtn trash-act" data-id="' + esc(n.id) + '" data-act="restore"' + (trashState.pending ? ' disabled' : '') + '>恢复</button>'
           + '<button class="mbtn danger trash-act" data-id="' + esc(n.id) + '" data-act="purge"' + (trashState.pending ? ' disabled' : '') + '>彻底删除</button></div>';

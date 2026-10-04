@@ -1,28 +1,67 @@
 /* ================= 选中与编辑器 ================= */
 function selectNote(id) {
+  /* 草稿切走兜底（notes-034-batch3）：有内容的草稿先 flush 落库（fire-and-forget，不阻塞切换）；空草稿直接弃——零 Untitled 残留；
+     落库在途（draftCreating）时跳过 flush——在途 create 沉降后自行 toast + 刷新列表（防并发双建） */
+  if (draftNote) { var _d = draftNote; draftNote = null; if (edNote === _d) { if (edMode === 'rich' && richDirty) syncFromRich('切换笔记'); edNote = null } if (!draftCreating) flushDraftCreate(_d); }
   /* 双模式：切换笔记前把富文本在途编辑序列化落回 edNote.body 并立即保存（防 900ms debounce 打到新笔记上） */
-  if (edMode === 'rich' && richDirty && edNote) { syncFromRich('切换笔记'); doSave(); }
+  else if (edMode === 'rich' && richDirty && edNote) { syncFromRich('切换笔记'); doSave(); }
   selId = id; scopeOpen = false;
+  focusId = id;   /* 选中同步键盘焦点行（j/k 从当前选中行继续） */
   var n = notes.find(function (x) { return x.id === id });
   if (n && n.folder) { foldOpen[n.folder] = true; saveFoldOpen() }
   edNote = n ? Object.assign({}, n, { body: '' }) : null;
+  edBodyLoaded = false; edBodyErr = '';   /* R-1 安全态复位：新笔记正文未加载前提交闸关闭、错误横幅清空（renderEd 在其后执行，DOM 初态一致） */
   degraded = { ok: true, reasons: [] };   /* 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果） */
-  edLoading = true;   /* 正文异步加载中：doSave 省略 body，防改名触发保存把空正文写盘 */
   renderTree(); renderEd();
   if (n) {
     histCount = null; probeHistCount(id);   /* 换笔记重置「历史」入口可见性，随即探测版本计数 */
-    rpc('notes-get', { id: id }).then(function (res) {
-      if (res && res.note && selId === id) {
-        edNote = res.note;
-        wikiBodies[id] = { body: edNote.body || '', updatedAt: res.note.updatedAt || '' };   /* 双链索引即时新鲜（不等后台补缺） */
-        /* 正文到达后跑降级分析；富文本模式下新正文含白名单外语法 → 回落源码模式 */
-        degraded = analyzeMarkdown(edNote.body || '');
-        if (edMode === 'rich' && !degraded.ok) { edMode = 'source'; toast('含高级语法（' + degraded.reasons.map(function (r) { return r.label }).join('、') + '），请在源码模式编辑'); renderEd(); }
-        else { fillEdBody(); renderEdFoot(); refreshDegradeUI(); renderBacklinks(); }
-      }
-      edLoading = false;
-    }).catch(function () { edLoading = false })
+    loadEdBody(id);
   }
+}
+/* R-1 安全态·正文加载（notes-get 独立成函数，「选中」与横幅「重试」共用）：
+   成功 → edBodyLoaded=true（doSave 唯一放行点）；失败（res.error / 空响应 / 网络异常）→ 安全态：
+   edBodyLoaded 保持 false + edBodyErr 驱动锁定横幅（显式错误 + 重试入口），绝不以空 body 为基底提交。
+   全部状态写入以 selId===id 守卫：迟到响应（用户已切走）零副作用。 */
+function loadEdBody(id) {
+  edLoading = true; edBodyLoaded = false; edBodyErr = ''; refreshLoadErrUI();
+  rpc('notes-get', { id: id }).then(function (res) {
+    if (selId !== id) return;   /* 迟到响应：新笔记有自己的加载流程，勿动其状态 */
+    edLoading = false;
+    if (res && res.note) {
+      edNote = res.note;
+      edBodyLoaded = true;   /* R-1 正文提交闸：全局唯一放行点 */
+      wikiBodies[id] = { body: edNote.body || '', updatedAt: res.note.updatedAt || '' };   /* 双链索引即时新鲜（不等后台补缺） */
+      /* 正文到达后跑降级分析；富文本模式下新正文含白名单外语法 → 回落源码模式 */
+      degraded = analyzeMarkdown(edNote.body || '');
+      if (edMode === 'rich' && !degraded.ok) { edMode = 'source'; toast('含高级语法（' + degraded.reasons.map(function (r) { return r.label }).join('、') + '），请在源码模式编辑'); renderEd(); }
+      else { fillEdBody(); renderEdFoot(); refreshDegradeUI(); renderBacklinks(); }
+    } else {
+      edBodyErr = '正文加载失败：' + (res && res.error ? res.error : '返回数据异常');
+      toast(edBodyErr + '（已锁定编辑，可点横幅重试）');
+    }
+    refreshLoadErrUI();
+  }).catch(function (e) {
+    if (selId !== id) return;
+    edLoading = false;
+    edBodyErr = '正文加载失败：' + (e && e.message || e);
+    toast(edBodyErr + '（已锁定编辑，可点横幅重试）');
+    refreshLoadErrUI();
+  })
+}
+/* R-1 安全态 UI：失败横幅（复用 .deg 警告样式，含重试入口）+ 编辑锁定（标题/正文只读——防用户在注定被重试覆盖的缓冲里打字）；
+   renderEd 重建 DOM 后必须重挂（元素级 _bound 随重建自然复位） */
+function refreshLoadErrUI() {
+  var bn = $('edLoadErr');
+  if (bn) {
+    bn.style.display = edBodyErr ? 'flex' : 'none';
+    var msg = $('edLoadErrMsg'); if (msg) msg.textContent = edBodyErr || '';
+    var rt = $('edLoadRetry');
+    if (rt && !rt._bound) { rt._bound = true; rt.addEventListener('click', function () { if (selId) loadEdBody(selId) }) }
+  }
+  var locked = !!edBodyErr;
+  var ta = $('edSrc'); if (ta) ta.readOnly = locked;
+  var ti = $('edTitle'); if (ti) ti.contentEditable = locked ? 'false' : 'true';
+  var rich = $('edRich'); if (rich) rich.contentEditable = locked ? 'false' : 'true';
 }
 /* 正文填充双模式：源码 → textarea.value；富文本 → 内核渲染进 contenteditable（填充前清 dirty，防回填被当编辑） */
 function fillEdBody() {
@@ -33,7 +72,11 @@ function fillEdBody() {
 }
 function triggerSave() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 900) }
 function doSave() {
-  if (!edNote || !selId) return;
+  if (!edNote) return;
+  /* 草稿态（notes-034-batch3）：首次有效编辑走 notes-create 落库（空内容闸在 doDraftCreate 内）；落库后 draftNote 清空、后续走正常 update */
+  if (draftNote) { doDraftCreate(); return }
+  if (!selId) return;
+  if (edBodyErr) return;   /* R-1 安全态：正文加载失败未恢复前自动保存整体暂停（含元数据）——横幅「重试」是唯一出口 */
   var keepQuick = (notes.find(function (x) { return x.id === selId }) || {}).tags || [];
   var tags = (edNote._tagsStr != null ? edNote._tagsStr : (edNote.tags || []).filter(function (t) { return t !== 'quick' }).join(', '))
     .split(/[,，;；]/).map(function (s) { return s.trim() }).filter(Boolean);
@@ -43,7 +86,9 @@ function doSave() {
     kind: edNote.kind, status: edNote.status, inject: edNote.inject === true,
     injectTo: edNote.injectTo || [], recall: edNote.recall !== false, sensitive: edNote.sensitive === true
   };
-  if (!edLoading) upd.body = edNote.body;   /* 正文加载中省略 body（host 对 undefined 保留原内容，防竞态清空正文） */
+  /* R-1 正文提交闸：仅 notes-get 成功加载过正文（edBodyLoaded）才允许携带 body（host 对 undefined 保留原内容，防竞态清空正文）；
+     已加载基础上清空为空串 = 用户有意为之，附 confirmClearBody:true 显式过 host 空覆盖兜底闸（empty-body-overwrite-guard） */
+  if (edBodyLoaded) { upd.body = edNote.body; if (upd.body === '') upd.confirmClearBody = true }
   if (upd.inject) upd.injectRole = edNote.injectRole === 'reference' ? 'reference' : 'convention';   /* 非 off 才带 injectRole（payload 禁 undefined） */
   if ((edNote.topic || '').trim()) upd.topic = edNote.topic.trim();
   rpc('notes-update', upd).then(function (res) {
@@ -60,8 +105,9 @@ function injectScopeLabel(injectTo) {
   var arr = (injectTo || []).filter(function (t) { return t !== 'global' && t !== 'workspace' });
   if (arr.length === 0) return '所有会话';
   var names = arr.map(function (t) {
-    var s = sessList.find(function (x) { return x.short === t });
-    return s ? s.name : ('会话 ' + t);
+    var st = shortSid(t);   /* 归一比对（notes-034-injectto-norm）：存量长 id 先约到短 id 再匹配会话名 */
+    var s = sessList.find(function (x) { return x.short === st });
+    return s ? s.name : ('会话 ' + st);
   });
   return names.join('、');
 }
@@ -69,7 +115,7 @@ function renderEd() {
   var ed = $('ed');
   if (!edNote) {
     ed.className = 'ed empty';
-    ed.innerHTML = '<svg class="ic"><use href="#i-note"/></svg><div>选择左侧一条笔记查看和编辑</div><div style="font-size:11px">点左侧「新建」创建笔记；正文划选文字可弹出快速记录卡片</div>';
+    ed.innerHTML = '<svg class="ic"><use href="#i-note"/></svg><div>选择左侧一条笔记查看和编辑</div><div style="font-size:11px">点侧栏顶部 + 新建笔记（先开草稿，输入内容才落库）；正文划选文字可弹出快速记录卡片</div>';
     return;
   }
   var n = edNote;
@@ -84,6 +130,8 @@ function renderEd() {
     + '<div class="disp" id="dispHost"></div>'
     + '<div class="ed-main">'
     + '<div class="deg" id="degBanner" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div>检测到<b>白名单外语法</b>，富文本编辑不可用（仍可源码编辑）：<span class="rs" id="degReasons"></span><br>删净对应语法后，「富文本」入口会实时恢复可用。</div></div>'
+    /* R-1 安全态横幅（正文加载失败）：复用 .deg 警告样式；edLoadErrMsg=错误详情，edLoadRetry=重试入口（refreshLoadErrUI 驱动显隐与锁定） */
+    + '<div class="deg" id="edLoadErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="edLoadErrMsg"></span> — 已锁定编辑并暂停自动保存（防止空内容覆盖原文）。<span id="edLoadRetry" style="cursor:pointer;color:var(--nacc);font-weight:600">重试</span></div></div>'
     + '<textarea class="src" id="edSrc" spellcheck="false" placeholder="正文…（Markdown）"' + (edMode === 'source' ? '' : ' style="display:none"') + '></textarea>'
     + '<div class="rich-scroll rich-wrap" id="richScroll"' + (edMode === 'rich' ? '' : ' style="display:none"') + '>'
     + '<div class="rtb" id="rtb">'
@@ -108,6 +156,7 @@ function renderEd() {
   $('edTitle').textContent = n.title === 'Untitled' ? '' : (n.title || '');
   $('edTitle').addEventListener('input', function () { if (!edNote) return; edNote.title = this.textContent.trim() || 'Untitled'; triggerSave() });
   bindEditorArea();
+  refreshLoadErrUI();   /* R-1：DOM 重建后重挂安全态（横幅显隐 + 编辑锁定 + 重试绑定） */
 }
 /* 编辑区事件绑定（renderEd 重建 DOM 后重挂；元素级监听随重建不累积，document 级 selectionchange 在启动区挂一次） */
 function bindEditorArea() {

@@ -57,7 +57,7 @@ module.exports = {
     assert(clientSrc.indexOf('dsh-notes-fchip') >= 0 && clientSrc.indexOf('dsh-notes-fchip-x') >= 0, '激活条件 chip + × 移除')
     assert(clientSrc.indexOf('dsh-notes-fsort-menu') >= 0 && clientSrc.indexOf('dsh-notes-fsort-item') >= 0, '独立排序控件菜单')
     assert(clientSrc.indexOf("I('pin', 11)") >= 0, '置顶 pin 图标（popover 状态组）')
-    assert(/onClick: openNewNote, 'data-tooltip': '新建笔记（Ctrl\+N）'/.test(clientSrc), 'brand 行 ＋ → openNewNote')
+    assert(/onClick: openNewNote, 'data-tooltip': '新建笔记（Alt\+N）'/.test(clientSrc), 'brand 行 ＋ → openNewNote')
     // 旧平铺 chips / 旧筛选面板已移除
     assert(clientSrc.indexOf('dsh-notes-chip') < 0 && clientSrc.indexOf('dsh-notes-filter-panel') < 0 && clientSrc.indexOf('dsh-notes-fp-opt') < 0, '旧 chips 行/旧筛选面板类已移除')
     assert(clientSrc.indexOf("'仅置顶'") < 0 && clientSrc.indexOf("'仅敏感'") < 0 && clientSrc.indexOf("'仅注入'") < 0, '旧单选开关文案已移除')
@@ -232,11 +232,14 @@ module.exports = {
     const appHtml = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
     for (const pair of [[clientSrc, 'client-impl.js'], [pkgCli, '发布包 lib/client.js']]) {
       const src = pair[0], tag = pair[1]
-      assert(src.indexOf('edLoadingRef.current = true') >= 0, tag + ' selectNote 置加载标记')
-      assert(/edLoadingRef\.current = false/.test(src), tag + ' notes-get 回填/异常后解除标记')
-      assert(/if \(!edLoadingRef\.current\) upd\.body = edBodyRef\.current/.test(src), tag + ' doSave 加载中省略 body（host 对 undefined 保留原内容）')
+      assert(src.indexOf('edLoadingRef.current = true') >= 0, tag + ' 正文加载置在途标记')
+      assert(/edLoadingRef\.current = false/.test(src), tag + ' notes-get 回填/异常后解除在途标记')
+      // R-1 升级：负向「加载中」闸 → 正向「已加载」闸（get 失败永不放行 body 提交），合法清空附 confirmClearBody 显式确认
+      assert(/if \(edBodyLoadedRef\.current\) \{ upd\.body = edBodyRef\.current/.test(src), tag + ' doSave 仅正文加载成功后携带 body（R-1 正向提交闸）')
+      assert(/edBodyLoadedRef\.current = false/.test(src) && src.indexOf('upd.confirmClearBody = true') >= 0, tag + ' R-1 提交闸复位 + 空正文显式确认')
     }
-    assert(appHtml.indexOf('edLoading = true') >= 0 && /if \(!edLoading\) upd\.body = edNote\.body/.test(appHtml), 'app.html 同款防竞态守卫')
+    assert(appHtml.indexOf('edLoading = true') >= 0 && /if \(edBodyLoaded\) \{ upd\.body = edNote\.body/.test(appHtml), 'app.html 同款 R-1 正向提交闸')
+    assert(appHtml.indexOf('upd.confirmClearBody = true') >= 0, 'app.html 空正文显式确认')
   })
   await t('client-impl 派发对话框（已有/新建会话）', () => {
     assert(/dsh-notes-dispatch-modal/.test(clientSrc), '派发对话框 modal')

@@ -12,7 +12,7 @@
     // RPC 层保持 12 个 handler 不变（client panel 仍在用）；工具只面向 Agent，瘦身 schema。
     regTool({
       name: 'note_search',
-      description: 'Search local notes by free-text query (matches title/body/topic/tags), with optional tag, topic, kind, folder, sensitive, and inject filters. When a query is given, each result carries a matches array telling which fields matched (title/tags/body — relevance: title > tags > body). Returns slim notes (no body) for fast triage — call note_get for the full body of a specific id. Default results EXCLUDE work logs (kind=log, stealth by design) — pass kind=log or includeLogs:true to recall them. Tip: when planning a task, picking an approach, or making decisions, consider searching this notes library first for related decisions, todos, and context recorded in earlier sessions — it may already contain the conclusions you need.',
+      description: 'Search local notes by free-text query (matches title/body/topic/tags), with optional tag, topic, kind, folder, sensitive, and inject filters. When a query is given, each result carries a matches array telling which fields matched (title/tags/body — relevance: title > tags > body). Returns slim notes (no body) for fast triage — call note_get for the full body of a specific id. Default results EXCLUDE work logs (kind=log, stealth by design) — pass kind=log or includeLogs:true to recall them; an explicit folder filter also recalls them (R-6: stealth covers only implicit surfaces — default list / default search / catalog / injection). Tip: when planning a task, picking an approach, or making decisions, consider searching this notes library first for related decisions, todos, and context recorded in earlier sessions — it may already contain the conclusions you need.',
       parameters: {
         type: 'object',
         properties: {
@@ -23,7 +23,7 @@
           folder: { type: 'string', description: 'Optional folder filter: folder id or exact folder name; empty string = unfiled notes (未分类). Non-empty filter is a recursive subtree match — it returns notes in that folder AND all its descendant folders (folders nest via parent; maxFolderDepth setting, default 3).' },
           sensitive: { type: 'boolean', description: 'Optional sensitive filter: true = only sensitive (masked) notes, false = exclude sensitive notes. Omit = no filter.' },
           inject: { type: 'boolean', description: 'Optional inject filter: true = only notes injected into the system prompt, false = exclude injected notes. Omit = no filter.' },
-          includeLogs: { type: 'boolean', description: 'Include work logs (kind=log) in results; default false (logs are stealth). kind=log implies inclusion.' },
+          includeLogs: { type: 'boolean', description: 'Include work logs (kind=log) in results; default false (logs are stealth). kind=log implies inclusion; so does an explicit folder filter (R-6).' },
           limit: { type: 'number', description: 'Optional max results (default 50)' }
         }
       },
@@ -73,13 +73,14 @@
         'folder (string) assigns a note to a virtual folder: pass a folder id or an exact folder name; "" or omitted = unfiled (未分类). Folders (name/order/parent) are managed via the notes-folders RPC (list/create/rename/delete/reorder): folders NEST via a parent field (maxFolderDepth setting caps the depth, default 3, 0 = unlimited), any folder filter is a recursive subtree match (a folder includes notes in all its descendant folders), and deleting a folder that still has child folders or notes requires explicit cascade:true — the folder structure is removed for good while its notes are soft-deleted into the trash and can be restored (restored notes fall back to unfiled when their folder is gone).\n\n' +
         'Actions:\n' +
         '- create: { title, body, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, folder?, sessionId?, cwd?, workspace?, logDate? }\n' +
-        '- list: { tag?, topic?, kind?, folder?, includeLogs? } (no id/title/body needed; default excludes kind=log work logs — pass kind=log or includeLogs:true)\n' +
-        '- update: { id, title?, body?, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive? } (setting status to "resolved" auto-closes the dispatch loop: all open entries in the note\'s dispatches are marked dispatchStatus=done with doneAt — use this to report completion of a dispatched todo)\n' +
+        '- list: { tag?, topic?, kind?, folder?, includeLogs? } (no id/title/body needed; default excludes kind=log work logs — pass kind=log or includeLogs:true; an explicit folder filter implies inclusion — R-6)\n' +
+        '- update: { id, title?, body?, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, confirmClearBody? } (setting body to "" while the stored body is non-empty is REJECTED unless confirmClearBody:true — R-1 data-loss guard against silent empty-body overwrite; setting status to "resolved" auto-closes the dispatch loop: all open entries in the note\'s dispatches are marked dispatchStatus=done with doneAt — use this to report completion of a dispatched todo)\n' +
         '- move: { id, folder } (move note into a virtual folder — folders nest, so any folder id at any depth is valid; folder = folder id or exact folder name, "" = move out to unfiled)\n' +
         '- delete: { id } (soft delete; restorable via restore)\n' +
         '- restore: { id } (undo delete/archive)\n' +
         '- archive: { groups? } (explicit archive, undoable once via the notes-archive-undo RPC). groups = whitelist [{memberIds:[noteId,...], title?}]: merge exactly those groups (memberIds must all exist and not be deleted; title overrides the default group title). Without groups: merge ONLY quick-capture notes grouped by session. Behavior change: manual notes are NEVER auto-grouped by tag anymore — pass explicit groups to merge them (preview quick groups first via the notes-archive-preview RPC).\n' +
-        '- dispatch: { id, targetSessionId?, targetSessionName?, instruction? } (assemble the todo context plus your instruction into one user message and send it to a live session as a real task; the handoff is recorded in the note\'s dispatches property with dispatchStatus=sent. Omit targetSessionId to list live sessions. Closed loop: when the target session reports completion via update status=resolved, open dispatches auto-flip to dispatchStatus=done; an idle transition of the target session also writes a receipt.)',
+        '- dispatch: { id, targetSessionId?, targetSessionName?, instruction? } (assemble the todo context plus your instruction into one user message and send it to a live session as a real task; the handoff is recorded in the note\'s dispatches property with dispatchStatus=sent. Omit targetSessionId to list live sessions. Closed loop: when the target session reports completion via update status=resolved, open dispatches auto-flip to dispatchStatus=done; an idle transition of the target session also writes a receipt.)\n' +
+        'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived; unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status,receiptId}/lastError) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
       parameters: {
         type: 'object',
         properties: {
@@ -88,6 +89,7 @@
           id: { type: 'string', description: 'Note id (required for update/delete/restore/dispatch)' },
           title: { type: 'string', description: 'Title (create/update)' },
           body: { type: 'string', description: 'Markdown body (create/update)' },
+          confirmClearBody: { type: 'boolean', description: 'Explicit confirmation (update only): required when setting body to "" while the stored body is non-empty — R-1 data-loss guard rejects silent empty-body overwrite without it.' },
           topic: { type: 'string', description: 'Topic (create/update; defaults to 未分类)' },
           tags: { type: 'array', items: { type: 'string' }, description: 'Tags (create/update)' },
           kind: { type: 'string', enum: KINDS, description: 'Kind (create/update): note/decision/todo/link/quote/log; default note. log = work log (隐身：inject 强制关闭，recall 缺省 false，默认列表/搜索不含)' },
@@ -98,6 +100,9 @@
           recall: { type: 'boolean', description: 'Recall in the notes catalog index (create/update); default true. Set false to hide from the catalog (still searchable via note_search).' },
           sensitive: { type: 'boolean', description: 'Sensitive-content flag (create/update); default false. When true, injected text masks secret-looking lines (keys kept, values hidden as ******（敏感，note_get <id> 获取）); agents call note_get for the original.' },
           folder: { type: 'string', description: 'Virtual folder (create/move/list filter): folder id or exact folder name; "" = unfiled (未分类). Folders nest via parent (maxFolderDepth setting, default 3); a list filter matches the whole subtree recursively (notes in descendant folders included).' },
+          // 定时派发·执行层（dispatch-schedule 声明字段；公共写入口 contractType 白名单 '' / dispatch-schedule）
+          contractType: { type: 'string', description: 'Contract type (create/update): public writes allow only \'dispatch-schedule\' (scheduled-dispatch convention, must pair with schedule) or \'\' to clear; other contract types are system-managed' },
+          schedule: { type: ['object', 'null'], description: 'Scheduled-dispatch declaration (create/update; requires contractType=\'dispatch-schedule\'): { at?: LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 (one-shot, must be future; Z/±offset rejected) | every?: \'30m\'/\'12h\'/\'3d\'/\'1w\' or ms (>=5min), anchor?: \'HH:MM\' LOCAL time (periodic only, whole-day interval; pins firing to that time of day, no drift), dow?: 0-6 (weekly only, 0=Sunday, requires every:\'1w\' + anchor), target: sessionId (workspace session, not archived), action?: \'dispatch\', enabled?: boolean }. Host-managed machine fields lastFiredAt/lastRun/lastError are preserved across declaration edits. null clears the declaration (pair with contractType: \'\').' },
           // archive 字段（显式归档白名单）
           groups: { type: 'array', items: { type: 'object', properties: { memberIds: { type: 'array', items: { type: 'string' } }, title: { type: 'string' } }, required: ['memberIds'] }, description: 'Archive whitelist (archive action only): [{memberIds:[noteId,...], title?}] — merge exactly these groups. Omitted = merge only quick-capture groups; manual notes are NEVER auto-grouped by tag (behavior change).' },
           // dispatch 字段
@@ -106,7 +111,7 @@
           instruction: { type: 'string', description: 'Dispatch: your concrete instruction appended to the todo context (dispatch, optional)' },
           // list 字段
           tag: { type: 'string', description: 'Tag filter (list only)' },
-          includeLogs: { type: 'boolean', description: 'Include work logs kind=log in list results (list only); default false. kind=log implies inclusion.' },
+          includeLogs: { type: 'boolean', description: 'Include work logs kind=log in list results (list only); default false. kind=log implies inclusion; an explicit folder filter implies inclusion too (R-6).' },
           // 高级（通常自动填充）
           sessionId: { type: 'string', description: 'Session id (advanced; usually auto-filled)' },
           cwd: { type: 'string', description: 'Working dir (advanced; usually auto-filled)' },
@@ -121,6 +126,9 @@
         try {
           if (action === 'create') {
             if (!args.title || !args.body) return { error: 'note_manage.create 需要 title 和 body' }
+            // 定时派发：公共写入口 contractType 白名单（'' / dispatch-schedule；其余契约类型系统内部管理）
+            const ctErr0 = schedPublicContractTypeError(args.contractType)
+            if (ctErr0) return { error: ctErr0 }
             // folder 兼容 id 或名称（名称精确命中解析为 id）；找不到直接报错，不写悬空引用
             let folder = args.folder
             if (folder !== undefined) {
@@ -131,7 +139,7 @@
             const r = await _create(args.title, args.body, args.tags, args.topic, {
               sessionId: args.sessionId, cwd: args.cwd, workspace: args.workspace,
               kind: args.kind, status: args.status, inject: args.inject, injectRole: args.injectRole, injectTo: args.injectTo,
-              folder: folder, recall: args.recall, sensitive: args.sensitive, logDate: args.logDate
+              folder: folder, recall: args.recall, sensitive: args.sensitive, logDate: args.logDate, contractType: args.contractType, schedule: args.schedule
             })
             const out = { action: 'create', id: r.id, topic: r.topic, kind: r.kind, status: r.status, message: 'Note created' }
             // 敏感模式自动识别建议透传（create 不强制落 sensitive，由调用方决策）
@@ -161,7 +169,10 @@
           }
           if (action === 'update') {
             if (!args.id) return { error: 'note_manage.update 需要 id' }
-            const r = await _update(args.id, args.title, args.body, args.tags, args.topic, args.kind, args.status, args.inject, args.injectTo, undefined, args.recall, args.injectRole, args.sensitive)
+            // 定时派发：公共写入口 contractType 白名单（'' / dispatch-schedule；其余契约类型系统内部管理）
+            const ctErr1 = schedPublicContractTypeError(args.contractType)
+            if (ctErr1) return { error: ctErr1 }
+            const r = await _update(args.id, args.title, args.body, args.tags, args.topic, args.kind, args.status, args.inject, args.injectTo, undefined, args.recall, args.injectRole, args.sensitive, { confirmClearBody: args.confirmClearBody === true, contractType: args.contractType, schedule: args.schedule })
             // P3 派发闭环：resolved 联动回执了派发时在消息里明示（agent 可感知闭环已发生）
             // 工作记忆 v0：kind=log 隐身硬闸命中时告知（inject 被强制关闭）
             return { action: 'update', id: args.id, kind: r.kind, status: r.status, dispatchClosed: r.dispatchClosed || 0, injectForcedOff: r.injectForcedOff === true, message: 'Note updated' + (r.dispatchClosed ? '；已自动回执 ' + r.dispatchClosed + ' 条派发（dispatchStatus→done）' : '') + (r.injectForcedOff ? '（kind=log 日志默认隐身：inject 已强制关闭）' : '') }

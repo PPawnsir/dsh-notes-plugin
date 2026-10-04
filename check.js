@@ -21,7 +21,7 @@ const CORE = new Set([
   'token 语义映射 bg-layer 系 + 鲜蓝强调（开发版/发布包/原型/app.html 四处同步）',
   'T1.1 工具瘦身 9→3',
   'index.mjs 是 ESM（export name/inject/apply，无 bootstrap return）',
-  'index.mjs 保留 39 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传 + 历史版本三 RPC + 工作记忆 notes-memory-guide',
+  'index.mjs 保留 41 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval',
   '两栏布局骨架（侧栏 + 编辑器通栏）',
   'note_search 已注册',
   'note_get 已注册',
@@ -43,7 +43,7 @@ const CORE = new Set([
   'preview：速记按 sessionId 分组（≥2），手动/单条/已删不进组，dry-run 零写入',
   '无 groups 归档：只合速记组 + 默认标题 + .bak 备份 + undo 事务落盘',
   'undo 往返：成员批量还原 + 归档笔记软删 + undo 清空；二次 undo → undone=0',
-  'host-impl 应用成功（39 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide）',
+  'host-impl 应用成功（41 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch）',
   'manage.create 返回 id',
   'manage.archive 显式 groups 合并手动组（白名单 + title 覆盖）',
   'kind 默认 note（向后兼容）',
@@ -128,6 +128,17 @@ const CORE = new Set([
   // 44. 设置卡交互反馈（notes-settings-feedback：✕ 常驻关闭 + dirty 保存/还原 + 关闭兜底 flush，三端同步）
   '设置卡交互反馈（client）：✕ 常驻关闭 + dirty 状态机 + 保存/还原 + 兜底 flush（开发版 + 发布包）',
   'app.html + 原型设置卡反馈同款：✕ + dirty 保存/还原 + 关闭兜底 flush + Esc 同口径（双端 UI 标记一致）',
+  // 39.6b R-6 UI 接线（notes-034-r6-ui：文件夹视图显示日志——数据源口径 + 渲染守卫放行 + 切回恢复隐身，四端）
+  'R-6 UI 接线（四端）：文件夹视图数据源含 log（view=folder 触发 includeLogs 重拉）+ 渲染守卫放行 + 切回默认恢复隐身',
+  // 50. 定时派发·设置交互 UI（notes-034-sched-ui：派发弹窗调度区 + 注入管理调度任务区，四端 + 原型 mock 行为）
+  '调度 helper 四端同口径：schedEveryMs/schedFreqLabel/schedNextMs/isoToLocalInput 行为 + app⇄原型逐字节一致',
+  '派发弹窗调度区（app.html + 原型）：立即/定时单选 + 频率四模式 + 内联校验 + 创建/编辑双通道 + 手动派发零改动',
+  '注入管理调度任务区（app.html + 原型）：总览徽章 + 编辑回填 + 暂停/恢复 + 软删 + Esc 复位',
+  '定时派发 UI（client 开发版 + 发布包）：调度区/编辑回填经 panelBridge + 调度任务区 + 样式双端',
+  '原型 mock 定时派发：写入闸门红线行为 + schedule-eval + slim 携带 schedule + 演示数据',
+  // 51. 键盘流速查表（notes-034-f-cheatsheet：? 键唤起 + 设置卡入口，三端同步 + 键位逐键核对）
+  '键盘流速查表（client）：modal 模块 + ? 键唤起/toggle + Esc 栈首段 + 设置卡入口 + 样式（开发版 + 发布包）',
+  '键盘流速查表（app.html + 原型）：openCheatsheet + ? 分支 + 设置行入口 + hintbar 指引（双端 UI 标记一致）',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====
@@ -145,7 +156,7 @@ const SECTIONS = [
   require('./check/sections/1-5-list-lazy.cjs'),   // 1.5 T1.2 列表懒加载分页
   require('./check/sections/1-6-keyboard.cjs'),   // 1.6 T1.4 键盘快捷键
   require('./check/sections/1-7-ui-v2.cjs'),   // 1.7 UI v2 client 渲染结构（两栏 + 主题全局过滤 + SVG 图标）
-  require('./check/sections/1-8-new-note-modal.cjs'),   // 1.8 新建笔记 modal（＋ / Ctrl+N 输标题创建）
+  require('./check/sections/1-8-new-note-modal.cjs'),   // 1.8 新建笔记 modal（＋ / Alt+N 输标题创建）
   require('./check/sections/2-host-mock.cjs'),   // 2. Host 全链路逻辑（内存 mock）
   require('./check/sections/3-tool-schema.cjs'),   // 3. 工具 schema 校验
   require('./check/sections/4-core-rpc.cjs'),   // 4. 核心 RPC 行为
@@ -200,6 +211,14 @@ const SECTIONS = [
   require('./check/sections/43-inject-manager.cjs'),   // 43. 注入管理面板（设置卡入口 + 总览/直改/批量/过滤/护栏，三端同步零新 RPC）
   require('./check/sections/44-settings-feedback.cjs'),   // 44. 设置卡交互反馈（✕ 关闭 + dirty 保存/还原 + 兜底 flush，三端同步）
   require('./check/sections/45-host-modular.cjs'),   // 45. P2·5 host 模块化收口（src/host/** 终态结构 + 双出口同源）
+  require('./check/sections/46-dataloss-guard.cjs'),   // 46. 数据丢失防护（R-1：get 失败安全态 + 空正文覆盖兜底 + 行为断言）
+  require('./check/sections/47-readpath-silent.cjs'),   // 47. 读路径静默群反馈 + 刷新假阳性（R-2：mock error 逐点行为断言）
+  require('./check/sections/48-schedule-exec.cjs'),   // 48. 定时派发·执行层（dispatch-schedule 声明解析 + 常驻 cron tick + 派发执行 + 状态三层）
+  require('./check/sections/49-batch3.cjs'),   // 49. N+1 批量端点（notes-get-batch）+ onboarding 轻量 + 新建草稿态 + 顶栏速记改名（notes-034-batch3）
+  require('./check/sections/50-schedule-ui.cjs'),   // 50. 定时派发·设置交互 UI（派发弹窗调度区 + 注入管理调度任务区 + 原型同步，notes-034-sched-ui）
+  require('./check/sections/51-cheatsheet.cjs'),   // 51. 键盘流速查表（cheat sheet：? 键唤起 + 设置卡入口，键位与 R-4 实现逐键核对，notes-034-f-cheatsheet）
+  require('./check/sections/52-sched-detail.cjs'),   // 52. 定时派发·详情计划块（派发计划 + 关联调度清单，三端同步 + 零渲染红线，notes-034-sched-detail）
+  require('./check/sections/53-injectto-norm.cjs'),   // 53. injectTo 归一化与非法拒绝（写入归一 + 非法整体拒绝 + 勾选态归一比对，notes-034-injectto-norm）
 ]
 
 async function main() {

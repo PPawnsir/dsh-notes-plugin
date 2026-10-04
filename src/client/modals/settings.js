@@ -6,7 +6,7 @@
     //           SET_NUM_FIELDS / saveSettingsAll / restoreSettingsAll / flushSettingsPending / closeSettings / SettingsModal
     // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/format.js（fmtTok）、kernel/icons.js（e/I）、kernel/bus.js（showToast）、
     //        modals/export.js + export-single.js + import.js + trash.js + prune.js + suggest.js + inject-preview.js + inject-manager.js + memory-guide.js
-    //        （设置行入口 open*/do*/memViewNote 与 setMemStatus——序位在前可见，非横向引用）
+    //        + cheatsheet.js（设置行入口 open*/do*/memViewNote 与 setMemStatus——序位在前可见，非横向引用）
     // state 托管：open/data/llmProvider/llmModel/catalog/stale/budget/usageData/usageBudget/saving/logWeek/logRetention
     // 迁入 store.modal.settings 切片；maxDepth/snap/inflight 因 check 锚定其 useState 声明原文滞留 whole.js（同 newNoteKind 先例）——
     // 组件经 props 注入，模块函数经 panelBridge.setMaxDepth/setSetMaxDepth/setSnap/setSetSnap/setInflight/setSetInflight 中转；
@@ -365,10 +365,12 @@
         const assetsControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '预览 assets/ 中未被任何笔记引用的孤儿文件，勾选后删除（dry-run 先行，零写入）', onClick: openPrune }, '清理…')
         // 整理建议控件：打开三段式建议 modal（点击即关设置卡片、modal 不叠 modal）——底部「整理」按钮收敛后此处为入口
         const suggestControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '整理建议：速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）', onClick: openSuggest }, '打开')
+        // 键盘快捷键控件：打开速查表（点击即关设置卡片、modal 不叠 modal，同注入管理先例；非输入焦点时 ? 键直达）
+        const cheatsheetControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '键盘流速查表：全部生效快捷键（与实现逐键核对）；? 键直达，Esc 关闭', onClick: openCheatsheet }, '查看…')
         // 注入预览控件：打开预览 modal（点击即关设置卡片、modal 不叠 modal）——agent 实际收到的注入文本即所见
         const injPrevControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '预览 Agent 系统提示中实际注入的笔记文本（约定桶 + 目录桶），含敏感打码 / 时效标注 / 预算截断效果；可按会话过滤', onClick: openInjectPreview }, '预览…')
         // 注入管理控件：打开注入管理面板（点击即关设置卡片、modal 不叠 modal）——全库注入三态总览 + 单行直改 / 多选批量
-        const injMgrControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '打开注入管理面板：总览全部笔记的注入三态（约定/资料/关闭），单行直改或多选批量调整；顶部统计 chips 点击即过滤；日志隐身硬禁，敏感笔记注入自动脱敏', onClick: openInjectManager }, '管理…')
+        const injMgrControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '打开注入管理面板：总览全部笔记的注入三态（约定/资料/关闭），单行直改或多选批量调整；顶部统计 chips 点击即过滤；日志隐身硬禁，敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）', onClick: openInjectManager }, '管理…')
         // ===== 工作记忆 v0 控件（设置卡片「工作记忆」区）：状态行（已启用→查看约定/停用）+「启用沉淀引导…」=====
         const memoryControl = memStatus === null
           ? e('span', { className: 'dsh-notes-settings-label-s' }, '探测中…')
@@ -404,7 +406,7 @@
           { key: 'maxdepth', label: '文件夹嵌套深度', sub: '虚拟文件夹最大嵌套层级（根级 = 第 1 层，缺省 3）；新建子文件夹/拖拽换父超限将拒绝并提示；0 = 不限', control: maxDepthControl },
           { key: 'budget', label: '注入体积预算', sub: '单次注入笔记全文的上限（约，按字符数近似）；约定条目永不截断，资料条目从最旧开始省略；0 = 不限', control: budgetControl },
           { key: 'injprev', label: '注入预览', sub: '查看 Agent 实际收到的注入文本（约定 + 目录）：敏感打码 / 时效标注 / 预算截断效果即所见；可按会话过滤', control: injPrevControl },
-          { key: 'injmgr', label: '注入管理', sub: '全库注入总览：逐篇三态直改（关闭/约定/资料）+ 多选批量 + 三态过滤/搜索；日志隐身硬禁，敏感笔记注入自动脱敏', control: injMgrControl },
+          { key: 'injmgr', label: '注入管理', sub: '全库注入总览：逐篇三态直改（关闭/约定/资料）+ 多选批量 + 三态过滤/搜索；日志隐身硬禁，敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）', control: injMgrControl },
           // 工作记忆 v0「工作记忆」区：启用沉淀引导（约定笔记方案，裁决 A）+ 日志卫生两级窗口（裁决 B②）
           { key: 'memory', label: '工作记忆', sub: '会话工作结论沉淀为工作日志（kind=log，默认隐身：不进系统提示/目录/默认列表与搜索，筛选中心类型「日志」为专入口）；启用 = 创建一条预填约定笔记（可见/可改/可停用）', control: memoryControl },
           { key: 'logweek', label: '日志周聚合窗口', sub: '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行；缺省 7 天）', control: logWeekControl },
@@ -412,6 +414,8 @@
           { key: 'data', label: '数据', sub: '全库目录快照导出 / 单文件拼接导出（图片内联，可分享）/ 从快照目录导入（只增改不删，导入前自动全量备份）/ 回收站兜底（恢复或彻底删除）', control: dataControl },
           { key: 'assets', label: '资产清理', sub: '扫描 assets/ 中未被任何笔记引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删）', control: assetsControl },
           { key: 'suggest', label: '整理建议', sub: '速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）', control: suggestControl },
+          // 键盘流速查表入口（notes-034-f-cheatsheet）：内容与 keyboard.js 逐键核对；? 键为直达通道
+          { key: 'cheatsheet', label: '键盘快捷键', sub: '键盘流全部生效快捷键速查表（与实现逐键核对）；非输入焦点时按 ? 直达，Esc 关闭', control: cheatsheetControl },
         ]
         return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) closeSettings() } },
           e('div', { className: 'dsh-notes-settings-modal' },
@@ -421,6 +425,13 @@
                 e('button', { className: 'dsh-notes-settings-restore dsh-nt', 'data-tooltip': '还原：全部回滚到打开时的设置（逐键恢复）', disabled: !setDirty || setSaving, onClick: restoreSettingsAll }, '还原'),
                 e('button', { className: 'dsh-notes-settings-save dsh-nt', 'data-tooltip': '保存：flush 全部未落盘改动并显式确认（自动保存不变，此为兜底 + 确认）', disabled: !setDirty || setSaving, onClick: saveSettingsAll }, setSaving ? '保存中…' : '保存'),
                 e('button', { className: 'dsh-notes-settings-close dsh-nt', 'data-tooltip': '关闭（Esc；有未落盘改动先自动 flush）', onClick: closeSettings }, I('x', 12)))),
+            /* onboarding 轻量（notes-034-batch3）：设置卡顶部四概念一行一条速览（注入/约定·资料/目录注入/派发）——新用户前置解释 */
+            e('div', { className: 'dsh-notes-data-hint' },
+              e('b', null, '概念速览'),
+              e('div', null, '· 注入：笔记正文进入 Agent 的系统提示，每次对话都可见（编辑器注入三态开关控制）'),
+              e('div', null, '· 约定 / 资料：注入的两种角色——约定 = 须遵守的规则；资料 = Agent 按需取用的参考'),
+              e('div', null, '· 目录注入：只向 Agent 提供全库笔记清单（一行一条），需要全文时它再调取'),
+              e('div', null, '· 派发：把待办笔记派给指定会话执行，完成后自动回执闭环')),
             e('div', { className: 'dsh-notes-settings-list' },
               settingsRows.map(row => e('div', { key: row.key, className: 'dsh-notes-settings-row' },
                 e('div', { className: 'dsh-notes-settings-label' }, row.label, row.sub ? e('span', { className: 'dsh-notes-settings-label-s' }, row.sub) : null),

@@ -14,6 +14,7 @@
     function setTrashPreview(v) { store.modal.trash.set({ preview: typeof v === 'function' ? v(store.modal.trash.get().preview) : v }) }
     // ===== P1 回收站（侧栏底部「回收站」入口）：notes-list {includeDeleted:true} 过滤 deleted → 恢复（notes-restore）/ 彻底删除（notes-purge）=====
     // 彻底删除双确认：点「彻底删除」→ window.confirm「彻底删除不可恢复」确认才执行；host 侧安全闸只接受已软删除的笔记
+    // 确认强度 = 不可恢复性（notes-034-c-confirm）：purge 不可恢复 → 重（双确认保留）；软删可恢复 → 轻（列表侧删除已无 confirm，撤销 toast 兜底）
     function openTrash() {
       setTrashList(null); setTrashPending(''); setTrashSel({}); setTrashPreview(null); setError('')
       panelBridge.setSettingsOpen(false); setTrashOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
@@ -134,7 +135,7 @@
                       e('div', { className: 'dsh-notes-arch-row' },
                         e('input', { type: 'checkbox', className: 'dsh-notes-trash-check', checked: !!trashSel[n.id], disabled: !!trashPending, onChange: () => toggleTrashSel(n.id) }),
                         e('span', { className: 'dsh-notes-arch-ti dsh-notes-trash-ti', title: (n.title || 'Untitled') + '（点击预览正文，只读）', onClick: () => toggleTrashPreview(n.id) }, n.title || 'Untitled'),
-                        e('span', { className: 'dsh-notes-arch-meta' }, '删于 ' + (n.updatedAt ? String(n.updatedAt).slice(0, 10) : '—')),
+                        e('span', { className: 'dsh-notes-arch-meta' }, '删于 ' + (n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—')),
                         e('button', { className: 'dsh-notes-trash-act', onClick: () => toggleTrashPreview(n.id), disabled: !!trashPending }, trashPreview && trashPreview.id === n.id ? '收起' : '预览'),
                         e('button', { className: 'dsh-notes-trash-act', onClick: () => doTrashRestore(n.id), disabled: !!trashPending }, '恢复'),
                         e('button', { className: 'dsh-notes-trash-act danger', onClick: () => doTrashPurge(n.id, n.title), disabled: !!trashPending }, '彻底删除')),

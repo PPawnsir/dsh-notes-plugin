@@ -24,7 +24,7 @@ module.exports = {
       assert(src.indexOf('dsh-notes-modeseg') >= 0 && src.indexOf('dsh-notes-modeseg-seg') >= 0, label + ' modeseg 两段开关')
       assert(src.indexOf("switchMode('rich')") >= 0 && src.indexOf("switchMode('source')") >= 0, label + ' 双向切换')
       assert(src.indexOf("ev.key === '/'") >= 0 && src.indexOf('switchModeRef.current') >= 0, label + ' Ctrl+/ 快捷键（经 ref 调最新 switchMode）')
-      assert(src.indexOf('contentEditable: true') >= 0 && src.indexOf('suppressContentEditableWarning') >= 0, label + ' 富文本 contenteditable 非受控（编辑期间不重渲染）')
+      assert(src.indexOf('contentEditable: edLoadErr ? false : true') >= 0 && src.indexOf('suppressContentEditableWarning') >= 0, label + ' 富文本 contenteditable 非受控（编辑期间不重渲染；R-1 安全态锁定时置 false）')
       assert(src.indexOf('renderMarkdown(edBodyRef.current, wikiResolve)') >= 0, label + ' 进富文本渲染内核产物（P2 起带双链 resolver 第二参）')
       assert(src.indexOf('serializeRich(el)') >= 0 && src.indexOf("syncFromRich('失焦')") >= 0 && src.indexOf("syncFromRich('切换模式')") >= 0, label + ' 失焦/切换模式序列化回源码')
       assert(src.indexOf('scheduleRichSync') >= 0 && src.indexOf('900') >= 0, label + ' 900ms 防抖序列化')
@@ -113,6 +113,38 @@ module.exports = {
     for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
       assert(pair[1].indexOf("'.dsh-notes-rich, .dsh-notes-rtb'") >= 0, pair[0] + ' 速记卡 inRichEditor 排除')
     }
+  })
+  // ---- 25.x R-5 时区统一（n-mut3u5xghl1u）：前端时间戳渲染统一本地时区（host 落盘 UTC ISO → fmtDT 转本地，与自动保存指示 HH:mm 同区）----
+  await t('R-5 时区统一：fmtDT 本地渲染（行为级）+ 三端调用点收口 + 旧 UTC 裸切清零', () => {
+    // 行为级：从 app.html 提取 fmtDT 实体函数，验证 UTC ISO → 本地 YYYY-MM-DD HH:mm（与 new Date 本地分量逐位一致）
+    const mFn = v3AppSrc.match(/function fmtDT\(iso\) \{[^\n]+\}/)
+    assert(mFn, 'app.html fmtDT 定义存在')
+    const fmtDT = new Function('return (' + mFn[0] + ')')()
+    const iso = '2026-10-04T00:48:00.000Z'
+    const d = new Date(iso), p = (x) => ('0' + x).slice(-2)
+    const expect = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
+    assert.strictEqual(fmtDT(iso), expect, 'fmtDT UTC→本地渲染（实得 ' + fmtDT(iso) + ' / 期望 ' + expect + '）')
+    if (new Date().getTimezoneOffset() !== 0) assert(expect !== '2026-10-04 00:48', '非零时区下渲染偏离 UTC 分量（本地时区生效证据）')
+    assert.strictEqual(fmtDT(''), '', 'fmtDT 空值回退空串')
+    assert.strictEqual(fmtDT('garbage'), 'garbage', 'fmtDT 非 ISO 串回退原样（防御不抛错）')
+    const mD = v3AppSrc.match(/function fmtD\(iso\) \{[^\n]+\}/)
+    assert(mD && mD[0].indexOf('new Date(iso)') >= 0, 'app.html fmtD 同转本地（树列表 MM-DD）')
+    // client 双端：kernel/format.js 收口 fmtDT + 底栏/树/派发记录调用点接线 + 旧裸切清零
+    for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("const fmtDT = (iso) => { if (!iso) return ''; const d = new Date(iso);") >= 0, label + ' fmtDT 本地时区 helper 收口（kernel/format.js）')
+      assert(s.indexOf("fmtDT(curNote.createdAt).slice(0, 10)") >= 0 && s.indexOf("fmtDT(curNote.updatedAt).slice(0, 10)") >= 0, label + ' 编辑器底栏 创建/更新 走 fmtDT（本地）')
+      assert(s.indexOf("fmtDT(d.at).slice(5)") >= 0, label + ' 派发记录时间走 fmtDT（本地）')
+      assert(s.indexOf("fmtDT(n.updatedAt).slice(5, 10)") >= 0, label + ' 树列表日期走 fmtDT（本地）')
+      assert(s.indexOf("String(curNote.createdAt).slice(0, 10)") < 0 && s.indexOf("String(d.at).slice(5, 16)") < 0, label + ' 旧 UTC 裸切调用点清零')
+    }
+    // app.html：调用点不变（底栏/派发记录/树走 fmtDT/fmtD），实现已转本地；旧 UTC 切片实现移除
+    assert(v3AppSrc.indexOf("function fmtDT(iso) { return iso ? String(iso).slice(0, 16).replace('T', ' ') : '' }") < 0, 'app.html 旧 UTC 切片 fmtDT 已移除')
+    assert(v3AppSrc.indexOf("'创建 ' + fmtDT(n.createdAt)") >= 0 && v3AppSrc.indexOf("'更新 ' + fmtDT(n.updatedAt)") >= 0, 'app.html 底栏 创建/更新 走 fmtDT')
+    assert(v3AppSrc.indexOf("fmtDT(d.at)") >= 0, 'app.html 派发记录走 fmtDT')
+    // 原型同源回写（design/notes-ui-v2.html fmtDT/fmtD 本地实现）
+    const protoV2tz = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
+    assert(protoV2tz.indexOf("function fmtDT(iso) { if (!iso) return ''; var d = new Date(iso);") >= 0, '原型 fmtDT 本地实现已回写')
   })
   }
 }

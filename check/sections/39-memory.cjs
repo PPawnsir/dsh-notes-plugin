@@ -52,12 +52,14 @@ module.exports = {
       assert(s.indexOf("p.meta.kind === 'log' ? false : true") >= 0, label + ' noteFromParsed：存量/外部直写 log 缺省 recall=false')
     }
   })
-  await t('host 双侧：_list/_search 默认排除 kind=log（显式 kind=log / includeLogs / 回收站路径召回）+ 目录尾部日志计数提示行', () => {
+  await t('host 双侧：_list/_search 默认排除 kind=log（显式 kind=log / includeLogs / 回收站 / R-6 显式 folder 召回）+ 目录尾部日志计数提示行', () => {
     for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
       const s = pair[1], label = pair[0]
       assert(s.indexOf('async function _list(tag, kind, folder, includeDeleted, includeLogs)') >= 0, label + ' _list 五参（+includeLogs）')
-      assert(s.indexOf("if (note.kind === 'log' && !includeLogs && !includeDeleted && !kind) continue") >= 0, label + ' _list 默认排除 log（显式 kind/回收站/includeLogs 召回）')
-      assert(s.indexOf("!!(kind === 'log' || (filters && filters.includeLogs))") >= 0, label + ' _search 同款默认排除')
+      assert(s.indexOf('const effLogs = includeLogs || folder !== undefined') >= 0, label + ' R-6：显式 folder 过滤隐式含 log（effLogs 承接，裁决方向 A）')
+      assert(s.indexOf("if (note.kind === 'log' && !effLogs && !includeDeleted && !kind) continue") >= 0, label + ' _list 默认排除 log（显式 kind/回收站/includeLogs/R-6 folder 召回）')
+      assert(s.indexOf("if (cn.kind === 'log' && !effLogs && !includeDeleted && !kind) continue") >= 0, label + ' 并集补入条目同款 effLogs 口径（同一过滤管线，list-union-defense）')
+      assert(s.indexOf("!!(kind === 'log' || (filters && filters.includeLogs))") >= 0, label + ' _search 同款默认排除（folder 由 _list effLogs 隐式承接）')
       assert(s.indexOf(' 条工作日志（kind=log，默认隐身不进目录），用 note_search 传 kind=log 检索') >= 0, label + ' 目录尾部日志计数提示行（有日志恒出现，只出计数不出标题）')
       assert(s.indexOf('if (pool.length === 0 && logCount === 0) return') >= 0, label + ' 目录空态判定连带日志计数')
     }
@@ -78,6 +80,7 @@ module.exports = {
       assert(s.indexOf('【分工边界】') >= 0 && s.indexOf('互不替代、互不合并') >= 0, label + ' 【分工边界】必需段落（车道内容分工：各车道收什么内容，非冲突检测）')
       assert(s.indexOf('note_manage list（kind=log）') >= 0 && s.indexOf('## HH:mm 续') >= 0, label + ' 模板含当日归键写法（list 查当天 → update 追加续节）')
       assert(s.indexOf("const MEMORY_GUIDE_FOLDER = '工作日志'") >= 0, label + ' 启用时确保「工作日志」文件夹')
+      assert(s.indexOf("const dormant = guides.find(n => n.inject !== true && (n.kind || 'note') !== 'log')") >= 0 && s.indexOf("revived: true") >= 0, label + ' R-3 幂等复活接线（停用引导复用复活，不建第二条；kind=log 守卫；双包一致）')
       assert(s.indexOf('启用状态不落 settings.json') >= 0, label + ' 状态单一事实源注释（contractType/tag + inject=true）')
       assert(s.indexOf("if (n.kind === 'log') continue   // 日志永不被过期清理提名") >= 0, label + ' stale 候选显式排除 log（只聚合不淘汰）')
       assert(s.indexOf("if ((n.kind || 'note') === 'log') continue   // 日志永不被孤儿清理提名") >= 0, label + ' orphan 候选显式排除 log')
@@ -112,7 +115,8 @@ module.exports = {
     writeText: async (p, c) => { writesM++; storeM.set(p, c) },
   }
   const handlersM = {}
-  const harnessMockM = { handle: (name, fn) => { handlersM[name] = fn; return () => { delete handlersM[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+  const toolsM = []   // R-6 断言用：捕获工具注册（note_manage 工具域 folder 行为）
+  const harnessMockM = { handle: (name, fn) => { handlersM[name] = fn; return () => { delete handlersM[name] } }, defineTool: (d) => d, registerTool: (c, d) => { toolsM.push(d); return () => {} } }
   const contextsM = []
   new Function('harness', 'pluginDir', hostSrc)(harnessMockM, DIR).apply({
     fs: fsMockM, sandboxPolicy: { resolve: () => ({}) },
@@ -199,6 +203,39 @@ module.exports = {
     assert(txt.indexOf('工作日志 · 测试') < 0, '提示行不含日志标题（天然无泄露面）')
   })
 
+  // ---- 39.2b R-6（裁决方向 A）：folder 过滤隐式含 log——显式文件夹导航放行；四个隐式表面（默认列表/默认检索/目录索引/注入）隐身原样 ----
+  // 放在目录计数断言之后：本断言新增 3 条 log 进 storeM，前置的「目录尾部日志计数 ===2」已执行完毕，零污染
+  await t('R-6：folder 过滤隐式含 log（notes-list / folder=\'\' 未分类 / notes-search / note_manage 工具域）+ 隐式表面隐身原样', async () => {
+    const fR6 = (await handlersM['notes-folders']({ op: 'create', name: 'R6日志夹' })).folder
+    const lgIn = await handlersM['notes-create']({ title: '夹内日志R6', body: 'x', kind: 'log', folder: fR6.id })
+    const ntIn = await handlersM['notes-create']({ title: '夹内笔记R6', body: 'x', folder: fR6.id })
+    const lgOut = await handlersM['notes-create']({ title: '夹外日志R6', body: 'x', kind: 'log' })
+    // ① notes-list 带 folder：隐式含 log（等价 includeLogs），夹外日志不混入
+    const inF = await handlersM['notes-list']({ folder: fR6.id })
+    assert(inF.notes.some(n => n.id === lgIn.id) && inF.notes.some(n => n.id === ntIn.id), 'notes-list folder=id 含夹内日志 + 普通笔记（实得 ' + inF.notes.length + '）')
+    assert(!inF.notes.some(n => n.id === lgOut.id), '夹外日志不混入')
+    // ② folder='' 未分类显式导航：含未分类日志，不含夹内日志
+    const un = await handlersM['notes-list']({ folder: '' })
+    assert(un.notes.some(n => n.id === lgOut.id) && !un.notes.some(n => n.id === lgIn.id), 'notes-list folder=\'\' 未分类视图含未分类日志')
+    // ③ 隐式表面原样：默认列表（无 folder）仍零日志
+    const def = await handlersM['notes-list']({})
+    assert(def.notes.every(n => n.kind !== 'log'), '默认列表（无 folder）仍零日志（隐式表面不变）')
+    // ④ notes-search：显式 folder 检索放行日志；默认检索（无 folder）仍排除
+    const sF = await handlersM['notes-search']({ query: 'R6', folder: fR6.id })
+    assert(sF.notes.some(n => n.id === lgIn.id), 'notes-search 带 folder 含夹内日志')
+    const sD = await handlersM['notes-search']({ query: 'R6' })
+    assert(sD.notes.every(n => n.kind !== 'log'), '默认检索（无 folder）仍排除日志')
+    // ⑤ note_manage 工具域同口径（folder 名称/'' 经 resolveFolderRef → _list effLogs）
+    const nm = toolsM.find(td => td.name === 'note_manage')
+    assert(nm, 'note_manage 工具已注册（toolsM 捕获）')
+    const l1 = await nm.execute({ action: 'list', folder: 'R6日志夹' })
+    assert(l1.notes && l1.notes.some(n => n.id === lgIn.id) && l1.notes.some(n => n.kind === 'log'), 'note_manage list folder=名称 含日志')
+    const l2 = await nm.execute({ action: 'list' })
+    assert(l2.notes.every(n => n.kind !== 'log'), 'note_manage 默认 list 仍零日志')
+    const l3 = await nm.execute({ action: 'list', folder: '' })
+    assert(l3.notes.some(n => n.id === lgOut.id), 'note_manage list folder=\'\' 含未分类日志')
+  })
+
   // ---- 39.3 启用流程（notes-memory-guide check/enable/status/disable 全链路，r3 车道模型）----
   await t('notes-memory-guide：status 缺省关 → check 同类唯一性（零写入）→ enable 无确认闸门直建 + contractType 落盘 + origin 溯源', async () => {
     // 造一条含「记录」关键词的已注入反馈约定——r3 车道模型下它与记忆车道并行共存：不再被列为重叠候选、不阻断启用（产品裁决：重复合法）
@@ -257,11 +294,18 @@ module.exports = {
     assert(d2.ok === true && d2.disabled === false, '重复停用幂等（本就未启用）')
     const bad = await handlersM['notes-memory-guide']({ op: 'bogus' })
     assert(bad.error && bad.error.indexOf('未知 op') >= 0, '未知 op 报错')
-    // 复启用（停用后的笔记仍存在 → active=null 时新建一条；此处验证「删除即彻底退出」前的再启用路径）
+    // R-3 幂等复活（n-mut4mxe2m727）：停用→再启用复用已有引导笔记（inject 重开 + injectTo 按本次对话框作用域更新），不再新建第二条
     const e4 = await handlersM['notes-memory-guide']({ op: 'enable', scope: [] })
-    assert(e4.ok === true && e4.id && e4.id !== st.noteId, '停用后再启用创建新约定（旧约定 inject=false 不视为启用）')
+    assert(e4.ok === true && e4.id === st.noteId && e4.revived === true, 'R-3 复活：停用后再启用复用原约定（不建第二条；实得 ' + JSON.stringify(e4) + '）')
     const g4 = await handlersM['notes-get']({ id: e4.id })
-    assert(g4.note.contractType === 'memory-guide', '再启用的新约定同样带契约身份标记')
+    assert(g4.note.inject === true && g4.note.contractType === 'memory-guide', '复活后 inject=true + 契约身份标记保留')
+    assert.deepStrictEqual(g4.note.injectTo, [], '复活按本次对话框作用域更新 injectTo（旧 [abc12345] → 全局 []）')
+    const st3 = await handlersM['notes-memory-guide']({ op: 'status' })
+    assert(st3.enabled === true && st3.noteId === st.noteId && st3.guideIds.length === 1, '复活后库中仍单条引导（无双份同名约定；实得 ' + st3.guideIds.length + '）')
+    // 复活后 origin 打标闸口随激活态恢复（injectTo=[] 全局命中本会话）
+    const lgRe = await handlersM['notes-create']({ title: '复活期日志', body: 'x', kind: 'log' })
+    const gRe = await handlersM['notes-get']({ id: lgRe.id })
+    assert(gRe.note.origin === 'memory-guide', '复活后新日志 origin 打标恢复（激活态闸口随复活重开）')
   })
   await t('notes-memory-guide：tag memory-guide 兼容发现键（存量无 contractType 引导仍识别/可停用/兼容态 origin 打标）', async () => {
     // 前置：上一断言末已再启用（contractType 引导 inject=true scope=[]）——先停用，腾出「无激活契约引导」状态
@@ -389,6 +433,23 @@ module.exports = {
       assert(gl2.note.origin === 'memory-guide', '静态包 origin 自动打标（引导激活 + 全局作用域命中）')
       const sg = await handlersM2['notes-suggest']({})
       assert(sg.logHygieneCandidates && Array.isArray(sg.logHygieneCandidates.weekly) && Array.isArray(sg.logHygieneCandidates.monthly), '静态包 suggest 第四段结构')
+      // R-6 静态包（index.mjs）：folder 过滤隐式含 log，与开发版同口径（双包一致）
+      const fR62 = (await handlersM2['notes-folders']({ op: 'create', name: '静态R6夹' })).folder
+      const lgF2 = await handlersM2['notes-create']({ title: '静态夹内日志R6', body: 'x', kind: 'log', folder: fR62.id })
+      const inF2 = await handlersM2['notes-list']({ folder: fR62.id })
+      assert(inF2.notes.some(n => n.id === lgF2.id), '静态包 notes-list folder=id 含夹内日志')
+      assert(!inF2.notes.some(n => n.id === lg.id), '静态包夹外日志不混入')
+      const defL2 = await handlersM2['notes-list']({})
+      assert(defL2.notes.every(n => n.kind !== 'log'), '静态包默认列表仍排除日志（隐式表面不变）')
+      const un2 = await handlersM2['notes-list']({ folder: '' })
+      assert(un2.notes.some(n => n.id === lg.id) && !un2.notes.some(n => n.id === lgF2.id), '静态包 folder=\'\' 未分类视图含未分类日志、不含夹内日志')
+      // R-3 静态包双包一致：停用→再启用复活同一条引导（revived:true，不建第二条）
+      const dR3 = await handlersM2['notes-memory-guide']({ op: 'disable' })
+      assert(dR3.ok === true && dR3.disabled === true && dR3.id === en.id, '静态包停用当前引导')
+      const eR3 = await handlersM2['notes-memory-guide']({ op: 'enable', scope: [] })
+      assert(eR3.ok === true && eR3.revived === true && eR3.id === en.id, '静态包复活同一条引导（双包行为一致；实得 ' + JSON.stringify(eR3) + '）')
+      const stR3 = await handlersM2['notes-memory-guide']({ op: 'status' })
+      assert(stR3.enabled === true && stR3.guideIds.length === 1, '静态包复活后仍单条引导（无双份）')
     } finally {
       if (harnessBackup39 === undefined) delete global.harness; else global.harness = harnessBackup39
     }
@@ -420,6 +481,25 @@ module.exports = {
     const cssDev2 = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg2 = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     assert(cssDev2.indexOf('--nkind-log:') >= 0 && cssPkg2.indexOf('--nkind-log:') >= 0, 'styles.css 双端 --nkind-log 日志色点（需跑 scripts/build-dist.cjs）')
+  })
+  // ---- 39.6b R-6 UI 接线（notes-034-r6-ui）：文件夹视图数据源带 log + 渲染守卫放行 + 切回默认恢复隐身；只放开显式 folder 视图路径，默认视图隐身零变化 ----
+  await t('R-6 UI 接线（四端）：文件夹视图数据源含 log（view=folder 触发 includeLogs 重拉）+ 渲染守卫放行 + 切回默认恢复隐身', () => {
+    for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("const w = filters.kinds.indexOf('log') >= 0 || view.type === 'folder'") >= 0, label + ' 数据源口径：勾选「日志」 || 显式文件夹视图')
+      assert(s.indexOf('}, [filters, view])') >= 0, label + ' 重拉 effect 依赖 [filters, view]（view 翻转即静默重拉，切回默认不带 folder/includeLogs 恢复隐身）')
+      assert(s.indexOf("(n.kind || 'note') !== 'log' || filters.kinds.indexOf('log') >= 0 || view.type === 'folder'") >= 0, label + ' 渲染守卫放行：文件夹视图内 log 同权展示')
+      assert(s.indexOf("'notes-list', { includeLogs: true }") >= 0, label + ' 回收站/注入管理既有 includeLogs 直调不受影响（共存 sanity）')
+    }
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf("function wantLogsNow() { return filters.kinds.indexOf('log') >= 0 || view.type === 'folder' }") >= 0, label + ' 数据源口径（wantLogsNow）：勾选「日志」 || 显式文件夹视图')
+      assert(s.indexOf('wantLogs = wantLogsNow();') >= 0, label + ' loadNotes 首行自同步口径（建/删文件夹直调路径不依赖 render 翻转检测）')
+      assert(s.indexOf('function render() { maybeReloadForLogs(); renderTree();') >= 0, label + ' render 汇聚 view 变更点 → 翻转静默重拉（切回默认不传 folder/includeLogs 恢复隐身）')
+      assert(s.indexOf("(n.kind || 'note') === 'log' && filters.kinds.indexOf('log') < 0 && view.type !== 'folder'") >= 0, label + ' 渲染守卫放行：文件夹视图内 log 同权展示')
+    }
+    // 原型 mock 演示数据：n84 日志挂 f2（DSH 插件开发）——打开原型进 f2 文件夹视图即可见日志条目，切回全部视图消失（交互预期先行验证）
+    assert(protoV2Src.indexOf("id: 'n84', title: '工作日志 · deepseek-work · 2026-09-16', kind: 'log', topic: '工作日志', folder: 'f2'") >= 0, '原型 mock 含夹内日志演示（n84 → f2，文件夹视图放行可见）')
   })
   await t('设置卡片「工作记忆」区 + 启用对话框（状态行/作用域/车道说明/停用，r3 无重叠确认）四端同步', () => {
     for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {

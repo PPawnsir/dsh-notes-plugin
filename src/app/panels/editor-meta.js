@@ -4,7 +4,7 @@ function renderCrumb() {
   var fhtml = '';
   if (n.folder) folderPath(n.folder).forEach(function (pf) { fhtml += '<span class="lnk crumb-f" data-fid="' + pf.id + '" title="切换到文件夹视图：' + esc(pf.name) + '">' + esc(pf.name) + '</span><span class="sep">/</span>' });
   $('edCrumb').innerHTML = fhtml
-    + '<span class="lnk" id="crumbTopic" title="按主题全局过滤（跨文件夹）">' + esc(n.topic || '未分类') + '</span><span class="sep">/</span><span>' + esc(n.id) + '</span>';
+    + '<span class="lnk" id="crumbTopic" title="按主题全局过滤（跨文件夹）">' + esc(n.topic || '未分类') + '</span><span class="sep">/</span><span>' + esc(n.id || '未保存草稿') + '</span>';
   $('crumbTopic').onclick = function () { view = { type: 'topic', id: n.topic || '未分类' }; render(); toast('已按主题过滤：' + (n.topic || '未分类')) };
   $('edCrumb').querySelectorAll('.crumb-f').forEach(function (el) {
     el.onclick = function () { var fid = el.getAttribute('data-fid'); view = { type: 'folder', id: fid }; foldOpen[fid] = true; saveFoldOpen(); render() };
@@ -13,6 +13,10 @@ function renderCrumb() {
 function renderMeta() {
   var n = edNote; if (!n) return;
   var tagsStr = n._tagsStr != null ? n._tagsStr : (n.tags || []).filter(function (t) { return t !== 'quick' }).join(', ');
+  /* 派发计划块 + 关联调度清单（notes-034-sched-detail）：meta 尾部全宽行；无调度零渲染（空串零 DOM 痕迹）；
+     涉及调度时按需一次 includeLogs 兜底（log 型调度约定旁路，见 ensureSchedPeers） */
+  var spHtml = schedPlanHtml(n, schedPeerSource());
+  if (spHtml) ensureSchedPeers();
   /* 注入三态：off=不注入 / convention=约定（须遵守）/ reference=资料（按需取用）；存量 inject=true 无 role 缺省 convention */
   var role = n.inject ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off';
   $('edMeta').innerHTML =
@@ -53,7 +57,8 @@ function renderMeta() {
     /* 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数） */
     + ((histCount || 0) > 0 ? '<span class="meta-act" id="mHist" title="历史版本（' + histCount + ' 个快照）：预览 / 一键恢复（恢复前当前版自动快照，可再撤销）">' + icon('i-clock') + '历史</span>' : '')
     + '<span class="meta-act' + (isPinned(n) ? ' on' : '') + '" id="mPin" title="' + (isPinned(n) ? '取消置顶' : '置顶') + '">' + icon('i-pin') + '</span>'
-    + '<span class="meta-act danger" id="mDel" title="删除（软删除，可撤销/由 Agent 恢复）">' + icon('i-trash') + '</span>';
+    + '<span class="meta-act danger" id="mDel" title="删除（软删除，可撤销/由 Agent 恢复）">' + icon('i-trash') + '</span>'
+    + spHtml;
   $('kindSel').onchange = function () { edNote.kind = this.value; triggerSave(); renderMeta(); renderTree() };
   $('statusSel').onchange = function () { edNote.status = this.value; triggerSave(); renderMeta(); renderTree() };
   $('mTopicInput').oninput = function () { edNote.topic = this.value; triggerSave() };
@@ -84,6 +89,10 @@ function renderMeta() {
   if (mH) mH.onclick = function () { openHistory() };
   $('mPin').onclick = function () { edNote.status = isPinned(edNote) ? 'active' : 'pinned'; triggerSave(); renderMeta(); renderTree(); toast(isPinned(edNote) ? '已置顶' : '已取消置顶') };
   $('mDel').onclick = function () { doDeleteNote(edNote.id) };
+  /* 关联调度跳转（notes-034-sched-detail）：点击行进既有 selectNote 选中链路（目标必在 notes 缓存——关联清单数据源即缓存） */
+  $('edMeta').querySelectorAll('.sched-peer').forEach(function (el) {
+    el.onclick = function () { selectNote(el.getAttribute('data-sid')) };
+  });
   /* 双模式两段开关点击（降级态点富文本段 → toast 原因，不切换） */
   var ms = $('modeSeg');
   if (ms) ms.querySelectorAll('.seg').forEach(function (seg) {
@@ -94,6 +103,71 @@ function renderMeta() {
     };
   });
   renderScopePanel();
+}
+/* ===== 定时派发·详情计划块（notes-034-sched-detail）：本笔记是 dispatch-schedule 约定 → meta 尾部「派发计划」块
+   （频率人话/目标会话/下次触发/上次结果徽章/暂停态，与注入管理调度区同数据源 = notes-list slim 的 contractType/schedule 字段，零新 RPC）；
+   关联调度清单 = 指向同一待办的其他调度（标题去「定时」前缀匹配，多调度同一待办可观察），点击跳转该约定笔记 ===== */
+/* 关联匹配键：标题去「定时」前缀（排定创建时自动加的前缀，见派发弹窗 '定时 ' + title）+ trim */
+function schedPeerKey(title) {
+  return String(title || '').replace(/^定时\s*/, '').trim();
+}
+/* 关联调度清单：库内其他 dispatch-schedule 约定中匹配键相等者（双向视角：调度约定互见 sibling / 待办笔记见其全部调度） */
+function relatedScheds(cur, list) {
+  if (!cur) return [];
+  var key = schedPeerKey(cur.title);
+  if (!key) return [];
+  return (list || []).filter(function (n) {
+    return n.id !== cur.id && (n.contractType || '') === 'dispatch-schedule' && n.schedule && !n.deleted && schedPeerKey(n.title) === key;
+  });
+}
+/* 计划块 + 关联清单 HTML（纯函数渲染器：无调度笔记返回空串 = 零 DOM 痕迹红线；徽章/下次触发复用注入管理 schedBadgeHtml/schedNextLabel 同口径） */
+function schedPlanHtml(n, list) {
+  if (!n) return '';
+  var isSched = (n.contractType || '') === 'dispatch-schedule' && n.schedule;
+  var peers = relatedScheds(n, list).slice(0, 5);   /* 关联清单 ≤5 条（防极端刷屏，注入管理总览看全量） */
+  if (!isSched && !peers.length) return '';
+  var h = '';
+  if (isSched) {
+    var s = n.schedule, paused = s.enabled === false;
+    h += '<div class="sched-plan-row' + (paused ? ' paused' : '') + '">'
+      + '<span class="sched-plan-t">' + icon('i-clock', 11) + '派发计划</span>'
+      + '<span class="sched-freq">' + esc(schedFreqLabel(s)) + '</span>'
+      + '<span class="sched-target" title="' + esc(s.target || '') + '">→ ' + esc(shortSid(s.target)) + '</span>'
+      + '<span class="sched-nf">' + esc(schedNextLabel(n)) + '</span>'
+      + schedBadgeHtml(n)
+      + (paused ? '<span class="sched-badge off">已暂停</span>' : '')
+      + '</div>';
+  }
+  if (peers.length) {
+    h += peers.map(function (p) {
+      var ps = p.schedule, pp = ps.enabled === false;
+      return '<div class="sched-plan-row sched-peer' + (pp ? ' paused' : '') + '" data-sid="' + esc(p.id) + '" title="跳转到调度约定「' + esc(p.title || '无标题') + '」">'
+        + '<span class="sched-plan-t">' + icon('i-clock', 11) + '关联调度</span>'
+        + '<span class="sched-peer-t">' + esc(p.title || '无标题') + '</span>'
+        + '<span class="sched-freq">' + esc(schedFreqLabel(ps)) + '</span>'
+        + '<span class="sched-nf">' + esc(schedNextLabel(p)) + '</span>'
+        + (pp ? '<span class="sched-badge off">已暂停</span>' : '')
+        + '</div>';
+    }).join('');
+  }
+  return h ? '<div class="sched-plan">' + h + '</div>' : '';
+}
+/* 关联调度兜底缓存（notes-034-sched-detail③）：notes slim 缓存常态即全量（调度约定是普通笔记，默认列表可见）；
+   仅 log 型调度约定（front-matter 裸编辑旁路）被默认列表口径排除——会话级按需一次 includeLogs 补齐为 overlay，
+   合并时 notes 优先（overlay 只补缓存外条目；会话级缓存不重取，log 型约定增删重开页面即新） */
+var schedPeerCache = null, schedPeerTried = false;
+function schedPeerSource() {
+  if (!schedPeerCache) return notes;
+  var inList = {}; notes.forEach(function (n) { inList[n.id] = true });
+  return notes.concat(schedPeerCache.filter(function (n) { return !inList[n.id] }));
+}
+function ensureSchedPeers() {
+  if (schedPeerTried) return;
+  schedPeerTried = true;
+  if (notes.some(function (n) { return (n.kind || 'note') === 'log' })) return;   /* 缓存已是 includeLogs 口径（含 log 行），主缓存即全量 */
+  rpc('notes-list', { includeLogs: true }).then(function (res) {
+    if (res && res.notes) { schedPeerCache = res.notes; if (edNote) renderMeta(); }
+  }).catch(function () { });
 }
 /* 注入范围浮层（指定会话多选；缺省=所有会话，契约同面板 toggleScope） */
 function renderScopePanel() {
@@ -110,7 +184,7 @@ function renderScopePanel() {
   wsKeys.forEach(function (ws) {
     h += '<div class="scope-ws">' + esc(ws) + '</div>';
     byWs[ws].forEach(function (s) {
-      h += '<label class="scope-item' + (s.pending ? ' dis' : '') + '"><input type="checkbox" data-scope="' + esc(s.short) + '"' + (!s.pending && scope.indexOf(s.short) >= 0 ? ' checked' : '') + (s.pending ? ' disabled' : '') + '> ' + (s.pending ? esc(s.short) + ' · 标题加载中…' : esc(s.name || s.short)) + '</label>';
+      h += '<label class="scope-item' + (s.pending ? ' dis' : '') + '"><input type="checkbox" data-scope="' + esc(s.short) + '"' + (!s.pending && scopeHas(scope, s.short) ? ' checked' : '') + (s.pending ? ' disabled' : '') + '> ' + (s.pending ? esc(s.short) + ' · 标题加载中…' : esc(s.name || s.short)) + '</label>';
     });
   });
   hostEl.innerHTML = h + '</div>';
@@ -120,7 +194,8 @@ function renderScopePanel() {
 }
 function toggleScope(key) {
   var cur = (edNote.injectTo || []).filter(function (t) { return t !== 'global' && t !== 'workspace' });
-  var next = cur.indexOf(key) >= 0 ? cur.filter(function (t) { return t !== key }) : cur.concat([key]);
+  /* 归一比对（notes-034-injectto-norm）：勾选态以 scopeHas 为准（存量长 id 也算已勾选）；取消勾选连同长 id 存量一并移除，保存落短 id（host 侧另有写入归一兜底） */
+  var next = scopeHas(cur, key) ? cur.filter(function (t) { return shortSid(t) !== key }) : cur.concat([key]);
   edNote.injectTo = next;
   triggerSave(); renderMeta(); scopeOpen = true; renderScopePanel();
 }
@@ -153,8 +228,9 @@ function renderDispatches() {
 }
 function renderEdFoot() {
   var n = edNote; if (!n || !$('edCreated')) return;
-  $('edCreated').textContent = '创建 ' + fmtDT(n.createdAt);
-  $('edUpdated').textContent = '更新 ' + fmtDT(n.updatedAt);
+  /* 草稿态（notes-034-batch3）：未落库时底栏显示草稿提示而非空时间戳 */
+  $('edCreated').textContent = n.createdAt ? '创建 ' + fmtDT(n.createdAt) : '草稿（首次输入即落库）';
+  $('edUpdated').textContent = n.updatedAt ? '更新 ' + fmtDT(n.updatedAt) : '';
   $('edSource').textContent = n.sessionId ? ('来源 会话 ' + shortSid(n.sessionId)) : '来源 页面';
 }
 function refreshSelected() {
@@ -163,6 +239,7 @@ function refreshSelected() {
   if (edMode === 'rich' && richDirty) syncFromRich('刷新回填');
   var id = selId;
   rpc('notes-get', { id: id }).then(function (res) {
+    if (res && res.error) throw new Error(res.error);   /* 显式抛错进 catch（读路径静默群修复；正文首载安全态由 loadEdBody 负责，此处为后台刷新） */
     if (res && res.note && selId === id) {
       var editing = document.activeElement && (document.activeElement === $('edSrc') || document.activeElement === $('edRich') || document.activeElement === $('edTitle'));
       var body = edNote ? edNote.body : '';
@@ -171,9 +248,11 @@ function refreshSelected() {
       degraded = analyzeMarkdown(edNote.body || '');
       renderEd();
     }
-  }).catch(function () {})
+  }).catch(function (e) { toast('笔记刷新失败，显示本地缓存：' + (e && e.message || e)) })   /* 后台刷新失败非阻断：编辑器保持旧值但用户可见 */
 }
 function doDeleteNote(id) {
+  /* 草稿态（notes-034-batch3）：删除按钮 = 丢弃草稿（从未落库，零残留、零 RPC） */
+  if (draftNote) { draftNote = null; selId = null; edNote = null; renderTree(); renderEd(); toast('草稿已丢弃（未落库）'); return }
   if (!id) return;
   rpc('notes-delete', { id: id }).then(function (res) {
     if (res && res.error) { toast(res.error); return }

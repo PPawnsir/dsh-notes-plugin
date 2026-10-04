@@ -83,7 +83,7 @@
                         expanded ? e('div', { className: 'dsh-notes-arch-members' },
                           g.members.map(m => e('div', { key: m.id, className: 'dsh-notes-arch-member' },
                             e('span', { className: 'dsh-notes-arch-member-ti' }, m.title || '无标题'),
-                            e('span', { className: 'dsh-notes-arch-member-dt' }, (m.updatedAt || '').slice(0, 10))))) : null)
+                            e('span', { className: 'dsh-notes-arch-member-dt' }, fmtDT(m.updatedAt).slice(0, 10))))) : null)
                     })),
             e('div', { className: 'dsh-notes-data-hint' }, '手动笔记不受影响；如需合并手动笔记，请在列表多选后右键合并。'),
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,

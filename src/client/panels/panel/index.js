@@ -1,6 +1,6 @@
     // ===== panel/index —— 主面板装配层（architecture-modular §6 步骤 E 收口：FloatingPanel 大组件消亡于此）=====
     // provides: FloatingPanel（shell.overlay #200 主面板组件）+ slots.register + apply 收尾（ctx.effect 统一清理 + ready 日志）
-    // needs: kernel/*（bus/state/persist/constants/format/icons/perf/css-loader/drag + editor-kernel）+ modals/*（17 个）+
+    // needs: kernel/*（bus/state/persist/constants/format/icons/perf/css-loader/drag + editor-kernel）+ modals/*（18 个）+
     //        popovers/*（7 个）+ panels/panel/*（search/wiki/tree/editor/sidebar/chrome/keyboard）——全部经拼接序位在前可见
     //
     // 【§6 步骤 E 裁决记录】
@@ -123,7 +123,7 @@
         // panel 订阅 open 供全局错误条互斥（原渲染期读取口径）
         const histOpen = store.modal.history.useSel(s => s.open)
         // histCount/histCountRef 已随 panel/editor.js 迁出（历史入口探测归编辑器域；panelBridge.histCountRef/setHistCount 回填保持）
-        // ===== P2 笔记双链：全库正文惰性索引（列表瘦身不含 body；后台 notes-get 小批量补齐，驱动行尾双链标记与反向链接面板；host 不改）=====
+        // ===== P2 笔记双链：全库正文惰性索引（列表瘦身不含 body；后台 notes-get-batch 一次批量补齐，驱动行尾双链标记与反向链接面板）=====
         // 双链域已拆出（§6 步骤 E：panel/wiki.js——wikiVer 态 + 解析/索引/跳转函数族归 usePanelWiki；wikiBodiesRef/wikiIdxGenRef/jumpWikiRef
         // 为该模块顶层绑定；view/filters 经入参注入；selectNote/setView/setFilters 经 kernel 转发别名）
         const { wikiVer, ensureWikiIndex, bumpWikiBody, hasWikiLinks, wikiResolve, jumpToWikiTarget } = usePanelWiki({ view: view, filters: filters })
@@ -174,16 +174,18 @@
         // 展开态同步到 ref（keydown 闭包读 ref 避免过期；已拆出 modal 的 open 镜像由各模块 setter 别名同步写入）
         // filtersRef 镜像 + 同步 effect 已随 panel/search.js 迁入（该模块顶层绑定 + hook 内同文）
         // 工作记忆 v0 日志专入口：类型组「日志」勾选态变化时重拉列表（host 默认排除日志；includeLogs=true 才返回，避免日常视图混入）
+        // R-6 UI 接线：显式文件夹视图（view.type === 'folder'）同属召回口径——进文件夹视图带 includeLogs 静默重拉（夹内 log 同权展示），
+        // 切回全部/主题视图 w 翻 false 再重拉恢复隐身（不传 folder/includeLogs；[filters, view] 双源翻转，幂等比较不翻转零请求）
         React.useEffect(() => {
-          const w = filters.kinds.indexOf('log') >= 0
+          const w = filters.kinds.indexOf('log') >= 0 || view.type === 'folder'
           if (w !== wantLogsRef.current) { wantLogsRef.current = w; loadNotes(true) }
-        }, [filters])
+        }, [filters, view])
         // filterOpen/sortOpen 的 ref 镜像 effect 已随 popovers/filter-pop.js / sort-menu.js 迁入（各自 hook 内同文）
         // ctxMenuRef 同步 effect 已随 popovers/ctx-menu.js 迁入（该 hook 内同文）
         // folderMenu/renamingId/folderInputOpen/subFolderFor 的 ref 镜像 effect 已随 popovers/folder-menu.js 迁入（该 hook 内同文）
         // histCountRef 同步 effect 已随 panel/editor.js 迁入（hook 内同文）
         // selModeRef 同步 effect 已随 popovers/selbar.js 迁入（该 hook 内同文）
-        // 新建 modal 打开时自动聚焦标题输入框（Ctrl+N / 侧栏「新建」chip 均由此聚焦）
+        // 新建 modal 打开时自动聚焦标题输入框（Alt+N / 侧栏「新建」chip 均由此聚焦）
         React.useEffect(() => { if (newNoteOpen && newNoteInputRef.current) newNoteInputRef.current.focus() }, [newNoteOpen])
         // 键盘导航已拆出（§6 步骤 E：panel/keyboard.js——keydown 监听（Esc 分层栈/Ctrl+K/N/// + j/k 导航）归 usePanelKeyboard；
         // 所需 ref 为该模块顶层绑定 + kernel/state.js 跨域镜像群；本面板经下方镜像块每渲染回填最新值）
@@ -331,6 +333,7 @@
         panelBridge.sessPending = sessPending
         panelBridge.jumpToWikiTarget = jumpToWikiTarget
         panelBridge.setEdBody = setEdBody   // dispatch 确认后回填正文（modals/dispatch.js 经此中转，禁横向引用）
+        panelBridge.openDispatchEdit = openDispatchEdit   // 调度任务「编辑」回填派发弹窗（modals/inject-manager.js 经此中转，禁横向引用——序位 inject-manager 先于 dispatch）
         // check 锚定 useState 声明而滞留本面板的字段：值/ setter 回填供 modal 模块函数读写（每渲染刷新，点击期口径与昔日闭包一致）
         panelBridge.setInjectPreviewTab = setInjectPreviewTab
         panelBridge.setMaxDepth = setMaxDepth
@@ -352,7 +355,8 @@
         // 文件夹视图 = 递归子树口径（notes-nested-folder-ui：点父文件夹视图含全部子孙文件夹内容，与 host notes-list folder 过滤同语义）
         else if (view.type === 'folder') { const vsub = folderSubtreeIdsOf(view.id); filtered = filtered.filter(n => vsub[(n.folder || '')]) }
         // 工作记忆 v0 隐身渲染守卫：类型组未勾「日志」时日志永不进日常视图（含搜索并集/清除筛选后的在途数据；专入口 = 勾选 kind=log）
-        filtered = filtered.filter(n => (n.kind || 'note') !== 'log' || filters.kinds.indexOf('log') >= 0)
+        // R-6 UI 接线：显式文件夹视图放行 log（显式导航 = 同权展示，隐身只管隐式表面）；切回默认视图守卫恢复拦截（含重拉在途数据）
+        filtered = filtered.filter(n => (n.kind || 'note') !== 'log' || filters.kinds.indexOf('log') >= 0 || view.type === 'folder')
         filtered = filtered.filter(n => matchFilters(n, filters))
         // 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0，如仅 topic 命中)，同级 updatedAt 降序；
         // 命中字段优先取 host notes-search 返回的 matches（全文口径），无则按本地字段估算（preview 仅前 200 字，正文命中可能低估）；无搜索词时退化为 host 序
@@ -404,6 +408,8 @@
           // 设置卡片已拆出（architecture-modular §6 步骤 D2：modals/settings.js；state 走 store.modal.settings，
           // 工作记忆状态行经 store.modal.memory 订阅 + memory-guide 模块顶层绑定（序位在前）接入）
           e(SettingsModal, { error: error, setMaxDepth: setMaxDepth, setSetMaxDepth: setSetMaxDepth, setSnap: setSnap, setInflight: setInflight }),
+          // 键盘流速查表已拆出（notes-034-f-cheatsheet：modals/cheatsheet.js；state 走 store.modal.cheatsheet，? 键/Esc 栈经该模块顶层绑定接入）
+          e(CheatsheetModal),
           // 工作记忆启用对话框已拆出（architecture-modular §6 步骤 D2：modals/memory-guide.js；state 走 store.modal.memory，sessList/sessPending 经 props 注入）
           e(MemoryGuideModal, { error: error, sessList: sessList, sessPending: sessPending }),
           // 导出对话框已拆出（architecture-modular §6 步骤 D2：modals/export.js；state 走 store.modal.export）

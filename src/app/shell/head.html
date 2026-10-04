@@ -114,6 +114,7 @@
   /* 搜索关键词高亮（先 esc 再包 <mark>，防 XSS——见 hl()） */
   .note-row .ti mark{background:rgba(255,213,79,.35);color:inherit;border-radius:2px;padding:0 1px}
   .tree{flex:1;overflow-y:auto;padding:0 6px 8px;border-top:1px solid var(--nbd-soft)}
+  .tree:focus{outline:none}   /* 键盘流还焦目标（Esc/搜索↓ 还焦列表）：程序化焦点不画焦点环 */
   .sec-h{display:flex;align-items:center;gap:5px;padding:10px 10px 4px;font-size:10.5px;font-weight:600;letter-spacing:.8px;color:var(--nt3);text-transform:uppercase}
   .sec-h .add{margin-left:auto;color:var(--nt3);cursor:pointer;padding:0 3px;border-radius:4px}
   .sec-h .add:hover{color:var(--nacc);background:var(--nbg-hover)}
@@ -148,6 +149,7 @@
   .note-row{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:var(--nr-sm);color:var(--ntx);cursor:default;user-select:none}
   .note-row:hover{background:var(--nbg-hover)}
   .note-row.sel{background:var(--nbg-sel)}
+  .note-row.focused{background:var(--nbg-hover)}   /* 键盘焦点行（j/k/↑↓ 移动）：可见选中态；与已选行重叠时盖过 sel */
   .note-row .kind{width:7px;height:7px;border-radius:50%;flex-shrink:0}
   .note-row .ti{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .note-row .tp{font-size:10px;color:var(--nt3);flex-shrink:0;max-width:70px;overflow:hidden;text-overflow:ellipsis}
@@ -369,6 +371,13 @@
   .set-t-acts .mbtn{padding:3px 12px;font-size:11px}
   .set-t-acts .mbtn:disabled{opacity:.45;cursor:default}
   .set-t-acts .set-x{padding:3px 6px;display:inline-flex;align-items:center}
+  /* ===== 键盘流速查表（cheat sheet，notes-034-f-cheatsheet）：复用 modal 框架，键帽行两栏布局（与原型 notes-ui-v2.html 同款） ===== */
+  .cs-list{display:flex;flex-direction:column;gap:2px}
+  .cs-row{display:flex;align-items:center;gap:10px;padding:5px 6px;border-radius:var(--nr-sm)}
+  .cs-row:hover{background:var(--nbg-hover)}
+  .cs-keys{flex-shrink:0;min-width:76px;text-align:right}
+  .cs-keys kbd{font-family:var(--nmono);font-size:10.5px;background:var(--nbg-raise);border:1px solid var(--nbd);border-radius:4px;padding:1px 6px;color:var(--ntx);white-space:nowrap}
+  .cs-desc{font-size:12px;color:var(--nt2);line-height:1.5}
   /* ===== 注入预览 modal（设置卡片「注入预览」入口）：双 tab + 只读等宽文本 + 底部统计条（与原型 notes-ui-v2.html 同款） ===== */
   .modal.injprev{width:640px}
   .injprev-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px}
@@ -434,6 +443,42 @@
   .disp-sess.dis{opacity:.5;cursor:default}
   .disp-sess .live{width:6px;height:6px;border-radius:50%;background:#56c88f;flex-shrink:0}
   .disp-sess .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* ===== 定时派发·设置交互（notes-034-sched-ui）：派发弹窗调度区 + 注入管理「调度任务」区 ===== */
+  .sched-box{border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:7px 10px;margin-bottom:10px;font-size:12px;color:var(--nt2)}
+  .sched-opt{display:inline-flex;align-items:center;gap:4px;margin-right:14px;cursor:pointer;user-select:none}
+  .sched-opt input{accent-color:var(--nacc)}
+  .sched-form{margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .sched-sel{width:auto;padding:4px 8px;font-size:11.5px}
+  .sched-n{width:64px;padding:4px 8px;font-size:11.5px}
+  .sched-at{width:auto;padding:4px 8px;font-size:11.5px}
+  .sched-next{flex-basis:100%;font-size:10.5px;color:var(--nt3);margin-top:2px}
+  .sched-next.warn{color:var(--ndanger)}
+  .sched-sec{border:1px solid var(--nbd-soft);border-radius:var(--nr-md);margin-bottom:10px}
+  .sched-sec-t{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--nt2);padding:7px 9px;border-bottom:1px solid var(--nbd-soft)}
+  .sched-sec-t .sub{font-weight:400;color:var(--nt3);font-size:10px;margin-left:4px}
+  .sched-sec .modal-hint{padding:7px 9px;margin-bottom:2px}
+  .sched-row{display:flex;align-items:center;gap:8px;padding:6px 9px;font-size:11.5px;border-bottom:1px solid var(--nbd-soft)}
+  .sched-row:last-child{border-bottom:none}
+  .sched-row.paused{opacity:.6}
+  .sched-row-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+  .sched-freq{color:var(--nacc-tx);flex-shrink:0;font-size:10.5px}
+  .sched-target{color:var(--nt3);flex-shrink:0;font-size:10.5px;font-family:var(--nmono)}
+  .sched-nf{color:var(--nt2);flex-shrink:0;font-size:10.5px;white-space:nowrap}
+  .sched-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nt3);border:1px solid var(--nbd);border-radius:10px;padding:0 7px;flex-shrink:0;white-space:nowrap}
+  .sched-badge.ok{color:#56c88f;border-color:transparent;background:rgba(86,200,143,.12)}
+  .sched-badge.err{color:var(--ndanger);border-color:transparent;background:rgba(229,115,79,.12);max-width:170px;overflow:hidden;text-overflow:ellipsis}
+  .sched-badge.off{color:var(--nwarn);border-color:transparent;background:rgba(229,181,103,.12)}
+  .sched-acts{display:inline-flex;gap:4px;flex-shrink:0}
+  .sched-act{padding:1px 9px;font-size:10.5px}
+  /* 详情派发计划块（notes-034-sched-detail）：meta 区尾部全宽行（flex-basis:100% 自成一行）+ 关联调度清单行 */
+  .sched-plan{flex-basis:100%;border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:2px 0;font-size:11.5px;margin-top:2px}
+  .sched-plan-row{display:flex;align-items:center;gap:8px;padding:4px 9px;border-bottom:1px solid var(--nbd-soft)}
+  .sched-plan-row:last-child{border-bottom:none}
+  .sched-plan-row.paused{opacity:.6}
+  .sched-plan-t{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;color:var(--nt3);flex-shrink:0}
+  .sched-peer{cursor:pointer}
+  .sched-peer:hover{background:var(--nbg-hover)}
+  .sched-peer-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ntx)}
   /* 导入预览 */
   .imp-sum{display:flex;gap:12px;font-size:11.5px;color:var(--nt2);margin:10px 0 6px;flex-wrap:wrap}
   .imp-sum b{color:var(--ntx)}

@@ -31,7 +31,7 @@ function openMemEnable() {
   memEnableState = { scope: 'global', sess: null, wss: {}, sids: {}, pending: false };
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' 启用沉淀引导<span class="sub">工作记忆 v0 · 约定笔记方案</span></div>'
-    + '<div class="modal-hint">将创建一条预填约定笔记「约定：工作日志沉淀（工作记忆 v0）」（inject=true，contractType: memory-guide），引导 Agent 在任务收尾/你示意时把会话结论写为工作日志（kind=log）。工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看），记忆管 Agent 自己沉淀什么（自用召回），两者可同时对同一事件生效，产物重复是设计意图而非冲突。日志默认隐身：不进系统提示、不进目录、不出现在默认列表与默认搜索；筛选中心类型「日志」为专入口。该约定可见/可改/可停用/可删除。</div>'
+    + '<div class="modal-hint">将创建一条预填约定笔记「约定：工作日志沉淀（工作记忆 v0）」（inject=true，contractType: memory-guide），引导 Agent 在任务收尾/你示意时把会话结论写为工作日志（kind=log）。工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看），记忆管 Agent 自己沉淀什么（自用召回），两者可同时对同一事件生效，产物重复是设计意图而非冲突。日志默认隐身：不进系统提示、不进目录、不出现在默认列表与默认搜索；筛选中心类型「日志」为专入口。该约定可见/可改/可停用/可删除；停用后再启用复用同一约定笔记（重新打开注入，不新建第二条）。</div>'
     + '<div class="sg-sec"><div class="sg-sec-t">注入范围（作用域）</div>'
     + '<label class="fg-item"><input type="radio" name="memScope" value="global" checked><span class="fl">所有会话（缺省）</span></label>'
     + '<label class="fg-item"><input type="radio" name="memScope" value="workspace"><span class="fl">指定工作区（多选，下方勾选）</span></label>'
@@ -52,6 +52,7 @@ function openMemEnable() {
       if (r.value !== 'global' && !memEnableState.sess) {
         rpc('notes-sessions', {}).then(function (res) {
           if (!memEnableState) return;
+          if (res && res.error) throw new Error(res.error);   /* 显式抛错进 catch（读路径静默群修复） */
           var ss = ((res && res.sessions) || []).concat((res && res.pendingSessions) || []);
           memEnableState.sess = ss;
           /* 工作区清单 = 会话 workspace 字段去重（附会话计数）；会话清单 = 全部会话（短 id · 名称（工作区）） */
@@ -75,7 +76,7 @@ function openMemEnable() {
               cb.onchange = function () { if (cb.checked) memEnableState.sids[cb.dataset.memsid] = true; else delete memEnableState.sids[cb.dataset.memsid] };
             });
           }
-        }).catch(function () {});
+        }).catch(function (e) { modalErr('会话清单加载失败：' + (e && e.message || e)) });   /* 弹窗内反馈（modalErr 自带 mErr 缺位守卫） */
       }
     };
   });
@@ -99,7 +100,7 @@ function doMemEnable() {
     if (!memEnableState) return;
     if (res && res.error) { modalErr(res.error); memEnableState.pending = false; $('memOk').disabled = false; return }
     closeModal(); memEnableState = null;
-    toast(res && res.already ? '沉淀引导已启用（约定笔记已存在）' : '已启用沉淀引导：约定笔记已创建并注入');
+    toast(res && res.already ? '沉淀引导已启用（约定笔记已存在）' : (res && res.revived ? '已重新启用沉淀引导：复用已有约定笔记（未新建第二条）' : '已启用沉淀引导：约定笔记已创建并注入'));
     renderMemoryStatus({ enabled: true, noteId: res && res.id || '' });
     loadNotes(true);
   }).catch(function (e) { if (memEnableState) { modalErr('启用失败：' + (e && e.message || e)); memEnableState.pending = false; $('memOk').disabled = false } });

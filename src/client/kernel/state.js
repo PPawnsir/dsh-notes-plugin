@@ -117,6 +117,7 @@
     const searchRef = { current: '' }         // 搜索词镜像（防抖闭包 / Esc 清搜索 / 侧栏输入框写入）
     const searchDebRef = { current: null }    // 搜索 250ms 防抖器句柄（一次性注册；侧栏输入/筛选变更/清空动作触发重搜）
     const searchInputRef = { current: null }  // 侧栏搜索框 DOM（Ctrl+K 聚焦）
+    const treeElRef = { current: null }       // 侧栏树容器 DOM（Esc 焦点分层/搜索↓桥接：还焦列表，j/k 立即可用）
     const pagedIdsRef = { current: [] }       // 当前分页渲染 id 序（树渲染写入，keyboard j/k/Enter 导航读）
     const switchModeRef = { current: null }   // 双模式切换最新闭包（Ctrl+/ 经 ref 调最新 switchMode）
     const editorModeRef = { current: 'source' }   // 编辑器模式镜像（Ctrl+/ 守卫 / selectNote / 富文本序列化判读最新值）

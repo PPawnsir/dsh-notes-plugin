@@ -27,6 +27,7 @@ module.exports = [
   'modals/newnote.js',
   'panels/search.js',
   'modals/framework.js',
+  'modals/cheatsheet.js',
   'modals/dispatch.js',
   'modals/history.js',
   'modals/settings.js',

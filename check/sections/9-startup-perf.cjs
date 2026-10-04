@@ -8,7 +8,7 @@ module.exports = {
   const { handlers } = S
   // ===== 9. 启动加载与遥测 =====
   section('9. 启动 + 遥测')
-  await t('host-impl 应用成功（39 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide）', () => assert.strictEqual(Object.keys(handlers).length, 39))
+  await t('host-impl 应用成功（41 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch）', () => assert.strictEqual(Object.keys(handlers).length, 41))
   await t('notes-src handler 可用', () => assert(typeof handlers['notes-src'] === 'function'))
   await t('notes-css handler 可用', () => assert(typeof handlers['notes-css'] === 'function'))
   await t('notes-perf handler 可用', () => assert(typeof handlers['notes-perf'] === 'function'))

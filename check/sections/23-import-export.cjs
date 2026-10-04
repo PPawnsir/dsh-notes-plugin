@@ -74,8 +74,10 @@ module.exports = {
     effect: () => {},
   }
   new Function('harness', 'pluginDir', hostSrc)(harnessMock6, DIR).apply(ctx6)
-  await t('开发版注册 39 个 RPC（含 notes-export / notes-export-single / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge + P3 单文件导出 + notes-inject-preview 注入预览 + notes-suggest 整理建议 + notes-usage-get 用量统计 + 历史版本三 RPC + 工作记忆 notes-memory-guide）', () => {
-    assert.strictEqual(Object.keys(handlers6).length, 39, '实得 ' + Object.keys(handlers6).length)
+  await t('开发版注册 41 个 RPC（含 notes-export / notes-export-single / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge + P3 单文件导出 + notes-inject-preview 注入预览 + notes-suggest 整理建议 + notes-usage-get 用量统计 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch）', () => {
+    assert.strictEqual(Object.keys(handlers6).length, 41, '实得 ' + Object.keys(handlers6).length)
+    assert(typeof handlers6['notes-get-batch'] === 'function', 'notes-get-batch handler 存在（N+1 批量端点，notes-034-batch3）')
+    assert(typeof handlers6['notes-schedule-eval'] === 'function', 'notes-schedule-eval handler 存在（定时派发·执行层）')
     assert(typeof handlers6['notes-memory-guide'] === 'function', 'notes-memory-guide handler 存在（工作记忆 v0 沉淀引导）')
     assert(typeof handlers6['notes-export'] === 'function' && typeof handlers6['notes-import-preview'] === 'function' && typeof handlers6['notes-import'] === 'function', '3 个新 handler 存在')
     assert(typeof handlers6['notes-export-single'] === 'function', 'notes-export-single handler 存在（P3 单文件导出）')

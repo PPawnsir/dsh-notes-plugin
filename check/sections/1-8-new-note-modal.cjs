@@ -1,17 +1,17 @@
-// 节 1.8 新建笔记 modal（＋ / Ctrl+N 输标题创建）
+// 节 1.8 新建笔记 modal（＋ / Alt+N 输标题创建）
 // 拆分自 check.js 单文件（notes-check-split）：节体逐字节保留，仅首尾为机械接线（H=helpers 设施，S=跨节共享状态）。
 module.exports = {
   id: "1.8",
-  title: "1.8 新建笔记 modal（＋ / Ctrl+N 输标题创建）",
+  title: "1.8 新建笔记 modal（＋ / Alt+N 输标题创建）",
   async run(H, S) {
   const { t, section, assert, fsNative, path, osNative, DIR, SRC_HOST, SRC_CLIENT, SRC_STYLES, INDEX_PATH, bootHostSrc, bootClientSrc, hostSrc, clientSrc, indexSrc, pathToFileURL, io } = H
   const { plugin } = S
-  // ===== 1.8 新建笔记 modal（＋ / Ctrl+N 输标题创建，替代顶栏速记）=====
-  section('1.8 新建笔记 modal（＋ / Ctrl+N 输标题创建）')
+  // ===== 1.8 新建笔记 modal（＋ / Alt+N 输标题创建，替代顶栏速记）=====
+  section('1.8 新建笔记 modal（＋ / Alt+N 输标题创建）')
   // 发布包 client 源码独立读取（本节在 section 18 之前，clientPkgSrc 尚未定义）
   const clientPkgSrcNewNote = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
-  await t('＋ 按钮点击弹新建 modal（tooltip=新建笔记（Ctrl+N））', () => {
-    assert(/onClick: openNewNote, 'data-tooltip': '新建笔记（Ctrl\+N）'/.test(clientSrc), '＋ 按钮 onClick=openNewNote + tooltip「新建笔记（Ctrl+N）」')
+  await t('＋ 按钮点击弹新建 modal（tooltip=新建笔记（Alt+N））', () => {
+    assert(/onClick: openNewNote, 'data-tooltip': '新建笔记（Alt\+N）'/.test(clientSrc), '＋ 按钮 onClick=openNewNote + tooltip「新建笔记（Alt+N）」')
     assert(/function openNewNote\(\) \{ setNewNoteTitle\(''\); setNewNoteKind\('note'\); setNewNotePending\(false\); setError\(''\); setNewNoteOpen\(true\) \}/.test(clientSrc), 'openNewNote 清空上次标题 + 类型复位 note 并打开 modal（二期：类型选择入 modal）')
     assert(/newNoteOpen \? e\('div', \{ className: 'dsh-notes-newnote-mask'/.test(clientSrc), 'mask 仅在 newNoteOpen 时渲染（＋ 点击后弹出）')
     assert(clientPkgSrcNewNote.indexOf('onClick: openNewNote') >= 0 && clientPkgSrcNewNote.indexOf('dsh-notes-newnote-mask') >= 0, '发布包 client.js 同步含 ＋→modal（需先跑 scripts/build-dist.cjs）')
@@ -29,7 +29,7 @@ module.exports = {
     assert(/if \(ev\.key === 'Enter'\) \{ ev\.preventDefault\(\); doCreateNote\(\) \}/.test(clientSrc), '输入框 Enter 提交创建')
     assert(/if \(newNoteOpenRef\.current\) \{ setNewNoteOpen\(false\); return \}/.test(clientSrc), 'Esc 优先关新建 modal（在全局 keydown 中）')
     assert(/dsh-notes-newnote-mask', onMouseDown: \(ev\) => \{ if \(ev\.target === ev\.currentTarget\) setNewNoteOpen\(false\) \}/.test(clientSrc), '点遮罩关闭 modal')
-    assert(/mod && \(ev\.key === 'n' \|\| ev\.key === 'N'\)\) \{ ev\.preventDefault\(\); openNewNoteRef\.current\(\); return \}/.test(clientSrc), 'Ctrl+N 打开新建 modal')
+    assert(/ev\.altKey && !mod && \(ev\.key === 'n' \|\| ev\.key === 'N'\)\) \{ ev\.preventDefault\(\); openNewNoteRef\.current\(\); return \}/.test(clientSrc), 'Alt+N 打开新建 modal')
   })
   await t('创建流程：notes-create 输标题建笔记 → 刷新 → 选中新笔记 → 聚焦正文', () => {
     assert(clientSrc.indexOf("const payload = { title: title, body: KIND_TEMPLATES[newNoteKind] || '', kind: newNoteKind }") >= 0, 'notes-create payload 传 title/kind=newNoteKind/body=类型模板骨架（二期 kind 骨架；note=空）')

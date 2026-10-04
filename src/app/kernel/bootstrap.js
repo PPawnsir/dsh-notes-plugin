@@ -6,5 +6,7 @@ document.addEventListener('selectionchange', function () {
   var sel = window.getSelection();
   if (sel && sel.rangeCount && rich.contains(sel.anchorNode)) { keepSel(); updateToolbarState(); }
 });
-function render() { renderTree(); if (edNote) renderMeta() }
+/* R-6 UI 接线：render 汇聚全部 view 变更点（树行尾过滤钮/文件夹右键菜单/面包屑/主题行/视图清除），统一先做日志口径翻转检测——
+   进文件夹视图静默重拉（数据源含 log），切回默认视图再翻回（恢复隐身）；幂等比较，非翻转零请求零副作用 */
+function render() { maybeReloadForLogs(); renderTree(); if (edNote) renderMeta() }
 loadNotes();

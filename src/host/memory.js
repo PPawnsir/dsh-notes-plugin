@@ -365,6 +365,8 @@
     //   tag memory-guide 保留为兼容发现键（r2 及以前创建的存量引导笔记无 contractType，仍可识别/停用）。
     // 启用状态不落 settings.json：状态 = 存在 contractType=memory-guide（或兼容 tag）且 inject=true 的未删除笔记（单一事实源，杜绝双源漂移）。
     // 停用 = 关闭该约定笔记 inject（既有操作，op:'disable' 是便捷封装）；修改/删除走面板既有通道。
+    // 再启用幂等复活（R-3，n-mut4mxe2m727）：存在已停用引导笔记 → 复用复活（inject=true + injectTo 按本次作用域更新），不新建第二条；
+    //   已删除（回收站）引导不复活——删除即彻底退出，此时再次启用才新建。
     const MEMORY_GUIDE_TAG = 'memory-guide'   // 兼容发现键（存量引导笔记识别兜底；r3 起新建引导仍带此 tag，便于人读与检索）
     const MEMORY_GUIDE_CONTRACT_TYPE = 'memory-guide'   // 契约身份标记（front-matter contractType，r3 主识别键；同时复用为 origin 溯源值）
     const MEMORY_GUIDE_FOLDER = '工作日志'
@@ -415,6 +417,15 @@
           logFolder = { id: genFolderId(), name: MEMORY_GUIDE_FOLDER, order: maxOrder + 1 }
           folders.push(logFolder)
           await saveFolders(folders)
+        }
+        // R-3 幂等复活（n-mut4mxe2m727）：存在已停用（inject≠true）的未删除引导笔记 → 复用复活（inject=true +
+        //   按本次对话框作用域更新 injectTo），不再新建第二条——停用/启用往返零重复（目录/搜索不再出现双份同名约定）。
+        //   多条残留时取 _list 序首条（pinned 优先 + 最近更新），其余留存为用户数据不代清理；已删引导不在 guides 内（_list 缺省排除 deleted）；
+        //   排除 kind=log（日志 inject 硬闸会强制 false，复活必然失败）——引导笔记恒为 kind=note，此守卫仅挡用户手工打 tag 的病理场景。
+        const dormant = guides.find(n => n.inject !== true && (n.kind || 'note') !== 'log')
+        if (dormant) {
+          await _update(dormant.id, undefined, undefined, undefined, undefined, undefined, undefined, true, scope)
+          return { ok: true, id: dormant.id, revived: true, folderId: logFolder.id }
         }
         const r = await _create(MEMORY_GUIDE_TITLE, MEMORY_GUIDE_BODY, [MEMORY_GUIDE_TAG], '约定', { kind: 'note', inject: true, injectRole: 'convention', injectTo: scope, contractType: MEMORY_GUIDE_CONTRACT_TYPE })
         return { ok: true, id: r.id, folderId: logFolder.id }

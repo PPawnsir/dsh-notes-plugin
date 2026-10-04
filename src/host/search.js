@@ -21,7 +21,8 @@
     // ==== search-helpers END ====
 
     async function _search(query, tag, topic, kind, folder, filters) {
-      // 工作记忆 v0 默认隐身：默认搜索排除 kind=log；显式 kind=log 或 filters.includeLogs:true 召回
+      // 工作记忆 v0 默认隐身：默认搜索（无 folder）排除 kind=log；显式 kind=log / filters.includeLogs:true 召回；
+      // R-6：显式 folder 过滤由 _list 内 effLogs 隐式召回（显式文件夹导航放行）
       const all = await _list(undefined, undefined, folder, undefined, !!(kind === 'log' || (filters && filters.includeLogs)))
       const q = query ? String(query).toLowerCase() : ''
       return all.filter(n => {

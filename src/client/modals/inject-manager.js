@@ -75,6 +75,55 @@
       }
       // 多选：log 行不可选（隐身硬禁——批量三档位对日志无意义）
       function toggleInjMgrSel(id) { setInjMgrSel(prev => { const nx = Object.assign({}, prev); if (nx[id]) delete nx[id]; else nx[id] = true; return nx }) }
+      // ===== 调度任务区（notes-034-sched-ui）：contractType=dispatch-schedule 约定笔记总览/暂停/删除/编辑回填——
+      // 数据源 = notes-list slim 既有 contractType/schedule 字段（零新 RPC；表单与 front-matter 同一数据源两个视图） =====
+      // 上次结果徽章：lastError 红 / lastRun sent 绿 / 未触发灰（暂停另出黄徽章 + 行置灰）
+      function schedBadgeEl(n) {
+        const s = n.schedule
+        if (s.lastError) return e('span', { className: 'dsh-notes-sched-badge err dsh-nt', 'data-tooltip': s.lastError.message || '' }, I('x', 9), '失败 ' + fmtDT(s.lastError.at))
+        if (s.lastRun) return s.lastRun.status === 'sent'
+          ? e('span', { className: 'dsh-notes-sched-badge ok dsh-nt', 'data-tooltip': '回执走派发闭环链路（receiptId=' + (s.lastRun.receiptId || '') + '）' }, I('check', 9), '已派发 ' + fmtDT(s.lastRun.at))
+          : e('span', { className: 'dsh-notes-sched-badge err' }, I('x', 9), '失败 ' + fmtDT(s.lastRun.at))
+        return e('span', { className: 'dsh-notes-sched-badge' }, '未触发')
+      }
+      // 下次触发展示：暂停 → 已暂停；单次已触发 → 已触发；否则「下次 <本地时间>」（锚点同 host schedDueAt 口径）
+      function schedNextLabel(n) {
+        const s = n.schedule
+        if (s.enabled === false) return '已暂停'
+        if (s.at && s.lastFiredAt && Date.parse(s.lastFiredAt) >= Date.parse(s.at)) return '已触发（单次）'
+        const ms = schedNextMs(n)
+        return ms === null ? '—' : '下次 ' + fmtDT(new Date(ms).toISOString())
+      }
+      // 编辑 = 回填派发弹窗（modal 不叠 modal：先关注入管理；openDispatchEdit 经 panelBridge 中转——modals 禁横向引用）
+      function doInjSchedEdit(n) { setInjMgrOpen(false); if (panelBridge.openDispatchEdit) panelBridge.openDispatchEdit(n) }
+      // 暂停/恢复：表单与 front-matter 同源——只提交声明字段（机器状态由 host 闸门延续；锚定时刻 anchor/dow 属声明字段随 every 一并回传，防暂停/恢复丢锚定，notes-034-sched-time）；恢复走 host 存活校验，失败内联回显
+      async function doInjSchedToggle(n) {
+        const s = n.schedule
+        if (!s || injMgrPending) return
+        const decl = { target: s.target, action: 'dispatch', enabled: s.enabled === false }
+        if (s.at) decl.at = s.at; else { decl.every = s.every; if (s.anchor) decl.anchor = s.anchor; if (typeof s.dow === 'number') decl.dow = s.dow }
+        setInjMgrPending(true); setError('')
+        try {
+          const res = await host.call('notes-update', { id: n.id, schedule: decl })
+          setInjMgrPending(false)
+          if (res && res.error) { setError(res.error); return }
+          showToast(decl.enabled ? '已恢复定时：' + (n.title || n.id) : '已暂停定时：' + (n.title || n.id))
+          loadInjectManager(); panelBridge.loadNotes(true); notifyNotesChanged()
+        } catch (err) { setInjMgrPending(false); setError(String(err.message || err)) }
+      }
+      // 删除 = 软删约定笔记（回收站可恢复；tick 跳过已删笔记，调度即刻停止）——暂停与删除是两个独立操作
+      async function doInjSchedDel(n) {
+        if (injMgrPending) return
+        if (!window.confirm('删除定时任务「' + (n.title || n.id) + '」？\n约定笔记移入回收站（可恢复），调度即刻停止。')) return
+        setInjMgrPending(true); setError('')
+        try {
+          const res = await host.call('notes-delete', { id: n.id })
+          setInjMgrPending(false)
+          if (res && res.error) { setError(res.error); return }
+          showToast('已删除定时任务：' + (n.title || n.id) + '（回收站可恢复）')
+          loadInjectManager(); panelBridge.loadNotes(true); notifyNotesChanged()
+        } catch (err) { setInjMgrPending(false); setError(String(err.message || err)) }
+      }
       // 批量设为约定/资料/关闭：confirm 条数 → 逐条 notes-update（单条失败计数不中断）；完成后清选 + 刷新
       async function doInjMgrBatch(role) {
         const ids = Object.keys(injMgrSel)
@@ -113,11 +162,33 @@
         }
         return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !injMgrPending) setInjMgrOpen(false) } },
           e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-injmgr-modal' },
-            e('div', { className: 'dsh-notes-settings-modal-t' }, I('bolt', 14), ' 注入管理', e('span', { className: 'dsh-notes-imgup-sub' }, '全库注入总览 · 单行直改 / 多选批量 · 日志隐身硬禁')),
+            e('div', { className: 'dsh-notes-settings-modal-t' }, I('bolt', 14), ' 注入管理', e('span', { className: 'dsh-notes-imgup-sub' }, '全库注入总览 · 单行直改 / 多选批量 · 日志隐身硬禁 · 调度任务区（定时派发）')),
             e('div', { className: 'dsh-notes-injmgr-bar' },
               e('div', { className: 'dsh-notes-injmgr-chips' },
                 chipBtn('all', '全部 ' + listAll.length), chipBtn('convention', '约定 ' + cntConv), chipBtn('reference', '资料 ' + cntRef), chipBtn('off', '未注入 ' + cntOff)),
               e('input', { className: 'dsh-notes-injmgr-search', placeholder: '搜索标题 / 主题 / 标签…', value: injMgrSearch, onChange: (ev) => { injMgrSearchRef.current = ev.target.value; setInjMgrSearch(ev.target.value); if (injMgrSearchDebRef.current) injMgrSearchDebRef.current() } })),
+            // 调度任务区（notes-034-sched-ui）：定时派发约定总览（频率/目标/下次触发/上次结果徽章）+ 编辑回填/暂停/删除
+            injMgrList === null ? null : (() => {
+              const schedNotes = listAll.filter(n => (n.contractType || '') === 'dispatch-schedule' && n.schedule && !n.deleted)
+              return e('div', { className: 'dsh-notes-sched-sec' },
+                e('div', { className: 'dsh-notes-sched-sec-t' }, I('clock', 12), ' 调度任务（' + schedNotes.length + '）', e('span', { className: 'dsh-notes-sched-sec-sub' }, '定时派发约定 · 声明在 front-matter（contractType: dispatch-schedule），裸编辑即开发者旁路')),
+                schedNotes.length === 0
+                  ? e('div', { className: 'dsh-notes-data-hint dsh-notes-sched-empty' }, '暂无定时任务——派发对话框选「定时执行」即可排定。')
+                  : schedNotes.map(n => {
+                      const s = n.schedule, paused = s.enabled === false
+                      return e('div', { key: n.id, className: 'dsh-notes-sched-row' + (paused ? ' paused' : '') },
+                        e('span', { className: 'dsh-notes-sched-row-t', title: n.title || '无标题' }, n.title || '无标题'),
+                        e('span', { className: 'dsh-notes-sched-freq' }, schedFreqLabel(s)),
+                        e('span', { className: 'dsh-notes-sched-target dsh-nt', 'data-tooltip': s.target || '' }, '→ ' + shortSid(s.target)),
+                        e('span', { className: 'dsh-notes-sched-nf' }, schedNextLabel(n)),
+                        schedBadgeEl(n),
+                        paused ? e('span', { className: 'dsh-notes-sched-badge off' }, '已暂停') : null,
+                        e('span', { className: 'dsh-notes-sched-acts' },
+                          e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': '回填派发弹窗编辑调度声明', disabled: injMgrPending, onClick: () => doInjSchedEdit(n) }, '编辑'),
+                          e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': paused ? '恢复调度（enabled=true，host 重新校验目标存活红线）' : '暂停调度（enabled=false，声明与历史保留）', disabled: injMgrPending, onClick: () => doInjSchedToggle(n) }, paused ? '恢复' : '暂停'),
+                          e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': '软删约定笔记（回收站可恢复），调度即刻停止', disabled: injMgrPending, onClick: () => doInjSchedDel(n) }, '删除')))
+                    }))
+            })(),
             injMgrList === null
               ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
               : shown.length === 0

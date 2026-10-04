@@ -7,23 +7,25 @@ function resolveWikiTarget(target) {
 }
 /* 渲染器行内扩展入参（renderMarkdown 第二参）：命中 → {id,title}（锚显示标题）；不中 → null（纯文本） */
 function wikiResolve(w) { var n = resolveWikiTarget(w); return n ? { id: n.id, title: n.title || '' } : null; }
-/* 全库正文索引：补缺/过期（updatedAt 漂移）条目，4 路并发后台拉取；整批完成一次性重渲染（防逐条刷新闪烁/滚动跳动） */
+/* 全库正文索引：补缺/过期（updatedAt 漂移）条目一次 notes-get-batch 批量拉全（N+1 整治 notes-034-batch3：昔日 4 路并发逐条 notes-get，
+   76 条库首屏 159 次请求 → 1 次）；整批完成一次性重渲染（防逐条刷新闪烁/滚动跳动） */
 function ensureWikiIndex() {
   var gen = ++wikiIdxGen;
   var stale = notes.filter(function (n) { var c = wikiBodies[n.id]; return !c || c.updatedAt !== (n.updatedAt || ''); });
   if (!stale.length) return;
-  var idx = 0, done = 0;
-  function fin() { done++; if (done === stale.length && gen === wikiIdxGen) { renderTree(); renderBacklinks(); } }
-  function worker() {
-    if (gen !== wikiIdxGen || idx >= stale.length) return;
-    var n = stale[idx++];
-    rpc('notes-get', { id: n.id }).then(function (res) {
-      if (gen !== wikiIdxGen) return;
-      if (res && res.note) wikiBodies[n.id] = { body: res.note.body || '', updatedAt: res.note.updatedAt || n.updatedAt || '' };
-      fin(); worker();
-    }).catch(function () { fin(); worker(); });
-  }
-  for (var k = 0; k < 4 && k < stale.length; k++) worker();
+  /* 失败口径（读路径降级）：整批一次性非阻断提示（不逐条刷屏），缺口条目留在 wikiBodies 外、下次刷新自动重试；界面有 preview/「索引中…」兜底 */
+  rpc('notes-get-batch', { ids: stale.map(function (n) { return n.id }) }).then(function (res) {
+    if (gen !== wikiIdxGen) return;
+    if (res && res.error) throw new Error(res.error);   /* rpc 不 reject 业务错误，显式抛错进 catch（读路径静默群修复） */
+    var got = 0;
+    if (res && res.notes) res.notes.forEach(function (r) { wikiBodies[r.id] = { body: r.body || '', updatedAt: r.updatedAt || '' }; got++ });
+    renderTree(); renderBacklinks();
+    var failed = stale.length - got;   /* host missing 口径：已删/墓碑/不存在条目不计入 got */
+    if (failed) toast('双链索引失败 ' + failed + ' 条：反向链接/行尾标记不完整（下次刷新自动重试）')
+  }).catch(function (e) {
+    if (gen !== wikiIdxGen) return;
+    toast('双链索引失败 ' + stale.length + ' 条：' + (e && e.message || e) + '（下次刷新自动重试）')
+  });
 }
 /* 行尾双链标记：缓存正文优先，索引未到时 preview（host slim 前 200 字符）兜底 */
 function hasWikiLinks(n) { var c = wikiBodies[n.id]; return extractWikiTargets(c ? c.body : (n.preview || '')).length > 0; }
@@ -60,6 +62,7 @@ function renderBacklinks() {
 }
 function loadFolders() {
   return rpc('notes-folders').then(function (res) {
+    if (res && res.error) throw new Error(res.error);   /* rpc 不 reject 业务错误，显式抛错进 catch（读路径静默群修复） */
     if (res && res.folders) {
       folders = res.folders;
       /* 清洗陈旧折叠态：剔除已删除文件夹的 id 残留（folders 异步到达后执行；foldOpen 语义=仅记折叠 id，残留虽不影响渲染但会持续累积） */
@@ -67,17 +70,18 @@ function loadFolders() {
       Object.keys(foldOpen).forEach(function (k) { if (!folders.some(function (f) { return f.id === k })) { delete foldOpen[k]; changed = true } });
       if (changed) saveFoldOpen();
     }
-  }).catch(function () {})
+  }).catch(function (e) { toast('文件夹加载失败，显示本地缓存：' + (e && e.message || e)) })   /* 失败非阻断：树保持旧值但用户可见 */
 }
 // 注入范围浮层会话源：titlesPending 时 1.5s 重拉直到补齐（0.1.7 首屏提速契约）
 var sessPullTimer = null;
 function pullSessions() {
   rpc('notes-sessions', {}).then(function (res) {
+    if (res && res.error) throw new Error(res.error);   /* 显式抛错进 catch（读路径静默群修复） */
     if (!res) return;
     if (res.sessions) sessList = res.sessions;
     sessPending = res.titlesPending && Array.isArray(res.pendingSessions) ? res.pendingSessions : [];
     if (scopeOpen) renderScopePanel();
     if (res.titlesPending) sessPullTimer = setTimeout(pullSessions, 1500);
-  }).catch(function () {})
+  }).catch(function (e) { toast('会话清单加载失败：' + (e && e.message || e)) })   /* 失败非阻断：浮层保持旧值但用户可见；重试定时器仅在成功链路上挂，catch 不构成轮询刷 toast */
 }
 

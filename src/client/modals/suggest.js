@@ -15,7 +15,7 @@
     function setLogHgExpand(v) { store.modal.suggest.set({ logHgExpand: typeof v === 'function' ? v(store.modal.suggest.get().logHgExpand) : v }) }
     // ===== 整理建议（设置卡片「整理建议」行入口）：notes-suggest（dry-run 零写入）四段式 modal =====
     // 契约：{ archiveCandidates:速记组（结构与 notes-archive-preview 同源）, staleCandidates:过期未引用, orphanCandidates:孤儿（仅展示）, logHygieneCandidates:{weekly,monthly}:日志卫生（工作记忆 v0，仅展示明细）, generatedAt }
-    // 红线：只提名不自动执行——速记组「去归档」直达归档预览对话框；过期未引用「一键批量软删除」window.confirm 后才逐条 notes-delete（软删可恢复）；
+    // 红线：只提名不自动执行——速记组「去归档」直达归档预览对话框；过期未引用「一键批量软删除」无 confirm 直接逐条 notes-delete（软删可恢复，撤销 toast 兜底——确认强度 = 不可恢复性，notes-034-c-confirm）；
     // 孤儿候选是启发式判定（可能误伤），不提供批量操作，逐条跳转人工过目；日志卫生 v0 仅展开明细（聚合执行留待 Phase 2，日志只聚合不淘汰）。
     function openSuggest() {
       setSuggestData(null); setSuggestPending(false); setError('')
@@ -35,7 +35,7 @@
     function suggestViewNote(id) { setSuggestOpen(false); jumpToWikiTarget(id) }
     // 整理建议对话框宿主（设置卡片「整理建议」行入口；复用归档预览的列表样式）：
     // 四段式——① 可整理的速记组（「去归档」直达归档预览对话框，数据与 notes-archive-preview 同源）
-    //          ② 过期未引用（超 staleDays 且 useCount=0；「一键批量软删除」confirm 后才逐条 notes-delete）
+    //          ② 过期未引用（超 staleDays 且 useCount=0；「一键批量软删除」直接逐条 notes-delete，撤销 toast 兜底）
     //          ③ 可能无用（孤儿候选：启发式判定可能误伤，仅展示逐条「查看」跳转，不提供批量操作）
     //          ④ 日志卫生（工作记忆 v0：超窗日志 周/月 聚合提名——只提名不执行，v0 「明细」展开逐条「查看」）
     function SuggestModal(props) {
@@ -44,21 +44,32 @@
       const suggestPending = store.modal.suggest.useSel(s => s.pending)
       const logHgExpand = store.modal.suggest.useSel(s => s.logHgExpand)
       const error = props.error
-      // 过期未引用一键批量软删：confirm 确认后才执行；逐条 notes-delete（host 软删，回收站可恢复）；
-      // 删后刷新建议数据（三段联动，全空 → 空态文案）+ 列表
+      // 过期未引用一键批量软删：确认强度 = 不可恢复性（notes-034-c-confirm）——软删可恢复 → 轻：无 confirm 直接删，
+      // 撤销 toast 兜底（逐条 notes-restore；回收站亦可恢复）；删后刷新建议数据（三段联动，全空 → 空态文案）+ 列表
       async function doSuggestBatchDelete() {
         const list = (suggestData && suggestData.staleCandidates) || []
         if (!list.length || suggestPending) return
-        if (!window.confirm('一键批量软删除：' + list.length + ' 条过期且从未被引用的笔记将移入回收站（可恢复）。\n确认删除？')) return
         setSuggestPending(true); setError('')
         let ok = 0, fail = 0
+        const okIds = []
         for (const n of list) {
-          try { const res = await host.call('notes-delete', { id: n.id }); if (res && res.error) fail++; else ok++ }
+          try { const res = await host.call('notes-delete', { id: n.id }); if (res && res.error) fail++; else { ok++; okIds.push(n.id) } }
           catch (err) { fail++ }
         }
         setSuggestPending(false)
-        showToast('已软删除 ' + ok + ' 条（回收站可恢复）' + (fail ? '，失败 ' + fail + ' 条' : ''))
+        showToast('已软删除 ' + ok + ' 条（回收站可恢复）' + (fail ? '，失败 ' + fail + ' 条' : ''), okIds.length ? { label: '撤销', fn: () => undoSuggestBatchDelete(okIds) } : undefined)
         panelBridge.afterArchiveCleanup(list.map(n => n.id))   // 正打开的笔记在被删集合中则退出选中态（归档收尾同款语义）
+        await panelBridge.loadNotes(true); notifyNotesChanged()
+        loadSuggest()
+      }
+      // 建议器批量软删撤销：逐条 notes-restore 恢复本次成功删除的笔记，恢复后刷新建议数据与列表
+      async function undoSuggestBatchDelete(ids) {
+        let ok = 0, fail = 0
+        for (const id of ids) {
+          try { const res = await host.call('notes-restore', { id: id }); if (res && res.error) fail++; else ok++ }
+          catch (err) { fail++ }
+        }
+        showToast('已恢复 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''))
         await panelBridge.loadNotes(true); notifyNotesChanged()
         loadSuggest()
       }
@@ -106,7 +117,7 @@
                         ? e('div', { className: 'dsh-notes-arch-list' },
                             orphans.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
                               e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
-                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || '未分类') + ' · ' + (n.updatedAt ? String(n.updatedAt).slice(0, 10) : '—')),
+                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || '未分类') + ' · ' + (n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—')),
                               e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(n.id) }, '查看'))))
                         : e('div', { className: 'dsh-notes-data-hint' }, '没有孤儿笔记（无双链关联且从未被引用）。')),
                     // ④ 日志卫生（工作记忆 v0 裁决 B②：超窗旧日志两级聚合提名——只提名不执行，v0 展开明细逐条过目）

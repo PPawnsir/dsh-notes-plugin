@@ -67,8 +67,18 @@ function clearFilters() { filters = { pinned: false, injected: false, injectEver
 function sortLabel() { for (var i = 0; i < FILTER_SORTS.length; i++) if (FILTER_SORTS[i].id === sortBy) return FILTER_SORTS[i].label; return '时间' }
 var searchText = '', searchIds = null; // searchIds=null=仅本地过滤；数组=host 全文命中 ∪ 本地命中
 var searchMeta = {};         // host notes-search 返回的命中字段（noteId → ['title'|'tags'|'body']），相关度排序数据源
+var searchErrNotified = false;   /* 在线检索失败 toast 去重闸：同一轮故障只提示一次（doSearch 防抖逐键触发，防刷屏），成功即复位 */
 var selId = null, edNote = null;       // edNote = 当前选中笔记完整体（含 body）
-var edLoading = false;                 /* 正文异步加载中：doSave 省略 body 字段（防竞态清空正文） */
+/* 新建草稿态（notes-034-batch3）：点 + 先开本地草稿（draftNote 非 null，selId 保持 null 不占用任何真实 id），
+   首次有效编辑（标题/正文 input 等非空内容）才 notes-create 落库；放弃（切走且零内容）不产生空 Untitled。
+   draftCreating = 落库在途闸（在途期间 doSave 只重排防抖，防并发双建） */
+var draftNote = null, draftCreating = false;
+var focusId = null;            // 键盘导航焦点行（j/k/↑↓ 移动高亮 .focused，Enter 打开；selectNote 同步聚焦）
+var edLoading = false;                 /* 正文异步加载中（notes-get 在途）：AI 整理等入口的轻量互斥指示 */
+/* R-1 安全态双字段（P0 数据丢失防护，check 节 46 看守）：
+   edBodyLoaded = 正文提交闸——仅 notes-get 成功返回当前选中笔记后置 true，doSave 只在此刻携带 body（再也不以「加载中」负向闸判断）；
+   edBodyErr = 加载失败安全态——非空时编辑器锁定（标题/正文只读）+ doSave 整体暂停 + 显示重试横幅，绝不以空 body 为基底提交 */
+var edBodyLoaded = false, edBodyErr = '';
 var dragId = null, dragFolderId = null, saveTimer = null, searchTimer = null;   /* dragFolderId = 文件夹换父拖拽源（与笔记拖拽互斥） */
 /* ===== 双模式编辑器 v3 状态（原型 design/notes-editor-v3.html）===== */
 var edMode = 'source';                 // 'source' 源码 | 'rich' 富文本（受限 WYSIWYG）；Ctrl+/ 或 meta 行两段开关切换
@@ -97,7 +107,7 @@ var histState = null;                  // 历史面板对话框状态：{ list:n
 var histCount = null;                  // 当前笔记历史版本数（null=未探测；0=无版本不显示入口）
 /* ===== 整理建议（notes-suggest 三类候选：速记组/过期未引用/孤儿——只提名不自动执行）===== */
 var suggestState = null;               // 整理建议对话框状态：{ data:null=分析中, pending:批量软删执行中 }
-/* ===== P2 笔记双链：全库正文惰性索引（列表瘦身不含 body；后台 notes-get 小批量补齐，驱动行尾双链标记与反向链接面板；host 不改）===== */
+/* ===== P2 笔记双链：全库正文惰性索引（列表瘦身不含 body；后台 notes-get-batch 一次批量补齐，驱动行尾双链标记与反向链接面板）===== */
 var wikiBodies = {};                   // noteId → { body, updatedAt }
 var wikiIdxGen = 0;                    // 索引构建代际：列表刷新作废旧任务
 

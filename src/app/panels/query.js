@@ -3,8 +3,9 @@ function matches(n) {
   if (view.type === 'topic') { if ((n.topic || '') !== view.id) return false }
   /* 文件夹视图 = 递归子树口径（notes-nested-folder-ui：点父文件夹视图含全部子孙文件夹内容，与 host notes-list folder 过滤同语义） */
   else if (view.type === 'folder') { if (!folderSubtree(view.id)[n.folder || '']) return false }
-  /* 工作记忆 v0 隐身渲染守卫：类型组未勾「日志」时日志永不进日常视图（含清除筛选后的在途数据；专入口 = 勾选 kind=log） */
-  if ((n.kind || 'note') === 'log' && filters.kinds.indexOf('log') < 0) return false;
+  /* 工作记忆 v0 隐身渲染守卫：类型组未勾「日志」时日志永不进日常视图（含清除筛选后的在途数据；专入口 = 勾选 kind=log）；
+     R-6 UI 接线：显式文件夹视图放行 log（同权展示）；切回全部/主题视图恢复拦截（含重拉在途数据） */
+  if ((n.kind || 'note') === 'log' && filters.kinds.indexOf('log') < 0 && view.type !== 'folder') return false;
   if (!matchFilters(n, filters)) return false;
   if (searchText) {
     var q = searchText.toLowerCase();

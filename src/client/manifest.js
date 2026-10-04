@@ -33,6 +33,7 @@ module.exports = [
   'modals/suggest.js',
   'modals/memory-guide.js',
   'modals/dispatch.js',
+  'modals/cheatsheet.js',
   'modals/settings.js',
   'popovers/help.js',
   'popovers/selbar.js',

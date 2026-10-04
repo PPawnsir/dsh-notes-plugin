@@ -22,6 +22,7 @@ function openInjectPreview() {
   $('injprevSess').onchange = function () { injectPreviewState.sid = this.value; injectPreviewState.data = null; renderInjectPreview(); loadInjectPreview() };
   /* 视角下拉数据源：notes-sessions（与注入范围浮层同源）；三档 = 全局 / 工作区 optgroup（值 ws:<标题>）/ 会话 optgroup（短 id） */
   rpc('notes-sessions', {}).then(function (res) {
+    if (res && res.error) throw new Error(res.error);   /* 显式抛错进 catch（读路径静默群修复） */
     var sel = $('injprevSess'); if (!sel) return;
     var ss = ((res && res.sessions) || []).concat((res && res.pendingSessions) || []);
     var ws = [];
@@ -30,7 +31,7 @@ function openInjectPreview() {
       + (ws.length ? '<optgroup label="工作区">' + ws.map(function (w) { return '<option value="ws:' + esc(w) + '">' + esc(w) + '</option>' }).join('') + '</optgroup>' : '')
       + '<optgroup label="会话">' + ss.map(function (s) { return '<option value="' + esc(s.short || '') + '">' + esc((s.short || '') + (s.name ? ' · ' + s.name : '')) + '</option>' }).join('') + '</optgroup>';
     sel.value = injectPreviewState.sid;
-  }).catch(function () {});
+  }).catch(function (e) { modalErr('会话清单加载失败：' + (e && e.message || e)) });   /* 弹窗内反馈（modalErr 自带 mErr 缺位守卫）；下拉保持「全局」档可用 */
   loadInjectPreview();
 }
 function loadInjectPreview() {

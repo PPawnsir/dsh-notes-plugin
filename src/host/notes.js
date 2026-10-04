@@ -1,12 +1,65 @@
+    // ==== injectto-norm-guard BEGIN ====（injectTo 写入路径归一 + 非法显式拒绝：notes.js 与 notes.dist.js 双变体逐字节同步，check 节 53 看守）
+    // 归一规则（错得安全：收窄失败必须显式失败，禁止静默放宽/静默吞）：
+    //   ① 存量 'global'/'workspace' 原样透传（读路径兼容口径，不迁移）；② 等于活跃会话短 id → 原样保留；
+    //   ③ 等于活跃会话完整 id（含经 shortSid 可约到的长形态）→ 归一为短 id 落盘（详情下拉勾选态按短 id 比对，长 id 落盘恒不命中——本 bug 核心）；
+    //   ④ 短 id 形态但不在活跃集（历史会话已删）→ 保留原值不报错（治理连续性，读路径按短 id 比对仍可命中复活后的同名会话）；
+    //   ⑤ 其余无法解析值 → 整体拒绝（报错含具体值，不部分保存）。
+    // 红线：归一只在写入路径（_create/_update 显式传 injectTo 时），读路径（conventionHit 命中）不动；
+    //       活跃会话集与 notes-sessions 同源（_activeSessions，含 pendingSessions 占位会话——标题未补齐不影响命中）。
+    async function _normInjectTo(arr) {
+      if (!Array.isArray(arr)) return { error: 'injectTo 须为字符串数组（实得 ' + typeof arr + '）' }
+      let act = []
+      try { const r = await _activeSessions(); act = ((r && r.sessions) || []).concat((r && r.pendingSessions) || []) } catch (e) { act = [] }
+      const byShort = {}, byFull = {}
+      for (const s of act) {
+        if (!s) continue
+        const sh = s.short || shortSid(s.id)
+        if (sh) byShort[sh] = sh
+        if (s.id) byFull[String(s.id)] = sh
+      }
+      const out = [], seen = {}
+      const pushOnce = (v) => { if (!seen[v]) { seen[v] = true; out.push(v) } }
+      for (const raw of arr) {
+        const v = String(raw == null ? '' : raw).trim()
+        if (!v) continue
+        if (v === 'global' || v === 'workspace') { pushOnce(v); continue }   // ① 存量值透传
+        if (byShort[v]) { pushOnce(v); continue }                            // ② 活跃会话短 id
+        if (byFull[v]) { pushOnce(byFull[v]); continue }                     // ③ 完整 id → 归一短 id
+        const sv = shortSid(v)
+        if (byShort[sv]) { pushOnce(sv); continue }                          // ③ 长形态（带不带 session- 前缀）经归一命中活跃会话
+        if (sv === v) { pushOnce(v); continue }                              // ④ 短 id 形态但会话已不在活跃集（历史已删）：保留原值不报错
+        return { error: 'injectTo 含无法解析的会话标识符「' + v + '」（须为活跃会话短 id 或完整 id）' }   // ⑤ 整体拒绝
+      }
+      return { value: out }
+    }
+    // ==== injectto-norm-guard END ====
+
     async function _create(title, body, tags, topic, extra) {
       const id = genId()
       const now = new Date().toISOString()
       const sc = sessCtx()
       const ex = extra || {}
+      // injectTo 写入归一 + 非法显式拒绝（injectto-norm-guard）：显式传才归一（undefined 不缺省归一）；非法值整体拒绝不落库
+      let injectToNorm = ex.injectTo
+      if (injectToNorm !== undefined) {
+        const ng = await _normInjectTo(injectToNorm)
+        if (ng.error) throw new Error(ng.error)
+        injectToNorm = ng.value
+      }
       // 工作记忆 v0 隐身硬闸（裁决 B①）：kind=log 强制 inject=false（显式传 true 也纠正，返回值 injectForcedOff 告知），
       // recall 缺省 false（显式 true 豁免——用户/agent 显式选择进目录不算混入）；日志永不进系统提示与目录索引
       const isLog = (ex.kind || 'note') === 'log'
       const injectForcedOff = isLog && ex.inject === true
+      // 定时派发·执行层：schedule 声明写入闸门（校验红线：at 必须未来 / 轮询≥5min / 目标存活 / 契约配对——非法声明拒绝落库，错得安全）
+      const createCT = ex.contractType || ''
+      let scheduleDecl = null
+      if (ex.schedule !== undefined && ex.schedule !== null) {
+        const gate = await _schedValidateWrite(ex.schedule, createCT, null)
+        if (gate.error) throw new Error(gate.error)
+        scheduleDecl = gate.value
+      } else if (createCT === SCHEDULE_CONTRACT_TYPE) {
+        throw new Error('contractType=dispatch-schedule 需要 schedule 声明（schedule: { at|every, target }）')
+      }
       const note = {
         id, title: title || 'Untitled', topic: topic || '未分类',
         workspace: ex.workspace || basename(sc.cwd),
@@ -18,7 +71,7 @@
         // injectEver 粘性：创建即注入（inject=true）或显式继承（归档合并 members.some 传入）→ true；否则缺省 false
         // （kind=log 的 inject 已被硬闸纠正为 false，不随被纠正值拉起 injectEver）
         injectEver: isLog ? (ex.injectEver === true) : (ex.injectEver === true || ex.inject === true),
-        injectTo: ex.injectTo || [],
+        injectTo: injectToNorm || [],
         injectRole: ex.injectRole === 'reference' ? 'reference' : 'convention',
         recall: isLog ? (ex.recall === true) : (ex.recall !== false),
         sensitive: ex.sensitive === true,
@@ -34,6 +87,7 @@
         // 工作记忆 v0 r3 车道模型·产物溯源：显式 origin 优先（含显式 '' 关闭打标）；kind=log 未显式指定时，
         // 若 memory-guide 引导对本会话激活（注入同源 cache 视图 + conventionHit 作用域口径）自动落 'memory-guide'——引导未激活/不在作用域则不打标
         origin: ex.origin !== undefined ? ex.origin : (isLog && memoryGuideActiveFor(sc.sessionId) ? MEMORY_GUIDE_CONTRACT_TYPE : ''),
+        schedule: scheduleDecl,
         mergedFrom: ex.mergedFrom || [],
         dispatches: ex.dispatches || [],
         useCount: ex.useCount || 0,
@@ -52,8 +106,11 @@
     // includeDeleted（P1 回收站）：缺省排除软删除；传 true 时 deleted 笔记一并返回（回收站列表数据源，slim 携带 deleted 标记）
     // includeLogs（工作记忆 v0 默认隐身）：缺省排除 kind=log；显式 kind=log 过滤 / includeLogs:true / 回收站（includeDeleted）路径才返回日志
     // （治理与数据完整性路径——整理建议/归档/导入导出/备份——由调用方显式传 includeLogs:true 包含日志）
+    // R-6（裁决方向 A）：folder 显式给出（含 '' 未分类）= 显式文件夹导航，隐式召回 kind=log（等价 includeLogs:true）；
+    // 隐身语义收窄为四个隐式表面——默认列表/默认检索/目录索引/注入（均不传 folder）——原样保持
     async function _list(tag, kind, folder, includeDeleted, includeLogs) {
       try {
+        const effLogs = includeLogs || folder !== undefined   // R-6：显式 folder 过滤隐式含 log（隐身只作用于不传 folder 的隐式表面）
         const dirTarget = await fs.resolve(NOTES_DIR)
         const info = await fs.stat(dirTarget)
         if (!info) return []
@@ -70,7 +127,7 @@
             const note = await loadNote(id)
             if (note.tombstoned) continue   // purge 墓碑（0 字节占位）：任何列表口径都不算存在
             if (note.deleted && !includeDeleted) continue
-            if (note.kind === 'log' && !includeLogs && !includeDeleted && !kind) continue   // 日志默认隐身（显式 kind=log 时 kind 过滤已放行）
+            if (note.kind === 'log' && !effLogs && !includeDeleted && !kind) continue   // 日志默认隐身（显式 kind=log / R-6 显式 folder 过滤已放行）
             if (tag && (note.tags || []).indexOf(tag) < 0) continue
             if (kind && note.kind !== kind) continue
             if (folder !== undefined) {
@@ -94,7 +151,7 @@
           if (listedIds.has(cn.id)) continue   // 幂等去重：listDir 已见（loadNote 命中同一 cache 对象）
           if (cn.tombstoned) continue          // purge 墓碑（0 字节占位）：任何列表口径都不算存在
           if (cn.deleted && !includeDeleted) continue
-          if (cn.kind === 'log' && !includeLogs && !includeDeleted && !kind) continue   // 日志默认隐身（显式 kind=log 时 kind 过滤已放行）
+          if (cn.kind === 'log' && !effLogs && !includeDeleted && !kind) continue   // 日志默认隐身（显式 kind=log / R-6 显式 folder 过滤已放行）
           if (tag && (cn.tags || []).indexOf(tag) < 0) continue
           if (kind && cn.kind !== kind) continue
           if (folder !== undefined) {
@@ -132,7 +189,7 @@
       return Object.assign({}, note)
     }
 
-    // extra（工作记忆 v0 §7.2 检索字段透传 + r3 车道模型 contractType/origin 标记）：{ logDate?, entities?, summarizedAt?, contractType?, origin? }——显式传才改（undefined 不动存量值）
+    // extra（工作记忆 v0 §7.2 检索字段透传 + r3 车道模型 contractType/origin 标记）：{ logDate?, entities?, summarizedAt?, contractType?, origin?, confirmClearBody? }——显式传才改（undefined 不动存量值）；confirmClearBody 为 R-1 空正文覆盖确认闸（不落盘，见 empty-body-overwrite-guard 块）
     async function _update(id, title, body, tags, topic, kind, status, inject, injectTo, folder, recall, injectRole, sensitive, extra) {
       const note = Object.assign({}, await loadNote(id))
       if (note.deleted || note.tombstoned) throw new Error('Note has been deleted')
@@ -149,7 +206,12 @@
         if (effKind === 'log' && inject === true) { note.inject = false; injectForcedOff = true }
         else { note.inject = inject === true; if (inject === true) note.injectEver = true }
       }
-      if (injectTo !== undefined) note.injectTo = injectTo
+      if (injectTo !== undefined) {
+        // injectTo 写入归一 + 非法显式拒绝（injectto-norm-guard）：非法值整体拒绝，本条更新不落盘（错得安全）
+        const ng = await _normInjectTo(injectTo)
+        if (ng.error) throw new Error(ng.error)
+        note.injectTo = ng.value
+      }
       if (folder !== undefined) note.folder = folder
       if (recall !== undefined) note.recall = recall !== false
       if (injectRole !== undefined) note.injectRole = injectRole === 'reference' ? 'reference' : 'convention'
@@ -160,8 +222,28 @@
       if (ex.logDate !== undefined) note.logDate = ex.logDate
       if (ex.entities !== undefined) note.entities = Array.isArray(ex.entities) ? ex.entities : []
       if (ex.summarizedAt !== undefined) note.summarizedAt = ex.summarizedAt
-      if (ex.contractType !== undefined) note.contractType = ex.contractType
+      // 定时派发·执行层：schedule 声明写入闸门（校验红线同上；机器状态字段 lastFiredAt/lastRun/lastError 由闸门延续存量）
+      if (ex.schedule !== undefined) {
+        const effCT = (ex.contractType !== undefined ? ex.contractType : note.contractType) || ''
+        const gate = await _schedValidateWrite(ex.schedule, effCT, note.schedule)
+        if (gate.error) throw new Error(gate.error)
+        note.schedule = gate.value
+      }
+      if (ex.contractType !== undefined) {
+        if ((ex.contractType || '') === SCHEDULE_CONTRACT_TYPE && !note.schedule) throw new Error('contractType=dispatch-schedule 需要 schedule 声明（schedule: { at|every, target }）')
+        note.contractType = ex.contractType
+      }
       if (ex.origin !== undefined) note.origin = ex.origin
+      // ==== empty-body-overwrite-guard BEGIN ====（R-1 P0 数据丢失兜底；notes.js 与 notes.dist.js 双变体逐字节同步，check 节 46 看守）
+      // 判据：body 显式传空串且现存正文非空 → 拒绝静默覆盖，抛错要求调用方显式传 extra.confirmClearBody===true 重试。
+      // 选型理由（错得安全 = 失败时停在原状，而不是失败后留备份）：宁拒绝不墓碑——.bak 墓碑方案失败时已破坏现场
+      // （活动正文被清空，用户面对空白笔记，要靠发现并手工找回 .bak）；拒绝方案下任何调用路径
+      // （client get 失败空 body 提交 / 脚本 / 工具直调）都无法造成既成数据丢失，合法清空由显式确认放行。
+      // 红线：只拦「空串覆盖非空」——undefined（不动正文）/ 空→空 / 非空覆盖照常；判据读缓存现值（loadNote 命中 cache），零新增磁盘读。
+      if (body === '' && note.body && ex.confirmClearBody !== true) {
+        throw new Error('notes-update 拒绝执行：body 为空串将覆盖现有非空正文（疑似 get 失败空正文覆盖路径，R-1 数据丢失防护）。如确认为有意清空，请显式传 confirmClearBody: true 重试')
+      }
+      // ==== empty-body-overwrite-guard END ====
       if (body !== undefined) note.body = body
       // P3 派发闭环·保底联动：显式置 resolved 时自动回执全部未闭环派发（dispatchStatus→done + doneAt + receipt='resolved'）。
       // 这是语义闭环的必然可行通道（agent 完成派发任务后 note_manage update resolved）；事件回执见 dispatch-loop 标记块

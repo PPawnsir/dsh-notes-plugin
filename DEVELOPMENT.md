@@ -15,7 +15,7 @@
 | `src/styles.css` | 全部样式（经 `notes-css` RPC 下发），Apple Notes 设计令牌 + 暗色适配 |
 | `check.js` | 回归测试 **runner**（模式解析 + CORE 名单 + 节注册表 + 收尾总结）；内存 mock，不碰真实笔记目录 |
 | `check/helpers.cjs` | 测试共享设施：`t()`/`section()`/断言计数器/源码常量 + host mock 实例工厂 `createHostMocks()`（原单文件节 2 主体），跨节共享状态经 `S` 对象传递 |
-| `check/sections/*.cjs` | 60 个节断言模块（按节次命名如 `39-memory.cjs`），节体自原单文件逐字节迁移；节首从 `H`/`S` 解构依赖、节末 `Object.assign(S, {...})` 导出本节造数 |
+| `check/sections/*.cjs` | 66 个节断言模块（按节次命名如 `39-memory.cjs`），节体自原单文件逐字节迁移；节首从 `H`/`S` 解构依赖、节末 `Object.assign(S, {...})` 导出本节造数 |
 | `design/notes-ui-v2.html` | **UI 交互原型（唯一规格来源）**：单文件原生 JS，浏览器直接打开验证；UI 改动必须同步更新（见下方「UI 改动同步约定」） |
 | `scripts/concat-client.cjs` | **client 组装器**：`src/client/**` 按 manifest 逐字节拼接（零插入零改写零 banner，LF 归一）；`notes-src` 运行时下发与 `build-dist.cjs` 共用本规则（开发/发布同源）；`@shared/` 条目解析到 `src/shared/` 并加 4 空格基座缩进（同一规则在 `src/host/server.js` 与 `server.dist.js` 的 notes-src 各有一份内联实现） |
 | `scripts/concat-app.cjs` | **app 组装器**：`src/app/**` + `src/shared/` 按 manifest 逐字节拼接 → 写盘 `packages/dsh-notes-plugin/app.html`；`@shared/` 条目原样纳入（列 0 即页面形态） |
@@ -27,13 +27,13 @@
 
 ```
 src/
-├── client/                  ← React 面板唯一源码（46 片，manifest.js 有序逐字节拼接）
-│   ├── manifest.js          ← 唯一组装依据：kernel(10) + @shared(1) → modals(17) → popovers(7) → panels(11)
+├── client/                  ← React 面板唯一源码（47 片，manifest.js 有序逐字节拼接）
+│   ├── manifest.js          ← 唯一组装依据：kernel(10) + @shared(1) → modals(18) → popovers(7) → panels(11)
 │   ├── kernel/              ← 无 UI 域：bootstrap / bus / state(最小 store) / persist / constants / format / icons / perf / css-loader / drag
-│   ├── modals/              ← 17 个 modal 一文件一个：link image merge newnote history trash prune archive export export-single import inject-preview inject-manager suggest memory-guide dispatch settings
+│   ├── modals/              ← 18 个 modal 一文件一个：link image merge newnote history trash prune archive export export-single import inject-preview inject-manager suggest memory-guide dispatch cheatsheet settings
 │   ├── popovers/            ← 7 个浮层：help selbar folder-menu ctx-menu scope filter-pop sort-menu
 │   └── panels/              ← entries/(header-button fab) · selection/(capture=选区卡+toast 宿主) · panel/(search wiki tree editor sidebar chrome keyboard index=唯一装配点)
-├── app/                     ← app 页（DOM 态）唯一源码（40 片，manifest.js 拼接 → 写盘包内 app.html）
+├── app/                     ← app 页（DOM 态）唯一源码（41 片，manifest.js 拼接 → 写盘包内 app.html）
 │   ├── shell/               ← 页面壳片段 head.html / body.html / tail.html
 │   ├── kernel/              ← rpc / state / dom / helpers / data / bootstrap
 │   ├── panels/ modals/ popovers/  ← 域结构镜像 client（各自独立实现不共源，§4.3）；序位 = 昔日单文件字节序（域间交织，不为美学重排）
@@ -147,7 +147,7 @@ node check.js
   - 导入导出：`copyNotesDir(target, { includeHistory })`——导出默认不含（`notes-export` 新参数 `includeHistory`，返回 `history` 计数），导入前备份恒含；导入合并仅 added 新笔记连带（同名快照跳过，返回 `historyMerged`），同 id 冲突跳过历史合并。
   - 红线：`_list/_get/_search` 主读取路径零新增 IO（`.history` 是子目录，列表只认 `n-*.md` 直子级）；快照/保留/预算全部挂写入路径；快照失败只 log 不阻塞保存。
 - **快速记录队列**：`quickChain` 串行化避免读-改-写竞态；同 session 且 10 分钟内合并，否则新建；主题分类异步回填（先落盘返回，不阻塞）
-- **39 个 RPC**：`notes-list/get/create/update/quick/quick-instruct/delete/restore/purge/archive/archive-preview/archive-undo/search/css/src/perf/conventions/inject-preview/sessions/active-sessions/workspaces/dispatch/dispatch-done/settings-get/settings-set/export/export-single/import-preview/import/asset-upload/folders/ai-organize/assets-prune/suggest/usage-get/history/history-get/restore-history/memory-guide`（工作记忆 v0 Phase 1：`notes-memory-guide {op:check/enable/status/disable}` 沉淀引导启用流程（约定笔记方案；r3 车道模型——契约身份 contractType=memory-guide 主识别键 + tag 兼容发现键、check 同类唯一性零写入、enable 无 confirmed 闸门幂等直建、确保「工作日志」文件夹）；kind=log 工作日志默认隐身（inject 硬 false / recall 缺省 false / 列表与默认搜索排除，筛选中心 kind=日志 专入口）且永不被过期/孤儿清理提名；引导激活期日志自动落 origin=memory-guide 产物溯源；front-matter 预留 logDate/entities/summarizedAt；规格 design/agent-memory-v0.md）（历史版本面板：`notes-history {id}` 版本列表倒序轻量零正文 `[{ts,bytes}]`、`notes-history-get {id,ts}` 取单版正文（预览只读）、`notes-restore-history {id,ts}` 把历史版写回正文——恢复前置自动快照：persistNote 缺省语义先把当前版入 `.history`，恢复动作本身可撤销；client 详情 meta 行「历史」入口（有版本才显示）→ modal 列表/预览/一键恢复）（二期新增 `notes-ai-organize` 按 kind 模板重写正文、`notes-assets-prune` 孤儿资产清理 dry-run 预览 + 白名单删除；P1 回收站：`notes-list` 参数化 `includeDeleted` + `notes-purge` 彻底删除——仅限已软删除笔记，`.md` 与 `.md.bak` 一并移除；ctx.fs 无删除契约，开发版落回墓碑式清空（0 字节占位，全链路视作不存在），静态包经 `fs.processPath` + `node:fs` 真删；P3 单文件导出：`notes-export-single` 按 scope（all/folder/tag）拼接单篇自包含 Markdown，图片 base64 内联，>20MB 告警仍导出；注入预览器：`notes-inject-preview {sessionId?, workspace?}` 纯复用 conventionText/catalogText 渲染产物 + 统计（脱敏/时效标注/预算截断），三档视角——缺省全局 / 传工作区标题（workspace）= 该工作区全部会话注入并集 / 传会话 id 按 injectTo 命中过滤（sessionId 与 workspace 互斥、同传 sessionId 优先），预览不更新 lastInjectChars；整理建议器：`notes-suggest` dry-run 零写入返回四类候选——archiveCandidates 速记组（内聚复用 `_archivePreview` 同款结构）/ staleCandidates 过期未引用（kind=note/link 且超 staleDays 且 useCount===0，遥测保护）/ orphanCandidates 孤儿 / logHygieneCandidates 日志卫生（工作记忆 v0：超 7 天周聚合 + 超 90 天月聚合提名，只提名不执行）（无 [[双链]] 出链与反向链接、inject=false、useCount=0、status=active 的普通笔记，排除速记与归档产物防误伤，上限 20），只提名不执行，client 三段式 modal 直达归档预览 / confirm 后批量软删 / 孤儿仅展示逐条跳转；LLM 用量统计：`notes-usage-get` 返回 { today, week, month, allTime, byFeature, estimatedTokens, exactTokens, calls }——llm-usage 标记块计量包装挂 3 个 llm 调用点（classifyTopic/extractInstruction=classify、_aiOrganize=organize，streamMetered 捕获 usage chunk 真实值优先、缺省字符估算 1.6 系数兜底），usage.json 独立于 settings.json 落盘（内存累积 + 5s 防抖 + 卸载 flush），settings 新键 `usageBudgetMonthly` 月度预算提醒阈值（tokens/月，0=关闭，超预算仅 client toast 不阻断））
+- **41 个 RPC**：`notes-list/get/get-batch/create/update/quick/quick-instruct/delete/restore/purge/archive/archive-preview/archive-undo/search/css/src/perf/conventions/inject-preview/sessions/active-sessions/workspaces/dispatch/dispatch-done/settings-get/settings-set/export/export-single/import-preview/import/asset-upload/folders/ai-organize/assets-prune/suggest/usage-get/history/history-get/restore-history/memory-guide/schedule-eval`（N+1 批量端点（notes-034-batch3）：`notes-get-batch {ids:[...]}` → `{notes:[{id,body,updatedAt}],missing:[...]}`——双链索引等全库正文场景一次拉全，首屏请求数 O(n)→O(1)，证据 n-mut6u356mloa；选型弃 notes-list?includeBodies：消费方语义是按 id 补缺 reconcile，增量只传 stale ids 省传输 + 不动 slim 契约；最小传输面仅正文三字段，已删/墓碑/不存在计入 missing 不报错）（定时派发·执行层（约定即调度，决策 n-muqyk2ve1sqx / n-musewkked3tq）：契约笔记 contractType=dispatch-schedule + front-matter schedule 结构化声明 {at|every, target, action, enabled}（写入闸门红线：at 必须未来 / 轮询≥5min / 目标会话存活 / 未知键拒绝 / 公共写入口 contractType 白名单 '' 或 dispatch-schedule），常驻 30s cron tick（unref 不挂进程 + disposers cleanup 防重载双跑 + 启动补评估 + tick 异常全量吞掉记 lastError），到期复用 `_dispatch` 全链路（派发卡来源标注「定时调度 @标题」），状态三层 = front-matter schedule.lastFiredAt/lastRun{at,status,receiptId}/lastError + 既有 dispatches 历史数组 + dispatch-loop 回执链路；lastFiredAt 先落盘再派发为幂等生命线，单次 at 停机错过启动补发一次 / 轮询错过对齐下周期不追赶；`notes-schedule-eval {now?}` 立即评估一次（now 注入 ISO 时钟供测试/回放，缺省真实时钟））（工作记忆 v0 Phase 1：`notes-memory-guide {op:check/enable/status/disable}` 沉淀引导启用流程（约定笔记方案；r3 车道模型——契约身份 contractType=memory-guide 主识别键 + tag 兼容发现键、check 同类唯一性零写入、enable 无 confirmed 闸门幂等直建、确保「工作日志」文件夹）；kind=log 工作日志默认隐身（inject 硬 false / recall 缺省 false / 列表与默认搜索排除，筛选中心 kind=日志 专入口）且永不被过期/孤儿清理提名；引导激活期日志自动落 origin=memory-guide 产物溯源；front-matter 预留 logDate/entities/summarizedAt；规格 design/agent-memory-v0.md）（历史版本面板：`notes-history {id}` 版本列表倒序轻量零正文 `[{ts,bytes}]`、`notes-history-get {id,ts}` 取单版正文（预览只读）、`notes-restore-history {id,ts}` 把历史版写回正文——恢复前置自动快照：persistNote 缺省语义先把当前版入 `.history`，恢复动作本身可撤销；client 详情 meta 行「历史」入口（有版本才显示）→ modal 列表/预览/一键恢复）（二期新增 `notes-ai-organize` 按 kind 模板重写正文、`notes-assets-prune` 孤儿资产清理 dry-run 预览 + 白名单删除；P1 回收站：`notes-list` 参数化 `includeDeleted` + `notes-purge` 彻底删除——仅限已软删除笔记，`.md` 与 `.md.bak` 一并移除；ctx.fs 无删除契约，开发版落回墓碑式清空（0 字节占位，全链路视作不存在），静态包经 `fs.processPath` + `node:fs` 真删；P3 单文件导出：`notes-export-single` 按 scope（all/folder/tag）拼接单篇自包含 Markdown，图片 base64 内联，>20MB 告警仍导出；注入预览器：`notes-inject-preview {sessionId?, workspace?}` 纯复用 conventionText/catalogText 渲染产物 + 统计（脱敏/时效标注/预算截断），三档视角——缺省全局 / 传工作区标题（workspace）= 该工作区全部会话注入并集 / 传会话 id 按 injectTo 命中过滤（sessionId 与 workspace 互斥、同传 sessionId 优先），预览不更新 lastInjectChars；整理建议器：`notes-suggest` dry-run 零写入返回四类候选——archiveCandidates 速记组（内聚复用 `_archivePreview` 同款结构）/ staleCandidates 过期未引用（kind=note/link 且超 staleDays 且 useCount===0，遥测保护）/ orphanCandidates 孤儿 / logHygieneCandidates 日志卫生（工作记忆 v0：超 7 天周聚合 + 超 90 天月聚合提名，只提名不执行）（无 [[双链]] 出链与反向链接、inject=false、useCount=0、status=active 的普通笔记，排除速记与归档产物防误伤，上限 20），只提名不执行，client 三段式 modal 直达归档预览 / confirm 后批量软删 / 孤儿仅展示逐条跳转；LLM 用量统计：`notes-usage-get` 返回 { today, week, month, allTime, byFeature, estimatedTokens, exactTokens, calls }——llm-usage 标记块计量包装挂 3 个 llm 调用点（classifyTopic/extractInstruction=classify、_aiOrganize=organize，streamMetered 捕获 usage chunk 真实值优先、缺省字符估算 1.6 系数兜底），usage.json 独立于 settings.json 落盘（内存累积 + 5s 防抖 + 卸载 flush），settings 新键 `usageBudgetMonthly` 月度预算提醒阈值（tokens/月，0=关闭，超预算仅 client toast 不阻断））
 - **3 个 Agent 工具**：`note_search`、`note_get`、`note_manage`（七 action：create/list/update/delete/restore/archive/dispatch）
 
 ### 约定注入（T2.3）
@@ -196,7 +196,7 @@ P1+P2 模块化落地后，一切改动都在 `src/**` 模块源上进行，**�
 1. **选域**：按功能归属放进现有域模块——笔记 CRUD → `src/host/notes.js`；文件夹 → `folders.js`；历史/回收站 → `history-trash/`；归档/整理建议/日志卫生/工作记忆 → `memory.js`；注入渲染/设置面 → `inject.js`；会话元数据与派发 → `dispatch.js`；检索 → `search.js`；导入导出/资产 → `transfer.js`；LLM → `llm/`；基础设施（handle 包装/perf/notes-css/notes-src 下发）→ `server.js`；工具层 → `index.js`（尾模块）。确实不属于任何域才新建模块文件。
 2. **双包形态**：开发/发布无差异 → 单文件、两 manifest 同名引用（先例：`search.js`、`inject/img-path-hint.js`）；有设计内差异（路径拼接/删除通道/webServer 路由/一次性迁移等，architecture-modular.md §8.1.5 清单）→ 建 `<name>.js` + `<name>.dist.js` 变体对，两 manifest 各自登记（§8.4.3 红线 9：禁止第三份拷贝）。
 3. **登记 manifest**：在 `src/host/manifest.dev.js` / `manifest.dist.js` 按序位插入——**序位 = 标识符可见序**，消费方必须排在定义方之后（节 45 方向断言锁定关键跨模块序位）；manifest 注释禁单引号。
-4. **配套断言**：带数字的 RPC 面断言（如「39 个 RPC」「host 应用成功」）同步 +1；新行为断言加进对应 check 节或新建节。
+4. **配套断言**：带数字的 RPC 面断言（如「40 个 RPC」「host 应用成功」）同步 +1；新行为断言加进对应 check 节或新建节。
 5. 改完先 `node check.js --only=<相关节>` 聚焦，再全量收尾。
 
 ### 新 client UI（modal / popover / panel）
@@ -216,11 +216,11 @@ P1+P2 模块化落地后，一切改动都在 `src/**` 模块源上进行，**�
 
 ## 测试
 
-测试套件为模块化结构：`check.js`（runner：模式解析/CORE 名单/节注册表/总结）+ `check/helpers.cjs`（共享设施）+ `check/sections/*.cjs`（60 节断言体）。断言总数 587（随版本演进；拆分自原单文件时逐字节迁移，语义零变化）。
+测试套件为模块化结构：`check.js`（runner：模式解析/CORE 名单/节注册表/总结）+ `check/helpers.cjs`（共享设施）+ `check/sections/*.cjs`（66 节断言体）。断言总数 654（随版本演进；拆分自原单文件时逐字节迁移，语义零变化）。
 
 ```bash
-node check.js                 # 全量回归（默认，587 条；verifier/发布前用）
-node check.js --core          # 核心快检：108 条主链路代表性断言，秒级（worker 自测用）；也可用 CHECK_CORE=1
+node check.js                 # 全量回归（默认，654 条；verifier/发布前用）
+node check.js --core          # 核心快检：116 条主链路代表性断言，秒级（worker 自测用）；也可用 CHECK_CORE=1
 node check.js --only=39,42    # 分节运行：只执行选中节的断言（逗号分隔节号或节名前缀）；也可用 CHECK_ONLY=39,42
 node check.js --core --only=40  # 可组合：选中节内再按 CORE 名单过滤（此时名单命中校验自动跳过）
 ```

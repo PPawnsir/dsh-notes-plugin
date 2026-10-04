@@ -59,7 +59,7 @@
             e('span', { className: 'dsh-notes-titlebar-title' }, I('note', 14), '笔记'),
             e('div', { className: 'dsh-notes-titlebar-actions' },
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setEntryMode(entryMode === 'header' ? 'fab' : 'header'), 'data-tooltip': '切换入口模式：会话头部 / 悬浮气泡' }, I('swap', 13)),
-              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: openArchive, 'data-tooltip': '归档：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）' }, '归档'),
+              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: openArchive, 'data-tooltip': '速记合并：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）' }, '速记'),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setShowHelp(!showHelp), 'data-tooltip': '使用说明' }, '?'),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: close, 'data-tooltip': '关闭' }, '×')))
         const splitterEl = e('div', { className: 'dsh-notes-splitter dsh-nt' + (sideDrag ? ' on' : ''), onMouseDown: onSplitterMouseDown, onDoubleClick: resetSideW, 'data-tooltip': '拖拽调整侧栏宽度（双击重置）' })

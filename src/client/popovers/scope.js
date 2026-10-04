@@ -41,8 +41,9 @@
           const arr = (injectTo || []).filter(t => t !== 'global' && t !== 'workspace')
           if (arr.length === 0) return '所有会话'
           const names = arr.map(t => {
-            const s = sessList.find(x => x.short === t)
-            return s ? s.name : ('会话 ' + t)
+            const st = shortSid(t)   // 归一比对（notes-034-injectto-norm）：存量长 id 先约到短 id 再匹配会话名
+            const s = sessList.find(x => x.short === st)
+            return s ? s.name : ('会话 ' + st)
           })
           return names.join('、')
         }
@@ -58,7 +59,7 @@
                   scopeWsKeys.map(ws => e('div', { key: ws, className: 'dsh-notes-scope-group' },
                     e('div', { className: 'dsh-notes-scope-ws' }, ws),
                     scopeByWs[ws].map(s => e('label', { key: s.id, className: 'dsh-notes-scope-item dsh-notes-scope-sess' },
-                      e('input', { type: 'checkbox', checked: s.pending ? false : edScope.indexOf(s.short) >= 0, onChange: () => { if (!s.pending) toggleScope(s.short) }, disabled: !!s.pending }),
+                      e('input', { type: 'checkbox', checked: s.pending ? false : scopeHas(edScope, s.short), onChange: () => { if (!s.pending) toggleScope(s.short) }, disabled: !!s.pending }),
                       ' ' + (s.pending ? (s.short + ' · 标题加载中…') : s.name))))))
                 : null
         return { sessList: sessList, sessPending: sessPending, scopeOpen: scopeOpen, setScopeOpen: setScopeOpen, injectScopeLabel: injectScopeLabel, scopePanelEl: scopePanelEl }

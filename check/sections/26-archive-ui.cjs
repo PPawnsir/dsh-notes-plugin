@@ -12,11 +12,13 @@ module.exports = {
   section('26. 显式归档 UI（引导气泡 + 预览对话框 + toast 撤销 + 多选合并）')
   const protoV2Src = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
   await t('归档按钮改为预览入口 + 引导 tooltip（开发版 + 发布包）', () => {
-    const TIP = '归档：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）'
+    const TIP = '速记合并：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）'   /* notes-034-batch3：顶栏按钮改名「速记」（与 modal/执行层真归档语义区分），tooltip 同步 */
     for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
-      assert(pair[1].indexOf("onClick: openArchive, 'data-tooltip': '" + TIP + "'") >= 0, pair[0] + ' 归档按钮 → openArchive + 引导 tooltip')
+      assert(pair[1].indexOf("onClick: openArchive, 'data-tooltip': '" + TIP + "'") >= 0, pair[0] + ' 速记按钮 → openArchive + 引导 tooltip')
+      assert(pair[1].indexOf(" }, '速记')") >= 0, pair[0] + ' 按钮可见 label=速记')
       assert(pair[1].indexOf('async function openArchive()') >= 0, pair[0] + ' openArchive 存在')
       assert(pair[1].indexOf('归档合并：速记按会话、普通笔记按标签') < 0, pair[0] + ' 旧 tooltip（行为变更前文案）已清零')
+      assert(pair[1].indexOf('归档：把同一会话的速记合并成一篇') < 0, pair[0] + ' 改名前 tooltip（「归档：」前缀）已清零')
     }
   })
   await t('旧「直接执行归档」逻辑清零（点击不再无参直调 notes-archive）', () => {
@@ -79,7 +81,7 @@ module.exports = {
     }
   })
   await t('app.html 同款：归档按钮（引导 title）+ 预览对话框 + 多选合并 + toast 撤销 + Esc', () => {
-    assert(appSrc.indexOf('id="btnArchive"') >= 0 && appSrc.indexOf('归档：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）') >= 0, 'app.html 归档按钮 + 引导 title')
+    assert(appSrc.indexOf('id="btnArchive"') >= 0 && appSrc.indexOf('速记合并：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）') >= 0, 'app.html 速记按钮 + 引导 title（notes-034-batch3 改名）')
     assert(appSrc.indexOf("rpc('notes-archive-preview', {})") >= 0, 'app.html 预览走 notes-archive-preview')
     assert(appSrc.indexOf('归档预览') >= 0 && appSrc.indexOf('arch-list') >= 0 && appSrc.indexOf('arch-members') >= 0, 'app.html 预览对话框结构（组列表+成员明细）')
     assert(appSrc.indexOf('归档所选（') >= 0 && appSrc.indexOf('手动笔记不受影响；如需合并手动笔记，请在列表多选后右键合并。') >= 0, 'app.html 确认计数 + 手动笔记提示')
@@ -92,7 +94,7 @@ module.exports = {
     assert(appSrc.indexOf('.selbar{') >= 0 && appSrc.indexOf('.arch-list{') >= 0, 'app.html selbar/arch 样式')
   })
   await t('原型 notes-ui-v2.html 硬性同步：归档按钮 tooltip + 预览对话框 + 多选操作条 + mock 归档 RPC', () => {
-    assert(protoV2Src.indexOf('id="btnArchive"') >= 0 && protoV2Src.indexOf('归档：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）') >= 0, '原型归档按钮 tooltip 引导文案同步')
+    assert(protoV2Src.indexOf('id="btnArchive"') >= 0 && protoV2Src.indexOf('速记合并：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）') >= 0, '原型速记按钮 tooltip 引导文案同步（notes-034-batch3 改名）')
     assert(protoV2Src.indexOf('归档预览') >= 0 && protoV2Src.indexOf('arch-list') >= 0 && protoV2Src.indexOf('归档所选（') >= 0, '原型归档预览对话框示意同步')
     assert(protoV2Src.indexOf('id="btnSelMode"') >= 0 && protoV2Src.indexOf('id="selbar"') >= 0 && protoV2Src.indexOf('selbarN') >= 0, '原型多选合并操作条示意同步')
     for (const m of ['notes-archive-preview', 'notes-archive-undo']) assert(protoV2Src.indexOf("method === '" + m + "'") >= 0, '原型 mock 含 ' + m)
@@ -107,7 +109,10 @@ module.exports = {
     for (const pair of [['client-impl', clientSrc, "host.call('notes-delete', { id: id })"], ['发布包 lib/client.js', clientPkgSrc, "rpc('notes-delete', { id: id })"]]) {
       const s = pair[1]
       assert(s.indexOf('async function doSelBatchDelete()') >= 0, pair[0] + ' 多选批量删除函数存在')
-      assert(s.indexOf("window.confirm('批量删除：所选的 ' + ids.length + ' 条笔记将移入回收站（可在回收站恢复）。\\n确认删除？')") >= 0, pair[0] + ' confirm 文案注明移入回收站可恢复')
+      // notes-034-c-confirm：确认强度 = 不可恢复性——软删可恢复 → 轻（无 confirm，撤销 toast 兜底）；purge 不可恢复 → 重（双确认保留，28 节锚定）
+      assert(s.indexOf("window.confirm('批量删除：所选的 '") < 0, pair[0] + ' 软删不再弹 confirm（可恢复操作轻确认，撤销 toast 兜底）')
+      assert(s.indexOf("fn: () => undoBatchDelete(okIds)") >= 0 && s.indexOf('async function undoBatchDelete(ids)') >= 0, pair[0] + ' 删除 toast 带「撤销」动作')
+      assert(s.indexOf(pair[2].replace('notes-delete', 'notes-restore')) >= 0, pair[0] + ' 撤销链路逐条 notes-restore')
       assert(s.indexOf(pair[2]) >= 0, pair[0] + ' 逐条 notes-delete（软删 payload，与整理建议器批量软删同通道）')
       assert(s.indexOf("className: 'dsh-notes-data-danger'") >= 0 && s.indexOf("selDelPending ? '删除中…' : '删除'") >= 0, pair[0] + ' 操作条删除按钮（danger 实心 + 执行中防重入）')
       assert(s.indexOf('disabled: Object.keys(selIds).length < 1 || selDelPending') >= 0, pair[0] + ' 0 条勾选禁用删除按钮（与合并按钮互斥校验一致）')
@@ -121,7 +126,9 @@ module.exports = {
       assert(s.indexOf('<button class="mbtn danger" id="selDelete">删除</button>') >= 0, pair[0] + ' 操作条删除按钮（danger）')
       assert(s.indexOf("$('selDelete').disabled = n < 1;") >= 0, pair[0] + ' 0 条勾选禁用删除按钮（renderSelBar 联动）')
       assert(s.indexOf('function doSelBatchDelete()') >= 0, pair[0] + ' 多选批量删除函数存在')
-      assert(s.indexOf("confirm('批量删除：所选的 ' + ids.length + ' 条笔记将移入回收站（可在回收站恢复）。\\n确认删除？')") >= 0, pair[0] + ' confirm 文案注明移入回收站可恢复')
+      // notes-034-c-confirm：软删可恢复 → 轻（无 confirm，撤销 toast 兜底）
+      assert(s.indexOf("confirm('批量删除：所选的 '") < 0, pair[0] + ' 软删不再弹 confirm（可恢复操作轻确认，撤销 toast 兜底）')
+      assert(s.indexOf("label: '撤销', fn: function () { undoBatchDelete(okIds) }") >= 0 && s.indexOf('function undoBatchDelete(ids)') >= 0, pair[0] + ' 删除 toast 带「撤销」动作')
       assert(s.indexOf("rpc('notes-delete', { id: id })") >= 0, pair[0] + ' 逐条 notes-delete（软删 payload，与整理建议器批量软删同通道）')
       assert(s.indexOf("toast('已删除 ' + ok + ' 条（可在回收站恢复）'") >= 0, pair[0] + ' toast 文案（已删除 N 条 + 可恢复提示）')
       assert(s.indexOf("$('selDelete').addEventListener('click', doSelBatchDelete)") >= 0, pair[0] + ' 删除按钮事件绑定')

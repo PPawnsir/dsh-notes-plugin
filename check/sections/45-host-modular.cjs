@@ -16,14 +16,15 @@ module.exports = {
   const distList = parseManifest(fsNative.readFileSync(MANIFEST_DIST_PATH, 'utf8'))
   const read = (rel) => fsNative.readFileSync(path.join(HOST_DIR, rel), 'utf8').replace(/\r\n/g, '\n')
 
-  await t('P2·5 序位锁定：双 manifest 尾部序 = server → inject/img-path-hint → dispatch → inject → memory → search → transfer → index', () => {
-    const devTail = ['server.js', 'inject/img-path-hint.js', 'dispatch.js', 'inject.js', 'memory.js', 'search.js', 'transfer.js', 'index.js']
-    const distTail = ['server.dist.js', 'inject/img-path-hint.js', 'dispatch.dist.js', 'inject.dist.js', 'memory.dist.js', 'search.js', 'transfer.dist.js', 'index.dist.js']
-    assert.deepStrictEqual(devList.slice(-8), devTail, 'manifest.dev.js 尾部序（实得：' + devList.slice(-8).join(', ') + '）')
-    assert.deepStrictEqual(distList.slice(-8), distTail, 'manifest.dist.js 尾部序（实得：' + distList.slice(-8).join(', ') + '）')
+  await t('P2·5 序位锁定：双 manifest 尾部序 = server → inject/img-path-hint → dispatch → schedule → inject → memory → search → transfer → index', () => {
+    // 定时派发·执行层（notes-034-sched-exec）：schedule.js 紧随 dispatch.js（消费 _dispatch），双清单同名共源（无 .dist 变体）
+    const devTail = ['server.js', 'inject/img-path-hint.js', 'dispatch.js', 'schedule.js', 'inject.js', 'memory.js', 'search.js', 'transfer.js', 'index.js']
+    const distTail = ['server.dist.js', 'inject/img-path-hint.js', 'dispatch.dist.js', 'schedule.js', 'inject.dist.js', 'memory.dist.js', 'search.js', 'transfer.dist.js', 'index.dist.js']
+    assert.deepStrictEqual(devList.slice(-9), devTail, 'manifest.dev.js 尾部序（实得：' + devList.slice(-9).join(', ') + '）')
+    assert.deepStrictEqual(distList.slice(-9), distTail, 'manifest.dist.js 尾部序（实得：' + distList.slice(-9).join(', ') + '）')
     // 双清单前段（P2·3/P2·4 域）同序同名（.dist.js 后缀映射）
-    const devHead = devList.slice(0, -8)
-    const distHead = distList.slice(0, -8).map(x => x === 'head.js' || x === 'apply-head.js' ? x : x.replace(/\.dist\.js$/, '.js'))
+    const devHead = devList.slice(0, -9)
+    const distHead = distList.slice(0, -9).map(x => x === 'head.js' || x === 'apply-head.js' ? x : x.replace(/\.dist\.js$/, '.js'))
     assert.deepStrictEqual(distHead.filter(x => x !== 'head.js' && x !== 'apply-head.js'), devHead.filter(x => x !== 'kernel/head.js'), '双清单共有片同序同名（.dist.js 后缀映射）')
   })
 
@@ -34,8 +35,8 @@ module.exports = {
     assert(hostSrc.indexOf('src/host/whole.js') < 0 && indexSrc.indexOf('dist-whole') < 0, '产物不再引用余量文件')
   })
 
-  await t('共源片登记：inject/img-path-hint.js 与 search.js 双清单同名引用同一物理文件（无 .dist 变体）', () => {
-    for (const rel of ['inject/img-path-hint.js', 'search.js']) {
+  await t('共源片登记：inject/img-path-hint.js 与 search.js 与 schedule.js 双清单同名引用同一物理文件（无 .dist 变体）', () => {
+    for (const rel of ['inject/img-path-hint.js', 'search.js', 'schedule.js']) {
       assert(devList.indexOf(rel) >= 0 && distList.indexOf(rel) >= 0, rel + ' 双清单同名引用')
       assert(!fsNative.existsSync(path.join(HOST_DIR, rel.replace('.js', '.dist.js'))), rel + ' 不得出现 .dist 变体（第三份拷贝红线）')
     }
@@ -65,6 +66,9 @@ module.exports = {
     const idx = read('index.js')
     assert(idx.indexOf('function regTool(def)') >= 0 && idx.indexOf("name: 'note_manage'") >= 0, 'index.js 含工具层（3 工具）')
     assert(idx.indexOf('loadSettings()') >= 0 && idx.indexOf('ctx.effect(') >= 0, 'index.js 含启动装配收尾')
+    const sch = read('schedule.js')
+    assert(sch.indexOf("SCHEDULE_CONTRACT_TYPE = 'dispatch-schedule'") >= 0 && sch.indexOf("handle('notes-schedule-eval'") >= 0, 'schedule.js 含调度契约常量 + notes-schedule-eval RPC')
+    assert(sch.indexOf('setInterval(') >= 0 && sch.indexOf('.unref()') >= 0 && sch.indexOf('_schedTickGuarded') >= 0, 'schedule.js 含常驻 cron 装配（30s tick + unref + 防重叠闸）')
     const srvD = read('server.dist.js')
     assert(srvD.indexOf("path: RPC_PATH") >= 0 && srvD.indexOf("path: APP_PAGE_ROUTE") >= 0 && srvD.indexOf("path: ASSET_ROUTE") >= 0, 'server.dist.js 含 webServer 三路由注册')
     assert(srvD.indexOf("handle('notes-ping'") >= 0 && srvD.indexOf('ASSET_EXT_MIME') >= 0, 'server.dist.js 含 notes-ping + ASSET_EXT_MIME（随资产路由同模块）')
@@ -95,6 +99,8 @@ module.exports = {
       ['llm/organize.js', 'server.js', '_aiOrganize → notes-ai-organize 注册'],
       ['memory.js', 'index.js', '_archive → note_manage.archive'],
       ['dispatch.js', 'index.js', '_dispatch/_activeSessions → note_manage.dispatch'],
+      ['dispatch.js', 'schedule.js', '_dispatch → 定时派发执行层 _schedFire（notes-034-sched-exec）'],
+      ['schedule.js', 'index.js', 'schedule 声明校验/契约白名单 → note_manage create/update（函数声明提升，RPC 调用期引用）'],
       ['search.js', 'index.js', '_search → note_search'],
     ]
     for (const [def, use, why] of pairs) {

@@ -60,7 +60,7 @@ src/styles.css     (72KB)                    package.json / cordis.patch.yml
 |---|---|---|
 | state 堆 | ~90 个 useState/useRef：编辑字段、搜索、筛选、文件夹、17 个 modal 开合态、派发、设置卡、wiki 索引、编辑器 v3 运行时 | 543–807 |
 | effects 群 | 面板位置持久化、会话轮询（titlesPending 1.5s）、浮层外点关闭、搜索 250ms 防抖、injMgr 防抖、分页重置、~25 个 state→ref 镜像 | 808–928 |
-| 键盘流 | 单 document keydown：Ctrl+K/N// 、j/k/↑↓/Enter、**Esc 分层栈**（imgModal→linkModal→重命名→文件夹输入→右键菜单→筛选→各 modal→设置卡 flush→多选→搜索→关面板，941 行单行长链） | 929–955 |
+| 键盘流 | 单 document keydown：Ctrl+K / Alt+N / Ctrl+/ 、j/k/↑↓/Enter、**Esc 分层栈**（imgModal→linkModal→重命名→文件夹输入→右键菜单→筛选→各 modal→设置卡 flush→多选→清搜索→搜索框还焦列表→关面板，941 行单行长链） | 929–955 |
 | 窗口 chrome | titlebar 拖拽、八向 resize（680×420 下限）、splitter 侧栏宽（clamp 200px–60%，双击重置） | 956–994 |
 | 数据加载 | loadNotes（includeLogs 联动）/ loadFolders（prune 陈旧 id） | 995–1009 |
 | wiki 双链 | resolveWikiTarget / ensureWikiIndex（惰性小批量补齐）/ bumpWikiBody / jumpToWikiTarget / 反向链接推导 | 1010–1052, 2821–2837 |
@@ -232,6 +232,9 @@ src/
 ### 4.5 不变契约（发布面，逐字）
 
 模块化后以下全部不变：39+ RPC 方法面与 payload 形状；`webServer` 路由（`/dsh-notes` POST、`/dsh-notes-app` GET、`/dsh-notes/asset` GET）；`inject` 声明（开发版 `['timer','sessions','workspaces']`，静态包 `['slots','timer','sessions','workspaces']`）；localStorage key 全集（`dsh-notes-entry/folders-expanded/sidebar-w/filters/panel-state` + `dsh-notes-app-*`）；slot 注册四元组（name/id/order 各值）；`window.__dshNotesPerf` 自检面；`window.__ModuleLoader__.load` 产物形态；`.last-host-load` 心跳。
+
+**RPC 面后续新增登记**（增量契约，双包同源 + check 计数断言同步）：
+- `notes-get-batch`（notes-034-batch3，N+1 整治）：`{ids:[...]}` → `{notes:[{id,body,updatedAt}], missing:[...]}`。双链索引等全库正文场景一次拉全（首屏请求数 O(n)→O(1)，证据 n-mut6u356mloa）；最小传输面仅正文三字段，已删/墓碑/不存在计入 missing 不报错。登记于 server.js + server.dist.js 同序位（块双包逐字节一致，check 节 49 看守）。
 
 ## 5. 红线
 

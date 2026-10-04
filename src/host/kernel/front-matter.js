@@ -34,6 +34,10 @@
         // origin 条件行（工作记忆 v0 r3 车道模型·产物溯源：memory-guide 引导激活期间产生的沉淀日志落 origin=memory-guide；
         // 可选轻字段本期只落数据，详情区展示另期）
         (m.origin ? 'origin: ' + escYaml(m.origin) + '\n' : '') +
+        // schedule 条件行（定时派发·执行层：contractType=dispatch-schedule 约定笔记的调度声明 + 机器状态——
+        // 声明 {at|every, target, action, enabled} + 状态 {lastFiredAt, lastRun{at,status,receiptId}, lastError}；
+        // JSON 单行存储同 dispatches 先例；普通笔记不落此行，存量零迁移）
+        (m.schedule ? 'schedule: ' + escYaml(JSON.stringify(m.schedule)) + '\n' : '') +
         'dispatches: ' + escYaml(JSON.stringify(m.dispatches || [])) + '\n' +
         // useCount 恒写（缺省 0）：使用遥测——note_get 工具命中计数（内存累积 + 60s 防抖批量落盘，见 use-telemetry 块）
         'useCount: ' + escYaml(m.useCount || 0) + '\n' +

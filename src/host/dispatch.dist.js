@@ -96,7 +96,7 @@
     // 任务派发（共享）：主动注入上下文 + 触发对话——agent.send 一条消息到目标会话，
     // source 标记为 { kind:'plugin', form:'recall' }（todo 作为"召回的上下文"，区别于用户指令/系统提示拼接），
     // wakeup=true 保证触发该会话 agent 去获取并处理这条上下文（可见反应，不污染系统提示）。
-    // opts: { sessionId, sessionName, workspace, mode('existing'|'new'), instruction }
+    // opts: { sessionId, sessionName, workspace, mode('existing'|'new'), instruction, sourceLabel（派发来源标注，定时调度传 '定时调度 @约定标题'，进消息尾行与 dispatches 记录） }
     async function _dispatch(id, opts) {
       const o = opts || {}
       const note = await _get(id)
@@ -105,7 +105,7 @@
       const target = agents && agents.get ? agents.get(o.sessionId) : undefined
       if (!target || typeof target.send !== 'function') return { error: '目标会话当前未打开，无法触发工作。请先打开它，或改用「新建会话」。', needOpen: true }
       const instruction = String(o.instruction || '').trim()
-      const text = '【笔记插件 · 派发的待办上下文】\n\n【待办】' + (note.title || 'Untitled') + '\n' + String(note.body || note.title || '').trim() + (instruction ? '\n\n【派发方补充的要求】\n' + instruction : '') + '\n\n—— 以上是笔记插件派发给你的待办上下文（recall）。请获取此上下文并开始处理。完成后请调用 note_manage（action: \'update\', id: \'' + note.id + '\', status: \'resolved\'）了结该笔记，系统会自动回执派发状态（dispatchStatus→done）。' + (bodyHasImageRef(note.body) ? '\n\n' + assetsHintLine(NOTES_ROOT) : '')
+      const text = '【笔记插件 · 派发的待办上下文】\n\n【待办】' + (note.title || 'Untitled') + '\n' + String(note.body || note.title || '').trim() + (instruction ? '\n\n【派发方补充的要求】\n' + instruction : '') + '\n\n—— 以上是笔记插件派发给你的待办上下文（recall' + (o.sourceLabel ? '，来源：' + o.sourceLabel : '') + '）。请获取此上下文并开始处理。完成后请调用 note_manage（action: \'update\', id: \'' + note.id + '\', status: \'resolved\'）了结该笔记，系统会自动回执派发状态（dispatchStatus→done）。' + (bodyHasImageRef(note.body) ? '\n\n' + assetsHintLine(NOTES_ROOT) : '')
       const msg = {
         id: 'note-dispatch-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         role: 'user',
@@ -124,9 +124,12 @@
         mode: o.mode || 'existing',
         instruction: instruction,
         at: new Date().toISOString(),
+        // msgId 派发消息关联键（定时调度 lastRun.receiptId 回执关联用；存量记录无此字段，向后兼容）
+        msgId: msg.id,
         done: false,
         dispatchStatus: 'sent'
       }
+      if (o.sourceLabel) rec.sourceLabel = o.sourceLabel
       note.dispatches = (note.dispatches || []).concat([rec])
       note.updatedAt = new Date().toISOString()
       await persistNote(note)

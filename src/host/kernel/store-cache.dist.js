@@ -60,6 +60,8 @@
         // 工作记忆 v0 r3 车道模型：contractType（契约身份标记，memory-guide 引导笔记）；origin（产物溯源，引导激活期日志）；缺省 '' 存量零迁移
         contractType: p.meta.contractType || '',
         origin: p.meta.origin || '',
+        // 定时派发·执行层：调度声明 + 机器状态（dispatch-schedule 约定笔记），缺省 null（存量零迁移；非法 JSON 回退 null 不触发）
+        schedule: parseSchedule(p.meta.schedule),
         mergedFrom: p.meta.mergedFrom || [],
         dispatches: parseDispatches(p.meta.dispatches),
         // useCount：使用遥测（note_get 工具命中计数），缺省/非法值回退 0（存量零迁移）
@@ -131,7 +133,7 @@
         tags: n.tags || [], kind: n.kind || 'note', status: n.status || 'active',
         inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, sensitive: n.sensitive === true,
         createdAt: n.createdAt, updatedAt: n.updatedAt,
-        sessionId: n.sessionId, cwd: n.cwd, logDate: n.logDate || '', entities: n.entities || [], summarizedAt: n.summarizedAt || '', contractType: n.contractType || '', origin: n.origin || '', mergedFrom: n.mergedFrom || [],
+        sessionId: n.sessionId, cwd: n.cwd, logDate: n.logDate || '', entities: n.entities || [], summarizedAt: n.summarizedAt || '', contractType: n.contractType || '', origin: n.origin || '', schedule: n.schedule || null, mergedFrom: n.mergedFrom || [],
         dispatches: n.dispatches || [],
         useCount: Math.max(0, n.useCount || 0),
         archivedAt: n.archivedAt || '', deleted: n.deleted ? 'true' : 'false'

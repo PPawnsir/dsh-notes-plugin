@@ -33,7 +33,7 @@ module.exports = {
     assert(appSrc.indexOf('__ModuleLoader__') < 0 && appSrc.indexOf("require('react')") < 0, '页面不依赖 client bundle/React')
   })
   await t('app.html 复用全部现有 RPC（list/get/create/update/delete/restore/folders/search/quick/quick-instruct/settings/import-export/dispatch/sessions/asset-upload）', () => {
-    const need = ['notes-list', 'notes-get', 'notes-create', 'notes-update', 'notes-delete', 'notes-restore', 'notes-purge', 'notes-folders', 'notes-search', 'notes-quick', 'notes-quick-instruct', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-import-preview', 'notes-import', 'notes-active-sessions', 'notes-dispatch', 'notes-dispatch-done', 'notes-sessions', 'notes-asset-upload', 'notes-archive', 'notes-archive-preview', 'notes-archive-undo', 'notes-inject-preview', 'notes-suggest']
+    const need = ['notes-list', 'notes-get', 'notes-get-batch', 'notes-create', 'notes-update', 'notes-delete', 'notes-restore', 'notes-purge', 'notes-folders', 'notes-search', 'notes-quick', 'notes-quick-instruct', 'notes-settings-get', 'notes-settings-set', 'notes-export', 'notes-import-preview', 'notes-import', 'notes-active-sessions', 'notes-dispatch', 'notes-dispatch-done', 'notes-sessions', 'notes-asset-upload', 'notes-archive', 'notes-archive-preview', 'notes-archive-undo', 'notes-inject-preview', 'notes-suggest']
     for (const m of need) assert(appSrc.indexOf("'" + m + "'") >= 0, '页面应调用 RPC：' + m)
     assert(/setTimeout\(pullSessions,\s*1500\)/.test(appSrc) || appSrc.indexOf('1500') >= 0, 'titlesPending 1.5s 重拉契约')
   })

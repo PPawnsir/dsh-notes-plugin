@@ -88,6 +88,13 @@ module.exports = {
     assert(ids.indexOf(cF.id) >= 0, 'folder=本夹：并集条目可见')
     ids = (await U.handlers['notes-list']({ folder: '' })).notes.map(n => n.id)
     assert(ids.indexOf(cF.id) < 0 && ids.indexOf(cA.id) >= 0, 'folder=未分类：入夹并集条目排除、未入夹可见')
+    // R-6：folder 过滤隐式含 log（并集条目同一过滤管线）——未分类日志在 folder:'' 视图召回；夹内日志在夹视图（递归子树）召回
+    assert(ids.indexOf(cB.id) >= 0, 'R-6：folder=未分类视图含并集日志条目（显式导航放行）')
+    const cL = await U.handlers['notes-create']({ title: '并集夹内日志', body: 'x', kind: 'log', folder: f2.id })
+    ids = (await U.handlers['notes-list']({ folder: f1.id })).notes.map(n => n.id)
+    assert(ids.indexOf(cL.id) >= 0 && ids.indexOf(cF.id) >= 0, 'R-6：folder=父夹递归子树含并集日志 + 普通条目')
+    ids = (await U.handlers['notes-list']({})).notes.map(n => n.id)
+    assert(ids.indexOf(cL.id) < 0 && ids.indexOf(cB.id) < 0, 'R-6：默认列表（隐式表面）仍排除全部并集日志')
     // 软删：缺省列表排除；回收站（includeDeleted）口径可见
     await U.handlers['notes-delete']({ id: cC.id })
     ids = (await U.handlers['notes-list']({})).notes.map(n => n.id)

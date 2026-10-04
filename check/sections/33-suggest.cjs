@@ -10,7 +10,7 @@ module.exports = {
   // 契约：notes-suggest（dry-run 零写入）→ { archiveCandidates（速记组，内聚复用 _archivePreview，与 notes-archive-preview 同源）,
   //   staleCandidates（kind=note/link 且超 staleDays 且 useCount===0——遥测保护：useCount>0 不入选）,
   //   orphanCandidates（孤儿：无 [[双链]] 出链/反向链接 + inject=false + useCount=0 + status=active 的普通笔记，排除速记/归档产物防误伤，上限 20）, generatedAt }。
-  // 红线：只提名不自动执行——「去归档」直达归档预览对话框；「一键批量软删除」confirm 后才逐条 notes-delete；孤儿仅展示逐条跳转。
+  // 红线：只提名不自动执行——「去归档」直达归档预览对话框；「一键批量软删除」无 confirm 直接逐条 notes-delete（撤销 toast 兜底，notes-034-c-confirm）；孤儿仅展示逐条跳转。
   section('33. 整理建议器（notes-suggest + 三段式 modal + 四端同步）')
 
   // ---- 33.1 host 双侧：suggest-helpers 标记块逐字节一致 + eval 单测（与 sensitive-helpers/export-single 同款姿势）----
@@ -197,14 +197,17 @@ module.exports = {
     assert(clientSrc.indexOf("host.call('notes-suggest', {})") >= 0, 'openSuggest 走 notes-suggest（dry-run 零写入）')
     assert(clientPkgSrc.indexOf("rpc('notes-suggest', {})") >= 0, '发布包同链路（rpc 形态，需先跑 scripts/build-dist.cjs）')
   })
-  await t('client 建议动作：去归档直达归档预览 / 批量软删 confirm + 逐条 notes-delete payload / 孤儿仅展示逐条跳转', () => {
+  await t('client 建议动作：去归档直达归档预览 / 批量软删无 confirm（撤销 toast 兜底）+ 逐条 notes-delete payload / 孤儿仅展示逐条跳转', () => {
     // ① 速记组「去归档」：关建议框 → openArchive（归档预览对话框，数据同源）
     assert(clientSrc.indexOf('function suggestGoArchive() { setSuggestOpen(false); openArchive() }') >= 0, '「去归档」直达归档预览对话框')
     assert(clientPkgSrc.indexOf('function suggestGoArchive()') >= 0, '发布包同步 suggestGoArchive')
-    // ② 过期未引用「一键批量软删除」：confirm 守卫 + 逐条 notes-delete + 删后收尾刷新
-    assert(clientSrc.indexOf("window.confirm('一键批量软删除：' + list.length + ' 条") >= 0, '批量软删前 window.confirm 确认')
+    // ② 过期未引用「一键批量软删除」：无 confirm（确认强度 = 不可恢复性：软删可恢复 → 轻，撤销 toast 兜底；notes-034-c-confirm）+ 逐条 notes-delete + 删后收尾刷新
+    assert(clientSrc.indexOf("window.confirm('一键批量软删除：'") < 0, '批量软删不再 window.confirm（软删可恢复 → 轻确认）')
+    assert(clientSrc.indexOf("fn: () => undoSuggestBatchDelete(okIds)") >= 0 && clientSrc.indexOf('async function undoSuggestBatchDelete(ids)') >= 0, '批量软删 toast 带「撤销」动作')
+    assert(clientSrc.indexOf("await host.call('notes-restore', { id: id })") >= 0, '撤销链路逐条 notes-restore')
     assert(clientSrc.indexOf("await host.call('notes-delete', { id: n.id })") >= 0, '逐条 notes-delete payload（软删，回收站可恢复）')
     assert(clientPkgSrc.indexOf("await rpc('notes-delete', { id: n.id })") >= 0, '发布包同批量软删 payload（rpc 形态）')
+    assert(clientPkgSrc.indexOf("await rpc('notes-restore', { id: id })") >= 0, '发布包同批量软删撤销链路（rpc 形态，需先跑 scripts/build-dist.cjs）')
     assert(clientSrc.indexOf('afterArchiveCleanup(list.map(n => n.id))') >= 0, '删后收尾：正打开笔记退出选中态（归档同款）')
     assert(clientSrc.indexOf('loadSuggest()') >= 0, '删后刷新建议数据（三段联动）')
     // ③ 孤儿仅展示：「查看」逐条跳转（jumpToWikiTarget 同款过滤退回）；无批量操作（启发式判定防误伤）
@@ -223,7 +226,7 @@ module.exports = {
   })
 
   // ---- 33.5 app.html / 原型 notes-ui-v2.html 同款（UI 唯一规格来源约束）----
-  await t('app.html + 原型整理建议同款：设置卡片「整理建议」行入口 + 三段式 modal + 批量软删 confirm + 孤儿仅展示（双端 UI 标记一致 + mock 演示）', () => {
+  await t('app.html + 原型整理建议同款：设置卡片「整理建议」行入口 + 三段式 modal + 批量软删无 confirm（撤销 toast 兜底）+ 孤儿仅展示（双端 UI 标记一致 + mock 演示）', () => {
     for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
       const s = pair[1], label = pair[0]
       assert(s.indexOf('id="btnSuggest"') < 0, label + ' 底部「整理」按钮已移除（收敛进设置卡片）')
@@ -234,12 +237,13 @@ module.exports = {
       assert(s.indexOf('整理建议') >= 0 && s.indexOf('可整理的速记组') >= 0 && s.indexOf('过期未引用') >= 0 && s.indexOf('可能无用') >= 0, label + ' modal 三段标题')
       assert(s.indexOf('库很干净，无需整理') >= 0, label + ' 空态文案')
       assert(s.indexOf('.sg-sec{') >= 0 && s.indexOf('.sg-sec-t{') >= 0, label + ' 分节样式')
-      assert(s.indexOf("confirm('一键批量软删除：'") >= 0, label + ' 批量软删 confirm 确认')
+      assert(s.indexOf("confirm('一键批量软删除：'") < 0, label + ' 批量软删不再 confirm（软删可恢复 → 轻确认，notes-034-c-confirm）')
+      assert(s.indexOf('function undoSuggestBatchDelete(ids)') >= 0, label + ' 批量软删撤销函数存在（逐条 notes-restore）')
       assert(s.indexOf("rpc('notes-delete', { id: n.id })") >= 0, label + ' 逐条 notes-delete payload')
       assert(s.indexOf('sgGoArch') >= 0 && s.indexOf('openArchive()') >= 0, label + ' 「去归档」直达归档预览')
       const sec3 = s.match(/>可能无用<span[\s\S]*?判定口径/)   // 锚定③段标题行（HTML 字符串形态），避开段头注释与②段批量按钮
       assert(sec3 && sec3[0].indexOf('查看') >= 0 && sec3[0].indexOf('一键批量') < 0 && sec3[0].indexOf('danger') < 0, label + ' 孤儿段仅展示（无批量操作）')
-      assert(s.indexOf('suggestState = null; histState = null; memEnableState = null; return }') >= 0, label + ' Esc 统一关建议框（连带历史面板 histState / 工作记忆启用框 memEnableState 复位）')
+      assert(s.indexOf('suggestState = null; histState = null; memEnableState = null; dState = null; return }') >= 0, label + ' Esc 统一关建议框（连带历史面板 histState / 工作记忆启用框 memEnableState / 派发框 dState 复位——notes-034-sched-ui 起追加 dState）')
     }
     // 双端 UI 标记一致（共享 DOM id / 函数名 / 样式类）
     for (const k of ['setSuggest', 'openSuggest', 'loadSuggest', 'renderSuggestList', 'doSuggestBatchDelete', 'suggestState', 'sgGoArch', 'sgBatchDel', 'sg-view', 'sg-sec']) {

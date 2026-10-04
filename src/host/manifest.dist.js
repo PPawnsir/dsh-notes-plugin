@@ -4,7 +4,7 @@
 // P2·4 RPC 核心域抽出：folders/notes/history-trash·trash/llm·organize 四域双包变体片（路径拼接与删除通道等设计内差异）。
 // P2·5 收口：dist-whole.js 续切完毕——server.dist（核心注册表 + webServer 三路由 + notes-ping + notes-src 源下发）/
 // dispatch.dist / inject.dist / memory.dist / transfer.dist / index.dist（工具层 + 一次性迁移 + 启动装配，尾模块）六变体片；
-// inject/img-path-hint.js 与 search.js 双包逐字节一致 → 物理单份（无 .dist 变体）。
+// inject/img-path-hint.js 与 search.js 与 schedule.js 双包逐字节一致 → 物理单份（无 .dist 变体）。
 // 序位与 manifest.dev.js 同序；check/sections/45-host-modular.cjs 锁定序位与共源/变体登记。
 'head.js'
 'apply-head.js'
@@ -24,6 +24,7 @@
 'server.dist.js'
 'inject/img-path-hint.js'
 'dispatch.dist.js'
+'schedule.js'
 'inject.dist.js'
 'memory.dist.js'
 'search.js'

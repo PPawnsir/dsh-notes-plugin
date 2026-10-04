@@ -209,6 +209,7 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 
 /* ===== 笔记树（原型 .tree） ===== */
 .dsh-notes-tree{flex:1;overflow-y:auto;padding:0 6px 8px;border-top:1px solid var(--nbd-soft)}
+.dsh-notes-tree:focus{outline:none}   /* 键盘流还焦目标（Esc/搜索↓ 还焦列表）：程序化焦点不画焦点环 */
 .dsh-notes-tree::-webkit-scrollbar{width:8px}
 .dsh-notes-tree::-webkit-scrollbar-thumb{background:var(--nbd);border-radius:4px}
 .dsh-notes-tree::-webkit-scrollbar-thumb:hover{background:var(--nt3)}
@@ -384,6 +385,45 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-dispatch-ok{background:var(--nacc);border:none;border-radius:7px;color:var(--dsw-alias-label-primary-foreground,#fff);font-size:12px;font-weight:600;padding:6px 16px;cursor:pointer;font-family:var(--nfont)}
 .dsh-notes-dispatch-ok:hover{filter:brightness(1.08)}
 .dsh-notes-dispatch-ok:disabled{opacity:.5;cursor:not-allowed}
+
+/* ===== 定时派发·设置交互（notes-034-sched-ui）：派发弹窗调度区 + 注入管理「调度任务」区 ===== */
+.dsh-notes-sched-box{border:1px solid var(--nbd-soft);border-radius:8px;padding:7px 10px;margin-bottom:10px;font-size:12px;color:var(--nt2)}
+.dsh-notes-sched-opt{display:inline-flex;align-items:center;gap:4px;margin-right:14px;cursor:pointer;user-select:none}
+.dsh-notes-sched-opt input{accent-color:var(--nacc)}
+.dsh-notes-sched-form{margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dsh-notes-sched-sel{width:auto;padding:4px 8px;font-size:11.5px;margin-bottom:0}
+.dsh-notes-sched-n{width:64px;padding:4px 8px;font-size:11.5px;margin-bottom:0}
+.dsh-notes-sched-at{width:auto;padding:4px 8px;font-size:11.5px;margin-bottom:0}
+.dsh-notes-sched-next{flex-basis:100%;font-size:10.5px;color:var(--nt3);margin-top:2px}
+.dsh-notes-sched-next.warn{color:var(--ndanger)}
+.dsh-notes-sched-sec{border:1px solid var(--nbd-soft);border-radius:8px;margin-bottom:10px}
+.dsh-notes-sched-sec-t{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--nt2);padding:7px 9px;border-bottom:1px solid var(--nbd-soft)}
+.dsh-notes-sched-sec-sub{font-weight:400;color:var(--nt3);font-size:10px;margin-left:4px}
+.dsh-notes-sched-empty{padding:7px 9px}
+.dsh-notes-sched-row{display:flex;align-items:center;gap:8px;padding:6px 9px;font-size:11.5px;border-bottom:1px solid var(--nbd-soft)}
+.dsh-notes-sched-row:last-child{border-bottom:none}
+.dsh-notes-sched-row.paused{opacity:.6}
+.dsh-notes-sched-row-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:var(--ntx)}
+.dsh-notes-sched-freq{color:var(--nacc-tx);flex-shrink:0;font-size:10.5px}
+.dsh-notes-sched-target{color:var(--nt3);flex-shrink:0;font-size:10.5px;font-family:var(--nmono)}
+.dsh-notes-sched-nf{color:var(--nt2);flex-shrink:0;font-size:10.5px;white-space:nowrap}
+.dsh-notes-sched-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nt3);border:1px solid var(--nbd);border-radius:10px;padding:0 7px;flex-shrink:0;white-space:nowrap}
+.dsh-notes-sched-badge.ok{color:#56c88f;border-color:transparent;background:rgba(86,200,143,.12)}
+.dsh-notes-sched-badge.err{color:var(--ndanger);border-color:transparent;background:rgba(229,115,79,.12);max-width:170px;overflow:hidden;text-overflow:ellipsis}
+.dsh-notes-sched-badge.off{color:var(--nwarn);border-color:transparent;background:rgba(229,181,103,.12)}
+.dsh-notes-sched-acts{display:inline-flex;gap:4px;flex-shrink:0}
+.dsh-notes-sched-act{background:transparent;border:1px solid var(--nbd);border-radius:6px;color:var(--nt2);font-size:10.5px;padding:1px 9px;cursor:pointer;font-family:var(--nfont)}
+.dsh-notes-sched-act:hover{border-color:var(--nacc);color:var(--ntx)}
+.dsh-notes-sched-act:disabled{opacity:.45;cursor:not-allowed}
+/* 详情派发计划块（notes-034-sched-detail）：meta 区尾部全宽行（flex-basis:100% 自成一行）+ 关联调度清单行 */
+.dsh-notes-sched-plan{flex-basis:100%;border:1px solid var(--nbd-soft);border-radius:8px;padding:2px 0;font-size:11.5px;margin-top:2px}
+.dsh-notes-sched-plan-row{display:flex;align-items:center;gap:8px;padding:4px 9px;border-bottom:1px solid var(--nbd-soft)}
+.dsh-notes-sched-plan-row:last-child{border-bottom:none}
+.dsh-notes-sched-plan-row.paused{opacity:.6}
+.dsh-notes-sched-plan-t{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;color:var(--nt3);flex-shrink:0}
+.dsh-notes-sched-peer{cursor:pointer}
+.dsh-notes-sched-peer:hover{background:var(--nbg-hover)}
+.dsh-notes-sched-peer-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ntx)}
 
 /* ===== 设置卡片（modal，居中）：通用结构——标题「设置」+ 设置项行列表（加设置项 = 加行） ===== */
 .dsh-notes-settings-mask{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:70;display:flex;align-items:center;justify-content:center}
@@ -679,6 +719,15 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-help-close{position:absolute;top:8px;right:10px;background:none;border:none;color:var(--nt3);font-size:15px;cursor:pointer;padding:2px 6px;border-radius:5px;line-height:1}
 .dsh-notes-help-close:hover{background:var(--nbg-hover);color:var(--ntx)}
 
+/* ===== 键盘流速查表（cheat sheet，notes-034-f-cheatsheet）：复用 settings mask/modal，键帽行两栏布局 ===== */
+.dsh-notes-cheatsheet-modal{width:440px}
+.dsh-notes-cheatsheet-list{display:flex;flex-direction:column;gap:2px}
+.dsh-notes-cs-row{display:flex;align-items:center;gap:10px;padding:5px 6px;border-radius:6px}
+.dsh-notes-cs-row:hover{background:var(--nbg-hover)}
+.dsh-notes-cs-keys{flex-shrink:0;min-width:76px;text-align:right}
+.dsh-notes-cs-keys kbd{font-family:var(--nmono);font-size:10.5px;background:var(--nbg-raise);border:1px solid var(--nbd);border-radius:4px;padding:1px 6px;color:var(--ntx);white-space:nowrap}
+.dsh-notes-cs-desc{font-size:12px;color:var(--nt2);line-height:1.5}
+
 /* ===== 笔记行右键菜单 / 文件夹右键菜单（面板内绝对定位；点击外部/Esc 关闭） ===== */
 .dsh-notes-ctxmenu{position:absolute;z-index:60;min-width:150px;max-height:320px;overflow-y:auto;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 6px 24px rgba(0,0,0,.14);padding:4px;display:flex;flex-direction:column;gap:1px}
 .dsh-notes-ctxmenu-item{display:flex;align-items:center;gap:7px;background:transparent;border:none;color:var(--ntx);font-size:12px;text-align:left;padding:6px 10px;border-radius:6px;cursor:pointer;transition:background .1s;font-family:var(--nfont)}
@@ -693,7 +742,7 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-ctxmenu-item:disabled{opacity:.4;cursor:default}
 .dsh-notes-ctxmenu-item:disabled:hover{background:transparent}
 
-/* ===== 新建笔记 modal（侧栏「新建」chip / Ctrl+N）：复用 dispatch modal 基调 ===== */
+/* ===== 新建笔记 modal（侧栏「新建」chip / Alt+N）：复用 dispatch modal 基调 ===== */
 .dsh-notes-newnote-mask{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center}
 .dsh-notes-newnote-modal{background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 12px 40px rgba(0,0,0,.22);width:380px;max-width:86vw;padding:18px 20px 16px;display:flex;flex-direction:column;gap:12px}
 .dsh-notes-newnote-t{font-size:14px;font-weight:600;color:var(--ntx)}

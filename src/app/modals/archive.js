@@ -42,7 +42,7 @@ function renderArchList() {
       + '<span class="caret' + (open ? ' open' : '') + '" data-exp="' + esc(g.sessionId) + '">' + icon('i-chev', 10) + '</span>'
       + '<span class="ti" title="' + esc(g.title) + '">' + esc(g.title) + '</span>'
       + '<span class="meta">' + esc(span) + ' · ' + g.members.length + ' 条 · ' + fmtBytes(g.totalBytes) + ((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : '') + '</span></div>'
-      + (open ? '<div class="arch-members">' + g.members.map(function (m) { return '<div class="arch-member"><span class="ti">' + esc(m.title || '无标题') + '</span><span class="dt">' + esc(String(m.updatedAt || '').slice(0, 10)) + '</span></div>' }).join('') + '</div>' : '')
+      + (open ? '<div class="arch-members">' + g.members.map(function (m) { return '<div class="arch-member"><span class="ti">' + esc(m.title || '无标题') + '</span><span class="dt">' + esc(fmtDT(m.updatedAt).slice(0, 10)) + '</span></div>' }).join('') + '</div>' : '')
       + '</div>';
   });
   host.innerHTML = h + '</div>';
@@ -110,21 +110,31 @@ function doMergeConfirm() {
     afterArchiveRefresh();
   }).catch(function (e) { modalErr('合并失败：' + (e && e.message || e)); $('mgOk').disabled = false; $('mgOk').textContent = '合并' });
 }
-/* 多选批量删除（软删进回收站，与整理建议器批量软删同通道）：confirm 注明可恢复 → 逐条 notes-delete → 退出多选态 + 刷新 */
+/* 多选批量删除（软删进回收站，与整理建议器批量软删同通道）：确认强度 = 不可恢复性（notes-034-c-confirm）——
+   软删可恢复 → 轻：无 confirm 直接删，撤销 toast 兜底（逐条 notes-restore；回收站亦可恢复）；不可恢复的 purge 才保留双确认 */
 function doSelBatchDelete() {
   var ids = Object.keys(selIds);
   if (!ids.length) return;
-  if (!confirm('批量删除：所选的 ' + ids.length + ' 条笔记将移入回收站（可在回收站恢复）。\n确认删除？')) return;
-  var ok = 0, fail = 0, chain = Promise.resolve();
+  var ok = 0, fail = 0, okIds = [], chain = Promise.resolve();
   ids.forEach(function (id) {
     chain = chain.then(function () {
-      return rpc('notes-delete', { id: id }).then(function (res) { if (res && res.error) fail++; else ok++ }, function () { fail++ });
+      return rpc('notes-delete', { id: id }).then(function (res) { if (res && res.error) fail++; else { ok++; okIds.push(id) } }, function () { fail++ });
     });
   });
   chain.then(function () {
     selMode = false; selIds = {};
-    toast('已删除 ' + ok + ' 条（可在回收站恢复）' + (fail ? '，失败 ' + fail + ' 条' : ''));
+    toast('已删除 ' + ok + ' 条（可在回收站恢复）' + (fail ? '，失败 ' + fail + ' 条' : ''), okIds.length ? { label: '撤销', fn: function () { undoBatchDelete(okIds) } } : undefined);
     afterArchiveRefresh();   /* 正打开的笔记在被删集合中则回空态（归档/合并同款收尾） */
   });
+}
+/* 批量软删撤销：逐条 notes-restore 恢复本次成功删除的笔记（单条删除撤销链路的批量复用） */
+function undoBatchDelete(ids) {
+  var ok = 0, fail = 0, chain = Promise.resolve();
+  ids.forEach(function (id) {
+    chain = chain.then(function () {
+      return rpc('notes-restore', { id: id }).then(function (res) { if (res && res.error) fail++; else ok++ }, function () { fail++ });
+    });
+  });
+  chain.then(function () { toast('已恢复 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : '')); loadNotes(true); });
 }
 

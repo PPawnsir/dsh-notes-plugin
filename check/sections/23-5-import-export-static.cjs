@@ -23,7 +23,9 @@ module.exports = {
         get: (name) => ({ agents: agentsMock, systemPrompt: { context: () => () => {} } })[name],
         effect: () => {},
       })
-      assert.strictEqual(Object.keys(handlers7).length, 40, '静态包注册 40 个 RPC（39 + notes-ping；39 含工作记忆 notes-memory-guide），实得 ' + Object.keys(handlers7).length)
+      assert.strictEqual(Object.keys(handlers7).length, 42, '静态包注册 42 个 RPC（41 + notes-ping；41 含工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch），实得 ' + Object.keys(handlers7).length)
+      assert(typeof handlers7['notes-get-batch'] === 'function', '静态包 notes-get-batch handler 存在（N+1 批量端点，notes-034-batch3）')
+      assert(typeof handlers7['notes-schedule-eval'] === 'function', '静态包 notes-schedule-eval handler 存在（定时派发·执行层）')
       const sA = await handlers7['notes-create']({ title: '静态导出A', body: 'SA正文' })
       const sB = await handlers7['notes-create']({ title: '静态导出B', body: 'SB正文' })
       await handlers7['notes-folders']({ op: 'create', name: '静态夹' })

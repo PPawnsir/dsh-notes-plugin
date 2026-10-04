@@ -137,8 +137,10 @@ Agent 会话结论是「一次性」的：今天做了什么、改了哪些文�
   → 对话框 = 车道说明文案（「工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看），
     记忆管 Agent 自己沉淀什么（自用召回），两者可同时对同一事件生效，产物重复是设计意图」）
     + 作用域多选（三档保留：所有会话 / 指定工作区 / 指定会话）
-  → notes-memory-guide {op:'enable', scope}   （幂等直建：已启用 → 返回已启用信息 already:true）
-  → 创建预填约定笔记：
+  → notes-memory-guide {op:'enable', scope}   （幂等直建：已启用 → 返回已启用信息 already:true；
+    R-3 起停用态复活：存在已停用引导笔记 → 复用复活 inject=true + injectTo 按本次作用域更新，
+    返回 revived:true，不新建第二条；已删除引导不复活——删除即彻底退出，此时才新建）
+  → 创建预填约定笔记（无既有引导时）：
       title:        约定：工作日志沉淀（工作记忆 v0）
       kind:         note            （引导是行为约定，不是日志本身）
       inject: true, injectRole: 'convention'

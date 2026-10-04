@@ -85,8 +85,8 @@ module.exports = {
       assert(s.indexOf('jumpWikiRef.current = jumpToWikiTarget') >= 0, label + ' 跳转函数 ref 镜像（防闭包过期）')
       assert(s.indexOf('renderMarkdown(edBodyRef.current, wikiResolve)') >= 0 && s.indexOf('renderMarkdown(body, wikiResolve)') >= 0 && s.indexOf('renderMarkdown(text, wikiResolve)') >= 0, label + ' 三处 renderMarkdown 调用点带 wikiResolve')
     }
-    assert(clientSrc.indexOf("host.call('notes-get', { id: n.id })") >= 0, 'client-impl 索引拉取走 notes-get')
-    assert(clientPkgSrc.indexOf("rpc('notes-get', { id: n.id })") >= 0, '发布包索引拉取走 notes-get（build-dist rpc 形态）')
+    assert(clientSrc.indexOf("host.call('notes-get-batch', { ids: stale.map(n => n.id) })") >= 0, 'client-impl 索引拉取走 notes-get-batch 批量端点（N+1 整治 notes-034-batch3）')
+    assert(clientPkgSrc.indexOf("rpc('notes-get-batch', { ids: stale.map(n => n.id) })") >= 0, '发布包索引拉取走 notes-get-batch（build-dist rpc 形态）')
     assert(clientSrc.indexOf('loadFolders(); ensureWikiIndex(list)') >= 0 && clientPkgSrc.indexOf('loadFolders(); ensureWikiIndex(list)') >= 0, 'loadNotes 链路桥接索引构建（双端）')
   })
   await t('app.html 双链结构：解析 + 索引 + 跳转 + 行尾标记 + 反向链接面板 + 富文本点击（与面板同款，双端同步）', () => {
