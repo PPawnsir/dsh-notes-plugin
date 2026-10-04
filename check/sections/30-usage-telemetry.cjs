@@ -247,16 +247,23 @@ module.exports = {
       const s = pair[1], label = pair[0]
       assert(s.indexOf("(n.useCount || 0) > 0 ? e('span', { className: 'dsh-notes-note-use dsh-nt'") >= 0, label + ' 行尾被引用徽章（0 次不显示）')
       assert(s.indexOf("(curNote.useCount || 0) > 0 ? e('span', { className: 'dsh-notes-meta-chip'") >= 0, label + ' 详情 meta chip（0 次不显示）')
-      assert(s.indexOf("'被引用 ' + curNote.useCount + ' 次'") >= 0, label + ' 详情 meta chip「被引用 N 次」')
-      assert(s.indexOf("((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : '')") >= 0, label + ' 归档预览组行合计引用数（0 次不显示）')
+      assert(s.indexOf("tt('meta.useCount', { n: curNote.useCount })") >= 0, label + ' 详情 meta chip「被引用 N 次」（i18n 覆盖卡B 起走 tt() 字典）')
+      assert(s.indexOf("((g.totalUseCount || 0) > 0 ? tt('arch.groupUseCount', { n: g.totalUseCount }) : '')") >= 0, label + ' 归档预览组行合计引用数（0 次不显示；i18n 覆盖卡E 起走 tt() 字典）')
     }
     for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
       const s = pair[1], label = pair[0]
-      assert(s.indexOf('(n.useCount || 0) > 0 ? \'<span class="use" title="被 Agent 引用（note_get 命中）\'') >= 0, label + ' 行尾被引用徽章（0 次不显示）')
-      assert(s.indexOf("'被引用 ' + n.useCount + ' 次</span>'") >= 0, label + ' 详情 meta chip「被引用 N 次」')
-      assert(s.indexOf("((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : '')") >= 0, label + ' 归档预览组行合计引用数（0 次不显示）')
+      assert(s.indexOf("(n.useCount || 0) > 0 ? '<span class=\"use\" title=\"") >= 0, label + ' 行尾被引用徽章（0 次不显示）')
+      /* i18n 覆盖卡B：app 详情 chip 走 t() 字典；原型不双语保留中文原文（分侧断言） */
+      if (label === 'app.html') assert(s.indexOf("t('meta.useCount', { n: n.useCount })") >= 0, label + ' 详情 meta chip「被引用 N 次」走 t()（覆盖卡B）')
+      else assert(s.indexOf("'被引用 ' + n.useCount + ' 次</span>'") >= 0, label + ' 详情 meta chip「被引用 N 次」')
+      /* i18n 覆盖卡E：app 归档预览合计走 t() 字典（esc 包裹）；原型不双语保留中文原文（分侧断言，同上行 chip 先例） */
+      if (label === 'app.html') assert(s.indexOf("((g.totalUseCount || 0) > 0 ? esc(t('arch.groupUseCount', { n: g.totalUseCount })) : '')") >= 0, label + ' 归档预览组行合计引用数走 t()（覆盖卡E）')
+      else assert(s.indexOf("((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : '')") >= 0, label + ' 归档预览组行合计引用数（0 次不显示）')
       assert(s.indexOf('.note-row .use{') >= 0 && s.indexOf('.note-row .use svg.ic{') >= 0, label + ' 行尾徽章样式')
     }
+    // 徽章 tooltip 文案：app 走 t() 字典（i18n 覆盖卡A），原型不双语保留中文原文
+    assert(appSrc.indexOf("(n.useCount || 0) > 0 ? '<span class=\"use\" title=\"' + esc(t('tree.useCountTip', { n: n.useCount }))") >= 0, 'app.html 行尾被引用徽章 tooltip 走 t() 字典（i18n 覆盖卡A）')
+    assert(protoV2Src.indexOf('(n.useCount || 0) > 0 ? \'<span class="use" title="被 Agent 引用（note_get 命中）\'') >= 0, '原型 行尾被引用徽章 tooltip 中文原文（原型不双语红线）')
     // 原型 mock 演示数据（徽章/合计在原型可见）
     assert(protoV2Src.indexOf('useCount: 12') >= 0 && protoV2Src.indexOf('useCount: 7') >= 0 && protoV2Src.indexOf('useCount: 3') >= 0, '原型 mock 演示数据含 useCount')
     assert(protoV2Src.indexOf('totalUseCount: ms.reduce(') >= 0, '原型 mock 归档 preview 合计')

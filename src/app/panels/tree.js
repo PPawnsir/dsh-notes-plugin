@@ -2,21 +2,21 @@
 function noteRow(n, inFolderCtx) {
   var tail = '';
   if (view.type === 'topic' && n.folder) tail += '<span class="fbadge">' + icon('i-folder', 9) + esc(fname(n.folder)) + '</span>';
-  else if (inFolderCtx && n.topic) tail += '<span class="tp" title="主题：' + esc(n.topic) + '">' + esc(n.topic) + '</span>';
+  else if (inFolderCtx && n.topic) tail += '<span class="tp" title="' + esc(t('tree.topicTip', { topic: n.topic })) + '">' + esc(n.topic) + '</span>';
   else tail += '<span class="tp">' + fmtD(n.updatedAt) + '</span>';
   /* 多选态：行首复选框 + pick 高亮（行点击=勾选，由树事件委托统一处理） */
   return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + (selMode && selIds[n.id] ? ' pick' : '') + '" data-note="' + n.id + '" draggable="true">'
     + (selMode ? '<input type="checkbox" class="pick-check"' + (selIds[n.id] ? ' checked' : '') + '>' : '')
     /* 行首槽位对齐：caret 槽同宽占位 + 图标槽（kind 色点居中），与文件夹行标题起点一致 */
     + '<span class="caret-spacer"></span><span class="kind-slot"><span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span></span>'
-    + '<span class="ti">' + (isPinned(n) ? '<svg class="ic pin"><use href="#i-pin"/></svg> ' : '') + hl(n.title || '无标题', searchText) + '</span>'
-    + (n.inject ? '<span style="color:var(--nacc);display:flex" title="注入为上下文 · ' + (n.injectRole === 'reference' ? '资料' : '约定') + '">' + icon('i-bolt', 10) + '</span>' : '')
+    + '<span class="ti">' + (isPinned(n) ? '<svg class="ic pin"><use href="#i-pin"/></svg> ' : '') + hl(n.title || t('tree.untitled'), searchText) + '</span>'
+    + (n.inject ? '<span style="color:var(--nacc);display:flex" title="' + esc(t('tree.injectTip', { role: t(n.injectRole === 'reference' ? 'tree.roleReference' : 'tree.roleConvention') })) + '">' + icon('i-bolt', 10) + '</span>' : '')
     /* 曾注入徽章（injectEver 粘性标记：历史上开启过注入、现已关闭；已注入由 bolt 表达不重复显示；不满足不渲染） */
-    + (!n.inject && n.injectEver === true ? '<span class="injevr" title="曾注入：历史上开启过上下文注入（现已关闭）">' + icon('i-clock', 9) + '</span>' : '')
+    + (!n.inject && n.injectEver === true ? '<span class="injevr" title="' + t('tree.injectEverTip') + '">' + icon('i-clock', 9) + '</span>' : '')
     /* 使用遥测（P2）：被引用徽章（0 次不显示） */
-    + ((n.useCount || 0) > 0 ? '<span class="use" title="被 Agent 引用（note_get 命中）' + n.useCount + ' 次">' + icon('i-quote', 9) + n.useCount + '</span>' : '')
+    + ((n.useCount || 0) > 0 ? '<span class="use" title="' + esc(t('tree.useCountTip', { n: n.useCount })) + '">' + icon('i-quote', 9) + n.useCount + '</span>' : '')
     /* 双链标记（P2）：正文含 [[..]] 时行尾显示链接图标（缓存正文优先，preview 兜底） */
-    + (hasWikiLinks(n) ? '<span class="wikimark" title="含双链 [[…]]（详情富文本中可点击跳转）">' + icon('i-link', 9) + '</span>' : '')
+    + (hasWikiLinks(n) ? '<span class="wikimark" title="' + t('tree.wikiTip') + '">' + icon('i-link', 9) + '</span>' : '')
     + tail + '</div>';
 }
 /* 嵌套文件夹递归渲染（notes-nested-folder-ui）：depth-first——文件夹行 → 展开时 [子文件夹递归 → 直挂笔记] 包一层 .nested 缩进容器；
@@ -28,12 +28,13 @@ function folderNodeHtml(f, vis, filtering) {
   var kids = vis.filter(function (n) { return (n.folder || '') === f.id });
   var subHits = filtering ? vis.filter(function (n) { return sub[n.folder || ''] }).length : 0;
   var open = (foldOpen[f.id] !== false) || (filtering && subHits > 0);
-  /* 行主体单击=原地展开/折叠（事件委托处理）；行尾 vfilter 图标=进入/退出文件夹视图（不抢占单击） */
+  /* 行点击（含名称/图标/caret）= 纯展开/折叠（经典树语义，唯一职责——notes-041b 用户裁决去重）；
+     行尾 vfilter 图标=进入/退出文件夹视图（唯一进视图入口，不抢占单击） */
   h += '<div class="row head' + (view.type === 'folder' && view.id === f.id ? ' on' : '') + '" data-fold="' + f.id + '" data-drop="1" draggable="true">'
-    + '<span class="caret' + (open ? ' open' : '') + '">' + icon('i-chev') + '</span>'
+    + '<span class="caret' + (open ? ' open' : '') + '" title="' + t('tree.toggleTip') + '">' + icon('i-chev') + '</span>'
     + '<span class="ic-slot">' + icon('i-folder', 13) + '</span>'
     + '<span class="nm">' + esc(f.name) + '</span><span class="n">' + (filtering ? subHits : (f.count != null ? f.count : kids.length)) + '</span>'
-    + '<span class="vfilter' + (view.type === 'folder' && view.id === f.id ? ' on' : '') + '" title="文件夹视图（含子孙文件夹）">' + icon('i-filter', 11) + '</span></div>';
+    + '<span class="vfilter' + (view.type === 'folder' && view.id === f.id ? ' on' : '') + '" title="' + t('tree.folderViewTip') + '">' + icon('i-filter', 11) + '</span></div>';
   if (!open) return h;
   var subFolders = folderKids(f.id);
   if (!subFolders.length && !kids.length) return h;
@@ -44,31 +45,32 @@ function folderNodeHtml(f, vis, filtering) {
   return h;
 }
 function renderTree() {
+  renderChrome();   /* 覆盖卡A（notes-042-i18n-cov-a）：壳静态串随树渲染收敛刷新（setLang → render() 路径）；函数在 panels/topbar.js */
   var vis = notes.filter(matches);
   /* 排序：缺省保持 host 序（pinned → updatedAt）；「按引用」= useCount 降序（同数按 updatedAt 兜底）；「相关度」= 标题命中>标签>正文（同级 updatedAt 降序），分组内顺序随过滤数组 */
   if (sortBy === 'use') vis.sort(function (a, b) { return ((b.useCount || 0) - (a.useCount || 0)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) });
   var qRel = searchText.trim().toLowerCase();
   if (sortBy === 'rel' && qRel) vis.sort(function (a, b) { return (relRank(b, qRel) - relRank(a, qRel)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) });
-  $('brandCnt').textContent = (view.type === 'all' && filtersActiveCount() === 0 && !searchText ? notes.length : vis.length) + ' 条';
+  $('brandCnt').textContent = t('tree.countN', { n: view.type === 'all' && filtersActiveCount() === 0 && !searchText ? notes.length : vis.length });
   /* 过滤激活（视图/筛选中心/搜索任一）：含命中的文件夹/主题强制展开（纯渲染态，不写回 foldOpen/topicOpen——清除过滤即恢复手动折叠态），分组计数切换为命中数 */
   var filtering = view.type !== 'all' || !!searchText || filtersActiveCount() > 0;
   var h = '';
-  var vt = view.type === 'topic' ? ('主题 · ' + view.id) : view.type === 'folder' ? ('文件夹 · ' + fname(view.id)) : '全部笔记';
-  h += '<div class="sec-h">' + icon('i-filter', 11) + esc(vt) + (view.type === 'topic' ? ' <span style="letter-spacing:0;text-transform:none;font-weight:500">（跨文件夹 ' + vis.length + ' 条）</span>' : '') + (view.type !== 'all' ? '<span class="add" id="viewClear" title="清除视图过滤">✕</span>' : '') + '</div>';
+  var vt = view.type === 'topic' ? t('tree.viewTopic', { id: view.id }) : view.type === 'folder' ? t('tree.viewFolder', { name: fname(view.id) }) : t('tree.viewAll');
+  h += '<div class="sec-h">' + icon('i-filter', 11) + esc(vt) + (view.type === 'topic' ? ' <span style="letter-spacing:0;text-transform:none;font-weight:500">' + esc(t('tree.crossFolderCount', { n: vis.length })) + '</span>' : '') + (view.type !== 'all' ? '<span class="add" id="viewClear" title="' + t('tree.clearViewTip') + '">✕</span>' : '') + '</div>';
   /* 置顶聚合组（筛选中心「置顶」条件激活时不再重复展示） */
   if (!filters.pinned) {
     var pins = vis.filter(isPinned);
-    if (pins.length) { h += '<div class="sec-h">' + icon('i-pin', 11) + ' 置顶<span class="cnt2">' + pins.length + '</span></div>'; pins.forEach(function (n) { h += noteRow(n, false) }) }
+    if (pins.length) { h += '<div class="sec-h">' + icon('i-pin', 11) + ' ' + t('tree.pinned') + '<span class="cnt2">' + pins.length + '</span></div>'; pins.forEach(function (n) { h += noteRow(n, false) }) }
   }
   /* 文件夹组（嵌套递归：根级清单 → folderNodeHtml depth-first；悬空 parent 按根级防御） */
-  h += '<div class="sec-h">文件夹<span class="add" id="addFolder" title="新建文件夹">' + icon('i-plus', 12) + '</span></div>';
+  h += '<div class="sec-h">' + t('tree.folders') + '<span class="add" id="addFolder" title="' + t('tree.addFolderTip') + '">' + icon('i-plus', 12) + '</span></div>';
   rootFolders().forEach(function (f) { h += folderNodeHtml(f, vis, filtering) });
   /* 未入夹笔记：根级同级直显（与文件夹行同一缩进层级，紧随文件夹列表之后、主题过滤区之前；无「未分类」分组头/分区计数——数量并入 brand 总计数；
      主题聚合由底部「主题过滤」区承担，不重复聚合）；.unfiled-drop 包裹容器 = 「移出文件夹」drop 落点（data-drop-out，拖到本区任意位置 = 移出）；
      空态非拖拽不渲染任何占位；拖拽中由 dragstart 委托点亮/补插落点容器（.drag-on 显示「拖到此处移出文件夹」提示行），dragend 清理 */
   var unfiled = vis.filter(function (n) { return !n.folder });
   if (unfiled.length) {
-    h += '<div class="unfiled-drop" data-drop-out="1"><div class="unfiled-hint">拖到此处移出文件夹</div>';
+    h += '<div class="unfiled-drop" data-drop-out="1"><div class="unfiled-hint">' + t('tree.dropOutHint') + '</div>';
     unfiled.forEach(function (n) { h += noteRow(n, false) });
     h += '</div>';
   }
@@ -81,7 +83,8 @@ function renderTree() {
   vis.forEach(function (n) { if (n.topic) topicHitSet[n.topic] = true });
   var topicHitCount = Object.keys(topicHitSet).length;
   var tSecOpen = topicSecOpen || (filtering && topicHitCount > 0);
-  h += '<div class="sec-h" data-tsec="1" style="cursor:pointer"><span class="caret' + (tSecOpen ? ' open' : '') + '">' + icon('i-chev') + '</span>' + icon('i-topic', 11) + ' 主题 (' + (filtering ? topicHitCount : topicNames.length) + ')<span class="add" style="cursor:default">跨文件夹</span></div>';
+  h += '<div class="sec-h" data-tsec="1" style="cursor:pointer"><span class="caret' + (tSecOpen ? ' open' : '') + '">' + icon('i-chev') + '</span>' + icon('i-topic', 11) + ' ' + t('tree.topicsHeader', { n: filtering ? topicHitCount : topicNames.length }) + '<span class="add" style="cursor:default">' + t('tree.crossFolder') + '</span></div>';
+  var topicViewTip = t('tree.topicViewTip');   /* 覆盖卡A：forEach 回调形参 t（主题名）遮蔽全局 t()——tooltip 串前置提升 */
   if (tSecOpen) topicNames.forEach(function (t) {
     var on = view.type === 'topic' && view.id === t;
     var tkids = vis.filter(function (n) { return (n.topic || '') === t });
@@ -91,11 +94,11 @@ function renderTree() {
     h += '<div class="row topic-row' + (on ? ' on' : '') + '" data-topic="' + esc(t) + '">'
       + '<span class="caret' + (tOpen ? ' open' : '') + '">' + icon('i-chev') + '</span>'
       + '<span class="ic-slot">' + icon('i-topic', 12) + '</span><span class="nm">' + esc(t) + '</span><span class="n">' + (filtering ? tkids.length : allTopics[t]) + '</span>'
-      + '<span class="vfilter' + (on ? ' on' : '') + '" title="主题视图（跨文件夹过滤）">' + icon('i-filter', 11) + '</span></div>';
+      + '<span class="vfilter' + (on ? ' on' : '') + '" title="' + topicViewTip + '">' + icon('i-filter', 11) + '</span></div>';
     if (tOpen && tkids.length) { h += '<div class="nested">'; tkids.forEach(function (n) { h += noteRow(n, false) }); h += '</div>' }
   });
   /* 空结果态：提示 + 「清空筛选条件」快捷链接（筛选中心口径⑦） */
-  if (!vis.length) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">无匹配笔记' + (filtersActiveCount() ? ' · <span class="add" id="emptyClear" style="letter-spacing:0">清空筛选条件</span>' : '') + '</div>';
+  if (!vis.length) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">' + t('tree.noMatch') + (filtersActiveCount() ? ' · <span class="add" id="emptyClear" style="letter-spacing:0">' + t('tree.clearFilters') + '</span>' : '') + '</div>';
   $('tree').innerHTML = h;
   var vc = $('viewClear'); if (vc) vc.onclick = function () { view = { type: 'all', id: '' }; render() };
   var ec = $('emptyClear'); if (ec) ec.onclick = function () { clearFilters(); render(); renderFilterBar(); if (searchText.trim()) reSearch() };
@@ -109,7 +112,7 @@ function renderTree() {
 function renderSelBar() {
   var n = Object.keys(selIds).length;
   $('selbar').style.display = selMode ? 'flex' : 'none';
-  $('selbarN').textContent = '已选 ' + n + ' 条';
+  $('selbarN').textContent = t('sel.selCount', { n: n });
   $('selMerge').disabled = n < 2;
   $('selDelete').disabled = n < 1;
 }
@@ -117,9 +120,14 @@ function renderSelBar() {
 $('tree').addEventListener('click', function (ev) {
   var vf = ev.target.closest('.vfilter');
   var frow = ev.target.closest('[data-fold]');
-  /* 文件夹行：行尾过滤图标=进入/退出文件夹视图；行主体（含 caret）=原地展开/折叠（「点哪个展开哪个」） */
+  /* 文件夹行：行尾过滤图标=进入/退出文件夹视图（唯一进视图入口，切换保留）；
+     行主体单击（含名称/图标/caret）= 纯展开/折叠（经典树语义唯一职责——notes-041b 用户裁决去重；
+     caret 与行主体同一 toggle 路径，消除旧「两步进视图」竞态导致的 caret 展开失灵） */
   if (vf && frow) { var fid = frow.dataset.fold; view = view.type === 'folder' && view.id === fid ? { type: 'all', id: '' } : { type: 'folder', id: fid }; foldOpen[fid] = true; saveFoldOpen(); render(); return }
-  if (frow) { var f = frow.dataset.fold; foldOpen[f] = foldOpen[f] === false ? true : false; saveFoldOpen(); renderTree(); return }
+  if (frow) {
+    var fid2 = frow.dataset.fold;
+    foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); renderTree(); return
+  }
   /* 主题过滤区分组头：点击=整区展开/收起（topicSecOpen；列表内主题行原地展开行为不变） */
   var tsec = ev.target.closest('[data-tsec]');
   if (tsec) { topicSecOpen = !topicSecOpen; renderTree(); return }
@@ -152,11 +160,11 @@ $('tree').addEventListener('dragstart', function (ev) {
     try { ev.dataTransfer.setData('text/dsh-folder-id', dragFolderId); ev.dataTransfer.effectAllowed = 'move' } catch (e) {}
     /* 拖拽中亮出「移回根级」落点：复用未入夹容器（提示行文案切换）；空态补插临时容器，dragend 统一清理 */
     var udrop0 = $('tree').querySelector('.unfiled-drop');
-    if (udrop0) { udrop0.classList.add('drag-on'); var uh0 = udrop0.querySelector('.unfiled-hint'); if (uh0) uh0.textContent = '拖到此处移回根级'; return }
+    if (udrop0) { udrop0.classList.add('drag-on'); var uh0 = udrop0.querySelector('.unfiled-hint'); if (uh0) uh0.textContent = t('tree.dropRootHint'); return }
     udrop0 = document.createElement('div');
     udrop0.className = 'unfiled-drop drag-on';
     udrop0.setAttribute('data-drop-out', '1');
-    udrop0.innerHTML = '<div class="unfiled-hint">拖到此处移回根级</div>';
+    udrop0.innerHTML = '<div class="unfiled-hint">' + t('tree.dropRootHint') + '</div>';
     $('tree').insertBefore(udrop0, $('tree').querySelector('[data-tsec]'));
     return;
   }
@@ -170,13 +178,13 @@ $('tree').addEventListener('dragstart', function (ev) {
   udrop = document.createElement('div');
   udrop.className = 'unfiled-drop drag-on';
   udrop.setAttribute('data-drop-out', '1');
-  udrop.innerHTML = '<div class="unfiled-hint">拖到此处移出文件夹</div>';
+  udrop.innerHTML = '<div class="unfiled-hint">' + t('tree.dropOutHint') + '</div>';
   $('tree').insertBefore(udrop, $('tree').querySelector('[data-tsec]'));
 });
 $('tree').addEventListener('dragend', function () {
   dragId = null; dragFolderId = null;
   document.querySelectorAll('.drop').forEach(function (e) { e.classList.remove('drop') });
-  document.querySelectorAll('.unfiled-hint').forEach(function (el) { el.textContent = '拖到此处移出文件夹' });
+  document.querySelectorAll('.unfiled-hint').forEach(function (el) { el.textContent = t('tree.dropOutHint') });
   /* 清理「移出」落点拖拽态：含笔记行的容器摘 .drag-on（提示行隐藏）；空态临时容器直接移除 */
   document.querySelectorAll('.unfiled-drop.drag-on').forEach(function (el) { if (el.querySelector('[data-note]')) el.classList.remove('drag-on'); else el.remove() });
 });
@@ -210,8 +218,8 @@ function moveNoteToFolder(id, folderId) {
   rpc('notes-update', { id: id, folder: folderId }).then(function (res) {
     if (res && res.error) { toast(res.error); return }
     if (folderId) { foldOpen[folderId] = true; saveFoldOpen() }
-    toast(folderId ? '已移动到「' + fname(folderId) + '」' : '已移出文件夹');
+    toast(folderId ? t('tree.movedTo', { name: fname(folderId) }) : t('tree.movedOut'));
     loadNotes(true);
-  }).catch(function (e) { toast('移动失败：' + (e && e.message || e)) });
+  }).catch(function (e) { toast(t('tree.moveFailed', { msg: e && e.message || e })) });
 }
 

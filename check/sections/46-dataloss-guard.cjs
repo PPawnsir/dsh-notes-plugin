@@ -54,6 +54,8 @@ module.exports = {
 
   // ===== 46.3 app 编辑器安全态行为断言（真实代码路径仿真）=====
   const EDITOR_SRC = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'panels', 'editor.js'), 'utf8')
+  /* i18n 覆盖卡B：editor.js 文案走 t() 字典——沙箱打桩 t() 取 zh 字典真值（{name} 插值同机制卡口径） */
+  const ZH46 = new Function(fsNative.readFileSync(path.join(DIR, 'src', 'i18n', 'zh.js'), 'utf8') + '\nreturn I18N_ZH')()
   function bootAppEditor(rpcImpl) {
     const calls = []
     const els = {}
@@ -68,6 +70,7 @@ module.exports = {
       draftNote: null, draftCreating: false,   /* notes-034-batch3 新建草稿态：非草稿路径（null）不打蔫 R-1 既有断言 */
       rpc: (m, a) => { calls.push({ method: m, args: JSON.parse(JSON.stringify(a || {})) }); return rpcImpl(m, a) },
       $: (id) => (els[id] = els[id] || mkEl()),
+      t: (k, vars) => { let s = ZH46[k]; if (s == null) return k; if (vars) s = s.replace(/\{(\w+)\}/g, (m, n) => (vars[n] != null ? String(vars[n]) : m)); return s },
       toast: () => {}, analyzeMarkdown: () => ({ ok: true, reasons: [] }),
       renderTree() {}, renderCrumb() {}, renderMeta() {}, renderDispatches() {}, renderEdFoot() {}, renderBacklinks() {},
       loadNotes() { return Promise.resolve() }, probeHistCount() {}, saveFoldOpen() {},

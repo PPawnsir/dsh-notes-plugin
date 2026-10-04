@@ -7,6 +7,8 @@
     // state 托管：pos/size/sideW/sideDrag 留 hook 内 useState（与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）
     function usePanelChrome(args) {
         const open = args.open, close = args.close, showHelp = args.showHelp
+        // i18n（notes-042-i18n-cov-a 覆盖卡A）：tt = useT()——订阅 langStore，切语言本 hook（随主面板）自渲染；标题栏/分隔条/resize 文案全走 tt()
+        const tt = useT()
         const [pos, setPos] = React.useState({ x: null, y: null })
         const [size, setSize] = React.useState({ width: 920, height: 640 })
         // 侧栏宽度：分隔条拖拽调整（clamp 200px–60% 面板宽），localStorage 记忆（SIDE_W_KEY），双击分隔条重置缺省
@@ -55,14 +57,14 @@
         }
         // 双击分隔条 = 重置缺省宽度（清除持久化，回 styles.css 缺省 300px）
         function resetSideW() { sideWRef.current = SIDE_W_DEFAULT; setSideW(SIDE_W_DEFAULT); saveSideW(null) }
-        const titlebarEl = e('div', { className: 'dsh-notes-titlebar dsh-nt', onMouseDown: onTitlebarMouseDown, 'data-tooltip': '拖拽移动窗口' },
-            e('span', { className: 'dsh-notes-titlebar-title' }, I('note', 14), '笔记'),
+        const titlebarEl = e('div', { className: 'dsh-notes-titlebar dsh-nt', onMouseDown: onTitlebarMouseDown, 'data-tooltip': tt('chrome.dragMove') },
+            e('span', { className: 'dsh-notes-titlebar-title' }, I('note', 14), tt('side.brand')),
             e('div', { className: 'dsh-notes-titlebar-actions' },
-              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setEntryMode(entryMode === 'header' ? 'fab' : 'header'), 'data-tooltip': '切换入口模式：会话头部 / 悬浮气泡' }, I('swap', 13)),
-              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: openArchive, 'data-tooltip': '速记合并：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）' }, '速记'),
-              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setShowHelp(!showHelp), 'data-tooltip': '使用说明' }, '?'),
-              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: close, 'data-tooltip': '关闭' }, '×')))
-        const splitterEl = e('div', { className: 'dsh-notes-splitter dsh-nt' + (sideDrag ? ' on' : ''), onMouseDown: onSplitterMouseDown, onDoubleClick: resetSideW, 'data-tooltip': '拖拽调整侧栏宽度（双击重置）' })
-        const resizeEl = e('div', { className: 'dsh-notes-resize-handle dsh-nt', style: { position: 'absolute', bottom: 0, right: 0 }, onMouseDown: (ev) => onResizeMouseDown('se', ev), 'data-tooltip': '拖拽调整' })
+              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setEntryMode(entryMode === 'header' ? 'fab' : 'header'), 'data-tooltip': tt('chrome.entryModeTip') }, I('swap', 13)),
+              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: openArchive, 'data-tooltip': tt('topbar.archiveTip') }, tt('topbar.archive')),
+              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setShowHelp(!showHelp), 'data-tooltip': tt('chrome.help') }, '?'),
+              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: close, 'data-tooltip': tt('common.close') }, '×')))
+        const splitterEl = e('div', { className: 'dsh-notes-splitter dsh-nt' + (sideDrag ? ' on' : ''), onMouseDown: onSplitterMouseDown, onDoubleClick: resetSideW, 'data-tooltip': tt('side.splitterTip') })
+        const resizeEl = e('div', { className: 'dsh-notes-resize-handle dsh-nt', style: { position: 'absolute', bottom: 0, right: 0 }, onMouseDown: (ev) => onResizeMouseDown('se', ev), 'data-tooltip': tt('chrome.resizeTip') })
         return { pos: pos, size: size, sideW: sideW, titlebarEl: titlebarEl, splitterEl: splitterEl, resizeEl: resizeEl }
     }

@@ -85,7 +85,7 @@ module.exports = {
       assert(src.indexOf("ctx.on('agent/status'") >= 0, tag + ' 订阅 agent/status')
       assert(src.indexOf("payload.status !== 'idle'") >= 0, tag + ' 只关心 idle 落定')
       assert(src.indexOf("receipt: receipt || 'manual'") >= 0, tag + ' 回执来源标记 receipt')
-      assert(src.indexOf("if (status === 'resolved') dispatchClosed = _closeOpenDispatches(note, 'resolved')") >= 0, tag + ' _update resolved 保底联动')
+      assert(src.indexOf("if (status === 'resolved') dispatchClosed = _closeOpenDispatches(note, 'resolved', undefined, dispatchClosedDs)") >= 0, tag + ' _update resolved 保底联动（闭环条目收集供 runLog 追加，notes-041-sched-runlog）')
       assert(src.indexOf("dispatchStatus: 'sent'") >= 0, tag + ' 派发登记 dispatchStatus=sent')
     }
   })

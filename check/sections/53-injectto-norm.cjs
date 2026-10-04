@@ -120,7 +120,8 @@ module.exports = {
     assert(clientSrc.indexOf('scopeHas(cur, key) ? cur.filter(t => shortSid(t) !== key)') >= 0, 'React 面板取消勾选连同长 id 存量移除')
     assert(protoV2Src.indexOf('scopeHas(scope, s.short)') >= 0, '原型勾选渲染走 scopeHas 归一比对')
     // 范围文字 injectScopeLabel 同口径归一（存量长 id 也能解析出会话名）
-    assert(appSrc.indexOf('var st = shortSid(t)') >= 0 && clientSrc.indexOf('const st = shortSid(t)') >= 0 && protoV2Src.indexOf('var st = shortSid(t)') >= 0, '三端 injectScopeLabel 归一比对')
+    // i18n 覆盖卡B/F：app/client 端回调形参 t→tg 改名（遮蔽全局 t() 字典函数），锚点随之 shortSid(tg)；原型不双语不变
+    assert(appSrc.indexOf('var st = shortSid(tg)') >= 0 && clientSrc.indexOf('const st = shortSid(tg)') >= 0 && protoV2Src.indexOf('var st = shortSid(t)') >= 0, '三端 injectScopeLabel 归一比对')
   })
   }
 }

@@ -39,7 +39,7 @@
           try {
             const res = await host.call('notes-update', { id: n.id, folder: folderId })
             if (res && res.error) { setError(res.error); return }
-            showToast(folderId ? '已移动到「' + fname + '」' : '已移出文件夹')
+            showToast(folderId ? t('tree.movedTo', { name: fname }) : t('tree.movedOut'))
             await loadNotes(true); notifyNotesChanged()
           } catch (err) { setError(String(err.message || err)) }
         }
@@ -56,7 +56,7 @@
               expandFolder(res.folder.id)
               const u = await host.call('notes-update', { id: n.id, folder: res.folder.id })
               if (u && u.error) { setError(u.error); return }
-              showToast('已移动到「' + res.folder.name + '」')
+              showToast(t('tree.movedTo', { name: res.folder.name }))
             }
             setCtxMenu(null)
             await loadFolders(); await loadNotes(true); notifyNotesChanged()
@@ -70,21 +70,22 @@
           return () => document.removeEventListener('mousedown', onDown)
         }, [ctxMenu])
         // 笔记行右键菜单：置顶/已解决/移动到文件夹/删除（纯文字标签 + SVG 图标面板内统一风格）
+        // i18n 覆盖卡F：命令式 toast 走 t() 直读，JSX 标签同（面板=shell.overlay 单例，tt 订阅随树/编辑器 hook 驱动全面板重渲染）
         const ctxMenuEl = ctxMenu ? e('div', { className: 'dsh-notes-ctxmenu', style: { left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' } },
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => ctxSetStatus(ctxMenu.note, ctxMenu.note.status === 'pinned' ? 'active' : 'pinned') }, I('pin', 12), ctxMenu.note.status === 'pinned' ? '取消置顶' : '置顶'),
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => ctxSetStatus(ctxMenu.note, ctxMenu.note.status === 'resolved' ? 'active' : 'resolved') }, I('check', 12), ctxMenu.note.status === 'resolved' ? '重开' : '标记已解决'),
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => ctxSetStatus(ctxMenu.note, ctxMenu.note.status === 'pinned' ? 'active' : 'pinned') }, I('pin', 12), ctxMenu.note.status === 'pinned' ? t('meta.unpin') : t('meta.pin')),
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => ctxSetStatus(ctxMenu.note, ctxMenu.note.status === 'resolved' ? 'active' : 'resolved') }, I('check', 12), ctxMenu.note.status === 'resolved' ? t('ctx.reopen') : t('ctx.markResolved')),
             // 移动到文件夹：点击内联展开子菜单（文件夹列表 + 移出 + 新建），避免二级浮层被面板 overflow:hidden 裁切
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => setCtxMenu({ x: ctxMenu.x, y: ctxMenu.y, note: ctxMenu.note, moveOpen: !ctxMenu.moveOpen }) }, I('folder', 12), '移动到文件夹' + (ctxMenu.moveOpen ? ' ▾' : ' ▸')),
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => setCtxMenu({ x: ctxMenu.x, y: ctxMenu.y, note: ctxMenu.note, moveOpen: !ctxMenu.moveOpen }) }, I('folder', 12), t('ctx.moveTo') + (ctxMenu.moveOpen ? ' ▾' : ' ▸')),
             ctxMenu.moveOpen ? e(React.Fragment, null,
               folders.map(f => e('button', { key: f.id, className: 'dsh-notes-ctxmenu-item dsh-notes-ctxmenu-sub', onClick: () => ctxMoveToFolder(ctxMenu.note, f.id) }, ((ctxMenu.note.folder || '') === f.id ? '✓ ' : '') + f.name)),
-              (ctxMenu.note.folder || '') ? e('button', { className: 'dsh-notes-ctxmenu-item dsh-notes-ctxmenu-sub', onClick: () => ctxMoveToFolder(ctxMenu.note, '') }, '移出文件夹（未分类）') : null,
+              (ctxMenu.note.folder || '') ? e('button', { className: 'dsh-notes-ctxmenu-item dsh-notes-ctxmenu-sub', onClick: () => ctxMoveToFolder(ctxMenu.note, '') }, t('ctx.moveOut')) : null,
               ctxMenu.newFolder
-                ? e('input', { className: 'dsh-notes-ctxmenu-input', placeholder: '新文件夹名…', value: ctxNewFolderText, autoFocus: true, onChange: (ev) => setCtxNewFolderText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ctxCreateFolderMove(ctxMenu.note) } } })
-                : e('button', { className: 'dsh-notes-ctxmenu-item dsh-notes-ctxmenu-sub', onClick: () => setCtxMenu({ x: ctxMenu.x, y: ctxMenu.y, note: ctxMenu.note, moveOpen: true, newFolder: true }) }, '新建文件夹…'))
+                ? e('input', { className: 'dsh-notes-ctxmenu-input', placeholder: t('ctx.newFolderPlaceholder'), value: ctxNewFolderText, autoFocus: true, onChange: (ev) => setCtxNewFolderText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ctxCreateFolderMove(ctxMenu.note) } } })
+                : e('button', { className: 'dsh-notes-ctxmenu-item dsh-notes-ctxmenu-sub', onClick: () => setCtxMenu({ x: ctxMenu.x, y: ctxMenu.y, note: ctxMenu.note, moveOpen: true, newFolder: true }) }, t('ctx.newFolder')))
             : null,
             // 合并为一篇：进多选态并预勾当前笔记（再到列表勾选其余 ≥1 条，底部操作条合并）
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const nid = ctxMenu.note.id; setCtxMenu(null); setSelMode(true); setSelIds({ [nid]: true }) } }, I('check', 12), '合并为一篇'),
-            e('button', { className: 'dsh-notes-ctxmenu-item danger', onClick: () => { setCtxMenu(null); doDelete(ctxMenu.note.id) } }, I('trash', 12), '删除'))
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const nid = ctxMenu.note.id; setCtxMenu(null); setSelMode(true); setSelIds({ [nid]: true }) } }, I('check', 12), t('ctx.merge')),
+            e('button', { className: 'dsh-notes-ctxmenu-item danger', onClick: () => { setCtxMenu(null); doDelete(ctxMenu.note.id) } }, I('trash', 12), t('common.delete')))
           : null
         return { ctxMenu: ctxMenu, setCtxMenu: setCtxMenu, openCtxMenu: openCtxMenu, ctxMoveToFolder: ctxMoveToFolder, ctxMenuEl: ctxMenuEl }
     }

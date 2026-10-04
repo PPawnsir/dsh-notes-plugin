@@ -13,31 +13,32 @@
               return e('aside', { className: 'dsh-notes-side', style: { width: clampSideW(sideW, size.width) + 'px' } },
               e('div', { className: 'dsh-notes-brand' },
                 e('span', { className: 'dsh-notes-brand-logo' }, I('note', 13)),
-                e('b', null, '笔记'),
-                e('span', { className: 'dsh-notes-brand-cnt' }, (filtersActive ? filtered.length : notes.length) + ' 条'),
+                e('b', null, t('side.brand')),
+                e('span', { className: 'dsh-notes-brand-cnt' }, t('tree.countN', { n: filtersActive ? filtered.length : notes.length })),
                 // 新建入口（自旧 chips 行迁入 brand 行右侧，筛选中心口径⑥）
-                e('span', { className: 'dsh-notes-brand-add dsh-nt', onClick: openNewNote, 'data-tooltip': '新建笔记（Alt+N）' }, I('plus', 13))),
+                e('span', { className: 'dsh-notes-brand-add dsh-nt', onClick: openNewNote, 'data-tooltip': t('side.newTip') }, I('plus', 13))),
               e('div', { className: 'dsh-notes-quick' },
                 I('search', 14),
-                e('input', { ref: searchInputRef, className: 'dsh-notes-quick-input', placeholder: '搜索笔记、标签、内容…', value: searchText, onChange: (ev) => { searchRef.current = ev.target.value; setSearchText(ev.target.value); setSearchIds(null); setVisibleCount(PAGE_SIZE); if (searchDebRef.current) searchDebRef.current() } }),
+                e('input', { ref: searchInputRef, className: 'dsh-notes-quick-input', placeholder: t('topbar.searchPlaceholder'), value: searchText, onChange: (ev) => { searchRef.current = ev.target.value; setSearchText(ev.target.value); setSearchIds(null); setVisibleCount(PAGE_SIZE); if (searchDebRef.current) searchDebRef.current() } }),
                 e('span', { className: 'dsh-notes-kbd' }, 'Ctrl K')),
               // ===== 筛选中心控制行（design/notes-filter-center.html）：筛选按钮(N) + 激活条件 chips（单行横滚，× 单条移除）+ 独立排序控件 =====
               // 常态度 UI 只有 筛选按钮 + 排序控件（+ 激活 chips）；popover 是唯一条件编辑入口（浮层，不挤压树区）
               e('div', { className: 'dsh-notes-filterbar' },
-                e('button', { className: 'dsh-notes-fbtn-filter' + (filterCount > 0 || filterOpen ? ' on' : '') + ' dsh-nt', onClick: () => { setFilterOpen(!filterOpen); if (!filterOpen) setSortOpen(false) }, 'aria-expanded': filterOpen ? 'true' : 'false', 'data-tooltip': '筛选中心：分组勾选条件（组内 OR / 跨组 AND）' }, I('filter', 11), '筛选', filterCount > 0 ? e('span', { className: 'dsh-notes-fcnt' }, String(filterCount)) : null),
+                e('button', { className: 'dsh-notes-fbtn-filter' + (filterCount > 0 || filterOpen ? ' on' : '') + ' dsh-nt', onClick: () => { setFilterOpen(!filterOpen); if (!filterOpen) setSortOpen(false) }, 'aria-expanded': filterOpen ? 'true' : 'false', 'data-tooltip': t('topbar.filterTip') }, I('filter', 11), t('topbar.filter'), filterCount > 0 ? e('span', { className: 'dsh-notes-fcnt' }, String(filterCount)) : null),
                 e('div', { className: 'dsh-notes-fchips' },
-                  FILTER_STATUS.filter(f => filters[f.id]).map(f => e('span', { key: f.id, className: 'dsh-notes-fchip dsh-nt', 'data-tooltip': '筛选条件：状态 / ' + f.label + '（点 × 移除）' }, I(f.icon, 10), f.label, e('span', { className: 'dsh-notes-fchip-x', onClick: () => setFilters(Object.assign({}, filters, { [f.id]: false })) }, I('x', 9)))),
-                  filters.kinds.map(k => e('span', { key: 'k-' + k, className: 'dsh-notes-fchip dsh-nt', 'data-tooltip': '筛选条件：类型 / ' + KIND_LABELS[k] + '（点 × 移除）' }, e('span', { className: 'dsh-notes-fchip-dot', style: { background: 'var(--nkind-' + k + ')' } }), KIND_LABELS[k], e('span', { className: 'dsh-notes-fchip-x', onClick: () => setFilters(Object.assign({}, filters, { kinds: filters.kinds.filter(x => x !== k) })) }, I('x', 9))))),
+                  /* i18n 覆盖卡F：chip 文案经 filterStatusLabel/kindLabel 条件映射走 t()（FILTER_STATUS.label/KIND_LABELS 字面量仅作锚） */
+                  FILTER_STATUS.filter(f => filters[f.id]).map(f => e('span', { key: f.id, className: 'dsh-notes-fchip dsh-nt', 'data-tooltip': t('side.fchipStatusTip', { label: filterStatusLabel(f.id) }) }, I(f.icon, 10), filterStatusLabel(f.id), e('span', { className: 'dsh-notes-fchip-x', onClick: () => setFilters(Object.assign({}, filters, { [f.id]: false })) }, I('x', 9)))),
+                  filters.kinds.map(k => e('span', { key: 'k-' + k, className: 'dsh-notes-fchip dsh-nt', 'data-tooltip': t('side.fchipKindTip', { label: kindLabel(k) }) }, e('span', { className: 'dsh-notes-fchip-dot', style: { background: 'var(--nkind-' + k + ')' } }), kindLabel(k), e('span', { className: 'dsh-notes-fchip-x', onClick: () => setFilters(Object.assign({}, filters, { kinds: filters.kinds.filter(x => x !== k) })) }, I('x', 9))))),
                 e('div', { className: 'dsh-notes-fsort-wrap' },
-                  e('button', { className: 'dsh-notes-fsort-btn' + (sortBy !== 'time' || sortOpen ? ' on' : '') + ' dsh-nt', onClick: () => { setSortOpen(!sortOpen); if (!sortOpen) setFilterOpen(false) }, 'data-tooltip': '排序（与筛选正交，互不重置）' }, I('sort', 11), sortLabel),
+                  e('button', { className: 'dsh-notes-fsort-btn' + (sortBy !== 'time' || sortOpen ? ' on' : '') + ' dsh-nt', onClick: () => { setSortOpen(!sortOpen); if (!sortOpen) setFilterOpen(false) }, 'data-tooltip': t('topbar.sortTip') }, I('sort', 11), sortLabel),
                   sortMenuEl),
                 filterPopEl),
               e('div', { className: 'dsh-notes-tree', ref: treeElRef, tabIndex: -1, onScroll: onListScroll },
                 treeEls,
-                hasMore ? e('div', { className: 'dsh-notes-more' }, '继续滚动加载更多（已显示 ' + paged.length + ' / ' + filtered.length + '）') : null),
+                hasMore ? e('div', { className: 'dsh-notes-more' }, t('side.more', { shown: paged.length, total: filtered.length })) : null),
               // 底部：回收站 + 选择（多选合并，自旧 chips 行迁入）+ 设置；导出/导入 → 设置卡片「数据」区，整理建议 → 设置卡片「整理建议」行（open* 逻辑不变）
               e('div', { className: 'dsh-notes-side-foot' },
-                e('span', { className: 'dsh-notes-fbtn dsh-nt', onClick: openTrash, 'data-tooltip': '回收站：查看已删除的笔记，可恢复或彻底删除' }, I('trash', 12), '回收站'),
-                e('span', { className: 'dsh-notes-fbtn' + (selMode ? ' on' : '') + ' dsh-nt', onClick: toggleSelMode, 'data-tooltip': '多选笔记：勾选后可合并为一篇（Esc 退出）' }, I('check', 12), '选择'),
-                e('span', { className: 'dsh-notes-fbtn dsh-nt', onClick: openSettings, 'data-tooltip': '设置' }, I('gear', 12), '设置')))
+                e('span', { className: 'dsh-notes-fbtn dsh-nt', onClick: openTrash, 'data-tooltip': t('topbar.trashTip') }, I('trash', 12), t('topbar.trash')),
+                e('span', { className: 'dsh-notes-fbtn' + (selMode ? ' on' : '') + ' dsh-nt', onClick: toggleSelMode, 'data-tooltip': t('topbar.selectTip') }, I('check', 12), t('topbar.select')),
+                e('span', { className: 'dsh-notes-fbtn dsh-nt', onClick: openSettings, 'data-tooltip': t('common.settings') }, I('gear', 12), t('common.settings'))))
     }

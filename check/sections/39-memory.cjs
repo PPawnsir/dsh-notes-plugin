@@ -462,7 +462,7 @@ module.exports = {
       assert(s.indexOf("log: '日志'") >= 0, label + ' KIND_LABELS 含日志')
       assert(s.indexOf("'## 做了什么\\n\\n（本会话完成的任务/阶段，一句话一条）") >= 0, label + ' KIND_TEMPLATES.log 与 host 同份')
       assert(s.indexOf("const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log']") >= 0, label + ' 筛选中心类型组含 log（kind=日志 即专入口）')
-      assert(s.indexOf("e('option', { value: 'log' }, '日志')") >= 0, label + ' 编辑器 kind 下拉含日志')
+      assert(s.indexOf("e('option', { value: 'log' }, tt('meta.kindLog'))") >= 0, label + ' 编辑器 kind 下拉含日志（i18n 覆盖卡B 起走 tt() 字典）')
       assert(s.indexOf("['note', 'decision', 'todo', 'link', 'quote', 'log'].map(k => e('option'") >= 0, label + ' 新建 modal 类型含日志（预填 log 模板骨架）')
       assert(s.indexOf("notes-list', wantLogsRef.current ? { includeLogs: true } : undefined") >= 0, label + ' loadNotes 日志专入口 includeLogs 接线（host 默认排除）')
       assert(s.indexOf("(n.kind || 'note') !== 'log' || filters.kinds.indexOf('log') >= 0") >= 0, label + ' 隐身渲染守卫（未勾日志不进日常视图）')
@@ -504,8 +504,8 @@ module.exports = {
   await t('设置卡片「工作记忆」区 + 启用对话框（状态行/作用域/车道说明/停用，r3 无重叠确认）四端同步', () => {
     for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
       const s = pair[1], label = pair[0]
-      assert(s.indexOf("{ key: 'memory', label: '工作记忆'") >= 0, label + ' 设置卡片「工作记忆」行')
-      assert(s.indexOf("{ key: 'logweek', label: '日志周聚合窗口'") >= 0 && s.indexOf("{ key: 'logmonth', label: '日志月聚合窗口'") >= 0, label + ' 日志卫生两级窗口行')
+      assert(s.indexOf("{ key: 'memory', label: tt('settings.memory')") >= 0, label + ' 设置卡片「工作记忆」行（覆盖卡 C 起 label 走 tt() 字典）')
+      assert(s.indexOf("{ key: 'logweek', label: tt('settings.logWeek')") >= 0 && s.indexOf("{ key: 'logmonth', label: tt('settings.logMonth')") >= 0, label + ' 日志卫生两级窗口行（覆盖卡 C 起 label 走 tt() 字典）')
       assert(s.indexOf("'notes-memory-guide', { op: 'status' }") >= 0, label + ' 状态探测调用点')
       assert(s.indexOf("'notes-memory-guide', { op: 'check' }") < 0, label + ' 不再调用 check 重叠扫描（r3 车道模型：enable 幂等直建）')
       assert(s.indexOf("'notes-memory-guide', { op: 'enable', scope: memScopeResolve() }") >= 0, label + ' 启用调用点（作用域；无 confirmed 闸门）')
@@ -516,11 +516,11 @@ module.exports = {
       assert(s.indexOf('启用沉淀引导…') >= 0 && s.indexOf('约定：工作日志沉淀（工作记忆 v0）') >= 0, label + ' 入口按钮 + 对话框文案')
       // notes-scope-global-pick：「当前X」单选 → 「指定X」多选清单（全局视角；injectTo 落值语义不变——工作区档展开为所选工作区全部会话短 id 并集）
       assert(s.indexOf('function memScopeResolve()') >= 0 && s.indexOf("memScope === 'global'") >= 0 && s.indexOf("memScope === 'session'") >= 0, label + ' 作用域三档解析（全局/指定工作区/指定会话）')
-      assert(s.indexOf("scopeOpt('workspace', '指定工作区（多选）'") >= 0 && s.indexOf("scopeOpt('session', '指定会话（多选）'") >= 0, label + ' 指定工作区/会话多选档文案')
+      assert(s.indexOf("scopeOpt('workspace', tt('mem.scopeWsMulti')") >= 0 && s.indexOf("scopeOpt('session', tt('mem.scopeSessMulti')") >= 0, label + ' 指定工作区/会话多选档文案（i18n 覆盖卡D 起走 tt() 字典）')
       assert(s.indexOf('memWsPick') >= 0 && s.indexOf('memSidPick') >= 0 && s.indexOf('sessList.concat(sessPending)') >= 0, label + ' 多选清单状态 + 数据源（sessList + pending 占位）')
       assert(s.indexOf('当前工作区的会话') < 0 && s.indexOf('仅当前会话') < 0, label + ' 去「当前X」单选档（全局视角改造）')
       assert(s.indexOf('logWeekAfterDays: v') >= 0 && s.indexOf('logRetentionDays: v') >= 0, label + ' 窗口保存 payload')
-      assert(s.indexOf('memOpenRef.current) { setMemOpen(false)') >= 0, label + ' Esc 优先关启用对话框')
+      assert(s.indexOf('memOpenRef.current) { closeMemEnable()') >= 0, label + ' Esc 优先关启用对话框（closeMemEnable 统一关闭，单层返回栈）')
     }
     for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
       const s = pair[1], label = pair[0]

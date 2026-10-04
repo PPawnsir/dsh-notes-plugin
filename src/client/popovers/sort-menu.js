@@ -18,7 +18,8 @@
           document.addEventListener('mousedown', onDown)
           return () => document.removeEventListener('mousedown', onDown)
         }, [filterOpen, sortOpen])
+        // i18n 覆盖卡F：FILTER_SORTS label/desc 字面量仅作四端同构锚，渲染经 sortLabelOf/sortDescOf 条件映射走 t()
         const sortMenuEl = sortOpen ? e('div', { className: 'dsh-notes-fsort-menu' },
-                    FILTER_SORTS.map(s => e('div', { key: s.id, className: 'dsh-notes-fsort-item' + (sortBy === s.id ? ' on' : ''), onClick: () => { setSortBy(s.id); setSortOpen(false) } }, e('span', { className: 'dsh-notes-fsort-tick' }, I('check', 11)), s.label, e('span', { className: 'dsh-notes-fsort-sd' }, s.desc)))) : null
+                    FILTER_SORTS.map(s => e('div', { key: s.id, className: 'dsh-notes-fsort-item' + (sortBy === s.id ? ' on' : ''), onClick: () => { setSortBy(s.id); setSortOpen(false) } }, e('span', { className: 'dsh-notes-fsort-tick' }, I('check', 11)), sortLabelOf(s.id), e('span', { className: 'dsh-notes-fsort-sd' }, sortDescOf(s.id))))) : null
         return { sortOpen: sortOpen, setSortOpen: setSortOpen, sortMenuEl: sortMenuEl }
     }

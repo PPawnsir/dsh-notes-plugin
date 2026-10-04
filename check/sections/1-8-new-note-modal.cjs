@@ -11,17 +11,17 @@ module.exports = {
   // 发布包 client 源码独立读取（本节在 section 18 之前，clientPkgSrc 尚未定义）
   const clientPkgSrcNewNote = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
   await t('＋ 按钮点击弹新建 modal（tooltip=新建笔记（Alt+N））', () => {
-    assert(/onClick: openNewNote, 'data-tooltip': '新建笔记（Alt\+N）'/.test(clientSrc), '＋ 按钮 onClick=openNewNote + tooltip「新建笔记（Alt+N）」')
+    assert(/onClick: openNewNote, 'data-tooltip': t\('side\.newTip'\)/.test(clientSrc), '＋ 按钮 onClick=openNewNote + tooltip「新建笔记（Alt+N）」（i18n 覆盖卡A 起走 t() 字典）')
     assert(/function openNewNote\(\) \{ setNewNoteTitle\(''\); setNewNoteKind\('note'\); setNewNotePending\(false\); setError\(''\); setNewNoteOpen\(true\) \}/.test(clientSrc), 'openNewNote 清空上次标题 + 类型复位 note 并打开 modal（二期：类型选择入 modal）')
     assert(/newNoteOpen \? e\('div', \{ className: 'dsh-notes-newnote-mask'/.test(clientSrc), 'mask 仅在 newNoteOpen 时渲染（＋ 点击后弹出）')
     assert(clientPkgSrcNewNote.indexOf('onClick: openNewNote') >= 0 && clientPkgSrcNewNote.indexOf('dsh-notes-newnote-mask') >= 0, '发布包 client.js 同步含 ＋→modal（需先跑 scripts/build-dist.cjs）')
   })
   await t('新建 modal 结构：居中卡片 + 标题输入 + 取消/创建', () => {
     assert(clientSrc.indexOf("'dsh-notes-newnote-modal'") >= 0 && clientSrc.indexOf("'dsh-notes-newnote-t'") >= 0, 'modal 容器 + 标题 class')
-    assert(clientSrc.indexOf("'新建笔记'") >= 0, 'modal 标题「新建笔记」')
-    assert(/ref: newNoteInputRef, className: 'dsh-notes-newnote-input', placeholder: '笔记标题…', value: newNoteTitle/.test(clientSrc), '标题输入框（placeholder「笔记标题…」）受控于 newNoteTitle')
+    assert(clientSrc.indexOf("tt('newnote.title')") >= 0 && clientSrc.indexOf("'newnote.title': '新建笔记'") >= 0, 'modal 标题「新建笔记」走 tt()（i18n 覆盖卡E，zh 原串字典内嵌）')
+    assert(/ref: newNoteInputRef, className: 'dsh-notes-newnote-input', placeholder: tt\('newnote\.titlePlaceholder'\), value: newNoteTitle/.test(clientSrc), '标题输入框（placeholder 走 tt() newnote.titlePlaceholder，覆盖卡E）受控于 newNoteTitle')
     assert(/newNoteOpen && newNoteInputRef\.current\) newNoteInputRef\.current\.focus\(\)/.test(clientSrc), '打开 modal 自动聚焦标题输入框')
-    assert(/onClick: \(\) => setNewNoteOpen\(false\) \}, '取消'\)/.test(clientSrc), '取消按钮关闭 modal')
+    assert(/onClick: \(\) => setNewNoteOpen\(false\) \}, tt\('common\.cancel'\)\)/.test(clientSrc), '取消按钮关闭 modal（i18n 覆盖卡E 起走 tt() common.cancel）')
     assert(/onClick: doCreateNote, disabled: newNotePending \|\| !newNoteTitle\.trim\(\)/.test(clientSrc), '创建按钮：标题为空/创建中 disabled')
   })
   await t('标题输入交互：Enter 提交 / Esc 关 modal / 点遮罩关闭', () => {
@@ -36,7 +36,7 @@ module.exports = {
     assert(/host\.call\('notes-create', payload\)/.test(clientSrc), 'notes-create 走 payload（v2 视图落位）')
     assert(clientSrc.indexOf("view.type === 'folder' ? view.id :") >= 0 && clientSrc.indexOf("payload.folder = createFolder") >= 0, '文件夹视图落当前文件夹')
     assert(clientSrc.indexOf("if (view.type === 'topic' && view.id) payload.topic = view.id") >= 0, '主题视图带当前主题')
-    assert(/showToast\('已创建'\)/.test(clientSrc), '创建成功 toast「已创建」')
+    assert(/showToast\(t\('newnote\.created'\)\)/.test(clientSrc), '创建成功 toast 走 t() newnote.created（i18n 覆盖卡E）')
     const m = clientSrc.match(/async function doCreateNote\(\) \{[\s\S]*?\n        \}/)
     assert(m, 'doCreateNote 函数体可提取')
     const fnBody = m[0]

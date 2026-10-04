@@ -5,13 +5,16 @@
     //        folderPathOf/folderName/injectScopeLabel/loadNotes/later 转发别名）、kernel/constants.js（KIND_LABELS）、kernel/format.js（shortSid/isDispatchDone/fmtDT/schedFreqLabel/schedNextMs/schedPeerKey/relatedScheds/notifyNotesChanged）、
     //        kernel/bus.js（showToast）、kernel/icons.js（e/I）、editor-kernel.js（esc/renderMarkdown/serializeRich/analyzeMarkdown/sanitizeFragment/assetDisplaySrc/wikiLinksTo）、
     //        panel/wiki.js（jumpWikiRef/wikiBodiesRef 顶层绑定，序位在前）、modals/link.js（setLinkModal）+ modals/image.js（openImgModal/pickImageFile）+
-    //        modals/dispatch.js（openDispatch/doDispatchDone）+ modals/history.js（openHistory）——序位在前；
+    //        modals/dispatch.js（openDispatch/doDispatchDone）+ modals/history.js（openHistory）+
+    //        modals/inject-manager.js（doInjSchedEdit/doInjSchedToggle/doInjSchedDel——计划块原地操作复用，notes-041-sched-plan-edit）——序位在前；
     //        selected/notes/dispatching/wikiVer/wikiResolve/bumpWikiBody/jumpToWikiTarget 经 hook 入参注入（装配层回填，渲染期新鲜值）
     // state 托管：全部 state/ref 留 hook 内（useState/useRef 声明原文被 check.js 锚定者不迁 store——27-5 节 edSens/edSensRef 等；
     // 与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）
     function usePanelEditor(args) {
         const selected = args.selected, notes = args.notes, dispatching = args.dispatching
         const wikiVer = args.wikiVer, wikiResolve = args.wikiResolve, bumpWikiBody = args.bumpWikiBody, jumpToWikiTarget = args.jumpToWikiTarget
+        // i18n（notes-042-i18n-cov-b 覆盖卡B）：tt = useT()——订阅 langStore，切语言本 hook（随主面板）自渲染；编辑器/meta 区文案全走 tt()
+        const tt = useT()
         const [edTitle, setEdTitle] = React.useState('')
         const [edTopic, setEdTopic] = React.useState('')
         const [edTags, setEdTags] = React.useState('')
@@ -108,20 +111,20 @@
               const a = analyzeMarkdown(body)
               setDegraded(a)
               if (editorModeRef.current === 'rich') {
-                if (!a.ok) { setEditorModeState('source'); showToast('含高级语法（' + a.reasons.map(r => r.label).join('、') + '），请在源码模式编辑') }
+                if (!a.ok) { setEditorModeState('source'); showToast(tt('editor.richDegradedReasons', { reasons: a.reasons.map(r => r.label).join(tt('common.listSep')) })) }
                 else { richDirtyRef.current = false; try { if (richRef.current) richRef.current.innerHTML = renderMarkdown(body, wikiResolve) } catch (err) {} }
               }
             } else {
-              const msg = '正文加载失败：' + (res && res.error ? res.error : '返回数据异常')
+              const msg = tt('editor.loadFailed', { msg: res && res.error ? res.error : tt('editor.loadFailedData') })
               edLoadErrRef.current = msg; setEdLoadErr(msg)
-              showToast(msg + '（已锁定编辑，可点横幅重试）')
+              showToast(tt('editor.loadFailedLocked', { msg: msg }))
             }
           }).catch(err => {
             if (selectedRef.current !== id) return
             edLoadingRef.current = false
-            const msg = '正文加载失败：' + String(err && err.message || err)
+            const msg = tt('editor.loadFailed', { msg: String(err && err.message || err) })
             edLoadErrRef.current = msg; setEdLoadErr(msg)
-            showToast(msg + '（已锁定编辑，可点横幅重试）')
+            showToast(tt('editor.loadFailedLocked', { msg: msg }))
           })
         }
         async function doSave() {
@@ -155,7 +158,7 @@
             const res = await host.call('notes-delete', { id: id })
             if (res.error) { setError(res.error); return }
             if (selected === id) { setSelected(null); setEdTitle(''); setEdTopic(''); setEdTags(''); setEdBody('') }
-            showToast('已删除（软删除）', { label: '撤销', fn: () => undoDelete(id) })
+            showToast(tt('meta.deleted'), { label: tt('meta.undo'), fn: () => undoDelete(id) })
             await loadNotes(true); notifyNotesChanged()
           } catch (err) { setError(String(err.message || err)) }
         }
@@ -164,30 +167,30 @@
           try {
             const res = await host.call('notes-restore', { id: id })
             if (res && res.error) { showToast(res.error); return }
-            showToast('已恢复')
+            showToast(tt('meta.restored'))
             await loadNotes(true); notifyNotesChanged()
-          } catch (err) { showToast('恢复失败：' + String(err.message || err)) }
+          } catch (err) { showToast(tt('meta.restoreFailed', { msg: String(err.message || err) })) }
         }
         // ===== 二期 ✨整理：当前草稿经 notes-ai-organize（notes-quick-instruct 同款 LLM 通道）按 kind 模板结构化重写 =====
         // 契约：host 只返回重写正文不落盘；client 替换编辑器内容后走既有自动保存；原正文进一次撤销栈（toast「撤销」恢复）。
         // 容错：正文为空/加载中/整理中不重入；error 或空返回一律不动原文。
         async function doAiOrganize() {
           if (organizing) return
-          if (!selectedRef.current) { showToast('先选择一条笔记'); return }
-          if (edLoadingRef.current) { showToast('正文加载中，稍后再整理'); return }
+          if (!selectedRef.current) { showToast(tt('editor.selectNoteFirst')); return }
+          if (edLoadingRef.current) { showToast(tt('editor.bodyLoading')); return }
           // 富文本在途编辑先序列化落回源码（整理对象是 edBody 源码文本）
           if (editorModeRef.current === 'rich' && richDirtyRef.current) syncFromRich('整理前同步')
           const body = edBodyRef.current
-          if (!body || !body.trim()) { showToast('正文为空，无可整理内容'); return }
+          if (!body || !body.trim()) { showToast(tt('editor.bodyEmpty')); return }
           setOrganizing(true); setError('')
           try {
             const res = await host.call('notes-ai-organize', { body: body, kind: edKindRef.current, title: edTitleRef.current })
-            if (res && res.error) { showToast('整理失败：' + res.error); return }
-            if (!res || !res.body || !res.body.trim()) { showToast('整理返回为空，原文未动'); return }
+            if (res && res.error) { showToast(tt('editor.organizeFailed', { msg: res.error })); return }
+            if (!res || !res.body || !res.body.trim()) { showToast(tt('editor.organizeEmpty')); return }
             organizeUndoRef.current = { body: body }   // 一次撤销栈：只保留最近一次整理前的正文
             applyOrganizedBody(res.body)
-            showToast('已按「' + (KIND_LABELS[edKindRef.current] || '笔记') + '」模板整理', { label: '撤销', fn: undoAiOrganize })
-          } catch (err) { showToast('整理失败：' + String(err.message || err)) } finally { setOrganizing(false) }
+            showToast(tt('editor.organized', { kind: kindLabel(edKindRef.current) || tt('meta.kindNote') }), { label: tt('meta.undo'), fn: undoAiOrganize })
+          } catch (err) { showToast(tt('editor.organizeFailed', { msg: String(err.message || err) })) } finally { setOrganizing(false) }
         }
         // 重写正文落进编辑器双模式：源码 textarea 受控随 edBody 更新；富文本重渲染内核产物（白名单外语法则回落源码模式）
         function applyOrganizedBody(text) {
@@ -203,10 +206,10 @@
         // 撤销最近一次整理（一次撤销栈，用后即清）
         function undoAiOrganize() {
           const u = organizeUndoRef.current
-          if (!u) { showToast('没有可撤销的整理'); return }
+          if (!u) { showToast(tt('editor.noOrganizeUndo')); return }
           organizeUndoRef.current = null
           applyOrganizedBody(u.body)
-          showToast('已恢复整理前正文')
+          showToast(tt('editor.organizeUndone'))
         }
         // ===== 历史版本面板（notes-history-ui）：「历史」入口探测 + 列表/预览/恢复链路 =====
         // 入口可见性探测：选中笔记后拉版本计数（notes-history 是轻量列表 RPC，零正文明文）；0 版本不显示入口。
@@ -233,19 +236,19 @@
         // 上次结果徽章：lastError 红 / lastRun sent 绿 / 未触发灰
         function schedPlanBadgeEl(n) {
           const s = n.schedule
-          if (s.lastError) return e('span', { className: 'dsh-notes-sched-badge err dsh-nt', 'data-tooltip': s.lastError.message || '' }, I('x', 9), '失败 ' + fmtDT(s.lastError.at))
+          if (s.lastError) return e('span', { className: 'dsh-notes-sched-badge err dsh-nt', 'data-tooltip': s.lastError.message || '' }, I('x', 9), tt('meta.schedFailed', { time: fmtDT(s.lastError.at) }))
           if (s.lastRun) return s.lastRun.status === 'sent'
-            ? e('span', { className: 'dsh-notes-sched-badge ok dsh-nt', 'data-tooltip': '回执走派发闭环链路（receiptId=' + (s.lastRun.receiptId || '') + '）' }, I('check', 9), '已派发 ' + fmtDT(s.lastRun.at))
-            : e('span', { className: 'dsh-notes-sched-badge err' }, I('x', 9), '失败 ' + fmtDT(s.lastRun.at))
-          return e('span', { className: 'dsh-notes-sched-badge' }, '未触发')
+            ? e('span', { className: 'dsh-notes-sched-badge ok dsh-nt', 'data-tooltip': tt('meta.schedReceiptTip', { id: s.lastRun.receiptId || '' }) }, I('check', 9), tt('meta.schedSent', { time: fmtDT(s.lastRun.at) }))
+            : e('span', { className: 'dsh-notes-sched-badge err' }, I('x', 9), tt('meta.schedFailed', { time: fmtDT(s.lastRun.at) }))
+          return e('span', { className: 'dsh-notes-sched-badge' }, tt('meta.schedNever'))
         }
         // 下次触发展示：暂停 → 已暂停；单次已触发 → 已触发；否则「下次 <本地时间>」（schedNextMs 本地渲染，锚点同 host schedDueAt 口径）
         function schedPlanNextLabel(n) {
           const s = n.schedule
-          if (s.enabled === false) return '已暂停'
-          if (s.at && s.lastFiredAt && Date.parse(s.lastFiredAt) >= Date.parse(s.at)) return '已触发（单次）'
+          if (s.enabled === false) return tt('meta.schedPaused')
+          if (s.at && s.lastFiredAt && Date.parse(s.lastFiredAt) >= Date.parse(s.at)) return tt('meta.schedFired')
           const ms = schedNextMs(n)
-          return ms === null ? '—' : '下次 ' + fmtDT(new Date(ms).toISOString())
+          return ms === null ? '—' : tt('meta.schedNext', { time: fmtDT(new Date(ms).toISOString()) })
         }
         // 关联调度数据源：notes 缓存优先 + overlay 合并（log 型调度约定旁路兜底；overlay 只补缓存外条目，会话级缓存不重取）
         function schedPeerSource() {
@@ -285,7 +288,7 @@
           if (m === 'rich') {
             const a = analyzeMarkdown(edBodyRef.current)
             setDegraded(a)
-            if (!a.ok) { showToast('含高级语法（' + a.reasons.map(r => r.label).join('、') + '），请在源码模式编辑'); return }
+            if (!a.ok) { showToast(tt('editor.richDegradedReasons', { reasons: a.reasons.map(r => r.label).join(tt('common.listSep')) })); return }
             richDirtyRef.current = false
             setEditorModeState('rich')
           } else {
@@ -316,7 +319,7 @@
             const a = analyzeMarkdown(edBodyRef.current)
             const was = degradedRef.current.ok
             setDegraded(a)
-            if (was !== a.ok) showToast(a.ok ? '富文本模式已恢复可用' : '检测到白名单外语法 → 富文本入口置灰')
+            if (was !== a.ok) showToast(a.ok ? tt('editor.richRestored') : tt('editor.richDisabled'))
           }, 450)
         }
         // 富文本选区缓存/恢复（工具栏 mousedown 阻止默认保住选区；弹窗关闭后恢复）
@@ -339,12 +342,12 @@
           else if (a === 'quote') document.execCommand('formatBlock', false, 'blockquote')
           else if (a === 'code') {
             const sel = window.getSelection(), txt = sel && !sel.isCollapsed ? String(sel) : ''
-            if (!txt) { showToast('先选中要设为行内码的文字'); return }
+            if (!txt) { showToast(tt('editor.selectCodeFirst')); return }
             document.execCommand('insertHTML', false, '<code>' + esc(txt) + '</code>')
           }
           else if (a === 'link') {
             const sel2 = window.getSelection()
-            if (!sel2 || sel2.isCollapsed) { showToast('先选中要加链接的文字'); return }
+            if (!sel2 || sel2.isCollapsed) { showToast(tt('editor.selectLinkFirst')); return }
             keepSel(); setLinkModal({ text: String(sel2), url: 'https://' }); return
           }
           else if (a === 'image') { keepSel(); openImgModal(null); return }
@@ -435,7 +438,7 @@
               return
             }
             const tb = ev.target && ev.target.closest ? ev.target.closest('table.dsh-notes-table') : null
-            if (tb && el.contains(tb)) showToast('表格为只读，请切换源码模式编辑该区域')
+            if (tb && el.contains(tb)) showToast(tt('editor.tableReadonly'))
           }
           // 图片入口①：Ctrl+V 粘贴（clipboardData.files）；其余粘贴：HTML → 白名单清洗，纯文本 → 纯文本插入
           const onPaste = (ev) => {
@@ -456,7 +459,7 @@
             ev.preventDefault(); wrap.classList.remove('drop')
             const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]
             if (!f) return
-            if (!f.type || f.type.indexOf('image/') !== 0) { showToast('仅支持图片文件'); return }
+            if (!f.type || f.type.indexOf('image/') !== 0) { showToast(tt('editor.imageOnly')); return }
             keepSel(); pickImageFile(f)
           }
           el.addEventListener('input', onInput)
@@ -526,6 +529,8 @@
         // 自动保存：debounce 只注册一次（null 时赋值），回调读 ref 避免闭包过期
         if (!autoSaveRef.current) autoSaveRef.current = timer.debounce(() => { if (selectedRef.current) doSave() }, 900)
         function triggerAutoSave() { if (autoSaveRef.current) autoSaveRef.current() }
+        // i18n（覆盖卡B）：rich 空态 CSS content 占位串——styles.css 静态 zh 缺省保留（var() 回退值），运行时按语言态写 CSS 变量（tt 随 langStore 换实例 → 本 effect 重跑）
+        React.useEffect(() => { try { document.documentElement.style.setProperty('--dsh-notes-rich-ph', '"' + tt('editor.richPlaceholder') + '"') } catch (err) {} }, [tt])
         // ===== 编辑器区渲染（原型 .ed）：面包屑 + 大标题 + meta chips 行 + 正文 + 底部状态 =====
         // 装配层 post-guard 调用（面板关闭时不求值）；scopePanelEl 等跨域渲染产物经 R 入参注入
         function renderEditorEl(R) {
@@ -539,9 +544,9 @@
           const curTopicName = curNote && curNote.topic && curNote.topic !== '分类中' ? curNote.topic : ''
           // 主题全局过滤跳转（面包屑主题段 + 主题 chip 跳钮共用）：未识别主题时提示不跳转
           function jumpToTopicFilter() {
-            if (!curTopicName) { showToast('该笔记尚未识别主题'); return }
+            if (!curTopicName) { showToast(tt('meta.noTopic')); return }
             setView({ type: 'topic', id: curTopicName })
-            showToast('已按主题过滤：' + curTopicName)
+            showToast(tt('meta.filteredByTopic', { name: curTopicName }))
           }
           const curDispatches = (curNote && curNote.dispatches) || []
           // P3 派发闭环：待回执条数（驱动详情 meta 徽章）
@@ -569,147 +574,155 @@
             e('div', { className: 'dsh-notes-ed-crumb' },
               // 面包屑文件夹段（notes-nested-folder-ui）：单文件夹名升级为「父/子/孙」路径，每段可点击 = 切到该文件夹视图
               curNote.folder ? folderPathOf(curNote.folder).map(pf => e(React.Fragment, { key: 'crumbf-' + pf.id },
-                e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': '切换到文件夹视图：' + pf.name, onClick: () => { expandFolder(pf.id); setView({ type: 'folder', id: pf.id }) } }, pf.name),
+                e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': tt('meta.crumbFolderTip', { name: pf.name }), onClick: () => { expandFolder(pf.id); setView({ type: 'folder', id: pf.id }) } }, pf.name),
                 e('span', { className: 'dsh-notes-crumb-sep' }, '/'))) : null,
-              e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': '查看同主题全部笔记', onClick: jumpToTopicFilter }, curTopicName || '未分类'),
+              e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': tt('meta.crumbTopicViewTip'), onClick: jumpToTopicFilter }, curTopicName || tt('meta.uncategorized')),
               e('span', { className: 'dsh-notes-crumb-sep' }, '/'),
               e('span', null, curNote.id)),
-            e('input', { className: 'dsh-notes-ed-title', placeholder: '无标题', value: edTitle, readOnly: !!edLoadErr, onChange: (ev) => { setEdTitle(ev.target.value); triggerAutoSave() } }),
+            e('input', { className: 'dsh-notes-ed-title', placeholder: tt('tree.untitled'), value: edTitle, readOnly: !!edLoadErr, onChange: (ev) => { setEdTitle(ev.target.value); triggerAutoSave() } }),
             e('div', { className: 'dsh-notes-ed-meta' },
-              e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': '笔记类型' },
+              e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.kindTipFull') },
                 e('span', { className: 'dsh-notes-meta-dot', style: { background: 'var(--nkind-' + edKind + ')' } }),
                 e('select', { className: 'dsh-notes-meta-select', value: edKind, onChange: (ev) => { setEdKind(ev.target.value); triggerAutoSave() } },
-                  e('option', { value: 'note' }, '笔记'),
-                  e('option', { value: 'decision' }, '决策'),
-                  e('option', { value: 'todo' }, '待办'),
-                  e('option', { value: 'link' }, '链接'),
-                  e('option', { value: 'quote' }, '引用'),
-                  e('option', { value: 'log' }, '日志'))),
-              e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': '主题（可直接编辑；点右侧按钮按主题全局过滤）' },
+                  e('option', { value: 'note' }, tt('meta.kindNote')),
+                  e('option', { value: 'decision' }, tt('meta.kindDecision')),
+                  e('option', { value: 'todo' }, tt('meta.kindTodo')),
+                  e('option', { value: 'link' }, tt('meta.kindLink')),
+                  e('option', { value: 'quote' }, tt('meta.kindQuote')),
+                  e('option', { value: 'log' }, tt('meta.kindLog')))),
+              e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.topicTipClient') },
                 I('topic', 11),
-                e('input', { className: 'dsh-notes-meta-topic-input', placeholder: '主题', value: edTopic, onChange: (ev) => { setEdTopic(ev.target.value); triggerAutoSave() } }),
-                e('span', { className: 'dsh-notes-meta-jump dsh-nt', 'data-tooltip': '按主题全局过滤', onClick: jumpToTopicFilter }, I('filter', 10))),
-              curFolderName ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': '所在文件夹' }, I('folder', 11), curFolderName) : null,
+                e('input', { className: 'dsh-notes-meta-topic-input', placeholder: tt('meta.topicPlaceholder'), value: edTopic, onChange: (ev) => { setEdTopic(ev.target.value); triggerAutoSave() } }),
+                e('span', { className: 'dsh-notes-meta-jump dsh-nt', 'data-tooltip': tt('meta.topicFilterTip'), onClick: jumpToTopicFilter }, I('filter', 10))),
+              curFolderName ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.folderTip') }, I('folder', 11), curFolderName) : null,
               // 使用遥测（P2）：详情 meta chip「被引用 N 次」（0 次不显示）
-              (curNote.useCount || 0) > 0 ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': '使用遥测：被 Agent 引用（note_get 命中）次数' }, I('quote', 11), '被引用 ' + curNote.useCount + ' 次') : null,
+              (curNote.useCount || 0) > 0 ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.useCountTip') }, I('quote', 11), tt('meta.useCount', { n: curNote.useCount })) : null,
               // P3 派发闭环徽章：有派发记录时聚合显示（pending=有待回执 / done=全部已回执），点击展开派发历史
-              curDispatches.length ? e('span', { className: 'dsh-notes-meta-chip dsh-notes-dispatch-badge ' + (dispatchOpenCount ? 'pending' : 'done'), onClick: () => setDispatchHistoryOpen(true), 'data-tooltip': dispatchOpenCount ? ('派发中：' + dispatchOpenCount + ' 条待回执（共 ' + curDispatches.length + ' 条）· 目标会话处理完转 idle 或笔记置 resolved 时自动回执；点击查看派发历史') : ('全部 ' + curDispatches.length + ' 条派发已回执 · 点击查看派发历史') },
+              curDispatches.length ? e('span', { className: 'dsh-notes-meta-chip dsh-notes-dispatch-badge ' + (dispatchOpenCount ? 'pending' : 'done'), onClick: () => setDispatchHistoryOpen(true), 'data-tooltip': dispatchOpenCount ? tt('meta.dispPendingTip', { open: dispatchOpenCount, total: curDispatches.length }) : tt('meta.dispDoneTip', { total: curDispatches.length }) },
                 I(dispatchOpenCount ? 'play' : 'check', 11),
-                dispatchOpenCount ? ' 派发中 ' + dispatchOpenCount + '/' + curDispatches.length : ' 派发已回执') : null,
+                dispatchOpenCount ? ' ' + tt('meta.dispPending', { open: dispatchOpenCount, total: curDispatches.length }) : ' ' + tt('meta.dispDone')) : null,
               e('span', { className: 'dsh-notes-meta-chip dsh-notes-role-seg' },
                 I('bolt', 11),
-                e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'off' ? ' on' : ''), onClick: () => setRoleSeg('off'), 'data-tooltip': '不注入系统提示' }, '关闭'),
-                e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'convention' ? ' on' : ''), onClick: () => setRoleSeg('convention'), 'data-tooltip': '须遵守的行为规则' }, '约定'),
-                e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'reference' ? ' on' : ''), onClick: () => setRoleSeg('reference'), 'data-tooltip': '事实性补充信息，Agent 按需取用' }, '资料')),
+                e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'off' ? ' on' : ''), onClick: () => setRoleSeg('off'), 'data-tooltip': tt('meta.roleOffTip') }, tt('meta.roleOff')),
+                e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'convention' ? ' on' : ''), onClick: () => setRoleSeg('convention'), 'data-tooltip': tt('meta.roleConventionTip') }, tt('tree.roleConvention')),
+                e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'reference' ? ' on' : ''), onClick: () => setRoleSeg('reference'), 'data-tooltip': tt('meta.roleReferenceTip') }, tt('tree.roleReference'))),
               isInjected ? e('span', { className: 'dsh-notes-ed-scope-wrap' },
-                e('button', { className: 'dsh-notes-meta-chip dsh-notes-scope-trigger dsh-nt', onClick: (ev) => { ev.stopPropagation(); setScopeOpen(!scopeOpen) }, 'data-tooltip': '选择注入范围（可多选）' },
+                e('button', { className: 'dsh-notes-meta-chip dsh-notes-scope-trigger dsh-nt', onClick: (ev) => { ev.stopPropagation(); setScopeOpen(!scopeOpen) }, 'data-tooltip': tt('meta.scopeTip') },
                   injectScopeLabel(edScope), e('span', { className: 'dsh-notes-scope-caret' }, '▾')),
                 scopePanelEl)
               : null,
               // 曾注入徽章（injectEver 粘性标记：单向只升不降，不随关闭回退；当前已注入时由上方注入角色段表达，不重复显示）
-              curNote.injectEver === true && !isInjected ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': '曾注入：历史上开启过上下文注入（现已关闭；injectEver 为粘性标记，不随关闭回退）' }, I('clock', 11), '曾注入') : null,
-              e('span', { className: 'dsh-notes-meta-chip tgl' + (edRecall ? ' on' : ''), onClick: toggleRecall, 'data-tooltip': '关闭后该笔记不出现在注入给 Agent 的目录中' }, I('eye', 11), '目录可见'),
-              e('span', { className: 'dsh-notes-meta-chip tgl' + (edSens ? ' on' : ''), onClick: toggleSens, 'data-tooltip': '敏感内容：注入系统提示时正文按行打码（键保留值遮蔽），Agent 用 note_get 取原文' }, I('lock', 11), '敏感'),
-              e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': '标签（逗号分隔；convention 标签已由注入开关替代）' },
+              curNote.injectEver === true && !isInjected ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.injectEverTip') }, I('clock', 11), tt('meta.injectEver')) : null,
+              e('span', { className: 'dsh-notes-meta-chip tgl' + (edRecall ? ' on' : ''), onClick: toggleRecall, 'data-tooltip': tt('meta.recallTipNote') }, I('eye', 11), tt('meta.recall')),
+              e('span', { className: 'dsh-notes-meta-chip tgl' + (edSens ? ' on' : ''), onClick: toggleSens, 'data-tooltip': tt('meta.sensTip') }, I('lock', 11), tt('meta.sens')),
+              e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.tagsTipClient') },
                 I('tag', 11),
-                e('input', { className: 'dsh-notes-meta-tags-input', placeholder: '标签，逗号分隔', value: edTags, onChange: (ev) => { setEdTags(ev.target.value); triggerAutoSave() } })),
+                e('input', { className: 'dsh-notes-meta-tags-input', placeholder: tt('meta.tagsTip'), value: edTags, onChange: (ev) => { setEdTags(ev.target.value); triggerAutoSave() } })),
               e('span', { className: 'dsh-notes-meta-sp' }),
               // 双模式两段开关（原型 .modeseg）：源码 ⇄ 富文本；降级态富文本段置灰 + tooltip 给出原因
-              e('span', { className: 'dsh-notes-modeseg', role: 'group', 'aria-label': '编辑器模式（Ctrl+/ 切换）' },
-                e('button', { className: 'dsh-notes-modeseg-seg' + (editorMode === 'source' ? ' on' : '') + ' dsh-nt', 'data-tooltip': 'Markdown 源码编辑', onClick: () => switchMode('source') }, I('codeblock', 12), '源码'),
-                e('button', { className: 'dsh-notes-modeseg-seg' + (editorMode === 'rich' ? ' on' : '') + (!degraded.ok ? ' dis' : '') + ' dsh-nt', 'data-tooltip': !degraded.ok ? ('含高级语法（' + degraded.reasons.map(r => r.label).join('、') + '），请在源码模式编辑') : '富文本（受限 WYSIWYG）', onClick: () => switchMode('rich') }, I('eye', 12), '富文本')),
+              e('span', { className: 'dsh-notes-modeseg', role: 'group', 'aria-label': tt('meta.modeAria') },
+                e('button', { className: 'dsh-notes-modeseg-seg' + (editorMode === 'source' ? ' on' : '') + ' dsh-nt', 'data-tooltip': tt('meta.srcModeTip'), onClick: () => switchMode('source') }, I('codeblock', 12), tt('meta.src')),
+                e('button', { className: 'dsh-notes-modeseg-seg' + (editorMode === 'rich' ? ' on' : '') + (!degraded.ok ? ' dis' : '') + ' dsh-nt', 'data-tooltip': !degraded.ok ? tt('editor.richDegradedReasons', { reasons: degraded.reasons.map(r => r.label).join(tt('common.listSep')) }) : tt('meta.richModeTipClient'), onClick: () => switchMode('rich') }, I('eye', 12), tt('meta.rich'))),
               e('span', { className: 'dsh-notes-kbd dsh-notes-modeseg-kbd' }, 'Ctrl+/'),
               // 二期 ✨整理：AI 按当前 kind 模板重写正文（notes-ai-organize；替换后 toast 可撤销一次）
-              e('span', { className: 'dsh-notes-meta-act dsh-notes-organize-btn' + (organizing ? ' busy' : '') + ' dsh-nt', onClick: (ev) => { ev.stopPropagation(); if (!organizing) doAiOrganize() }, 'data-tooltip': organizing ? 'AI 整理中…' : 'AI 整理：按「' + (KIND_LABELS[edKind] || '笔记') + '」模板重写正文（替换后可撤销）' }, I('sparkle', 12), organizing ? '整理中…' : '整理'),
-              e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); openDispatch() }, 'data-tooltip': '派发待办到会话（可补充具体要求）' }, I('play', 12), dispatching ? '…' : '派发'),
-              curNote.sessionId ? e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: () => jumpToSession(curNote.sessionId), 'data-tooltip': '跳转到来源会话' }, I('ext', 12), '来源') : null,
+              e('span', { className: 'dsh-notes-meta-act dsh-notes-organize-btn' + (organizing ? ' busy' : '') + ' dsh-nt', onClick: (ev) => { ev.stopPropagation(); if (!organizing) doAiOrganize() }, 'data-tooltip': organizing ? tt('meta.organizingTip') : tt('meta.organizeTip', { kind: kindLabel(edKind) || tt('meta.kindNote') }) }, I('sparkle', 12), organizing ? tt('meta.organizing') : tt('meta.organize')),
+              e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); openDispatch() }, 'data-tooltip': tt('meta.dispatchTipClient') }, I('play', 12), dispatching ? '…' : tt('meta.dispatch')),
+              curNote.sessionId ? e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: () => jumpToSession(curNote.sessionId), 'data-tooltip': tt('meta.sourceJumpTip') }, I('ext', 12), tt('meta.source')) : null,
               // 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数）
-              (histCount || 0) > 0 ? e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); openHistory() }, 'data-tooltip': '历史版本（' + histCount + ' 个快照）：预览 / 一键恢复（恢复前当前版自动快照，可再撤销）' }, I('clock', 12), '历史') : null,
-              e('span', { className: 'dsh-notes-meta-act' + (edStatus === 'pinned' ? ' on' : '') + ' dsh-nt', onClick: () => { setEdStatus(edStatus === 'pinned' ? 'active' : 'pinned'); triggerAutoSave() }, 'data-tooltip': edStatus === 'pinned' ? '取消置顶' : '置顶' }, I('pin', 12)),
-              e('span', { className: 'dsh-notes-meta-act danger dsh-nt', onClick: () => doDelete(selected), 'data-tooltip': '删除（软删除，可恢复）' }, I('trash', 12)),
+              (histCount || 0) > 0 ? e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); openHistory() }, 'data-tooltip': tt('meta.histTip', { n: histCount }) }, I('clock', 12), tt('meta.history')) : null,
+              e('span', { className: 'dsh-notes-meta-act' + (edStatus === 'pinned' ? ' on' : '') + ' dsh-nt', onClick: () => { setEdStatus(edStatus === 'pinned' ? 'active' : 'pinned'); triggerAutoSave() }, 'data-tooltip': edStatus === 'pinned' ? tt('meta.unpin') : tt('meta.pin') }, I('pin', 12)),
+              e('span', { className: 'dsh-notes-meta-act danger dsh-nt', onClick: () => doDelete(selected), 'data-tooltip': tt('meta.delTipClient') }, I('trash', 12)),
               // 派发计划块 + 关联调度清单（notes-034-sched-detail）：meta 尾部全宽行；无调度笔记零渲染（null = 零 DOM 痕迹红线）
               (curIsSched || schedPeers.length) ? e('div', { className: 'dsh-notes-sched-plan' },
                 curIsSched ? e('div', { className: 'dsh-notes-sched-plan-row' + (curNote.schedule.enabled === false ? ' paused' : '') },
-                  e('span', { className: 'dsh-notes-sched-plan-t' }, I('clock', 10), '派发计划'),
+                  e('span', { className: 'dsh-notes-sched-plan-t' }, I('clock', 10), tt('meta.schedPlan')),
                   e('span', { className: 'dsh-notes-sched-freq' }, schedFreqLabel(curNote.schedule)),
                   e('span', { className: 'dsh-notes-sched-target dsh-nt', 'data-tooltip': curNote.schedule.target || '' }, '→ ' + shortSid(curNote.schedule.target)),
                   e('span', { className: 'dsh-notes-sched-nf' }, schedPlanNextLabel(curNote)),
                   schedPlanBadgeEl(curNote),
-                  curNote.schedule.enabled === false ? e('span', { className: 'dsh-notes-sched-badge off' }, '已暂停') : null) : null,
+                  curNote.schedule.enabled === false ? e('span', { className: 'dsh-notes-sched-badge off' }, tt('meta.schedPaused')) : null,
+                  // 原地操作行（notes-041-sched-plan-edit）：编辑/暂停恢复/删除复用注入管理 doInjSched* handler（模块级同链路，零复制逻辑）；
+                  // 操作后就地刷新——toggle/del：handler 内 loadNotes（curNote 由 notes 缓存派生随刷）；edit：保存后 loadNotes 同口径
+                  e('span', { className: 'dsh-notes-sched-acts' },
+                    // 执行记录 ↗（notes-041-sched-runlog）：schedule.runLog 软链存在时出跳转链接（selectNote 跳执行记录笔记；缓存未命中 toast 不硬跳）
+                    curNote.schedule.runLog ? e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': tt('meta.runLogTip', { id: curNote.schedule.runLog }), onClick: () => { const t = notes.find(x => x.id === curNote.schedule.runLog); if (t) selectNote(t); else showToast(tt('meta.runLogNotFound', { id: curNote.schedule.runLog })) } }, tt('meta.runLog')) : null,
+                    e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': tt('meta.schedEditTip'), onClick: () => doInjSchedEdit(curNote) }, tt('meta.edit')),
+                    e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': curNote.schedule.enabled === false ? tt('meta.schedResumeTip') : tt('meta.schedPauseTip'), onClick: () => doInjSchedToggle(curNote) }, curNote.schedule.enabled === false ? tt('meta.resume') : tt('meta.pause')),
+                    e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': tt('meta.schedDelTip'), onClick: () => doInjSchedDel(curNote) }, tt('common.delete')))) : null,
                 schedPeers.map(p => {
                   const ps = p.schedule, pp = ps.enabled === false
-                  return e('div', { key: p.id, className: 'dsh-notes-sched-plan-row dsh-notes-sched-peer dsh-nt' + (pp ? ' paused' : ''), 'data-tooltip': '跳转到调度约定「' + (p.title || '无标题') + '」', onClick: () => { const t = notes.find(x => x.id === p.id); if (t) selectNote(t); else showToast('未找到调度约定：' + p.id) } },
-                    e('span', { className: 'dsh-notes-sched-plan-t' }, I('clock', 10), '关联调度'),
-                    e('span', { className: 'dsh-notes-sched-peer-t' }, p.title || '无标题'),
+                  return e('div', { key: p.id, className: 'dsh-notes-sched-plan-row dsh-notes-sched-peer dsh-nt' + (pp ? ' paused' : ''), 'data-tooltip': tt('meta.schedPeerTip', { name: p.title || tt('tree.untitled') }), onClick: () => { const t = notes.find(x => x.id === p.id); if (t) selectNote(t); else showToast(tt('meta.schedPeerNotFound', { id: p.id })) } },
+                    e('span', { className: 'dsh-notes-sched-plan-t' }, I('clock', 10), tt('meta.schedPeer')),
+                    e('span', { className: 'dsh-notes-sched-peer-t' }, p.title || tt('tree.untitled')),
                     e('span', { className: 'dsh-notes-sched-freq' }, schedFreqLabel(ps)),
                     e('span', { className: 'dsh-notes-sched-nf' }, schedPlanNextLabel(p)),
-                    pp ? e('span', { className: 'dsh-notes-sched-badge off' }, '已暂停') : null)
+                    pp ? e('span', { className: 'dsh-notes-sched-badge off' }, tt('meta.schedPaused')) : null)
                 })) : null)),
           curDispatches.length ? e('div', { className: 'dsh-notes-dispatch-history' + (dispatchHistoryOpen ? ' open' : ' collapsed') },
             e('div', { className: 'dsh-notes-dispatch-history-t', onClick: () => setDispatchHistoryOpen(!dispatchHistoryOpen), role: 'button', 'aria-expanded': dispatchHistoryOpen ? 'true' : 'false' },
-              I('chev', 9, 'dsh-notes-hist-caret' + (dispatchHistoryOpen ? ' open' : '')), '派发历史（' + curDispatches.length + '）'),
+              I('chev', 9, 'dsh-notes-hist-caret' + (dispatchHistoryOpen ? ' open' : '')), tt('meta.dispHistory', { n: curDispatches.length })),
             dispatchHistoryOpen ? curDispatches.map((d, origIdx) => ({ d: d, origIdx: origIdx })).reverse().map(({ d, origIdx }) => e('div', { key: origIdx, className: 'dsh-notes-dispatch-rec' + (isDispatchDone(d) ? ' done' : '') },
               e('div', { className: 'dsh-notes-dispatch-rec-top' },
                 e('span', { className: 'dsh-notes-dispatch-rec-t' }, isDispatchDone(d) ? [I('check', 10, 'dsh-notes-hist-done'), ' ' + (d.sessionName || d.sessionId)] : [e('span', { key: 'dot', className: 'dsh-notes-dispatch-dot' }), ' ' + (d.sessionName || d.sessionId)]),
-                e('span', { className: 'dsh-notes-dispatch-rec-m' }, (isDispatchDone(d) ? '已完成 · ' : '待处理 · ') + (d.mode === 'new' ? '新会话' : (d.workspace || '已有会话')) + (d.at ? ' · ' + fmtDT(d.at).slice(5) : ''))),
-              d.instruction ? e('div', { className: 'dsh-notes-dispatch-rec-i' }, '要求：' + d.instruction) : null,
-              !isDispatchDone(d) ? e('button', { className: 'dsh-notes-dispatch-done-btn', onClick: () => doDispatchDone(origIdx) }, '标记完成') : null)) : null)
+                e('span', { className: 'dsh-notes-dispatch-rec-m' }, (isDispatchDone(d) ? tt('meta.dispStDone') : tt('meta.dispStPending')) + ' · ' + (d.mode === 'new' ? tt('meta.dispNew') : (d.workspace || tt('meta.dispExisting'))) + (d.at ? ' · ' + fmtDT(d.at).slice(5) : ''))),
+              d.instruction ? e('div', { className: 'dsh-notes-dispatch-rec-i' }, tt('meta.dispInstruction', { text: d.instruction })) : null,
+              !isDispatchDone(d) ? e('button', { className: 'dsh-notes-dispatch-done-btn', onClick: () => doDispatchDone(origIdx) }, tt('meta.dispMarkDone')) : null)) : null)
           : null,
           // 降级横幅（原型 .deg）：检测到白名单外语法时提示（富文本入口同步置灰），删净后实时恢复
           !degraded.ok ? e('div', { className: 'dsh-notes-deg' },
             I('warn', 13),
             e('div', null,
-              e('div', null, '检测到', e('b', null, '白名单外语法'), '，富文本编辑不可用（仍可源码编辑）：'),
-              e('div', { className: 'dsh-notes-deg-rs' }, degraded.reasons.map(r => r.label + '（第 ' + r.line + ' 行：' + r.sample + '）').join('、')))) : null,
+              e('div', null, tt('editor.degBannerPre'), e('b', null, tt('editor.degBannerB')), tt('editor.degBannerPost')),
+              e('div', { className: 'dsh-notes-deg-rs' }, degraded.reasons.map(r => tt('editor.degReasonItem', { label: r.label, line: r.line, sample: r.sample })).join(tt('common.listSep'))))) : null,
           // R-1 安全态横幅（正文加载失败）：锁定编辑 + 暂停自动保存 + 重试入口（复用降级横幅 .dsh-notes-deg 样式）
           edLoadErr ? e('div', { className: 'dsh-notes-deg dsh-notes-load-err' },
             I('warn', 13),
             e('div', null,
-              e('div', null, edLoadErr, ' — 已锁定编辑并暂停自动保存（防止空内容覆盖原文）。'),
-              e('div', null, e('span', { className: 'dsh-notes-meta-act', style: { cursor: 'pointer' }, onClick: () => { if (selectedRef.current) loadEdBody(selectedRef.current) } }, '重试')))) : null,
+              e('div', null, edLoadErr, tt('editor.loadLockNote')),
+              e('div', null, e('span', { className: 'dsh-notes-meta-act', style: { cursor: 'pointer' }, onClick: () => { if (selectedRef.current) loadEdBody(selectedRef.current) } }, tt('editor.retry'))))) : null,
           // 正文双模式（原型 .src / .rich-scroll）：源码 textarea ⇄ 富文本 contenteditable（非受控，编辑期间不重渲染）
           editorMode === 'source'
             ? e('textarea', {
-                ref: edBodyDomRef, className: 'dsh-notes-ed-body', placeholder: '正文…（Markdown）', value: edBody, readOnly: !!edLoadErr,
+                ref: edBodyDomRef, className: 'dsh-notes-ed-body', placeholder: tt('editor.bodyPlaceholder'), value: edBody, readOnly: !!edLoadErr,
                 onChange: (ev) => { setEdBody(ev.target.value); triggerAutoSave(); scheduleDegAnalyze() },
                 // 图片入口①/②（源码模式）：粘贴/拖拽图片文件 → 同一上传弹窗 → 光标处插 Markdown 文本
                 onPaste: (ev) => { const cd = ev.clipboardData; if (cd && cd.files && cd.files.length && cd.files[0].type.indexOf('image/') === 0) { ev.preventDefault(); pickImageFile(cd.files[0]) } },
                 onDragOver: (ev) => { ev.preventDefault() },
-                onDrop: (ev) => { const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]; if (!f) return; ev.preventDefault(); if (!f.type || f.type.indexOf('image/') !== 0) { showToast('仅支持图片文件'); return } pickImageFile(f) }
+                onDrop: (ev) => { const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]; if (!f) return; ev.preventDefault(); if (!f.type || f.type.indexOf('image/') !== 0) { showToast(tt('editor.imageOnly')); return } pickImageFile(f) }
               })
             : e('div', { ref: richWrapRef, className: 'dsh-notes-rich-scroll dsh-notes-rich-wrap' },
                 e('div', { className: 'dsh-notes-rtb' },
-                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'bold', 'data-tooltip': '加粗 **text**', onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('bold') } }, I('bold', 14)),
-                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'italic', 'data-tooltip': '斜体 *text*', onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('italic') } }, I('italic', 14)),
-                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'code', 'data-tooltip': '行内码 `text`', onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('code') } }, I('codeblock', 14)),
-                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'link', 'data-tooltip': '链接 [text](url)', onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('link') } }, I('link', 14)),
+                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'bold', 'data-tooltip': tt('editor.tbBold'), onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('bold') } }, I('bold', 14)),
+                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'italic', 'data-tooltip': tt('editor.tbItalic'), onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('italic') } }, I('italic', 14)),
+                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'code', 'data-tooltip': tt('editor.tbCode'), onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('code') } }, I('codeblock', 14)),
+                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'link', 'data-tooltip': tt('editor.tbLink'), onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('link') } }, I('link', 14)),
                   e('span', { className: 'dsh-notes-rtb-sep' }),
-                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'ul', 'data-tooltip': '无序列表', onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('ul') } }, I('ul', 14)),
-                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'ol', 'data-tooltip': '有序列表', onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('ol') } }, I('ol', 14)),
-                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'quote', 'data-tooltip': '引用块', onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('quote') } }, I('quote', 14)),
+                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'ul', 'data-tooltip': tt('editor.tbUl'), onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('ul') } }, I('ul', 14)),
+                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'ol', 'data-tooltip': tt('editor.tbOl'), onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('ol') } }, I('ol', 14)),
+                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'quote', 'data-tooltip': tt('editor.tbQuote'), onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('quote') } }, I('quote', 14)),
                   e('span', { className: 'dsh-notes-rtb-sep' }),
-                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'image', 'data-tooltip': '插入图片 ![](assets/..)（也可 Ctrl+V 粘贴 / 拖拽文件）', onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('image') } }, I('image', 14)),
-                  e('span', { className: 'dsh-notes-rtb-sync' + (richSyncing ? '' : ' ok') }, e('span', { className: 'dsh-notes-rtb-sync-sd' }), richSyncing ? '编辑中…' : '已同步源码')),
+                  e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'image', 'data-tooltip': tt('editor.tbImage'), onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('image') } }, I('image', 14)),
+                  e('span', { className: 'dsh-notes-rtb-sync' + (richSyncing ? '' : ' ok') }, e('span', { className: 'dsh-notes-rtb-sync-sd' }), richSyncing ? tt('editor.syncing') : tt('editor.synced'))),
                 e('div', { ref: richRef, className: 'dsh-notes-rich', contentEditable: edLoadErr ? false : true, spellCheck: false, suppressContentEditableWarning: true })),
           // P2 反向链接面板：全库正文含 [[当前id]]/[[当前标题]] 的其他笔记（点击跳转；索引未热提示「索引中…」）
           e('div', { className: 'dsh-notes-backlinks' },
-            e('div', { className: 'dsh-notes-backlinks-t' }, I('link', 11), '反向链接' + (wikiWarm ? '（' + backlinks.length + '）' : '（索引中…）')),
+            e('div', { className: 'dsh-notes-backlinks-t' }, I('link', 11), tt('editor.backlinks') + (wikiWarm ? tt('editor.backlinksCount', { n: backlinks.length }) : tt('editor.backlinksWarming'))),
             backlinks.length
-              ? e('div', { className: 'dsh-notes-backlinks-list' }, backlinks.map(n => e('span', { key: n.id, className: 'dsh-notes-backlink dsh-nt', 'data-tooltip': '跳转到「' + (n.title || '无标题') + '」', onClick: () => jumpToWikiTarget(n.id) },
-                  e('span', { className: 'dsh-notes-kind-dot', style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' } }), n.title || '无标题')))
-              : (wikiWarm ? e('div', { className: 'dsh-notes-backlinks-empty' }, '暂无其他笔记用 [[…]] 链接到这里') : null)),
+              ? e('div', { className: 'dsh-notes-backlinks-list' }, backlinks.map(n => e('span', { key: n.id, className: 'dsh-notes-backlink dsh-nt', 'data-tooltip': tt('editor.backlinkJumpTip', { name: n.title || tt('tree.untitled') }), onClick: () => jumpToWikiTarget(n.id) },
+                  e('span', { className: 'dsh-notes-kind-dot', style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' } }), n.title || tt('tree.untitled'))))
+              : (wikiWarm ? e('div', { className: 'dsh-notes-backlinks-empty' }, tt('editor.backlinksEmpty')) : null)),
           e('div', { className: 'dsh-notes-ed-foot' },
-            e('span', { className: 'dsh-notes-ed-foot-i' }, editorMode === 'source' ? '源码模式' : '富文本模式'),
-            e('span', { className: 'dsh-notes-ed-foot-i' }, '创建 ' + (curNote.createdAt ? fmtDT(curNote.createdAt).slice(0, 10) : '—')),
-            e('span', { className: 'dsh-notes-ed-foot-i' }, '更新 ' + (curNote.updatedAt ? fmtDT(curNote.updatedAt).slice(0, 10) : '—')),
-            curNote.sessionId ? e('span', { className: 'dsh-notes-ed-foot-i' }, '来源 会话 ' + shortSid(curNote.sessionId)) : null,
-            e('span', { className: 'dsh-notes-ed-saved' + (savedAt ? ' show' : '') }, savedAt ? '已自动保存 ' + new Date(savedAt).toTimeString().slice(0, 5) : ''),
-            e('span', { className: 'dsh-notes-ed-foot-i' }, (edBody || '').length + ' 字')))
+            e('span', { className: 'dsh-notes-ed-foot-i' }, editorMode === 'source' ? tt('editor.modeSource') : tt('editor.modeRich')),
+            e('span', { className: 'dsh-notes-ed-foot-i' }, tt('meta.createdAt', { time: curNote.createdAt ? fmtDT(curNote.createdAt).slice(0, 10) : '—' })),
+            e('span', { className: 'dsh-notes-ed-foot-i' }, tt('meta.updatedAt', { time: curNote.updatedAt ? fmtDT(curNote.updatedAt).slice(0, 10) : '—' })),
+            curNote.sessionId ? e('span', { className: 'dsh-notes-ed-foot-i' }, tt('meta.sourceSession', { short: shortSid(curNote.sessionId) })) : null,
+            e('span', { className: 'dsh-notes-ed-saved' + (savedAt ? ' show' : '') }, savedAt ? tt('editor.autoSavedFlat', { time: new Date(savedAt).toTimeString().slice(0, 5) }) : ''),
+            e('span', { className: 'dsh-notes-ed-foot-i' }, tt('editor.charCount', { n: (edBody || '').length }))))
         : e('section', { className: 'dsh-notes-ed' },
             e('div', { className: 'dsh-notes-ed-empty' },
               e('div', { className: 'dsh-notes-ed-empty-ic' }, I('note', 26)),
-              e('div', { className: 'dsh-notes-ed-empty-t' }, '选择一条笔记查看和编辑'),
-              e('div', { className: 'dsh-notes-ed-empty-s' }, '点侧栏「新建」输入标题，新建一条笔记')))
+              e('div', { className: 'dsh-notes-ed-empty-t' }, tt('editor.emptyTitleShort')),
+              e('div', { className: 'dsh-notes-ed-empty-s' }, tt('editor.emptySubShort'))))
           return { editorEl: editorEl, curNote: curNote }
         }
         return {

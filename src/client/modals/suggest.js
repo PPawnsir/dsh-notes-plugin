@@ -39,6 +39,7 @@
     //          ③ 可能无用（孤儿候选：启发式判定可能误伤，仅展示逐条「查看」跳转，不提供批量操作）
     //          ④ 日志卫生（工作记忆 v0：超窗日志 周/月 聚合提名——只提名不执行，v0 「明细」展开逐条「查看」）
     function SuggestModal(props) {
+      const tt = useT()   // i18n 覆盖卡E：订阅 langStore，切语言本卡自渲染（模块级 handler 走 t() 直读当下语言态）
       const suggestOpen = store.modal.suggest.useSel(s => s.open)
       const suggestData = store.modal.suggest.useSel(s => s.data)
       const suggestPending = store.modal.suggest.useSel(s => s.pending)
@@ -57,7 +58,7 @@
           catch (err) { fail++ }
         }
         setSuggestPending(false)
-        showToast('已软删除 ' + ok + ' 条（回收站可恢复）' + (fail ? '，失败 ' + fail + ' 条' : ''), okIds.length ? { label: '撤销', fn: () => undoSuggestBatchDelete(okIds) } : undefined)
+        showToast(t('sugg.softDeleted', { ok: ok }) + (fail ? t('inj.batchDoneFail', { n: fail }) : ''), okIds.length ? { label: t('meta.undo'), fn: () => undoSuggestBatchDelete(okIds) } : undefined)
         panelBridge.afterArchiveCleanup(list.map(n => n.id))   // 正打开的笔记在被删集合中则退出选中态（归档收尾同款语义）
         await panelBridge.loadNotes(true); notifyNotesChanged()
         loadSuggest()
@@ -69,7 +70,7 @@
           try { const res = await host.call('notes-restore', { id: id }); if (res && res.error) fail++; else ok++ }
           catch (err) { fail++ }
         }
-        showToast('已恢复 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''))
+        showToast(t('common.restoredBatch', { ok: ok }) + (fail ? t('inj.batchDoneFail', { n: fail }) : ''))
         await panelBridge.loadNotes(true); notifyNotesChanged()
         loadSuggest()
       }
@@ -80,66 +81,66 @@
         const orphans = (d && d.orphanCandidates) || []
         // 工作记忆 v0 日志卫生（第四段）：周聚合/月聚合两组提名（只提名不执行——v0 仅展示明细，聚合执行留待 Phase 2）
         const logHg = (d && d.logHygieneCandidates) || { weekly: [], monthly: [] }
-        const logHgGroups = logHg.weekly.map(g => ({ g: g, tier: '周聚合' })).concat(logHg.monthly.map(g => ({ g: g, tier: '月聚合' })))
+        const logHgGroups = logHg.weekly.map(g => ({ g: g, tier: tt('sugg.tierWeekly') })).concat(logHg.monthly.map(g => ({ g: g, tier: tt('sugg.tierMonthly') })))
         const allEmpty = d !== null && arch.length === 0 && stale.length === 0 && orphans.length === 0 && logHgGroups.length === 0
         return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !suggestPending) setSuggestOpen(false) } },
           e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-arch-modal dsh-notes-suggest-modal' },
-            e('div', { className: 'dsh-notes-settings-modal-t' }, I('sparkle', 14), ' 整理建议', e('span', { className: 'dsh-notes-imgup-sub' }, '只提名不自动执行 · 软删除可恢复')),
+            e('div', { className: 'dsh-notes-settings-modal-t' }, I('sparkle', 14), ' ' + tt('settings.suggest'), e('span', { className: 'dsh-notes-imgup-sub' }, tt('sugg.sub'))),
             d === null
-              ? e('div', { className: 'dsh-notes-data-hint' }, '分析中…')
+              ? e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.analyzing'))
               : allEmpty
-                ? e('div', { className: 'dsh-notes-data-hint' }, '库很干净，无需整理。')
+                ? e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.clean'))
                 : e(React.Fragment, null,
                     e('div', { className: 'dsh-notes-suggest-sec' },
-                      e('div', { className: 'dsh-notes-suggest-sec-t' }, '可整理的速记组', e('span', { className: 'dsh-notes-suggest-sec-n' }, arch.length + ' 组'),
-                        arch.length ? e('button', { className: 'dsh-notes-trash-act', onClick: suggestGoArchive }, '去归档') : null),
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, tt('sugg.secArch'), e('span', { className: 'dsh-notes-suggest-sec-n' }, tt('sugg.countGroups', { n: arch.length })),
+                        arch.length ? e('button', { className: 'dsh-notes-trash-act', onClick: suggestGoArchive }, tt('sugg.goArch')) : null),
                       arch.length
                         ? e('div', { className: 'dsh-notes-arch-list' },
                             arch.map(g => {
                               const span = g.dateSpan && g.dateSpan.from ? (g.dateSpan.from === g.dateSpan.to ? g.dateSpan.from : g.dateSpan.from + ' ~ ' + g.dateSpan.to) : ''
                               return e('div', { key: g.sessionId, className: 'dsh-notes-arch-row' },
                                 e('span', { className: 'dsh-notes-arch-ti', title: g.title }, g.title),
-                                e('span', { className: 'dsh-notes-arch-meta' }, span + ' · ' + g.members.length + ' 条 · ' + fmtBytes(g.totalBytes) + ((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : '')))
+                                e('span', { className: 'dsh-notes-arch-meta' }, tt('arch.groupMeta', { span: span, n: g.members.length, size: fmtBytes(g.totalBytes) }) + ((g.totalUseCount || 0) > 0 ? tt('arch.groupUseCount', { n: g.totalUseCount }) : '')))
                             }))
-                        : e('div', { className: 'dsh-notes-data-hint' }, '没有可归档的速记组（同一会话 ≥2 条速记才会成组）。')),
+                        : e('div', { className: 'dsh-notes-data-hint' }, tt('arch.empty'))),
                     e('div', { className: 'dsh-notes-suggest-sec' },
-                      e('div', { className: 'dsh-notes-suggest-sec-t' }, '过期未引用', e('span', { className: 'dsh-notes-suggest-sec-n' }, stale.length + ' 条'),
-                        stale.length ? e('button', { className: 'dsh-notes-trash-act danger', onClick: doSuggestBatchDelete, disabled: suggestPending }, suggestPending ? '删除中…' : '一键批量软删除') : null),
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, tt('sugg.secStale'), e('span', { className: 'dsh-notes-suggest-sec-n' }, tt('sugg.countItems', { n: stale.length })),
+                        stale.length ? e('button', { className: 'dsh-notes-trash-act danger', onClick: doSuggestBatchDelete, disabled: suggestPending }, suggestPending ? tt('sugg.deleting') : tt('sugg.batchDel')) : null),
                       stale.length
                         ? e('div', { className: 'dsh-notes-arch-list' },
                             stale.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
                               e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
-                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || '未分类') + ' · ' + n.staleDays + ' 天未更新'))))
-                        : e('div', { className: 'dsh-notes-data-hint' }, '没有过期且从未被引用的笔记。')),
+                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || tt('meta.uncategorized')) + ' · ' + tt('sugg.staleDays', { n: n.staleDays })))))
+                        : e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.staleEmpty'))),
                     e('div', { className: 'dsh-notes-suggest-sec' },
-                      e('div', { className: 'dsh-notes-suggest-sec-t' }, '可能无用', e('span', { className: 'dsh-notes-suggest-sec-n' }, orphans.length + ' 条')),
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, tt('sugg.secOrphan'), e('span', { className: 'dsh-notes-suggest-sec-n' }, tt('sugg.countItems', { n: orphans.length }))),
                       orphans.length
                         ? e('div', { className: 'dsh-notes-arch-list' },
                             orphans.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
                               e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
-                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || '未分类') + ' · ' + (n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—')),
-                              e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(n.id) }, '查看'))))
-                        : e('div', { className: 'dsh-notes-data-hint' }, '没有孤儿笔记（无双链关联且从未被引用）。')),
+                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || tt('meta.uncategorized')) + ' · ' + (n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—')),
+                              e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(n.id) }, tt('sugg.view')))))
+                        : e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.orphanEmpty'))),
                     // ④ 日志卫生（工作记忆 v0 裁决 B②：超窗旧日志两级聚合提名——只提名不执行，v0 展开明细逐条过目）
                     e('div', { className: 'dsh-notes-suggest-sec' },
-                      e('div', { className: 'dsh-notes-suggest-sec-t' }, '日志卫生', e('span', { className: 'dsh-notes-suggest-sec-n' }, logHgGroups.length + ' 组')),
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, tt('sugg.secLogHg'), e('span', { className: 'dsh-notes-suggest-sec-n' }, tt('sugg.countGroups', { n: logHgGroups.length }))),
                       logHgGroups.length
                         ? e('div', { className: 'dsh-notes-arch-list' },
                             logHgGroups.map(({ g, tier }) => e(React.Fragment, { key: tier + g.key },
                               e('div', { className: 'dsh-notes-arch-row' },
                                 e('span', { className: 'dsh-notes-arch-ti', title: g.title }, g.title),
-                                e('span', { className: 'dsh-notes-arch-meta' }, tier + ' · ' + g.members.length + ' 条'),
-                                e('button', { className: 'dsh-notes-trash-act', onClick: () => setLogHgExpand(prev => { const nx = Object.assign({}, prev); if (nx[tier + g.key]) delete nx[tier + g.key]; else nx[tier + g.key] = true; return nx }) }, logHgExpand[tier + g.key] ? '收起' : '明细')),
+                                e('span', { className: 'dsh-notes-arch-meta' }, tt('sugg.logHgMeta', { tier: tier, n: g.members.length })),
+                                e('button', { className: 'dsh-notes-trash-act', onClick: () => setLogHgExpand(prev => { const nx = Object.assign({}, prev); if (nx[tier + g.key]) delete nx[tier + g.key]; else nx[tier + g.key] = true; return nx }) }, logHgExpand[tier + g.key] ? tt('trash.collapse') : tt('sugg.detail'))),
                               logHgExpand[tier + g.key] ? e('div', { className: 'dsh-notes-arch-list' },
                                 g.members.map(m => e('div', { key: m.id, className: 'dsh-notes-arch-row' },
                                   e('span', { className: 'dsh-notes-arch-ti', title: m.title || 'Untitled' }, m.title || 'Untitled'),
-                                  e('span', { className: 'dsh-notes-arch-meta' }, (m.logDate || '—') + (m.sessionId ? ' · 会话 ' + String(m.sessionId).replace(/^session-/, '').slice(0, 8) : '')),
-                                  e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(m.id) }, '查看')))) : null)))
-                        : e('div', { className: 'dsh-notes-data-hint' }, '没有待聚合的工作日志（超窗日志按 工作区×周/月 归组，同组 ≥2 条才提名）。')),
-                    e('div', { className: 'dsh-notes-data-hint' }, '判定口径：过期 = 超过时效阈值（设置卡片可调）且从未被引用；可能无用 = 无 [[双链]] 关联、未注入、从未被引用的进行中普通笔记（启发式，请逐条过目）。日志卫生 = 超 7 天周聚合 / 超 90 天月聚合提名（设置卡片「工作记忆」区可调窗口）；日志只聚合不淘汰，永不进过期/孤儿候选；v0 仅展示明细，一键合并将在后续版本提供。')),
+                                  e('span', { className: 'dsh-notes-arch-meta' }, (m.logDate || '—') + (m.sessionId ? tt('sugg.sessSeg', { id: String(m.sessionId).replace(/^session-/, '').slice(0, 8) }) : '')),
+                                  e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(m.id) }, tt('sugg.view'))))) : null)))
+                        : e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.logHgEmpty'))),
+                    e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.criteriaClient'))),
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
             e('div', { className: 'dsh-notes-dispatch-actions' },
-              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setSuggestOpen(false), disabled: suggestPending }, '关闭'))))
+              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setSuggestOpen(false), disabled: suggestPending }, tt('common.close')))))
       })()
       : null
     }

@@ -1,11 +1,14 @@
     // ===== modal: inject-manager —— 注入管理面板（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
-    // provides: store.modal.injMgr / injMgrOpenRef / injMgrSearchRef / injMgrSearchDebRef / setInjMgrOpen / setInjMgrList / setInjMgrFilter /
-    //           setInjMgrSearch / setInjMgrQ / setInjMgrSel / setInjMgrPending / openInjectManager / loadInjectManager / injMgrRole / injMgrScopeLabel / InjMgrModal
+    // provides: store.modal.injMgr / injMgrOpenRef / injMgrBackRef / injMgrSearchRef / injMgrSearchDebRef / setInjMgrOpen / setInjMgrList / setInjMgrFilter /
+    //           setInjMgrSearch / setInjMgrQ / setInjMgrSel / setInjMgrPending / openInjectManager / closeInjMgr / loadInjectManager / injMgrRole / injMgrScopeLabel / InjMgrModal /
+    //           doInjSchedEdit / doInjSchedToggle / doInjSchedDel（模块级：注入管理调度区 + 详情计划块双上下文共用，notes-041-sched-plan-edit）
     // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/icons.js（e/I）、kernel/bus.js（showToast/notifyNotesChanged）、kernel/bootstrap.js（timer）
     // state 托管：open/list/filter/search/q/sel/pending 迁入 store.modal.injMgr 切片；injMgrOpenRef 为 Esc 栈同步镜像 + injMgrSearchRef/injMgrSearchDebRef
     // 搜索防抖镜像（模块级单例，防抖 effect 挂 InjMgrModal 组件）；列表刷新经 panelBridge.loadNotes 中转；与设置卡片互斥经 panelBridge.setSettingsOpen 中转
+    // 单层返回栈（notes-041-settings-back）：injMgrBackRef 记录来源（仅设置卡入口传 'settings'），统一关闭入口 closeInjMgr 在关闭后回设置卡（经 panelBridge.openSettings 中转）
     store.modal.injMgr = createStore({ open: false, list: null, filter: 'all', search: '', q: '', sel: {}, pending: false })
     const injMgrOpenRef = { current: false }          // 注入管理面板镜像（Esc 优先关）
+    const injMgrBackRef = { current: null }           // 单层返回栈镜像（notes-041-settings-back）：'settings' = 从设置卡进入，关闭后自动回设置卡
     const injMgrSearchRef = { current: '' }           // 搜索框即时值镜像（防抖回调读 ref 防闭包过期；plain object 与 useRef 等价——面板为 shell.overlay 单例）
     const injMgrSearchDebRef = { current: null }      // 防抖句柄镜像
     // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
@@ -21,11 +24,18 @@
     // 三态语义与详情区三态分段控件完全一致：off→notes-update {inject:false}；约定/资料→{inject:true, injectRole}（payload 禁 undefined）；
     // 护栏：kind=log 注入硬禁（勾选/档位禁用 + tooltip；host 侧同口径强制 inject=false 并回 injectForcedOff）；
     //       sensitive 允许注入但行内提示「注入时自动脱敏」；排序：注入中在前（约定>资料），组内 updatedAt 降序。
-    function openInjectManager() {
+    function openInjectManager(from) {
       setInjMgrList(null); setInjMgrFilter('all'); setInjMgrSearch(''); setInjMgrQ(''); setInjMgrSel({}); setInjMgrPending(false); setError('')
       injMgrSearchRef.current = ''
+      injMgrBackRef.current = from === 'settings' ? 'settings' : null   // 单层返回栈：记录来源（仅设置卡入口传 'settings'）
       panelBridge.setSettingsOpen(false); setInjMgrOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入/注入预览同款）
       loadInjectManager()
+    }
+    // 统一关闭入口（「关闭」/点遮罩/Esc 同口径）：单层返回栈——从设置卡进入的，关闭后自动重开设置卡（经 panelBridge.openSettings 中转，modals 禁横向引用）
+    function closeInjMgr() {
+      const back = injMgrBackRef.current; injMgrBackRef.current = null
+      setInjMgrOpen(false)
+      if (back === 'settings' && panelBridge.openSettings) panelBridge.openSettings()
     }
     function loadInjectManager() {
       host.call('notes-list', { includeLogs: true }).then(res => {
@@ -35,8 +45,45 @@
     }
     // 笔记三态（与详情区同口径）：inject=true → injectRole（缺省 convention）；否则 off
     function injMgrRole(n) { return n.inject === true ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off' }
-    // 作用域摘要（injectTo 数；缺省/存量 global·workspace 值 = 全局）
-    function injMgrScopeLabel(injectTo) { const arr = (injectTo || []).filter(t => t !== 'global' && t !== 'workspace'); return arr.length === 0 ? '全局' : arr.length + ' 个会话' }
+    // 作用域摘要（injectTo 数；缺省/存量 global·workspace 值 = 全局）；i18n 覆盖卡D：模块级 t() 直读当下语言态（调用点在渲染期，组件已挂 useT 订阅）
+    function injMgrScopeLabel(injectTo) { const arr = (injectTo || []).filter(t => t !== 'global' && t !== 'workspace'); return arr.length === 0 ? t('inj.scopeGlobal') : t('inj.scopeSessions', { n: arr.length }) }
+    // ===== 调度任务三操作（notes-034-sched-ui）· 模块级提升（notes-041-sched-plan-edit）：注入管理调度区 + 详情计划块双上下文共用 =====
+    // （面板直调：panels/panel/editor.js 计划块操作行，序位 inject-manager 先于 panels；pending 走 store.modal.injMgr 切片——面板打开时驱动按钮禁用态，关闭时仅作重入闸）
+    // 编辑 = 回填派发弹窗（modal 不叠 modal：先关注入管理；openDispatchEdit 经 panelBridge 中转——modals 禁横向引用）；清返回栈——调度编辑回填是新链路，关闭不回设置卡
+    function doInjSchedEdit(n) { injMgrBackRef.current = null; setInjMgrOpen(false); if (panelBridge.openDispatchEdit) panelBridge.openDispatchEdit(n) }
+    // 暂停/恢复：表单与 front-matter 同源——只提交声明字段（机器状态由 host 闸门延续；锚定时刻 anchor/dow 属声明字段随 every 一并回传，防暂停/恢复丢锚定，notes-034-sched-time）；恢复走 host 存活校验，失败内联回显
+    // 双上下文：错误在面板打开时内联回显（setError），计划块上下文走 toast；成功后 loadNotes 刷新（curNote 由 notes 缓存派生 → 计划块就地刷新）
+    async function doInjSchedToggle(n) {
+      const s = n.schedule
+      if (!s || store.modal.injMgr.get().pending) return
+      const decl = { target: s.target, action: 'dispatch', enabled: s.enabled === false }
+      if (s.at) decl.at = s.at; else { decl.every = s.every; if (s.anchor) decl.anchor = s.anchor; if (typeof s.dow === 'number') decl.dow = s.dow }
+      setInjMgrPending(true); setError('')
+      try {
+        const res = await host.call('notes-update', { id: n.id, schedule: decl })
+        setInjMgrPending(false)
+        if (res && res.error) { if (injMgrOpenRef.current) setError(res.error); else showToast(res.error); return }
+        showToast(decl.enabled ? t('inj.schedResumed', { title: n.title || n.id }) : t('inj.schedPausedToast', { title: n.title || n.id }))
+        if (injMgrOpenRef.current) loadInjectManager()
+        panelBridge.loadNotes(true); notifyNotesChanged()
+      } catch (err) { setInjMgrPending(false); if (injMgrOpenRef.current) setError(String(err.message || err)); else showToast(t('meta.opFailed', { msg: String(err.message || err) })) }
+    }
+    // 删除 = 软删约定笔记（回收站可恢复；tick 跳过已删笔记，调度即刻停止）——暂停与删除是两个独立操作
+    // 双上下文：计划块删除的是当前打开笔记时清空选中（同 doDelete 口径，editor 随 curNote 空值收起）
+    async function doInjSchedDel(n) {
+      if (store.modal.injMgr.get().pending) return
+      if (!window.confirm(t('inj.schedDelConfirm', { title: n.title || n.id }))) return
+      setInjMgrPending(true); setError('')
+      try {
+        const res = await host.call('notes-delete', { id: n.id })
+        setInjMgrPending(false)
+        if (res && res.error) { if (injMgrOpenRef.current) setError(res.error); else showToast(res.error); return }
+        showToast(t('inj.schedDeleted', { title: n.title || n.id }))
+        if (selectedRef.current === n.id) setSelected(null)
+        if (injMgrOpenRef.current) loadInjectManager()
+        panelBridge.loadNotes(true); notifyNotesChanged()
+      } catch (err) { setInjMgrPending(false); if (injMgrOpenRef.current) setError(String(err.message || err)); else showToast(t('meta.deleteFailed', { msg: String(err.message || err) })) }
+    }
     // 注入管理面板宿主（设置卡片「注入管理」入口；mask/modal 复用设置卡片风格；notes-inject-manager）：
     // 顶部统计 chips（约定 N / 资料 M / 未注入 K，点击=过滤）+ 搜索框（250ms 防抖）+ 批量条（全选/已选计数/设为约定/设为资料/关闭注入）
     // + 总览列表（行 = 勾选 + kind 色点 + 标题 + 敏感提示 + 曾注入徽章 + 作用域摘要 + 三态 segmented；注入中在前（约定>资料），组内 updatedAt 降序）
@@ -49,6 +96,7 @@
       const injMgrSel = store.modal.injMgr.useSel(s => s.sel)
       const injMgrPending = store.modal.injMgr.useSel(s => s.pending)
       const error = props.error
+      const tt = useT()   // i18n 覆盖卡D：订阅 langStore，切语言本卡自渲染（模块级 handler 走 t() 直读当下语言态）
       // 注入管理面板搜索防抖（250ms，与列表搜索同口径）：输入即更新受控值，防抖后才落过滤词 injMgrQ
       React.useEffect(() => {
         const d = timer.debounce(() => setInjMgrQ(injMgrSearchRef.current.trim().toLowerCase()), 250)
@@ -66,8 +114,8 @@
         try {
           const res = await host.call('notes-update', upd)
           if (res && res.error) { setError(res.error); return }
-          if (res && res.injectForcedOff) showToast('「' + (n.title || n.id) + '」日志默认隐身：inject 已强制关闭')
-          else showToast(role === 'off' ? '已关闭注入：' + (n.title || n.id) : '已设为' + (role === 'reference' ? '资料' : '约定') + '：' + (n.title || n.id))
+          if (res && res.injectForcedOff) showToast(t('inj.forcedOff', { title: n.title || n.id }))
+          else showToast(role === 'off' ? t('inj.injectOffToast', { title: n.title || n.id }) : t('inj.injectSetToast', { role: t(role === 'reference' ? 'tree.roleReference' : 'tree.roleConvention'), title: n.title || n.id }))
           // 本地即时回写（injectEver 粘性：开启即曾注入），后台刷新对齐 host
           setInjMgrList(prev => (prev || []).map(x => x.id === n.id ? Object.assign({}, x, role === 'off' ? { inject: false } : { inject: true, injectRole: role, injectEver: true }) : x))
           panelBridge.loadNotes(true); notifyNotesChanged()
@@ -80,56 +128,27 @@
       // 上次结果徽章：lastError 红 / lastRun sent 绿 / 未触发灰（暂停另出黄徽章 + 行置灰）
       function schedBadgeEl(n) {
         const s = n.schedule
-        if (s.lastError) return e('span', { className: 'dsh-notes-sched-badge err dsh-nt', 'data-tooltip': s.lastError.message || '' }, I('x', 9), '失败 ' + fmtDT(s.lastError.at))
+        if (s.lastError) return e('span', { className: 'dsh-notes-sched-badge err dsh-nt', 'data-tooltip': s.lastError.message || '' }, I('x', 9), tt('meta.schedFailed', { time: fmtDT(s.lastError.at) }))
         if (s.lastRun) return s.lastRun.status === 'sent'
-          ? e('span', { className: 'dsh-notes-sched-badge ok dsh-nt', 'data-tooltip': '回执走派发闭环链路（receiptId=' + (s.lastRun.receiptId || '') + '）' }, I('check', 9), '已派发 ' + fmtDT(s.lastRun.at))
-          : e('span', { className: 'dsh-notes-sched-badge err' }, I('x', 9), '失败 ' + fmtDT(s.lastRun.at))
-        return e('span', { className: 'dsh-notes-sched-badge' }, '未触发')
+          ? e('span', { className: 'dsh-notes-sched-badge ok dsh-nt', 'data-tooltip': tt('meta.schedReceiptTip', { id: s.lastRun.receiptId || '' }) }, I('check', 9), tt('meta.schedSent', { time: fmtDT(s.lastRun.at) }))
+          : e('span', { className: 'dsh-notes-sched-badge err' }, I('x', 9), tt('meta.schedFailed', { time: fmtDT(s.lastRun.at) }))
+        return e('span', { className: 'dsh-notes-sched-badge' }, tt('meta.schedNever'))
       }
-      // 下次触发展示：暂停 → 已暂停；单次已触发 → 已触发；否则「下次 <本地时间>」（锚点同 host schedDueAt 口径）
+      // 下次触发展示：暂停 → 已暂停；单次已触发 → 已触发；否则「下次 <本地时间>」（锚点同 host schedDueAt 口径）；i18n 覆盖卡D：文案走 tt()（复用 B 卡 meta.sched* key）
       function schedNextLabel(n) {
         const s = n.schedule
-        if (s.enabled === false) return '已暂停'
-        if (s.at && s.lastFiredAt && Date.parse(s.lastFiredAt) >= Date.parse(s.at)) return '已触发（单次）'
+        if (s.enabled === false) return tt('meta.schedPaused')
+        if (s.at && s.lastFiredAt && Date.parse(s.lastFiredAt) >= Date.parse(s.at)) return tt('meta.schedFired')
         const ms = schedNextMs(n)
-        return ms === null ? '—' : '下次 ' + fmtDT(new Date(ms).toISOString())
+        return ms === null ? '—' : tt('meta.schedNext', { time: fmtDT(new Date(ms).toISOString()) })
       }
-      // 编辑 = 回填派发弹窗（modal 不叠 modal：先关注入管理；openDispatchEdit 经 panelBridge 中转——modals 禁横向引用）
-      function doInjSchedEdit(n) { setInjMgrOpen(false); if (panelBridge.openDispatchEdit) panelBridge.openDispatchEdit(n) }
-      // 暂停/恢复：表单与 front-matter 同源——只提交声明字段（机器状态由 host 闸门延续；锚定时刻 anchor/dow 属声明字段随 every 一并回传，防暂停/恢复丢锚定，notes-034-sched-time）；恢复走 host 存活校验，失败内联回显
-      async function doInjSchedToggle(n) {
-        const s = n.schedule
-        if (!s || injMgrPending) return
-        const decl = { target: s.target, action: 'dispatch', enabled: s.enabled === false }
-        if (s.at) decl.at = s.at; else { decl.every = s.every; if (s.anchor) decl.anchor = s.anchor; if (typeof s.dow === 'number') decl.dow = s.dow }
-        setInjMgrPending(true); setError('')
-        try {
-          const res = await host.call('notes-update', { id: n.id, schedule: decl })
-          setInjMgrPending(false)
-          if (res && res.error) { setError(res.error); return }
-          showToast(decl.enabled ? '已恢复定时：' + (n.title || n.id) : '已暂停定时：' + (n.title || n.id))
-          loadInjectManager(); panelBridge.loadNotes(true); notifyNotesChanged()
-        } catch (err) { setInjMgrPending(false); setError(String(err.message || err)) }
-      }
-      // 删除 = 软删约定笔记（回收站可恢复；tick 跳过已删笔记，调度即刻停止）——暂停与删除是两个独立操作
-      async function doInjSchedDel(n) {
-        if (injMgrPending) return
-        if (!window.confirm('删除定时任务「' + (n.title || n.id) + '」？\n约定笔记移入回收站（可恢复），调度即刻停止。')) return
-        setInjMgrPending(true); setError('')
-        try {
-          const res = await host.call('notes-delete', { id: n.id })
-          setInjMgrPending(false)
-          if (res && res.error) { setError(res.error); return }
-          showToast('已删除定时任务：' + (n.title || n.id) + '（回收站可恢复）')
-          loadInjectManager(); panelBridge.loadNotes(true); notifyNotesChanged()
-        } catch (err) { setInjMgrPending(false); setError(String(err.message || err)) }
-      }
+      // 调度三操作 handler 已提升模块级（notes-041-sched-plan-edit，本组件 JSX 直引同名标识符；详情计划块共用同链路）
       // 批量设为约定/资料/关闭：confirm 条数 → 逐条 notes-update（单条失败计数不中断）；完成后清选 + 刷新
       async function doInjMgrBatch(role) {
         const ids = Object.keys(injMgrSel)
         if (!ids.length || injMgrPending) return
-        const label = role === 'off' ? '关闭注入' : ('设为' + (role === 'reference' ? '资料' : '约定'))
-        if (!window.confirm('批量' + label + '：所选的 ' + ids.length + ' 条笔记将' + (role === 'off' ? '关闭上下文注入。' : '注入为' + (role === 'reference' ? '资料（按需取用）。' : '约定（须遵守）。')) + '\n确认执行？')) return
+        const label = role === 'off' ? t('inj.batchOff') : t('inj.batchLabelSet', { role: t(role === 'reference' ? 'tree.roleReference' : 'tree.roleConvention') })
+        if (!window.confirm(t('inj.batchConfirm', { label: label, n: ids.length, effect: role === 'off' ? t('inj.batchEffOff') : t(role === 'reference' ? 'inj.batchEffRef' : 'inj.batchEffConv') }))) return
         setInjMgrPending(true); setError('')
         let ok = 0, fail = 0
         for (const id of ids) {
@@ -139,7 +158,7 @@
           catch (err) { fail++ }
         }
         setInjMgrPending(false); setInjMgrSel({})
-        showToast('已' + label + ' ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''))
+        showToast(t('inj.batchDone', { label: label, ok: ok }) + (fail ? t('inj.batchDoneFail', { n: fail }) : ''))
         loadInjectManager(); panelBridge.loadNotes(true); notifyNotesChanged()
       }
       return injMgrOpen ? (() => {
@@ -158,41 +177,41 @@
         // 行内三态 segmented（语义与详情区三态分段控件完全一致）；log 行约定/资料档禁用（隐身硬禁 + tooltip）
         const segOpt = (n, role, r, label, tip) => {
           const dis = (n.kind || 'note') === 'log' && r !== 'off'
-          return e('span', { key: r, className: 'dsh-notes-injmgr-opt dsh-nt' + (role === r ? ' on' : '') + (dis ? ' dis' : ''), 'data-tooltip': dis ? '日志默认隐身：inject 强制关闭（kind=log 硬禁）' : tip, onClick: () => { if (!dis) doInjMgrSet(n, r) } }, label)
+          return e('span', { key: r, className: 'dsh-notes-injmgr-opt dsh-nt' + (role === r ? ' on' : '') + (dis ? ' dis' : ''), 'data-tooltip': dis ? tt('inj.logSegTip') : tip, onClick: () => { if (!dis) doInjMgrSet(n, r) } }, label)
         }
-        return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !injMgrPending) setInjMgrOpen(false) } },
+        return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !injMgrPending) closeInjMgr() } },
           e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-injmgr-modal' },
-            e('div', { className: 'dsh-notes-settings-modal-t' }, I('bolt', 14), ' 注入管理', e('span', { className: 'dsh-notes-imgup-sub' }, '全库注入总览 · 单行直改 / 多选批量 · 日志隐身硬禁 · 调度任务区（定时派发）')),
+            e('div', { className: 'dsh-notes-settings-modal-t' }, I('bolt', 14), ' ' + tt('settings.injManager'), e('span', { className: 'dsh-notes-imgup-sub' }, tt('inj.titleSub'))),
             e('div', { className: 'dsh-notes-injmgr-bar' },
               e('div', { className: 'dsh-notes-injmgr-chips' },
-                chipBtn('all', '全部 ' + listAll.length), chipBtn('convention', '约定 ' + cntConv), chipBtn('reference', '资料 ' + cntRef), chipBtn('off', '未注入 ' + cntOff)),
-              e('input', { className: 'dsh-notes-injmgr-search', placeholder: '搜索标题 / 主题 / 标签…', value: injMgrSearch, onChange: (ev) => { injMgrSearchRef.current = ev.target.value; setInjMgrSearch(ev.target.value); if (injMgrSearchDebRef.current) injMgrSearchDebRef.current() } })),
+                chipBtn('all', tt('inj.chipAll', { n: listAll.length })), chipBtn('convention', tt('inj.chipConvention', { n: cntConv })), chipBtn('reference', tt('inj.chipReference', { n: cntRef })), chipBtn('off', tt('inj.chipOff', { n: cntOff }))),
+              e('input', { className: 'dsh-notes-injmgr-search', placeholder: tt('inj.searchPlaceholder'), value: injMgrSearch, onChange: (ev) => { injMgrSearchRef.current = ev.target.value; setInjMgrSearch(ev.target.value); if (injMgrSearchDebRef.current) injMgrSearchDebRef.current() } })),
             // 调度任务区（notes-034-sched-ui）：定时派发约定总览（频率/目标/下次触发/上次结果徽章）+ 编辑回填/暂停/删除
             injMgrList === null ? null : (() => {
               const schedNotes = listAll.filter(n => (n.contractType || '') === 'dispatch-schedule' && n.schedule && !n.deleted)
               return e('div', { className: 'dsh-notes-sched-sec' },
-                e('div', { className: 'dsh-notes-sched-sec-t' }, I('clock', 12), ' 调度任务（' + schedNotes.length + '）', e('span', { className: 'dsh-notes-sched-sec-sub' }, '定时派发约定 · 声明在 front-matter（contractType: dispatch-schedule），裸编辑即开发者旁路')),
+                e('div', { className: 'dsh-notes-sched-sec-t' }, I('clock', 12), ' ' + tt('inj.schedTitle', { n: schedNotes.length }), e('span', { className: 'dsh-notes-sched-sec-sub' }, tt('inj.schedTitleSub'))),
                 schedNotes.length === 0
-                  ? e('div', { className: 'dsh-notes-data-hint dsh-notes-sched-empty' }, '暂无定时任务——派发对话框选「定时执行」即可排定。')
+                  ? e('div', { className: 'dsh-notes-data-hint dsh-notes-sched-empty' }, tt('inj.schedEmpty'))
                   : schedNotes.map(n => {
                       const s = n.schedule, paused = s.enabled === false
                       return e('div', { key: n.id, className: 'dsh-notes-sched-row' + (paused ? ' paused' : '') },
-                        e('span', { className: 'dsh-notes-sched-row-t', title: n.title || '无标题' }, n.title || '无标题'),
+                        e('span', { className: 'dsh-notes-sched-row-t', title: n.title || tt('tree.untitled') }, n.title || tt('tree.untitled')),
                         e('span', { className: 'dsh-notes-sched-freq' }, schedFreqLabel(s)),
                         e('span', { className: 'dsh-notes-sched-target dsh-nt', 'data-tooltip': s.target || '' }, '→ ' + shortSid(s.target)),
                         e('span', { className: 'dsh-notes-sched-nf' }, schedNextLabel(n)),
                         schedBadgeEl(n),
-                        paused ? e('span', { className: 'dsh-notes-sched-badge off' }, '已暂停') : null,
+                        paused ? e('span', { className: 'dsh-notes-sched-badge off' }, tt('meta.schedPaused')) : null,
                         e('span', { className: 'dsh-notes-sched-acts' },
-                          e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': '回填派发弹窗编辑调度声明', disabled: injMgrPending, onClick: () => doInjSchedEdit(n) }, '编辑'),
-                          e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': paused ? '恢复调度（enabled=true，host 重新校验目标存活红线）' : '暂停调度（enabled=false，声明与历史保留）', disabled: injMgrPending, onClick: () => doInjSchedToggle(n) }, paused ? '恢复' : '暂停'),
-                          e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': '软删约定笔记（回收站可恢复），调度即刻停止', disabled: injMgrPending, onClick: () => doInjSchedDel(n) }, '删除')))
+                          e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': tt('meta.schedEditTip'), disabled: injMgrPending, onClick: () => doInjSchedEdit(n) }, tt('meta.edit')),
+                          e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': paused ? tt('meta.schedResumeTip') : tt('meta.schedPauseTip'), disabled: injMgrPending, onClick: () => doInjSchedToggle(n) }, paused ? tt('meta.resume') : tt('meta.pause')),
+                          e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': tt('meta.schedDelTip'), disabled: injMgrPending, onClick: () => doInjSchedDel(n) }, tt('common.delete'))))
                     }))
             })(),
             injMgrList === null
-              ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
+              ? e('div', { className: 'dsh-notes-data-hint' }, tt('common.loading'))
               : shown.length === 0
-                ? e('div', { className: 'dsh-notes-data-hint' }, listAll.length ? '无匹配笔记（调整过滤或搜索词）。' : '笔记库为空。')
+                ? e('div', { className: 'dsh-notes-data-hint' }, listAll.length ? tt('inj.noMatch') : tt('inj.emptyLib'))
                 : e(React.Fragment, null,
                     e('div', { className: 'dsh-notes-injmgr-batch' },
                       e('label', { className: 'dsh-notes-trash-all' },
@@ -201,30 +220,30 @@
                           if (!allChecked) selectable.forEach(n => { nx[n.id] = true })
                           setInjMgrSel(nx)
                         } }),
-                        '全选'),
-                      e('span', { className: 'dsh-notes-trash-selcnt' }, '已选 ' + selCnt + ' 条'),
-                      e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('convention'), disabled: injMgrPending || selCnt < 1 }, '设为约定'),
-                      e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('reference'), disabled: injMgrPending || selCnt < 1 }, '设为资料'),
-                      e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('off'), disabled: injMgrPending || selCnt < 1 }, injMgrPending ? '执行中…' : '关闭注入')),
+                        tt('inj.selectAll')),
+                      e('span', { className: 'dsh-notes-trash-selcnt' }, tt('sel.selCount', { n: selCnt })),
+                      e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('convention'), disabled: injMgrPending || selCnt < 1 }, tt('inj.batchConvention')),
+                      e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('reference'), disabled: injMgrPending || selCnt < 1 }, tt('inj.batchReference')),
+                      e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('off'), disabled: injMgrPending || selCnt < 1 }, injMgrPending ? tt('inj.executing') : tt('inj.batchOff'))),
                     e('div', { className: 'dsh-notes-injmgr-list' },
                       shown.map(n => {
                         const role = injMgrRole(n)
                         const isLog = (n.kind || 'note') === 'log'
                         return e('div', { key: n.id, className: 'dsh-notes-injmgr-row' },
-                          e('span', { className: isLog ? 'dsh-nt' : '', 'data-tooltip': isLog ? '日志默认隐身：inject 强制关闭，不参与注入批量操作' : null },
+                          e('span', { className: isLog ? 'dsh-nt' : '', 'data-tooltip': isLog ? tt('inj.logRowTip') : null },
                             e('input', { type: 'checkbox', className: 'dsh-notes-trash-check', checked: !!injMgrSel[n.id], disabled: isLog || injMgrPending, onChange: () => toggleInjMgrSel(n.id) })),
                           e('span', { className: 'dsh-notes-kind-dot', style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' } }),
-                          e('span', { className: 'dsh-notes-injmgr-ti', title: n.title || '无标题' }, n.title || '无标题'),
-                          n.sensitive === true ? e('span', { className: 'dsh-notes-injmgr-sens dsh-nt', 'data-tooltip': '敏感笔记：注入时自动脱敏（正文按行打码，键保留值遮蔽）' }, I('lock', 9), '注入时自动脱敏') : null,
-                          n.injectEver === true && !n.inject ? e('span', { className: 'dsh-notes-injmgr-ever dsh-nt', 'data-tooltip': '曾注入：历史上开启过上下文注入（现已关闭；injectEver 为粘性标记，不随关闭回退）' }, I('clock', 9), '曾注入') : null,
+                          e('span', { className: 'dsh-notes-injmgr-ti', title: n.title || tt('tree.untitled') }, n.title || tt('tree.untitled')),
+                          n.sensitive === true ? e('span', { className: 'dsh-notes-injmgr-sens dsh-nt', 'data-tooltip': tt('inj.sensTip') }, I('lock', 9), tt('inj.sensBadge')) : null,
+                          n.injectEver === true && !n.inject ? e('span', { className: 'dsh-notes-injmgr-ever dsh-nt', 'data-tooltip': tt('meta.injectEverTip') }, I('clock', 9), tt('meta.injectEver')) : null,
                           e('span', { className: 'dsh-notes-injmgr-scope' }, injMgrScopeLabel(n.injectTo)),
                           e('span', { className: 'dsh-notes-injmgr-seg' }, I('bolt', 10),
-                            segOpt(n, role, 'off', '关闭', '不注入系统提示'),
-                            segOpt(n, role, 'convention', '约定', '须遵守的行为规则'),
-                            segOpt(n, role, 'reference', '资料', '事实性补充信息，Agent 按需取用')))
+                            segOpt(n, role, 'off', tt('meta.roleOff'), tt('meta.roleOffTip')),
+                            segOpt(n, role, 'convention', tt('tree.roleConvention'), tt('meta.roleConventionTip')),
+                            segOpt(n, role, 'reference', tt('tree.roleReference'), tt('meta.roleReferenceTip'))))
                       }))),                error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
             e('div', { className: 'dsh-notes-dispatch-actions' },
-              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setInjMgrOpen(false), disabled: injMgrPending }, '关闭'))))
+              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => closeInjMgr(), disabled: injMgrPending }, tt('common.close')))))
       })()
       : null
     }

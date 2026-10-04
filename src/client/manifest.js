@@ -3,12 +3,16 @@
 // modals 排在 panels 之前：modal 模块只依赖 kernel（禁横向引用由序位强制），whole.js 装配点经模块顶层标识符挂载
 // 以 @shared/ 开头的条目解析到 src/shared/（两态物理共源块，§4.3 例外）：
 //   共源文件按列 0 维护，client 态纳入时逐非空行加 4 空格基座缩进（单文件时代 apply 函数体层级；app 态列 0 原样纳入）
+// 以 @i18n/ 开头的条目解析到 src/i18n/（notes-042-i18n-mech 双语字典，共源 + 基座缩进规则与 @shared/ 完全一致）
 // 解析契约：模块路径独占一行、单引号包裹；注释中禁止出现单引号字符——
 // host 沙箱侧 notes-src 与 scripts/concat-client.cjs 统一按单引号正则文本解析本文件。
 module.exports = [
   'kernel/bootstrap.js',
   'kernel/bus.js',
   'kernel/state.js',
+  '@i18n/zh.js',
+  '@i18n/en.js',
+  'kernel/i18n.js',
   'kernel/persist.js',
   'kernel/constants.js',
   'kernel/format.js',

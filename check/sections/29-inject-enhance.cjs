@@ -207,8 +207,8 @@ module.exports = {
 
   // ---- 29.4 client 设置卡片（client-impl + 发布包 lib/client.js 同步 + 仪表样式）----
   await t('设置卡片：「时效衰减提醒」+「注入体积预算」两行（失焦/Enter 即保存 + 仪表 + 「约」文案）', () => {
-    assert(/key: 'stale', label: '时效衰减提醒'/.test(clientSrc), 'settingsRows 含「时效衰减提醒」行')
-    assert(/key: 'budget', label: '注入体积预算'/.test(clientSrc), 'settingsRows 含「注入体积预算」行')
+    assert(/key: 'stale', label: tt\('settings\.stale'\)/.test(clientSrc), 'settingsRows 含「时效衰减提醒」行（覆盖卡 C 起 label 走 tt() 字典）')
+    assert(/key: 'budget', label: tt\('settings\.budget'\)/.test(clientSrc), 'settingsRows 含「注入体积预算」行（覆盖卡 C 起 label 走 tt() 字典）')
     assert(clientSrc.indexOf('提醒参考资料可能过期') >= 0, '时效行 sub 说明文案')
     assert(clientSrc.indexOf('约定条目永不截断，资料条目从最旧开始省略') >= 0, '预算行 sub 说明文案（约定不截断）')
     assert(/function saveSettingsStale\(\)[\s\S]*?settingsSetQuiet\(\{ staleDays: v \}\)/.test(clientSrc), '时效阈值走 settings-set 通道传 staleDays（settingsSetQuiet 低层通道）')

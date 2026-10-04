@@ -23,7 +23,7 @@ function doNewNote() {
   edLoading = false; histCount = 0;      /* 草稿无历史版本（「历史」入口隐藏；落库后再次保存由 doSave 既有钩子补探） */
   degraded = analyzeMarkdown(draftNote.body || '');
   renderTree(); renderEd();
-  toast('已开草稿：输入标题或正文即自动落库；直接点别的笔记则草稿丢弃（零空笔记）');
+  toast(t('newnote.draftToast'));
   var ti = $('edTitle'); if (ti) ti.focus();
 }
 /* 草稿落库 payload（doDraftCreate/flushDraftCreate 共用）：有效内容闸（标题/正文非空；'Untitled' 占位视为空标题）——全空返回 null 不落库；
@@ -53,14 +53,14 @@ function createDraftNote(d, payload) {
       if (edNote === d) {
         selId = res.id; edNote.id = res.id;
         renderCrumb(); renderMeta();
-        $('edSaved').textContent = '✓ 已自动保存 ' + new Date().toTimeString().slice(0, 5);
-        toast('已创建笔记（首次编辑自动落库）');
+        $('edSaved').textContent = t('editor.autoSaved', { time: new Date().toTimeString().slice(0, 5) });
+        toast(t('newnote.createdToast'));
       } else {
-        toast('草稿已自动落库：「' + (res.title || payload.title || 'Untitled') + '」');
+        toast(t('newnote.flushedToast', { title: res.title || payload.title || 'Untitled' }));
       }
       loadNotes(true);
     }
-  }).catch(function (e) { toast('创建失败：' + (e && e.message || e)) });
+  }).catch(function (e) { toast(t('newnote.failed', { msg: e && e.message || e })) });
 }
 /* 草稿首次落库（doSave 草稿分支）：在途闸防并发双建（在途期间只重排防抖，落库成功后后续编辑走正常 update 补差） */
 function doDraftCreate() {

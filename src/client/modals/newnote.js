@@ -16,6 +16,7 @@
     function openNewNote() { setNewNoteTitle(''); setNewNoteKind('note'); setNewNotePending(false); setError(''); setNewNoteOpen(true) }
     // 新建笔记 modal 宿主：输标题 + 选类型（二期：按类型预填模板骨架）创建 → 选中 → 聚焦正文
     function NewNoteModal(props) {
+      const tt = useT()   // i18n 覆盖卡E：订阅 langStore，切语言本卡自渲染（模块级 handler 走 t() 直读当下语言态）
       const newNoteOpen = store.modal.newnote.useSel(s => s.open)
       const newNoteTitle = store.modal.newnote.useSel(s => s.title)
       const newNotePending = store.modal.newnote.useSel(s => s.pending)
@@ -42,7 +43,7 @@
           const res = await host.call('notes-create', payload)
           if (res && res.error) { setError(res.error); return }
           setNewNoteOpen(false); setNewNoteTitle('')
-          showToast('已创建')
+          showToast(t('newnote.created'))
           // 立即用创建返回值选中新笔记（不等列表刷新，避免列表时序影响选中链路）
           if (res && res.id) {
             panelBridge.selectNote({ id: res.id, title: res.title || title, topic: res.topic || payload.topic || '', kind: res.kind || 'note', status: res.status || 'active', folder: createFolder, tags: [], inject: false, injectTo: [], sensitive: false })
@@ -58,16 +59,17 @@
       }
       return newNoteOpen ? e('div', { className: 'dsh-notes-newnote-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setNewNoteOpen(false) } },
         e('div', { className: 'dsh-notes-newnote-modal' },
-          e('div', { className: 'dsh-notes-newnote-t' }, '新建笔记'),
-          e('input', { ref: newNoteInputRef, className: 'dsh-notes-newnote-input', placeholder: '笔记标题…', value: newNoteTitle, onChange: (ev) => setNewNoteTitle(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doCreateNote() } } }),
+          e('div', { className: 'dsh-notes-newnote-t' }, tt('newnote.title')),
+          e('input', { ref: newNoteInputRef, className: 'dsh-notes-newnote-input', placeholder: tt('newnote.titlePlaceholder'), value: newNoteTitle, onChange: (ev) => setNewNoteTitle(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doCreateNote() } } }),
           e('div', { className: 'dsh-notes-newnote-kind-row' },
-            e('span', { className: 'dsh-notes-newnote-kind-lb' }, '类型'),
+            e('span', { className: 'dsh-notes-newnote-kind-lb' }, tt('newnote.kindLabel')),
             e('select', { className: 'dsh-notes-newnote-select', value: newNoteKind, onChange: (ev) => setNewNoteKind(ev.target.value) },
-              ['note', 'decision', 'todo', 'link', 'quote', 'log'].map(k => e('option', { key: k, value: k }, KIND_LABELS[k]))),
-            e('span', { className: 'dsh-notes-newnote-kind-hint' }, KIND_TEMPLATES[newNoteKind] ? '将预填模板骨架' : '自由格式（空正文）')),
+              /* i18n 覆盖卡E：类型标签复用 B 卡 meta.kind* 字典（KIND_LABELS 常量表留作校验/过滤语义锚，不直接渲染） */
+              ['note', 'decision', 'todo', 'link', 'quote', 'log'].map(k => e('option', { key: k, value: k }, tt('meta.kind' + k.charAt(0).toUpperCase() + k.slice(1))))),
+            e('span', { className: 'dsh-notes-newnote-kind-hint' }, KIND_TEMPLATES[newNoteKind] ? tt('newnote.templateHint') : tt('newnote.freeHint'))),
           error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
           e('div', { className: 'dsh-notes-newnote-actions' },
-            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setNewNoteOpen(false) }, '取消'),
-            e('button', { className: 'dsh-notes-dispatch-ok', onClick: doCreateNote, disabled: newNotePending || !newNoteTitle.trim() }, newNotePending ? '创建中…' : '创建'))))
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setNewNoteOpen(false) }, tt('common.cancel')),
+            e('button', { className: 'dsh-notes-dispatch-ok', onClick: doCreateNote, disabled: newNotePending || !newNoteTitle.trim() }, newNotePending ? tt('newnote.creating') : tt('newnote.create')))))
       : null
     }

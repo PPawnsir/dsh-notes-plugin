@@ -37,30 +37,31 @@
           return () => document.removeEventListener('mousedown', onDown)
         }, [scopeOpen])
         // 注入范围文字（injectTo 是多选数组）：缺省 = 所有会话（存量 global/workspace 值同样视为所有会话）；否则列出所选会话名
+        // i18n 覆盖卡F（B 卡交接③）：复用 B 卡 meta.scopeAll/scopeSession + common.listSep 字典（与 app kernel/helpers.js injectScopeLabel 同口径）
         function injectScopeLabel(injectTo) {
-          const arr = (injectTo || []).filter(t => t !== 'global' && t !== 'workspace')
-          if (arr.length === 0) return '所有会话'
-          const names = arr.map(t => {
-            const st = shortSid(t)   // 归一比对（notes-034-injectto-norm）：存量长 id 先约到短 id 再匹配会话名
+          const arr = (injectTo || []).filter(x => x !== 'global' && x !== 'workspace')
+          if (arr.length === 0) return t('meta.scopeAll')
+          const names = arr.map(tg => {   /* 形参 tg 消遮蔽（app 侧覆盖卡B 同先例）：回调内 t() 直读字典 */
+            const st = shortSid(tg)   // 归一比对（notes-034-injectto-norm）：存量长 id 先约到短 id 再匹配会话名
             const s = sessList.find(x => x.short === st)
-            return s ? s.name : ('会话 ' + st)
+            return s ? s.name : t('meta.scopeSession', { name: st })
           })
-          return names.join('、')
+          return names.join(t('common.listSep'))
         }
         // 范围浮层：会话按工作区分组（两级：工作区 → 会话）
         const scopeByWs = {}
-        for (const s of sessList) { const w = s.workspace || '其他'; if (!scopeByWs[w]) scopeByWs[w] = []; scopeByWs[w].push(s) }
+        for (const s of sessList) { const w = s.workspace || t('meta.wsOther'); if (!scopeByWs[w]) scopeByWs[w] = []; scopeByWs[w].push(s) }
         // 标题后台补齐中的占位会话（0.1.7）：禁用态占位「短id · 标题加载中…」，补齐后轮询重拉自动替换为真名
-        for (const p of sessPending) { const w = p.workspace || '其他'; if (!scopeByWs[w]) scopeByWs[w] = []; scopeByWs[w].push({ id: p.id, short: p.short, name: '', pending: true }) }
+        for (const p of sessPending) { const w = p.workspace || t('meta.wsOther'); if (!scopeByWs[w]) scopeByWs[w] = []; scopeByWs[w].push({ id: p.id, short: p.short, name: '', pending: true }) }
         const scopeWsKeys = Object.keys(scopeByWs).sort()
         const scopePanelEl = scopeOpen ? e('div', { className: 'dsh-notes-scope-panel' },
                   // 默认提示行：注入无「工作区/全局」维度——缺省注入所有会话，勾选会话则仅限这些会话
-                  e('div', { className: 'dsh-notes-scope-hint' }, '默认注入到所有会话；勾选会话则仅限这些会话'),
+                  e('div', { className: 'dsh-notes-scope-hint' }, t('meta.scopeHint')),
                   scopeWsKeys.map(ws => e('div', { key: ws, className: 'dsh-notes-scope-group' },
                     e('div', { className: 'dsh-notes-scope-ws' }, ws),
                     scopeByWs[ws].map(s => e('label', { key: s.id, className: 'dsh-notes-scope-item dsh-notes-scope-sess' },
                       e('input', { type: 'checkbox', checked: s.pending ? false : scopeHas(edScope, s.short), onChange: () => { if (!s.pending) toggleScope(s.short) }, disabled: !!s.pending }),
-                      ' ' + (s.pending ? (s.short + ' · 标题加载中…') : s.name))))))
+                      ' ' + (s.pending ? t('meta.scopePending', { short: s.short }) : s.name))))))
                 : null
         return { sessList: sessList, sessPending: sessPending, scopeOpen: scopeOpen, setScopeOpen: setScopeOpen, injectScopeLabel: injectScopeLabel, scopePanelEl: scopePanelEl }
     }

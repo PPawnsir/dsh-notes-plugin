@@ -26,26 +26,28 @@ module.exports = {
       'data.js loadNotes 须抛 res.error 并返回 Promise<boolean>')
     assert(F_STATE.indexOf('var searchErrNotified = false;') >= 0, 'state.js 须声明 searchErrNotified 去重闸')
     for (const pair of [
-      ['wiki.js/loadFolders', F_WIKI, '文件夹加载失败，显示本地缓存'],
-      ['wiki.js/pullSessions', F_WIKI, '会话清单加载失败'],
-      ['wiki.js/ensureWikiIndex', F_WIKI, '双链索引失败'],
-      ['search.js/doSearch', F_SEARCH, '在线检索不可用，仅显示本地过滤结果'],
-      ['editor-meta.js/refreshSelected', F_EMETA, '笔记刷新失败，显示本地缓存'],
-      ['dispatch.js/pullActiveSessions', F_DISP, '会话清单加载失败'],
-      ['memory-guide.js/启用弹窗会话清单', F_MEM, '会话清单加载失败'],
+      ['wiki.js/loadFolders', F_WIKI, "t('fld.loadFailed', { msg:"],   /* i18n 覆盖卡F：文案走 t() 字典（fld.loadFailed，zh 原串在 src/i18n/zh.js） */
+      ['wiki.js/pullSessions', F_WIKI, "t('mem.sessLoadFailed', { msg:"],   /* i18n 覆盖卡F：复用卡 D mem.sessLoadFailed（同下行先例） */
+      ['wiki.js/ensureWikiIndex', F_WIKI, "t('wiki.idxFailed"],   /* i18n 覆盖卡F：wiki.idxFailedPartial/idxFailed 走 t() 字典 */
+      ['search.js/doSearch', F_SEARCH, "t('search.offline', { msg:"],   /* i18n 覆盖卡F：文案走 t() 字典（search.offline） */
+      ['editor-meta.js/refreshSelected', F_EMETA, "t('meta.refreshFailed', { msg:"],   /* i18n 覆盖卡B：文案走 t() 字典（zh 原串在 src/i18n/zh.js） */
+      ['dispatch.js/pullActiveSessions', F_DISP, "t('mem.sessLoadFailed', { msg:"],   /* i18n 覆盖卡E：文案走 t() 字典（复用卡 D mem.sessLoadFailed，zh 原串在 src/i18n/zh.js） */
+      ['memory-guide.js/启用弹窗会话清单', F_MEM, "t('mem.sessLoadFailed', { msg:"],   /* i18n 覆盖卡D：文案走 t() 字典（zh 原串在 src/i18n/zh.js，同上行 editor-meta 先例） */
       ['inject-preview.js/视角下拉', F_INJPREV, '会话清单加载失败'],
     ]) assert(pair[1].indexOf(pair[2]) >= 0, pair[0] + ' 缺反馈文案标记：' + pair[2])
     for (const pair of [[F_WIKI, 'wiki.js'], [F_SEARCH, 'search.js'], [F_EMETA, 'editor-meta.js'], [F_DISP, 'dispatch.js'], [F_MEM, 'memory-guide.js'], [F_INJPREV, 'inject-preview.js']])
       assert(pair[0].indexOf('throw new Error(res.error)') >= 0, pair[1] + ' 缺 res.error 显式抛错（rpc 不 reject 业务错误，不抛则 catch 永不触发）')
-    assert(F_TOP.indexOf("p.then(function (ok) { if (ok) toast('已刷新') })") >= 0, 'topbar.js btnRefresh 须等 loadNotes 结果门控「已刷新」')
+    assert(F_TOP.indexOf("p.then(function (ok) { if (ok) toast(t('common.refreshed')) })") >= 0, 'topbar.js btnRefresh 须等 loadNotes 结果门控「已刷新」（i18n 覆盖卡A 起走 t() 字典）')
     assert(F_TOP.indexOf("loadNotes(); if (sessList.length) pullSessions(); toast('已刷新')") < 0, 'topbar.js 不得残留无条件「已刷新」')
   })
 
   // ===== 47.2 静态断言：产物 app.html 同步 + 清单内空 catch 清零 =====
   await t('R-2 app.html 产物同步（concat 落盘）+ R1③ 清单空 catch 清零（仅余 probeHistCount 白名单）', () => {
-    for (const mark of ['文件夹加载失败，显示本地缓存', '在线检索不可用，仅显示本地过滤结果', '笔记刷新失败，显示本地缓存', '双链索引失败', "if (ok) toast('已刷新')"])
+    for (const mark of ['文件夹加载失败，显示本地缓存', '在线检索不可用，仅显示本地过滤结果', '笔记刷新失败，显示本地缓存', '双链索引失败', "if (ok) toast(t('common.refreshed'))"])
       assert(APP_SRC.indexOf(mark) >= 0, 'app.html 缺标记：' + mark + '（改 src/app/** 后须跑 node scripts/concat-app.cjs）')
-    assert.strictEqual((APP_SRC.match(/会话清单加载失败/g) || []).length, 4, 'app.html「会话清单加载失败」应 4 处（pullSessions/派发/工作记忆/注入预览）')
+    /* i18n 覆盖卡D/E/F：工作记忆/派发/读路径三处的「会话清单加载失败」已收进字典 mem.sessLoadFailed（zh 原串随包内嵌计 1 处）——
+       产物内嵌字面量 = 注入预览 + zh.js 字典值 = 2 处；下方行为级断言（47.3 沙箱 t() 桩接真字典）兜底渲染口径 */
+    assert.strictEqual((APP_SRC.match(/会话清单加载失败/g) || []).length, 2, 'app.html「会话清单加载失败」应 2 处（注入预览字面量 + zh 字典 mem.sessLoadFailed；派发/工作记忆/pullSessions 走 t() 字典——覆盖卡D/E/F）')
     const empties = APP_SRC.match(/\.catch\(function \(\) \{\}\);?/g) || []
     assert.strictEqual(empties.length, 1, 'R1③ 清单空 catch 应清零，仅余 probeHistCount 白名单 1 处（实得 ' + empties.length + '）')
     const probe = APP_SRC.match(/function probeHistCount[\s\S]*?\n}/)
@@ -57,7 +59,7 @@ module.exports = {
   function bootReadApp(rpcImpl) {
     const calls = [], toasts = [], modalErrs = []
     const els = {}
-    const mkEl = () => ({ style: {}, classList: { toggle() {}, add() {}, remove() {}, contains() { return false } }, value: '', textContent: '', innerHTML: '', className: '', disabled: false, dataset: {}, _handlers: {}, addEventListener(t2, fn) { (this._handlers[t2] = this._handlers[t2] || []).push(fn) }, removeEventListener() {}, querySelectorAll() { return [] }, closest() { return null }, focus() {} })
+    const mkEl = () => ({ style: {}, classList: { toggle() {}, add() {}, remove() {}, contains() { return false } }, value: '', textContent: '', innerHTML: '', className: '', disabled: false, dataset: {}, _handlers: {}, addEventListener(t2, fn) { (this._handlers[t2] = this._handlers[t2] || []).push(fn) }, removeEventListener() {}, querySelector() { return mkEl() }, setAttribute() {}, querySelectorAll() { return [] }, closest() { return null }, focus() {} })
     const memRadios = [{ value: 'global', checked: true }, { value: 'workspace' }, { value: 'session' }]
     const target = {
       setTimeout: setTimeout, clearTimeout: clearTimeout,
@@ -69,11 +71,13 @@ module.exports = {
       filters: { pinned: false, injected: false, injectEver: false, sensitive: false, kinds: [] },
       FILTER_STATUS: [{ id: 'pinned' }, { id: 'injected' }, { id: 'injectEver' }, { id: 'sensitive' }],
       view: { type: 'all', id: '' },
-      document: { activeElement: null, getElementsByName: (n) => (n === 'memScope' ? memRadios : []) },
+      document: { activeElement: null, getElementsByName: (n) => (n === 'memScope' ? memRadios : []), documentElement: { style: { setProperty: () => {} } } },   /* i18n 覆盖卡B：renderChrome 写编辑器 CSS 变量（--i18n-ed-*-ph），沙箱补 documentElement.style 桩 */
       rpc: (m, a) => { calls.push({ method: m, args: a }); return rpcImpl(m, a) },
       $: (id) => (els[id] = els[id] || mkEl()),
       toast: (m) => { toasts.push(String(m)) }, modalErr: (m) => { modalErrs.push(String(m)) },
       esc: (s) => String(s), icon: () => '',
+      /* i18n 覆盖卡A/B：topbar.js/editor-meta.js 文案走 t() 字典 + 模块装载即 renderChrome()——沙箱打桩 t()（zh 字典真值 + {name} 插值）与元素 querySelector/setAttribute（mkEl 已补） */
+      t: (() => { const ZH = new Function(fsNative.readFileSync(path.join(DIR, 'src', 'i18n', 'zh.js'), 'utf8') + '\nreturn I18N_ZH')(); return (k, vars) => { let s = ZH[k]; if (s == null) return k; if (vars) s = s.replace(/\{(\w+)\}/g, (m, n) => (vars[n] != null ? String(vars[n]) : m)); return s } })(),
     }
     // with(Proxy) 沙箱：未声明标识符 → noop 函数兜底（纯函数声明模块，跨文件依赖全部经代理打桩）
     const proxy = new Proxy(target, {

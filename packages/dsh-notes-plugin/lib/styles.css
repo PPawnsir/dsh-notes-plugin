@@ -125,11 +125,12 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 .dsh-notes-resize-handle:hover{background:var(--nacc-soft)}
 
 /* ===== 标题栏（拖拽移动 + 入口切换/归档/帮助/关闭） ===== */
+/* 窄宽防竖排（notes-041-topbar-400 面板侧）：按钮 nowrap + flex-shrink:0，窄面板下文字不被压成逐字竖排 */
 .dsh-notes-titlebar{display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--nbd-soft);cursor:grab;user-select:none;flex-shrink:0;min-height:44px;height:44px}
 .dsh-notes-titlebar:active{cursor:grabbing}
-.dsh-notes-titlebar-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;flex:1;letter-spacing:.2px;color:var(--ntx)}
+.dsh-notes-titlebar-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;flex:1;letter-spacing:.2px;color:var(--ntx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .dsh-notes-titlebar-actions{display:flex;gap:2px;flex-shrink:0}
-.dsh-notes-titlebar-btn{display:inline-flex;align-items:center;justify-content:center;background:none;border:none;color:var(--nt3);font-size:13px;cursor:pointer;padding:5px 9px;border-radius:6px;line-height:1;transition:background .15s,color .15s;font-weight:500;font-family:inherit}
+.dsh-notes-titlebar-btn{display:inline-flex;align-items:center;justify-content:center;background:none;border:none;color:var(--nt3);font-size:13px;cursor:pointer;padding:5px 9px;border-radius:6px;line-height:1;transition:background .15s,color .15s;font-weight:500;font-family:inherit;white-space:nowrap;flex-shrink:0}
 .dsh-notes-titlebar-btn:hover{background:var(--nbg-hover);color:var(--ntx)}
 
 /* ===== 两栏布局（原型 .app：左 342px 侧栏 + 右通栏编辑器，卡片间隙 10px） ===== */
@@ -596,7 +597,7 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-rtb-sync.ok .dsh-notes-rtb-sync-sd{background:var(--nok)}
 /* 富文本编辑区（非受控 contenteditable；块级观感对齐原型 .rich） */
 .dsh-notes-rich{flex:1;padding:14px 24px 64px;outline:none;font-size:13px;line-height:1.75;min-height:calc(100% - 40px);caret-color:var(--nacc);color:var(--ntx-soft);letter-spacing:.2px;-webkit-font-smoothing:antialiased;font-synthesis-weight:none}
-.dsh-notes-rich:empty::before{content:"正文…（富文本，编辑后失焦自动同步源码）";color:var(--nt3)}
+.dsh-notes-rich:empty::before{content:var(--dsh-notes-rich-ph,"正文…（富文本，编辑后失焦自动同步源码）");color:var(--nt3)}
 .dsh-notes-rich p{margin:0 0 14px;word-break:break-word}
 .dsh-notes-rich h1{font-size:19px;font-weight:700;margin:24px 0 12px;letter-spacing:.3px;color:var(--ntx)}
 .dsh-notes-rich h2{font-size:16.5px;font-weight:600;margin:20px 0 10px;letter-spacing:.2px;color:var(--ntx)}

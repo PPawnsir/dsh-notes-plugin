@@ -23,6 +23,7 @@ const path = require('path')
 const ROOT = path.resolve(__dirname, '..')
 const CLIENT_DIR = path.join(ROOT, 'src', 'client')
 const SHARED_DIR = path.join(ROOT, 'src', 'shared')
+const I18N_DIR = path.join(ROOT, 'src', 'i18n')   // @i18n/ 前缀 = src/i18n/ 双语字典（notes-042-i18n-mech；共源 + 基座缩进同 @shared/）
 const MANIFEST_PATH = path.join(CLIENT_DIR, 'manifest.js')
 
 // client 基座缩进：apply(ctx) 函数体层级 = 4 空格（与 build-dist.cjs 的 INDENT 同语义）
@@ -32,7 +33,7 @@ const CLIENT_BASE_INDENT = '    '
 function parseManifest(text) {
   const list = (String(text).match(/'[^'\n]+'/g) || []).map((s) => s.slice(1, -1))
   for (const rel of list) {
-    if (!/^(@shared\/)?[\w.\-/]+\.js$/.test(rel) || rel.indexOf('..') >= 0) {
+    if (!/^(@shared\/|@i18n\/)?[\w.\-/]+\.js$/.test(rel) || rel.indexOf('..') >= 0) {
       throw new Error('[concat-client] manifest 非法条目：' + JSON.stringify(rel))
     }
   }
@@ -43,10 +44,12 @@ function readManifest() {
   return parseManifest(fs.readFileSync(MANIFEST_PATH, 'utf8'))
 }
 
-// @shared/ 条目：从 src/shared/ 读列 0 形态，逐非空行加 client 基座缩进（先 LF 归一再缩进，避免 CR 被误判为行内容）
+// @shared/ 与 @i18n/ 条目：从 src/shared/ 与 src/i18n/ 读列 0 形态，逐非空行加 client 基座缩进（先 LF 归一再缩进，避免 CR 被误判为行内容）
 function readPart(rel) {
-  if (rel.indexOf('@shared/') === 0) {
-    const t = fs.readFileSync(path.join(SHARED_DIR, rel.slice('@shared/'.length)), 'utf8').replace(/\r\n/g, '\n')
+  const atShared = rel.indexOf('@shared/') === 0, atI18n = rel.indexOf('@i18n/') === 0
+  if (atShared || atI18n) {
+    const base = atShared ? SHARED_DIR : I18N_DIR
+    const t = fs.readFileSync(path.join(base, rel.slice(rel.indexOf('/') + 1)), 'utf8').replace(/\r\n/g, '\n')
     return t.split('\n').map((l) => (l.length ? CLIENT_BASE_INDENT + l : l)).join('\n')
   }
   return fs.readFileSync(path.join(CLIENT_DIR, rel), 'utf8')
@@ -61,4 +64,4 @@ function concatClient() {
   return out.replace(/\r\n/g, '\n')
 }
 
-module.exports = { concatClient, readManifest, parseManifest, CLIENT_DIR, SHARED_DIR, MANIFEST_PATH }
+module.exports = { concatClient, readManifest, parseManifest, CLIENT_DIR, SHARED_DIR, I18N_DIR, MANIFEST_PATH }

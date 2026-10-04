@@ -275,6 +275,7 @@
         panelBridge.histCountRef = histCountRef
         panelBridge.setHistCount = setHistCount
         panelBridge.setSettingsOpen = setSettingsOpen
+        panelBridge.openSettings = openSettings   // 单层返回栈（notes-041-settings-back）：二级面板关闭回设置卡经本桥中转（modals 禁横向引用）
         panelBridge.setSelMode = setSelMode
         panelBridge.setSelIds = setSelIds   // popovers/selbar.js（kernel 转发别名 → 本回填；Esc/右键「合并为一篇」跨域写入）
         panelBridge.toggleSelMode = toggleSelMode   // 同上（侧栏「选择」chip 调用点文本被锚定，经 kernel 别名中转）
@@ -382,7 +383,7 @@
         const filtersActive = view.type !== 'all' || filterCount > 0 || !!q
         // 曾注入条件 feature-detect：列表 slim 含 injectEver 字段才显示该选项（host 未提供时隐藏；存量激活条件仍渲染 chip 可 × 移除）
         const hasInjectEver = notes.some(n => n.injectEver !== undefined)
-        const sortLabel = (FILTER_SORTS.find(s => s.id === sortBy) || FILTER_SORTS[0]).label
+        const sortLabel = sortLabelOf(sortBy)   /* i18n 覆盖卡F：排序档标签走 t() 字典（sort.* 条件映射），FILTER_SORTS[i].label 字面量仅作四端同构锚 */
         // 筛选中心浮层 JSX 依赖视图求值结果（命中数/曾注入 feature-detect）——装配点在求值后渲染（popover 与主面板同渲染边界，口径不变）
         const filterPopEl = renderFilterPop({ notes: notes, filters: filters, hasInjectEver: hasInjectEver, filteredCount: filtered.length, searchDebRef: searchDebRef })
         // viewTitle 计算已随 panel/tree.js 迁入 renderTreeEls（同文）

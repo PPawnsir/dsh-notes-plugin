@@ -1,4 +1,4 @@
-# Development
+﻿# Development
 
 本文档覆盖 DSH Notes Plugin 的架构、代码结构与已知问题。
 
@@ -216,11 +216,11 @@ P1+P2 模块化落地后，一切改动都在 `src/**` 模块源上进行，**�
 
 ## 测试
 
-测试套件为模块化结构：`check.js`（runner：模式解析/CORE 名单/节注册表/总结）+ `check/helpers.cjs`（共享设施）+ `check/sections/*.cjs`（66 节断言体）。断言总数 654（随版本演进；拆分自原单文件时逐字节迁移，语义零变化）。
+测试套件为模块化结构：`check.js`（runner：模式解析/CORE 名单/节注册表/总结）+ `check/helpers.cjs`（共享设施）+ `check/sections/*.cjs`（83 节断言体）。断言总数 736（随版本演进；拆分自原单文件时逐字节迁移，语义零变化）。
 
 ```bash
-node check.js                 # 全量回归（默认，654 条；verifier/发布前用）
-node check.js --core          # 核心快检：116 条主链路代表性断言，秒级（worker 自测用）；也可用 CHECK_CORE=1
+node check.js                 # 全量回归（默认，736 条；verifier/发布前用）
+node check.js --core          # 核心快检：125 条主链路代表性断言，秒级（worker 自测用）；也可用 CHECK_CORE=1
 node check.js --only=39,42    # 分节运行：只执行选中节的断言（逗号分隔节号或节名前缀）；也可用 CHECK_ONLY=39,42
 node check.js --core --only=40  # 可组合：选中节内再按 CORE 名单过滤（此时名单命中校验自动跳过）
 ```

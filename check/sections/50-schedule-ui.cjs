@@ -18,12 +18,18 @@ module.exports = {
 
   // ===== 50.1 调度 helper：app.html ⇄ 原型逐字节一致 + 行为级（与 host schedEveryMs/schedDueAt 同口径） =====
   await t('调度 helper 四端同口径：schedEveryMs/schedFreqLabel/schedNextMs/isoToLocalInput 行为 + app⇄原型逐字节一致', () => {
-    for (const fn of ['schedEveryMs', 'schedAnchorMs', 'schedAnchorNextMs', 'schedFreqLabel', 'schedNextMs', 'isoToLocalInput']) {
+    /* i18n 覆盖卡D：schedFreqLabel 频率文案走 t() 字典（common.sched*，app helpers.js ⇄ client format.js 同口径），原型不双语红线保持静态中文——
+       app⇄原型逐字节一致断言收敛到其余五函数；schedFreqLabel 改验行为级等价（app zh 态输出 = 原型原文输出 + en 态英文文案） */
+    for (const fn of ['schedEveryMs', 'schedAnchorMs', 'schedAnchorNextMs', 'schedNextMs', 'isoToLocalInput']) {
       assert.strictEqual(grabFn(appSrc, fn, 'app.html'), grabFn(protoV2Src, fn, '原型'), 'app.html ⇄ 原型 ' + fn + ' 逐字节一致')
     }
     const fmtDTApp = appSrc.match(/function fmtDT\(iso\)[^\n]*/); assert(fmtDTApp, 'app.html 缺 fmtDT 单行函数')
+    /* eval 前导（覆盖卡D）：真字典 + t() 桩（useEn 切换取值字典，回退链同真码）——schedFreqLabel 已走 t() */
+    const zhSrc50 = fsNative.readFileSync(path.join(DIR, 'src', 'i18n', 'zh.js'), 'utf8')
+    const enSrc50 = fsNative.readFileSync(path.join(DIR, 'src', 'i18n', 'en.js'), 'utf8')
+    const tPre50 = (useEn) => zhSrc50 + '\n' + enSrc50 + '\nfunction t(k, vars){ var s = ' + (useEn ? 'I18N_EN' : 'I18N_ZH') + '[k]; if (s == null) s = I18N_ZH[k]; if (s == null) return k; if (vars) s = s.replace(/\\{(\\w+)\\}/g, function (m, n) { return vars[n] != null ? String(vars[n]) : m }); return s }\n'
     const ns = {}
-    new Function('ns', fmtDTApp[0] + '\n' + ['schedEveryMs', 'schedAnchorMs', 'schedAnchorNextMs', 'schedFreqLabel', 'schedNextMs', 'isoToLocalInput'].map(f => grabFn(appSrc, f, 'app.html')).join('\n') + '\nns.schedEveryMs = schedEveryMs; ns.schedAnchorMs = schedAnchorMs; ns.schedAnchorNextMs = schedAnchorNextMs; ns.schedFreqLabel = schedFreqLabel; ns.schedNextMs = schedNextMs; ns.isoToLocalInput = isoToLocalInput')(ns)
+    new Function('ns', tPre50(false) + fmtDTApp[0] + '\n' + ['schedEveryMs', 'schedAnchorMs', 'schedAnchorNextMs', 'schedFreqLabel', 'schedNextMs', 'isoToLocalInput'].map(f => grabFn(appSrc, f, 'app.html')).join('\n') + '\nns.schedEveryMs = schedEveryMs; ns.schedAnchorMs = schedAnchorMs; ns.schedAnchorNextMs = schedAnchorNextMs; ns.schedFreqLabel = schedFreqLabel; ns.schedNextMs = schedNextMs; ns.isoToLocalInput = isoToLocalInput')(ns)
     assert.strictEqual(ns.schedEveryMs('3d'), 259200000, '3d → ms')
     assert.strictEqual(ns.schedEveryMs('1w'), 604800000, '1w → ms')
     assert.strictEqual(ns.schedEveryMs('30m'), 1800000, '30m → ms')
@@ -43,6 +49,26 @@ module.exports = {
     assert.strictEqual(ns.schedFreqLabel({ every: '1w', anchor: '09:00', dow: 1 }), '每周一 09:00', '频率人话：每周 + 星期几 + 锚定时刻')
     assert.strictEqual(ns.schedFreqLabel({ every: '1w', anchor: '18:30', dow: 0 }), '每周日 18:30', '频率人话：周日 dow=0')
     assert.strictEqual(ns.schedFreqLabel({ every: '3d', anchor: '08:30' }), '每 3 天 08:30', '频率人话：每 N 天 + 锚定时刻')
+    // i18n 覆盖卡D：en 态频率人话（同 eval 换 en 取值）+ 星期名经 common.dowNames 管道分隔（en 多字符名 charAt 不可取）
+    const nsEn = {}
+    new Function('ns', tPre50(true) + fmtDTApp[0] + '\n' + grabFn(appSrc, 'schedEveryMs', 'app.html') + '\n' + grabFn(appSrc, 'schedFreqLabel', 'app.html') + '\nns.schedFreqLabel = schedFreqLabel')(nsEn)
+    assert.strictEqual(nsEn.schedFreqLabel({ every: '1d' }), 'Daily', 'en 频率人话：Daily')
+    assert.strictEqual(nsEn.schedFreqLabel({ every: '1w' }), 'Weekly', 'en 频率人话：Weekly')
+    assert.strictEqual(nsEn.schedFreqLabel({ every: '3d' }), 'Every 3 days', 'en 频率人话：每 N 天')
+    assert.strictEqual(nsEn.schedFreqLabel({ every: '12h' }), 'Every 12 hours', 'en 非整天旁路值兜底')
+    assert.strictEqual(nsEn.schedFreqLabel({ every: 'bad' }), 'Invalid interval', 'en 非法间隔兜底')
+    assert(nsEn.schedFreqLabel({ at: '2026-10-10T01:00:00.000Z' }).indexOf('Once ') === 0, 'en 频率人话：仅一次带时间')
+    assert.strictEqual(nsEn.schedFreqLabel({ every: '1d', anchor: '09:00' }), 'Daily 09:00', 'en 每天 + 锚定时刻')
+    assert.strictEqual(nsEn.schedFreqLabel({ every: '1w', anchor: '09:00', dow: 1 }), 'Weekly Mon 09:00', 'en 每周 + 星期名（common.dowNames 管道取值）')
+    assert.strictEqual(nsEn.schedFreqLabel({ every: '1w', anchor: '18:30', dow: 0 }), 'Weekly Sun 18:30', 'en 周日 dow=0')
+    // 原型静态中文与 app zh 态逐样本行为等价（源码形态分叉 = 不双语红线，有意为之）
+    const fmtDTProto = protoV2Src.match(/function fmtDT\(iso\)[^\n]*/); assert(fmtDTProto, '原型缺 fmtDT 单行函数')
+    const nsP = {}
+    new Function('ns', fmtDTProto[0] + '\n' + grabFn(protoV2Src, 'schedEveryMs', '原型') + '\n' + grabFn(protoV2Src, 'schedFreqLabel', '原型') + '\nns.schedFreqLabel = schedFreqLabel')(nsP)
+    assert(grabFn(protoV2Src, 'schedFreqLabel', '原型').indexOf("t('common.sched") < 0 && nsP.schedFreqLabel({ every: '1d' }) === '每天', '原型 schedFreqLabel 静态中文保留（不双语红线）')
+    for (const sample of [{ every: '1d' }, { every: '1w' }, { every: '3d' }, { every: '12h' }, { every: 'bad' }, { every: '1d', anchor: '09:00' }, { every: '1w', anchor: '09:00', dow: 1 }, { every: '1w', anchor: '18:30', dow: 0 }, { every: '3d', anchor: '08:30' }]) {
+      assert.strictEqual(ns.schedFreqLabel(sample), nsP.schedFreqLabel(sample), 'zh 态 app ⇄ 原型频率人话行为等价：' + JSON.stringify(sample))
+    }
     // 锚定时刻 helper：schedAnchorMs 严格 HH:MM
     assert.strictEqual(ns.schedAnchorMs('09:00'), 32400000, '锚定时刻 09:00 → 当日偏移 ms')
     assert.strictEqual(ns.schedAnchorMs('00:00'), 0, '锚定时刻 00:00 边界')
@@ -92,12 +118,20 @@ module.exports = {
       // ① 调度区结构与单选（默认收起 = 立即派发）
       assert(s.indexOf('function openDispatchEdit(note)') >= 0, label + ' openDispatchEdit 编辑回填入口')
       assert(s.indexOf("sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1") >= 0, label + ' openDispatch 调度区复位（默认立即派发 + 锚定时刻默认 09:00/周一）')
-      assert(s.indexOf('> 立即派发</label>') >= 0 && s.indexOf('> 定时执行</label>') >= 0, label + ' 单选 立即派发/定时执行')
-      assert(s.indexOf('id="dSchedMode"') >= 0 && s.indexOf('>每天</option>') >= 0 && s.indexOf('>每周</option>') >= 0 && s.indexOf('>每 N 天</option>') >= 0 && s.indexOf('>仅一次（指定时间）</option>') >= 0, label + ' 频率四模式下拉')
+      /* i18n 覆盖卡E：app 端调度区文案走 t() 字典（zh 原串在 src/i18n/zh.js，随包内嵌），原型不双语红线保留中文原文（分侧断言，同 50.3 徽章先例） */
+      if (label === 'app.html') {
+        assert(s.indexOf("t('disp.now') + '</label><label") >= 0 && s.indexOf("'> ' + t('disp.scheduled') + '</label>'") >= 0, label + ' 单选 立即派发/定时执行走 t()（覆盖卡E）')
+        assert(s.indexOf('id="dSchedMode"') >= 0 && s.indexOf(">' + t('common.schedDaily') + '</option>'") >= 0 && s.indexOf(">' + t('common.schedWeekly') + '</option>'") >= 0 && s.indexOf(">' + t('disp.modeNDays') + '</option>'") >= 0 && s.indexOf(">' + t('disp.modeOnce') + '</option>'") >= 0, label + ' 频率四模式下拉走 t()（覆盖卡E）')
+      } else {
+        assert(s.indexOf('> 立即派发</label>') >= 0 && s.indexOf('> 定时执行</label>') >= 0, label + ' 单选 立即派发/定时执行')
+        assert(s.indexOf('id="dSchedMode"') >= 0 && s.indexOf('>每天</option>') >= 0 && s.indexOf('>每周</option>') >= 0 && s.indexOf('>每 N 天</option>') >= 0 && s.indexOf('>仅一次（指定时间）</option>') >= 0, label + ' 频率四模式下拉')
+      }
       assert(s.indexOf('id="dSchedN"') >= 0 && s.indexOf('type="datetime-local"') >= 0 && s.indexOf('id="dSchedOnce"') >= 0, label + ' 每 N 天数字框 + 仅一次时间框')
       // ①·b 锚定时刻（notes-034-sched-time）：周期三模式时刻框（type=time 默认 09:00）+ 每周星期几选择；仅一次保持 datetime-local 不变
       assert(s.indexOf('id="dSchedAnchor"') >= 0 && s.indexOf('type="time"') >= 0, label + ' 周期模式时刻框（type=time）')
-      assert(s.indexOf('id="dSchedDow"') >= 0 && s.indexOf("'>周' + '日一二三四五六'.charAt(d)") >= 0 && s.indexOf('[1, 2, 3, 4, 5, 6, 0].map(') >= 0, label + ' 每周星期几选择（dow 0-6，周日…周六）')
+      /* i18n 覆盖卡E：app 星期几选项走 t('disp.dowOption') + common.dowNames 管道取值（charAt 形态废止，同卡 D schedFreqLabel 口径）；原型保留中文原文 */
+      if (label === 'app.html') assert(s.indexOf('id="dSchedDow"') >= 0 && s.indexOf("t('disp.dowOption', { dow: t('common.dowNames').split('|')[d] || '' })") >= 0 && s.indexOf('[1, 2, 3, 4, 5, 6, 0].map(') >= 0, label + ' 每周星期几选择走 t() dowNames 管道（覆盖卡E）')
+      else assert(s.indexOf('id="dSchedDow"') >= 0 && s.indexOf("'>周' + '日一二三四五六'.charAt(d)") >= 0 && s.indexOf('[1, 2, 3, 4, 5, 6, 0].map(') >= 0, label + ' 每周星期几选择（dow 0-6，周日…周六）')
       assert(s.indexOf("$('dSchedDowBox').style.display = this.value === 'weekly' ? '' : 'none'") >= 0, label + ' 星期几框仅每周模式显示')
       assert(s.indexOf("$('dSchedAnchor').style.display = this.value === 'once' ? 'none' : ''") >= 0, label + ' 时刻框仅周期模式显示（仅一次除外）')
       assert(s.indexOf("$('dSchedDow').onchange =") >= 0 && s.indexOf("$('dSchedAnchor').oninput =") >= 0, label + ' 星期几/时刻输入接线')
@@ -118,7 +152,9 @@ module.exports = {
       assert(s.indexOf("'定时 ' + (edNote.title || 'Untitled')") >= 0, label + ' 标题自动「定时 」前缀')
       assert(s.indexOf("contractType: 'dispatch-schedule', schedule: decl") >= 0, label + ' notes-create 携带 contractType + schedule（front-matter 同源）')
       assert(s.indexOf("'\\n\\n补充指令：'") >= 0, label + ' 正文 = 原待办正文 + 补充指令')
-      assert(s.indexOf("'已排定，下次：'") >= 0 && s.indexOf("'已更新排定，下次：'") >= 0, label + ' toast「已排定，下次：X」/ 编辑「已更新排定」')
+      /* i18n 覆盖卡E：app 排定 toast 走 t('disp.schedDone'/'disp.schedUpdated') 插值（zh 原串随字典内嵌）；原型保留中文原文 */
+      if (label === 'app.html') assert(s.indexOf("t(editId ? 'disp.schedUpdated' : 'disp.schedDone', { time: nextTxt })") >= 0 && s.indexOf("'disp.schedDone': '已排定，下次：{time}'") >= 0 && s.indexOf("'disp.schedUpdated': '已更新排定，下次：{time}'") >= 0, label + ' 排定 toast 走 t()（覆盖卡E，zh 原串字典内嵌）')
+      else assert(s.indexOf("'已排定，下次：'") >= 0 && s.indexOf("'已更新排定，下次：'") >= 0, label + ' toast「已排定，下次：X」/ 编辑「已更新排定」')
       // ④ 编辑通道：notes-update + 保留原 enabled 态 + 目标不在活跃清单的合成条目兜底
       assert(s.indexOf("rpc('notes-update', { id: editId, schedule: decl })") >= 0, label + ' 编辑保存走 notes-update')
       assert(s.indexOf('dState.editNote.schedule.enabled !== false') >= 0, label + ' 编辑保留原 enabled 态（暂停任务改排定不被拉起）')
@@ -142,7 +178,13 @@ module.exports = {
       assert(s.indexOf('调度任务（') >= 0 && s.indexOf('声明在 front-matter（contractType: dispatch-schedule），裸编辑即开发者旁路') >= 0, label + ' 调度任务区标题 + 同源说明')
       // 徽章：频率/目标/下次触发/上次结果（sent 绿 / error 红 / 未触发灰 / 暂停黄）
       assert(s.indexOf('function schedBadgeHtml(n)') >= 0 && s.indexOf('function schedNextLabel(n)') >= 0, label + ' 徽章/下次触发渲染函数')
-      assert(s.indexOf("'已派发 '") >= 0 && s.indexOf("'失败 '") >= 0 && s.indexOf('未触发') >= 0 && s.indexOf('已暂停') >= 0, label + ' 四态徽章文案')
+      /* i18n 覆盖卡D：app 端徽章文案走 t()（复用 B 卡 meta.sched* key，zh 字典随包内嵌），原型不双语红线保留中文原文 */
+      if (label === 'app.html') {
+        assert(s.indexOf("t('meta.schedSent', { time:") >= 0 && s.indexOf("t('meta.schedFailed', { time:") >= 0 && s.indexOf("t('meta.schedNever')") >= 0 && s.indexOf("t('meta.schedPaused')") >= 0, label + ' 四态徽章文案走 t()（覆盖卡D）')
+        assert(s.indexOf("'meta.schedSent': '已派发 {time}'") >= 0 && s.indexOf("'meta.schedNever': '未触发'") >= 0, label + ' 徽章文案 zh 字典随包内嵌')
+      } else {
+        assert(s.indexOf("'已派发 '") >= 0 && s.indexOf("'失败 '") >= 0 && s.indexOf('未触发') >= 0 && s.indexOf('已暂停') >= 0, label + ' 四态徽章文案')
+      }
       assert(s.indexOf('已触发（单次）') >= 0, label + ' 单次已触发态')
       // 操作：编辑回填 / 暂停恢复（enabled 翻转）/ 软删（confirm + 回收站可恢复）
       assert(s.indexOf('function doInjSchedEdit(n)') >= 0 && s.indexOf('openDispatchEdit(n)') >= 0, label + ' 编辑 = 回填派发弹窗')
@@ -170,13 +212,13 @@ module.exports = {
       assert(s.indexOf('function openDispatchEdit(note)') >= 0, label + ' openDispatchEdit 存在')
       assert(s.indexOf('panelBridge.openDispatchEdit = openDispatchEdit') >= 0, label + ' panelBridge 中转回填（modals 禁横向引用）')
       assert(s.indexOf('if (panelBridge.openDispatchEdit) panelBridge.openDispatchEdit(n)') >= 0, label + ' 注入管理 [编辑] 经 panelBridge 调起')
-      // ② 调度区 JSX：单选 + 四模式 + 时间框 + 即时预览
-      assert(s.indexOf("' 立即派发'") >= 0 && s.indexOf("' 定时执行'") >= 0, label + ' 单选 立即派发/定时执行')
-      assert(s.indexOf("value: 'daily'") >= 0 && s.indexOf("'每天'") >= 0 && s.indexOf("'每周'") >= 0 && s.indexOf("'每 N 天'") >= 0 && s.indexOf("'仅一次（指定时间）'") >= 0, label + ' 频率四模式')
+      // ② 调度区 JSX：单选 + 四模式 + 时间框 + 即时预览（i18n 覆盖卡E：文案走 tt() 字典）
+      assert(s.indexOf("' ' + tt('disp.now')") >= 0 && s.indexOf("' ' + tt('disp.scheduled')") >= 0, label + ' 单选 立即派发/定时执行走 tt()（覆盖卡E）')
+      assert(s.indexOf("value: 'daily'") >= 0 && s.indexOf("tt('common.schedDaily')") >= 0 && s.indexOf("tt('common.schedWeekly')") >= 0 && s.indexOf("tt('disp.modeNDays')") >= 0 && s.indexOf("tt('disp.modeOnce')") >= 0, label + ' 频率四模式走 tt()（覆盖卡E）')
       assert(s.indexOf("type: 'datetime-local'") >= 0, label + ' 仅一次 datetime-local 输入')
       // ②·b 锚定时刻（notes-034-sched-time）：周期三模式时刻框（type=time）+ 每周星期几下拉 + 声明携 anchor/dow
       assert(s.indexOf("type: 'time'") >= 0, label + ' 周期模式时刻框（type=time）')
-      assert(s.indexOf("'周' + '日一二三四五六'.charAt(d)") >= 0, label + ' 每周星期几下拉（dow 0-6）')
+      assert(s.indexOf("tt('disp.dowOption', { dow: tt('common.dowNames').split('|')[d] || '' })") >= 0, label + ' 每周星期几下拉走 tt() dowNames 管道（dow 0-6；i18n 覆盖卡E，charAt 形态废止）')
       assert(s.indexOf('setDispatchSchedAnchor') >= 0 && s.indexOf('setDispatchSchedDow') >= 0, label + ' 锚定时刻 setter + 接线')
       assert(s.indexOf('schedAnchorMs(s.anchor) !== null') >= 0, label + ' 编辑回填 anchor/dow（非法回退 09:00）')
       assert(s.indexOf('schedFormDecl(dispatchSchedMode, dispatchSchedN, dispatchSchedAt, dispatchSchedAnchor, dispatchSchedDow)') >= 0, label + ' 表单声明携 anchor/dow 入参')
@@ -191,8 +233,9 @@ module.exports = {
       // ③ 排定/编辑双通道（创建标题前缀 + contractType 声明 + toast）
       assert(s.indexOf("'定时 ' + (src.title || 'Untitled')") >= 0, label + ' 标题自动「定时 」前缀')
       assert(s.indexOf("contractType: 'dispatch-schedule', schedule: decl") >= 0, label + ' notes-create 携带声明')
-      assert(s.indexOf("'已排定，下次：'") >= 0 && s.indexOf("'已更新排定，下次：'") >= 0, label + ' toast 文案')
-      assert(s.indexOf("'保存排定'") >= 0 && s.indexOf("' 编辑定时任务'") >= 0, label + ' 编辑模式文案')
+      /* i18n 覆盖卡E：排定 toast / 编辑模式文案走 t()/tt() 字典（zh 原串随字典内嵌） */
+      assert(s.indexOf("t(dispatchEditId ? 'disp.schedUpdated' : 'disp.schedDone', { time: nextTxt })") >= 0 && s.indexOf("'disp.schedDone': '已排定，下次：{time}'") >= 0 && s.indexOf("'disp.schedUpdated': '已更新排定，下次：{time}'") >= 0, label + ' 排定 toast 走 t()（覆盖卡E）')
+      assert(s.indexOf("tt('disp.saveSched')") >= 0 && s.indexOf("tt('disp.editTitle')") >= 0 && s.indexOf("'disp.saveSched': '保存排定'") >= 0 && s.indexOf("'disp.editTitle': '编辑定时任务'") >= 0, label + ' 编辑模式文案走 tt()（覆盖卡E，zh 原串字典内嵌）')
       assert(s.indexOf('原目标会话（当前不在活跃清单）') >= 0, label + ' 编辑模式目标合成条目兜底')
       // ④ 调度任务区（注入管理）
       assert(s.indexOf('dsh-notes-sched-sec') >= 0 && s.indexOf('调度任务（') >= 0, label + ' 调度任务区结构')

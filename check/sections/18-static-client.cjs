@@ -29,6 +29,9 @@ module.exports = {
       useState: function (init) { return [typeof init === 'function' ? init() : init, function () {}] },
       useEffect: function (fn) { try { const d = fn(); if (typeof d === 'function') d() } catch (e) {} },
       useRef: function (init) { return { current: init } },
+      // i18n 机制（notes-042-i18n-mech）：kernel/i18n.js apply 期建 I18nContext；useT 渲染期读 context（缺省 null → 全局语言态）
+      createContext: function (init) { return { _currentValue: init } },
+      useContext: function (ctx) { return ctx && typeof ctx === 'object' && '_currentValue' in ctx ? ctx._currentValue : null },
       Fragment: Symbol.for('react.fragment')
     }
   }

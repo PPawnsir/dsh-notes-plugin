@@ -1262,6 +1262,20 @@ export function apply(ctx) {
     }
     // ==== injectto-norm-guard END ====
 
+    // ==== folder-arg-norm BEGIN ====（create/update 写入路径 folder 名称→id 归一 + 非法显式拒绝：notes.js 与 notes.dist.js 双变体逐字节同步，check 节 58 看守）
+    // 归一规则（错得安全：解析不到必须显式报错，禁止静默落未分类/静默吞）：
+    //   ① ''（空串 = 未分类语义）→ 原样透传；② 等于某文件夹 id → 原样保留；
+    //   ③ 等于某文件夹名 → 归一为该文件夹 id 落盘（笔记 folder 字段存 id，存名称字符串会显示成未分类——本 bug 核心，实证 n-mut9tg7bik40）；
+    //   ④ 其余无法解析值 → 整体拒绝（报错含具体值，不落库）。
+    // 红线：归一只在写入路径（_create/_update 显式传 folder 时）；读路径/查询参数（_list/_search 的 folder 过滤，R-6 递归子树口径）由工具层 resolveFolderRef 先行解析，不在此列；
+    //       存量已误存名称的笔记不自动改写（下次 move/保存经本闸归一治愈）。
+    async function _resolveFolderArg(v) {
+      const rf = await resolveFolderRef(v)
+      if (!rf) throw new Error('folder 未知文件夹 id 或名称：' + String(v))
+      return rf.id
+    }
+    // ==== folder-arg-norm END ====
+
     async function _create(title, body, tags, topic, extra) {
       const id = genId()
       const now = new Date().toISOString()
@@ -1274,6 +1288,9 @@ export function apply(ctx) {
         if (ng.error) throw new Error(ng.error)
         injectToNorm = ng.value
       }
+      // folder 写入归一 + 非法显式拒绝（folder-arg-norm）：显式传才归一（undefined 不缺省归一）；非法值整体拒绝不落库
+      let folderNorm = ex.folder
+      if (folderNorm !== undefined) folderNorm = await _resolveFolderArg(folderNorm)
       // 工作记忆 v0 隐身硬闸（裁决 B①）：kind=log 强制 inject=false（显式传 true 也纠正，返回值 injectForcedOff 告知），
       // recall 缺省 false（显式 true 豁免——用户/agent 显式选择进目录不算混入）；日志永不进系统提示与目录索引
       const isLog = (ex.kind || 'note') === 'log'
@@ -1291,7 +1308,7 @@ export function apply(ctx) {
       const note = {
         id, title: title || 'Untitled', topic: topic || '未分类',
         workspace: ex.workspace || basename(sc.cwd),
-        folder: ex.folder || '',
+        folder: folderNorm || '',
         tags: tags || [],
         kind: ex.kind || 'note',
         status: ex.status || 'active',
@@ -1442,7 +1459,10 @@ export function apply(ctx) {
         if (ng.error) throw new Error(ng.error)
         note.injectTo = ng.value
       }
-      if (folder !== undefined) note.folder = folder
+      if (folder !== undefined) {
+        // folder 写入归一 + 非法显式拒绝（folder-arg-norm）：非法值整体拒绝，本条更新不落盘（错得安全）
+        note.folder = await _resolveFolderArg(folder)
+      }
       if (recall !== undefined) note.recall = recall !== false
       if (injectRole !== undefined) note.injectRole = injectRole === 'reference' ? 'reference' : 'convention'
       // sensitive 第 13 位参数：显式传才改（undefined 不动存量值）
@@ -1478,7 +1498,8 @@ export function apply(ctx) {
       // P3 派发闭环·保底联动：显式置 resolved 时自动回执全部未闭环派发（dispatchStatus→done + doneAt + receipt='resolved'）。
       // 这是语义闭环的必然可行通道（agent 完成派发任务后 note_manage update resolved）；事件回执见 dispatch-loop 标记块
       let dispatchClosed = 0
-      if (status === 'resolved') dispatchClosed = _closeOpenDispatches(note, 'resolved')
+      const dispatchClosedDs = []   // 执行记录独立笔记（notes-041-sched-runlog）：收集本次闭环条目供 runLog 追加
+      if (status === 'resolved') dispatchClosed = _closeOpenDispatches(note, 'resolved', undefined, dispatchClosedDs)
       note.updatedAt = new Date().toISOString()
       // 兜底补全：约定笔记 workspace 为空（agents 未就绪期创建的存量）时按来源会话推导填入，
       // 否则“本工作区”注入范围在严格匹配下永不命中
@@ -1486,6 +1507,7 @@ export function apply(ctx) {
         try { note.workspace = await _wsOfSession(note.sessionId) } catch (e) {}
       }
       await persistNote(note)
+      if (dispatchClosedDs.length) await _schedRunLogAppend(note, dispatchClosedDs)   // 仅 dispatch-schedule 约定生效（内部全量吞异常；约定正文零改动红线不破）
       const r = { id, kind: note.kind, status: note.status, dispatchClosed: dispatchClosed }
       if (injectForcedOff) r.injectForcedOff = true   // 日志隐身硬闸命中告知（kind=log 强制 inject=false）
       return r
@@ -1824,8 +1846,9 @@ export function apply(ctx) {
             const list = (String(fsNode.readFileSync(manifestPath, 'utf8')).match(/'[^'\n]+'/g) || []).map(s => s.slice(1, -1))
             let src = ''
             for (const rel of list) {
-              if (rel.indexOf('@shared/') === 0) {
-                const shared = fsNode.readFileSync(path.join(LEGACY_PLUGIN_DIR, 'src', 'shared', rel.slice(8)), 'utf8')
+              if (rel.indexOf('@shared/') === 0 || rel.indexOf('@i18n/') === 0) {
+                // @i18n/ 条目 = src/i18n/ 双语字典（notes-042-i18n-mech），共源 + 基座缩进规则与 @shared/ 完全一致
+                const shared = fsNode.readFileSync(path.join(LEGACY_PLUGIN_DIR, 'src', rel.indexOf('@shared/') === 0 ? 'shared' : 'i18n', rel.slice(rel.indexOf('/') + 1)), 'utf8')
                 src += String(shared).replace(/\r\n/g, '\n').split('\n').map(l => l ? '    ' + l : l).join('\n')
               } else {
                 src += fsNode.readFileSync(path.join(LEGACY_PLUGIN_DIR, 'src', 'client', rel), 'utf8')
@@ -2187,6 +2210,7 @@ export function apply(ctx) {
       note.dispatches = ds
       note.updatedAt = new Date().toISOString()
       await persistNote(note)
+      await _schedRunLogAppend(note, [ds[i]])   // 执行记录独立笔记（notes-041-sched-runlog）：手动标记同回执落盘口径（幂等由 msgId 去重兜底）
       return { ok: true, id: note.id }
     }
 
@@ -2203,8 +2227,9 @@ export function apply(ctx) {
     // 单条派发完成判定：dispatchStatus==='done' 或存量 done===true（0.2.0 前记录只有 done 字段，向后兼容）
     function isDispatchDone(d) { return !!(d && (d.dispatchStatus === 'done' || d.done === true)) }
     // 回执落库（作用于笔记对象内联）：把 note.dispatches 中未闭环条目标记 done（dispatchStatus/done/doneAt + receipt 来源）；
-    // onlySessionId 限定只回执派发到该会话的条目（idle 事件回执用）；缺省全量（resolved 保底联动用）。返回新闭环条数
-    function _closeOpenDispatches(note, receipt, onlySessionId) {
+    // onlySessionId 限定只回执派发到该会话的条目（idle 事件回执用）；缺省全量（resolved 保底联动用）。返回新闭环条数；
+    // out（可选数组，notes-041-sched-runlog）：收集本次新闭环的派发记录（执行记录独立笔记追加用）
+    function _closeOpenDispatches(note, receipt, onlySessionId, out) {
       const ds = note.dispatches || []
       let closed = 0
       const now = new Date().toISOString()
@@ -2213,6 +2238,7 @@ export function apply(ctx) {
         if (isDispatchDone(d)) continue
         if (onlySessionId && (!d || d.sessionId !== onlySessionId)) continue
         ds[i] = Object.assign({}, d, { done: true, dispatchStatus: 'done', doneAt: now, receipt: receipt || 'manual' })
+        if (out) out.push(ds[i])
         closed++
       }
       if (closed) note.dispatches = ds
@@ -2226,9 +2252,11 @@ export function apply(ctx) {
       for (const n of all) {
         if (!n || n.deleted || n.tombstoned) continue
         if (!(n.dispatches || []).length) continue
-        if (_closeOpenDispatches(n, 'idle', sid) > 0) {
+        const closedDs = []   // 执行记录独立笔记（notes-041-sched-runlog）：收集本次闭环条目供 runLog 追加
+        if (_closeOpenDispatches(n, 'idle', sid, closedDs) > 0) {
           n.updatedAt = new Date().toISOString()
           try { await persistNote(n, { history: false }) } catch (e) { console.error('notes: dispatch receipt persist failed', n.id, e) }
+          await _schedRunLogAppend(n, closedDs)   // 仅 dispatch-schedule 约定生效（内部全量吞异常；约定正文零改动红线不破）
         }
       }
     }
@@ -2349,7 +2377,8 @@ export function apply(ctx) {
     // 返回 { value: 归一化声明 } | { error }；机器状态字段（lastFiredAt/lastRun/lastError）容忍输入但剥离（由既有值延续，见 _schedValidateWrite）
     function schedCheckDecl(raw, nowMs) {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow? }' }
-      const known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, lastFiredAt: 1, lastRun: 1, lastError: 1 }
+      // runLog（notes-041-sched-runlog）：执行记录独立笔记 id 软链——机器字段（回执链路懒创建回写），已知键容忍输入，闸门校验/延续见 _schedValidateWrite
+      const known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1 }
       for (const k of Object.keys(raw)) {
         if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled；错得安全：能力声明必须无歧义）' }
       }
@@ -2441,6 +2470,19 @@ export function apply(ctx) {
       if (ex.lastFiredAt) decl.lastFiredAt = ex.lastFiredAt
       if (ex.lastRun) decl.lastRun = ex.lastRun
       if (ex.lastError) decl.lastError = ex.lastError
+      // runLog 软链（notes-041-sched-runlog）：显式声明须为存在的笔记 id（空串 = 显式解除软链，runLog 笔记留档不级联删）；
+      //   缺省（未携带）延续存量——声明改写（编辑/暂停/恢复只提交声明字段）不丢软链
+      if (raw.runLog !== undefined && raw.runLog !== null) {
+        if (raw.runLog === '') { /* 显式解除软链：decl 不带 runLog */ }
+        else {
+          if (typeof raw.runLog !== 'string') return { error: 'schedule.runLog 必须是笔记 id 字符串或空串（实得 ' + typeof raw.runLog + '）' }
+          const rlId = raw.runLog.trim()
+          let rlOk = false
+          try { const t = await loadNote(rlId); rlOk = !!(t && !t.deleted && !t.tombstoned) } catch (e) {}
+          if (!rlOk) return { error: 'schedule.runLog 必须是存在的笔记 id 或空（实得 ' + raw.runLog + '）' }
+          decl.runLog = rlId
+        }
+      } else if (ex.runLog) decl.runLog = ex.runLog
       return { value: decl }
     }
 
@@ -2570,6 +2612,96 @@ export function apply(ctx) {
     disposers.push(function () { if (schedTimer) { clearInterval(schedTimer); schedTimer = null } })
     ;(async function () { try { await _schedTickGuarded(Date.now()) } catch (e) {} })()
     // ==== schedule-exec END ====
+
+    // ==== schedule-runlog BEGIN ====（notes-041-sched-runlog：执行记录独立笔记 + schedule.runLog 软链。
+    // 设计红线（用户裁决 2026-10-04 晚）：约定正文零改动——克隆体约定正文=派发载荷（整体注入 target 会话），
+    //   历史追加会无限膨胀并污染下次派发上下文；执行记录落独立笔记（title「<约定标题> · 执行记录」，kind=note 可见可检索——
+    //   非 log（要进默认列表/检索），folder/topic 随约定），约定 front-matter schedule.runLog 存其 id 软链；
+    //   回执落盘时机（idle 事件 / resolved 保底 / 手动标记完成三通道共用）懒创建并追加条目；条目倒序（最新在前）≤50 裁尾；
+    //   幂等：同 msgId（=lastRun.receiptId）条目已存在跳过；删除约定不级联删 runLog（留档）。
+    // 写入纪律：runLog 笔记创建/追加与 runLog 软链回写都是机器自动产物——persistNote { history:false } 不产生历史快照；
+    //   软链回写直改 schedule 不经 _update 声明闸门（避免目标存活等声明校验阻塞回执链路；声明改写时 runLog 由 _schedValidateWrite 延续存量）。
+    // 序位：本块跨模块调用点（dispatch.js/notes.js）经函数声明提升在运行期引用，apply 执行期零触碰，无 TDZ 风险（同 _schedValidateWrite 先例）。
+    const SCHED_RUNLOG_MAX = 50                        // 条目容量红线：倒序保留最新 50 条裁尾
+    const SCHED_RUNLOG_HEAD = '## 执行记录（自动）'     // runLog 笔记正文的自动管理节标题
+    // 条目时间戳：ISO → 本地 YYYY-MM-DD HH:MM（人读优先；与调度 at 声明同口径的本地墙钟语义）
+    function schedRunLogTs(iso) {
+      const ms = Date.parse(iso || '')
+      if (!isFinite(ms)) return String(iso || '')
+      const d = new Date(ms)
+      const p = function (n) { return (n < 10 ? '0' : '') + n }
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
+    }
+    // 条目行：- ✅ {本地时刻} · 回执（{idle|resolved|manual}）· → {会话名|短id} · {msgId}
+    function schedRunLogLine(d) {
+      return '- ✅ ' + schedRunLogTs(d.doneAt) + ' · 回执（' + (d.receipt || 'manual') + '）· → ' + (d.sessionName || shortSid(d.sessionId) || '?') + ' · ' + d.msgId
+    }
+    // 正文重写：头部（至 SCHED_RUNLOG_HEAD 行，缺则补）与非条目尾部（用户手写备注）原样保留；
+    //   条目区合并 = 新条目前置 + 旧条目续后，按行内 msgId 去重（幂等兜底），≤SCHED_RUNLOG_MAX 裁尾
+    function schedRunLogRender(body, newLines) {
+      const lines = String(body || '').split('\n')
+      let headIdx = -1
+      for (let i = 0; i < lines.length; i++) { if (lines[i].trim() === SCHED_RUNLOG_HEAD) { headIdx = i; break } }
+      const pre = headIdx >= 0 ? lines.slice(0, headIdx + 1) : [SCHED_RUNLOG_HEAD]
+      const rest = headIdx >= 0 ? lines.slice(headIdx + 1) : []
+      const oldEntries = rest.filter(function (l) { return /^-\s/.test(l) })
+      const others = rest.filter(function (l) { return !/^-\s/.test(l) && l.trim() !== '' })
+      const seen = {}
+      const merged = []
+      const all = newLines.concat(oldEntries)
+      for (const l of all) {
+        const m = l.match(/(note-dispatch-\S+)/)
+        const key = m ? m[1] : l
+        if (seen[key]) continue
+        seen[key] = true
+        merged.push(l)
+        if (merged.length >= SCHED_RUNLOG_MAX) break
+      }
+      let out = pre.concat(['']).concat(merged)
+      if (others.length) out = out.concat(['']).concat(others)
+      return out.join('\n') + '\n'
+    }
+    // 回执落盘挂钩（三通道共用：dispatch.js _receiptDispatchesForSession idle 事件 / _dispatchDone 手动标记、notes.js _update resolved 保底）。
+    //   仅 dispatch-schedule 约定生效（其余笔记零开销直通返回）；schedule.runLog 空/失效 → 懒创建执行记录笔记并回写软链；条目追加幂等。
+    //   异常全量吞掉——执行记录是观察面产物，任何故障绝不扩散到回执主链路（同 tick 吞异常裁决）。
+    async function _schedRunLogAppend(note, entries) {
+      try {
+        if (!note || (note.contractType || '') !== SCHEDULE_CONTRACT_TYPE || !note.schedule) return
+        const items = (entries || []).filter(function (d) { return d && d.msgId })
+        if (!items.length) return
+        let rl = null
+        const rlId = note.schedule.runLog
+        if (rlId) {
+          try { const t = await loadNote(String(rlId)); if (t && !t.deleted && !t.tombstoned) rl = t } catch (e) {}
+        }
+        if (!rl) {
+          // 懒创建（首条回执时）：独立笔记正文仅含自动节标题；folder/topic 随约定；kind=note 缺省可见可检索
+          const cr = await _create(String(note.title || note.id) + ' · 执行记录', SCHED_RUNLOG_HEAD + '\n', [], note.topic || '未分类', { kind: 'note', folder: note.folder || undefined })
+          if (!cr || !cr.id) return
+          rl = await loadNote(cr.id)
+          // 软链回写 schedule.runLog：直读最新笔记对象防 tick 在途改写被覆盖（机器状态回写，不产生历史快照）
+          const fresh = await loadNote(note.id)
+          if (fresh && !fresh.deleted && !fresh.tombstoned && fresh.schedule) {
+            fresh.schedule = Object.assign({}, fresh.schedule, { runLog: cr.id })
+            fresh.updatedAt = new Date().toISOString()
+            try { await persistNote(fresh, { history: false }) } catch (e) { console.error('notes: schedule runLog link persist failed', note.id, e) }
+          }
+        }
+        if (!rl) return
+        // 幂等：同 msgId（=receiptId）条目已存在跳过（崩溃重放/双通道回执防御）；批量回执倒序prepend（最新在前）
+        const curBody = String(rl.body || '')
+        const newLines = []
+        for (let i = items.length - 1; i >= 0; i--) {
+          if (curBody.indexOf(items[i].msgId) >= 0) continue
+          newLines.push(schedRunLogLine(items[i]))
+        }
+        if (!newLines.length) return
+        rl.body = schedRunLogRender(curBody, newLines)
+        rl.updatedAt = new Date().toISOString()
+        try { await persistNote(rl, { history: false }) } catch (e) { console.error('notes: schedule runLog append persist failed', rl.id, e) }
+      } catch (e) { console.error('notes: schedule runLog append failed', note && note.id, e) }
+    }
+    // ==== schedule-runlog END ====
     // 约定命中判定（约定注入 conventionText 与目录去重 catalogText 共用）：
     // 注入范围 injectTo 是多选数组（不再有「工作区」维度——笔记无归属，只看会话）：
     //   []（空）                  → 默认所有会话
@@ -3909,7 +4041,7 @@ export function apply(ctx) {
         'inject (boolean) controls whether the note is injected into the system prompt as context — an explicit field, NOT a tag. injectRole ("convention"|"reference", default "convention") picks the injection bucket: convention = user rules to follow; reference = background facts to consult only when relevant to the current task. Rule of thumb — infer from kind: decision/todo → convention, note/link/quote → reference. injectTo (string[]) is the injection scope, a multi-select list: [] or omitted=all sessions (default), or session short-ids like ["99f2b674","7f8b49e6"] to restrict the scope.\n\n' +
         'recall (boolean) controls whether the note appears in the notes catalog — a one-line-per-note index injected into the system prompt (right after conventions) so you know what the library holds without searching; default true. Set false to hide a note from the catalog (it stays searchable via note_search). Orthogonal to inject; notes with status resolved/superseded never appear in the catalog.\n\n' +
         'sensitive (boolean) marks the note as containing secrets (passwords/tokens/keys); default false. When true, injected text (conventions/catalog) masks secret-looking lines — keys and structure are kept, only values are hidden as ******（敏感，note_get <id> 获取）— so agents must call note_get for the original. Create/quick responses may return sensitiveSuggested: true when the body matches secret patterns; quick-capture notes are auto-flagged sensitive instead.\n\n' +
-        'folder (string) assigns a note to a virtual folder: pass a folder id or an exact folder name; "" or omitted = unfiled (未分类). Folders (name/order/parent) are managed via the notes-folders RPC (list/create/rename/delete/reorder): folders NEST via a parent field (maxFolderDepth setting caps the depth, default 3, 0 = unlimited), any folder filter is a recursive subtree match (a folder includes notes in all its descendant folders), and deleting a folder that still has child folders or notes requires explicit cascade:true — the folder structure is removed for good while its notes are soft-deleted into the trash and can be restored (restored notes fall back to unfiled when their folder is gone).\n\n' +
+        'folder (string) assigns a note to a virtual folder: pass a folder id or an exact folder name — a name is normalized to its folder id on write, and an unknown id/name is rejected with an error (never silently filed as unfiled); "" or omitted = unfiled (未分类). Folders (name/order/parent) are managed via the notes-folders RPC (list/create/rename/delete/reorder): folders NEST via a parent field (maxFolderDepth setting caps the depth, default 3, 0 = unlimited), any folder filter is a recursive subtree match (a folder includes notes in all its descendant folders), and deleting a folder that still has child folders or notes requires explicit cascade:true — the folder structure is removed for good while its notes are soft-deleted into the trash and can be restored (restored notes fall back to unfiled when their folder is gone).\n\n' +
         'Actions:\n' +
         '- create: { title, body, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, folder?, sessionId?, cwd?, workspace?, logDate? }\n' +
         '- list: { tag?, topic?, kind?, folder?, includeLogs? } (no id/title/body needed; default excludes kind=log work logs — pass kind=log or includeLogs:true; an explicit folder filter implies inclusion — R-6)\n' +
@@ -3919,7 +4051,7 @@ export function apply(ctx) {
         '- restore: { id } (undo delete/archive)\n' +
         '- archive: { groups? } (explicit archive, undoable once via the notes-archive-undo RPC). groups = whitelist [{memberIds:[noteId,...], title?}]: merge exactly those groups (memberIds must all exist and not be deleted; title overrides the default group title). Without groups: merge ONLY quick-capture notes grouped by session. Behavior change: manual notes are NEVER auto-grouped by tag anymore — pass explicit groups to merge them (preview quick groups first via the notes-archive-preview RPC).\n' +
         '- dispatch: { id, targetSessionId?, targetSessionName?, instruction? } (assemble the todo context plus your instruction into one user message and send it to a live session as a real task; the handoff is recorded in the note\'s dispatches property with dispatchStatus=sent. Omit targetSessionId to list live sessions. Closed loop: when the target session reports completion via update status=resolved, open dispatches auto-flip to dispatchStatus=done; an idle transition of the target session also writes a receipt.)\n' +
-        'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived; unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status,receiptId}/lastError) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
+        'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual, and a lazily-created execution-log note「定时 @标题 · 执行记录」is soft-linked via schedule.runLog — the convention body itself is NEVER appended to (it is the dispatch payload; history would bloat and pollute future dispatch contexts). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived; unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status,receiptId}/lastError/runLog) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
       parameters: {
         type: 'object',
         properties: {
@@ -3938,10 +4070,10 @@ export function apply(ctx) {
           injectTo: { type: 'array', items: { type: 'string' }, description: 'Injection scope multi-select: [] or omitted=all sessions (default), or session short-ids like ["99f2b674","7f8b49e6"] to restrict' },
           recall: { type: 'boolean', description: 'Recall in the notes catalog index (create/update); default true. Set false to hide from the catalog (still searchable via note_search).' },
           sensitive: { type: 'boolean', description: 'Sensitive-content flag (create/update); default false. When true, injected text masks secret-looking lines (keys kept, values hidden as ******（敏感，note_get <id> 获取）); agents call note_get for the original.' },
-          folder: { type: 'string', description: 'Virtual folder (create/move/list filter): folder id or exact folder name; "" = unfiled (未分类). Folders nest via parent (maxFolderDepth setting, default 3); a list filter matches the whole subtree recursively (notes in descendant folders included).' },
+          folder: { type: 'string', description: 'Virtual folder (create/move/list filter): folder id or exact folder name (a name is normalized to its id on write; unknown id/name is rejected); "" = unfiled (未分类). Folders nest via parent (maxFolderDepth setting, default 3); a list filter matches the whole subtree recursively (notes in descendant folders included).' },
           // 定时派发·执行层（dispatch-schedule 声明字段；公共写入口 contractType 白名单 '' / dispatch-schedule）
           contractType: { type: 'string', description: 'Contract type (create/update): public writes allow only \'dispatch-schedule\' (scheduled-dispatch convention, must pair with schedule) or \'\' to clear; other contract types are system-managed' },
-          schedule: { type: ['object', 'null'], description: 'Scheduled-dispatch declaration (create/update; requires contractType=\'dispatch-schedule\'): { at?: LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 (one-shot, must be future; Z/±offset rejected) | every?: \'30m\'/\'12h\'/\'3d\'/\'1w\' or ms (>=5min), anchor?: \'HH:MM\' LOCAL time (periodic only, whole-day interval; pins firing to that time of day, no drift), dow?: 0-6 (weekly only, 0=Sunday, requires every:\'1w\' + anchor), target: sessionId (workspace session, not archived), action?: \'dispatch\', enabled?: boolean }. Host-managed machine fields lastFiredAt/lastRun/lastError are preserved across declaration edits. null clears the declaration (pair with contractType: \'\').' },
+          schedule: { type: ['object', 'null'], description: 'Scheduled-dispatch declaration (create/update; requires contractType=\'dispatch-schedule\'): { at?: LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 (one-shot, must be future; Z/±offset rejected) | every?: \'30m\'/\'12h\'/\'3d\'/\'1w\' or ms (>=5min), anchor?: \'HH:MM\' LOCAL time (periodic only, whole-day interval; pins firing to that time of day, no drift), dow?: 0-6 (weekly only, 0=Sunday, requires every:\'1w\' + anchor), target: sessionId (workspace session, not archived), action?: \'dispatch\', enabled?: boolean }. Host-managed machine fields lastFiredAt/lastRun/lastError/runLog are preserved across declaration edits (runLog = soft-link id of the lazily-created execution-log note; pass an existing note id to relink, \'\' to unlink). null clears the declaration (pair with contractType: \'\').' },
           // archive 字段（显式归档白名单）
           groups: { type: 'array', items: { type: 'object', properties: { memberIds: { type: 'array', items: { type: 'string' } }, title: { type: 'string' } }, required: ['memberIds'] }, description: 'Archive whitelist (archive action only): [{memberIds:[noteId,...], title?}] — merge exactly these groups. Omitted = merge only quick-capture groups; manual notes are NEVER auto-grouped by tag (behavior change).' },
           // dispatch 字段

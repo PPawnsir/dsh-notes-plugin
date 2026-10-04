@@ -23,6 +23,7 @@
     }
     // 归档预览对话框宿主（标题栏「归档」入口）
     function ArchiveModal(props) {
+      const tt = useT()   // i18n 覆盖卡E：订阅 langStore，切语言本卡自渲染（模块级 handler 走 t() 直读当下语言态）
       const archOpen = store.modal.archive.useSel(s => s.open)
       const archGroups = store.modal.archive.useSel(s => s.groups)
       const archChecked = store.modal.archive.useSel(s => s.checked)
@@ -34,7 +35,7 @@
         try {
           const res = await host.call('notes-archive-undo')
           if (res && res.error) { setError(res.error); return }
-          showToast(res && res.undone ? '已撤销归档' : '没有可撤销的归档')
+          showToast(res && res.undone ? t('arch.undone') : t('arch.noUndo'))
           await panelBridge.loadNotes(true); notifyNotesChanged()
         } catch (err) { setError(String(err.message || err)) }
       }
@@ -50,7 +51,7 @@
           const res = await host.call('notes-archive', { groups: gs.map(g => ({ memberIds: g.members.map(m => m.id) })) })
           if (res && res.error) { setError(res.error); setArchPending(false); return }
           setArchOpen(false); setArchPending(false)
-          showToast('已合并 ' + (res.merged || 0) + ' 组', { label: '撤销', fn: doArchiveUndo })
+          showToast(t('arch.merged', { n: res.merged || 0 }), { label: t('meta.undo'), fn: doArchiveUndo })
           panelBridge.afterArchiveCleanup(gs.reduce((acc, g) => acc.concat(g.members.map(m => m.id)), []))
           await panelBridge.loadNotes(true); notifyNotesChanged()
         } catch (err) { setError(String(err.message || err)); setArchPending(false) }
@@ -63,12 +64,12 @@
         const checkedCount = groups.filter(g => archChecked[g.sessionId] !== false).length
         return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setArchOpen(false) } },
           e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-arch-modal' },
-            e('div', { className: 'dsh-notes-settings-modal-t' }, I('check', 14), ' 归档预览', e('span', { className: 'dsh-notes-imgup-sub' }, '勾选后才执行 · 合并可撤销')),
-            e('div', { className: 'dsh-notes-data-hint' }, '速记按会话分组，勾选的组合并成一篇归档笔记（原笔记 .bak 备份后软删除）。'),
+            e('div', { className: 'dsh-notes-settings-modal-t' }, I('check', 14), ' ' + tt('arch.title'), e('span', { className: 'dsh-notes-imgup-sub' }, tt('arch.sub'))),
+            e('div', { className: 'dsh-notes-data-hint' }, tt('arch.hintClient')),
             archGroups === null
-              ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
+              ? e('div', { className: 'dsh-notes-data-hint' }, tt('common.loading'))
               : groups.length === 0
-                ? e('div', { className: 'dsh-notes-data-hint' }, '没有可归档的速记组（同一会话 ≥2 条速记才会成组）。')
+                ? e('div', { className: 'dsh-notes-data-hint' }, tt('arch.empty'))
                 : e('div', { className: 'dsh-notes-arch-list' },
                     groups.map(g => {
                       const checked = archChecked[g.sessionId] !== false
@@ -79,17 +80,17 @@
                           e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: checked, onChange: () => setArchChecked(Object.assign({}, archChecked, { [g.sessionId]: !checked })) }),
                           e('span', { className: 'dsh-notes-caret' + (expanded ? ' open' : ''), onClick: () => setArchExpand(Object.assign({}, archExpand, { [g.sessionId]: !expanded })) }, I('chev', 10)),
                           e('span', { className: 'dsh-notes-arch-ti', title: g.title }, g.title),
-                          e('span', { className: 'dsh-notes-arch-meta' }, span + ' · ' + g.members.length + ' 条 · ' + fmtBytes(g.totalBytes) + ((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : ''))),
+                          e('span', { className: 'dsh-notes-arch-meta' }, tt('arch.groupMeta', { span: span, n: g.members.length, size: fmtBytes(g.totalBytes) }) + ((g.totalUseCount || 0) > 0 ? tt('arch.groupUseCount', { n: g.totalUseCount }) : ''))),
                         expanded ? e('div', { className: 'dsh-notes-arch-members' },
                           g.members.map(m => e('div', { key: m.id, className: 'dsh-notes-arch-member' },
-                            e('span', { className: 'dsh-notes-arch-member-ti' }, m.title || '无标题'),
+                            e('span', { className: 'dsh-notes-arch-member-ti' }, m.title || tt('tree.untitled')),
                             e('span', { className: 'dsh-notes-arch-member-dt' }, fmtDT(m.updatedAt).slice(0, 10))))) : null)
                     })),
-            e('div', { className: 'dsh-notes-data-hint' }, '手动笔记不受影响；如需合并手动笔记，请在列表多选后右键合并。'),
+            e('div', { className: 'dsh-notes-data-hint' }, tt('arch.manualHint')),
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
             e('div', { className: 'dsh-notes-dispatch-actions' },
-              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setArchOpen(false) }, '取消'),
-              e('button', { className: 'dsh-notes-dispatch-ok', onClick: doArchiveConfirm, disabled: archPending || checkedCount === 0 }, archPending ? '归档中…' : '归档所选（' + checkedCount + ' 组）'))))
+              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setArchOpen(false) }, tt('common.cancel')),
+              e('button', { className: 'dsh-notes-dispatch-ok', onClick: doArchiveConfirm, disabled: archPending || checkedCount === 0 }, archPending ? tt('arch.archiving') : tt('arch.okCount', { n: checkedCount })))))
       })()
       : null
     }

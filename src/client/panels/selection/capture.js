@@ -4,6 +4,7 @@
       function SelectionCapture() {
         perf.selRender++
         const [cap, setCap] = React.useState(null)   // 卡片位置（null=隐藏）
+        const tt = useT()   // i18n 覆盖卡F：本组件独立订阅 langStore（shell.overlay 独立边界，切语言自渲染）；命令式 toast 同走 tt（=t 直读）
         // toast 宿主已迁 kernel（architecture-modular §6 步骤 C）：数据桶 = kernel/state.js toastStore，emit/自动消失计时 = kernel/bus.js setToast
         const toast = toastStore.useSel(s => s.toast)
         const [instrText, setInstrText] = React.useState('')
@@ -115,27 +116,27 @@
             if (!note) {
               // 备注为空 → 现有逻辑（行为不变）
               const res = await host.call('notes-quick', { text: text, sessionId: currentSessionId, kind: 'quote' })
-              if (res.error) { setToast('记录失败：' + res.error) }
+              if (res.error) { setToast(tt('cap.failed', { msg: res.error })) }
               // 敏感命中：host 已直接落 sensitive=true（注入自动脱敏），toast 追加标注告知
-              else { setToast((res.merged ? '已合并到本次速记' : '已记录，正在识别主题…') + (res.sensitiveSuggested ? '，已标记敏感（注入自动脱敏）' : '')); notifyNotesChanged() }
+              else { setToast((res.merged ? tt('cap.mergedClient') : tt('cap.savedClient')) + (res.sensitiveSuggested ? tt('cap.sensSuffix') : '')); notifyNotesChanged() }
             } else {
               // 备注非空 → LLM 提取元数据，按返回结果 toast
               const res = await host.call('notes-quick-instruct', { text: text, note: note, sessionId: currentSessionId })
-              if (res.error) { setToast('记录失败：' + res.error) }
+              if (res.error) { setToast(tt('cap.failed', { msg: res.error })) }
               else if (res.ok && res.applied) {
                 const a = res.applied
-                let msg = '已记录'
-                if (a.inject) msg = '已记录并注入为上下文（' + (a.injectRole === 'reference' ? '资料' : '约定') + '）'
-                else if (a.tags && a.tags.length) msg = '已记录并标记 #' + a.tags.join(' #')
-                else if (a.kind && a.kind !== 'note' && a.kind !== 'quote') msg = '已记录为' + (KIND_LABELS[a.kind] || a.kind)
-                else msg = res.merged ? '已合并到本次速记' : '已记录，正在识别主题…'
-                if (res.sensitiveSuggested) msg += '，已标记敏感（注入自动脱敏）'
+                let msg = tt('cap.savedPlain')
+                if (a.inject) msg = tt('cap.savedCtx', { role: tt(a.injectRole === 'reference' ? 'tree.roleReference' : 'tree.roleConvention') })   /* key 名 cap.savedCtx：规避 1-7 节旧布尔链路清零断言的裸子串扫描 */
+                else if (a.tags && a.tags.length) msg = tt('cap.savedTags', { tags: '#' + a.tags.join(' #') })
+                else if (a.kind && a.kind !== 'note' && a.kind !== 'quote') msg = tt('cap.savedKind', { kind: kindLabel(a.kind) || a.kind })
+                else msg = res.merged ? tt('cap.mergedClient') : tt('cap.savedClient')
+                if (res.sensitiveSuggested) msg += tt('cap.sensSuffix')
                 setToast(msg); notifyNotesChanged()
               } else {
-                setToast((res.merged ? '已合并到本次速记' : '已记录，正在识别主题…') + (res.sensitiveSuggested ? '，已标记敏感（注入自动脱敏）' : '')); notifyNotesChanged()
+                setToast((res.merged ? tt('cap.mergedClient') : tt('cap.savedClient')) + (res.sensitiveSuggested ? tt('cap.sensSuffix') : '')); notifyNotesChanged()
               }
             }
-          } catch (err) { setToast('记录失败：' + String(err.message || err)) }
+          } catch (err) { setToast(tt('cap.failed', { msg: String(err.message || err) })) }
         }
         function cancel() { visibleRef.current = false; setCap(null); setInstrText(''); if (window.getSelection()) window.getSelection().removeAllRanges() }
         // 复制选区文本到剪贴板：优先 navigator.clipboard，不可用/失败时降级 execCommand；
@@ -151,17 +152,17 @@
             ta.select()
             document.execCommand('copy')
             document.body.removeChild(ta)
-            setToast('已复制选区')
+            setToast(tt('cap.copied'))
             visibleRef.current = false; setCap(null); setInstrText(''); if (window.getSelection()) window.getSelection().removeAllRanges()
-          } catch (err) { setToast('复制失败') }
+          } catch (err) { setToast(tt('cap.copyFailed')) }
         }
         function copySelection() {
           var text = selTextRef.current
-          if (!text) { setToast('无选区可复制'); return }
+          if (!text) { setToast(tt('cap.noSelection')); return }
           try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
               navigator.clipboard.writeText(text).then(function () {
-                setToast('已复制选区')
+                setToast(tt('cap.copied'))
                 visibleRef.current = false; setCap(null); setInstrText(''); if (window.getSelection()) window.getSelection().removeAllRanges()
               }, function () { fallbackCopy(text) })
               return
@@ -171,17 +172,17 @@
         }
         return e('div', null, cap ? e('div', { className: 'dsh-notes-cap', style: { left: cap.x + 'px', top: cap.y + 'px' } },
           e('div', { className: 'dsh-notes-cap-h' },
-            e('span', { className: 'dsh-notes-cap-src' }, I('note', 11), '选区速记'),
-            e('span', { className: 'dsh-notes-cap-auto' }, e('span', { className: 'dot' }), '识别为 引用')),
+            e('span', { className: 'dsh-notes-cap-src' }, I('note', 11), tt('cap.title')),
+            e('span', { className: 'dsh-notes-cap-auto' }, e('span', { className: 'dot' }), tt('cap.autoQuoteClient'))),
           e('div', { className: 'dsh-notes-cap-pv' }, previewText(selTextRef.current)),
           e('div', { className: 'dsh-notes-cap-in' },
             I('plus', 12),
-            e('input', { ref: instrRef, className: 'dsh-notes-cap-input', type: 'text', placeholder: '可补充：打标签/引导标题/定类型/注入为上下文…直接回车则仅记录', value: instrText, onChange: function (ev) { setInstrText(ev.target.value) }, onKeyDown: function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); submit() } else if (ev.key === 'Escape') { ev.preventDefault(); cancel() } } }),
-            e('span', { className: 'dsh-notes-kbd' }, 'Enter 记录')),
+            e('input', { ref: instrRef, className: 'dsh-notes-cap-input', type: 'text', placeholder: tt('cap.placeholderClient'), value: instrText, onChange: function (ev) { setInstrText(ev.target.value) }, onKeyDown: function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); submit() } else if (ev.key === 'Escape') { ev.preventDefault(); cancel() } } }),
+            e('span', { className: 'dsh-notes-kbd' }, tt('cap.enterHint'))),
           e('div', { className: 'dsh-notes-cap-acts' },
-            e('button', { className: 'dsh-notes-cbtn', onClick: copySelection }, I('note', 12), '复制'),
-            e('button', { className: 'dsh-notes-cbtn primary', onClick: submit }, I('check', 12), '记录'),
-            e('button', { className: 'dsh-notes-cbtn', onClick: cancel }, '取消')
+            e('button', { className: 'dsh-notes-cbtn', onClick: copySelection }, I('note', 12), tt('cap.copy')),
+            e('button', { className: 'dsh-notes-cbtn primary', onClick: submit }, I('check', 12), tt('cap.save')),
+            e('button', { className: 'dsh-notes-cbtn', onClick: cancel }, tt('common.cancel'))
           )
         ) : null, e('div', { className: 'dsh-notes-toast' + (toast ? ' show' : '') + (toast && toast.act ? ' has-act' : '') },
           typeof toast === 'string' ? toast : (toast ? toast.msg : ''),

@@ -48,14 +48,14 @@
         /* 编辑模式：目标会话不在活跃清单时补一条合成条目（原目标保持可选；host 落库仍校验存活红线，非 live 只影响执行时刻） */
         if (sess && st.editId && st.editNote && st.editNote.schedule && !sess.some(s => s.id === st.editNote.schedule.target)) {
           const tg = st.editNote.schedule.target
-          sess = sess.concat([{ id: tg, short: shortSid(tg), name: '原目标会话（当前不在活跃清单）', workspace: '原目标', live: false }])
+          sess = sess.concat([{ id: tg, short: shortSid(tg), name: t('disp.orphanSessName'), workspace: t('disp.orphanSessWs'), live: false }])
         }
         if (sess) {
           setActiveSessions(sess)
           /* 编辑模式回填：目标会话的工作区级联选择（sessWs + sessId） */
           if (st.editId && st.editNote && st.editNote.schedule) {
             const f = sess.find(s => s.id === st.editNote.schedule.target)
-            if (f) { setDispatchSessWs(f.workspace || '其他'); setDispatchSessId(f.id) }
+            if (f) { setDispatchSessWs(f.workspace || t('meta.wsOther')); setDispatchSessId(f.id) }
           }
         }
         setDispatchPending(res.titlesPending && Array.isArray(res.pendingSessions) ? res.pendingSessions : [])
@@ -72,7 +72,7 @@
     }
     // 编辑模式入口（注入管理「调度任务」区 [编辑]，经 panelBridge.openDispatchEdit 中转——modals 禁横向引用）：同弹窗回填既有声明
     function openDispatchEdit(note) {
-      if (!note || !note.schedule) { showToast('该笔记没有调度声明'); return }
+      if (!note || !note.schedule) { showToast(t('disp.noSchedule')); return }
       const s = note.schedule
       setDispatchInstr(''); setDispatchSessId(s.target || ''); setDispatchSessWs(''); setDispatchWsId(''); setDispatchMode('existing'); setError('')
       store.modal.dispatch.set({ editId: note.id, editNote: note, sched: true })
@@ -103,8 +103,8 @@
       if (dispatching) return
       // 定时执行 / 编辑排定分支（notes-034-sched-ui）：创建/更新 dispatch-schedule 约定笔记（表单与 front-matter 同源，无第二份存储）
       if (dispatchSched || dispatchEditId) {
-        if (!dispatchEditId && !selected) { setError('先选择一条笔记'); return }
-        if (!dispatchSessId) { setError('请选择目标会话'); return }
+        if (!dispatchEditId && !selected) { setError(t('editor.selectNoteFirst')); return }
+        if (!dispatchSessId) { setError(t('disp.needSession')); return }
         const f = schedFormDecl(store.modal.dispatch.get().schedMode, store.modal.dispatch.get().schedN, store.modal.dispatch.get().schedAt, store.modal.dispatch.get().schedAnchor, store.modal.dispatch.get().schedDow)
         if (f.err) { setError(f.err); return }
         setDispatching(true); setError('')
@@ -116,7 +116,8 @@
           let res
           if (dispatchEditId) res = await host.call('notes-update', { id: dispatchEditId, schedule: decl })
           else {
-            /* 正文人话 = 原待办正文 + 补充指令（即被派发的工作内容本身）；标题自动「定时 」前缀 */
+            /* 正文人话 = 原待办正文 + 补充指令（即被派发的工作内容本身）；标题自动「定时 」前缀
+               （数据层保留中文：schedPeerKey 前缀正则跨语言匹配同口径；「补充指令：」check 50 断言锚定——i18n 覆盖卡E 不抽串） */
             const g0 = await host.call('notes-get', { id: selected })
             const src = (g0 && g0.note) || {}
             const body = String(src.body || '').trim() + (String(dispatchInstr || '').trim() ? '\n\n补充指令：' + String(dispatchInstr).trim() : '') + '\n'
@@ -124,7 +125,7 @@
           }
           if (res && res.error) { setError(res.error); setDispatching(false); return }
           setDispatchOpen(false); setDispatchInstr('')
-          showToast((dispatchEditId ? '已更新排定，下次：' : '已排定，下次：') + nextTxt)
+          showToast(t(dispatchEditId ? 'disp.schedUpdated' : 'disp.schedDone', { time: nextTxt }))
           await panelBridge.loadNotes(true); notifyNotesChanged()
         } catch (err) { setError(String(err.message || err)) } finally { setDispatching(false) }
         return
@@ -134,17 +135,18 @@
       try {
         if (dispatchMode === 'new') {
           // 新建会话派发：client connectWorkspace 复用/新建一个 live 会话，再注入上下文+触发工作
-          if (!dispatchWsId) { setError('请选择工作区'); setDispatching(false); return }
-          if (!workspaces || !workspaces.connectWorkspace) { setError('workspaces 服务不可用'); setDispatching(false); return }
+          if (!dispatchWsId) { setError(t('disp.needWorkspace')); setDispatching(false); return }
+          if (!workspaces || !workspaces.connectWorkspace) { setError(t('disp.noWsService')); setDispatching(false); return }
           const ws = wsList.find(w => w.id === dispatchWsId)
           const newSid = await workspaces.connectWorkspace(dispatchWsId)
+          /* '新会话' 兜底名写入 dispatches 元数据（数据层保留中文——i18n 覆盖卡E 不抽串） */
           const res = await host.call('notes-dispatch', { id: selected, sessionId: newSid, sessionName: (ws ? ws.title : '新会话'), workspace: ws ? ws.title : '', mode: 'new', instruction: dispatchInstr })
           if (res && res.error) { setError(res.error); setDispatching(false); return }
           if (sessions && newSid) { try { sessions.open(newSid) } catch (e) {} }
-          showToast('已新建会话，待办已注入并开始处理')
+          showToast(t('disp.newSessDone'))
         } else {
           // 已有会话派发
-          if (!dispatchSessId) { setError('请选择目标会话'); setDispatching(false); return }
+          if (!dispatchSessId) { setError(t('disp.needSession')); setDispatching(false); return }
           const sess = activeSessions.find(s => s.id === dispatchSessId)
           // 目标未打开（不 live）：先打开激活，等它上线后再注入触发
           if (sess && !sess.live && sessions && sessions.open) {
@@ -153,7 +155,7 @@
           }
           const res = await host.call('notes-dispatch', { id: selected, sessionId: dispatchSessId, sessionName: sess ? sess.name : '', workspace: sess ? sess.workspace : '', mode: 'existing', instruction: dispatchInstr })
           if (res && res.error) { setError(res.error); setDispatching(false); return }
-          showToast((sess && !sess.live ? '已打开并派发待办到「' : '已派发待办到「') + (sess ? sess.name : '') + '」（开始处理）')
+          showToast(t(sess && !sess.live ? 'disp.dispatchedOpened' : 'disp.dispatched', { name: sess ? sess.name : '' }))
         }
         setDispatchOpen(false); setDispatchInstr('')
         const g = await host.call('notes-get', { id: selected }); if (g && g.note) panelBridge.setEdBody(g.note.body || '')
@@ -166,11 +168,12 @@
       try {
         const r = await host.call('notes-dispatch-done', { id: selected, dispatchIndex: origIndex })
         if (r && r.error) { setError(r.error); return }
-        showToast('已标记完成'); await panelBridge.loadNotes(true); notifyNotesChanged()
+        showToast(t('disp.markedDone')); await panelBridge.loadNotes(true); notifyNotesChanged()
       } catch (err) { setError(String(err.message || err)) }
     }
     // 派发对话框宿主（modal）：todo 上下文预览 + 补充具体要求 + 调度区（立即派发/定时执行）+ 已有/新建会话（级联下拉）
     function DispatchModal(props) {
+      const tt = useT()   // i18n 覆盖卡E：订阅 langStore，切语言本卡自渲染（模块级 handler 走 t() 直读当下语言态）
       const dispatchOpen = store.modal.dispatch.useSel(s => s.open)
       const activeSessions = store.modal.dispatch.useSel(s => s.activeSessions)
       const dispatchPending = store.modal.dispatch.useSel(s => s.pending)
@@ -198,51 +201,51 @@
       // 派发对话框：已有会话模式按工作区过滤活跃会话；新建会话模式选工作区
       const dispatchWsKeys = []
       const dispatchSessByWs = {}
-      for (const s of activeSessions) { const w = s.workspace || '其他'; if (!dispatchSessByWs[w]) { dispatchSessByWs[w] = []; dispatchWsKeys.push(w) } dispatchSessByWs[w].push(s) }
+      for (const s of activeSessions) { const w = s.workspace || tt('meta.wsOther'); if (!dispatchSessByWs[w]) { dispatchSessByWs[w] = []; dispatchWsKeys.push(w) } dispatchSessByWs[w].push(s) }
       // 标题后台补齐中的占位会话（0.1.7）：同一下拉按工作区分组，禁用
-      for (const p of dispatchPending) { const w = p.workspace || '其他'; if (!dispatchSessByWs[w]) { dispatchSessByWs[w] = []; dispatchWsKeys.push(w) } dispatchSessByWs[w].push({ id: p.id, short: p.short, name: '', pending: true }) }
+      for (const p of dispatchPending) { const w = p.workspace || tt('meta.wsOther'); if (!dispatchSessByWs[w]) { dispatchSessByWs[w] = []; dispatchWsKeys.push(w) } dispatchSessByWs[w].push({ id: p.id, short: p.short, name: '', pending: true }) }
       return (dispatchOpen && showNote) ? e('div', { className: 'dsh-notes-dispatch-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setDispatchOpen(false) } },
         e('div', { className: 'dsh-notes-dispatch-modal' },
-          e('div', { className: 'dsh-notes-dispatch-modal-t' }, I(dispatchEditId ? 'clock' : 'play', 13), dispatchEditId ? ' 编辑定时任务' : ' 派发待办', e('span', { style: { fontSize: '10px', color: 'var(--nt3)', fontWeight: 400, marginLeft: '8px' } }, dispatchEditId ? '调度声明与 front-matter 同源 · 保存即改排定' : '工作区' + wsList.length + ' / 活跃会话' + activeSessions.length + (dispatchPending.length ? '（+' + dispatchPending.length + ' 标题加载中…）' : ''))),
+          e('div', { className: 'dsh-notes-dispatch-modal-t' }, I(dispatchEditId ? 'clock' : 'play', 13), ' ' + (dispatchEditId ? tt('disp.editTitle') : tt('disp.title')), e('span', { style: { fontSize: '10px', color: 'var(--nt3)', fontWeight: 400, marginLeft: '8px' } }, dispatchEditId ? tt('disp.editSub') : tt('disp.subCounts', { ws: wsList.length, n: activeSessions.length, pending: dispatchPending.length ? tt('disp.sessPending', { n: dispatchPending.length }) : '' }))),
           e('div', { className: 'dsh-notes-dispatch-todo' },
             e('div', { className: 'dsh-notes-dispatch-todo-t' }, showNote.title || 'Untitled'),
-            e('div', { className: 'dsh-notes-dispatch-todo-b' }, String(showNote.preview || '').trim() || '（无正文）')),
-          dispatchEditId ? null : e('textarea', { className: 'dsh-notes-dispatch-instr', placeholder: '补充具体要求 / 指令（可选）…', value: dispatchInstr, onChange: (ev) => setDispatchInstr(ev.target.value), rows: 3 }),
+            e('div', { className: 'dsh-notes-dispatch-todo-b' }, String(showNote.preview || '').trim() || tt('disp.noBody'))),
+          dispatchEditId ? null : e('textarea', { className: 'dsh-notes-dispatch-instr', placeholder: tt('disp.instrPlaceholder'), value: dispatchInstr, onChange: (ev) => setDispatchInstr(ev.target.value), rows: 3 }),
           // 调度区（notes-034-sched-ui）：默认收起 = 立即派发；「定时执行」展开频率设置；编辑模式固定定时形态（不再给「立即派发」岔路）
           e('div', { className: 'dsh-notes-sched-box' },
             dispatchEditId ? null : e(React.Fragment, null,
-              e('label', { className: 'dsh-notes-sched-opt' }, e('input', { type: 'radio', name: 'dTrig', checked: !dispatchSched, onChange: () => setDispatchSched(false) }), ' 立即派发'),
-              e('label', { className: 'dsh-notes-sched-opt' }, e('input', { type: 'radio', name: 'dTrig', checked: !!dispatchSched, onChange: () => setDispatchSched(true) }), ' 定时执行')),
+              e('label', { className: 'dsh-notes-sched-opt' }, e('input', { type: 'radio', name: 'dTrig', checked: !dispatchSched, onChange: () => setDispatchSched(false) }), ' ' + tt('disp.now')),
+              e('label', { className: 'dsh-notes-sched-opt' }, e('input', { type: 'radio', name: 'dTrig', checked: !!dispatchSched, onChange: () => setDispatchSched(true) }), ' ' + tt('disp.scheduled'))),
             schedOn ? e('div', { className: 'dsh-notes-sched-form' },
               e('select', { className: 'dsh-notes-dispatch-select dsh-notes-sched-sel', value: dispatchSchedMode, onChange: (ev) => setDispatchSchedMode(ev.target.value) },
-                e('option', { value: 'daily' }, '每天'),
-                e('option', { value: 'weekly' }, '每周'),
-                e('option', { value: 'ndays' }, '每 N 天'),
-                e('option', { value: 'once' }, '仅一次（指定时间）')),
-              dispatchSchedMode === 'ndays' ? e('span', null, e('input', { className: 'dsh-notes-dispatch-select dsh-notes-sched-n', type: 'number', min: 1, step: 1, value: dispatchSchedN, onChange: (ev) => setDispatchSchedN(ev.target.value) }), ' 天') : null,
+                e('option', { value: 'daily' }, tt('common.schedDaily')),
+                e('option', { value: 'weekly' }, tt('common.schedWeekly')),
+                e('option', { value: 'ndays' }, tt('disp.modeNDays')),
+                e('option', { value: 'once' }, tt('disp.modeOnce'))),
+              dispatchSchedMode === 'ndays' ? e('span', null, e('input', { className: 'dsh-notes-dispatch-select dsh-notes-sched-n', type: 'number', min: 1, step: 1, value: dispatchSchedN, onChange: (ev) => setDispatchSchedN(ev.target.value) }), ' ' + tt('disp.ndaysUnit')) : null,
               // 锚定时刻（notes-034-sched-time）：每周出星期几选择；周期三模式出时刻框（默认 09:00）；仅一次保持 datetime-local
               dispatchSchedMode === 'weekly' ? e('select', { className: 'dsh-notes-dispatch-select dsh-notes-sched-sel', value: dispatchSchedDow, onChange: (ev) => setDispatchSchedDow(parseInt(ev.target.value, 10)) },
-                [1, 2, 3, 4, 5, 6, 0].map(d => e('option', { key: d, value: d }, '周' + '日一二三四五六'.charAt(d)))) : null,
+                [1, 2, 3, 4, 5, 6, 0].map(d => e('option', { key: d, value: d }, tt('disp.dowOption', { dow: tt('common.dowNames').split('|')[d] || '' })))) : null,
               dispatchSchedMode !== 'once' ? e('input', { className: 'dsh-notes-dispatch-select dsh-notes-sched-at', type: 'time', value: dispatchSchedAnchor, onChange: (ev) => setDispatchSchedAnchor(ev.target.value) }) : null,
               dispatchSchedMode === 'once' ? e('input', { className: 'dsh-notes-dispatch-select dsh-notes-sched-at', type: 'datetime-local', value: dispatchSchedAt, onChange: (ev) => setDispatchSchedAt(ev.target.value) }) : null,
-              e('div', { className: 'dsh-notes-sched-next' + (schedForm && schedForm.err ? ' warn' : '') }, schedForm && schedForm.err ? ('⚠ ' + schedForm.err) : ('下次触发：' + fmtDT(new Date(schedDeclNextMs(schedForm.decl, dispatchEditNote)).toISOString())))) : null),
+              e('div', { className: 'dsh-notes-sched-next' + (schedForm && schedForm.err ? ' warn' : '') }, schedForm && schedForm.err ? ('⚠ ' + schedForm.err) : tt('disp.nextTrigger', { time: fmtDT(new Date(schedDeclNextMs(schedForm.decl, dispatchEditNote)).toISOString()) }))) : null),
           // 已有/新建会话切换：定时形态下隐藏（定时仅已有会话——新建会话无未来目标意义）
           schedOn ? null : e('div', { className: 'dsh-notes-dispatch-modes' },
-            e('button', { className: 'dsh-notes-dispatch-mode' + (dispatchMode === 'existing' ? ' on' : ''), onClick: () => setDispatchMode('existing') }, '已有会话'),
-            e('button', { className: 'dsh-notes-dispatch-mode' + (dispatchMode === 'new' ? ' on' : ''), onClick: () => setDispatchMode('new') }, '新建会话')),
+            e('button', { className: 'dsh-notes-dispatch-mode' + (dispatchMode === 'existing' ? ' on' : ''), onClick: () => setDispatchMode('existing') }, tt('disp.modeExisting')),
+            e('button', { className: 'dsh-notes-dispatch-mode' + (dispatchMode === 'new' ? ' on' : ''), onClick: () => setDispatchMode('new') }, tt('disp.modeNew'))),
           (dispatchMode === 'existing' || schedOn) ? e(React.Fragment, null,
             e('select', { className: 'dsh-notes-dispatch-select', value: dispatchSessWs, onChange: (ev) => { setDispatchSessWs(ev.target.value); setDispatchSessId('') } },
-              e('option', { value: '' }, '选择工作区…'),
+              e('option', { value: '' }, tt('disp.pickWs')),
               wsList.map(w => e('option', { key: w.id, value: w.title }, w.title))),
             e('select', { className: 'dsh-notes-dispatch-select', value: dispatchSessId, onChange: (ev) => setDispatchSessId(ev.target.value), disabled: !dispatchSessWs },
-              e('option', { value: '' }, dispatchSessWs ? ((dispatchSessByWs[dispatchSessWs] || []).length ? '选择会话…' : '该工作区暂无会话') : '先选工作区'),
-              (dispatchSessByWs[dispatchSessWs] || []).map(s => e('option', { key: s.id, value: s.id, disabled: !!s.pending }, s.pending ? (s.short + ' · 标题加载中…') : (s.name + (s.live ? '' : '（未打开）'))))))
+              e('option', { value: '' }, dispatchSessWs ? ((dispatchSessByWs[dispatchSessWs] || []).length ? tt('disp.pickSess') : tt('disp.noSessInWs')) : tt('disp.pickWsFirst')),
+              (dispatchSessByWs[dispatchSessWs] || []).map(s => e('option', { key: s.id, value: s.id, disabled: !!s.pending }, s.pending ? tt('meta.scopePending', { short: s.short }) : (s.name + (s.live ? '' : tt('disp.notLiveSuffix')))))))
           : e('select', { className: 'dsh-notes-dispatch-select', value: dispatchWsId, onChange: (ev) => setDispatchWsId(ev.target.value) },
-              e('option', { value: '' }, '选择工作区（在其下新建会话）…'),
+              e('option', { value: '' }, tt('disp.pickWsNew')),
               wsList.map(w => e('option', { key: w.id, value: w.id }, w.title))),
           error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
           e('div', { className: 'dsh-notes-dispatch-actions' },
-            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setDispatchOpen(false) }, '取消'),
-            e('button', { className: 'dsh-notes-dispatch-ok', onClick: doDispatchConfirm, disabled: dispatching }, dispatching ? (dispatchEditId ? '保存中…' : schedOn ? '排定中…' : '派发中…') : (dispatchEditId ? '保存排定' : '派发')))))
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setDispatchOpen(false) }, tt('common.cancel')),
+            e('button', { className: 'dsh-notes-dispatch-ok', onClick: doDispatchConfirm, disabled: dispatching }, dispatching ? (dispatchEditId ? tt('settings.saving') : schedOn ? tt('disp.savingSched') : tt('disp.dispatching')) : (dispatchEditId ? tt('disp.saveSched') : tt('disp.ok'))))))
       : null
     }

@@ -28,10 +28,10 @@ module.exports = {
     // ③ 低层写通道：全部 settings-set 走 settingsSetQuiet（在途计数 + 镜像跟进；不逐键 toast）
     assert(clientSrc.indexOf('function settingsSetQuiet(patch)') >= 0 && clientSrc.indexOf("host.call('notes-settings-set', patch)") >= 0, 'settingsSetQuiet 低层写通道（零新 RPC）')
     // ④ 保存：校验中止（改动保留）→ 兜底 flush → toast「设置已保存」→ 快照跟进
-    assert(clientSrc.indexOf('function saveSettingsAll()') >= 0 && clientSrc.indexOf("showToast('设置已保存')") >= 0, '显式保存 + toast 文案「设置已保存」')
+    assert(clientSrc.indexOf('function saveSettingsAll()') >= 0 && clientSrc.indexOf("showToast(t('settings.savedAll'))") >= 0, '显式保存 + toast 文案「设置已保存」（覆盖卡 C 起走 t() 字典）')
     assert(clientSrc.indexOf('const SET_NUM_FIELDS = [') >= 0, '数值字段登记表（校验/flush/还原同口径）')
     // ⑤ 还原：回滚打开时快照逐键恢复 + UI 复位 + toast
-    assert(clientSrc.indexOf('function restoreSettingsAll()') >= 0 && clientSrc.indexOf("showToast('已还原：设置回滚到打开时的状态')") >= 0, '还原回滚 + toast 文案')
+    assert(clientSrc.indexOf('function restoreSettingsAll()') >= 0 && clientSrc.indexOf("showToast(t('settings.restoredAll'))") >= 0, '还原回滚 + toast 文案（覆盖卡 C 起走 t() 字典）')
     // ⑥ 关闭兜底 flush：✕/Esc/点遮罩同口径（先 flush 再关）
     assert(clientSrc.indexOf('function flushSettingsPending()') >= 0 && clientSrc.indexOf('function closeSettings() { flushSettingsPending(); setSettingsOpen(false) }') >= 0, '兜底 flush + 统一关闭入口')
     assert(clientSrc.indexOf('onClick: closeSettings') >= 0, '✕ onClick=closeSettings')
@@ -80,10 +80,13 @@ module.exports = {
       // ③ 输入即刷新按钮态（oninput 只刷新不落盘）；存量失焦/Enter 即存 onchange 链路保留
       assert(s.indexOf('el.oninput = setDirtyRefresh') >= 0, label + ' oninput dirty 刷新')
       assert(s.indexOf("$('setStale').onchange = function ()") >= 0 && s.indexOf('saveSettings({ staleDays: parseInt(v, 10) }') >= 0, label + ' 存量失焦即存保留')
-      // ④ 保存：校验中止 + 串行兜底 flush + toast「设置已保存」+ 快照跟进（dirty 复位）
-      assert(s.indexOf('function doSettingsSaveAll()') >= 0 && s.indexOf("toast('设置已保存');") >= 0 && s.indexOf('setSnap = setSnapFromControls();') >= 0, label + ' 显式保存 + toast 文案 + 快照跟进')
-      // ⑤ 还原：逐键回滚打开时快照 + UI 复位 + toast
-      assert(s.indexOf('function doSettingsRestoreAll()') >= 0 && s.indexOf("toast('已还原：设置回滚到打开时的状态');") >= 0, label + ' 还原回滚 + toast 文案')
+      // ④ 保存：校验中止 + 串行兜底 flush + toast「设置已保存」+ 快照跟进（dirty 复位）；
+      //    文案口径：app 覆盖卡 C 起走 t() 字典，原型不双语红线保留内联中文
+      assert(s.indexOf('function doSettingsSaveAll()') >= 0 && s.indexOf('setSnap = setSnapFromControls();') >= 0, label + ' 显式保存 + 快照跟进')
+      assert(s.indexOf("toast(t('settings.savedAll'));") >= 0 || s.indexOf("toast('设置已保存');") >= 0, label + ' 保存 toast（app=t() 字典 / 原型=内联中文）')
+      // ⑤ 还原：逐键回滚打开时快照 + UI 复位 + toast（文案口径同上）
+      assert(s.indexOf('function doSettingsRestoreAll()') >= 0, label + ' 还原回滚函数')
+      assert(s.indexOf("toast(t('settings.restoredAll'));") >= 0 || s.indexOf("toast('已还原：设置回滚到打开时的状态');") >= 0, label + ' 还原 toast（app=t() 字典 / 原型=内联中文）')
       // ⑥ 低层写通道 + 关闭兜底 flush（✕/Esc/点遮罩同口径，modalCloseHook 挂接）
       assert(s.indexOf('function settingsSetQuiet(patch)') >= 0 && s.indexOf('function flushSettingsPending()') >= 0, label + ' settingsSetQuiet + flushSettingsPending')
       assert(s.indexOf("rpc('notes-settings-set', patch)") >= 0, label + ' 零新 RPC（复用 settings-set）')

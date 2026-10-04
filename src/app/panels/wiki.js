@@ -21,10 +21,10 @@ function ensureWikiIndex() {
     if (res && res.notes) res.notes.forEach(function (r) { wikiBodies[r.id] = { body: r.body || '', updatedAt: r.updatedAt || '' }; got++ });
     renderTree(); renderBacklinks();
     var failed = stale.length - got;   /* host missing 口径：已删/墓碑/不存在条目不计入 got */
-    if (failed) toast('双链索引失败 ' + failed + ' 条：反向链接/行尾标记不完整（下次刷新自动重试）')
+    if (failed) toast(t('wiki.idxFailedPartial', { n: failed }))
   }).catch(function (e) {
     if (gen !== wikiIdxGen) return;
-    toast('双链索引失败 ' + stale.length + ' 条：' + (e && e.message || e) + '（下次刷新自动重试）')
+    toast(t('wiki.idxFailed', { n: stale.length, msg: e && e.message || e }))
   });
 }
 /* 行尾双链标记：缓存正文优先，索引未到时 preview（host slim 前 200 字符）兜底 */
@@ -32,7 +32,7 @@ function hasWikiLinks(n) { var c = wikiBodies[n.id]; return extractWikiTargets(c
 /* 双链跳转：解析 → 选中；目标被当前视图/筛选中心条件藏掉时退回「全部」（搜索词不动，保留用户上下文） */
 function jumpToWikiTarget(target) {
   var n = resolveWikiTarget(target);
-  if (!n) { toast('未找到链接目标：' + target); return; }
+  if (!n) { toast(t('wiki.targetNotFound', { target: target })); return; }
   var vis = (view.type === 'all' || (view.type === 'folder' && (n.folder || '') === view.id) || (view.type === 'topic' && (n.topic || '') === view.id))
     && matchFilters(n, filters);
   if (!vis) { view = { type: 'all', id: '' }; clearFilters(); maybeReloadForLogs(); }
@@ -51,12 +51,13 @@ function renderBacklinks() {
     if (!c) return;                   // 索引未到的条目暂不计（标题行已提示索引中）
     if (wikiLinksTo(c.body, edNote.id, edNote.title || '')) bl.push(n);
   });
-  var h = '<div class="bl-t">' + icon('i-link', 11) + ' 反向链接' + (warm ? '（' + bl.length + '）' : '（索引中…）') + '</div>';
+  /* i18n 覆盖卡F：反向链接标题/条目 tooltip/空态复用 B 卡 editor.backlinks* 字典 + A 卡 tree.untitled（禁重复建别名） */
+  var h = '<div class="bl-t">' + icon('i-link', 11) + ' ' + t('editor.backlinks') + (warm ? t('editor.backlinksCount', { n: bl.length }) : t('editor.backlinksWarming')) + '</div>';
   if (bl.length) {
     h += '<div class="bl-list">' + bl.map(function (n) {
-      return '<span class="bl-item" data-bl="' + n.id + '" title="跳转到「' + esc(n.title || '无标题') + '」"><span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>' + esc(n.title || '无标题') + '</span>';
+      return '<span class="bl-item" data-bl="' + n.id + '" title="' + t('editor.backlinkJumpTip', { name: esc(n.title || t('tree.untitled')) }) + '"><span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>' + esc(n.title || t('tree.untitled')) + '</span>';
     }).join('') + '</div>';
-  } else if (warm) { h += '<div class="bl-empty">暂无其他笔记用 [[…]] 链接到这里</div>'; }
+  } else if (warm) { h += '<div class="bl-empty">' + t('editor.backlinksEmpty') + '</div>'; }
   host.innerHTML = h;
   host.querySelectorAll('.bl-item').forEach(function (el) { el.addEventListener('click', function () { jumpToWikiTarget(el.getAttribute('data-bl')); }); });
 }
@@ -70,7 +71,7 @@ function loadFolders() {
       Object.keys(foldOpen).forEach(function (k) { if (!folders.some(function (f) { return f.id === k })) { delete foldOpen[k]; changed = true } });
       if (changed) saveFoldOpen();
     }
-  }).catch(function (e) { toast('文件夹加载失败，显示本地缓存：' + (e && e.message || e)) })   /* 失败非阻断：树保持旧值但用户可见 */
+  }).catch(function (e) { toast(t('fld.loadFailed', { msg: e && e.message || e })) })   /* 失败非阻断：树保持旧值但用户可见 */
 }
 // 注入范围浮层会话源：titlesPending 时 1.5s 重拉直到补齐（0.1.7 首屏提速契约）
 var sessPullTimer = null;
@@ -82,6 +83,6 @@ function pullSessions() {
     sessPending = res.titlesPending && Array.isArray(res.pendingSessions) ? res.pendingSessions : [];
     if (scopeOpen) renderScopePanel();
     if (res.titlesPending) sessPullTimer = setTimeout(pullSessions, 1500);
-  }).catch(function (e) { toast('会话清单加载失败：' + (e && e.message || e)) })   /* 失败非阻断：浮层保持旧值但用户可见；重试定时器仅在成功链路上挂，catch 不构成轮询刷 toast */
+  }).catch(function (e) { toast(t('mem.sessLoadFailed', { msg: e && e.message || e })) })   /* 失败非阻断：浮层保持旧值但用户可见；重试定时器仅在成功链路上挂，catch 不构成轮询刷 toast（i18n 覆盖卡F：复用 D 卡 mem.sessLoadFailed） */
 }
 

@@ -1,3 +1,5 @@
+[English](README.en.md) | **中文**
+
 <div align="center">
 
 # 📝 dsh-notes-plugin
@@ -82,12 +84,13 @@ dsh plugin --profile web remove dsh-notes-plugin       # 卸载（不删数据�
 - **虚拟文件夹（支持嵌套）**：侧栏笔记树按「📌 置顶 / 📁 文件夹树 / 未分类笔记」组织；文件夹可嵌套（右键「新建子文件夹」或拖拽换父，深度上限 `maxFolderDepth` 默认 3 层、可调/0 不限，cycle 自动拒绝）；文件夹视图与计数按**递归子树**口径（点父文件夹可见全部子孙内容）；删除文件夹=连子删除（confirm 明示「N 个子文件夹 + M 条笔记移入回收站（可恢复）；文件夹结构不可恢复」，恢复的笔记原文件夹已不存在时自动落未分类）；右键可重命名 / 上移下移（同级内换位）/ 移回根级；清单持久化在 `folders.json`（`parent` 字段，存量零迁移），选中态存 `localStorage`
 - **快照版本历史**：每次保存前自动快照到 `.history/<id>/`（分层保留：1 小时内每版 / 当天每小时 / 7 天内每天，单笔记 20 版上限 + 全局 50MB LRU）；详情区「历史」面板列出版本（时间/字节数）、点开只读预览、一键恢复——恢复前自动为当前版本落快照，**恢复本身可撤销**（再退回去即可）
 - **面板 UI v2**：两栏布局——左侧笔记树（置顶 / 文件夹 / 未分类主题分组，「主题过滤」跨文件夹全局生效），右侧通栏编辑器（标题 + 主题/标签/类型/状态 meta chips 直改）；SVG 图标库 + DSH 设计 token 配色，明暗主题自适应；快速记录卡片 v2（选区预览 + 复制/记录/取消，复制成功即关卡片）
+- **中英文双语界面**：设置卡「语言」项切换 中文 / English（localStorage 持久化，默认中文，切换即全量重渲染）；运行时扁平字典 `src/i18n/zh.js` + `en.js`（双端共源）+ `t(key, {name})` 插值，缺 key 回退中文原文、永不裸 key；check 常驻 i18n 守卫（zh/en key 集一致 + 重复 key 防线 + 字典↔代码引用双向覆盖 + 产物字典抽查），报告尾部输出「未覆盖清单」提示内联中文残留（只提示不阻塞）；host 端 RPC 报错文案本期保持中文
 - **上下文注入（双角色）**：详情区「⚡ 关闭 / 约定 / 资料」三态分段控件（独立字段 `inject` + `injectRole`，不依赖标签）——约定=须遵守的行为规则（每回合注入「用户约定」桶），资料=事实性补充信息（「参考资料」桶，与当前任务相关时按需取用）；范围浮层多选——默认注入所有会话，勾选具体会话则仅限这些会话（会话按工作区分组、显示会话名，自动排除子 agent 与已归档会话）
 - **目录索引注入（recall 通道）**：整篇注入之外的轻量通道——一行一条目录（`- [id] 标题 (类型, 主题)`）自动注入系统提示（`order 131`，紧邻约定之后）并附规划轻推，agent 规划期即知库里有什么；已了结（resolved/superseded）与整篇注入已命中的笔记自动排除，40 条封顶；单条以前沿 `recall: false` 退出目录，设置卡片总开关（`catalogEnabled`）一键全关
 - **注入管理面板**：设置卡片「注入管理 → 管理…」——全库注入三态总览（约定 N / 资料 M / 未注入 K 统计 chips 点击即过滤 + 250ms 防抖搜索）；行内三态 segmented 直改（语义与详情区三态分段控件完全一致）；多选批量「设为约定 / 设为资料 / 关闭注入」（confirm 确认，单条失败计数不中断）；注入中在前（约定 > 资料），组内按更新时间降序；日志隐身硬禁（三态档位禁用 + 批量不可选），敏感笔记行内提示注入自动脱敏，曾注入徽章展示粘性标记
 - **设置卡交互反馈**：标题栏 ✕ 常驻关闭 + dirty 态「保存」（显式确认：全部数值字段先校验，串行落盘「控件值 ≠ 已落盘」的键）/「还原」（回滚到打开时快照）；✕/Esc/点遮罩关闭时有未落盘改动自动兜底 flush 并 toast 确认；原有选择即存 / 失焦即存的自动保存不变
 - **任务派发**：待办一键派发到活跃会话或新建会话，可补充具体要求；派发记录（会话名/要求/时间/是否完成）落在笔记的 `dispatches` 字段里，正文不被污染；目标会话系统提示持续注入该待办直到标记完成；DSH 0.1.7 适配——活跃会话列表走会话元数据缓存（未命中先返回占位 + `titlesPending`，前端 1.5s 轮询补齐），加载从 128s 降到 0.2s
-- **定时派发（约定即调度）**：`contractType: dispatch-schedule` 约定笔记 + front-matter `schedule` 结构化声明（`{at|every, target, action, enabled, anchor?, dow?}`，禁自然语言解析）——host 常驻 30s cron tick（`unref` 不挂进程、重载防双跑、启动补评估），到期复用派发全链路自动派发（派发卡来源标注「定时调度 @标题」，回执走既有链路自动闭环）；状态三层 = front-matter `schedule.lastFiredAt/lastRun/lastError`（机器读写）+ 既有 `dispatches` 历史数组；幂等生命线 = `lastFiredAt` 先落盘再派发，单次 `at` 停机错过启动补发一次、轮询错过对齐下周期不追赶；锚定时刻（周期模式可选 `anchor: 'HH:MM'` 本地时刻 + 每周 `dow: 0-6`）：首触 = 下一个本地锚定时刻，触发序列钉死该时刻不随创建/触发时刻漂移，无 `anchor` 的存量声明保持纯间隔语义（零迁移）；写入红线：`at` 必须未来 / 轮询间隔 ≥5min / `anchor` 严格 HH:MM 且需整天周期 / `dow` 0-6 且仅每周 / 目标会话存活 / 未知字段拒绝
+- **定时派发（约定即调度）**：`contractType: dispatch-schedule` 约定笔记 + front-matter `schedule` 结构化声明（`{at|every, target, action, enabled, anchor?, dow?}`，禁自然语言解析）——host 常驻 30s cron tick（`unref` 不挂进程、重载防双跑、启动补评估），到期复用派发全链路自动派发（派发卡来源标注「定时调度 @标题」，回执走既有链路自动闭环）；状态三层 = front-matter `schedule.lastFiredAt/lastRun/lastError`（机器读写）+ 既有 `dispatches` 历史数组；**执行记录独立笔记（runLog 软链）**：首条回执时懒创建「定时 @标题 · 执行记录」笔记（kind=note 可见可检索，folder/topic 随约定），约定 front-matter `schedule.runLog` 存其 id 软链、详情计划块出「执行记录 ↗」跳转——约定正文一字不动（正文=派发载荷，历史追加会污染下次派发上下文），条目倒序 ≤50 裁尾、同 msgId 幂等去重，删除约定不级联删执行记录（留档）；幂等生命线 = `lastFiredAt` 先落盘再派发，单次 `at` 停机错过启动补发一次、轮询错过对齐下周期不追赶；锚定时刻（周期模式可选 `anchor: 'HH:MM'` 本地时刻 + 每周 `dow: 0-6`）：首触 = 下一个本地锚定时刻，触发序列钉死该时刻不随创建/触发时刻漂移，无 `anchor` 的存量声明保持纯间隔语义（零迁移）；写入红线：`at` 必须未来 / 轮询间隔 ≥5min / `anchor` 严格 HH:MM 且需整天周期 / `dow` 0-6 且仅每周 / 目标会话存活 / `runLog` 须为存在的笔记 id 或空 / 未知字段拒绝
 - **检索**：面板搜索框（本地即时过滤 + 250ms 防抖全文兜底，取并集）、筛选中心（「筛选(N)」按钮 + 分组 popover——状态组 置顶/已注入/曾注入/敏感 与类型组五 kind 均多选，组内 OR 跨组 AND，激活条件 chips 可单独移除，曾注入按 slim 字段 feature-detect；排序独立控件 时间/引用/相关度，条件与排序持久化记忆）、`note_search` 工具
 - **键盘流**：`Ctrl+K` 搜索（框内 `↓` 直达列表首条命中，保留过滤上下文）、`Alt+N` 新建（`Ctrl+N` 是浏览器保留键「新建窗口」已弃用）、`j/k`/`↑↓` 移动焦点行（可见高亮）、`Enter` 打开、`Esc` 分层（关浮层 → 清搜索并还焦列表 → 关面板）；输入框内不抢键；浮动面板与全窗口页（`/dsh-notes-app`）同款
 - **归档整理（显式）**：标题栏「归档」先 dry-run 预览（`notes-archive-preview`，含引导气泡），勾选速记组后才合并（`notes-archive` 白名单组，host 先全量校验再动手；toast 可撤销一次 `notes-archive-undo`）；手动笔记已摘出自动分组（防误并），用列表「选择」多选合并；原笔记软删除（`.bak` 备份）可恢复
@@ -170,7 +173,7 @@ updatedAt: ISO-8601
 sessionId: 来源会话
 cwd: 来源工作目录
 contractType: ""        # 契约分型（"" = 普通笔记；dispatch-schedule = 定时派发约定；其余值系统内部流程管理）
-schedule: {...}        # 定时派发声明 + 机器状态（仅 contractType=dispatch-schedule 落盘，JSON 单行：{at|every, target, action, enabled, anchor?, dow?, lastFiredAt?, lastRun?, lastError?}；anchor='HH:MM' 锚定本地时刻，dow=0-6 每周星期几）
+schedule: {...}        # 定时派发声明 + 机器状态（仅 contractType=dispatch-schedule 落盘，JSON 单行：{at|every, target, action, enabled, anchor?, dow?, lastFiredAt?, lastRun?, lastError?, runLog?}；anchor='HH:MM' 锚定本地时刻，dow=0-6 每周星期几；runLog=执行记录独立笔记 id 软链，首条回执时懒创建回写）
 dispatches: []         # 派发历史（会话/要求/时间/done）
 mergedFrom: []         # 归档合并来源 id
 archivedAt: ""
@@ -198,7 +201,7 @@ deleted: "false"       # 软删除标记
 node scripts/build-dist.cjs           # 改完 src/**（client/host/app/shared/styles）后一次性刷新四产物：lib/client.js + lib/styles.css + app.html + index.mjs
 node --check packages/dsh-notes-plugin/index.mjs
 node --check packages/dsh-notes-plugin/lib/client.js
-node check.js                         # 587 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录注入 + 导入导出 + 半独立页 + 双模式编辑器 + 敏感脱敏 + 注入增强 + 遥测/双链 + 快照式历史引擎 + 模块化结构契约）
+node check.js                         # 736 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录注入 + 导入导出 + 半独立页 + 双模式编辑器 + 敏感脱敏 + 注入增强 + 遥测/双链 + 快照式历史引擎 + 模块化结构契约 + README.en 双语 + i18n 守卫）
 ```
 
 详见 [DEVELOPMENT.md](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/DEVELOPMENT.md)。

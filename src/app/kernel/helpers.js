@@ -62,19 +62,20 @@ function schedAnchorNextMs(anchor, dow, ivMs, baseMs, fired) {
   if (fired) { var f = new Date(baseMs + ivMs); return new Date(f.getFullYear(), f.getMonth(), f.getDate()).getTime() + off }
   return (day0 + off > baseMs ? day0 : day0 + 86400000) + off;
 }
-/* 频率人话：仅一次 <时间> / 每天 / 每周 / 每 N 天（锚定时刻声明带时刻后缀：每天 09:00 / 每周一 09:00 / 每 3 天 09:00）；非整天间隔（front-matter 裸编辑旁路值）兜底 每 N 小时/分钟/ms */
+/* 频率人话：仅一次 <时间> / 每天 / 每周 / 每 N 天（锚定时刻声明带时刻后缀：每天 09:00 / 每周一 09:00 / 每 3 天 09:00）；非整天间隔（front-matter 裸编辑旁路值）兜底 每 N 小时/分钟/ms
+   i18n 覆盖卡D：文案走 t() 字典 common.sched*（跨表面复用——注入管理 + 详情计划块；client kernel/format.js 同口径镜像）；星期名经 common.dowNames 管道分隔取值（en 多字符名 charAt 不可取） */
 function schedFreqLabel(s) {
   if (!s) return '';
-  if (s.at) return '仅一次 ' + fmtDT(s.at);
+  if (s.at) return t('common.schedOnce', { time: fmtDT(s.at) });
   var ms = schedEveryMs(s.every);
-  if (ms === null) return '非法间隔';
+  if (ms === null) return t('common.schedInvalid');
   var tail = s.anchor ? ' ' + s.anchor : '';   /* 锚定时刻（notes-034-sched-time）：周期 + 本地时刻 */
-  if (ms === 86400000) return '每天' + tail;
-  if (ms === 604800000) return (typeof s.dow === 'number' ? '每周' + '日一二三四五六'.charAt(s.dow) : '每周') + tail;
-  if (ms % 86400000 === 0) return '每 ' + ms / 86400000 + ' 天' + tail;
-  if (ms % 3600000 === 0) return '每 ' + ms / 3600000 + ' 小时';
-  if (ms % 60000 === 0) return '每 ' + ms / 60000 + ' 分钟';
-  return '每 ' + ms + 'ms';
+  if (ms === 86400000) return t('common.schedDaily') + tail;
+  if (ms === 604800000) return (typeof s.dow === 'number' ? t('common.schedWeeklyDow', { dow: t('common.dowNames').split('|')[s.dow] || '' }) : t('common.schedWeekly')) + tail;
+  if (ms % 86400000 === 0) return t('common.schedNDays', { n: ms / 86400000 }) + tail;
+  if (ms % 3600000 === 0) return t('common.schedNHours', { n: ms / 3600000 });
+  if (ms % 60000 === 0) return t('common.schedNMinutes', { n: ms / 60000 });
+  return t('common.schedNMs', { n: ms });
 }
 /* 下次触发毫秒（与 host schedDueAt 锚点同口径：轮询 = lastFiredAt || createdAt + 间隔；单次 = at 本身；
    锚定时刻声明（notes-034-sched-time）= 锚定序列下一时刻）；非法 → null */
@@ -104,4 +105,26 @@ function toast(m, act) {
 }
 function loadFoldOpen() { try { var v = localStorage.getItem('dsh-notes-app-foldopen'); return v ? JSON.parse(v) : {} } catch (e) { return {} } }
 function saveFoldOpen() { try { localStorage.setItem('dsh-notes-app-foldopen', JSON.stringify(foldOpen)) } catch (e) {} }
+/* ==== i18n-mech BEGIN ====（notes-042-i18n-mech：字典 + t() + 语言态——机制卡，纯机制不改现有文案）
+   字典 src/i18n/zh.js+en.js（@i18n/ 前缀经 manifest 纳入，先于本文件）；语言态 localStorage 'dsh-notes-lang'（'zh' 缺省）。
+   t(key,vars)：{name} 插值（禁拼接）；回退链 = 当前语言字典 → zh 全量基准字典 → key 本身（红线：永不裸 key，仅 zh 也缺才兜底露 key）。
+   setLang(l)：校验 + 持久化 + 全量 render（kernel/bootstrap.js 收敛的 render 入口；覆盖卡逐表面搬串后切换即时生效）。
+   （置于内核块外：内核三端逐字节一致断言不覆盖本区块） */
+var NOTES_LANG_KEY = 'dsh-notes-lang'
+var NOTES_LANG = (function () { try { var v = localStorage.getItem(NOTES_LANG_KEY); return v === 'en' ? 'en' : 'zh' } catch (e) { return 'zh' } })()
+function t(key, vars) {
+  var dict = NOTES_LANG === 'en' ? I18N_EN : I18N_ZH
+  var s = dict[key]
+  if (s == null) s = I18N_ZH[key]
+  if (s == null) return key
+  if (vars) s = s.replace(/\{(\w+)\}/g, function (m, n) { return vars[n] != null ? String(vars[n]) : m })
+  return s
+}
+function setLang(l) {
+  if (l !== 'zh' && l !== 'en') return
+  NOTES_LANG = l
+  try { localStorage.setItem(NOTES_LANG_KEY, l) } catch (e) {}
+  render()
+}
+/* ==== i18n-mech END ==== */
 

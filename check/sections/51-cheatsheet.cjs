@@ -34,7 +34,7 @@ module.exports = {
     assert(clientSrc.indexOf('if (ctxMenuRef.current || cheatsheetOpenRef.current) return   // 右键菜单/速查表打开时暂停列表导航/打开') >= 0, '列表导航暂停守卫')
     // ⑤ 装配与入口：index.js 挂载 + 设置卡行 + 帮助气泡指引
     assert(clientSrc.indexOf('e(CheatsheetModal)') >= 0, 'panel/index.js 挂载 CheatsheetModal')
-    assert(clientSrc.indexOf("{ key: 'cheatsheet', label: '键盘快捷键'") >= 0 && clientSrc.indexOf('onClick: openCheatsheet') >= 0, '设置卡「键盘快捷键」行入口')
+    assert(clientSrc.indexOf("{ key: 'cheatsheet', label: tt('settings.cheatsheet')") >= 0 && clientSrc.indexOf('onClick: openCheatsheet') >= 0, '设置卡「键盘快捷键」行入口（覆盖卡 C 起 label 走 tt() 字典）')
     assert(clientSrc.indexOf('唤起快捷键速查表') >= 0, '帮助气泡 ? 指引')
     // ⑥ 样式（styles.css + 发布包）
     const css = fsNative.readFileSync(SRC_STYLES, 'utf8')
@@ -52,10 +52,13 @@ module.exports = {
 
   // ===== 51.2 键位逐键核对（速查表内容 ⇄ keyboard.js 实现双向口径）=====
   await t('速查表键位与 R-4 实现逐键核对（client）：9 行全生效键位 + Ctrl+N→Alt+N 标注 + 无虚构键位', () => {
-    // ① 表内九行（与 keyboard.js 分支一一对应）
-    const rows = [['Ctrl+K', '聚焦搜索框'], ['Alt+N', '新建笔记'], ['Ctrl+/', '编辑器 源码 ⇄ 富文本'], ['j / ↓', '列表焦点下移一行'], ['k / ↑', '列表焦点上移一行'], ['Enter', '打开焦点笔记'], ['↓', '搜索框内：直达列表首行'], ['?', '唤起 / 关闭本速查表'], ['Esc', '分层关闭']]
+    // ① 表内九行（与 keyboard.js 分支一一对应；i18n 覆盖卡E：说明列 = 字典 key（cheat.*），zh 原串随字典内嵌）
+    const rows = [['Ctrl+K', 'cheat.kSearch'], ['Alt+N', 'cheat.kNew'], ['Ctrl+/', 'cheat.kMode'], ['j / ↓', 'cheat.kDown'], ['k / ↑', 'cheat.kUp'], ['Enter', 'cheat.kOpen'], ['↓', 'cheat.kSearchDown'], ['?', 'cheat.kSelf'], ['Esc', 'cheat.kEscClient']]
     for (const r of rows) {
-      assert(clientSrc.indexOf("['" + r[0] + "', '" + r[1]) >= 0, '速查表缺行：' + r[0] + '（' + r[1] + '…）')
+      assert(clientSrc.indexOf("['" + r[0] + "', '" + r[1] + "']") >= 0, '速查表缺行：' + r[0] + '（' + r[1] + '）')
+    }
+    for (const zh of ['聚焦搜索框', '列表焦点下移一行', '列表焦点上移一行', '打开焦点笔记', '唤起 / 关闭本速查表', '分层关闭']) {
+      assert(clientSrc.indexOf(zh) >= 0, '速查表说明 zh 原串字典内嵌：' + zh)
     }
     // ② 每行键位在实现里真实存在（逐键核对锚点，防文档与实现漂移）
     assert(/mod && \(ev\.key === 'k' \|\| ev\.key === 'K'\)\) \{ ev\.preventDefault\(\); if \(searchInputRef\.current\) searchInputRef\.current\.focus\(\); return \}/.test(clientSrc), '实现锚点：Ctrl+K 聚焦搜索')
@@ -92,12 +95,37 @@ module.exports = {
       // ⑤ 样式
       for (const cls of ['.cs-list{', '.cs-row{', '.cs-keys{', '.cs-desc{']) assert(s.indexOf(cls) >= 0, label + ' 缺速查表样式 ' + cls)
       // ⑥ 键位行（与 client 同一核对口径：九行 + Ctrl+N 标注；Esc 末段为页面口径——无关面板层）
-      for (const k of ["['Ctrl+K', '聚焦搜索框']", "['Alt+N', '新建笔记（Ctrl+N 是浏览器保留键「新建窗口」，页面拿不到，故改用 Alt+N）']", "['Enter', '打开焦点笔记']", "['?', '唤起 / 关闭本速查表']", "['Esc', '分层关闭：弹层 → 排序/筛选/范围浮层 → 选区卡/右键菜单 → 退出多选 → 清搜索并还焦列表']"]) {
-        assert(s.indexOf(k) >= 0, label + ' 速查表缺行：' + k)
+      // i18n 覆盖卡E：app 端说明列 = 字典 key（cheat.*，zh 原串随字典内嵌），原型不双语红线保留中文原文（分侧断言）
+      if (label === 'app.html') {
+        for (const k of ["['Ctrl+K', 'cheat.kSearch']", "['Alt+N', 'cheat.kNew']", "['Enter', 'cheat.kOpen']", "['?', 'cheat.kSelf']", "['Esc', 'cheat.kEsc']"]) {
+          assert(s.indexOf(k) >= 0, label + ' 速查表缺行（字典 key 形态）：' + k)
+        }
+        assert(s.indexOf("'cheat.kNew': '新建笔记（Ctrl+N 是浏览器保留键「新建窗口」，页面拿不到，故改用 Alt+N）'") >= 0, label + ' Ctrl+N→Alt+N 标注 zh 原串字典内嵌')
+        assert(s.indexOf("'cheat.kEsc': '分层关闭：弹层 → 排序/筛选/范围浮层 → 选区卡/右键菜单 → 退出多选 → 清搜索并还焦列表'") >= 0, label + ' Esc 行 zh 原串字典内嵌')
+      } else {
+        for (const k of ["['Ctrl+K', '聚焦搜索框']", "['Alt+N', '新建笔记（Ctrl+N 是浏览器保留键「新建窗口」，页面拿不到，故改用 Alt+N）']", "['Enter', '打开焦点笔记']", "['?', '唤起 / 关闭本速查表']", "['Esc', '分层关闭：弹层 → 排序/筛选/范围浮层 → 选区卡/右键菜单 → 退出多选 → 清搜索并还焦列表']"]) {
+          assert(s.indexOf(k) >= 0, label + ' 速查表缺行：' + k)
+        }
       }
     }
-    // ⑦ openCheatsheet 双端逐字节一致（同款 DOM 实现，同节 50 helper 口径）
-    assert.strictEqual(grabFn(appSrc, 'openCheatsheet', 'app.html'), grabFn(protoV2Src, 'openCheatsheet', '原型'), 'app.html ⇄ 原型 openCheatsheet 逐字节一致')
+    // ⑦ openCheatsheet 双端渲染等价（i18n 覆盖卡E：app 走 t() 字典，逐字节一致断言升级为 zh 态渲染产物逐字节一致——同 50.1 schedFreqLabel 先例）：
+    //    双端函数体 + CHEATSHEET_ROWS 提取 eval（t 桩接真 zh 字典），zh 态渲染 html 逐字节一致 = 文案/结构双端同源
+    {
+      const zhSrc51 = fsNative.readFileSync(path.join(DIR, 'src', 'i18n', 'zh.js'), 'utf8')
+      const tFn51 = new Function(zhSrc51 + '\nreturn function t(k, vars){ var s = I18N_ZH[k]; if (s == null) return k; if (vars) s = s.replace(/\\{(\\w+)\\}/g, function (m, n) { return vars[n] != null ? String(vars[n]) : m }); return s }')()
+      const renderCs = (src, tag) => {
+        const fnSrc = grabFn(src, 'openCheatsheet', tag)
+        const rowsDecl = src.match(/var CHEATSHEET_ROWS = \[[\s\S]*?\n\];/)
+        assert(rowsDecl, tag + ' CHEATSHEET_ROWS 声明存在')
+        const cap = { html: '' }
+        const rows = new Function('return (' + rowsDecl[0].replace(/^var CHEATSHEET_ROWS = /, '').replace(/;\s*$/, '') + ')')()
+        new Function('openModal', 'icon', 'esc', '$', 't', 'CHEATSHEET_ROWS', 'closeModalFlushed', fnSrc + '\nopenCheatsheet()')((h) => { cap.html = h }, () => '<svg/>', (x) => String(x), (id) => { if (id === 'csClose') return { set onclick(f) {} }; return null }, tFn51, rows, () => {})
+        return cap.html
+      }
+      const htmlApp = renderCs(appSrc, 'app.html'), htmlProto = renderCs(protoV2Src, '原型')
+      assert.strictEqual(htmlApp, htmlProto, 'app.html ⇄ 原型 openCheatsheet zh 态渲染产物逐字节一致（覆盖卡E 行为级等价）')
+      assert(htmlApp.indexOf('键盘快捷键') >= 0 && htmlApp.indexOf('聚焦搜索框') >= 0 && (htmlApp.match(/class="cs-row"/g) || []).length === 9, 'app zh 态渲染：标题 + 说明行 + 恰 9 行键帽行')
+    }
   })
 
   // ===== 51.4 行为级：原型 openCheatsheet 可 eval（渲染冒烟）=====

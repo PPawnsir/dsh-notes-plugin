@@ -60,8 +60,9 @@
             const list = (String(fsNode.readFileSync(manifestPath, 'utf8')).match(/'[^'\n]+'/g) || []).map(s => s.slice(1, -1))
             let src = ''
             for (const rel of list) {
-              if (rel.indexOf('@shared/') === 0) {
-                const shared = fsNode.readFileSync(path.join(LEGACY_PLUGIN_DIR, 'src', 'shared', rel.slice(8)), 'utf8')
+              if (rel.indexOf('@shared/') === 0 || rel.indexOf('@i18n/') === 0) {
+                // @i18n/ 条目 = src/i18n/ 双语字典（notes-042-i18n-mech），共源 + 基座缩进规则与 @shared/ 完全一致
+                const shared = fsNode.readFileSync(path.join(LEGACY_PLUGIN_DIR, 'src', rel.indexOf('@shared/') === 0 ? 'shared' : 'i18n', rel.slice(rel.indexOf('/') + 1)), 'utf8')
                 src += String(shared).replace(/\r\n/g, '\n').split('\n').map(l => l ? '    ' + l : l).join('\n')
               } else {
                 src += fsNode.readFileSync(path.join(LEGACY_PLUGIN_DIR, 'src', 'client', rel), 'utf8')

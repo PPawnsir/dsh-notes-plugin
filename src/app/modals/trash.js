@@ -7,10 +7,10 @@
 function openTrash() {
   trashState = { list: null, pending: '', sel: {}, preview: null };
   openModal(
-    '<div class="modal-t">' + icon('i-trash', 13) + ' 回收站<span class="sub">软删除的笔记 · 恢复可找回 · 彻底删除不可恢复</span></div>'
-    + '<div id="trashList"><div class="modal-hint">加载中…</div></div>'
+    '<div class="modal-t">' + icon('i-trash', 13) + ' ' + t('topbar.trash') + '<span class="sub">' + t('trash.sub') + '</span></div>'
+    + '<div id="trashList"><div class="modal-hint">' + t('common.loading') + '</div></div>'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
-    + '<div class="modal-acts"><button class="mbtn" id="trashClose">关闭</button></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="trashClose">' + t('common.close') + '</button></div>'
   );
   $('modal').classList.add('trash');
   $('trashClose').onclick = function () { if (!trashState || !trashState.pending) { closeModal(); trashState = null } };
@@ -27,31 +27,31 @@ function loadTrash() {
     Object.keys(trashState.sel).forEach(function (id) { if (!alive[id]) delete trashState.sel[id] });
     if (trashState.preview && !alive[trashState.preview.id]) trashState.preview = null;
     renderTrashList();
-  }).catch(function (e) { if (trashState) { trashState.list = []; renderTrashList(); modalErr('加载失败：' + (e && e.message || e)) } });
+  }).catch(function (e) { if (trashState) { trashState.list = []; renderTrashList(); modalErr(t('inj.loadFailed', { msg: e && e.message || e })) } });
 }
 /* 回收站列表（复用归档预览的列表样式 arch-list/arch-row）：批量条（全选 + 计数 + 批量恢复/彻底删除）+ 行 = 勾选 + 标题（点击预览）+ 删除时间 + 预览/恢复/彻底删除按钮 */
 function renderTrashList() {
   var host = $('trashList'); if (!host || !trashState) return;
   var list = trashState.list || [];
-  if (!list.length) { host.innerHTML = '<div class="modal-hint">回收站为空（删除的笔记会出现在这里）。</div>'; return }
+  if (!list.length) { host.innerHTML = '<div class="modal-hint">' + t('trash.empty') + '</div>'; return }
   var selCnt = Object.keys(trashState.sel).length;
   var allChecked = list.every(function (n) { return trashState.sel[n.id] });
   host.innerHTML = '<div class="trash-batch">'
-      + '<label class="trash-all"><input type="checkbox" id="trashAll"' + (allChecked ? ' checked' : '') + (trashState.pending ? ' disabled' : '') + '>全选</label>'
-      + '<span class="selcnt">' + ('已选 ' + selCnt + ' 条') + '</span>'
-      + '<button class="mbtn trash-act" id="trashRestoreBatch"' + (trashState.pending || selCnt < 1 ? ' disabled' : '') + '>恢复所选</button>'
-      + '<button class="mbtn danger trash-act" id="trashPurgeBatch"' + (trashState.pending || selCnt < 1 ? ' disabled' : '') + '>彻底删除所选</button></div>'
+      + '<label class="trash-all"><input type="checkbox" id="trashAll"' + (allChecked ? ' checked' : '') + (trashState.pending ? ' disabled' : '') + '>' + t('inj.selectAll') + '</label>'
+      + '<span class="selcnt">' + t('sel.selCount', { n: selCnt }) + '</span>'
+      + '<button class="mbtn trash-act" id="trashRestoreBatch"' + (trashState.pending || selCnt < 1 ? ' disabled' : '') + '>' + t('trash.restoreSel') + '</button>'
+      + '<button class="mbtn danger trash-act" id="trashPurgeBatch"' + (trashState.pending || selCnt < 1 ? ' disabled' : '') + '>' + t('trash.purgeSel') + '</button></div>'
     + '<div class="arch-list">'
     + list.map(function (n) {
         var pv = trashState.preview && trashState.preview.id === n.id ? trashState.preview : null;
         var html = '<div class="arch-row"><input type="checkbox" class="trash-check" data-id="' + esc(n.id) + '"' + (trashState.sel[n.id] ? ' checked' : '') + (trashState.pending ? ' disabled' : '') + '>'
-          + '<span class="ti trash-ti" data-id="' + esc(n.id) + '" title="' + esc(n.title || 'Untitled') + '（点击预览正文，只读）">' + esc(n.title || 'Untitled') + '</span>'
-          + '<span class="meta">删于 ' + esc(n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—') + '</span>'
-          + '<button class="mbtn trash-act" data-id="' + esc(n.id) + '" data-act="preview"' + (trashState.pending ? ' disabled' : '') + '>' + (pv ? '收起' : '预览') + '</button>'
-          + '<button class="mbtn trash-act" data-id="' + esc(n.id) + '" data-act="restore"' + (trashState.pending ? ' disabled' : '') + '>恢复</button>'
-          + '<button class="mbtn danger trash-act" data-id="' + esc(n.id) + '" data-act="purge"' + (trashState.pending ? ' disabled' : '') + '>彻底删除</button></div>';
+          + '<span class="ti trash-ti" data-id="' + esc(n.id) + '" title="' + esc(t('trash.titleTip', { title: n.title || 'Untitled' })) + '">' + esc(n.title || 'Untitled') + '</span>'
+          + '<span class="meta">' + esc(t('trash.deletedAt', { time: n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—' })) + '</span>'
+          + '<button class="mbtn trash-act" data-id="' + esc(n.id) + '" data-act="preview"' + (trashState.pending ? ' disabled' : '') + '>' + (pv ? t('trash.collapse') : t('trash.preview')) + '</button>'
+          + '<button class="mbtn trash-act" data-id="' + esc(n.id) + '" data-act="restore"' + (trashState.pending ? ' disabled' : '') + '>' + t('trash.restore') + '</button>'
+          + '<button class="mbtn danger trash-act" data-id="' + esc(n.id) + '" data-act="purge"' + (trashState.pending ? ' disabled' : '') + '>' + t('trash.purge') + '</button></div>';
         /* 行内只读预览：正文只经 renderMarkdown 内核渲染（全量转义，esc 先行零注入面）；加载/错误态经 esc() 文本插入 */
-        if (pv) html += '<div class="trash-preview rich">' + (typeof pv.body === 'string' ? renderMarkdown(pv.body, wikiResolve) : '<span class="modal-hint">' + esc(pv.error || '预览加载中…') + '</span>') + '</div>';
+        if (pv) html += '<div class="trash-preview rich">' + (typeof pv.body === 'string' ? renderMarkdown(pv.body, wikiResolve) : '<span class="modal-hint">' + esc(pv.error || t('trash.previewLoading')) + '</span>') + '</div>';
         return html
       }).join('') + '</div>';
   $('trashAll').onchange = toggleTrashAll;
@@ -86,11 +86,11 @@ function toggleTrashPreview(id) {
   rpc('notes-get', { id: id, includeDeleted: true }).then(function (res) {
     if (!trashState || !trashState.preview || trashState.preview.id !== id) return;
     if (res && res.note && typeof res.note.body === 'string') trashState.preview.body = res.note.body;
-    else trashState.preview.error = '预览失败：' + ((res && res.error) || '无正文');
+    else trashState.preview.error = t('trash.previewFailed', { msg: (res && res.error) || t('trash.noBody') });
     renderTrashList();
   }).catch(function (e) {
     if (!trashState || !trashState.preview || trashState.preview.id !== id) return;
-    trashState.preview.error = '预览失败：' + (e && e.message || e);
+    trashState.preview.error = t('trash.previewFailed', { msg: e && e.message || e });
     renderTrashList();
   });
 }
@@ -101,28 +101,28 @@ function doTrashRestore(id) {
     if (!trashState) return;
     trashState.pending = '';
     if (res && res.error) { modalErr(res.error); renderTrashList(); return }
-    toast('已恢复');
+    toast(t('meta.restored'));
     loadTrash(); loadNotes(true);
-  }).catch(function (e) { if (trashState) { trashState.pending = ''; modalErr('恢复失败：' + (e && e.message || e)); renderTrashList() } });
+  }).catch(function (e) { if (trashState) { trashState.pending = ''; modalErr(t('meta.restoreFailed', { msg: e && e.message || e })); renderTrashList() } });
 }
 function doTrashPurge(id, title) {
   if (!trashState || trashState.pending) return;
-  if (!confirm('彻底删除不可恢复：「' + (title || id) + '」\n删除后正文与归档备份将一并移除，确认彻底删除？')) return;
+  if (!confirm(t('trash.purgeConfirm', { title: title || id }))) return;
   trashState.pending = id; renderTrashList();
   rpc('notes-purge', { id: id }).then(function (res) {
     if (!trashState) return;
     trashState.pending = '';
     if (res && res.error) { modalErr(res.error); renderTrashList(); return }
-    toast('已彻底删除');
+    toast(t('trash.purged'));
     loadTrash(); loadNotes(true);
-  }).catch(function (e) { if (trashState) { trashState.pending = ''; modalErr('删除失败：' + (e && e.message || e)); renderTrashList() } });
+  }).catch(function (e) { if (trashState) { trashState.pending = ''; modalErr(t('meta.deleteFailed', { msg: e && e.message || e })); renderTrashList() } });
 }
 /* 批量恢复：confirm 后逐条 notes-restore（单条失败计数不中断）；完成后清空勾选/预览 + 刷新 */
 function doTrashRestoreBatch() {
   if (!trashState || trashState.pending) return;
   var ids = Object.keys(trashState.sel);
   if (!ids.length) return;
-  if (!confirm('批量恢复：所选的 ' + ids.length + ' 条笔记将移出回收站（恢复后回到正常列表）。\n确认恢复？')) return;
+  if (!confirm(t('trash.restoreBatchConfirm', { n: ids.length }))) return;
   trashState.pending = 'batch'; renderTrashList();
   var ok = 0, fail = 0, seq = Promise.resolve();
   ids.forEach(function (id) {
@@ -133,7 +133,7 @@ function doTrashRestoreBatch() {
   seq.then(function () {
     if (!trashState) return;
     trashState.pending = ''; trashState.sel = {}; trashState.preview = null;
-    toast('已恢复 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''));
+    toast(t('common.restoredBatch', { ok: ok }) + (fail ? t('inj.batchDoneFail', { n: fail }) : ''));
     loadTrash(); loadNotes(true);
   });
 }
@@ -142,7 +142,7 @@ function doTrashPurgeBatch() {
   if (!trashState || trashState.pending) return;
   var ids = Object.keys(trashState.sel);
   if (!ids.length) return;
-  if (!confirm('批量彻底删除：所选的 ' + ids.length + ' 条笔记将彻底删除，不可恢复（含历史版本）。\n删除后正文、历史版本快照与归档备份将一并移除，确认彻底删除？')) return;
+  if (!confirm(t('trash.purgeBatchConfirm', { n: ids.length }))) return;
   trashState.pending = 'batch'; renderTrashList();
   var ok = 0, fail = 0, seq = Promise.resolve();
   ids.forEach(function (id) {
@@ -153,7 +153,7 @@ function doTrashPurgeBatch() {
   seq.then(function () {
     if (!trashState) return;
     trashState.pending = ''; trashState.sel = {}; trashState.preview = null;
-    toast('已彻底删除 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''));
+    toast(t('trash.purgedBatch', { ok: ok }) + (fail ? t('inj.batchDoneFail', { n: fail }) : ''));
     loadTrash(); loadNotes(true);
   });
 }

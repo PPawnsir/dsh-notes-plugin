@@ -165,7 +165,7 @@ module.exports = {
 
   // ---- 32.4 client 结构断言（开发版 client-impl + 发布包 lib/client.js + 样式双端）----
   await t('client 注入预览链路：设置行入口 + modal 双 tab/会话下拉/统计条 + Esc + 错误条排除（开发版 + 发布包）', () => {
-    assert(clientSrc.indexOf("key: 'injprev', label: '注入预览'") >= 0, 'settingsRows 含「注入预览」行')
+    assert(clientSrc.indexOf("key: 'injprev', label: tt('settings.injPreview')") >= 0, 'settingsRows 含「注入预览」行（覆盖卡 C 起 label 走 tt() 字典）')
     assert(clientSrc.indexOf('onClick: openInjectPreview') >= 0, '预览按钮接线 openInjectPreview')
     assert(clientSrc.indexOf('function openInjectPreview()') >= 0 && clientSrc.indexOf('function loadInjectPreview(sid)') >= 0, 'openInjectPreview/loadInjectPreview 存在')
     assert(clientSrc.indexOf("sid.indexOf('ws:') === 0 ? { workspace: sid.slice(3) } : { sessionId: sid }") >= 0, 'RPC 调用（缺省全局 / ws: 前缀走 workspace 并集视角 / 传 sessionId）')

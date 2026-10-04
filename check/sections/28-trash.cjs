@@ -124,13 +124,13 @@ module.exports = {
   await t('回收站 UI（client-impl + 发布包 lib/client.js）：侧栏入口 + modal + 恢复/彻底删除 + Esc + toast', () => {
     for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
       const s = pair[1], label = pair[0]
-      assert(s.indexOf("onClick: openTrash") >= 0 && s.indexOf("I('trash', 12), '回收站'") >= 0, label + ' 侧栏底部回收站入口（fbtn + trash 图标）')
+      assert(s.indexOf("onClick: openTrash") >= 0 && s.indexOf("I('trash', 12), t('topbar.trash')") >= 0, label + ' 侧栏底部回收站入口（fbtn + trash 图标；i18n 覆盖卡A 起文案走 t() 字典）')
       assert(s.indexOf('function openTrash()') >= 0 && s.indexOf('function loadTrash()') >= 0, label + ' openTrash/loadTrash 存在')
       assert(s.indexOf("'notes-list', { includeDeleted: true }") >= 0, label + ' 回收站列表走 notes-list includeDeleted')
       assert(s.indexOf('.filter(n => n.deleted === true)') >= 0, label + ' 客户端过滤 deleted:true')
       assert(s.indexOf("'notes-purge', { id: id }") >= 0, label + ' 彻底删除走 notes-purge')
       assert(s.indexOf('彻底删除不可恢复') >= 0, label + ' confirm 双确认文案「彻底删除不可恢复」')
-      assert(s.indexOf("showToast('已恢复')") >= 0 && s.indexOf("showToast('已彻底删除')") >= 0, label + ' toast：已恢复/已彻底删除')
+      assert(s.indexOf("showToast(t('meta.restored'))") >= 0 && s.indexOf("showToast(t('trash.purged'))") >= 0, label + ' toast 走 t() meta.restored/trash.purged（i18n 覆盖卡E）')
       assert(s.indexOf('dsh-notes-trash-act') >= 0, label + ' 行内操作按钮样式类')
     }
     assert(clientSrc.indexOf('if (trashOpenRef.current) { setTrashOpen(false); return }') >= 0, 'Esc 链路关回收站对话框')
@@ -157,7 +157,7 @@ module.exports = {
     assert(appSrc.indexOf('function openTrash()') >= 0 && appSrc.indexOf("rpc('notes-list', { includeDeleted: true })") >= 0, 'app.html openTrash + includeDeleted')
     assert(appSrc.indexOf("rpc('notes-purge', { id: id })") >= 0 && appSrc.indexOf("rpc('notes-restore', { id: id })") >= 0, 'app.html purge/restore RPC')
     assert(appSrc.indexOf('彻底删除不可恢复') >= 0, 'app.html confirm 双确认文案')
-    assert(appSrc.indexOf("toast('已恢复')") >= 0 && appSrc.indexOf("toast('已彻底删除')") >= 0, 'app.html toast')
+    assert(appSrc.indexOf("toast(t('meta.restored'))") >= 0 && appSrc.indexOf("toast(t('trash.purged'))") >= 0, 'app.html toast 走 t() meta.restored/trash.purged（i18n 覆盖卡E）')
     assert(appSrc.indexOf('回收站为空') >= 0, 'app.html 空态文案')
   })
   await t('原型 notes-ui-v2.html 回收站硬性同步：UI 标记 + mock includeDeleted/purge + 演示数据', () => {
@@ -209,11 +209,13 @@ module.exports = {
       const s = pair[1], label = pair[0]
       assert(s.indexOf('function toggleTrashSel(id)') >= 0 && s.indexOf('function toggleTrashAll()') >= 0, label + ' 行勾选/全选函数存在')
       assert(s.indexOf('async function doTrashRestoreBatch()') >= 0 && s.indexOf('async function doTrashPurgeBatch()') >= 0, label + ' 批量恢复/批量彻底删除函数存在')
-      assert(s.indexOf("window.confirm('批量恢复：所选的 ' + ids.length + ' 条笔记将移出回收站（恢复后回到正常列表）。\\n确认恢复？')") >= 0, label + ' 批量恢复 confirm 文案（含条数）')
-      assert(s.indexOf("window.confirm('批量彻底删除：所选的 ' + ids.length + ' 条笔记将彻底删除，不可恢复（含历史版本）。\\n删除后正文、历史版本快照与归档备份将一并移除，确认彻底删除？')") >= 0, label + ' 批量彻底删除 confirm 含「不可恢复 + 含历史版本 + 条数」')
-      assert(s.indexOf("showToast('已恢复 ' + ok + ' 条'") >= 0 && s.indexOf("showToast('已彻底删除 ' + ok + ' 条'") >= 0, label + ' 批量 toast 计数文案')
+      /* i18n 覆盖卡E：批量 confirm/toast 文案走 t() 字典插值（trash.restoreBatchConfirm/purgeBatchConfirm + common.restoredBatch/trash.purgedBatch + inj.batchDoneFail），zh 原串随字典内嵌 */
+      assert(s.indexOf("window.confirm(t('trash.restoreBatchConfirm', { n: ids.length }))") >= 0, label + ' 批量恢复 confirm 走 t()（覆盖卡E）')
+      assert(s.indexOf("window.confirm(t('trash.purgeBatchConfirm', { n: ids.length }))") >= 0, label + ' 批量彻底删除 confirm 走 t()（覆盖卡E）')
+      assert(s.indexOf("showToast(t('common.restoredBatch', { ok: ok })") >= 0 && s.indexOf("showToast(t('trash.purgedBatch', { ok: ok })") >= 0, label + ' 批量 toast 计数文案走 t()（覆盖卡E）')
+      assert(s.indexOf("'trash.restoreBatchConfirm': '批量恢复：所选的 {n} 条笔记将移出回收站") >= 0 && s.indexOf("'trash.purgeBatchConfirm': '批量彻底删除：所选的 {n} 条笔记将彻底删除，不可恢复（含历史版本）") >= 0, label + ' 批量 confirm zh 原串字典内嵌（不可恢复 + 含历史版本 + 条数插值）')
       assert(s.indexOf("'notes-restore', { id: id }") >= 0 && s.indexOf("'notes-purge', { id: id }") >= 0, label + ' 批量逐条 notes-restore / notes-purge payload')
-      assert(s.indexOf("'已选 ' + Object.keys(trashSel).length + ' 条'") >= 0, label + ' 选中计数')
+      assert(s.indexOf("tt('sel.selCount', { n: Object.keys(trashSel).length })") >= 0, label + ' 选中计数走 tt() sel.selCount（覆盖卡E）')
       assert(s.indexOf('dsh-notes-trash-batch') >= 0 && s.indexOf('dsh-notes-trash-check') >= 0, label + ' 批量条/行勾选样式类')
     }
     // DOM 两端：app.html + 原型 notes-ui-v2.html（同款 DOM/脚本）
@@ -222,10 +224,18 @@ module.exports = {
       assert(s.indexOf('function toggleTrashSel(id)') >= 0 && s.indexOf('function toggleTrashAll()') >= 0, label + ' 行勾选/全选函数存在')
       assert(s.indexOf('function doTrashRestoreBatch()') >= 0 && s.indexOf('function doTrashPurgeBatch()') >= 0, label + ' 批量恢复/批量彻底删除函数存在')
       assert(s.indexOf('id="trashAll"') >= 0 && s.indexOf('id="trashRestoreBatch"') >= 0 && s.indexOf('id="trashPurgeBatch"') >= 0, label + ' 全选 checkbox + 批量按钮 DOM id')
-      assert(s.indexOf("'已选 ' + selCnt + ' 条'") >= 0, label + ' 选中计数')
-      assert(s.indexOf("confirm('批量恢复：所选的 ' + ids.length + ' 条笔记将移出回收站（恢复后回到正常列表）。\\n确认恢复？')") >= 0, label + ' 批量恢复 confirm 文案（含条数）')
-      assert(s.indexOf("confirm('批量彻底删除：所选的 ' + ids.length + ' 条笔记将彻底删除，不可恢复（含历史版本）。\\n删除后正文、历史版本快照与归档备份将一并移除，确认彻底删除？')") >= 0, label + ' 批量彻底删除 confirm 含「不可恢复 + 含历史版本 + 条数」')
-      assert(s.indexOf("toast('已恢复 ' + ok + ' 条'") >= 0 && s.indexOf("toast('已彻底删除 ' + ok + ' 条'") >= 0, label + ' 批量 toast 计数文案')
+      /* i18n 覆盖卡E：app 端批量条/confirm/toast 走 t() 字典；原型不双语保留中文原文（分侧断言） */
+      if (label === 'app.html') {
+        assert(s.indexOf("t('sel.selCount', { n: selCnt })") >= 0, label + ' 选中计数走 t() sel.selCount（覆盖卡E）')
+        assert(s.indexOf("confirm(t('trash.restoreBatchConfirm', { n: ids.length }))") >= 0, label + ' 批量恢复 confirm 走 t()（覆盖卡E）')
+        assert(s.indexOf("confirm(t('trash.purgeBatchConfirm', { n: ids.length }))") >= 0, label + ' 批量彻底删除 confirm 走 t()（覆盖卡E）')
+        assert(s.indexOf("toast(t('common.restoredBatch', { ok: ok })") >= 0 && s.indexOf("toast(t('trash.purgedBatch', { ok: ok })") >= 0, label + ' 批量 toast 计数文案走 t()（覆盖卡E）')
+      } else {
+        assert(s.indexOf("'已选 ' + selCnt + ' 条'") >= 0, label + ' 选中计数')
+        assert(s.indexOf("confirm('批量恢复：所选的 ' + ids.length + ' 条笔记将移出回收站（恢复后回到正常列表）。\\n确认恢复？')") >= 0, label + ' 批量恢复 confirm 文案（含条数）')
+        assert(s.indexOf("confirm('批量彻底删除：所选的 ' + ids.length + ' 条笔记将彻底删除，不可恢复（含历史版本）。\\n删除后正文、历史版本快照与归档备份将一并移除，确认彻底删除？')") >= 0, label + ' 批量彻底删除 confirm 含「不可恢复 + 含历史版本 + 条数」')
+        assert(s.indexOf("toast('已恢复 ' + ok + ' 条'") >= 0 && s.indexOf("toast('已彻底删除 ' + ok + ' 条'") >= 0, label + ' 批量 toast 计数文案')
+      }
       assert(s.indexOf("rpc('notes-restore', { id: id })") >= 0 && s.indexOf("rpc('notes-purge', { id: id })") >= 0, label + ' 批量逐条 notes-restore / notes-purge payload')
       assert(s.indexOf('.trash-batch{') >= 0 && s.indexOf('.trash-check{') >= 0 && s.indexOf('.trash-preview{') >= 0, label + ' 批量条/勾选/预览样式（内联 CSS）')
     }
@@ -243,7 +253,7 @@ module.exports = {
       assert(s.indexOf('function toggleTrashPreview(id)') >= 0, label + ' 行预览开关函数存在')
       assert(s.indexOf("'notes-get', { id: id, includeDeleted: true }") >= 0, label + ' 预览走 notes-get includeDeleted（已删正文可达）')
       assert(s.indexOf("className: 'dsh-notes-trash-preview dsh-notes-rich', dangerouslySetInnerHTML: { __html: renderMarkdown(trashPreview.body, wikiResolve) }") >= 0, label + ' 预览只读 renderMarkdown 内核渲染（全量转义零注入面）')
-      assert(s.indexOf("trashPreview && trashPreview.id === n.id ? '收起' : '预览'") >= 0, label + ' 行尾「预览/收起」按钮')
+      assert(s.indexOf("trashPreview && trashPreview.id === n.id ? tt('trash.collapse') : tt('trash.preview')") >= 0, label + ' 行尾「预览/收起」按钮走 tt()（i18n 覆盖卡E）')
     }
     // app.html：同款 renderMarkdown 只读渲染；标题/错误态均经 esc()
     assert(appSrc.indexOf('function toggleTrashPreview(id)') >= 0, 'app.html 行预览开关函数存在')

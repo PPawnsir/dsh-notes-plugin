@@ -57,20 +57,20 @@ module.exports = {
     assert(clientSrc.indexOf('dsh-notes-fchip') >= 0 && clientSrc.indexOf('dsh-notes-fchip-x') >= 0, '激活条件 chip + × 移除')
     assert(clientSrc.indexOf('dsh-notes-fsort-menu') >= 0 && clientSrc.indexOf('dsh-notes-fsort-item') >= 0, '独立排序控件菜单')
     assert(clientSrc.indexOf("I('pin', 11)") >= 0, '置顶 pin 图标（popover 状态组）')
-    assert(/onClick: openNewNote, 'data-tooltip': '新建笔记（Alt\+N）'/.test(clientSrc), 'brand 行 ＋ → openNewNote')
+    assert(/onClick: openNewNote, 'data-tooltip': t\('side\.newTip'\)/.test(clientSrc), 'brand 行 ＋ → openNewNote（i18n 覆盖卡A 起 tooltip 走 t() 字典）')
     // 旧平铺 chips / 旧筛选面板已移除
     assert(clientSrc.indexOf('dsh-notes-chip') < 0 && clientSrc.indexOf('dsh-notes-filter-panel') < 0 && clientSrc.indexOf('dsh-notes-fp-opt') < 0, '旧 chips 行/旧筛选面板类已移除')
     assert(clientSrc.indexOf("'仅置顶'") < 0 && clientSrc.indexOf("'仅敏感'") < 0 && clientSrc.indexOf("'仅注入'") < 0, '旧单选开关文案已移除')
   })
   await t('树结构：视图头 + 置顶组 + 文件夹组 + 未入夹根级直显区 + 主题全局过滤区', () => {
     assert(clientSrc.indexOf('dsh-notes-sec-h') >= 0, 'sec-h 分组头')
-    assert(clientSrc.indexOf('全部笔记') >= 0 && clientSrc.indexOf("'主题 · ' + view.id") >= 0 && clientSrc.indexOf("'文件夹 · ' + folderName(view.id)") >= 0, '视图头文案（全部/主题/文件夹）')
+    assert(clientSrc.indexOf('全部笔记') >= 0 && clientSrc.indexOf("tt('tree.viewTopic', { id: view.id })") >= 0 && clientSrc.indexOf("tt('tree.viewFolder', { name: folderName(view.id) })") >= 0 && clientSrc.indexOf("tt('tree.viewAll')") >= 0, '视图头文案（全部/主题/文件夹；i18n 覆盖卡A 起走 t() 字典，中文原文在 zh.js）')
     assert(clientSrc.indexOf('（跨文件夹 ') >= 0, '主题视图头含「跨文件夹 N 条」')
     assert(clientSrc.indexOf('PINNED_KEY') >= 0 && clientSrc.indexOf("'置顶'") >= 0, '置顶折叠组（PINNED_KEY 持久化）')
     assert(clientSrc.indexOf('dsh-notes-nested') >= 0, 'nested 子笔记容器')
     assert(clientSrc.indexOf('未分类') >= 0, '未入夹口径文案保留（右键「移出文件夹（未分类）」/面包屑兜底）')
     assert(clientSrc.indexOf("'dsh-notes-sec-h-t' }, '未分类')") < 0, '未入夹区不再渲染「未分类」分组头（同级直显，notes-tree-unfiled-sibling）')
-    assert(clientSrc.indexOf("'主题 (' + (filtersActive ? topicHitCount : topicNames.length) + ')'") >= 0 && clientSrc.indexOf('跨文件夹') >= 0, '主题全局过滤区（默认折叠「主题 (N)」一行）')
+    assert(clientSrc.indexOf("tt('tree.topicsHeader', { n: filtersActive ? topicHitCount : topicNames.length })") >= 0 && clientSrc.indexOf('跨文件夹') >= 0, '主题全局过滤区（默认折叠「主题 (N)」一行；i18n 覆盖卡A 起走 t() 字典）')
     assert(clientSrc.indexOf('dsh-notes-topic-row') >= 0, '主题过滤行')
   })
   await t('视图求值：view 单选 ∩ 筛选中心（组内 OR / 跨组 AND）∩ 搜索', () => {
@@ -84,7 +84,7 @@ module.exports = {
     assert(clientSrc.indexOf('dsh-notes-kind-dot') >= 0 && clientSrc.indexOf("style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' }") >= 0, 'kind 色点走 token var(--nkind-*)')
     assert(clientSrc.indexOf('dsh-notes-note-ti') >= 0 && clientSrc.indexOf("I('pin', 10, 'dsh-notes-note-pin')") >= 0, '标题 + 置顶 pin 图标')
     assert(clientSrc.indexOf('dsh-notes-note-inj') >= 0 && clientSrc.indexOf("I('bolt', 10)") >= 0, '上下文注入 bolt 标记')
-    assert(clientSrc.indexOf("'注入为上下文 · ' + (n.injectRole === 'reference' ? '资料' : '约定') + ' · 范围：'") >= 0, 'bolt tooltip 按 injectRole 段位显示 约定/资料')
+    assert(clientSrc.indexOf("tt('tree.injectTip', { role: tt(n.injectRole === 'reference' ? 'tree.roleReference' : 'tree.roleConvention') })") >= 0 && clientSrc.indexOf("tt('tree.injectScope', { scope: injectScopeLabel(n.injectTo) })") >= 0, 'bolt tooltip 按 injectRole 段位显示 约定/资料（i18n 覆盖卡A 起走 t() 字典）')
     assert(clientSrc.indexOf('dsh-notes-fbadge') >= 0, '主题视图行尾文件夹徽章（fbadge）')
     assert(clientSrc.indexOf('dsh-notes-note-tp') >= 0 && clientSrc.indexOf('dsh-notes-note-dt') >= 0, '文件夹上下文行尾主题字 / 其余行尾日期')
     assert(clientSrc.indexOf('injectScopeLabel') >= 0, '注入范围文字函数')
@@ -93,28 +93,28 @@ module.exports = {
   await t('编辑器：面包屑 + 大标题 + meta chips 行 + 正文 + 底部状态', () => {
     assert(clientSrc.indexOf('dsh-notes-ed-crumb') >= 0 && clientSrc.indexOf('dsh-notes-crumb-lnk') >= 0, '面包屑（主题段可点击）')
     assert(clientSrc.indexOf('jumpToTopicFilter') >= 0, '面包屑/主题 chip 跳主题全局过滤')
-    assert(/className: 'dsh-notes-ed-title', placeholder: '无标题', value: edTitle/.test(clientSrc), '大标题输入（受控 edTitle）')
+    assert(/className: 'dsh-notes-ed-title', placeholder: tt\('tree\.untitled'\), value: edTitle/.test(clientSrc), '大标题输入（受控 edTitle；占位 i18n 覆盖卡B 起复用 tree.untitled）')
     assert(clientSrc.indexOf('dsh-notes-meta-chip') >= 0 && clientSrc.indexOf('dsh-notes-meta-act') >= 0, 'meta chips + 右侧操作')
     assert(/className: 'dsh-notes-meta-select', value: edKind/.test(clientSrc), 'kind 下拉 chip')
     assert(clientSrc.indexOf('dsh-notes-meta-dot') >= 0, 'kind 色点 chip')
     assert(/value: edTopic/.test(clientSrc) && clientSrc.indexOf('dsh-notes-meta-topic-input') >= 0, '主题 chip 可编辑')
     assert(/value: edTags/.test(clientSrc) && clientSrc.indexOf('dsh-notes-meta-tags-input') >= 0, '标签 chip 可编辑')
-    assert(clientSrc.indexOf('dsh-notes-ed-foot') >= 0 && clientSrc.indexOf("'创建 '") >= 0 && clientSrc.indexOf("'更新 '") >= 0 && clientSrc.indexOf("'来源 会话 '") >= 0, '底部 创建/更新/来源')
-    assert(clientSrc.indexOf('dsh-notes-ed-saved') >= 0 && clientSrc.indexOf('已自动保存 ') >= 0, '自动保存提示')
+    assert(clientSrc.indexOf('dsh-notes-ed-foot') >= 0 && clientSrc.indexOf("tt('meta.createdAt',") >= 0 && clientSrc.indexOf("tt('meta.updatedAt',") >= 0 && clientSrc.indexOf("tt('meta.sourceSession',") >= 0, '底部 创建/更新/来源（i18n 覆盖卡B 起走 tt() 字典）')
+    assert(clientSrc.indexOf('dsh-notes-ed-saved') >= 0 && clientSrc.indexOf("tt('editor.autoSavedFlat',") >= 0, '自动保存提示（覆盖卡B 走 tt()）')
   })
   await t('编辑器 meta：注入三态分段控件 + 目录可见 toggle + 派发/来源/置顶/删除', () => {
     assert(clientSrc.indexOf("'dsh-notes-meta-chip dsh-notes-role-seg'") >= 0, '三态分段控件容器（meta-chip + role-seg）')
     assert((clientSrc.match(/dsh-notes-role-opt/g) || []).length >= 3, '三个段位（关闭/约定/资料）')
     assert(clientSrc.indexOf("onClick: () => setRoleSeg('off')") >= 0 && clientSrc.indexOf("onClick: () => setRoleSeg('convention')") >= 0 && clientSrc.indexOf("onClick: () => setRoleSeg('reference')") >= 0, '三段点击切换 setRoleSeg')
-    assert(clientSrc.indexOf("'data-tooltip': '不注入系统提示'") >= 0, '关闭段 tooltip')
-    assert(clientSrc.indexOf("'data-tooltip': '须遵守的行为规则'") >= 0, '约定段 tooltip')
-    assert(clientSrc.indexOf("'data-tooltip': '事实性补充信息，Agent 按需取用'") >= 0, '资料段 tooltip')
+    assert(clientSrc.indexOf("'data-tooltip': tt('meta.roleOffTip')") >= 0, '关闭段 tooltip（i18n 覆盖卡B 起走 tt() 字典）')
+    assert(clientSrc.indexOf("'data-tooltip': tt('meta.roleConventionTip')") >= 0, '约定段 tooltip（覆盖卡B 走 tt()）')
+    assert(clientSrc.indexOf("'data-tooltip': tt('meta.roleReferenceTip')") >= 0, '资料段 tooltip（覆盖卡B 走 tt()）')
     assert(/edRole === 'off' \? ' on' : ''/.test(clientSrc) && /edRole === 'convention' \? ' on' : ''/.test(clientSrc) && /edRole === 'reference' \? ' on' : ''/.test(clientSrc), '选中段 on 态高亮（三态各自分支）')
     assert(clientSrc.indexOf('dsh-notes-ed-scope-wrap') >= 0 && clientSrc.indexOf('dsh-notes-scope-panel') >= 0 && clientSrc.indexOf('dsh-notes-scope-trigger') >= 0, '逐级范围浮层挂 meta 行')
     assert(/const isInjected = edRole !== 'off'/.test(clientSrc) && clientSrc.indexOf('isInjected ? e(\'span\', { className: \'dsh-notes-ed-scope-wrap\' }') >= 0, '范围浮层在非 off（约定/资料）时显示')
-    assert(clientSrc.indexOf('目录可见') >= 0 && clientSrc.indexOf("I('eye', 11)") >= 0, '目录可见 toggle（eye 图标）')
-    assert(clientSrc.indexOf("'派发'") >= 0 && clientSrc.indexOf("I('play', 12)") >= 0, '派发操作（play 图标）')
-    assert(clientSrc.indexOf("'来源'") >= 0 && clientSrc.indexOf("I('ext', 12)") >= 0, '来源操作（ext 图标）')
+    assert(clientSrc.indexOf("tt('meta.recall')") >= 0 && clientSrc.indexOf("I('eye', 11)") >= 0, '目录可见 toggle（eye 图标；覆盖卡B 走 tt()）')
+    assert(clientSrc.indexOf("tt('meta.dispatch')") >= 0 && clientSrc.indexOf("I('play', 12)") >= 0, '派发操作（play 图标；覆盖卡B 走 tt()）')
+    assert(clientSrc.indexOf("tt('meta.source')") >= 0 && clientSrc.indexOf("I('ext', 12)") >= 0, '来源操作（ext 图标；覆盖卡B 走 tt()）')
     assert(clientSrc.indexOf("I('pin', 12)") >= 0 && clientSrc.indexOf("I('trash', 12)") >= 0, '置顶/删除操作图标')
     assert(clientSrc.indexOf('openDispatch') >= 0 && clientSrc.indexOf('jumpToSession') >= 0, '派发/来源行为保留')
   })
@@ -163,7 +163,8 @@ module.exports = {
     assert(/dsh-notes-scope-group/.test(clientSrc) && /scopeByWs/.test(clientSrc), '会话按工作区分组（两级）')
     assert(clientSrc.indexOf("toggleScope('workspace')") < 0 && clientSrc.indexOf("toggleScope('global')") < 0, '范围浮层移除「本工作区/全局」选项（缺省=所有会话）')
     assert(clientSrc.indexOf('dsh-notes-scope-hint') >= 0 && clientSrc.indexOf('默认注入到所有会话；勾选会话则仅限这些会话') >= 0, '范围浮层顶部灰色默认提示行')
-    assert(clientSrc.indexOf("return '所有会话'") >= 0, '范围触发按钮缺省标签=所有会话')
+    /* i18n 覆盖卡F：injectScopeLabel 缺省标签走 t() 字典（复用 B 卡 meta.scopeAll，zh 原串在 src/i18n/zh.js 内嵌于 clientSrc） */
+    assert(clientSrc.indexOf("return t('meta.scopeAll')") >= 0, '范围触发按钮缺省标签=所有会话（覆盖卡F 起走 t()）')
     assert(clientSrc.indexOf('sessList') >= 0 && clientSrc.indexOf('notes-sessions') >= 0, '会话名列表 sessList 来自 notes-sessions RPC')
   })
   await t('注入范围重构：schema 描述去工作区/全局维度（host-impl / index.mjs 双边）+ 发布包同步', () => {
@@ -177,7 +178,7 @@ module.exports = {
     }
     const pkgClient = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
     assert(pkgClient.indexOf("toggleScope('workspace')") < 0 && pkgClient.indexOf("toggleScope('global')") < 0, '发布包 lib/client.js 范围浮层移除「本工作区/全局」选项（需先跑 scripts/build-dist.cjs）')
-    assert(pkgClient.indexOf('默认注入到所有会话；勾选会话则仅限这些会话') >= 0 && pkgClient.indexOf("return '所有会话'") >= 0, '发布包提示行/缺省标签同步')
+    assert(pkgClient.indexOf('默认注入到所有会话；勾选会话则仅限这些会话') >= 0 && pkgClient.indexOf("return t('meta.scopeAll')") >= 0, '发布包提示行/缺省标签同步（覆盖卡F 起缺省标签走 t()，zh 原串随包内嵌字典）')
     const devCss = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const pkgCss = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     assert(devCss.indexOf('.dsh-notes-scope-hint{') >= 0 && pkgCss.indexOf('.dsh-notes-scope-hint{') >= 0, 'styles.css / 发布包样式含 scope-hint（var(--nt3) 灰字）')
@@ -205,12 +206,20 @@ module.exports = {
     for (const pair of [[appRole, 'app.html'], [protoRole, '原型 notes-ui-v2.html']]) {
       const src = pair[0], tag = pair[1]
       assert(src.indexOf('meta-chip role-seg') >= 0 && src.indexOf('data-role="off"') >= 0 && src.indexOf('data-role="convention"') >= 0 && src.indexOf('data-role="reference"') >= 0, tag + ' 含三态分段控件（关闭/约定/资料）')
-      assert(src.indexOf('>关闭</span>') >= 0 && src.indexOf('>约定</span>') >= 0 && src.indexOf('>资料</span>') >= 0, tag + ' 三段位文案')
-      assert(src.indexOf('title="不注入系统提示"') >= 0 && src.indexOf('title="须遵守的行为规则"') >= 0 && src.indexOf('title="事实性补充信息，Agent 按需取用"') >= 0, tag + ' 三段 tooltip')
+      /* i18n 覆盖卡B：app 端文案走 t() 字典；原型不双语红线保持静态中文（分侧断言，同 30 节口径） */
+      if (tag === 'app.html') {
+        assert(src.indexOf("t('meta.roleOff')") >= 0 && src.indexOf("t('tree.roleConvention')") >= 0 && src.indexOf("t('tree.roleReference')") >= 0, tag + ' 三段位文案走 t()（覆盖卡B）')
+        assert(src.indexOf("t('meta.roleOffTip')") >= 0 && src.indexOf("t('meta.roleConventionTip')") >= 0 && src.indexOf("t('meta.roleReferenceTip')") >= 0, tag + ' 三段 tooltip 走 t()（覆盖卡B）')
+      } else {
+        assert(src.indexOf('>关闭</span>') >= 0 && src.indexOf('>约定</span>') >= 0 && src.indexOf('>资料</span>') >= 0, tag + ' 三段位文案')
+        assert(src.indexOf('title="不注入系统提示"') >= 0 && src.indexOf('title="须遵守的行为规则"') >= 0 && src.indexOf('title="事实性补充信息，Agent 按需取用"') >= 0, tag + ' 三段 tooltip')
+      }
       assert(src.indexOf("var role = n.inject ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off'") >= 0, tag + ' renderMeta 三态映射（存量 inject=true 无 role 缺省 convention）')
       assert(src.indexOf("if (upd.inject) upd.injectRole = edNote.injectRole === 'reference' ? 'reference' : 'convention'") >= 0, tag + ' doSave 非 off 才带 injectRole（payload 禁 undefined）')
       assert(/\.role-seg \.seg\.on\{[^}]*background:var\(--nbg-sel\)[^}]*color:var\(--nacc-tx\)/.test(src), tag + ' 选中段样式走 var(--nbg-sel)+var(--nacc-tx) token')
-      assert(src.indexOf('id="mInj"') < 0 && src.indexOf('注入为约定') < 0 && src.indexOf('约定注入') < 0, tag + ' 旧「注入为约定」开关/单义文案清零')
+      /* i18n 覆盖卡D：注入管理批量 confirm 句「…将注入为约定（须遵守）。」是现行文案（字典 inj.batchEffConv），
+         裸子串清零会误伤——收窄为 exact 形态（独立引号串/标签包裹）清零，旧开关/单义 label 语义不破 */
+      assert(src.indexOf('id="mInj"') < 0 && src.indexOf("'注入为约定'") < 0 && src.indexOf('>注入为约定<') < 0 && src.indexOf('约定注入') < 0, tag + ' 旧「注入为约定」开关/单义文案清零（exact 形态）')
     }
     assert(protoRole.indexOf("injectRole: 'reference'") >= 0, '原型 mock 含 reference 示例数据（n6 演示资料态）')
     assert(/injectRole: n\.injectRole === 'reference' \? 'reference' : 'convention'/.test(protoRole), '原型 _mockSlim 携带 injectRole（缺省 convention）')
@@ -220,7 +229,8 @@ module.exports = {
     const pkgRole2 = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
     for (const pair of [[clientSrc, 'client-impl.js'], [pkgRole2, '发布包 lib/client.js']]) {
       const src = pair[0], tag = pair[1]
-      for (const dead of ['注入为约定', '约定 · 注入中', '作为约定注入到系统提示', 'toggleInject', '已记录并设为约定', '设为约定…']) {
+      // i18n 覆盖卡D：'注入为约定' 收窄为 exact 形态（现行批量 confirm 句 inj.batchEffConv 含该子串，裸匹配误伤）
+      for (const dead of ["'注入为约定'", '>注入为约定<', '约定 · 注入中', '作为约定注入到系统提示', 'toggleInject', '已记录并设为约定', '设为约定…']) {
         assert(src.indexOf(dead) < 0, tag + ' 不含旧文案/旧开关：' + dead)
       }
     }

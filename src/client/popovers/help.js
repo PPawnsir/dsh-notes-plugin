@@ -5,20 +5,21 @@
     // 重渲染口径与昔日 FloatingPanel 内联态完全一致；check 锚定 useState 族不迁 store（§6 E 裁决记录见 panel/index.js 头注）
     function usePanelHelp() {
         const [showHelp, setShowHelp] = React.useState(false)
+        // i18n 覆盖卡F：气泡文案走 t() 字典（help.* 域；标题复用 A 卡 chrome.help）；kbd 键名段与文案段分离拼装
         const helpEl = showHelp ? e('div', { className: 'dsh-notes-help-bubble' },
             e('button', { className: 'dsh-notes-help-close', onClick: () => setShowHelp(false) }, '×'),
-            e('h4', null, '使用说明'),
+            e('h4', null, t('chrome.help')),
             e('ul', null,
-              e('li', null, '点侧栏「新建」或按 ', e('kbd', null, 'Alt+N'), ' 输入标题新建笔记，创建后直接编辑正文'),
-              e('li', null, '在页面划选文字松手，弹出快速记录卡片（自动识别为引用）'),
-              e('li', null, '同一会话 10 分钟内的速记自动合并'),
-              e('li', null, '点面包屑/编辑器里的主题可按主题全局过滤（跨文件夹）'),
-              e('li', null, '拖笔记到文件夹行移入，拖到树根部未入夹笔记区移出（拖拽中显示落点提示）'),
-              e('li', null, '快捷键：', e('kbd', null, 'Ctrl+K'), ' 搜索（框内 ', e('kbd', null, '↓'), ' 直达列表）、', e('kbd', null, 'Alt+N'), ' 新建、', e('kbd', null, 'j/k'), ' 或 ', e('kbd', null, '↑↓'), ' 移动、', e('kbd', null, 'Enter'), ' 打开、', e('kbd', null, 'Esc'), ' 分层（关浮层 → 清搜索并还焦列表 → 关面板）'),
-              e('li', null, '非输入焦点时按 ', e('kbd', null, '?'), ' 唤起快捷键速查表（cheat sheet，Esc 关闭；设置卡「键盘快捷键」行同入口）'),
-              e('li', null, '「速记」：弹出预览，勾选速记组后才合并（可撤销）；手动笔记点「选择」多选合并'),
-              e('li', null, '编辑器「整理」：AI 按类型模板重写正文（替换后可撤销一次）；新建笔记按类型预填模板骨架'),
-              e('li', null, '图片超过 1MB 自动压缩转 JPEG；设置卡片「资产清理」清理未被引用的孤儿文件'),
-              e('li', null, '删除是软删除：侧栏底部「回收站」可恢复或彻底删除（彻底删除不可恢复）'))) : null
+              e('li', null, t('help.newPre'), e('kbd', null, 'Alt+N'), t('help.newPost')),
+              e('li', null, t('help.capture')),
+              e('li', null, t('help.mergeWin')),
+              e('li', null, t('help.topic')),
+              e('li', null, t('help.drag')),
+              e('li', null, t('help.keysLead'), e('kbd', null, 'Ctrl+K'), t('help.keysSearch'), e('kbd', null, '↓'), t('help.keysSearchEnd'), e('kbd', null, 'Alt+N'), t('help.keysNew'), e('kbd', null, 'j/k'), t('help.keysMoveOr'), e('kbd', null, '↑↓'), t('help.keysMoveEnd'), e('kbd', null, 'Enter'), t('help.keysOpen'), e('kbd', null, 'Esc'), t('help.keysEsc')),
+              e('li', null, t('help.cheatPre'), e('kbd', null, '?'), t('help.cheatPost')),
+              e('li', null, t('help.archive')),
+              e('li', null, t('help.organize')),
+              e('li', null, t('help.image')),
+              e('li', null, t('help.delete')))) : null
         return { showHelp: showHelp, setShowHelp: setShowHelp, helpEl: helpEl }
     }

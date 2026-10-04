@@ -147,6 +147,7 @@
       note.dispatches = ds
       note.updatedAt = new Date().toISOString()
       await persistNote(note)
+      await _schedRunLogAppend(note, [ds[i]])   // 执行记录独立笔记（notes-041-sched-runlog）：手动标记同回执落盘口径（幂等由 msgId 去重兜底）
       return { ok: true, id: note.id }
     }
 
@@ -163,8 +164,9 @@
     // 单条派发完成判定：dispatchStatus==='done' 或存量 done===true（0.2.0 前记录只有 done 字段，向后兼容）
     function isDispatchDone(d) { return !!(d && (d.dispatchStatus === 'done' || d.done === true)) }
     // 回执落库（作用于笔记对象内联）：把 note.dispatches 中未闭环条目标记 done（dispatchStatus/done/doneAt + receipt 来源）；
-    // onlySessionId 限定只回执派发到该会话的条目（idle 事件回执用）；缺省全量（resolved 保底联动用）。返回新闭环条数
-    function _closeOpenDispatches(note, receipt, onlySessionId) {
+    // onlySessionId 限定只回执派发到该会话的条目（idle 事件回执用）；缺省全量（resolved 保底联动用）。返回新闭环条数；
+    // out（可选数组，notes-041-sched-runlog）：收集本次新闭环的派发记录（执行记录独立笔记追加用）
+    function _closeOpenDispatches(note, receipt, onlySessionId, out) {
       const ds = note.dispatches || []
       let closed = 0
       const now = new Date().toISOString()
@@ -173,6 +175,7 @@
         if (isDispatchDone(d)) continue
         if (onlySessionId && (!d || d.sessionId !== onlySessionId)) continue
         ds[i] = Object.assign({}, d, { done: true, dispatchStatus: 'done', doneAt: now, receipt: receipt || 'manual' })
+        if (out) out.push(ds[i])
         closed++
       }
       if (closed) note.dispatches = ds
@@ -186,9 +189,11 @@
       for (const n of all) {
         if (!n || n.deleted || n.tombstoned) continue
         if (!(n.dispatches || []).length) continue
-        if (_closeOpenDispatches(n, 'idle', sid) > 0) {
+        const closedDs = []   // 执行记录独立笔记（notes-041-sched-runlog）：收集本次闭环条目供 runLog 追加
+        if (_closeOpenDispatches(n, 'idle', sid, closedDs) > 0) {
           n.updatedAt = new Date().toISOString()
           try { await persistNote(n, { history: false }) } catch (e) { console.error('notes: dispatch receipt persist failed', n.id, e) }
+          await _schedRunLogAppend(n, closedDs)   // 仅 dispatch-schedule 约定生效（内部全量吞异常；约定正文零改动红线不破）
         }
       }
     }

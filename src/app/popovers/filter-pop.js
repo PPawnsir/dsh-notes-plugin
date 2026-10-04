@@ -9,7 +9,7 @@ $('fpop').addEventListener('change', function (ev) {
   saveFilters(); maybeReloadForLogs(); render(); reSearch();
 });
 $('fpop').addEventListener('click', function (ev) {
-  if (ev.target.closest('#popClear')) { clearFilters(); maybeReloadForLogs(); render(); renderFilterBar(); reSearch(); toast('已清空全部筛选条件') }
+  if (ev.target.closest('#popClear')) { clearFilters(); maybeReloadForLogs(); render(); renderFilterBar(); reSearch(); toast(t('filter.clearedToast')) }
   else if (ev.target.closest('#popDone')) { filterOpen = false; renderFilterBar() }
 });
 /* 激活条件 chip：× 单条移除（与 popover 勾选双向同步） */

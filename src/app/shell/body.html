@@ -19,6 +19,8 @@
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 3v4h-4"/></symbol>
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/></symbol>
+  <!-- 顶栏「切换主题」图标（窄宽收图标态用，notes-041-topbar-400）：明暗对半圆 -->
+  <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17"/></symbol>
   <symbol id="i-code-block" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></symbol>
   <symbol id="i-bold" viewBox="0 0 24 24"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></symbol>
   <symbol id="i-italic" viewBox="0 0 24 24"><path d="M19 4h-9M14 20H5M15 4 9 20"/></symbol>
@@ -41,17 +43,18 @@
 
 <div class="topbar">
   <div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>dsh-notes</b>
-  <span class="sub">你的笔记库 · 写下的约定与资料可注入 Agent 会话</span>
+  <span class="sub" id="topSub">你的笔记库 · 写下的约定与资料可注入 Agent 会话</span>
   <span class="sp"></span>
-  <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg>刷新</button>
-  <button class="tbtn" id="btnArchive" title="速记合并：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）"><svg class="ic"><use href="#i-check"/></svg>速记</button>
-  <button class="tbtn" id="btnTheme">切换主题</button>
-  <a class="tbtn" href="/" title="返回 DSH 主界面"><svg class="ic"><use href="#i-home"/></svg>DSH 主界面</a>
+  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新/速记保文字 -->
+  <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg><span class="tb-t">刷新</span></button>
+  <button class="tbtn" id="btnArchive" title="速记合并：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）"><svg class="ic"><use href="#i-check"/></svg><span class="tb-t">速记</span></button>
+  <button class="tbtn ico-only" id="btnTheme" title="切换主题（暗色/亮色）"><svg class="ic"><use href="#i-theme"/></svg><span class="tb-t">切换主题</span></button>
+  <a class="tbtn ico-only" href="/" id="btnHome" title="返回 DSH 主界面"><svg class="ic"><use href="#i-home"/></svg><span class="tb-t">DSH 主界面</span></a>
 </div>
 
 <div class="app">
   <aside class="side">
-    <div class="brand"><div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>笔记</b><span class="cnt" id="brandCnt"></span>
+    <div class="brand"><div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b id="brandName">笔记</b><span class="cnt" id="brandCnt"></span>
       <!-- 新建入口（自旧 chips 行迁入 brand 行右侧，筛选中心口径⑥） -->
       <span class="add-new" id="btnNew" title="新建笔记（Alt+N）"><svg class="ic"><use href="#i-plus"/></svg></span>
     </div>
@@ -69,9 +72,9 @@
     <div class="tree" id="tree" tabindex="-1"></div>
     <!-- 底部：回收站 + 选择（多选合并，自旧 chips 行迁入）+ 设置；导出/导入 → 设置卡片「数据」区，整理建议 → 设置卡片「整理建议」行 -->
     <div class="side-foot">
-      <div class="fbtn" id="btnTrash" title="回收站：查看已删除的笔记，可恢复或彻底删除"><svg class="ic"><use href="#i-trash"/></svg>回收站</div>
-      <div class="fbtn" id="btnSelMode" title="多选笔记：勾选后可合并为一篇（Esc 退出）"><svg class="ic"><use href="#i-check"/></svg>选择</div>
-      <div class="fbtn" id="btnSettings"><svg class="ic"><use href="#i-gear"/></svg>设置</div>
+      <div class="fbtn" id="btnTrash" title="回收站：查看已删除的笔记，可恢复或彻底删除"><svg class="ic"><use href="#i-trash"/></svg><span id="btnTrashT">回收站</span></div>
+      <div class="fbtn" id="btnSelMode" title="多选笔记：勾选后可合并为一篇（Esc 退出）"><svg class="ic"><use href="#i-check"/></svg><span id="btnSelModeT">选择</span></div>
+      <div class="fbtn" id="btnSettings"><svg class="ic"><use href="#i-gear"/></svg><span id="btnSettingsT">设置</span></div>
     </div>
   </aside>
   <!-- 侧栏宽度拖拽条（4px，叠加在两栏间隙上不占位）：拖拽调整 / 双击重置缺省宽 -->
@@ -83,7 +86,7 @@
     <div style="font-size:11px">点侧栏顶部 + 新建笔记（先开草稿，输入内容才落库）；正文划选文字可弹出快速记录卡片</div>
   </section>
 </div>
-<div class="hintbar"><span>🖱 在右侧正文<b>划选文字松手</b> → 弹出快速记录卡片</span><span>拖笔记 → 文件夹移入 / 拖到根级笔记区移出</span><span>文件夹右键：重命名 / 排序 / 删除</span><span>Ctrl K 搜索 · Alt N 新建 · j/k 移动 · Enter 打开 · Esc 关闭浮层 · ? 快捷键</span></div>
+<div class="hintbar"><span id="hintSelect">🖱 在右侧正文<b>划选文字松手</b> → 弹出快速记录卡片</span><span id="hintDrag">拖笔记 → 文件夹移入 / 拖到根级笔记区移出</span><span id="hintFolder">点击展开/折叠 · 行尾漏斗进文件夹视图 · 右键管理</span><span id="hintKeys">Ctrl K 搜索 · Alt N 新建 · j/k 移动 · Enter 打开 · Esc 关闭浮层 · ? 快捷键</span></div>
 <div id="capHost"></div>
 <div id="modalHost"></div>
 <div id="ctxHost"></div>

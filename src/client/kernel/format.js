@@ -45,18 +45,20 @@
       return (day0 + off > baseMs ? day0 : day0 + 86400000) + off
     }
     // 频率人话：仅一次 <时间> / 每天 / 每周 / 每 N 天（锚定时刻声明带时刻后缀：每天 09:00 / 每周一 09:00 / 每 3 天 09:00）；非整天间隔（front-matter 裸编辑旁路值）兜底 每 N 小时/分钟/ms
+    // i18n 覆盖卡D：文案走 t() 字典 common.sched*（跨表面复用——注入管理 + 详情计划块；app kernel/helpers.js 同口径镜像）；
+    // 模块级 t() 直读 langStore 当下语言态——本函数只在渲染期被调（调用方组件已挂 useT 订阅，切语言重渲即换文案）；星期名经 common.dowNames 管道分隔取值（en 多字符名 charAt 不可取）
     const schedFreqLabel = (s) => {
       if (!s) return ''
-      if (s.at) return '仅一次 ' + fmtDT(s.at)
+      if (s.at) return t('common.schedOnce', { time: fmtDT(s.at) })
       const ms = schedEveryMs(s.every)
-      if (ms === null) return '非法间隔'
+      if (ms === null) return t('common.schedInvalid')
       const tail = s.anchor ? ' ' + s.anchor : ''   // 锚定时刻（notes-034-sched-time）：周期 + 本地时刻
-      if (ms === 86400000) return '每天' + tail
-      if (ms === 604800000) return (typeof s.dow === 'number' ? '每周' + '日一二三四五六'.charAt(s.dow) : '每周') + tail
-      if (ms % 86400000 === 0) return '每 ' + ms / 86400000 + ' 天' + tail
-      if (ms % 3600000 === 0) return '每 ' + ms / 3600000 + ' 小时'
-      if (ms % 60000 === 0) return '每 ' + ms / 60000 + ' 分钟'
-      return '每 ' + ms + 'ms'
+      if (ms === 86400000) return t('common.schedDaily') + tail
+      if (ms === 604800000) return (typeof s.dow === 'number' ? t('common.schedWeeklyDow', { dow: t('common.dowNames').split('|')[s.dow] || '' }) : t('common.schedWeekly')) + tail
+      if (ms % 86400000 === 0) return t('common.schedNDays', { n: ms / 86400000 }) + tail
+      if (ms % 3600000 === 0) return t('common.schedNHours', { n: ms / 3600000 })
+      if (ms % 60000 === 0) return t('common.schedNMinutes', { n: ms / 60000 })
+      return t('common.schedNMs', { n: ms })
     }
     // 下次触发毫秒（与 host schedDueAt 锚点同口径：轮询 = lastFiredAt || createdAt + 间隔；单次 = at 本身；
     // 锚定时刻声明（notes-034-sched-time）= 锚定序列下一时刻）；非法 → null
@@ -77,19 +79,20 @@
       return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes())
     }
     // 表单 → schedule 声明片段（{at|every} + 周期模式锚定 anchor:'HH:MM'（weekly 另带 dow），notes-034-sched-time；target/enabled 由确认路径补）：返回 { decl } | { err }（内联报错文案与 host 红线同口径）
+    // i18n 覆盖卡E：校验文案走 t() 字典 disp.sched*（app modals/dispatch.js schedFormDecl 同口径镜像）——模块级 t() 直读 langStore 当下语言态（渲染期调用，组件已挂 useT 订阅）
     const schedFormDecl = (mode, n, at, anchor, dow) => {
       if (mode === 'once') {
         const ms = new Date(at || '').getTime()
-        if (!at || !isFinite(ms)) return { err: '仅一次模式需选择定时时间' }
-        if (ms <= Date.now()) return { err: '定时时间必须是未来时刻（host 红线：at 必须未来）' }
+        if (!at || !isFinite(ms)) return { err: t('disp.schedNeedAt') }
+        if (ms <= Date.now()) return { err: t('disp.schedAtFuture') }
         // 本地时区语义（notes-034-at-local-tz）：datetime-local 值本身是本地无后缀串，经 isoToLocalInput 归一提交——禁 toISOString（Z 后缀会被 host 闸门拒绝）
         return { decl: { at: isoToLocalInput(at) } }
       }
       // 锚定时刻（notes-034-sched-time）：周期三模式必携 anchor:'HH:MM'（触发序列钉死本地时刻不漂移）
-      if (schedAnchorMs(anchor) === null) return { err: '周期模式需选择触发时刻（HH:MM）' }
+      if (schedAnchorMs(anchor) === null) return { err: t('disp.schedNeedAnchor') }
       if (mode === 'ndays') {
         const nn = parseInt(n, 10)
-        if (!isFinite(nn) || nn < 1) return { err: '每 N 天的 N 需为 ≥1 的整数' }
+        if (!isFinite(nn) || nn < 1) return { err: t('disp.schedNInvalid') }
         return { decl: { every: nn + 'd', anchor: anchor } }
       }
       if (mode === 'weekly') return { decl: { every: '1w', anchor: anchor, dow: typeof dow === 'number' ? dow : 1 } }

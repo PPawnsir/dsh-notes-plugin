@@ -140,7 +140,7 @@ module.exports = {
     }
     // app.html：调用点不变（底栏/派发记录/树走 fmtDT/fmtD），实现已转本地；旧 UTC 切片实现移除
     assert(v3AppSrc.indexOf("function fmtDT(iso) { return iso ? String(iso).slice(0, 16).replace('T', ' ') : '' }") < 0, 'app.html 旧 UTC 切片 fmtDT 已移除')
-    assert(v3AppSrc.indexOf("'创建 ' + fmtDT(n.createdAt)") >= 0 && v3AppSrc.indexOf("'更新 ' + fmtDT(n.updatedAt)") >= 0, 'app.html 底栏 创建/更新 走 fmtDT')
+    assert(v3AppSrc.indexOf("t('meta.createdAt', { time: fmtDT(n.createdAt) })") >= 0 && v3AppSrc.indexOf("t('meta.updatedAt', { time: fmtDT(n.updatedAt) })") >= 0, 'app.html 底栏 创建/更新 走 fmtDT（i18n 覆盖卡B 起走 t() 字典）')
     assert(v3AppSrc.indexOf("fmtDT(d.at)") >= 0, 'app.html 派发记录走 fmtDT')
     // 原型同源回写（design/notes-ui-v2.html fmtDT/fmtD 本地实现）
     const protoV2tz = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')

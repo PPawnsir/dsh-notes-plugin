@@ -32,14 +32,17 @@
     "cordis.patch.yml",
     "app.html",
     "docs",
-    "README.md"
+    "README.md",
+    "README.en.md"
   ],
   "keywords": [
     "dsh",
     "dsh-plugin",
     "deepseek-harness",
     "notes",
-    "markdown"
+    "markdown",
+    "english",
+    "i18n"
   ],
   "repository": {
     "type": "git",

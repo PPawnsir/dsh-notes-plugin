@@ -22,6 +22,7 @@ const path = require('path')
 const ROOT = path.resolve(__dirname, '..')
 const APP_DIR = path.join(ROOT, 'src', 'app')
 const SHARED_DIR = path.join(ROOT, 'src', 'shared')
+const I18N_DIR = path.join(ROOT, 'src', 'i18n')   // @i18n/ 前缀 = src/i18n/ 双语字典（notes-042-i18n-mech；app 态列 0 原样纳入）
 const MANIFEST_PATH = path.join(APP_DIR, 'manifest.js')
 const OUT_PATH = path.join(ROOT, 'packages', 'dsh-notes-plugin', 'app.html')
 
@@ -29,7 +30,7 @@ const OUT_PATH = path.join(ROOT, 'packages', 'dsh-notes-plugin', 'app.html')
 function parseManifest(text) {
   const list = (String(text).match(/'[^'\n]+'/g) || []).map((s) => s.slice(1, -1))
   for (const rel of list) {
-    if (!/^(@shared\/)?[\w.\-/]+\.(js|html)$/.test(rel) || rel.indexOf('..') >= 0) {
+    if (!/^(@shared\/|@i18n\/)?[\w.\-/]+\.(js|html)$/.test(rel) || rel.indexOf('..') >= 0) {
       throw new Error('[concat-app] manifest 非法条目：' + JSON.stringify(rel))
     }
   }
@@ -42,6 +43,7 @@ function readManifest() {
 
 function readPart(rel) {
   if (rel.indexOf('@shared/') === 0) return fs.readFileSync(path.join(SHARED_DIR, rel.slice('@shared/'.length)), 'utf8')
+  if (rel.indexOf('@i18n/') === 0) return fs.readFileSync(path.join(I18N_DIR, rel.slice('@i18n/'.length)), 'utf8')
   return fs.readFileSync(path.join(APP_DIR, rel), 'utf8')
 }
 
@@ -63,4 +65,4 @@ function main() {
 
 if (require.main === module) main()
 
-module.exports = { concatApp, readManifest, parseManifest, APP_DIR, SHARED_DIR, MANIFEST_PATH, OUT_PATH }
+module.exports = { concatApp, readManifest, parseManifest, APP_DIR, SHARED_DIR, I18N_DIR, MANIFEST_PATH, OUT_PATH }

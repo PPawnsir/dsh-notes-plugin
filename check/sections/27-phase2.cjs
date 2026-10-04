@@ -159,9 +159,9 @@ module.exports = {
       assert(s.indexOf('async function doAiOrganize()') >= 0, label + ' doAiOrganize 存在')
       assert(s.indexOf("'notes-ai-organize', { body: body, kind: edKindRef.current, title: edTitleRef.current }") >= 0, label + ' RPC payload {body,kind,title}')
       assert(s.indexOf('organizeUndoRef.current = { body: body }') >= 0, label + ' 一次撤销栈（整理前正文）')
-      assert(s.indexOf("{ label: '撤销', fn: undoAiOrganize }") >= 0, label + ' 整理成功 toast 带「撤销」')
-      assert(s.indexOf('已恢复整理前正文') >= 0, label + ' 撤销恢复 toast')
-      assert(s.indexOf('正文为空，无可整理内容') >= 0 && s.indexOf('edLoadingRef.current') >= 0, label + ' 空正文/加载中守卫')
+      assert(s.indexOf("{ label: tt('meta.undo'), fn: undoAiOrganize }") >= 0, label + ' 整理成功 toast 带「撤销」（i18n 覆盖卡B 起走 tt() 字典）')
+      assert(s.indexOf("tt('editor.organizeUndone')") >= 0, label + ' 撤销恢复 toast（覆盖卡B 走 tt()）')
+      assert(s.indexOf("tt('editor.bodyEmpty')") >= 0 && s.indexOf('edLoadingRef.current') >= 0, label + ' 空正文/加载中守卫（覆盖卡B 走 tt()）')
       assert(s.indexOf("syncFromRich('整理前同步')") >= 0, label + ' 富文本在途编辑先落回源码')
     }
   })
@@ -191,7 +191,7 @@ module.exports = {
   await t('二期 资产清理 UI（设置卡片入口 + dry-run 预览 + 白名单执行 + Esc + danger 按钮；开发版 + 发布包）', () => {
     for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
       const s = pair[1], label = pair[0]
-      assert(s.indexOf("{ key: 'assets', label: '资产清理'") >= 0, label + ' 设置卡片「资产清理」行')
+      assert(s.indexOf("{ key: 'assets', label: tt('settings.assets')") >= 0, label + ' 设置卡片「资产清理」行（覆盖卡 C 起 label 走 tt() 字典）')
       assert(s.indexOf('function openPrune()') >= 0 && s.indexOf("'notes-assets-prune', { dryRun: true }") >= 0, label + ' openPrune 走 dryRun:true 零写入预览')
       assert(s.indexOf("'notes-assets-prune', { dryRun: false, files: files }") >= 0, label + ' 执行 payload（dryRun:false + files 白名单）')
       assert(s.indexOf('pruneChecked[o.name] !== false') >= 0, label + ' 缺省全勾（false=取消）')
@@ -218,7 +218,8 @@ module.exports = {
     assert(appSrc.indexOf('id="i-sparkle"') >= 0, 'app.html i-sparkle 图标')
     assert(appSrc.indexOf('id="mOrganize"') >= 0 && appSrc.indexOf('function doAiOrganize()') >= 0, 'app.html 整理按钮 + doAiOrganize')
     assert(appSrc.indexOf("rpc('notes-ai-organize', { body: body, kind: edNote.kind || 'note'") >= 0, 'app.html 整理 RPC payload')
-    assert(appSrc.indexOf("toast('已按「' + (KIND[edNote.kind] || '笔记') + '」模板整理', { label: '撤销', fn: undoAiOrganize })") >= 0, 'app.html 整理 toast 撤销')
+    /* i18n 覆盖卡F：app 整理 toast 走 t() 字典（editor.organized 复用 B 卡 + meta.undo；kind 名经 kindLabel() 条件映射） */
+    assert(appSrc.indexOf("toast(t('editor.organized', { kind: kindLabel(edNote.kind) || t('meta.kindNote') }), { label: t('meta.undo'), fn: undoAiOrganize })") >= 0, 'app.html 整理 toast 撤销（覆盖卡F 起走 t()）')
     assert(appSrc.indexOf("body: KIND_TEMPLATES[kind0] || ''") >= 0, 'app.html 新建按类型预填骨架')
     assert(appSrc.indexOf('IMG_COMPRESS_THRESHOLD = 1024 * 1024') >= 0 && appSrc.indexOf('function compressImageData(dataURL, cb)') >= 0, 'app.html 压缩阈值 + helper')
     assert(appSrc.indexOf("f.size > IMG_COMPRESS_THRESHOLD && (f.type === 'image/png' || f.type === 'image/jpeg')") >= 0, 'app.html pickImageFile 压缩接线')

@@ -8,19 +8,22 @@ var injMgrState = null;   /* { list:null=加载中, filter:'all', search:'', q:'
 var injMgrSearchTimer = null;
 /* 笔记三态（与详情区同口径）：inject=true → injectRole（缺省 convention）；否则 off */
 function injMgrRole(n) { return n.inject === true ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off' }
-/* 作用域摘要（injectTo 数；缺省/存量 global·workspace 值 = 全局） */
-function injMgrScopeLabel(injectTo) { var arr = (injectTo || []).filter(function (t) { return t !== 'global' && t !== 'workspace' }); return arr.length === 0 ? '全局' : arr.length + ' 个会话' }
-function openInjectManager() {
+/* 作用域摘要（injectTo 数；缺省/存量 global·workspace 值 = 全局）；i18n 覆盖卡D：文案走 t()（filter 回调形参 t 遮蔽仅域内，return 在城外读全局 t） */
+function injMgrScopeLabel(injectTo) { var arr = (injectTo || []).filter(function (t) { return t !== 'global' && t !== 'workspace' }); return arr.length === 0 ? t('inj.scopeGlobal') : t('inj.scopeSessions', { n: arr.length }) }
+function openInjectManager(from) {
+  /* 单层返回栈（notes-041-settings-back）：from='settings'（设置卡「管理…」入口）时存档来源 + 当前 .modal 滚动位置，关闭后自动回设置卡 */
+  var backScroll = from === 'settings' && $('modal') ? $('modal').scrollTop : 0;
   injMgrState = { list: null, filter: 'all', search: '', q: '', sel: {}, pending: false };
   openModal(
-    '<div class="modal-t">' + icon('i-bolt', 13) + ' 注入管理<span class="sub">全库注入总览 · 单行直改 / 多选批量 · 日志隐身硬禁 · 调度任务区（定时派发）</span></div>'
+    '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + t('settings.injManager') + '<span class="sub">' + t('inj.titleSub') + '</span></div>'
     + '<div class="injmgr-bar"><div class="injmgr-chips" id="injMgrChips"></div>'
-    + '<input class="injmgr-search" id="injMgrSearch" placeholder="搜索标题 / 主题 / 标签…"></div>'
+    + '<input class="injmgr-search" id="injMgrSearch" placeholder="' + t('inj.searchPlaceholder') + '"></div>'
     + '<div id="injSchedHost"></div>'
-    + '<div id="injMgrBody"><div class="modal-hint">加载中…</div></div>'
+    + '<div id="injMgrBody"><div class="modal-hint">' + t('common.loading') + '</div></div>'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
-    + '<div class="modal-acts"><button class="mbtn" id="injMgrClose">关闭</button></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="injMgrClose">' + t('common.close') + '</button></div>'
   );
+  if (from === 'settings') { modalBackTo = 'settings'; modalBackScroll = backScroll }   /* 挂载单层返回栈（openModal 已清零，此处按来源回填） */
   $('modal').classList.add('injmgr');
   $('injMgrClose').onclick = function () { if (!injMgrState || !injMgrState.pending) { closeModal(); injMgrState = null } };
   /* 搜索 250ms 防抖（与列表搜索同口径）：输入即更新受控值，防抖后才落过滤词 q */
@@ -38,7 +41,7 @@ function loadInjectManager() {
     if (res && res.error) { injMgrState.list = []; renderInjectManager(); modalErr(res.error); return }
     injMgrState.list = (res && res.notes) || [];
     renderInjectManager();
-  }).catch(function (e) { if (injMgrState) { injMgrState.list = []; renderInjectManager(); modalErr('加载失败：' + (e && e.message || e)) } });
+  }).catch(function (e) { if (injMgrState) { injMgrState.list = []; renderInjectManager(); modalErr(t('inj.loadFailed', { msg: e && e.message || e })) } });
 }
 /* 当前过滤视图（排序：注入中在前（约定 > 资料 > 未注入），组内 updatedAt 降序；三态过滤 + 搜索词本地过滤） */
 function injMgrShownList() {
@@ -56,39 +59,39 @@ function renderInjectManager() {
   /* 顶部统计 chips（点击=过滤）：全部 / 约定 N / 资料 M / 未注入 K */
   var cntConv = 0, cntRef = 0, cntOff = 0;
   list.forEach(function (n) { var r = injMgrRole(n); if (r === 'convention') cntConv++; else if (r === 'reference') cntRef++; else cntOff++ });
-  chips.innerHTML = [['all', '全部 ' + list.length], ['convention', '约定 ' + cntConv], ['reference', '资料 ' + cntRef], ['off', '未注入 ' + cntOff]].map(function (c) {
+  chips.innerHTML = [['all', t('inj.chipAll', { n: list.length })], ['convention', t('inj.chipConvention', { n: cntConv })], ['reference', t('inj.chipReference', { n: cntRef })], ['off', t('inj.chipOff', { n: cntOff })]].map(function (c) {
     return '<button class="injmgr-chip' + (st.filter === c[0] ? ' on' : '') + '" data-f="' + c[0] + '">' + c[1] + '</button>'
   }).join('');
   chips.querySelectorAll('.injmgr-chip').forEach(function (el) { el.onclick = function () { st.filter = el.getAttribute('data-f'); renderInjectManager() } });
   renderInjSched();   /* 调度任务区（notes-034-sched-ui）：与注入总览同面板同数据源 */
   if (!st.list) return;
   var shown = injMgrShownList();
-  if (!shown.length) { body.innerHTML = '<div class="modal-hint">' + (list.length ? '无匹配笔记（调整过滤或搜索词）。' : '笔记库为空。') + '</div>'; return }
+  if (!shown.length) { body.innerHTML = '<div class="modal-hint">' + (list.length ? t('inj.noMatch') : t('inj.emptyLib')) + '</div>'; return }
   var selectable = shown.filter(function (n) { return (n.kind || 'note') !== 'log' });   /* log 行不可选（隐身硬禁） */
   var selCnt = Object.keys(st.sel).length;
   var allChecked = selectable.length > 0 && selectable.every(function (n) { return st.sel[n.id] });
   body.innerHTML = '<div class="injmgr-batch">'
-      + '<label class="trash-all"><input type="checkbox" id="injMgrAll"' + (allChecked ? ' checked' : '') + (st.pending || !selectable.length ? ' disabled' : '') + '>全选</label>'
-      + '<span class="selcnt">已选 ' + selCnt + ' 条</span>'
-      + '<button class="mbtn trash-act" id="injMgrBatchConv"' + (st.pending || selCnt < 1 ? ' disabled' : '') + '>设为约定</button>'
-      + '<button class="mbtn trash-act" id="injMgrBatchRef"' + (st.pending || selCnt < 1 ? ' disabled' : '') + '>设为资料</button>'
-      + '<button class="mbtn trash-act" id="injMgrBatchOff"' + (st.pending || selCnt < 1 ? ' disabled' : '') + '>' + (st.pending ? '执行中…' : '关闭注入') + '</button></div>'
+      + '<label class="trash-all"><input type="checkbox" id="injMgrAll"' + (allChecked ? ' checked' : '') + (st.pending || !selectable.length ? ' disabled' : '') + '>' + t('inj.selectAll') + '</label>'
+      + '<span class="selcnt">' + t('sel.selCount', { n: selCnt }) + '</span>'
+      + '<button class="mbtn trash-act" id="injMgrBatchConv"' + (st.pending || selCnt < 1 ? ' disabled' : '') + '>' + t('inj.batchConvention') + '</button>'
+      + '<button class="mbtn trash-act" id="injMgrBatchRef"' + (st.pending || selCnt < 1 ? ' disabled' : '') + '>' + t('inj.batchReference') + '</button>'
+      + '<button class="mbtn trash-act" id="injMgrBatchOff"' + (st.pending || selCnt < 1 ? ' disabled' : '') + '>' + (st.pending ? t('inj.executing') : t('inj.batchOff')) + '</button></div>'
     + '<div class="injmgr-list">'
     + shown.map(function (n) {
         var role = injMgrRole(n), isLog = (n.kind || 'note') === 'log';
         /* 行内三态 segmented（语义与详情区三态分段控件完全一致）；log 行约定/资料档禁用（隐身硬禁 + title 提示） */
         var seg = function (r, label, tip) {
           var dis = isLog && r !== 'off';
-          return '<span class="injmgr-opt' + (role === r ? ' on' : '') + (dis ? ' dis' : '') + '" data-role="' + r + '" data-id="' + esc(n.id) + '" title="' + (dis ? '日志默认隐身：inject 强制关闭（kind=log 硬禁）' : tip) + '">' + label + '</span>'
+          return '<span class="injmgr-opt' + (role === r ? ' on' : '') + (dis ? ' dis' : '') + '" data-role="' + r + '" data-id="' + esc(n.id) + '" title="' + (dis ? t('inj.logSegTip') : tip) + '">' + label + '</span>'
         };
         return '<div class="injmgr-row">'
-          + '<span' + (isLog ? ' title="日志默认隐身：inject 强制关闭，不参与注入批量操作"' : '') + '><input type="checkbox" class="trash-check injmgr-check" data-id="' + esc(n.id) + '"' + (st.sel[n.id] ? ' checked' : '') + (isLog || st.pending ? ' disabled' : '') + '></span>'
+          + '<span' + (isLog ? ' title="' + t('inj.logRowTip') + '"' : '') + '><input type="checkbox" class="trash-check injmgr-check" data-id="' + esc(n.id) + '"' + (st.sel[n.id] ? ' checked' : '') + (isLog || st.pending ? ' disabled' : '') + '></span>'
           + '<span class="dot" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>'
-          + '<span class="injmgr-ti" title="' + esc(n.title || '无标题') + '">' + esc(n.title || '无标题') + '</span>'
-          + (n.sensitive === true ? '<span class="injmgr-sens" title="敏感笔记：注入时自动脱敏（正文按行打码，键保留值遮蔽）">' + icon('i-lock', 9) + '注入时自动脱敏</span>' : '')
-          + (n.injectEver === true && !n.inject ? '<span class="injmgr-ever" title="曾注入：历史上开启过上下文注入（现已关闭；injectEver 为粘性标记，不随关闭回退）">' + icon('i-clock', 9) + '曾注入</span>' : '')
+          + '<span class="injmgr-ti" title="' + esc(n.title || t('tree.untitled')) + '">' + esc(n.title || t('tree.untitled')) + '</span>'
+          + (n.sensitive === true ? '<span class="injmgr-sens" title="' + t('inj.sensTip') + '">' + icon('i-lock', 9) + t('inj.sensBadge') + '</span>' : '')
+          + (n.injectEver === true && !n.inject ? '<span class="injmgr-ever" title="' + t('meta.injectEverTip') + '">' + icon('i-clock', 9) + t('meta.injectEver') + '</span>' : '')
           + '<span class="injmgr-scope">' + esc(injMgrScopeLabel(n.injectTo)) + '</span>'
-          + '<span class="injmgr-seg">' + icon('i-bolt', 10) + seg('off', '关闭', '不注入系统提示') + seg('convention', '约定', '须遵守的行为规则') + seg('reference', '资料', '事实性补充信息，Agent 按需取用') + '</span>'
+          + '<span class="injmgr-seg">' + icon('i-bolt', 10) + seg('off', t('meta.roleOff'), t('meta.roleOffTip')) + seg('convention', t('tree.roleConvention'), t('meta.roleConventionTip')) + seg('reference', t('tree.roleReference'), t('meta.roleReferenceTip')) + '</span>'
           + '</div>'
       }).join('') + '</div>';
   $('injMgrAll').onchange = toggleInjMgrAll;
@@ -110,39 +113,39 @@ function injSchedList() { return ((injMgrState && injMgrState.list) || []).filte
 /* 上次结果徽章：lastError 红 / lastRun sent 绿 / 未触发灰（暂停另出黄徽章 + 行置灰） */
 function schedBadgeHtml(n) {
   var s = n.schedule;
-  if (s.lastError) return '<span class="sched-badge err" title="' + esc(s.lastError.message || '') + '">' + icon('i-x', 9) + '失败 ' + esc(fmtDT(s.lastError.at)) + '</span>';
+  if (s.lastError) return '<span class="sched-badge err" title="' + esc(s.lastError.message || '') + '">' + icon('i-x', 9) + esc(t('meta.schedFailed', { time: fmtDT(s.lastError.at) })) + '</span>';
   if (s.lastRun) return s.lastRun.status === 'sent'
-    ? '<span class="sched-badge ok" title="回执走派发闭环链路（receiptId=' + esc(s.lastRun.receiptId || '') + '）">' + icon('i-check', 9) + '已派发 ' + esc(fmtDT(s.lastRun.at)) + '</span>'
-    : '<span class="sched-badge err">' + icon('i-x', 9) + '失败 ' + esc(fmtDT(s.lastRun.at)) + '</span>';
-  return '<span class="sched-badge">未触发</span>';
+    ? '<span class="sched-badge ok" title="' + esc(t('meta.schedReceiptTip', { id: s.lastRun.receiptId || '' })) + '">' + icon('i-check', 9) + esc(t('meta.schedSent', { time: fmtDT(s.lastRun.at) })) + '</span>'
+    : '<span class="sched-badge err">' + icon('i-x', 9) + esc(t('meta.schedFailed', { time: fmtDT(s.lastRun.at) })) + '</span>';
+  return '<span class="sched-badge">' + t('meta.schedNever') + '</span>';
 }
-/* 下次触发展示：暂停 → 已暂停；单次已触发 → 已触发；否则「下次 <本地时间>」（锚点同 host schedDueAt 口径） */
+/* 下次触发展示：暂停 → 已暂停；单次已触发 → 已触发；否则「下次 <本地时间>」（锚点同 host schedDueAt 口径）；i18n 覆盖卡D：文案走 t()（复用 B 卡 meta.sched* key） */
 function schedNextLabel(n) {
   var s = n.schedule;
-  if (s.enabled === false) return '已暂停';
-  if (s.at && s.lastFiredAt && Date.parse(s.lastFiredAt) >= Date.parse(s.at)) return '已触发（单次）';
+  if (s.enabled === false) return t('meta.schedPaused');
+  if (s.at && s.lastFiredAt && Date.parse(s.lastFiredAt) >= Date.parse(s.at)) return t('meta.schedFired');
   var ms = schedNextMs(n);
-  return ms === null ? '—' : '下次 ' + fmtDT(new Date(ms).toISOString());
+  return ms === null ? '—' : t('meta.schedNext', { time: fmtDT(new Date(ms).toISOString()) });
 }
 function renderInjSched() {
   var host = $('injSchedHost'); if (!host || !injMgrState || !injMgrState.list) return;
   var items = injSchedList();
-  var h = '<div class="sched-sec"><div class="sched-sec-t">' + icon('i-clock', 12) + ' 调度任务（' + items.length + '）<span class="sub">定时派发约定 · 声明在 front-matter（contractType: dispatch-schedule），裸编辑即开发者旁路</span></div>';
-  if (!items.length) h += '<div class="modal-hint">暂无定时任务——派发对话框选「定时执行」即可排定。</div>';
+  var h = '<div class="sched-sec"><div class="sched-sec-t">' + icon('i-clock', 12) + ' ' + t('inj.schedTitle', { n: items.length }) + '<span class="sub">' + t('inj.schedTitleSub') + '</span></div>';
+  if (!items.length) h += '<div class="modal-hint">' + t('inj.schedEmpty') + '</div>';
   else {
     h += items.map(function (n) {
       var s = n.schedule, paused = s.enabled === false;
       return '<div class="sched-row' + (paused ? ' paused' : '') + '" data-id="' + esc(n.id) + '">'
-        + '<span class="sched-row-t" title="' + esc(n.title || '无标题') + '">' + esc(n.title || '无标题') + '</span>'
+        + '<span class="sched-row-t" title="' + esc(n.title || t('tree.untitled')) + '">' + esc(n.title || t('tree.untitled')) + '</span>'
         + '<span class="sched-freq">' + esc(schedFreqLabel(s)) + '</span>'
         + '<span class="sched-target" title="' + esc(s.target || '') + '">→ ' + esc(shortSid(s.target)) + '</span>'
         + '<span class="sched-nf">' + esc(schedNextLabel(n)) + '</span>'
         + schedBadgeHtml(n)
-        + (paused ? '<span class="sched-badge off">已暂停</span>' : '')
+        + (paused ? '<span class="sched-badge off">' + t('meta.schedPaused') + '</span>' : '')
         + '<span class="sched-acts">'
-        + '<button class="mbtn sched-act" data-act="edit" title="回填派发弹窗编辑调度声明">编辑</button>'
-        + '<button class="mbtn sched-act" data-act="toggle" title="' + (paused ? '恢复调度（enabled=true，host 重新校验目标存活红线）' : '暂停调度（enabled=false，声明与历史保留）') + '">' + (paused ? '恢复' : '暂停') + '</button>'
-        + '<button class="mbtn sched-act" data-act="del" title="软删约定笔记（回收站可恢复），调度即刻停止">删除</button>'
+        + '<button class="mbtn sched-act" data-act="edit" title="' + t('meta.schedEditTip') + '">' + t('meta.edit') + '</button>'
+        + '<button class="mbtn sched-act" data-act="toggle" title="' + (paused ? t('meta.schedResumeTip') : t('meta.schedPauseTip')) + '">' + (paused ? t('meta.resume') : t('meta.pause')) + '</button>'
+        + '<button class="mbtn sched-act" data-act="del" title="' + t('meta.schedDelTip') + '">' + t('common.delete') + '</button>'
         + '</span></div>';
     }).join('');
   }
@@ -158,34 +161,52 @@ function renderInjSched() {
     };
   });
 }
-/* 编辑 = 回填派发弹窗（modal 不叠 modal：先关注入管理再开编辑态派发弹窗） */
-function doInjSchedEdit(n) { closeModal(); injMgrState = null; openDispatchEdit(n) }
-/* 暂停/恢复：表单与 front-matter 同源——只提交声明字段（机器状态由 host 闸门延续；锚定时刻 anchor/dow 属声明字段随 every 一并回传，防暂停/恢复丢锚定，notes-034-sched-time）；恢复走 host 存活校验，失败内联回显 */
+/* 编辑 = 回填派发弹窗（modal 不叠 modal：先关注入管理再开编辑态派发弹窗；清返回栈——调度编辑回填是新链路，关闭不回设置卡） */
+function doInjSchedEdit(n) { modalBackTo = null; closeModal(); injMgrState = null; openDispatchEdit(n) }
+/* 暂停/恢复：表单与 front-matter 同源——只提交声明字段（机器状态由 host 闸门延续；锚定时刻 anchor/dow 属声明字段随 every 一并回传，防暂停/恢复丢锚定，notes-034-sched-time）；恢复走 host 存活校验，失败内联回显。
+   双上下文（notes-041-sched-plan-edit）：注入管理调度区 + 详情计划块共用本 handler——schedOpPending 模块级闸（injMgrState 在场时同步其 pending 驱动 modal 重渲，错误内联回显；不在场 toast）；
+   成功后计划块就地刷新：edNote 命中即本地回写 enabled + renderMeta（loadNotes 后台对齐 host） */
+var schedOpPending = false;
 function doInjSchedToggle(n) {
-  var s = n.schedule; if (!s || !injMgrState || injMgrState.pending) return;
+  var s = n.schedule; if (!s || schedOpPending) return;
   var decl = { target: s.target, action: 'dispatch', enabled: s.enabled === false };
   if (s.at) decl.at = s.at; else { decl.every = s.every; if (s.anchor) decl.anchor = s.anchor; if (typeof s.dow === 'number') decl.dow = s.dow }
-  injMgrState.pending = true; renderInjectManager();
+  schedOpPending = true;
+  if (injMgrState) { injMgrState.pending = true; renderInjectManager(); }
   rpc('notes-update', { id: n.id, schedule: decl }).then(function (res) {
-    if (!injMgrState) return;
-    injMgrState.pending = false;
-    if (res && res.error) { renderInjectManager(); modalErr(res.error); return }
-    toast(decl.enabled ? '已恢复定时：' + (n.title || n.id) : '已暂停定时：' + (n.title || n.id));
-    loadInjectManager(); loadNotes(true);
-  }).catch(function (e) { if (injMgrState) { injMgrState.pending = false; renderInjectManager(); modalErr('操作失败：' + (e && e.message || e)) } });
+    schedOpPending = false;
+    if (injMgrState) injMgrState.pending = false;
+    if (res && res.error) { if (injMgrState) { renderInjectManager(); modalErr(res.error) } else toast(res.error); return }
+    toast(decl.enabled ? t('inj.schedResumed', { title: n.title || n.id }) : t('inj.schedPausedToast', { title: n.title || n.id }));
+    if (edNote && edNote.id === n.id && edNote.schedule) { edNote.schedule.enabled = decl.enabled; renderMeta(); }
+    if (injMgrState) loadInjectManager();
+    loadNotes(true);
+  }).catch(function (e) {
+    schedOpPending = false;
+    if (injMgrState) { injMgrState.pending = false; renderInjectManager(); modalErr(t('meta.opFailed', { msg: e && e.message || e })) }
+    else toast(t('meta.opFailed', { msg: e && e.message || e }));
+  });
 }
-/* 删除 = 软删约定笔记（回收站可恢复；tick 跳过已删笔记，调度即刻停止）——暂停与删除是两个独立操作 */
+/* 删除 = 软删约定笔记（回收站可恢复；tick 跳过已删笔记，调度即刻停止）——暂停与删除是两个独立操作。
+   双上下文（notes-041-sched-plan-edit）：计划块删除的是当前打开笔记时，编辑器一并清空（同 doDeleteNote 口径） */
 function doInjSchedDel(n) {
-  if (!injMgrState || injMgrState.pending) return;
-  if (!confirm('删除定时任务「' + (n.title || n.id) + '」？\n约定笔记移入回收站（可恢复），调度即刻停止。')) return;
-  injMgrState.pending = true; renderInjectManager();
+  if (schedOpPending) return;
+  if (!confirm(t('inj.schedDelConfirm', { title: n.title || n.id }))) return;
+  schedOpPending = true;
+  if (injMgrState) { injMgrState.pending = true; renderInjectManager(); }
   rpc('notes-delete', { id: n.id }).then(function (res) {
-    if (!injMgrState) return;
-    injMgrState.pending = false;
-    if (res && res.error) { renderInjectManager(); modalErr(res.error); return }
-    toast('已删除定时任务：' + (n.title || n.id) + '（回收站可恢复）');
-    loadInjectManager(); loadNotes(true);
-  }).catch(function (e) { if (injMgrState) { injMgrState.pending = false; renderInjectManager(); modalErr('删除失败：' + (e && e.message || e)) } });
+    schedOpPending = false;
+    if (injMgrState) injMgrState.pending = false;
+    if (res && res.error) { if (injMgrState) { renderInjectManager(); modalErr(res.error) } else toast(res.error); return }
+    toast(t('inj.schedDeleted', { title: n.title || n.id }));
+    if (edNote && edNote.id === n.id) { selId = null; edNote = null; renderEd(); }
+    if (injMgrState) loadInjectManager();
+    loadNotes(true);
+  }).catch(function (e) {
+    schedOpPending = false;
+    if (injMgrState) { injMgrState.pending = false; renderInjectManager(); modalErr(t('meta.deleteFailed', { msg: e && e.message || e })) }
+    else toast(t('meta.deleteFailed', { msg: e && e.message || e }));
+  });
 }
 function toggleInjMgrSel(id) { if (!injMgrState || injMgrState.pending) return; if (injMgrState.sel[id]) delete injMgrState.sel[id]; else injMgrState.sel[id] = true; renderInjectManager() }
 /* 全选 = 当前过滤视图内可选（非 log）行；已全勾时再点清空 */
@@ -207,22 +228,22 @@ function doInjMgrSet(n, role) {
   rpc('notes-update', upd).then(function (res) {
     if (!injMgrState) return;
     if (res && res.error) { modalErr(res.error); return }
-    if (res && res.injectForcedOff) toast('「' + (n.title || n.id) + '」日志默认隐身：inject 已强制关闭');
-    else toast(role === 'off' ? '已关闭注入：' + (n.title || n.id) : '已设为' + (role === 'reference' ? '资料' : '约定') + '：' + (n.title || n.id));
+    if (res && res.injectForcedOff) toast(t('inj.forcedOff', { title: n.title || n.id }));
+    else toast(role === 'off' ? t('inj.injectOffToast', { title: n.title || n.id }) : t('inj.injectSetToast', { role: t(role === 'reference' ? 'tree.roleReference' : 'tree.roleConvention'), title: n.title || n.id }));
     /* 本地即时回写（injectEver 粘性：开启即曾注入），后台刷新对齐 host */
     n.inject = role !== 'off';
     if (role !== 'off') { n.injectRole = role; n.injectEver = true }
     renderInjectManager();
     loadNotes(true);
-  }).catch(function (e) { modalErr('设置失败：' + (e && e.message || e)) });
+  }).catch(function (e) { modalErr(t('inj.setFailed', { msg: e && e.message || e })) });
 }
 /* 批量设为约定/资料/关闭：confirm 条数 → 逐条 notes-update（单条失败计数不中断）；完成后清选 + 刷新 */
 function doInjMgrBatch(role) {
   if (!injMgrState || injMgrState.pending) return;
   var ids = Object.keys(injMgrState.sel);
   if (!ids.length) return;
-  var label = role === 'off' ? '关闭注入' : ('设为' + (role === 'reference' ? '资料' : '约定'));
-  if (!confirm('批量' + label + '：所选的 ' + ids.length + ' 条笔记将' + (role === 'off' ? '关闭上下文注入。' : '注入为' + (role === 'reference' ? '资料（按需取用）。' : '约定（须遵守）。')) + '\n确认执行？')) return;
+  var label = role === 'off' ? t('inj.batchOff') : t('inj.batchLabelSet', { role: t(role === 'reference' ? 'tree.roleReference' : 'tree.roleConvention') });
+  if (!confirm(t('inj.batchConfirm', { label: label, n: ids.length, effect: role === 'off' ? t('inj.batchEffOff') : t(role === 'reference' ? 'inj.batchEffRef' : 'inj.batchEffConv') }))) return;
   injMgrState.pending = true; renderInjectManager();
   var ok = 0, fail = 0, seq = Promise.resolve();
   ids.forEach(function (id) {
@@ -235,7 +256,7 @@ function doInjMgrBatch(role) {
   seq.then(function () {
     if (!injMgrState) return;
     injMgrState.pending = false; injMgrState.sel = {};
-    toast('已' + label + ' ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''));
+    toast(t('inj.batchDone', { label: label, ok: ok }) + (fail ? t('inj.batchDoneFail', { n: fail }) : ''));
     loadInjectManager(); loadNotes(true);
   });
 }

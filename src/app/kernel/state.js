@@ -35,6 +35,14 @@ var FILTER_SORTS = [
   { id: 'use', label: '引用', desc: '被引用次数降序' },
   { id: 'rel', label: '相关度', desc: '搜索打分（搜索时生效）' }
 ];
+/* ===== i18n 覆盖卡F（notes-042-i18n-cov-f）：共享常量表条件映射——KIND/STATUS_LABEL/FILTER_STATUS/FILTER_SORTS 中文字面量
+   保留作四端同构锚（check 30/34/39 锁定原文 + 原型不双语红线），渲染一律经下列 helper 走 t() 字典（setLang 全量 render 即生效）；
+   未知值回退 ''（调用方 || 兜底），永不裸 key ===== */
+function kindLabel(k) { return KIND[k] ? t('meta.kind' + k.charAt(0).toUpperCase() + k.slice(1)) : '' }
+function statusLabel(s) { if (s === 'pinned') return t('tree.pinned'); return STATUS_LABEL[s] ? t('meta.status' + s.charAt(0).toUpperCase() + s.slice(1)) : '' }
+function filterStatusLabel(id) { return id === 'pinned' ? t('tree.pinned') : id === 'injected' ? t('filter.stInjected') : id === 'injectEver' ? t('meta.injectEver') : id === 'sensitive' ? t('meta.sens') : id }
+function sortLabelOf(id) { return t('sort.' + (id === 'use' || id === 'rel' ? id : 'time')) }
+function sortDescOf(id) { return t('sort.' + (id === 'use' || id === 'rel' ? id : 'time') + 'Desc') }
 function loadFilters() {
   var F = { pinned: false, injected: false, injectEver: false, sensitive: false, kinds: [] };
   try {
@@ -64,7 +72,7 @@ function matchFilters(n, F) {
   return true;
 }
 function clearFilters() { filters = { pinned: false, injected: false, injectEver: false, sensitive: false, kinds: [] }; saveFilters() }
-function sortLabel() { for (var i = 0; i < FILTER_SORTS.length; i++) if (FILTER_SORTS[i].id === sortBy) return FILTER_SORTS[i].label; return '时间' }
+function sortLabel() { return sortLabelOf(sortBy) }   /* i18n 覆盖卡F：排序档标签走 t() 字典（sort.* 条件映射），原 FILTER_SORTS[i].label 字面量仅作锚 */
 var searchText = '', searchIds = null; // searchIds=null=仅本地过滤；数组=host 全文命中 ∪ 本地命中
 var searchMeta = {};         // host notes-search 返回的命中字段（noteId → ['title'|'tags'|'body']），相关度排序数据源
 var searchErrNotified = false;   /* 在线检索失败 toast 去重闸：同一轮故障只提示一次（doSearch 防抖逐键触发，防刷屏），成功即复位 */

@@ -22,9 +22,10 @@ module.exports = {
     assert(css.indexOf('.dsh-notes-ctxmenu-item') >= 0, 'styles.css 含菜单项样式')
   })
   await t('菜单含置顶/已解决/删除三动作（v2 纯文字 + SVG 图标）', () => {
-    assert(clientSrc.indexOf("ctxMenu.note.status === 'pinned' ? '取消置顶' : '置顶'") >= 0, '置顶/取消置顶动作存在')
-    assert(clientSrc.indexOf("ctxMenu.note.status === 'resolved' ? '重开' : '标记已解决'") >= 0, '标记已解决/重开动作存在')
-    assert(clientSrc.indexOf("I('trash', 12), '删除'") >= 0, '删除动作存在（trash 图标）')
+    /* i18n 覆盖卡F：菜单文案走 t() 字典（zh 原串在 src/i18n/zh.js：meta.pin/unpin、ctx.reopen/markResolved、common.delete） */
+    assert(clientSrc.indexOf("ctxMenu.note.status === 'pinned' ? t('meta.unpin') : t('meta.pin')") >= 0, '置顶/取消置顶动作存在')
+    assert(clientSrc.indexOf("ctxMenu.note.status === 'resolved' ? t('ctx.reopen') : t('ctx.markResolved')") >= 0, '标记已解决/重开动作存在')
+    assert(clientSrc.indexOf("I('trash', 12), t('common.delete')") >= 0, '删除动作存在（trash 图标）')
     assert(/function ctxSetStatus\(n, status\)/.test(clientSrc), 'ctxSetStatus 函数存在')
     assert(/ctxSetStatus[\s\S]{0,300}host\.call\('notes-update'/.test(clientSrc), 'ctxSetStatus 走 notes-update RPC')
   })

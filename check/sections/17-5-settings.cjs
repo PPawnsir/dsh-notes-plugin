@@ -13,7 +13,7 @@ module.exports = {
   // --- 源码结构断言 ---
   await t('设置入口存在（v2 侧栏底部 fbtn：gear 图标 + tooltip 设置）', () => {
     assert(/dsh-notes-fbtn dsh-nt', onClick: openSettings/.test(clientSrc), 'client-impl 侧栏底部含设置按钮（dsh-notes-fbtn + onClick=openSettings）')
-    assert(clientSrc.indexOf("'data-tooltip': '设置'") >= 0, '设置按钮 tooltip=设置')
+    assert(clientSrc.indexOf("'data-tooltip': t('common.settings')") >= 0, '设置按钮 tooltip=设置（i18n 覆盖卡A 起走 t() 字典）')
     assert(clientSrc.indexOf("I('gear', 12)") >= 0, '设置按钮 gear SVG 图标')
     assert(clientSrc.indexOf('⚙') < 0, '⚙ emoji 已移除（SVG 化）')
   })
@@ -35,15 +35,15 @@ module.exports = {
     assert(/function openSettings\(\)/.test(clientSrc) && /function saveSettingsLlm\(/.test(clientSrc), 'openSettings / saveSettingsLlm 函数存在')
   })
   await t('设置卡片承接底部收敛：「数据」区补回收站兜底 + 新增「整理建议」行（openTrash/openSuggest 仍可达）', () => {
-    // dataControl 追加「回收站」按钮（openTrash，与底部同款）
-    assert(clientSrc.indexOf("onClick: openTrash }, '回收站'") >= 0, 'client-impl 数据区含「回收站」按钮（openTrash）')
-    // settingsRows 新增「整理建议」行（openSuggest）
-    assert(/key: 'suggest', label: '整理建议'/.test(clientSrc), 'client-impl settingsRows 含「整理建议」行')
-    assert(clientSrc.indexOf("sub: '速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）'") >= 0, '整理建议行 sub 文案')
-    assert(/const suggestControl = e\('button', \{[^}]*onClick: openSuggest[^}]*\}, '打开'\)/.test(clientSrc), '整理建议行控件 = 打开按钮 → openSuggest')
+    // dataControl 追加「回收站」按钮（openTrash，与底部同款；覆盖卡 C 起文案走 tt() 字典）
+    assert(clientSrc.indexOf("onClick: openTrash }, tt('topbar.trash')") >= 0, 'client-impl 数据区含「回收站」按钮（openTrash）')
+    // settingsRows 新增「整理建议」行（openSuggest；覆盖卡 C 起 label/sub 走 tt() 字典，文案本体在 zh.js）
+    assert(/key: 'suggest', label: tt\('settings\.suggest'\)/.test(clientSrc), 'client-impl settingsRows 含「整理建议」行')
+    assert(clientSrc.indexOf("'settings.suggestTipClient': '速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）'") >= 0, '整理建议行 sub 文案（字典 settings.suggestTipClient）')
+    assert(/const suggestControl = e\('button', \{[^}]*onClick: openSuggest[^}]*\}, tt\('settings\.openBtn'\)\)/.test(clientSrc), '整理建议行控件 = 打开按钮 → openSuggest')
     // 发布包 client.js 同步（build-dist 产物）
-    assert(clientPkgSrcSettings.indexOf("onClick: openTrash }, '回收站'") >= 0, '发布包数据区含「回收站」按钮（需先跑 scripts/build-dist.cjs）')
-    assert(/key: 'suggest', label: '整理建议'/.test(clientPkgSrcSettings), '发布包 settingsRows 含「整理建议」行（需先跑 scripts/build-dist.cjs）')
+    assert(clientPkgSrcSettings.indexOf("onClick: openTrash }, tt('topbar.trash')") >= 0, '发布包数据区含「回收站」按钮（需先跑 scripts/build-dist.cjs）')
+    assert(/key: 'suggest', label: tt\('settings\.suggest'\)/.test(clientPkgSrcSettings), '发布包 settingsRows 含「整理建议」行（需先跑 scripts/build-dist.cjs）')
   })
   await t('client 经 RPC 读写设置（notes-settings-get / notes-settings-set）', () => {
     assert(clientSrc.indexOf('notes-settings-get') >= 0 && clientSrc.indexOf('notes-settings-set') >= 0, 'client-impl 含两个设置 RPC 调用')

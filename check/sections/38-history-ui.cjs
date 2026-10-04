@@ -83,7 +83,7 @@ module.exports = {
     assert(clientSrc.indexOf("host.call('notes-history', { id: id })") >= 0, 'notes-history 探测/列表调用点')
     assert(clientSrc.indexOf("host.call('notes-history-get', { id: selectedRef.current, ts: ts })") >= 0, 'notes-history-get 预览调用点')
     assert(clientSrc.indexOf("host.call('notes-restore-history', { id: id, ts: ts0 })") >= 0, 'notes-restore-history 恢复调用点')
-    assert(clientSrc.indexOf('(histCount || 0) > 0') >= 0 && clientSrc.indexOf("I('clock', 12), '历史'") >= 0, 'meta 行「历史」入口（有版本才显示，clock 图标）')
+    assert(clientSrc.indexOf('(histCount || 0) > 0') >= 0 && clientSrc.indexOf("I('clock', 12), tt('meta.history')") >= 0, 'meta 行「历史」入口（有版本才显示，clock 图标；i18n 覆盖卡B 起走 tt() 字典）')
     assert(clientSrc.indexOf('probeHistCount') >= 0 && clientSrc.indexOf('histCountRef.current = null; setHistCount(null)') >= 0, '选中笔记切换时重置并探测版本计数')
     assert(clientSrc.indexOf('dsh-notes-hist-modal') >= 0 && clientSrc.indexOf('dsh-notes-hist-list') >= 0 && clientSrc.indexOf('dsh-notes-hist-item') >= 0, '历史 modal 结构类（列表）')
     assert(clientSrc.indexOf("'dsh-notes-hist-preview dsh-notes-rich'") >= 0 && clientSrc.indexOf('renderMarkdown(histPreview.body, wikiResolve)') >= 0, '预览只读渲染走 renderMarkdown 内核（全量转义零注入面）')

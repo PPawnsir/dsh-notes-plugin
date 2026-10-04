@@ -34,6 +34,20 @@
     }
     // ==== injectto-norm-guard END ====
 
+    // ==== folder-arg-norm BEGIN ====（create/update 写入路径 folder 名称→id 归一 + 非法显式拒绝：notes.js 与 notes.dist.js 双变体逐字节同步，check 节 58 看守）
+    // 归一规则（错得安全：解析不到必须显式报错，禁止静默落未分类/静默吞）：
+    //   ① ''（空串 = 未分类语义）→ 原样透传；② 等于某文件夹 id → 原样保留；
+    //   ③ 等于某文件夹名 → 归一为该文件夹 id 落盘（笔记 folder 字段存 id，存名称字符串会显示成未分类——本 bug 核心，实证 n-mut9tg7bik40）；
+    //   ④ 其余无法解析值 → 整体拒绝（报错含具体值，不落库）。
+    // 红线：归一只在写入路径（_create/_update 显式传 folder 时）；读路径/查询参数（_list/_search 的 folder 过滤，R-6 递归子树口径）由工具层 resolveFolderRef 先行解析，不在此列；
+    //       存量已误存名称的笔记不自动改写（下次 move/保存经本闸归一治愈）。
+    async function _resolveFolderArg(v) {
+      const rf = await resolveFolderRef(v)
+      if (!rf) throw new Error('folder 未知文件夹 id 或名称：' + String(v))
+      return rf.id
+    }
+    // ==== folder-arg-norm END ====
+
     async function _create(title, body, tags, topic, extra) {
       const id = genId()
       const now = new Date().toISOString()
@@ -46,6 +60,9 @@
         if (ng.error) throw new Error(ng.error)
         injectToNorm = ng.value
       }
+      // folder 写入归一 + 非法显式拒绝（folder-arg-norm）：显式传才归一（undefined 不缺省归一）；非法值整体拒绝不落库
+      let folderNorm = ex.folder
+      if (folderNorm !== undefined) folderNorm = await _resolveFolderArg(folderNorm)
       // 工作记忆 v0 隐身硬闸（裁决 B①）：kind=log 强制 inject=false（显式传 true 也纠正，返回值 injectForcedOff 告知），
       // recall 缺省 false（显式 true 豁免——用户/agent 显式选择进目录不算混入）；日志永不进系统提示与目录索引
       const isLog = (ex.kind || 'note') === 'log'
@@ -63,7 +80,7 @@
       const note = {
         id, title: title || 'Untitled', topic: topic || '未分类',
         workspace: ex.workspace || basename(sc.cwd),
-        folder: ex.folder || '',
+        folder: folderNorm || '',
         tags: tags || [],
         kind: ex.kind || 'note',
         status: ex.status || 'active',
@@ -212,7 +229,10 @@
         if (ng.error) throw new Error(ng.error)
         note.injectTo = ng.value
       }
-      if (folder !== undefined) note.folder = folder
+      if (folder !== undefined) {
+        // folder 写入归一 + 非法显式拒绝（folder-arg-norm）：非法值整体拒绝，本条更新不落盘（错得安全）
+        note.folder = await _resolveFolderArg(folder)
+      }
       if (recall !== undefined) note.recall = recall !== false
       if (injectRole !== undefined) note.injectRole = injectRole === 'reference' ? 'reference' : 'convention'
       // sensitive 第 13 位参数：显式传才改（undefined 不动存量值）
@@ -248,9 +268,11 @@
       // P3 派发闭环·保底联动：显式置 resolved 时自动回执全部未闭环派发（dispatchStatus→done + doneAt + receipt='resolved'）。
       // 这是语义闭环的必然可行通道（agent 完成派发任务后 note_manage update resolved）；事件回执见 dispatch-loop 标记块
       let dispatchClosed = 0
-      if (status === 'resolved') dispatchClosed = _closeOpenDispatches(note, 'resolved')
+      const dispatchClosedDs = []   // 执行记录独立笔记（notes-041-sched-runlog）：收集本次闭环条目供 runLog 追加
+      if (status === 'resolved') dispatchClosed = _closeOpenDispatches(note, 'resolved', undefined, dispatchClosedDs)
       note.updatedAt = new Date().toISOString()
       await persistNote(note)
+      if (dispatchClosedDs.length) await _schedRunLogAppend(note, dispatchClosedDs)   // 仅 dispatch-schedule 约定生效（内部全量吞异常；约定正文零改动红线不破）
       const r = { id, kind: note.kind, status: note.status, dispatchClosed: dispatchClosed }
       if (injectForcedOff) r.injectForcedOff = true   // 日志隐身硬闸命中告知（kind=log 强制 inject=false）
       return r

@@ -72,7 +72,8 @@
     // 返回 { value: 归一化声明 } | { error }；机器状态字段（lastFiredAt/lastRun/lastError）容忍输入但剥离（由既有值延续，见 _schedValidateWrite）
     function schedCheckDecl(raw, nowMs) {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow? }' }
-      const known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, lastFiredAt: 1, lastRun: 1, lastError: 1 }
+      // runLog（notes-041-sched-runlog）：执行记录独立笔记 id 软链——机器字段（回执链路懒创建回写），已知键容忍输入，闸门校验/延续见 _schedValidateWrite
+      const known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1 }
       for (const k of Object.keys(raw)) {
         if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled；错得安全：能力声明必须无歧义）' }
       }
@@ -164,6 +165,19 @@
       if (ex.lastFiredAt) decl.lastFiredAt = ex.lastFiredAt
       if (ex.lastRun) decl.lastRun = ex.lastRun
       if (ex.lastError) decl.lastError = ex.lastError
+      // runLog 软链（notes-041-sched-runlog）：显式声明须为存在的笔记 id（空串 = 显式解除软链，runLog 笔记留档不级联删）；
+      //   缺省（未携带）延续存量——声明改写（编辑/暂停/恢复只提交声明字段）不丢软链
+      if (raw.runLog !== undefined && raw.runLog !== null) {
+        if (raw.runLog === '') { /* 显式解除软链：decl 不带 runLog */ }
+        else {
+          if (typeof raw.runLog !== 'string') return { error: 'schedule.runLog 必须是笔记 id 字符串或空串（实得 ' + typeof raw.runLog + '）' }
+          const rlId = raw.runLog.trim()
+          let rlOk = false
+          try { const t = await loadNote(rlId); rlOk = !!(t && !t.deleted && !t.tombstoned) } catch (e) {}
+          if (!rlOk) return { error: 'schedule.runLog 必须是存在的笔记 id 或空（实得 ' + raw.runLog + '）' }
+          decl.runLog = rlId
+        }
+      } else if (ex.runLog) decl.runLog = ex.runLog
       return { value: decl }
     }
 
@@ -293,3 +307,93 @@
     disposers.push(function () { if (schedTimer) { clearInterval(schedTimer); schedTimer = null } })
     ;(async function () { try { await _schedTickGuarded(Date.now()) } catch (e) {} })()
     // ==== schedule-exec END ====
+
+    // ==== schedule-runlog BEGIN ====（notes-041-sched-runlog：执行记录独立笔记 + schedule.runLog 软链。
+    // 设计红线（用户裁决 2026-10-04 晚）：约定正文零改动——克隆体约定正文=派发载荷（整体注入 target 会话），
+    //   历史追加会无限膨胀并污染下次派发上下文；执行记录落独立笔记（title「<约定标题> · 执行记录」，kind=note 可见可检索——
+    //   非 log（要进默认列表/检索），folder/topic 随约定），约定 front-matter schedule.runLog 存其 id 软链；
+    //   回执落盘时机（idle 事件 / resolved 保底 / 手动标记完成三通道共用）懒创建并追加条目；条目倒序（最新在前）≤50 裁尾；
+    //   幂等：同 msgId（=lastRun.receiptId）条目已存在跳过；删除约定不级联删 runLog（留档）。
+    // 写入纪律：runLog 笔记创建/追加与 runLog 软链回写都是机器自动产物——persistNote { history:false } 不产生历史快照；
+    //   软链回写直改 schedule 不经 _update 声明闸门（避免目标存活等声明校验阻塞回执链路；声明改写时 runLog 由 _schedValidateWrite 延续存量）。
+    // 序位：本块跨模块调用点（dispatch.js/notes.js）经函数声明提升在运行期引用，apply 执行期零触碰，无 TDZ 风险（同 _schedValidateWrite 先例）。
+    const SCHED_RUNLOG_MAX = 50                        // 条目容量红线：倒序保留最新 50 条裁尾
+    const SCHED_RUNLOG_HEAD = '## 执行记录（自动）'     // runLog 笔记正文的自动管理节标题
+    // 条目时间戳：ISO → 本地 YYYY-MM-DD HH:MM（人读优先；与调度 at 声明同口径的本地墙钟语义）
+    function schedRunLogTs(iso) {
+      const ms = Date.parse(iso || '')
+      if (!isFinite(ms)) return String(iso || '')
+      const d = new Date(ms)
+      const p = function (n) { return (n < 10 ? '0' : '') + n }
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
+    }
+    // 条目行：- ✅ {本地时刻} · 回执（{idle|resolved|manual}）· → {会话名|短id} · {msgId}
+    function schedRunLogLine(d) {
+      return '- ✅ ' + schedRunLogTs(d.doneAt) + ' · 回执（' + (d.receipt || 'manual') + '）· → ' + (d.sessionName || shortSid(d.sessionId) || '?') + ' · ' + d.msgId
+    }
+    // 正文重写：头部（至 SCHED_RUNLOG_HEAD 行，缺则补）与非条目尾部（用户手写备注）原样保留；
+    //   条目区合并 = 新条目前置 + 旧条目续后，按行内 msgId 去重（幂等兜底），≤SCHED_RUNLOG_MAX 裁尾
+    function schedRunLogRender(body, newLines) {
+      const lines = String(body || '').split('\n')
+      let headIdx = -1
+      for (let i = 0; i < lines.length; i++) { if (lines[i].trim() === SCHED_RUNLOG_HEAD) { headIdx = i; break } }
+      const pre = headIdx >= 0 ? lines.slice(0, headIdx + 1) : [SCHED_RUNLOG_HEAD]
+      const rest = headIdx >= 0 ? lines.slice(headIdx + 1) : []
+      const oldEntries = rest.filter(function (l) { return /^-\s/.test(l) })
+      const others = rest.filter(function (l) { return !/^-\s/.test(l) && l.trim() !== '' })
+      const seen = {}
+      const merged = []
+      const all = newLines.concat(oldEntries)
+      for (const l of all) {
+        const m = l.match(/(note-dispatch-\S+)/)
+        const key = m ? m[1] : l
+        if (seen[key]) continue
+        seen[key] = true
+        merged.push(l)
+        if (merged.length >= SCHED_RUNLOG_MAX) break
+      }
+      let out = pre.concat(['']).concat(merged)
+      if (others.length) out = out.concat(['']).concat(others)
+      return out.join('\n') + '\n'
+    }
+    // 回执落盘挂钩（三通道共用：dispatch.js _receiptDispatchesForSession idle 事件 / _dispatchDone 手动标记、notes.js _update resolved 保底）。
+    //   仅 dispatch-schedule 约定生效（其余笔记零开销直通返回）；schedule.runLog 空/失效 → 懒创建执行记录笔记并回写软链；条目追加幂等。
+    //   异常全量吞掉——执行记录是观察面产物，任何故障绝不扩散到回执主链路（同 tick 吞异常裁决）。
+    async function _schedRunLogAppend(note, entries) {
+      try {
+        if (!note || (note.contractType || '') !== SCHEDULE_CONTRACT_TYPE || !note.schedule) return
+        const items = (entries || []).filter(function (d) { return d && d.msgId })
+        if (!items.length) return
+        let rl = null
+        const rlId = note.schedule.runLog
+        if (rlId) {
+          try { const t = await loadNote(String(rlId)); if (t && !t.deleted && !t.tombstoned) rl = t } catch (e) {}
+        }
+        if (!rl) {
+          // 懒创建（首条回执时）：独立笔记正文仅含自动节标题；folder/topic 随约定；kind=note 缺省可见可检索
+          const cr = await _create(String(note.title || note.id) + ' · 执行记录', SCHED_RUNLOG_HEAD + '\n', [], note.topic || '未分类', { kind: 'note', folder: note.folder || undefined })
+          if (!cr || !cr.id) return
+          rl = await loadNote(cr.id)
+          // 软链回写 schedule.runLog：直读最新笔记对象防 tick 在途改写被覆盖（机器状态回写，不产生历史快照）
+          const fresh = await loadNote(note.id)
+          if (fresh && !fresh.deleted && !fresh.tombstoned && fresh.schedule) {
+            fresh.schedule = Object.assign({}, fresh.schedule, { runLog: cr.id })
+            fresh.updatedAt = new Date().toISOString()
+            try { await persistNote(fresh, { history: false }) } catch (e) { console.error('notes: schedule runLog link persist failed', note.id, e) }
+          }
+        }
+        if (!rl) return
+        // 幂等：同 msgId（=receiptId）条目已存在跳过（崩溃重放/双通道回执防御）；批量回执倒序prepend（最新在前）
+        const curBody = String(rl.body || '')
+        const newLines = []
+        for (let i = items.length - 1; i >= 0; i--) {
+          if (curBody.indexOf(items[i].msgId) >= 0) continue
+          newLines.push(schedRunLogLine(items[i]))
+        }
+        if (!newLines.length) return
+        rl.body = schedRunLogRender(curBody, newLines)
+        rl.updatedAt = new Date().toISOString()
+        try { await persistNote(rl, { history: false }) } catch (e) { console.error('notes: schedule runLog append persist failed', rl.id, e) }
+      } catch (e) { console.error('notes: schedule runLog append failed', note && note.id, e) }
+    }
+    // ==== schedule-runlog END ====

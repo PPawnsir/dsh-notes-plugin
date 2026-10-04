@@ -73,9 +73,15 @@ module.exports = {
     // 注入范围浮层重构同步：去「本工作区/全局」选项（缺省=所有会话）+ 顶部默认提示行（app.html 与原型一致）
     for (const pair of [['app.html', appSrc], ['原型', protoSrc]]) {
       assert(pair[1].indexOf('data-scope="workspace"') < 0 && pair[1].indexOf('data-scope="global"') < 0, pair[0] + ' 范围浮层移除「本工作区/全局」选项（缺省=所有会话）')
-      assert(pair[1].indexOf('class="scope-hint"') >= 0 && pair[1].indexOf('默认注入到所有会话；勾选会话则仅限这些会话') >= 0, pair[0] + ' 范围浮层顶部默认提示行')
+      /* i18n 覆盖卡B：app 端 scope 提示行/injectScopeLabel 走 t() 字典；原型不双语红线保持静态中文（分侧断言） */
+      if (pair[0] === 'app.html') {
+        assert(pair[1].indexOf('class="scope-hint"') >= 0 && pair[1].indexOf("t('meta.scopeHint')") >= 0, pair[0] + ' 范围浮层顶部默认提示行走 t()（覆盖卡B）')
+        assert(pair[1].indexOf("return t('meta.scopeAll')") >= 0, pair[0] + ' injectScopeLabel 缺省走 t()（覆盖卡B）')
+      } else {
+        assert(pair[1].indexOf('class="scope-hint"') >= 0 && pair[1].indexOf('默认注入到所有会话；勾选会话则仅限这些会话') >= 0, pair[0] + ' 范围浮层顶部默认提示行')
+        assert(pair[1].indexOf("return '所有会话'") >= 0, pair[0] + ' injectScopeLabel 缺省=所有会话')
+      }
       assert(pair[1].indexOf('.scope-hint{') >= 0, pair[0] + ' scope-hint 样式（var(--nt3) 灰字）')
-      assert(pair[1].indexOf("return '所有会话'") >= 0, pair[0] + ' injectScopeLabel 缺省=所有会话')
     }
     const pm = protoSrc.match(/<script>([\s\S]*?)<\/script>/)
     assert(pm && pm[1].length > 3000, '原型含主脚本块')

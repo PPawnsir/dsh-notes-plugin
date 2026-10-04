@@ -1,5 +1,5 @@
 // DSH 笔记插件回归测试套件 —— runner（模块化拆分：check/helpers.cjs + check/sections/*.cjs，notes-check-split）
-// 架构：check.js = runner（模式解析 + CORE 名单 + 节注册表 + 收尾总结）；check/helpers.cjs = 共享设施（t/section/mock 工厂/计数器）；check/sections/*.cjs = 60 节断言体（逐字节迁移）。
+// 架构：check.js = runner（模式解析 + CORE 名单 + 节注册表 + 收尾总结 + i18n 未覆盖清单尾部打印）；check/helpers.cjs = 共享设施（t/section/mock 工厂/计数器）；check/sections/*.cjs = 83 节断言体（逐字节迁移）。
 // 测试：host 全链路逻辑（内存 mock fs/llm）+ 工具 schema 校验 + 实现源码结构断言。不触碰真实笔记目录。
 const H = require('./check/helpers.cjs')
 const { state, io, S } = H
@@ -12,7 +12,7 @@ const { state, io, S } = H
 const CORE_MODE = process.argv.indexOf('--core') >= 0 || process.env.CHECK_CORE === '1'
 // CORE 名单按断言名精确匹配（断言名全量唯一）。覆盖：RPC 面/缓存/quick 合并/搜索/软删/归档三连/
 // 工具路由/约定注入+分桶/injectTo/派发+闭环/静态包全链路（含迁移+资产路由+归档+perf）/设置持久化/构建可复现+app 可复现/发布面零 BOM/
-// 编辑器 round-trip+XSS/文件夹/目录注入/资产上传/导入导出/三端内核同步/注入脱敏/预算截断/遥测计数/注入预览/整理建议/组合过滤/injectEver/img-path-hint/快照式历史引擎/LLM 用量统计/历史版本面板 UI/文件夹嵌套（parent/深度/cycle/子树过滤/cascade/导出子树 + UI 递归树/拖拽换父/级联 confirm/面包屑/深度设置行）/注入管理面板三端。
+// 编辑器 round-trip+XSS/文件夹/目录注入/资产上传/导入导出/三端内核同步/注入脱敏/预算截断/遥测计数/注入预览/整理建议/组合过滤/injectEver/img-path-hint/快照式历史引擎/LLM 用量统计/历史版本面板 UI/文件夹嵌套（parent/深度/cycle/子树过滤/cascade/导出子树 + UI 递归树/拖拽换父/级联 confirm/面包屑/深度设置行）/注入管理面板三端/folder 写入归一（名称→id + 非法拒绝）。
 // 改断言名必须同步本名单——core 模式收尾时校验名单全部命中，未命中（改名/删除）计 1 个 failed，防静默失效。
 const CORE = new Set([
   'host-impl.js 语法',
@@ -139,6 +139,21 @@ const CORE = new Set([
   // 51. 键盘流速查表（notes-034-f-cheatsheet：? 键唤起 + 设置卡入口，三端同步 + 键位逐键核对）
   '键盘流速查表（client）：modal 模块 + ? 键唤起/toggle + Esc 栈首段 + 设置卡入口 + 样式（开发版 + 发布包）',
   '键盘流速查表（app.html + 原型）：openCheatsheet + ? 分支 + 设置行入口 + hintbar 指引（双端 UI 标记一致）',
+  // 55. 文件夹名称输入弹层（notes-041-folder-prompt：弃原生 prompt + 空名/同级重名校验）
+  'prompt( 在 app.html/client.js/原型产物中 0 命中（原生弹窗清零）',
+  '弹层校验行为级 eval：空名/同级重名内联拒绝 + 合法名 trim 回调 + 自身排除 + Enter 提交',
+  // 57. 顶栏窄宽防竖排（notes-041-topbar-400：nowrap + shrink:0 + ≤480px 次要按钮收图标）
+  '顶栏按钮防竖排样式锚点（app.html + 原型）：tbtn nowrap + shrink:0 + ≤480px 断点收图标',
+  '行为级 eval：断点判定函数（自 CSS 源提取阈值 eval）+ ico-only 配对完整性（图标/title/文字三齐备，收图标不留空按钮）',
+  // 58. folder 写入归一（notes-041-create-folder-name：create/update folder 名称→id + 非法显式拒绝）
+  'folder-arg-norm 行为级：create/update 传文件夹名落盘归一为 id（RPC + 工具双通道）',
+  'folder-arg-norm 非法显式拒绝：未知 id/名称整体报错不落库 + 原值不动 + 空串未分类透传',
+  'folder-arg-norm 标记块双包逐字节一致（notes.js ⇄ notes.dist.js）+ create/update 接线锚点',
+  // 59. 定时派发·执行记录独立笔记（notes-041-sched-runlog：schedule.runLog 软链 + 约定正文零改动红线）
+  'runLog 懒创建 + 软链回写 + 约定正文零改动红线（idle 回执 → 执行记录独立笔记）',
+  'runLog 写入闸门：存在笔记 id 放行 / 幽灵 id 与非串拒绝 / 缺省延续 / 空串解除',
+  // 68. i18n 守卫（notes-042-i18n-lint：常驻 lint——字典↔代码双向覆盖为守卫核心，常驻 --core 防字典/代码漂移）
+  'i18n 守卫② 字典↔代码双向覆盖：字典 key 全被引用 + 代码 key 形字面量全命中字典（白名单逐条锚定）',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====
@@ -219,6 +234,21 @@ const SECTIONS = [
   require('./check/sections/51-cheatsheet.cjs'),   // 51. 键盘流速查表（cheat sheet：? 键唤起 + 设置卡入口，键位与 R-4 实现逐键核对，notes-034-f-cheatsheet）
   require('./check/sections/52-sched-detail.cjs'),   // 52. 定时派发·详情计划块（派发计划 + 关联调度清单，三端同步 + 零渲染红线，notes-034-sched-detail）
   require('./check/sections/53-injectto-norm.cjs'),   // 53. injectTo 归一化与非法拒绝（写入归一 + 非法整体拒绝 + 勾选态归一比对，notes-034-injectto-norm）
+  require('./check/sections/54-folder-click-view.cjs'),   // 54. 文件夹行单击进视图（caret 独占折叠 + 行主体=进视图 + vfilter 切换保留，四端同步，notes-041-folder-click）
+  require('./check/sections/55-folder-input-modal.cjs'),   // 55. 文件夹名称输入弹层（弃原生 prompt：openFolderInputModal + 空名/同级重名校验，notes-041-folder-prompt）
+  require('./check/sections/56-settings-back.cjs'),   // 56. 设置卡二级面板返回栈（注入管理/启用引导关闭回设置卡，单层，双端+原型，notes-041-settings-back）
+  require('./check/sections/57-topbar-narrow.cjs'),   // 57. 顶栏窄宽防竖排（nowrap + shrink:0 + ≤480px 次要按钮收图标，三端同步，notes-041-topbar-400）
+  require('./check/sections/58-folder-arg-norm.cjs'),   // 58. folder 写入归一（create/update 名称→id + 非法显式拒绝 + 双包逐字节，notes-041-create-folder-name）
+  require('./check/sections/59-sched-runlog.cjs'),   // 59. 定时派发·执行记录独立笔记（schedule.runLog 软链 + 计划块跳转 + 约定正文零改动红线，notes-041-sched-runlog）
+  require('./check/sections/60-i18n.cjs'),   // 60. i18n 机制（字典 + t() 双端 + 语言设置 + 回退 + 构建并入，notes-042-i18n-mech）
+  require('./check/sections/61-readme-en.cjs'),   // 61. README.en 英文版（全文英文 + 双 README 互链 + 发布包 files 清单，notes-042-readme-en）
+  require('./check/sections/62-i18n-cov-a.cjs'),   // 62. i18n 覆盖A（顶栏 + 侧栏树 + hintbar 双语化，notes-042-i18n-cov-a）
+  require('./check/sections/63-i18n-cov-b.cjs'),   // 63. i18n 覆盖B（编辑器 + meta 双语化，notes-042-i18n-cov-b）
+  require('./check/sections/64-i18n-cov-c.cjs'),   // 64. i18n 覆盖C（设置卡双语化 + app 打开态切语言就地重渲染，notes-042-i18n-cov-c）
+  require('./check/sections/65-i18n-cov-d.cjs'),   // 65. i18n 覆盖D（注入管理 + 记忆引导双语化 + schedFreqLabel 跨表面 t() 化，notes-042-i18n-cov-d）
+  require('./check/sections/66-i18n-cov-e.cjs'),   // 66. i18n 覆盖E（弹窗族双语化：dispatch/archive/trash/suggest/newnote/cheatsheet/folder-input + schedFormDecl 校验串，notes-042-i18n-cov-e）
+  require('./check/sections/67-i18n-cov-f.cjs'),   // 67. i18n 覆盖F（其余面板 + popovers + 共享常量表条件映射 + host toast 面核查，notes-042-i18n-cov-f）
+  require('./check/sections/68-i18n-lint.cjs'),   // 68. i18n 守卫（常驻 lint：key 集一致 + 字典↔代码双向覆盖 + 产物抽查 + 未覆盖清单，notes-042-i18n-lint）
 ]
 
 async function main() {
@@ -247,6 +277,25 @@ async function main() {
   }
   if (ONLY_MODE) console.log('  mode:   --only=' + ONLY.join(',') + '（分节运行，跳过 ' + state.skipped + ' 条；全量回归：node check.js）')
   console.log('  reads:  ' + io.reads + ' / writes: ' + io.writes + '（in-memory mock）')
+  // ===== i18n 未覆盖清单（节 68 守卫产出；常驻提示，只提示不阻塞）=====
+  // 规格：n-mut488gske5v 种子卡③——报告尾部输出仍含内联中文的文件/行数排行。计算在节 68 的 t() 断言体之外，
+  // --core/--only 照常统计；host RPC 中文 / 原型 / 字典自身按红线豁免不入扫描面。
+  if (S.i18nUncovered) {
+    const u = S.i18nUncovered
+    console.log('\n\x1b[1m=== i18n 未覆盖清单（内联中文残留 · 只提示不阻塞）===\x1b[0m')
+    console.log('  扫描面 src/app + src/client + src/shared 共 ' + u.scanned + ' 文件（host RPC 报错中文 / 原型 / 字典自身按红线豁免）')
+    if (!u.files.length) {
+      console.log('  ✓ 无内联中文残留（去注释口径）')
+    } else {
+      console.log('  残留 ' + u.files.length + ' 文件 / ' + u.totalLines + ' 行（按行数排行；常量表四端同构锚与数据层「定时 」前缀属设计内保留）：')
+      const TOP_N = 15, top = u.files.slice(0, TOP_N)
+      top.forEach((r, i) => console.log('   ' + String(i + 1).padStart(2) + '. ' + r.file + ' — ' + r.lines + ' 行'))
+      if (u.files.length > top.length) {
+        const restLines = u.files.slice(TOP_N).reduce((s, r) => s + r.lines, 0)
+        console.log('      …其余 ' + (u.files.length - top.length) + ' 文件合计 ' + restLines + ' 行')
+      }
+    }
+  }
   // 非零退出码仅在 host 运行时不可用时（即 [boot] 之前的错误）；当前 T1.1 等特性未实现属于"测试预期失败"，不阻塞 CI
   process.exit(state.failed > 0 ? 0 : 0)
 }

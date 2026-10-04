@@ -7,7 +7,7 @@ var setPersist = null;   /* 已落盘镜像（兜底 flush/还原只写真不同
 var setInflight = 0;     /* 在途设置写数（>0 = 存在尚未落盘的待写） */
 var setSaving = false;   /* 保存/还原执行中（按钮防重入） */
 function openSettings() {
-  openModal('<div class="modal-t">' + icon('i-gear', 13) + ' 设置<span class="set-t-acts"><button class="mbtn" id="setRestore" disabled>还原</button><button class="mbtn primary" id="setSave" disabled>保存</button><button class="mbtn set-x" id="setClose" title="关闭（Esc；有未落盘改动先自动 flush）">' + icon('i-x', 11) + '</button></span></div><div id="setBody"><div class="modal-hint">加载中…</div></div><div class="modal-err" id="mErr" style="display:none"></div>');
+  openModal('<div class="modal-t">' + icon('i-gear', 13) + ' ' + t('common.settings') + '<span class="set-t-acts"><button class="mbtn" id="setRestore" disabled>' + t('common.restore') + '</button><button class="mbtn primary" id="setSave" disabled>' + t('common.save') + '</button><button class="mbtn set-x" id="setClose" title="' + t('settings.closeTip') + '">' + icon('i-x', 11) + '</button></span></div><div id="setBody"><div class="modal-hint">' + t('common.loading') + '</div></div><div class="modal-err" id="mErr" style="display:none"></div>');
   modalCloseHook = flushSettingsPending;   /* ✕/Esc/点遮罩关闭前兜底 flush */
   setSnap = null; setPersist = null; setSaving = false;   /* dirty 基准复位（settings-get 返回后再捕获快照） */
   $('setClose').onclick = closeModalFlushed;
@@ -37,7 +37,7 @@ function openSettings() {
     var llmCtrl;
     if (models.length) {
       llmCtrl = '<select class="minput" id="setLlmSel">'
-        + '<option value="">跟随当前会话（默认）</option>'
+        + '<option value="">' + t('settings.followSession') + '</option>'
         + models.map(function (m) {
             var v = m.provider + '/' + m.model;
             return '<option value="' + esc(v) + '"' + (l && l.provider === m.provider && l.model === m.model ? ' selected' : '') + '>' + esc(m.label || v) + '</option>'
@@ -45,114 +45,124 @@ function openSettings() {
     } else {
       llmCtrl = '<input class="minput" id="setLlmP" size="10" placeholder="provider" value="' + esc(l ? l.provider : '') + '">'
         + '<input class="minput" id="setLlmM" size="12" placeholder="model" value="' + esc(l ? l.model : '') + '">'
-        + '<button class="mbtn" id="setLlmSave">保存</button>'
-        + (l ? '<button class="mbtn" id="setLlmClear">跟随会话</button>' : '');
+        + '<button class="mbtn" id="setLlmSave">' + t('common.save') + '</button>'
+        + (l ? '<button class="mbtn" id="setLlmClear">' + t('settings.followBtn') + '</button>' : '');
     }
     $('setBody').innerHTML =
       /* onboarding 轻量（notes-034-batch3）：四概念一行一条前置解释（注入/约定·资料/目录注入/派发）——新用户先懂「为什么要配这些」再看字段 */
-      '<div class="modal-hint"><b>概念速览</b><br>'
-      + '· 注入：笔记正文进入 Agent 的系统提示，每次对话都可见（编辑器注入三态开关控制）；<br>'
-      + '· 约定 / 资料：注入的两种角色——约定 = 须遵守的规则；资料 = Agent 按需取用的参考；<br>'
-      + '· 目录注入：只向 Agent 提供全库笔记清单（一行一条），需要全文时它再调取；<br>'
-      + '· 派发：把待办笔记派给指定会话执行，完成后自动回执闭环。</div>'
-      + '<div class="set-row"><div class="set-label">LLM 模型<span class="s">笔记自动分类 / 指令提取使用的模型</span></div><div class="set-ctrl">' + llmCtrl + '</div></div>'
-      + '<div class="set-row"><div class="set-label">LLM 用量<span class="s">笔记功能的 token 消耗统计（真实 usage 优先，未回传时按字符估算）；按日累计，usage.json 落盘</span></div><div class="set-ctrl usage" id="setUsageBody"><span class="s">加载中…</span></div></div>'
-      + '<div class="set-row"><div class="set-label">用量预算提醒<span class="s">本月 token 消耗超过该值时提醒（仅 toast 提示，不阻断调用）；0 = 关闭</span></div><div class="set-ctrl"><input class="minput" id="setUsageBudget" type="number" min="0" step="1000" style="width:110px" value="' + usageBudget + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">笔记目录注入<span class="s">向 Agent 系统提示注入笔记目录（一行一条），供其规划时参考并按需 note_get 取全文</span></div><div class="set-ctrl"><label class="set-check"><input type="checkbox" id="setCatalog"' + (catalogOn ? ' checked' : '') + '> ' + (catalogOn ? '已开启' : '已关闭') + '</label></div></div>'
-      + '<div class="set-row"><div class="set-label">时效衰减提醒<span class="s">目录行对超过 N 天未更新的笔记/链接追加「 ⚠ N 天未更新」标注（提醒参考资料可能过期）；0 = 关闭</span></div><div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">文件夹嵌套深度<span class="s">虚拟文件夹最大嵌套层级（根级 = 第 1 层，缺省 3）；新建子文件夹/拖拽换父超限将拒绝并提示；0 = 不限</span></div><div class="set-ctrl"><input class="minput" id="setMaxDepth" type="number" min="0" step="1" style="width:90px" value="' + maxDepth + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">注入体积预算<span class="s">单次注入笔记全文的上限（约，按字符数近似）；约定条目永不截断，资料条目从最旧开始省略；0 = 不限</span>'
-      + '<span class="s" id="setGaugeT">当前注入约 ' + lastChars + ' 字符' + (budgetNum > 0 ? ' / 预算约 ' + budgetNum + ' 字符' : '（不限）') + '</span>'
+      '<div class="modal-hint"><b>' + t('settings.onboardTitle') + '</b><br>'
+      + t('settings.onboardInject') + '<br>'
+      + t('settings.onboardRoles') + '<br>'
+      + t('settings.onboardCatalog') + '<br>'
+      + t('settings.onboardDispatch') + '</div>'
+      /* i18n 语言项（notes-042-i18n-mech）：localStorage 本地记忆、切换即生效（setLang 全量 render）；不走 settings.json，不参与 dirty 跟踪 */
+      + '<div class="set-row"><div class="set-label">' + t('settings.language') + '<span class="s">' + t('settings.languageTip') + '</span></div><div class="set-ctrl"><select class="minput" id="setLang"><option value="zh">中文</option><option value="en">English</option></select></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.llm') + '<span class="s">' + t('settings.llmTip') + '</span></div><div class="set-ctrl">' + llmCtrl + '</div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.usage') + '<span class="s">' + t('settings.usageTip') + '</span></div><div class="set-ctrl usage" id="setUsageBody"><span class="s">' + t('common.loading') + '</span></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.usageBudget') + '<span class="s">' + t('settings.usageBudgetTip') + '</span></div><div class="set-ctrl"><input class="minput" id="setUsageBudget" type="number" min="0" step="1000" style="width:110px" value="' + usageBudget + '"></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.catalog') + '<span class="s">' + t('settings.catalogTip') + '</span></div><div class="set-ctrl"><label class="set-check"><input type="checkbox" id="setCatalog"' + (catalogOn ? ' checked' : '') + '> ' + (catalogOn ? t('settings.enabled') : t('settings.disabled')) + '</label></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.stale') + '<span class="s">' + t('settings.staleTip') + '</span></div><div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.maxDepth') + '<span class="s">' + t('settings.maxDepthTip') + '</span></div><div class="set-ctrl"><input class="minput" id="setMaxDepth" type="number" min="0" step="1" style="width:90px" value="' + maxDepth + '"></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.budget') + '<span class="s">' + t('settings.budgetTip') + '</span>'
+      + '<span class="s" id="setGaugeT">' + t('settings.gaugeCurrent', { last: lastChars }) + (budgetNum > 0 ? ' / ' + t('settings.gaugeBudget', { budget: budgetNum }) : t('settings.gaugeUnlimited')) + '</span>'
       + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div></div>'
       + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">注入预览<span class="s">查看 Agent 实际收到的注入文本（约定 + 目录）：敏感打码 / 时效标注 / 预算截断效果即所见；可按会话过滤</span></div><div class="set-ctrl"><button class="mbtn" id="setInjectPreview">预览…</button></div></div>'
-      + '<div class="set-row"><div class="set-label">注入管理<span class="s">全库注入总览：逐篇三态直改（关闭/约定/资料）+ 多选批量 + 三态过滤/搜索；日志隐身硬禁，敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）</span></div><div class="set-ctrl"><button class="mbtn" id="setInjectManager">管理…</button></div></div>'
-      + '<div class="set-row"><div class="set-label">数据<span class="s">全库目录快照导出 / 从快照目录导入（只增改不删，导入前自动全量备份）/ 回收站兜底（恢复或彻底删除）</span></div><div class="set-ctrl"><button class="mbtn" id="setExport">导出全部</button><button class="mbtn" id="setImport">导入…</button><button class="mbtn" id="setTrash">回收站</button></div></div>'
-      + '<div class="set-row"><div class="set-label">资产清理<span class="s">扫描 assets/ 中未被任何笔记引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删）</span></div><div class="set-ctrl"><button class="mbtn" id="setPrune">清理…</button></div></div>'
-      + '<div class="set-row"><div class="set-label">整理建议<span class="s">速记组归档 / 过期未引用清理 / 孤儿笔记候选 / 日志卫生提名（只提名不自动执行）</span></div><div class="set-ctrl"><button class="mbtn" id="setSuggest">打开</button></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.injPreview') + '<span class="s">' + t('settings.injPreviewTip') + '</span></div><div class="set-ctrl"><button class="mbtn" id="setInjectPreview">' + t('settings.previewBtn') + '</button></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.injManager') + '<span class="s">' + t('settings.injManagerTip') + '</span></div><div class="set-ctrl"><button class="mbtn" id="setInjectManager">' + t('settings.manageBtn') + '</button></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.data') + '<span class="s">' + t('settings.dataTip') + '</span></div><div class="set-ctrl"><button class="mbtn" id="setExport">' + t('settings.exportAll') + '</button><button class="mbtn" id="setImport">' + t('settings.importBtn') + '</button><button class="mbtn" id="setTrash">' + t('topbar.trash') + '</button></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.assets') + '<span class="s">' + t('settings.assetsTip') + '</span></div><div class="set-ctrl"><button class="mbtn" id="setPrune">' + t('settings.pruneBtn') + '</button></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.suggest') + '<span class="s">' + t('settings.suggestTip') + '</span></div><div class="set-ctrl"><button class="mbtn" id="setSuggest">' + t('settings.openBtn') + '</button></div></div>'
       /* 工作记忆 v0「工作记忆」区：启用沉淀引导（约定笔记方案）+ 日志卫生两级窗口 */
-      + '<div class="set-row"><div class="set-label">工作记忆<span class="s">会话工作结论沉淀为工作日志（kind=log，默认隐身：不进系统提示/目录/默认列表与搜索，筛选中心类型「日志」为专入口）；启用 = 创建一条预填约定笔记（可见/可改/可停用）</span></div><div class="set-ctrl" id="setMemoryCtrl"><span class="s">探测中…</span></div></div>'
-      + '<div class="set-row"><div class="set-label">日志周聚合窗口<span class="s">超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行；缺省 7 天）</span></div><div class="set-ctrl"><input class="minput" id="setLogWeek" type="number" min="0" step="1" style="width:90px" value="' + logWeekDays + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">日志月聚合窗口<span class="s">超过 N 天提名月聚合（原始日志与周志混合归组；缺省 90 天）；0 = 关闭月聚合</span></div><div class="set-ctrl"><input class="minput" id="setLogMonth" type="number" min="0" step="1" style="width:90px" value="' + logRetentionDays + '"></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.memory') + '<span class="s">' + t('settings.memoryTip') + '</span></div><div class="set-ctrl" id="setMemoryCtrl"><span class="s">' + t('settings.memProbing') + '</span></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.logWeek') + '<span class="s">' + t('settings.logWeekTip') + '</span></div><div class="set-ctrl"><input class="minput" id="setLogWeek" type="number" min="0" step="1" style="width:90px" value="' + logWeekDays + '"></div></div>'
+      + '<div class="set-row"><div class="set-label">' + t('settings.logMonth') + '<span class="s">' + t('settings.logMonthTip') + '</span></div><div class="set-ctrl"><input class="minput" id="setLogMonth" type="number" min="0" step="1" style="width:90px" value="' + logRetentionDays + '"></div></div>'
       /* 键盘流速查表入口（notes-034-f-cheatsheet）：内容与 panels/keyboard.js 逐键核对；? 键为直达通道 */
-      + '<div class="set-row"><div class="set-label">键盘快捷键<span class="s">键盘流全部生效快捷键速查表（与实现逐键核对）；非输入焦点时按 ? 直达，Esc 关闭</span></div><div class="set-ctrl"><button class="mbtn" id="setCheatsheet">查看…</button></div></div>';
+      + '<div class="set-row"><div class="set-label">' + t('settings.cheatsheet') + '<span class="s">' + t('settings.cheatsheetTip') + '</span></div><div class="set-ctrl"><button class="mbtn" id="setCheatsheet">' + t('settings.viewBtn') + '</button></div></div>';
+    /* i18n 语言项（notes-042-i18n-mech + cov-c）：回显当前语言态；切换 = setLang 持久化 + 全量 render +
+       本卡就地重渲染（render() 不重渲已开 modal：先兜底 flush 未落盘改动，重跑 openSettings 按新语言重建，
+       滚动位置经 modalBackScroll 一次性还原——与二级面板返回同口径） */
+    $('setLang').value = NOTES_LANG;
+    $('setLang').onchange = function () { setLang(this.value); flushSettingsPending(); modalBackScroll = $('modal') ? $('modal').scrollTop : 0; openSettings() };
     var sel = $('setLlmSel');
     if (sel) sel.onchange = function () {
       var v = this.value;
       var p = v ? { provider: v.split('/')[0], model: v.split('/').slice(1).join('/') } : null;
-      saveSettings({ llm: p }, p ? ('已保存：笔记 LLM = ' + v) : '已恢复跟随当前会话（默认）');
+      saveSettings({ llm: p }, p ? t('settings.savedLlm', { name: v }) : t('settings.restoredFollow'));
     };
     var sp = $('setLlmSave');
     if (sp) sp.onclick = function () {
       var pv = $('setLlmP').value.trim(), mv = $('setLlmM').value.trim();
-      if (!pv || !mv) { modalErr('provider 与 model 均需填写'); return }
-      saveSettings({ llm: { provider: pv, model: mv } }, '已保存：笔记 LLM = ' + pv + ' / ' + mv);
+      if (!pv || !mv) { modalErr(t('settings.llmRequired')); return }
+      saveSettings({ llm: { provider: pv, model: mv } }, t('settings.savedLlm', { name: pv + ' / ' + mv }));
     };
     var sc = $('setLlmClear');
-    if (sc) sc.onclick = function () { saveSettings({ llm: null }, '已恢复跟随当前会话（默认）'); openSettings() };
+    if (sc) sc.onclick = function () { saveSettings({ llm: null }, t('settings.restoredFollow')); openSettings() };
     $('setCatalog').onchange = function () {
-      saveSettings({ catalogEnabled: !!this.checked }, this.checked ? '已开启笔记目录注入' : '已关闭笔记目录注入');
-      this.parentNode.lastChild.textContent = this.checked ? ' 已开启' : ' 已关闭';
+      saveSettings({ catalogEnabled: !!this.checked }, this.checked ? t('settings.catalogOn') : t('settings.catalogOff'));
+      this.parentNode.lastChild.textContent = this.checked ? ' ' + t('settings.enabled') : ' ' + t('settings.disabled');
     };
     /* P1 时效衰减提醒阈值：失焦/Enter 即保存（非负整数；0 = 关闭；非法输入报错不落盘） */
     $('setStale').onchange = function () {
       var v = String(this.value).trim();
-      if (!/^\d+$/.test(v)) { modalErr('时效提醒阈值需为非负整数（0 = 关闭）'); return }
-      saveSettings({ staleDays: parseInt(v, 10) }, +v === 0 ? '已关闭时效衰减提醒' : '已保存：超过 ' + v + ' 天未更新的资料将在目录标注 ⚠');
+      if (!/^\d+$/.test(v)) { modalErr(t('settings.staleInvalid')); return }
+      saveSettings({ staleDays: parseInt(v, 10) }, +v === 0 ? t('settings.staleOff') : t('settings.savedStale', { v: v }));
     };
     /* 文件夹嵌套深度上限：失焦/Enter 即保存（非负整数；0 = 不限层数；非法输入报错不落盘） */
     $('setMaxDepth').onchange = function () {
       var v = String(this.value).trim();
-      if (!/^\d+$/.test(v)) { modalErr('文件夹嵌套深度上限需为非负整数（0 = 不限层数）'); return }
-      saveSettings({ maxFolderDepth: parseInt(v, 10) }, +v === 0 ? '已保存：文件夹嵌套不限层数' : '已保存：文件夹最多嵌套 ' + v + ' 层');
+      if (!/^\d+$/.test(v)) { modalErr(t('settings.maxDepthInvalid')); return }
+      saveSettings({ maxFolderDepth: parseInt(v, 10) }, +v === 0 ? t('settings.maxDepthUnlimited') : t('settings.savedMaxDepth', { v: v }));
     };
     /* P1 注入体积预算（约，字符数）：失焦/Enter 即保存（非负整数；0 = 不限） */
     $('setBudget').onchange = function () {
       var v = String(this.value).trim();
-      if (!/^\d+$/.test(v)) { modalErr('注入体积预算需为非负整数（0 = 不限）'); return }
-      saveSettings({ injectBudgetChars: parseInt(v, 10) }, +v === 0 ? '已关闭注入体积预算（不限）' : '已保存：注入预算约 ' + v + ' 字符');
+      if (!/^\d+$/.test(v)) { modalErr(t('settings.budgetInvalid')); return }
+      saveSettings({ injectBudgetChars: parseInt(v, 10) }, +v === 0 ? t('settings.budgetOff') : t('settings.savedBudget', { v: v }));
     };
     $('setExport').onclick = function () { openExport() };
     $('setImport').onclick = function () { openImport() };
     $('setTrash').onclick = function () { openTrash() };
     $('setPrune').onclick = function () { openPrune() };
     $('setInjectPreview').onclick = function () { openInjectPreview() };
-    $('setInjectManager').onclick = function () { openInjectManager() };
+    $('setInjectManager').onclick = function () { openInjectManager('settings') };   /* from=settings：单层返回栈（notes-041-settings-back），关闭二级面板自动回本卡 */
     $('setSuggest').onclick = function () { openSuggest() };
     $('setCheatsheet').onclick = function () { openCheatsheet() };
     /* 工作记忆 v0：日志卫生窗口失焦即保存（非负整数；月聚合 0=关闭本级；非法输入报错不落盘） */
     $('setLogWeek').onchange = function () {
       var v = String(this.value).trim();
-      if (!/^\d+$/.test(v)) { modalErr('日志周聚合窗口需为非负整数（天）'); return }
-      saveSettings({ logWeekAfterDays: parseInt(v, 10) }, '已保存：超过 ' + v + ' 天的日志将提名周聚合');
+      if (!/^\d+$/.test(v)) { modalErr(t('settings.logWeekInvalid')); return }
+      saveSettings({ logWeekAfterDays: parseInt(v, 10) }, t('settings.savedLogWeek', { v: v }));
     };
     $('setLogMonth').onchange = function () {
       var v = String(this.value).trim();
-      if (!/^\d+$/.test(v)) { modalErr('日志月聚合窗口需为非负整数（0 = 关闭月聚合）'); return }
-      saveSettings({ logRetentionDays: parseInt(v, 10) }, +v === 0 ? '已关闭日志月聚合提名' : '已保存：超过 ' + v + ' 天的日志将提名月聚合');
+      if (!/^\d+$/.test(v)) { modalErr(t('settings.logMonthInvalid')); return }
+      saveSettings({ logRetentionDays: parseInt(v, 10) }, +v === 0 ? t('settings.logMonthOff') : t('settings.savedLogMonth', { v: v }));
     };
     /* 工作记忆 v0 r3：沉淀引导状态行（单一事实源 = contractType: memory-guide（tag 兼容发现键）且 inject=true 的笔记；停用=关 inject，查看=跳转约定笔记） */
     rpc('notes-memory-guide', { op: 'status' }).then(function (st) { renderMemoryStatus(st && !st.error ? st : { enabled: false, noteId: '' }) }).catch(function () { renderMemoryStatus({ enabled: false, noteId: '' }) });
     /* LLM 月度用量预算提醒：失焦/Enter 即保存（非负整数；0 = 关闭） */
     $('setUsageBudget').onchange = function () {
       var v = String(this.value).trim();
-      if (!/^\d+$/.test(v)) { modalErr('月度用量预算需为非负整数（0 = 关闭提醒）'); return }
+      if (!/^\d+$/.test(v)) { modalErr(t('settings.usageBudgetInvalid')); return }
       usageBudget = parseInt(v, 10);
-      saveSettings({ usageBudgetMonthly: usageBudget }, +v === 0 ? '已关闭月度用量预算提醒' : '已保存：月度用量预算 ' + fmtTok(+v) + ' tokens');
+      saveSettings({ usageBudgetMonthly: usageBudget }, +v === 0 ? t('settings.usageBudgetOff') : t('settings.savedUsageBudget', { v: fmtTok(+v) }));
     };
     /* dirty 跟踪（notes-settings-feedback）：输入即刷新 保存/还原 按钮态（oninput 只刷新不落盘；失焦/Enter 即存的 onchange 链路不变） */
     ['setStale', 'setMaxDepth', 'setBudget', 'setUsageBudget', 'setLogWeek', 'setLogMonth', 'setLlmP', 'setLlmM'].forEach(function (id) { var el = $(id); if (el) el.oninput = setDirtyRefresh });
     setDirtyRefresh();
+    /* 单层返回栈（notes-041-settings-back）：二级面板返回重开时还原离开时的滚动位置（一次性消费，随后清零防串档） */
+    if (modalBackScroll > 0 && $('modal')) $('modal').scrollTop = modalBackScroll;
+    modalBackScroll = 0;
     /* LLM 用量统计（notes-token-stats）：独立 RPC 填充用量区；超月度预算 toast 提醒（不阻断） */
     rpc('notes-usage-get', {}).then(function (u) {
       var ub = $('setUsageBody');
       if (!ub) return;
-      if (!u || u.error) { ub.innerHTML = '<span class="s">用量数据读取失败</span>'; return }
-      ub.innerHTML = '<span class="usage-line">今日 ' + fmtTok(u.today.total) + ' · 本周 ' + fmtTok(u.week.total) + ' · 本月 ' + fmtTok(u.month.total) + ' · 累计 ' + fmtTok(u.allTime.total) + ' tokens' + (u.calls > 0 ? '（' + u.calls + ' 次调用）' : '') + '</span>'
-        + '<span class="s">分类 ' + fmtTok(u.byFeature.classify.allTime) + ' · 整理 ' + fmtTok(u.byFeature.organize.allTime) + ' · 总结 ' + fmtTok(u.byFeature.summarize.allTime) + (u.estimatedTokens > 0 ? '（含字符估算，约）' : '') + '</span>';
-      if (usageBudget > 0 && u.month && u.month.total > usageBudget) toast('⚠ 本月笔记 LLM 用量 ' + fmtTok(u.month.total) + ' tokens 已超预算 ' + fmtTok(usageBudget) + '（仅提醒，不阻断）');
-    }).catch(function () { var ub = $('setUsageBody'); if (ub) ub.innerHTML = '<span class="s">用量数据读取失败</span>' });
-  }).catch(function (e) { modalErr('设置加载失败：' + (e && e.message || e)) });
+      if (!u || u.error) { ub.innerHTML = '<span class="s">' + t('settings.usageLoadFailed') + '</span>'; return }
+      ub.innerHTML = '<span class="usage-line">' + t('settings.usageLine', { today: fmtTok(u.today.total), week: fmtTok(u.week.total), month: fmtTok(u.month.total), all: fmtTok(u.allTime.total) }) + (u.calls > 0 ? t('settings.usageCalls', { n: u.calls }) : '') + '</span>'
+        + '<span class="s">' + t('settings.usageByFeature', { classify: fmtTok(u.byFeature.classify.allTime), organize: fmtTok(u.byFeature.organize.allTime), summarize: fmtTok(u.byFeature.summarize.allTime) }) + (u.estimatedTokens > 0 ? t('settings.usageEstimated') : '') + '</span>';
+      if (usageBudget > 0 && u.month && u.month.total > usageBudget) toast(t('settings.usageOverBudget', { used: fmtTok(u.month.total), budget: fmtTok(usageBudget) }));
+    }).catch(function () { var ub = $('setUsageBody'); if (ub) ub.innerHTML = '<span class="s">' + t('settings.usageLoadFailed') + '</span>' });
+  }).catch(function (e) { modalErr(t('settings.loadFailed', { msg: e && e.message || e })) });
 }
 function saveSettings(patch, okMsg) {
   setInflight++; setDirtyRefresh();
@@ -160,7 +170,7 @@ function saveSettings(patch, okMsg) {
     if (res && res.error) { modalErr(res.error); return }
     setPersistMerge(patch);
     if (okMsg) toast(okMsg);
-  }).catch(function (e) { modalErr('保存失败：' + (e && e.message || e)) }).then(function () { setInflight--; setDirtyRefresh() });
+  }).catch(function (e) { modalErr(t('common.saveFailed', { msg: e && e.message || e })) }).then(function () { setInflight--; setDirtyRefresh() });
 }
 /* ===== 设置卡交互反馈（notes-settings-feedback）：dirty 状态机 + 显式保存 / 还原 / 关闭兜底 flush ===== */
 /* dirty 判定：在途待写 > 0 或 任一控件值 ≠ 打开时快照 */
@@ -205,14 +215,15 @@ function settingsSetQuiet(patch) {
     return res;
   }).then(function (r) { setInflight--; setDirtyRefresh(); return r }, function (e) { setInflight--; setDirtyRefresh(); throw e });
 }
-/* 数值字段登记表（DOM id ↔ 快照键 ↔ 设置 RPC 键 ↔ 校验文案）：保存校验/兜底 flush/还原回滚共用同一份口径 */
+/* 数值字段登记表（DOM id ↔ 快照键 ↔ 设置 RPC 键 ↔ 校验文案 i18n key）：保存校验/兜底 flush/还原回滚共用同一份口径；
+   第 4 列为字典 key（用时 t() 取当下语言——模块级登记表在加载期求值，不能直接存译文） */
 var SET_NUM_FIELDS = [
-  ['setStale', 'stale', 'staleDays', '时效提醒阈值需为非负整数（0 = 关闭）'],
-  ['setMaxDepth', 'maxDepth', 'maxFolderDepth', '文件夹嵌套深度上限需为非负整数（0 = 不限层数）'],
-  ['setBudget', 'budget', 'injectBudgetChars', '注入体积预算需为非负整数（0 = 不限）'],
-  ['setUsageBudget', 'usageBudget', 'usageBudgetMonthly', '月度用量预算需为非负整数（0 = 关闭提醒）'],
-  ['setLogWeek', 'logWeek', 'logWeekAfterDays', '日志周聚合窗口需为非负整数（天）'],
-  ['setLogMonth', 'logMonth', 'logRetentionDays', '日志月聚合窗口需为非负整数（0 = 关闭月聚合）'],
+  ['setStale', 'stale', 'staleDays', 'settings.staleInvalid'],
+  ['setMaxDepth', 'maxDepth', 'maxFolderDepth', 'settings.maxDepthInvalid'],
+  ['setBudget', 'budget', 'injectBudgetChars', 'settings.budgetInvalid'],
+  ['setUsageBudget', 'usageBudget', 'usageBudgetMonthly', 'settings.usageBudgetInvalid'],
+  ['setLogWeek', 'logWeek', 'logWeekAfterDays', 'settings.logWeekInvalid'],
+  ['setLogMonth', 'logMonth', 'logRetentionDays', 'settings.logMonthInvalid'],
 ];
 /* 当前控件值 → 快照对象（保存成功后快照跟进用） */
 function setSnapFromControls() {
@@ -228,7 +239,7 @@ function setSnapFromControls() {
 function doSettingsSaveAll() {
   if (setSaving || !setSnap || !setPersist) return;
   var i, el, v;
-  for (i = 0; i < SET_NUM_FIELDS.length; i++) { el = $(SET_NUM_FIELDS[i][0]); if (el && !/^\d+$/.test(String(el.value).trim())) { modalErr(SET_NUM_FIELDS[i][3]); return } }
+  for (i = 0; i < SET_NUM_FIELDS.length; i++) { el = $(SET_NUM_FIELDS[i][0]); if (el && !/^\d+$/.test(String(el.value).trim())) { modalErr(t(SET_NUM_FIELDS[i][3])); return } }
   var patches = [];
   /* 手输 LLM 两框齐备且 ≠ 已落盘才补写（下拉选择/开关变更即存无待写；单框不齐 = 存量失焦口径静默跳过） */
   if ($('setLlmP')) {
@@ -246,9 +257,9 @@ function doSettingsSaveAll() {
   seq.then(function () {
     setSaving = false;
     setSnap = setSnapFromControls();   /* 快照跟进到当前控件值（显式确认完成 → dirty 复位，保存按钮回禁用态） */
-    toast('设置已保存');
+    toast(t('settings.savedAll'));
     setDirtyRefresh();
-  }, function (e) { setSaving = false; modalErr('保存失败：' + (e && e.message || e)); setDirtyRefresh() });
+  }, function (e) { setSaving = false; modalErr(t('common.saveFailed', { msg: e && e.message || e })); setDirtyRefresh() });
 }
 /* 「还原」：回滚到打开时快照——已落盘 ≠ 快照的键逐键串行写回（逐键恢复），全部控件复位到快照值 */
 function doSettingsRestoreAll() {
@@ -266,11 +277,11 @@ function doSettingsRestoreAll() {
     /* UI 复位到打开时快照 */
     if ($('setLlmSel')) $('setLlmSel').value = (s.llmP && s.llmM) ? s.llmP + '/' + s.llmM : '';
     if ($('setLlmP')) { $('setLlmP').value = s.llmP; $('setLlmM').value = s.llmM }
-    if ($('setCatalog')) { $('setCatalog').checked = s.catalog; $('setCatalog').parentNode.lastChild.textContent = s.catalog ? ' 已开启' : ' 已关闭' }
+    if ($('setCatalog')) { $('setCatalog').checked = s.catalog; $('setCatalog').parentNode.lastChild.textContent = s.catalog ? ' ' + t('settings.enabled') : ' ' + t('settings.disabled') }
     for (var i = 0; i < SET_NUM_FIELDS.length; i++) { var el = $(SET_NUM_FIELDS[i][0]); if (el) el.value = s[SET_NUM_FIELDS[i][1]] }
-    toast('已还原：设置回滚到打开时的状态');
+    toast(t('settings.restoredAll'));
     setDirtyRefresh();
-  }, function (e) { setSaving = false; modalErr('还原失败：' + (e && e.message || e)); setDirtyRefresh() });
+  }, function (e) { setSaving = false; modalErr(t('settings.restoreFailed', { msg: e && e.message || e })); setDirtyRefresh() });
 }
 /* 关闭兜底 flush（✕/Esc/点遮罩同口径，modalCloseHook 挂接）：「控件值 ≠ 已落盘」的有效改动串行静默落盘；
    非法输入按存量口径丢弃（同关闭即弃）；≥1 项落盘则 toast 一次确认 */
@@ -289,5 +300,5 @@ function flushSettingsPending() {
   if (!patches.length) return;
   var seq = Promise.resolve();
   patches.forEach(function (p) { seq = seq.then(function () { return settingsSetQuiet(p) }) });
-  seq.then(function () { toast('设置已保存') }, function (e) { toast('设置保存失败：' + (e && e.message || e)) });
+  seq.then(function () { toast(t('settings.savedAll')) }, function (e) { toast(t('settings.flushSaveFailed', { msg: e && e.message || e })) });
 }

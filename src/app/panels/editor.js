@@ -33,18 +33,18 @@ function loadEdBody(id) {
       wikiBodies[id] = { body: edNote.body || '', updatedAt: res.note.updatedAt || '' };   /* 双链索引即时新鲜（不等后台补缺） */
       /* 正文到达后跑降级分析；富文本模式下新正文含白名单外语法 → 回落源码模式 */
       degraded = analyzeMarkdown(edNote.body || '');
-      if (edMode === 'rich' && !degraded.ok) { edMode = 'source'; toast('含高级语法（' + degraded.reasons.map(function (r) { return r.label }).join('、') + '），请在源码模式编辑'); renderEd(); }
+      if (edMode === 'rich' && !degraded.ok) { edMode = 'source'; toast(t('editor.richDegradedReasons', { reasons: degraded.reasons.map(function (r) { return r.label }).join(t('common.listSep')) })); renderEd(); }
       else { fillEdBody(); renderEdFoot(); refreshDegradeUI(); renderBacklinks(); }
     } else {
-      edBodyErr = '正文加载失败：' + (res && res.error ? res.error : '返回数据异常');
-      toast(edBodyErr + '（已锁定编辑，可点横幅重试）');
+      edBodyErr = t('editor.loadFailed', { msg: res && res.error ? res.error : t('editor.loadFailedData') });
+      toast(t('editor.loadFailedLocked', { msg: edBodyErr }));
     }
     refreshLoadErrUI();
   }).catch(function (e) {
     if (selId !== id) return;
     edLoading = false;
-    edBodyErr = '正文加载失败：' + (e && e.message || e);
-    toast(edBodyErr + '（已锁定编辑，可点横幅重试）');
+    edBodyErr = t('editor.loadFailed', { msg: e && e.message || e });
+    toast(t('editor.loadFailedLocked', { msg: edBodyErr }));
     refreshLoadErrUI();
   })
 }
@@ -93,29 +93,30 @@ function doSave() {
   if ((edNote.topic || '').trim()) upd.topic = edNote.topic.trim();
   rpc('notes-update', upd).then(function (res) {
     if (res && res.error) { toast(res.error); return }
-    $('edSaved').textContent = '✓ 已自动保存 ' + new Date().toTimeString().slice(0, 5);
+    $('edSaved').textContent = t('editor.autoSaved', { time: new Date().toTimeString().slice(0, 5) });
     edNote._tagsStr = null;
     wikiBodies[selId] = { body: edNote.body || '', updatedAt: '' };   /* 双链索引：自有正文即时新鲜（updatedAt 置空 → loadNotes 后索引复核） */
     renderBacklinks();
     loadNotes(true);
     if (histCount === 0) probeHistCount(selId);   /* 首次真实保存产生首份快照（0→1 转折点）→ 补探「历史」入口 */
-  }).catch(function (e) { toast('保存失败：' + (e && e.message || e)) });
+  }).catch(function (e) { toast(t('common.saveFailed', { msg: e && e.message || e })) });
 }
 function injectScopeLabel(injectTo) {
   var arr = (injectTo || []).filter(function (t) { return t !== 'global' && t !== 'workspace' });
-  if (arr.length === 0) return '所有会话';
-  var names = arr.map(function (t) {
-    var st = shortSid(t);   /* 归一比对（notes-034-injectto-norm）：存量长 id 先约到短 id 再匹配会话名 */
+  if (arr.length === 0) return t('meta.scopeAll');
+  /* 形参改名 tg（原 t 遮蔽全局 t()，i18n 抽串需要回调内可调 t()——同 cov-a tree.js 前置提升同源的遮蔽处理） */
+  var names = arr.map(function (tg) {
+    var st = shortSid(tg);   /* 归一比对（notes-034-injectto-norm）：存量长 id 先约到短 id 再匹配会话名 */
     var s = sessList.find(function (x) { return x.short === st });
-    return s ? s.name : ('会话 ' + st);
+    return s ? s.name : t('meta.scopeSession', { name: st });
   });
-  return names.join('、');
+  return names.join(t('common.listSep'));
 }
 function renderEd() {
   var ed = $('ed');
   if (!edNote) {
     ed.className = 'ed empty';
-    ed.innerHTML = '<svg class="ic"><use href="#i-note"/></svg><div>选择左侧一条笔记查看和编辑</div><div style="font-size:11px">点侧栏顶部 + 新建笔记（先开草稿，输入内容才落库）；正文划选文字可弹出快速记录卡片</div>';
+    ed.innerHTML = '<svg class="ic"><use href="#i-note"/></svg><div>' + t('editor.emptyTitle') + '</div><div style="font-size:11px">' + t('editor.emptySub') + '</div>';
     return;
   }
   var n = edNote;
@@ -129,29 +130,29 @@ function renderEd() {
     + '</div>'
     + '<div class="disp" id="dispHost"></div>'
     + '<div class="ed-main">'
-    + '<div class="deg" id="degBanner" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div>检测到<b>白名单外语法</b>，富文本编辑不可用（仍可源码编辑）：<span class="rs" id="degReasons"></span><br>删净对应语法后，「富文本」入口会实时恢复可用。</div></div>'
+    + '<div class="deg" id="degBanner" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div>' + t('editor.degBanner') + '<span class="rs" id="degReasons"></span><br>' + t('editor.degBanner2') + '</div></div>'
     /* R-1 安全态横幅（正文加载失败）：复用 .deg 警告样式；edLoadErrMsg=错误详情，edLoadRetry=重试入口（refreshLoadErrUI 驱动显隐与锁定） */
-    + '<div class="deg" id="edLoadErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="edLoadErrMsg"></span> — 已锁定编辑并暂停自动保存（防止空内容覆盖原文）。<span id="edLoadRetry" style="cursor:pointer;color:var(--nacc);font-weight:600">重试</span></div></div>'
-    + '<textarea class="src" id="edSrc" spellcheck="false" placeholder="正文…（Markdown）"' + (edMode === 'source' ? '' : ' style="display:none"') + '></textarea>'
+    + '<div class="deg" id="edLoadErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="edLoadErrMsg"></span>' + t('editor.loadLockNote') + '<span id="edLoadRetry" style="cursor:pointer;color:var(--nacc);font-weight:600">' + t('editor.retry') + '</span></div></div>'
+    + '<textarea class="src" id="edSrc" spellcheck="false" placeholder="' + t('editor.bodyPlaceholder') + '"' + (edMode === 'source' ? '' : ' style="display:none"') + '></textarea>'
     + '<div class="rich-scroll rich-wrap" id="richScroll"' + (edMode === 'rich' ? '' : ' style="display:none"') + '>'
     + '<div class="rtb" id="rtb">'
-    + '<button class="rtb-btn" data-a="bold" title="加粗 **text**">' + icon('i-bold', 14) + '</button>'
-    + '<button class="rtb-btn" data-a="italic" title="斜体 *text*">' + icon('i-italic', 14) + '</button>'
-    + '<button class="rtb-btn" data-a="code" title="行内码 `text`">' + icon('i-code-block', 14) + '</button>'
-    + '<button class="rtb-btn" data-a="link" title="链接 [text](url)">' + icon('i-link', 14) + '</button>'
+    + '<button class="rtb-btn" data-a="bold" title="' + t('editor.tbBold') + '">' + icon('i-bold', 14) + '</button>'
+    + '<button class="rtb-btn" data-a="italic" title="' + t('editor.tbItalic') + '">' + icon('i-italic', 14) + '</button>'
+    + '<button class="rtb-btn" data-a="code" title="' + t('editor.tbCode') + '">' + icon('i-code-block', 14) + '</button>'
+    + '<button class="rtb-btn" data-a="link" title="' + t('editor.tbLink') + '">' + icon('i-link', 14) + '</button>'
     + '<span class="rtb-sep"></span>'
-    + '<button class="rtb-btn" data-a="ul" title="无序列表">' + icon('i-ul', 14) + '</button>'
-    + '<button class="rtb-btn" data-a="ol" title="有序列表">' + icon('i-ol', 14) + '</button>'
-    + '<button class="rtb-btn" data-a="quote" title="引用块">' + icon('i-quote', 14) + '</button>'
+    + '<button class="rtb-btn" data-a="ul" title="' + t('editor.tbUl') + '">' + icon('i-ul', 14) + '</button>'
+    + '<button class="rtb-btn" data-a="ol" title="' + t('editor.tbOl') + '">' + icon('i-ol', 14) + '</button>'
+    + '<button class="rtb-btn" data-a="quote" title="' + t('editor.tbQuote') + '">' + icon('i-quote', 14) + '</button>'
     + '<span class="rtb-sep"></span>'
-    + '<button class="rtb-btn" data-a="image" title="插入图片 ![](assets/..)（也可 Ctrl+V 粘贴 / 拖拽文件）">' + icon('i-image', 14) + '</button>'
-    + '<span class="sync' + (richDirty ? '' : ' ok') + '" id="syncPill"><span class="sd"></span><span id="syncTxt">' + (richDirty ? '编辑中…' : '已同步源码') + '</span></span>'
+    + '<button class="rtb-btn" data-a="image" title="' + t('editor.tbImage') + '">' + icon('i-image', 14) + '</button>'
+    + '<span class="sync' + (richDirty ? '' : ' ok') + '" id="syncPill"><span class="sd"></span><span id="syncTxt">' + (richDirty ? t('editor.syncing') : t('editor.synced')) + '</span></span>'
     + '</div>'
     + '<div class="rich" id="edRich" contenteditable="true" spellcheck="false"></div>'
     + '</div>'
     + '</div>'
     + '<div class="backlinks" id="backlinksHost"></div>'
-    + '<div class="ed-foot"><span id="footMode">' + (edMode === 'source' ? '源码模式' : '富文本模式') + '</span><span id="edCreated"></span><span id="edUpdated"></span><span id="edSource"></span><span class="saved" id="edSaved"></span></div>';
+    + '<div class="ed-foot"><span id="footMode">' + (edMode === 'source' ? t('editor.modeSource') : t('editor.modeRich')) + '</span><span id="edCreated"></span><span id="edUpdated"></span><span id="edSource"></span><span class="saved" id="edSaved"></span></div>';
   renderCrumb(); renderMeta(); renderDispatches(); fillEdBody(); renderEdFoot(); refreshDegradeUI(); renderBacklinks();
   $('edTitle').textContent = n.title === 'Untitled' ? '' : (n.title || '');
   $('edTitle').addEventListener('input', function () { if (!edNote) return; edNote.title = this.textContent.trim() || 'Untitled'; triggerSave() });
@@ -166,7 +167,7 @@ function bindEditorArea() {
     /* 图片入口①/②（源码模式）：粘贴/拖拽图片文件 → 同一上传弹窗 → 光标处插 Markdown 文本 */
     ta.addEventListener('paste', function (ev) { var cd = ev.clipboardData; if (cd && cd.files && cd.files.length && /^image\//.test(cd.files[0].type)) { ev.preventDefault(); pickImageFile(cd.files[0]); } });
     ta.addEventListener('dragover', function (ev) { ev.preventDefault(); });
-    ta.addEventListener('drop', function (ev) { var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]; if (!f) return; ev.preventDefault(); if (!/^image\//.test(f.type)) { toast('仅支持图片文件'); return } pickImageFile(f); });
+    ta.addEventListener('drop', function (ev) { var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]; if (!f) return; ev.preventDefault(); if (!/^image\//.test(f.type)) { toast(t('editor.imageOnly')); return } pickImageFile(f); });
   }
   var rich = $('edRich'), wrap = $('richScroll');
   if (rich && wrap && edMode === 'rich') bindRich(rich, wrap);
@@ -188,7 +189,7 @@ function bindRich(rich, wrap) {
       var a = ev.target && ev.target.closest ? ev.target.closest('a[data-wiki]') : null;
       if (a) { ev.preventDefault(); ev.stopPropagation(); jumpToWikiTarget(a.getAttribute('data-wiki') || ''); return; }
       var tb = ev.target && ev.target.closest ? ev.target.closest('table.dsh-notes-table') : null;
-      if (tb) toast('表格为只读，请切换源码模式编辑该区域');
+      if (tb) toast(t('editor.tableReadonly'));
     });
   }
   /* 图片入口①：Ctrl+V 粘贴（clipboardData.files）；其余粘贴：HTML → 白名单清洗，纯文本 → 纯文本插入 */
@@ -207,7 +208,7 @@ function bindRich(rich, wrap) {
     ev.preventDefault(); wrap.classList.remove('drop');
     var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
     if (!f) return;
-    if (!/^image\//.test(f.type)) { toast('仅支持图片文件'); return; }
+    if (!/^image\//.test(f.type)) { toast(t('editor.imageOnly')); return; }
     keepSel(); pickImageFile(f);
   });
   /* 工具栏：mousedown 阻止默认（保住选区/焦点） */
@@ -219,7 +220,7 @@ function bindRich(rich, wrap) {
 function setSyncStatus(editing) {
   var pill = $('syncPill'); if (!pill) return;
   pill.className = 'sync' + (editing ? '' : ' ok');
-  if ($('syncTxt')) $('syncTxt').textContent = editing ? '编辑中…' : '已同步源码';
+  if ($('syncTxt')) $('syncTxt').textContent = editing ? t('editor.syncing') : t('editor.synced');
 }
 /* 富文本 → 源码序列化（原型 syncFromRich）：内容无损最高优先——有变化才回写 body 并走既有 doSave 自动保存 */
 function syncFromRich(why) {
@@ -241,7 +242,7 @@ function scheduleDegAnalyze() {
     var a = analyzeMarkdown(edNote ? edNote.body || '' : '');
     var was = degraded.ok;
     degraded = a; refreshDegradeUI();
-    if (was !== a.ok) toast(a.ok ? '富文本模式已恢复可用' : '检测到白名单外语法 → 富文本入口置灰');
+    if (was !== a.ok) toast(a.ok ? t('editor.richRestored') : t('editor.richDisabled'));
   }, 450);
 }
 /* 降级 UI（原型 refreshDegradeUI）：横幅 + 富文本段置灰 + hover tooltip（.tipwrap.deg 控制） */
@@ -252,8 +253,8 @@ function refreshDegradeUI() {
   if (tw) tw.classList.toggle('deg', !d.ok);
   var bn = $('degBanner'); if (bn) bn.style.display = d.ok ? 'none' : 'flex';
   if (!d.ok) {
-    if ($('degReasons')) $('degReasons').textContent = d.reasons.map(function (r) { return r.label + '（第 ' + r.line + ' 行：' + r.sample + '）' }).join('、');
-    if ($('richTip')) $('richTip').textContent = '含高级语法（' + d.reasons.map(function (r) { return r.label }).join('、') + '），请在源码模式编辑';
+    if ($('degReasons')) $('degReasons').textContent = d.reasons.map(function (r) { return t('editor.degReasonItem', { label: r.label, line: r.line, sample: r.sample }) }).join(t('common.listSep'));
+    if ($('richTip')) $('richTip').textContent = t('editor.richDegradedReasons', { reasons: d.reasons.map(function (r) { return r.label }).join(t('common.listSep')) });
   }
 }
 /* 模式切换（原型 setMode）：进富文本前跑降级分析；离开富文本先把在途编辑序列化落回源码 */
@@ -262,7 +263,7 @@ function switchMode(m) {
   if (m === 'rich') {
     degraded = analyzeMarkdown(edNote ? edNote.body || '' : '');
     refreshDegradeUI();
-    if (!degraded.ok) { toast('含高级语法（' + degraded.reasons.map(function (r) { return r.label }).join('、') + '），请在源码模式编辑'); return; }
+    if (!degraded.ok) { toast(t('editor.richDegradedReasons', { reasons: degraded.reasons.map(function (r) { return r.label }).join(t('common.listSep')) })); return; }
     richDirty = false;
     edMode = 'rich';
     renderModeUI();
@@ -281,7 +282,7 @@ function renderModeUI() {
   if (ms) ms.querySelectorAll('.seg').forEach(function (s) { s.classList.toggle('on', s.getAttribute('data-m') === edMode); });
   if ($('edSrc')) $('edSrc').style.display = edMode === 'source' ? 'block' : 'none';
   if ($('richScroll')) $('richScroll').style.display = edMode === 'rich' ? 'flex' : 'none';
-  if ($('footMode')) $('footMode').textContent = edMode === 'source' ? '源码模式' : '富文本模式';
+  if ($('footMode')) $('footMode').textContent = edMode === 'source' ? t('editor.modeSource') : t('editor.modeRich');
 }
 /* 富文本选区缓存/恢复（工具栏 mousedown 阻止默认保住选区；弹窗关闭后恢复） */
 function keepSel() { var sel = window.getSelection(); if (sel && sel.rangeCount > 0) { try { savedRange = sel.getRangeAt(0).cloneRange(); } catch (e) {} } }
@@ -303,12 +304,12 @@ function toolbarAction(a) {
   else if (a === 'quote') document.execCommand('formatBlock', false, 'blockquote');
   else if (a === 'code') {
     var sel = window.getSelection(), txt = sel && !sel.isCollapsed ? String(sel) : '';
-    if (!txt) { toast('先选中要设为行内码的文字'); return; }
+    if (!txt) { toast(t('editor.selectCodeFirst')); return; }
     document.execCommand('insertHTML', false, '<code>' + esc(txt) + '</code>');
   }
   else if (a === 'link') {
     var sel2 = window.getSelection();
-    if (!sel2 || sel2.isCollapsed) { toast('先选中要加链接的文字'); return; }
+    if (!sel2 || sel2.isCollapsed) { toast(t('editor.selectLinkFirst')); return; }
     keepSel(); openLinkModal(String(sel2)); return;
   }
   else if (a === 'image') { keepSel(); openImgModal(null); return; }

@@ -8,15 +8,15 @@
    校验内联报错（at 未来 / N≥1 / 目标必选；host 红线回显同口径）——禁原生 prompt（R1 反面教材 n-mut46q00c3yw） */
 var dState = null;
 function openDispatch() {
-  if (draftNote) { toast('草稿尚未落库：输入标题或正文自动保存后再派发'); return }   /* 草稿无真实 id（notes-034-batch3） */
-  if (!edNote || !selId) { toast('先选择一条笔记'); return }
+  if (draftNote) { toast(t('disp.draftNotSaved')); return }   /* 草稿无真实 id（notes-034-batch3） */
+  if (!edNote || !selId) { toast(t('editor.selectNoteFirst')); return }
   dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1 };
   pullActiveSessions();
   renderDispatchModal();
 }
 /* 编辑模式入口（注入管理「调度任务」区 [编辑]）：同弹窗回填既有声明；note = 调度约定笔记 slim（列表已含 schedule，零新 RPC） */
 function openDispatchEdit(note) {
-  if (!note || !note.schedule) { toast('该笔记没有调度声明'); return }
+  if (!note || !note.schedule) { toast(t('disp.noSchedule')); return }
   var s = note.schedule;
   dState = { sessId: s.target || '', instr: '', pending: false, sessions: [], pendingSess: [], sched: true, schedMode: 'daily', schedN: 3, schedAt: '', editId: note.id, editNote: note, schedAnchor: '09:00', schedDow: 1 };
   /* 回填：at → 仅一次；every 整天数 → 每天/每周/每 N 天；非整天间隔（front-matter 裸编辑旁路值）归一最近整天，保存按表单覆盖；
@@ -40,34 +40,34 @@ function pullActiveSessions() {
     if (res.sessions) dState.sessions = res.sessions;
     /* 编辑模式：目标会话不在活跃清单时补一条合成条目（原目标保持可选；host 落库仍校验存活红线，非 live 只影响执行时刻） */
     if (dState.editId && dState.sessId && !dState.sessions.some(function (s) { return s.id === dState.sessId })) {
-      dState.sessions = dState.sessions.concat([{ id: dState.sessId, short: shortSid(dState.sessId), name: '原目标会话（当前不在活跃清单）', workspace: '原目标', live: false }]);
+      dState.sessions = dState.sessions.concat([{ id: dState.sessId, short: shortSid(dState.sessId), name: t('disp.orphanSessName'), workspace: t('disp.orphanSessWs'), live: false }]);
     }
     dState.pendingSess = res.titlesPending && Array.isArray(res.pendingSessions) ? res.pendingSessions : [];
     if ($('dispSessHost')) renderDispatchSessList();
     if (res.titlesPending && dState) setTimeout(function () { if (dState && $('dispSessHost')) pullActiveSessions() }, 1500);
-  }).catch(function (e) { modalErr('会话清单加载失败：' + (e && e.message || e)) })   /* 弹窗内反馈（modalErr 自带 mErr 缺位守卫，关窗后静默） */
+  }).catch(function (e) { modalErr(t('mem.sessLoadFailed', { msg: e && e.message || e })) })   /* 弹窗内反馈（modalErr 自带 mErr 缺位守卫，关窗后静默） */
 }
 function renderDispatchModal() {
   var n = dState.editNote || edNote;
   var editing = !!dState.editId;
   openModal(
-    '<div class="modal-t">' + icon(editing ? 'i-clock' : 'i-play', 13) + (editing ? ' 编辑定时任务' : ' 派发待办') + '<span class="sub">' + (editing ? '调度声明与 front-matter 同源 · 保存即改排定' : '注入上下文并触发目标会话处理 · 新建会话派发请回 DSH 面板') + '</span></div>'
-    + '<div class="disp-todo"><div class="disp-todo-t">' + esc(n.title || 'Untitled') + '</div><div class="disp-todo-b">' + esc(String(n.preview || n.body || '').trim().slice(0, 200) || '（无正文）') + '</div></div>'
-    + (editing ? '' : '<textarea class="minput" id="dInstr" rows="3" placeholder="补充具体要求 / 指令（可选）…"></textarea>')
+    '<div class="modal-t">' + icon(editing ? 'i-clock' : 'i-play', 13) + ' ' + (editing ? t('disp.editTitle') : t('disp.title')) + '<span class="sub">' + (editing ? t('disp.editSub') : t('disp.sub')) + '</span></div>'
+    + '<div class="disp-todo"><div class="disp-todo-t">' + esc(n.title || 'Untitled') + '</div><div class="disp-todo-b">' + esc(String(n.preview || n.body || '').trim().slice(0, 200) || t('disp.noBody')) + '</div></div>'
+    + (editing ? '' : '<textarea class="minput" id="dInstr" rows="3" placeholder="' + t('disp.instrPlaceholder') + '"></textarea>')
     /* 调度区（默认收起 = 立即派发，手动派发零干扰；编辑模式固定定时形态，不再给「立即派发」岔路） */
     + '<div class="sched-box" id="dSchedBox">'
-    + (editing ? '' : '<label class="sched-opt"><input type="radio" name="dTrig" id="dTrigNow"' + (dState.sched ? '' : ' checked') + '> 立即派发</label><label class="sched-opt"><input type="radio" name="dTrig" id="dTrigSched"' + (dState.sched ? ' checked' : '') + '> 定时执行</label>')
+    + (editing ? '' : '<label class="sched-opt"><input type="radio" name="dTrig" id="dTrigNow"' + (dState.sched ? '' : ' checked') + '> ' + t('disp.now') + '</label><label class="sched-opt"><input type="radio" name="dTrig" id="dTrigSched"' + (dState.sched ? ' checked' : '') + '> ' + t('disp.scheduled') + '</label>')
     + '<div class="sched-form" id="dSchedForm"' + (dState.sched ? '' : ' style="display:none"') + '>'
     + '<select class="minput sched-sel" id="dSchedMode">'
-    + '<option value="daily"' + (dState.schedMode === 'daily' ? ' selected' : '') + '>每天</option>'
-    + '<option value="weekly"' + (dState.schedMode === 'weekly' ? ' selected' : '') + '>每周</option>'
-    + '<option value="ndays"' + (dState.schedMode === 'ndays' ? ' selected' : '') + '>每 N 天</option>'
-    + '<option value="once"' + (dState.schedMode === 'once' ? ' selected' : '') + '>仅一次（指定时间）</option>'
+    + '<option value="daily"' + (dState.schedMode === 'daily' ? ' selected' : '') + '>' + t('common.schedDaily') + '</option>'
+    + '<option value="weekly"' + (dState.schedMode === 'weekly' ? ' selected' : '') + '>' + t('common.schedWeekly') + '</option>'
+    + '<option value="ndays"' + (dState.schedMode === 'ndays' ? ' selected' : '') + '>' + t('disp.modeNDays') + '</option>'
+    + '<option value="once"' + (dState.schedMode === 'once' ? ' selected' : '') + '>' + t('disp.modeOnce') + '</option>'
     + '</select>'
-    + '<span id="dSchedNBox"' + (dState.schedMode === 'ndays' ? '' : ' style="display:none"') + '><input class="minput sched-n" id="dSchedN" type="number" min="1" step="1" value="' + dState.schedN + '"> 天</span>'
+    + '<span id="dSchedNBox"' + (dState.schedMode === 'ndays' ? '' : ' style="display:none"') + '><input class="minput sched-n" id="dSchedN" type="number" min="1" step="1" value="' + dState.schedN + '"> ' + t('disp.ndaysUnit') + '</span>'
     /* 锚定时刻（notes-034-sched-time）：每周出星期几选择；周期三模式出时刻框（默认 09:00）；仅一次保持 datetime-local */
     + '<span id="dSchedDowBox"' + (dState.schedMode === 'weekly' ? '' : ' style="display:none"') + '><select class="minput sched-sel" id="dSchedDow">'
-    + [1, 2, 3, 4, 5, 6, 0].map(function (d) { return '<option value="' + d + '"' + (dState.schedDow === d ? ' selected' : '') + '>周' + '日一二三四五六'.charAt(d) + '</option>' }).join('')
+    + [1, 2, 3, 4, 5, 6, 0].map(function (d) { return '<option value="' + d + '"' + (dState.schedDow === d ? ' selected' : '') + '>' + esc(t('disp.dowOption', { dow: t('common.dowNames').split('|')[d] || '' })) + '</option>' }).join('')
     + '</select></span>'
     + '<input class="minput sched-at" id="dSchedAnchor" type="time" value="' + esc(dState.schedAnchor) + '"' + (dState.schedMode === 'once' ? ' style="display:none"' : '') + '>'
     + '<input class="minput sched-at" id="dSchedOnce" type="datetime-local" value="' + esc(dState.schedAt) + '"' + (dState.schedMode === 'once' ? '' : ' style="display:none"') + '>'
@@ -75,7 +75,7 @@ function renderDispatchModal() {
     + '</div></div>'
     + '<div id="dispSessHost"></div>'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
-    + '<div class="modal-acts"><button class="mbtn" id="dCancel">取消</button><button class="mbtn primary" id="dOk">' + (editing ? '保存排定' : '派发') + '</button></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="dCancel">' + t('common.cancel') + '</button><button class="mbtn primary" id="dOk">' + (editing ? t('disp.saveSched') : t('disp.ok')) + '</button></div>'
   );
   if (!editing) $('dInstr').oninput = function () { dState.instr = this.value };
   $('dCancel').onclick = closeModal;
@@ -103,17 +103,17 @@ function renderDispatchModal() {
 function renderDispatchSessList() {
   var host = $('dispSessHost'); if (!host || !dState) return;
   var byWs = {};
-  dState.sessions.forEach(function (s) { var w = s.workspace || '其他'; (byWs[w] = byWs[w] || []).push(s) });
-  dState.pendingSess.forEach(function (p) { var w = p.workspace || '其他'; (byWs[w] = byWs[w] || []).push({ id: p.id, short: p.short, name: '', pending: true }) });
+  dState.sessions.forEach(function (s) { var w = s.workspace || t('meta.wsOther'); (byWs[w] = byWs[w] || []).push(s) });
+  dState.pendingSess.forEach(function (p) { var w = p.workspace || t('meta.wsOther'); (byWs[w] = byWs[w] || []).push({ id: p.id, short: p.short, name: '', pending: true }) });
   var wsKeys = Object.keys(byWs).sort();
-  var h = '<div class="disp-ws">活跃会话 ' + dState.sessions.length + (dState.pendingSess.length ? '（+' + dState.pendingSess.length + ' 标题加载中…）' : '') + ' · 按工作区分组</div>';
-  if (!wsKeys.length) h += '<div class="modal-hint">没有可派发的活跃会话。目标会话需处于打开状态；请先在 DSH 主界面打开，或回 DSH 浮动面板使用「新建会话」派发。</div>';
+  var h = '<div class="disp-ws">' + esc(t('disp.sessSummary', { n: dState.sessions.length, pending: dState.pendingSess.length ? t('disp.sessPending', { n: dState.pendingSess.length }) : '' })) + '</div>';
+  if (!wsKeys.length) h += '<div class="modal-hint">' + t('disp.noSessions') + '</div>';
   wsKeys.forEach(function (ws) {
     h += '<div class="disp-ws">' + esc(ws) + '</div>';
     byWs[ws].forEach(function (s) {
       h += '<div class="disp-sess' + (s.pending ? ' dis' : '') + (dState.sessId === s.id ? ' on' : '') + '" data-sid="' + (s.pending ? '' : esc(s.id)) + '">'
-        + (s.live ? '<span class="live" title="live"></span>' : '<span class="live" style="background:var(--nt3)" title="非 live"></span>')
-        + '<span class="nm">' + (s.pending ? esc(s.short) + ' · 标题加载中…' : esc(s.name || s.short)) + '</span>'
+        + (s.live ? '<span class="live" title="live"></span>' : '<span class="live" style="background:var(--nt3)" title="' + t('disp.notLive') + '"></span>')
+        + '<span class="nm">' + (s.pending ? esc(t('meta.scopePending', { short: s.short })) : esc(s.name || s.short)) + '</span>'
         + '<span style="font-size:10px;color:var(--nt3)">' + esc(s.short || '') + '</span></div>';
     });
   });
@@ -127,16 +127,16 @@ function renderDispatchSessList() {
 function schedFormDecl() {
   if (dState.schedMode === 'once') {
     var ms = new Date(dState.schedAt || '').getTime();
-    if (!dState.schedAt || !isFinite(ms)) return { err: '仅一次模式需选择定时时间' };
-    if (ms <= Date.now()) return { err: '定时时间必须是未来时刻（host 红线：at 必须未来）' };
+    if (!dState.schedAt || !isFinite(ms)) return { err: t('disp.schedNeedAt') };
+    if (ms <= Date.now()) return { err: t('disp.schedAtFuture') };
     /* 本地时区语义（notes-034-at-local-tz）：datetime-local 值本身是本地无后缀串，经 isoToLocalInput 归一提交——禁 toISOString（Z 后缀会被 host 闸门拒绝） */
     return { decl: { at: isoToLocalInput(dState.schedAt) } };
   }
   /* 锚定时刻（notes-034-sched-time）：周期三模式必携 anchor:'HH:MM'（触发序列钉死本地时刻不漂移） */
-  if (schedAnchorMs(dState.schedAnchor) === null) return { err: '周期模式需选择触发时刻（HH:MM）' };
+  if (schedAnchorMs(dState.schedAnchor) === null) return { err: t('disp.schedNeedAnchor') };
   if (dState.schedMode === 'ndays') {
     var n = parseInt(dState.schedN, 10);
-    if (!isFinite(n) || n < 1) return { err: '每 N 天的 N 需为 ≥1 的整数' };
+    if (!isFinite(n) || n < 1) return { err: t('disp.schedNInvalid') };
     return { decl: { every: n + 'd', anchor: dState.schedAnchor } };
   }
   if (dState.schedMode === 'weekly') return { decl: { every: '1w', anchor: dState.schedAnchor, dow: dState.schedDow } };
@@ -161,11 +161,11 @@ function renderSchedNext() {
   var f = schedFormDecl();
   if (f.err) { el.textContent = '⚠ ' + f.err; el.className = 'sched-next warn'; return }
   el.className = 'sched-next';
-  el.textContent = '下次触发：' + fmtDT(new Date(schedDeclNextMs(f.decl, dState.editNote)).toISOString());
+  el.textContent = t('disp.nextTrigger', { time: fmtDT(new Date(schedDeclNextMs(f.decl, dState.editNote)).toISOString()) });
 }
 function doDispatchConfirm() {
   if (!dState || dState.pending) return;
-  if (!dState.sessId) { modalErr('请选择目标会话'); return }
+  if (!dState.sessId) { modalErr(t('disp.needSession')); return }
   var sess = dState.sessions.find(function (s) { return s.id === dState.sessId });
   /* 定时执行 / 编辑排定分支（notes-034-sched-ui）：创建/更新 dispatch-schedule 约定笔记（表单与 front-matter 同源，无第二份存储） */
   if (dState.sched || dState.editId) {
@@ -176,39 +176,41 @@ function doDispatchConfirm() {
     var decl = { target: dState.sessId, action: 'dispatch', enabled: editId ? (dState.editNote.schedule.enabled !== false) : true };
     if (f.decl.at) decl.at = f.decl.at; else { decl.every = f.decl.every; decl.anchor = f.decl.anchor; if (typeof f.decl.dow === 'number') decl.dow = f.decl.dow }
     var nextTxt = fmtDT(new Date(schedDeclNextMs(f.decl, dState.editNote)).toISOString());
-    dState.pending = true; $('dOk').disabled = true; $('dOk').textContent = editId ? '保存中…' : '排定中…';
+    dState.pending = true; $('dOk').disabled = true; $('dOk').textContent = editId ? t('settings.saving') : t('disp.savingSched');
     var req;
     if (editId) req = rpc('notes-update', { id: editId, schedule: decl });
     else {
-      /* 正文人话 = 原待办正文 + 补充指令（即被派发的工作内容本身）；标题自动「定时 」前缀 */
+      /* 正文人话 = 原待办正文 + 补充指令（即被派发的工作内容本身）；标题自动「定时 」前缀
+         （数据层保留中文：schedPeerKey 前缀正则跨语言匹配同口径；「补充指令：」check 50 断言锚定——i18n 覆盖卡E 不抽串） */
       var body = String(edNote.body || edNote.preview || '').trim() + (String(dState.instr || '').trim() ? '\n\n补充指令：' + String(dState.instr).trim() : '') + '\n';
       req = rpc('notes-create', { title: '定时 ' + (edNote.title || 'Untitled'), body: body, kind: 'todo', contractType: 'dispatch-schedule', schedule: decl });
     }
     req.then(function (res) {
       dState.pending = false;
-      if (res && res.error) { modalErr(res.error); $('dOk').disabled = false; $('dOk').textContent = editId ? '保存排定' : '派发'; return }
+      if (res && res.error) { modalErr(res.error); $('dOk').disabled = false; $('dOk').textContent = editId ? t('disp.saveSched') : t('disp.ok'); return }
       closeModal(); dState = null;
-      toast((editId ? '已更新排定，下次：' : '已排定，下次：') + nextTxt);
+      toast(t(editId ? 'disp.schedUpdated' : 'disp.schedDone', { time: nextTxt }));
       loadNotes(true);
+      if (editId && selId === editId) refreshSelected();   /* 计划块编辑入口（notes-041-sched-plan-edit）：编辑的是当前打开笔记时就地刷新（计划块随 renderEd 重渲） */
     }).catch(function (e) {
-      dState.pending = false; modalErr('排定失败：' + (e && e.message || e));
-      $('dOk').disabled = false; $('dOk').textContent = editId ? '保存排定' : '派发';
+      dState.pending = false; modalErr(t('disp.schedFailed', { msg: e && e.message || e }));
+      $('dOk').disabled = false; $('dOk').textContent = editId ? t('disp.saveSched') : t('disp.ok');
     });
     return;
   }
-  dState.pending = true; $('dOk').disabled = true; $('dOk').textContent = '派发中…';
+  dState.pending = true; $('dOk').disabled = true; $('dOk').textContent = t('disp.dispatching');
   rpc('notes-dispatch', { id: selId, sessionId: dState.sessId, sessionName: sess ? sess.name : '', workspace: sess ? sess.workspace : '', mode: 'existing', instruction: dState.instr }).then(function (res) {
     dState.pending = false;
     if (res && res.error) {
-      modalErr(res.error + (res.needOpen ? '\n（页面无打开会话能力，请回 DSH 主界面打开该会话后重试）' : ''));
-      $('dOk').disabled = false; $('dOk').textContent = '派发';
+      modalErr(res.error + (res.needOpen ? t('disp.needOpenHint') : ''));
+      $('dOk').disabled = false; $('dOk').textContent = t('disp.ok');
       return;
     }
     closeModal(); dState = null;
-    toast('已派发待办到「' + (sess ? sess.name : '') + '」（开始处理）');
+    toast(t('disp.dispatched', { name: sess ? sess.name : '' }));
     refreshSelected(); loadNotes(true);
   }).catch(function (e) {
-    dState.pending = false; modalErr('派发失败：' + (e && e.message || e));
-    $('dOk').disabled = false; $('dOk').textContent = '派发';
+    dState.pending = false; modalErr(t('disp.failed', { msg: e && e.message || e }));
+    $('dOk').disabled = false; $('dOk').textContent = t('disp.ok');
   });
 }

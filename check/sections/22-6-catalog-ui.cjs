@@ -9,7 +9,7 @@ module.exports = {
   // ===== 22.6 笔记目录注入 client UI 开关（设置卡片 catalogEnabled 总开关 + 详情区逐条 recall 开关） =====
   section('22.6 笔记目录注入 client UI 开关（catalogEnabled 总开关 + recall 逐条）')
   await t('设置卡片含「笔记目录注入」总开关行（settingsRows 加行，勾选即保存）', () => {
-    assert(/key: 'catalog', label: '笔记目录注入'/.test(clientSrc), 'settingsRows 含「笔记目录注入」行')
+    assert(/key: 'catalog', label: tt\('settings\.catalog'\)/.test(clientSrc), 'settingsRows 含「笔记目录注入」行（覆盖卡 C 起 label 走 tt() 字典）')
     assert(clientSrc.indexOf('catalogEnabled') >= 0, 'client-impl 含 catalogEnabled 字段')
     assert(/function saveSettingsCatalog\(/.test(clientSrc), 'saveSettingsCatalog 保存函数存在')
     assert(/function saveSettingsCatalog\([\s\S]*?settingsSetQuiet\(\{ catalogEnabled: enabled \}\)/.test(clientSrc), '总开关走 settings-set 通道传 catalogEnabled 布尔（settingsSetQuiet 低层通道）')

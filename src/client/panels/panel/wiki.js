@@ -36,8 +36,8 @@
             if (res && !res.error && res.notes) res.notes.forEach(r => { cache[r.id] = { body: r.body || '', updatedAt: r.updatedAt || '' }; got++ })
             setWikiVer(v => v + 1)
             const failed = stale.length - got
-            if (failed) showToast('双链索引失败 ' + failed + ' 条：反向链接/行尾标记不完整（下次刷新自动重试）')
-          }).catch(() => { if (gen === wikiIdxGenRef.current) showToast('双链索引失败 ' + stale.length + ' 条（下次刷新自动重试）') })
+            if (failed) showToast(t('wiki.idxFailedPartial', { n: failed }))   /* i18n 覆盖卡F：wiki.* 域 */
+          }).catch(() => { if (gen === wikiIdxGenRef.current) showToast(t('wiki.idxFailedClient', { n: stale.length })) })
         }
         // 单条正文写缓存（选中加载/保存后即时新鲜；updatedAt 缺省 '' → 下轮索引复核 reconcile）
         function bumpWikiBody(id, body, updatedAt) { if (!id) return; wikiBodiesRef.current[id] = { body: body || '', updatedAt: updatedAt || '' }; setWikiVer(v => v + 1) }
@@ -46,7 +46,7 @@
         // 双链跳转：解析 → 选中；目标被当前视图/筛选中心条件藏掉时退回「全部」（搜索词不动，保留用户上下文）
         function jumpToWikiTarget(target) {
           const n = resolveWikiTarget(target)
-          if (!n) { showToast('未找到链接目标：' + target); return }
+          if (!n) { showToast(t('wiki.targetNotFound', { target: target })); return }
           const vis = (view.type === 'all' || (view.type === 'folder' && (n.folder || '') === view.id) || (view.type === 'topic' && (n.topic || '') === view.id))
             && matchFilters(n, filters)
           if (!vis) { setView({ type: 'all', id: '' }); setFilters(FILTERS0()) }

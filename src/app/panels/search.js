@@ -20,7 +20,7 @@ function doSearch() {
     }
   }).catch(function (e) {
     /* 在线检索失败降级为本地过滤（matches 本地分支兜底）：防抖逐键触发，同一轮故障只 toast 一次防刷屏 */
-    if (!searchErrNotified) { searchErrNotified = true; toast('在线检索不可用，仅显示本地过滤结果：' + (e && e.message || e)) }
+    if (!searchErrNotified) { searchErrNotified = true; toast(t('search.offline', { msg: e && e.message || e })) }
   })
 }
 $('q').addEventListener('input', function () {

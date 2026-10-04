@@ -24,7 +24,9 @@ module.exports = {
 
   // ===== 52.1 关联匹配逻辑：行为级 eval（grabFn 提取）+ app⇄原型逐字节一致 =====
   await t('关联匹配 schedPeerKey/relatedScheds 行为级：去前缀 / 双向视角 / 自身排除 / 非法零命中 + app⇄原型逐字节一致', () => {
-    for (const fn of ['schedPeerKey', 'relatedScheds', 'schedPlanHtml', 'schedPeerSource', 'ensureSchedPeers']) {
+    /* i18n 覆盖卡B：schedPlanHtml 文案 app 端走 t() 字典、原型不双语红线保持静态——逐字节一致断言收敛到未涉外函数；
+       schedPlanHtml 双端结构锚点由 52.2 分侧断言看守 */
+    for (const fn of ['schedPeerKey', 'relatedScheds', 'schedPeerSource', 'ensureSchedPeers']) {
       assert.strictEqual(grabFn(appSrc, fn, 'app.html'), grabFn(protoV2Src, fn, '原型'), 'app.html ⇄ 原型 ' + fn + ' 逐字节一致')
     }
     const ns = {}
@@ -81,12 +83,18 @@ module.exports = {
       assert(planFn.indexOf('shortSid(s.target)') >= 0, label + ' 目标会话截短显示')
       assert(planFn.indexOf('schedNextLabel(n)') >= 0 && planFn.indexOf('schedNextLabel(p)') >= 0, label + ' 下次触发（自身 + 关联行，schedNextMs 本地渲染口径）')
       assert(planFn.indexOf('schedBadgeHtml(n)') >= 0, label + ' 上次结果徽章（复用注入管理同口径）')
-      assert(planFn.indexOf("'<span class=\"sched-badge off\">已暂停</span>'") >= 0, label + ' 暂停态徽章（自身行 + 关联行同款）')
+      /* i18n 覆盖卡B：暂停徽章/标题/tooltip 文案 app 走 t() 字典，原型不双语保留中文原文（同 30 节分侧口径） */
+      if (label === 'app.html') {
+        assert(planFn.indexOf("'<span class=\"sched-badge off\">' + t('meta.schedPaused') + '</span>'") >= 0, label + ' 暂停态徽章走 t()（自身行 + 关联行同款）')
+        assert(s.indexOf("t('meta.schedPlan')") >= 0 && s.indexOf("t('meta.schedPeer')") >= 0, label + ' 计划块/关联行标题走 t()（覆盖卡B）')
+        assert(s.indexOf("t('meta.schedPeerTip', { name:") >= 0, label + ' 关联行跳转 tooltip 走 t()（覆盖卡B）')
+      } else {
+        assert(planFn.indexOf("'<span class=\"sched-badge off\">已暂停</span>'") >= 0, label + ' 暂停态徽章（自身行 + 关联行同款）')
+        assert(s.indexOf('派发计划</span>') >= 0 && s.indexOf('关联调度</span>') >= 0, label + ' 计划块/关联行标题文案')
+        assert(s.indexOf('跳转到调度约定「') >= 0, label + ' 关联行跳转 tooltip')
+      }
       assert(planFn.indexOf("paused ? ' paused' : ''") >= 0, label + ' 暂停行置灰')
       assert(planFn.indexOf('.slice(0, 5)') >= 0, label + ' 关联清单 ≤5 条')
-      // ③ 文案锚点
-      assert(s.indexOf('派发计划</span>') >= 0 && s.indexOf('关联调度</span>') >= 0, label + ' 计划块/关联行标题文案')
-      assert(s.indexOf('跳转到调度约定「') >= 0, label + ' 关联行跳转 tooltip')
       // ④ 点击跳转：既有 selectNote 链路（data-sid 携带目标 id）
       assert(s.indexOf("$('edMeta').querySelectorAll('.sched-peer')") >= 0 && s.indexOf("selectNote(el.getAttribute('data-sid'))") >= 0, label + ' 关联调度点击走既有 selectNote 跳转')
       // ⑤ 数据源兜底（③）：会话级按需一次 includeLogs + overlay 合并 notes 优先
@@ -107,8 +115,10 @@ module.exports = {
   // ===== 52.3 渲染守卫行为级（eval schedPlanHtml 打桩依赖）：无调度零渲染红线 + 双块输出 =====
   await t('计划块渲染守卫行为级：无调度笔记零渲染（空串）+ 调度笔记出计划块 + 待办出关联清单 + ≤5 截断', () => {
     const ns = {}
+    /* i18n 覆盖卡B：schedPlanHtml 文案走 t()——eval 前导补 zh 字典 + t() 桩（取值=中文原文，行为断言口径不变） */
     new Function('ns',
-      'function esc(s){return String(s==null?"":s)}\nfunction icon(){return ""}\nfunction shortSid(s){return String(s||"").slice(0,8)}\n'
+      fsNative.readFileSync(path.join(DIR, 'src', 'i18n', 'zh.js'), 'utf8') + '\nfunction t(k, vars){ var s = I18N_ZH[k]; if (s == null) return k; if (vars) s = s.replace(/\\{(\\w+)\\}/g, function (m, n) { return vars[n] != null ? String(vars[n]) : m }); return s }\n'
+      + 'function esc(s){return String(s==null?"":s)}\nfunction icon(){return ""}\nfunction shortSid(s){return String(s||"").slice(0,8)}\n'
       + 'function schedFreqLabel(){return "每天 09:00"}\nfunction schedNextLabel(){return "下次 2026-10-05 09:00"}\nfunction schedBadgeHtml(){return \'<span class="sched-badge">未触发</span>\'}\n'
       + grabFn(appSrc, 'schedPeerKey', 'app.html') + '\n' + grabFn(appSrc, 'relatedScheds', 'app.html') + '\n' + grabFn(appSrc, 'schedPlanHtml', 'app.html')
       + '\nns.schedPlanHtml = schedPlanHtml')(ns)
@@ -152,10 +162,10 @@ module.exports = {
       assert(s.indexOf("shortSid(curNote.schedule.target)") >= 0, label + ' 目标会话截短')
       assert(s.indexOf('function schedPlanNextLabel(n)') >= 0 && s.indexOf('const ms = schedNextMs(n)') >= 0, label + ' 下次触发本地渲染（schedNextMs 同 host 口径）')
       assert(s.indexOf('function schedPlanBadgeEl(n)') >= 0 && s.indexOf('schedPlanBadgeEl(curNote)') >= 0, label + ' 上次结果徽章（注入管理同口径镜像）')
-      assert(s.indexOf("'已暂停'") >= 0 && s.indexOf('已触发（单次）') >= 0, label + ' 暂停态 / 单次已触发文案')
+      assert(s.indexOf("tt('meta.schedPaused')") >= 0 && s.indexOf("tt('meta.schedFired')") >= 0, label + ' 暂停态 / 单次已触发文案走 tt()（i18n 覆盖卡B）')
       // ③ 关联行：标题 + 点击 selectNote 跳转
-      assert(s.indexOf("'关联调度'") >= 0 && s.indexOf("'派发计划'") >= 0, label + ' 行标题文案')
-      assert(s.indexOf('跳转到调度约定「') >= 0, label + ' 关联行 tooltip')
+      assert(s.indexOf("tt('meta.schedPeer')") >= 0 && s.indexOf("tt('meta.schedPlan')") >= 0, label + ' 行标题文案走 tt()（覆盖卡B）')
+      assert(s.indexOf("tt('meta.schedPeerTip', { name:") >= 0, label + ' 关联行 tooltip 走 tt()（覆盖卡B）')
       assert(s.indexOf('const t = notes.find(x => x.id === p.id); if (t) selectNote(t)') >= 0, label + ' 关联调度点击走既有 selectNote 跳转')
       // ④ 兜底 effect：会话级按需一次 includeLogs（既涉及调度才触发；缓存含 log 行跳过）
       assert(s.indexOf('schedPeerTriedRef.current = true') >= 0 && s.indexOf('schedPeerCacheRef.current = res.notes') >= 0, label + ' 兜底缓存 tried 闸 + overlay 回填')
@@ -171,6 +181,69 @@ module.exports = {
       for (const cls of ['.dsh-notes-sched-plan{', '.dsh-notes-sched-plan-row{', '.dsh-notes-sched-plan-row.paused{', '.dsh-notes-sched-plan-t{', '.dsh-notes-sched-peer{', '.dsh-notes-sched-peer:hover{', '.dsh-notes-sched-peer-t{']) {
         assert(pair[1].indexOf(cls) >= 0, pair[0] + ' 缺计划块样式：' + cls + '（需跑 scripts/build-dist.cjs）')
       }
+    }
+  })
+
+  // ===== 52.5 计划块原地操作（notes-041-sched-plan-edit）：编辑/暂停恢复/删除复用注入管理 doInjSched* handler（零复制逻辑） =====
+  // 设计：计划行尾部操作行（复用 sched-acts/sched-act 同款类 + data-act 协议）→ renderMeta 接线直调 doInjSchedEdit/Toggle/Del；
+  //   handler 双上下文改造（app：schedOpPending 模块级闸 + injMgrState 在场守卫；client：模块级提升 + store 切片 pending）；
+  //   操作后就地刷新（toggle 本地回写 + renderMeta / del 清编辑器 / edit 保存后 refreshSelected；client curNote 由 notes 缓存派生随 loadNotes 刷新）。
+  // 红线：复用既有 handler 不复制逻辑；无调度笔记零渲染红线不破（操作行只在 isSched 分支内）。
+  await t('计划块原地操作（notes-041-sched-plan-edit）：三按钮 + 复用 doInjSched* 调用路径 + 双上下文改造 + 编辑回填行为级（双端 + 原型）', () => {
+    const grabLine52 = (s, mark) => { const i = s.indexOf(mark); assert(i >= 0, 'app.html 缺行：' + mark); return s.slice(i, s.indexOf('\n', i)) }
+    for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
+      const s = pair[1], label = pair[0]
+      // ① 计划行三按钮（schedPlanHtml 内，复用注入管理 sched-acts/sched-act 同款类 + data-act 协议）
+      const planFn = grabFn(s, 'schedPlanHtml', label)
+      for (const a of ['data-act="edit"', 'data-act="toggle"', 'data-act="del"']) assert(planFn.indexOf(a) >= 0, label + ' 计划行缺操作按钮：' + a)
+      assert(planFn.indexOf('sched-plan-act') >= 0, label + ' 计划行操作按钮标记类（renderMeta 接线选择器）')
+      // ② renderMeta 接线：点击直调注入管理 handler（复用零复制）
+      assert(s.indexOf("querySelectorAll('.sched-plan-act')") >= 0, label + ' 计划块操作接线（renderMeta）')
+      assert(s.indexOf("if (act === 'edit') doInjSchedEdit(n);") >= 0 && s.indexOf("else if (act === 'toggle') doInjSchedToggle(n);") >= 0 && s.indexOf("else if (act === 'del') doInjSchedDel(n);") >= 0, label + ' 三操作复用 doInjSched* 同链路')
+      // ③ handler 双上下文改造（app 端 inject-manager）：schedOpPending 模块级闸 + injMgrState 在场守卫 + 计划块就地刷新
+      assert(s.indexOf('var schedOpPending = false;') >= 0, label + ' schedOpPending 模块级闸（脱离 injMgrState 可用）')
+      assert(s.indexOf('if (edNote && edNote.id === n.id && edNote.schedule) { edNote.schedule.enabled = decl.enabled; renderMeta(); }') >= 0, label + ' 暂停/恢复后计划块就地刷新（本地回写 enabled + renderMeta）')
+      assert(s.indexOf('if (edNote && edNote.id === n.id) { selId = null; edNote = null; renderEd(); }') >= 0, label + ' 删除当前打开笔记清编辑器（同 doDeleteNote 口径）')
+      // ④ 编辑保存后就地刷新（dispatch 编辑分支：编辑的是当前打开笔记时 refreshSelected）
+      assert(s.indexOf('if (editId && selId === editId) refreshSelected();') >= 0, label + ' 编辑保存后当前笔记就地刷新（dispatch.js）')
+    }
+    // ⑤ 行为级 eval（eval schedPlanHtml 打桩依赖，同 52.3 口径）：计划行出三按钮 + 暂停态文案翻转 + 零渲染红线不破
+    const ns = {}
+    new Function('ns',
+      fsNative.readFileSync(path.join(DIR, 'src', 'i18n', 'zh.js'), 'utf8') + '\nfunction t(k, vars){ var s = I18N_ZH[k]; if (s == null) return k; if (vars) s = s.replace(/\\{(\\w+)\\}/g, function (m, n) { return vars[n] != null ? String(vars[n]) : m }); return s }\n'
+      + 'function esc(s){return String(s==null?"":s)}\nfunction icon(){return ""}\nfunction shortSid(s){return String(s||"").slice(0,8)}\n'
+      + 'function schedFreqLabel(){return "每天 09:00"}\nfunction schedNextLabel(){return "下次 2026-10-05 09:00"}\nfunction schedBadgeHtml(){return \'<span class="sched-badge">未触发</span>\'}\n'
+      + grabFn(appSrc, 'schedPeerKey', 'app.html') + '\n' + grabFn(appSrc, 'relatedScheds', 'app.html') + '\n' + grabFn(appSrc, 'schedPlanHtml', 'app.html')
+      + '\nns.schedPlanHtml = schedPlanHtml')(ns)
+    const h1 = ns.schedPlanHtml({ id: 'n-s1', title: '定时 巡检', contractType: 'dispatch-schedule', schedule: { every: '1d', anchor: '09:00', target: 'session-abc' } }, [])
+    assert(h1.indexOf('data-act="edit"') >= 0 && h1.indexOf('data-act="toggle"') >= 0 && h1.indexOf('data-act="del"') >= 0, '计划行渲染三操作按钮')
+    assert(h1.indexOf('>编辑</button>') >= 0 && h1.indexOf('>暂停</button>') >= 0 && h1.indexOf('>删除</button>') >= 0, '运行态行：编辑/暂停/删除文案')
+    const h1p = ns.schedPlanHtml({ id: 'n-s1', title: '定时 巡检', contractType: 'dispatch-schedule', schedule: { every: '1d', target: 'session-abc', enabled: false } }, [])
+    assert(h1p.indexOf('>恢复</button>') >= 0, '暂停态行：暂停按钮翻转「恢复」')
+    assert.strictEqual(ns.schedPlanHtml({ id: 'n1', title: '普通笔记' }, []), '', '无调度笔记零渲染红线不破（操作行不引入渲染）')
+    assert.strictEqual(ns.schedPlanHtml({ id: 'n2', title: '定时 X', contractType: 'dispatch-schedule' }, []), '', '缺 schedule 字段零渲染（操作行同守配对不变量）')
+    const h2t = ns.schedPlanHtml({ id: 'n-t', title: '巡检' }, [{ id: 'n-a', title: '定时 巡检', contractType: 'dispatch-schedule', schedule: { every: '1d', target: 'session-a' } }])
+    assert(h2t.indexOf('sched-plan-act') < 0, '待办视角（关联清单）不出操作按钮——仅本笔记调度行可操作')
+    // ⑥ 行为级 eval：点击编辑 → doInjSchedEdit 关注入管理/清栈 + openDispatchEdit 打开表单且带回填（grabFn/grabLine 提取真码，DOM/rpc 打桩）
+    const ns2 = { rendered: 0, closed: 0 }
+    new Function('ns2',
+      'var dState = null; var modalBackTo = null; var injMgrState = { pending: false };\n'
+      + 'function toast(m){ ns2.lastToast = m }\nfunction closeModal(){ ns2.closed++ }\nfunction pullActiveSessions(){}\nfunction renderDispatchModal(){ ns2.rendered++ }\n'
+      + 'function isoToLocalInput(v){ return v }\nfunction schedAnchorMs(a){ return a === "09:00" ? 32400000 : null }\nfunction schedEveryMs(e){ return e === "1d" ? 86400000 : null }\n'
+      + grabFn(appSrc, 'openDispatchEdit', 'app.html') + '\n'
+      + grabLine52(appSrc, 'function doInjSchedEdit(n)') + '\n'
+      + 'ns2.doInjSchedEdit = doInjSchedEdit; ns2.getD = function () { return dState }; ns2.getBack = function () { return modalBackTo }; ns2.getInj = function () { return injMgrState }')(ns2)
+    ns2.doInjSchedEdit({ id: 'n-s1', title: '定时 巡检', contractType: 'dispatch-schedule', schedule: { every: '1d', anchor: '09:00', target: 'session-abc' } })
+    assert(ns2.closed === 1 && ns2.getInj() === null && ns2.getBack() === null, '编辑 = 先关注入管理 + 清 injMgrState/返回栈（modal 不叠 modal）')
+    assert(ns2.rendered === 1, '点击编辑 → 调度表单打开（renderDispatchModal 调用）')
+    const d = ns2.getD()
+    assert(d && d.editId === 'n-s1' && d.sched === true && d.schedMode === 'daily' && d.schedAnchor === '09:00' && d.sessId === 'session-abc', '编辑回填：editId + 定时形态 + 频率/锚点/目标回填（实得 ' + JSON.stringify(d && { editId: d.editId, sched: d.sched, mode: d.schedMode, anchor: d.schedAnchor, sess: d.sessId }) + '）')
+    // ⑦ client（开发版 + 发布包）：计划行三按钮复用 doInjSched*（curNote）+ handler 模块级提升 + 删除清选中
+    for (const pair of [['client 开发版', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
+      const s = pair[1], label = pair[0]
+      assert(s.indexOf('onClick: () => doInjSchedEdit(curNote)') >= 0 && s.indexOf('onClick: () => doInjSchedToggle(curNote)') >= 0 && s.indexOf('onClick: () => doInjSchedDel(curNote)') >= 0, label + ' 计划行三操作复用 doInjSched*（curNote 同链路）')
+      assert(s.indexOf('async function doInjSchedToggle(n)') >= 0 && s.indexOf('async function doInjSchedDel(n)') >= 0, label + ' handler 模块级提升（计划块可调，序位 inject-manager 先于 panels）')
+      assert(s.indexOf('if (selectedRef.current === n.id) setSelected(null)') >= 0, label + ' 删除当前打开笔记清空选中（同 doDelete 口径）')
     }
   })
   }

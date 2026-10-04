@@ -1,23 +1,39 @@
 /* ================= 文件夹管理（notes-folders op 契约；嵌套 parent 语义 = notes-nested-folder-ui） ================= */
+/* 弃原生 prompt（n-mut46q00c3yw：自动化环境静默失效）——新建/重命名走 openFolderInputModal 自定义弹层（空名/同级重名内联拦截） */
+/* i18n 覆盖卡F（E 卡交接项）：传给 openFolderInputModal 的 opts.title/okText 调用方传参处 t() 化（弹窗本体 fld.* 已由 E 卡建；
+   注释不得插在 function 首行与 openFolderInputModal 调用之间——55 节正则锚定「首行即开弹层」） */
 function doCreateFolder(parentId) {
-  var name = prompt(parentId ? '在「' + fname(parentId) + '」下新建子文件夹：' : '新文件夹名称：');
-  if (!name || !name.trim()) return;
-  /* 嵌套：parent 缺省=''根级；深度上限/父不存在由 host checkFolderAttach 拒绝 → 错误串去 RPC 前缀后 toast（友好提示） */
-  rpc('notes-folders', { op: 'create', name: name.trim(), parent: parentId || '' }).then(function (res) {
-    if (res && res.error) { toast(String(res.error).replace(/^notes-folders\.\w+\s*/, '')); return }
-    toast('已建文件夹「' + name.trim() + '」');
-    if (res && res.folder && res.folder.id) { if (parentId) { foldOpen[parentId] = true } foldOpen[res.folder.id] = true; saveFoldOpen(); view = { type: 'folder', id: res.folder.id } }
-    loadNotes(true);
-  }).catch(function (e) { toast('建文件夹失败：' + (e && e.message || e)) });
+  openFolderInputModal({
+    title: parentId ? t('fld.titleNewSub') : t('fld.titleNew'),
+    parentId: parentId || '',
+    okText: t('fld.okNew'),
+    onOk: function (name) {
+      /* 嵌套：parent 缺省=''根级；深度上限/父不存在由 host checkFolderAttach 拒绝 → 错误串去 RPC 前缀后 toast（友好提示） */
+      rpc('notes-folders', { op: 'create', name: name.trim(), parent: parentId || '' }).then(function (res) {
+        if (res && res.error) { toast(String(res.error).replace(/^notes-folders\.\w+\s*/, '')); return }
+        toast(t('fld.created', { name: name.trim() }));
+        if (res && res.folder && res.folder.id) { if (parentId) { foldOpen[parentId] = true } foldOpen[res.folder.id] = true; saveFoldOpen(); view = { type: 'folder', id: res.folder.id } }
+        loadNotes(true);
+      }).catch(function (e) { toast(t('fld.createFailed', { msg: e && e.message || e })) });
+    }
+  });
 }
 function doRenameFolder(f) {
-  var name = prompt('重命名文件夹：', f.name);
-  if (!name || !name.trim() || name.trim() === f.name) return;
-  rpc('notes-folders', { op: 'rename', id: f.id, name: name.trim() }).then(function (res) {
-    if (res && res.error) { toast(res.error); return }
-    toast('已重命名为「' + name.trim() + '」');
-    loadNotes(true);
-  }).catch(function (e) { toast('重命名失败：' + (e && e.message || e)) });
+  openFolderInputModal({
+    title: t('fld.titleRename'),
+    value: f.name,
+    parentId: f.parent || '',
+    excludeId: f.id,
+    okText: t('fld.okRename'),
+    onOk: function (name) {
+      if (name === f.name) return;   /* 名字未变不发 RPC（弹层已 trim + 同级重名拦截） */
+      rpc('notes-folders', { op: 'rename', id: f.id, name: name.trim() }).then(function (res) {
+        if (res && res.error) { toast(res.error); return }
+        toast(t('fld.renamed', { name: name.trim() }));
+        loadNotes(true);
+      }).catch(function (e) { toast(t('fld.renameFailed', { msg: e && e.message || e })) });
+    }
+  });
 }
 function doDeleteFolder(f) {
   /* 级联删除 confirm（notes-nested-folder-ui）：本地从 folders/notes 清单按子树预估（host 无 dry-run 参数；
@@ -26,16 +42,16 @@ function doDeleteFolder(f) {
   var childN = folders.filter(function (x) { return x.id !== f.id && sub[x.id] }).length;
   var noteN = notes.filter(function (n) { return !n.deleted && sub[n.folder || ''] }).length;
   var msg = (childN || noteN)
-    ? '删除文件夹「' + f.name + '」？连子删除：' + childN + ' 个子文件夹 + ' + noteN + ' 条笔记移入回收站（可恢复）；文件夹结构不可恢复。'
-    : '删除空文件夹「' + f.name + '」？';
+    ? t('fld.delConfirmCascade', { name: f.name, childN: childN, noteN: noteN })
+    : t('fld.delConfirmEmpty', { name: f.name });
   if (!confirm(msg)) return;
   rpc('notes-folders', { op: 'delete', id: f.id, cascade: true }).then(function (res) {
     if (res && res.error) { toast(res.error); return }
     /* 当前文件夹视图落在被删子树内 → 回全部视图（视图 id 悬空会显示空名单） */
     if (view.type === 'folder' && sub[view.id]) view = { type: 'all', id: '' };
-    toast('已删除文件夹「' + f.name + '」' + ((childN || noteN) ? '（含 ' + childN + ' 个子文件夹，' + noteN + ' 条笔记已入回收站）' : ''));
+    toast(t('fld.deleted', { name: f.name }) + ((childN || noteN) ? t('fld.deletedDetail', { childN: childN, noteN: noteN }) : ''));
     loadNotes(true);
-  }).catch(function (e) { toast('删除失败：' + (e && e.message || e)) });
+  }).catch(function (e) { toast(t('fld.deleteFailed', { msg: e && e.message || e })) });
 }
 function doReorderFolder(f, delta) {
   /* 嵌套语义：上移/下移在同级兄弟内换位（全局 ids 提交，host 归一化 order；两 id 原位互换，非兄弟相对位次不动） */
@@ -50,7 +66,7 @@ function doReorderFolder(f, delta) {
   rpc('notes-folders', { op: 'reorder', ids: ids }).then(function (res) {
     if (res && res.error) { toast(res.error); return }
     loadNotes(true);
-  }).catch(function (e) { toast('排序失败：' + (e && e.message || e)) });
+  }).catch(function (e) { toast(t('fld.sortFailed', { msg: e && e.message || e })) });
 }
 /* 拖拽换父（notes-nested-folder-ui）：reorder parents 改挂；cycle/自挂本地先拦（省一次 RPC 的友好 toast）；
    深度上限由 host checkFolderAttach 拒绝 → 错误串去 RPC 前缀后 toast；'' = 移回根级 */
@@ -58,16 +74,16 @@ function reparentFolder(fid, parentId) {
   var f = folders.find(function (x) { return x.id === fid });
   if (!f || (f.parent || '') === (parentId || '')) return;
   if (parentId) {
-    if (parentId === fid) { toast('文件夹不能挂到自己下面'); return }
-    if (folderSubtree(fid)[parentId]) { toast('文件夹不能挂到自己的子孙文件夹下面（cycle）'); return }
+    if (parentId === fid) { toast(t('fld.errSelf')); return }
+    if (folderSubtree(fid)[parentId]) { toast(t('fld.errCycle')); return }
   }
   var parents = {}; parents[fid] = parentId || '';
   rpc('notes-folders', { op: 'reorder', ids: folders.map(function (x) { return x.id }), parents: parents }).then(function (res) {
     if (res && res.error) { toast(String(res.error).replace(/^notes-folders\.\w+\s*/, '')); return }
     if (parentId) { foldOpen[parentId] = true; saveFoldOpen() }
-    toast(parentId ? '已移入「' + fname(parentId) + '」' : '已移回根级');
+    toast(parentId ? t('fld.movedInto', { name: fname(parentId) }) : t('fld.movedRoot'));
     loadNotes(true);
-  }).catch(function (e) { toast('移动失败：' + (e && e.message || e)) });
+  }).catch(function (e) { toast(t('fld.moveFailed', { msg: e && e.message || e })) });
 }
 /* 文件夹右键菜单（嵌套：新建子文件夹 / 移回根级（有父级时）） */
 function openFolderMenu(x, y, fid) {
@@ -75,13 +91,13 @@ function openFolderMenu(x, y, fid) {
   if (!f) return;
   var host = $('ctxHost');
   host.innerHTML = '<div class="ctxmenu" id="ctxMenu">'
-    + '<div class="mi" data-a="view">' + icon('i-filter') + '进入文件夹视图</div>'
-    + '<div class="mi" data-a="sub">' + icon('i-plus') + '新建子文件夹</div>'
-    + '<div class="mi" data-a="rename">' + icon('i-note') + '重命名</div>'
-    + '<div class="mi" data-a="up">' + icon('i-up') + '上移</div>'
-    + '<div class="mi" data-a="down">' + icon('i-down') + '下移</div>'
-    + ((f.parent || '') ? '<div class="mi" data-a="root">' + icon('i-up') + '移回根级</div>' : '')
-    + '<div class="mi danger" data-a="del">' + icon('i-trash') + '删除</div></div>';
+    + '<div class="mi" data-a="view">' + icon('i-filter') + t('fld.menuView') + '</div>'
+    + '<div class="mi" data-a="sub">' + icon('i-plus') + t('fld.titleNewSub') + '</div>'
+    + '<div class="mi" data-a="rename">' + icon('i-note') + t('fld.okRename') + '</div>'
+    + '<div class="mi" data-a="up">' + icon('i-up') + t('fld.menuUp') + '</div>'
+    + '<div class="mi" data-a="down">' + icon('i-down') + t('fld.menuDown') + '</div>'
+    + ((f.parent || '') ? '<div class="mi" data-a="root">' + icon('i-up') + t('fld.menuRoot') + '</div>' : '')
+    + '<div class="mi danger" data-a="del">' + icon('i-trash') + t('common.delete') + '</div></div>';
   var m = $('ctxMenu');
   m.style.left = Math.min(x, innerWidth - 170) + 'px';
   m.style.top = Math.min(y, innerHeight - 250) + 'px';

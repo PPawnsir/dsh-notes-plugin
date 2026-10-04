@@ -17,9 +17,9 @@ module.exports = {
   // ---- 43.1 client 结构断言（开发版 client-impl + 发布包 lib/client.js）----
   await t('注入管理面板（client）：设置行入口 + 总览 modal 结构 + 三态直改 payload + 批量通道 + log/sensitive 护栏（开发版 + 发布包）', () => {
     // ① 设置卡片入口（「注入预览」旁新增「注入管理」行）+ 互斥开 modal
-    assert(clientSrc.indexOf("{ key: 'injmgr', label: '注入管理'") >= 0, 'settingsRows 含「注入管理」行')
-    assert(clientSrc.indexOf('onClick: openInjectManager') >= 0, '管理按钮接线 openInjectManager')
-    assert(clientSrc.indexOf('function openInjectManager()') >= 0 && clientSrc.indexOf('function loadInjectManager()') >= 0, 'openInjectManager/loadInjectManager 存在')
+    assert(clientSrc.indexOf("{ key: 'injmgr', label: tt('settings.injManager')") >= 0, 'settingsRows 含「注入管理」行（覆盖卡 C 起 label 走 tt() 字典）')
+    assert(clientSrc.indexOf("onClick: () => openInjectManager('settings')") >= 0, '管理按钮接线 openInjectManager（from=settings，单层返回栈 notes-041-settings-back）')
+    assert(clientSrc.indexOf('function openInjectManager(from)') >= 0 && clientSrc.indexOf('function loadInjectManager()') >= 0, 'openInjectManager(from)/loadInjectManager 存在')
     assert(clientSrc.indexOf('setSettingsOpen(false); setInjMgrOpen(true)') >= 0, '与设置卡片互斥（modal 不叠 modal）')
     // ② 数据源：notes-list {includeLogs:true} slim 零新 RPC（含日志——日志行禁用态展示）
     assert(clientSrc.indexOf("host.call('notes-list', { includeLogs: true })") >= 0, 'loadInjectManager 数据源 notes-list includeLogs（零新 RPC）')
@@ -35,22 +35,22 @@ module.exports = {
     assert(clientSrc.indexOf('注入时自动脱敏') >= 0 && clientSrc.indexOf('dsh-notes-injmgr-sens') >= 0, 'sensitive 行内提示「注入时自动脱敏」')
     // ⑤ 曾注入徽章（injectEver 粘性，当前已注入不重复显示）+ 作用域摘要（全局显示「全局」）
     assert(clientSrc.indexOf("n.injectEver === true && !n.inject ? e('span', { className: 'dsh-notes-injmgr-ever dsh-nt'") >= 0, '曾注入徽章（injectEver 且当前未注入才显示）')
-    assert(clientSrc.indexOf("function injMgrScopeLabel(injectTo)") >= 0 && clientSrc.indexOf("return arr.length === 0 ? '全局' : arr.length + ' 个会话'") >= 0, '作用域摘要（injectTo 数 / 全局）')
+    assert(clientSrc.indexOf("function injMgrScopeLabel(injectTo)") >= 0 && clientSrc.indexOf("return arr.length === 0 ? t('inj.scopeGlobal') : t('inj.scopeSessions', { n: arr.length })") >= 0, '作用域摘要（injectTo 数 / 全局；i18n 覆盖卡D 起走 t() 字典）')
     // ⑥ 统计 chips（点击=过滤）+ 排序（注入中在前：约定>资料，组内 updatedAt 降序）+ 搜索 250ms 防抖
-    assert(clientSrc.indexOf("chipBtn('convention', '约定 ' + cntConv)") >= 0 && clientSrc.indexOf("chipBtn('reference', '资料 ' + cntRef)") >= 0 && clientSrc.indexOf("chipBtn('off', '未注入 ' + cntOff)") >= 0, '顶部统计 chips（约定 N / 资料 M / 未注入 K）')
+    assert(clientSrc.indexOf("chipBtn('convention', tt('inj.chipConvention', { n: cntConv }))") >= 0 && clientSrc.indexOf("chipBtn('reference', tt('inj.chipReference', { n: cntRef }))") >= 0 && clientSrc.indexOf("chipBtn('off', tt('inj.chipOff', { n: cntOff }))") >= 0, '顶部统计 chips（约定 N / 资料 M / 未注入 K；i18n 覆盖卡D 起走 tt() 字典）')
     assert(clientSrc.indexOf("const injMgrWeight = { convention: 0, reference: 1, off: 2 }") >= 0, '排序权重：约定 > 资料 > 未注入')
     assert(clientSrc.indexOf("String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))") >= 0, '组内 updatedAt 降序')
     assert(clientSrc.indexOf('timer.debounce(() => setInjMgrQ(injMgrSearchRef.current.trim().toLowerCase()), 250)') >= 0, '搜索 250ms 防抖（与列表搜索同口径）')
     // ⑦ 批量通道：confirm 条数 → 逐条 notes-update（失败计数不中断）→ 清选刷新
     assert(clientSrc.indexOf('async function doInjMgrBatch(role)') >= 0, 'doInjMgrBatch 存在')
-    assert(clientSrc.indexOf("'批量' + label + '：所选的 ' + ids.length + ' 条笔记将") >= 0, '批量 confirm 含条数')
+    assert(clientSrc.indexOf("t('inj.batchConfirm', { label: label, n: ids.length") >= 0, '批量 confirm 含条数（i18n 覆盖卡D 起走 t() 字典插值）')
     assert(clientSrc.indexOf("catch (err) { fail++ }") >= 0 && clientSrc.indexOf("setInjMgrPending(false); setInjMgrSel({})") >= 0, '批量逐条失败计数不中断 + 完成后清选')
     assert(clientSrc.indexOf("doInjMgrBatch('convention')") >= 0 && clientSrc.indexOf("doInjMgrBatch('reference')") >= 0 && clientSrc.indexOf("doInjMgrBatch('off')") >= 0, '批量三档按钮（设为约定/设为资料/关闭注入）')
     // ⑧ modal 结构类 + Esc 链路 + 全局错误条排除
     for (const cls of ['dsh-notes-injmgr-modal', 'dsh-notes-injmgr-chips', 'dsh-notes-injmgr-search', 'dsh-notes-injmgr-batch', 'dsh-notes-injmgr-list', 'dsh-notes-injmgr-row', 'dsh-notes-injmgr-seg', 'dsh-notes-injmgr-opt']) {
       assert(clientSrc.indexOf(cls) >= 0, '注入管理 modal 结构类：' + cls)
     }
-    assert(clientSrc.indexOf('if (injMgrOpenRef.current) { setInjMgrOpen(false); return }') >= 0, 'Esc 链路关注入管理面板')
+    assert(clientSrc.indexOf('if (injMgrOpenRef.current) { closeInjMgr(); return }') >= 0, 'Esc 链路经 closeInjMgr 统一关闭（单层返回栈）')
     assert(clientSrc.indexOf('!memOpen && !injMgrOpen') >= 0, '全局错误条排除注入管理 modal（modal 内自显错误）')
     // ⑨ 发布包 lib/client.js 同步（需先跑 scripts/build-dist.cjs）
     for (const k of ['openInjectManager', 'loadInjectManager', 'doInjMgrSet', 'doInjMgrBatch', 'injMgrRole', 'injMgrScopeLabel', 'dsh-notes-injmgr-list', 'dsh-notes-injmgr-opt', '注入管理', 'injMgrOpenRef']) {
@@ -72,8 +72,8 @@ module.exports = {
     for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
       const s = pair[1], label = pair[0]
       assert(s.indexOf('id="setInjectManager"') >= 0, label + ' 设置卡片「注入管理」入口')
-      assert(s.indexOf("$('setInjectManager').onclick = function () { openInjectManager() };") >= 0, label + ' 入口接线')
-      assert(s.indexOf('function openInjectManager()') >= 0 && s.indexOf('function loadInjectManager()') >= 0 && s.indexOf('function renderInjectManager()') >= 0, label + ' 管理三函数')
+      assert(s.indexOf("$('setInjectManager').onclick = function () { openInjectManager('settings') };") >= 0, label + ' 入口接线（from=settings，单层返回栈）')
+      assert(s.indexOf('function openInjectManager(from)') >= 0 && s.indexOf('function loadInjectManager()') >= 0 && s.indexOf('function renderInjectManager()') >= 0, label + ' 管理三函数')
       assert(s.indexOf("rpc('notes-list', { includeLogs: true })") >= 0, label + ' 数据源 notes-list includeLogs（零新 RPC）')
       assert(s.indexOf("function injMgrRole(n) { return n.inject === true ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off' }") >= 0, label + ' 三态判定与详情区同口径')
       // 单行直改 payload + log 隐身硬禁护栏（函数双保险 + 行档位/勾选禁用）
@@ -85,10 +85,16 @@ module.exports = {
       assert(s.indexOf('不参与注入批量操作') >= 0, label + ' log 行勾选禁用 + title 提示')
       assert(s.indexOf('注入时自动脱敏') >= 0 && s.indexOf('injmgr-sens') >= 0, label + ' sensitive 行内提示「注入时自动脱敏」')
       // 统计 chips（点击=过滤）+ 排序 + 搜索防抖 + 批量 confirm 条数 + 逐条失败计数不中断
-      assert(s.indexOf("['convention', '约定 ' + cntConv]") >= 0 && s.indexOf("['reference', '资料 ' + cntRef]") >= 0 && s.indexOf("['off', '未注入 ' + cntOff]") >= 0, label + ' 顶部统计 chips（约定 N / 资料 M / 未注入 K）')
+      /* i18n 覆盖卡D：app 端 chips/批量 confirm 文案走 t() 字典（复用 inj.* key），原型不双语红线保留中文原文（同 52 节分侧口径） */
+      if (label === 'app.html') {
+        assert(s.indexOf("['convention', t('inj.chipConvention', { n: cntConv })]") >= 0 && s.indexOf("['reference', t('inj.chipReference', { n: cntRef })]") >= 0 && s.indexOf("['off', t('inj.chipOff', { n: cntOff })]") >= 0, label + ' 顶部统计 chips 走 t()（约定 N / 资料 M / 未注入 K）')
+      } else {
+        assert(s.indexOf("['convention', '约定 ' + cntConv]") >= 0 && s.indexOf("['reference', '资料 ' + cntRef]") >= 0 && s.indexOf("['off', '未注入 ' + cntOff]") >= 0, label + ' 顶部统计 chips（约定 N / 资料 M / 未注入 K）')
+      }
       assert(s.indexOf('var w = { convention: 0, reference: 1, off: 2 };') >= 0, label + ' 排序权重：约定 > 资料 > 未注入')
       assert(s.indexOf('}, 250);') >= 0 && s.indexOf('injMgrSearchTimer') >= 0, label + ' 搜索 250ms 防抖')
-      assert(s.indexOf('function doInjMgrBatch(role)') >= 0 && s.indexOf("'批量' + label + '：所选的 ' + ids.length + ' 条笔记将") >= 0, label + ' 批量 confirm 含条数')
+      if (label === 'app.html') assert(s.indexOf('function doInjMgrBatch(role)') >= 0 && s.indexOf("t('inj.batchConfirm', { label: label, n: ids.length") >= 0, label + ' 批量 confirm 走 t() 字典插值（覆盖卡D）')
+      else assert(s.indexOf('function doInjMgrBatch(role)') >= 0 && s.indexOf("'批量' + label + '：所选的 ' + ids.length + ' 条笔记将") >= 0, label + ' 批量 confirm 含条数')
       assert(s.indexOf("function (res) { if (res && res.error) fail++; else ok++ }") >= 0, label + ' 批量逐条失败计数不中断')
       assert(s.indexOf("doInjMgrBatch('convention')") >= 0 && s.indexOf("doInjMgrBatch('reference')") >= 0 && s.indexOf("doInjMgrBatch('off')") >= 0, label + ' 批量三档按钮（设为约定/设为资料/关闭注入）')
       // modal 结构类 + 宽 modal 样式 + Esc 统一关

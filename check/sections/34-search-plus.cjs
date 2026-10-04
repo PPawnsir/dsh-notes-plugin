@@ -160,7 +160,7 @@ module.exports = {
     assert(clientSrc.indexOf("q.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')") >= 0, 'client-impl highlight 查询词正则元字符转义')
     assert(clientSrc.indexOf("e('mark', { key: i, className: 'dsh-notes-mark' }, p)") >= 0, 'client-impl 高亮走 React mark 元素（文本节点自动转义）')
     assert(clientPkgSrc.indexOf("'dsh-notes-mark'") >= 0, '发布包 lib/client.js 同步高亮（需先跑 scripts/build-dist.cjs）')
-    assert(clientSrc.indexOf("highlight(n.title || '无标题', q)") >= 0, '面板行标题接入高亮')
+    assert(clientSrc.indexOf("highlight(n.title || tt('tree.untitled'), q)") >= 0, '面板行标题接入高亮（i18n 覆盖卡A 起缺省标题走 t() 字典）')
   })
 
   // ---- 34.4 相关度排序（标题 > 标签 > 正文 > 其他，同级 updatedAt 降序）----
@@ -206,7 +206,8 @@ module.exports = {
       assert(s.indexOf('dsh-notes-filterbar') >= 0 && s.indexOf('dsh-notes-fpop') >= 0 && s.indexOf('dsh-notes-fchip') >= 0 && s.indexOf('dsh-notes-fcnt') >= 0, label + ' 控制行结构（filterbar/popover/chip/计数丸）')
       assert(s.indexOf('dsh-notes-fsort-menu') >= 0 && s.indexOf('dsh-notes-fsort-item') >= 0, label + ' 独立排序控件菜单')
       assert(s.indexOf('组内多选 = OR') >= 0 && s.indexOf('组内 OR · 与状态组 = AND') >= 0, label + ' popover 分组规则文案')
-      assert(s.indexOf("'命中 '") >= 0 && s.indexOf("'清空'") >= 0 && s.indexOf("'完成'") >= 0, label + ' popover 底部 命中数 + 清空/完成')
+      /* i18n 覆盖卡F：popover 底部命中数/清空/完成走 t() 字典（filter.hitCount/clear/done，zh 原串在 src/i18n/zh.js 随包内嵌） */
+      assert(s.indexOf("t('filter.hitCount', { n: filteredCount })") >= 0 && s.indexOf("t('filter.clear')") >= 0 && s.indexOf("t('filter.done')") >= 0, label + ' popover 底部 命中数 + 清空/完成（覆盖卡F 起走 t()）')
       assert(s.indexOf("pred: n => n.status === 'pinned'") >= 0 && s.indexOf('pred: n => n.inject === true') >= 0 && s.indexOf('pred: n => n.injectEver === true') >= 0 && s.indexOf('pred: n => n.sensitive === true') >= 0, label + ' 状态组四条件谓词')
       assert(s.indexOf("n.injectEver !== undefined") >= 0, label + ' 曾注入 feature-detect（slim 有该字段才显示）')
       assert(s.indexOf("localStorage.setItem('dsh-notes-filters'") >= 0 && s.indexOf("localStorage.getItem('dsh-notes-filters')") >= 0, label + ' 筛选条件+排序 localStorage 持久化')
@@ -244,7 +245,7 @@ module.exports = {
       assert(s.indexOf("$('btnFilter').addEventListener('click'") >= 0 && s.indexOf("$('btnSort').addEventListener('click'") >= 0, label + ' 筛选/排序按钮接线')
       assert(s.indexOf("$('fchips').addEventListener('click'") >= 0 && s.indexOf('filters[c.dataset.ft] = false') >= 0 && s.indexOf('filters.kinds.splice(i, 1)') >= 0, label + ' 激活 chip × 单条移除')
       assert(s.indexOf("$('fsortMenu').addEventListener('click'") >= 0, label + ' 排序菜单接线')
-      assert(s.indexOf('function hl(text, q)') >= 0 && s.indexOf("hl(n.title || '无标题', searchText)") >= 0 && s.indexOf('.note-row .ti mark{') >= 0, label + ' hl() 高亮保留')
+      assert(s.indexOf('function hl(text, q)') >= 0 && s.indexOf(label === 'app.html' ? "hl(n.title || t('tree.untitled'), searchText)" : "hl(n.title || '无标题', searchText)") >= 0 && s.indexOf('.note-row .ti mark{') >= 0, label + ' hl() 高亮保留（app 缺省标题走 t() 字典，i18n 覆盖卡A）')
       assert(s.indexOf("sortBy === 'rel' && qRel") >= 0, label + ' 相关度排序档保留')
       assert(s.indexOf('id="i-clock"') >= 0 && s.indexOf('id="i-sort"') >= 0 && s.indexOf('id="i-x"') >= 0, label + ' defs 含 i-clock/i-sort/i-x（曾注入/排序/×）')
       assert(s.indexOf('id="btnSelMode"') >= 0 && s.indexOf('id="btnNew"') >= 0, label + ' 选择（side-foot）/新建（brand 行）保留')
@@ -432,9 +433,9 @@ module.exports = {
       const s = pair[1], label = pair[0]
       assert(s.indexOf("className: 'dsh-notes-note-injevr dsh-nt'") >= 0, label + ' 行尾曾注入徽章（clock，被引用徽章旁；需跑 scripts/build-dist.cjs）')
       assert(s.indexOf("n.inject !== true && n.injectEver === true ? e('span', { className: 'dsh-notes-note-injevr") >= 0, label + ' 行徽章条件：曾注入且非已注入（互斥 bolt），不满足不渲染')
-      assert(s.indexOf("'data-tooltip': '曾注入：历史上开启过上下文注入（现已关闭）'") >= 0, label + ' 行徽章 tooltip')
+      assert(s.indexOf("'data-tooltip': tt('tree.injectEverTip')") >= 0, label + ' 行徽章 tooltip（i18n 覆盖卡A 起走 t() 字典）')
       assert(s.indexOf("curNote.injectEver === true && !isInjected") >= 0, label + ' 详情 chip 条件（injectEver 且当前未注入）')
-      assert(s.indexOf("I('clock', 11), '曾注入'") >= 0, label + ' 详情 meta chip「曾注入」（clock 图标）')
+      assert(s.indexOf("I('clock', 11), tt('meta.injectEver')") >= 0, label + ' 详情 meta chip「曾注入」（clock 图标；i18n 覆盖卡B 起走 tt() 字典）')
       assert(s.indexOf('injectEver 为粘性标记，不随关闭回退') >= 0, label + ' 详情 chip tooltip 说明粘性语义')
       assert(s.indexOf("clock: [e('circle'") >= 0, label + ' IC.clock 时钟图标')
     }
@@ -445,7 +446,9 @@ module.exports = {
       assert(s.indexOf("icon('i-clock', 9)") >= 0, label + ' 行徽章 i-clock 图标')
       assert(s.indexOf('.note-row .injevr{') >= 0, label + ' 行徽章样式（淡灰时钟）')
       assert(s.indexOf("n.injectEver === true && !n.inject ? '<span class=\"meta-chip\"") >= 0, label + ' 详情 meta chip 条件')
-      assert(s.indexOf("icon('i-clock') + '曾注入</span>'") >= 0, label + ' 详情 meta chip「曾注入」')
+      /* i18n 覆盖卡B：app 详情 chip 文案走 t() 字典；原型不双语保留中文原文（分侧断言） */
+      if (label === 'app.html') assert(s.indexOf("icon('i-clock') + t('meta.injectEver') + '</span>'") >= 0, label + ' 详情 meta chip「曾注入」走 t()（覆盖卡B）')
+      else assert(s.indexOf("icon('i-clock') + '曾注入</span>'") >= 0, label + ' 详情 meta chip「曾注入」')
       assert(s.indexOf('injectEver 为粘性标记，不随关闭回退') >= 0, label + ' 详情 chip tooltip 说明粘性语义')
     }
     const cssIEDev = fsNative.readFileSync(SRC_STYLES, 'utf8')

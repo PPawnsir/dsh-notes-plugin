@@ -17,5 +17,5 @@ function loadNotes(silent) {
     if (res && res.notes) notes = res.notes;
     return loadFolders();
   }).then(function () { ensureWikiIndex(); renderTree(); return true })
-    .catch(function (e) { if (!silent) toast('列表加载失败：' + (e && e.message || e)); return false });
+    .catch(function (e) { if (!silent) toast(t('side.loadFailed', { msg: e && e.message || e })); return false });   /* i18n 覆盖卡F：side.loadFailed */
 }

@@ -51,3 +51,10 @@
       if (F.kinds.length && F.kinds.indexOf(n.kind || 'note') < 0) return false
       return true
     }
+    // ===== i18n 覆盖卡F（notes-042-i18n-cov-f，B 卡交接①）：共享常量表条件映射——KIND_LABELS/FILTER_STATUS/FILTER_SORTS 的
+    //    label 中文字面量保留作四端同构锚（check 30/34/39 锁定原文 + 原型不双语红线），渲染一律经下列 helper 走 t() 字典
+    //    （kernel/i18n.js 序位在前，langStore 订阅者自渲染即换语言）；未知值回退 ''（调用方 || 兜底），永不裸 key =====
+    function kindLabel(k) { return KIND_LABELS[k] ? t('meta.kind' + k.charAt(0).toUpperCase() + k.slice(1)) : '' }
+    function filterStatusLabel(id) { return id === 'pinned' ? t('tree.pinned') : id === 'injected' ? t('filter.stInjected') : id === 'injectEver' ? t('meta.injectEver') : id === 'sensitive' ? t('meta.sens') : id }
+    function sortLabelOf(id) { return t('sort.' + (id === 'use' || id === 'rel' ? id : 'time')) }
+    function sortDescOf(id) { return t('sort.' + (id === 'use' || id === 'rel' ? id : 'time') + 'Desc') }

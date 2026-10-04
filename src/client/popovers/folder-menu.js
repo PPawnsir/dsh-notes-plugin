@@ -101,7 +101,7 @@
           try {
             const res = await host.call('notes-folders', { op: 'create', name: name, parent: parent })
             if (res && res.error) { showToast(String(res.error).replace(/^notes-folders\.\w+\s*/, '')); return }
-            showToast('已建文件夹「' + name + '」')
+            showToast(t('fld.created', { name: name }))
             if (res.folder && res.folder.id) { if (parent) expandFolder(parent); expandFolder(res.folder.id); setView({ type: 'folder', id: res.folder.id }) }
             await loadFolders()
           } catch (err) { setError(String(err.message || err)) }
@@ -117,7 +117,7 @@
           try {
             const res = await host.call('notes-folders', { op: 'rename', id: id, name: name })
             if (res && res.error) { setError(res.error); return }
-            showToast('已重命名为「' + name + '」')
+            showToast(t('fld.renamed', { name: name }))
             await loadFolders()
           } catch (err) { setError(String(err.message || err)) }
         }
@@ -129,14 +129,14 @@
           const childN = folders.filter(x => x.id !== f.id && sub[x.id]).length
           const noteN = notes.filter(n => sub[(n.folder || '')]).length
           const msg = (childN || noteN)
-            ? '删除文件夹「' + f.name + '」？连子删除：' + childN + ' 个子文件夹 + ' + noteN + ' 条笔记移入回收站（可恢复）；文件夹结构不可恢复。'
-            : '删除空文件夹「' + f.name + '」？'
+            ? t('fld.delConfirmCascade', { name: f.name, childN: childN, noteN: noteN })
+            : t('fld.delConfirmEmpty', { name: f.name })
           if (!window.confirm(msg)) return
           setError('')
           try {
             const res = await host.call('notes-folders', { op: 'delete', id: f.id, cascade: true })
             if (res && res.error) { setError(res.error); return }
-            showToast('已删除文件夹「' + f.name + '」' + ((childN || noteN) ? '（含 ' + childN + ' 个子文件夹，' + noteN + ' 条笔记已入回收站）' : ''))
+            showToast(t('fld.deleted', { name: f.name }) + ((childN || noteN) ? t('fld.deletedDetail', { childN: childN, noteN: noteN }) : ''))
             // 当前文件夹视图落在被删子树内 → 回全部视图（视图 id 悬空会显示空名单）
             if (view.type === 'folder' && sub[view.id]) setView({ type: 'all', id: '' })
             await loadFolders(); await loadNotes(true); notifyNotesChanged()
@@ -167,14 +167,14 @@
           if (!f || (f.parent || '') === (parentId || '')) return
           setError('')
           if (parentId) {
-            if (parentId === fid) { showToast('文件夹不能挂到自己下面'); return }
-            if (folderSubtreeIdsOf(fid)[parentId]) { showToast('文件夹不能挂到自己的子孙文件夹下面（cycle）'); return }
+            if (parentId === fid) { showToast(t('fld.errSelf')); return }
+            if (folderSubtreeIdsOf(fid)[parentId]) { showToast(t('fld.errCycle')); return }
           }
           try {
             const res = await host.call('notes-folders', { op: 'reorder', ids: folders.map(x => x.id), parents: { [fid]: parentId || '' } })
             if (res && res.error) { showToast(String(res.error).replace(/^notes-folders\.\w+\s*/, '')); return }
             if (parentId) expandFolder(parentId)
-            showToast(parentId ? '已移入「' + folderName(parentId) + '」' : '已移回根级')
+            showToast(parentId ? t('fld.movedInto', { name: folderName(parentId) }) : t('fld.movedRoot'))
             await loadFolders()
           } catch (err) { setError(String(err.message || err)) }
         }
@@ -191,15 +191,16 @@
         const folderMenuSibs = folderMenu ? childFoldersOf(folderMenu.folder.parent || '') : []
         const folderMenuIdx = folderMenu ? folderMenuSibs.findIndex(f => f.id === folderMenu.folder.id) : -1
         // 文件夹项右键菜单：进入文件夹视图 / 新建子文件夹（嵌套内联输入）/ 重命名 / 上移 / 下移（同级兄弟内）/ 移回根级（有父级时）/ 删除（级联 confirm）
+        // i18n 覆盖卡F：菜单项文案走 t()（fld.* 域；「删除文件夹」= fld.menuDeleteFolder 区别笔记行 common.delete）
         const folderMenuEl = folderMenu ? e('div', { className: 'dsh-notes-ctxmenu', style: { left: folderMenu.x + 'px', top: folderMenu.y + 'px' } },
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); expandFolder(mf.id); setView({ type: 'folder', id: mf.id }) } }, I('filter', 12), '进入文件夹视图'),
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); setFolderInputOpen(false); setFolderInputText(''); expandFolder(mf.id); setSubFolderFor(mf.id) } }, I('plus', 12), '新建子文件夹'),
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { setRenamingId(folderMenu.folder.id); setRenameText(folderMenu.folder.name); setFolderMenu(null) } }, '重命名'),
-            e('button', { className: 'dsh-notes-ctxmenu-item', disabled: folderMenuIdx <= 0, onClick: () => doReorderFolder(folderMenu.folder, -1) }, '上移'),
-            e('button', { className: 'dsh-notes-ctxmenu-item', disabled: folderMenuIdx < 0 || folderMenuIdx >= folderMenuSibs.length - 1, onClick: () => doReorderFolder(folderMenu.folder, 1) }, '下移'),
-            (folderMenu.folder.parent || '') ? e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); doReparentFolder(mf.id, '') } }, '移回根级') : null,
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); expandFolder(mf.id); setView({ type: 'folder', id: mf.id }) } }, I('filter', 12), t('fld.menuView')),
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); setFolderInputOpen(false); setFolderInputText(''); expandFolder(mf.id); setSubFolderFor(mf.id) } }, I('plus', 12), t('fld.titleNewSub')),
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { setRenamingId(folderMenu.folder.id); setRenameText(folderMenu.folder.name); setFolderMenu(null) } }, t('fld.okRename')),
+            e('button', { className: 'dsh-notes-ctxmenu-item', disabled: folderMenuIdx <= 0, onClick: () => doReorderFolder(folderMenu.folder, -1) }, t('fld.menuUp')),
+            e('button', { className: 'dsh-notes-ctxmenu-item', disabled: folderMenuIdx < 0 || folderMenuIdx >= folderMenuSibs.length - 1, onClick: () => doReorderFolder(folderMenu.folder, 1) }, t('fld.menuDown')),
+            (folderMenu.folder.parent || '') ? e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); doReparentFolder(mf.id, '') } }, t('fld.menuRoot')) : null,
             e('div', { className: 'dsh-notes-ctxmenu-sep' }),
-            e('button', { className: 'dsh-notes-ctxmenu-item danger', onClick: () => doDeleteFolder(folderMenu.folder) }, '删除文件夹'))
+            e('button', { className: 'dsh-notes-ctxmenu-item danger', onClick: () => doDeleteFolder(folderMenu.folder) }, t('fld.menuDeleteFolder')))
           : null
         return {
           folders: folders, foldersExpanded: foldersExpanded, folderInputOpen: folderInputOpen, folderInputText: folderInputText,

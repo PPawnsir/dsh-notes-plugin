@@ -256,8 +256,8 @@ module.exports = {
 
   // ---- 37.3 client 设置卡片（client-impl + 发布包 lib/client.js 同步 + toast 提醒链路）----
   await t('设置卡片「LLM 用量」+「用量预算提醒」两行（client-impl + 发布包 lib/client.js 同步 + 超预算 toast 不阻断）', () => {
-    assert(/key: 'usage', label: 'LLM 用量'/.test(clientSrc), 'settingsRows 含「LLM 用量」行')
-    assert(/key: 'usagebudget', label: '用量预算提醒'/.test(clientSrc), 'settingsRows 含「用量预算提醒」行')
+    assert(/key: 'usage', label: tt\('settings\.usage'\)/.test(clientSrc), 'settingsRows 含「LLM 用量」行（覆盖卡 C 起 label 走 tt() 字典）')
+    assert(/key: 'usagebudget', label: tt\('settings\.usageBudget'\)/.test(clientSrc), 'settingsRows 含「用量预算提醒」行（覆盖卡 C 起 label 走 tt() 字典）')
     assert(clientSrc.indexOf("host.call('notes-usage-get', {})") >= 0, 'openSettings 拉取 notes-usage-get（独立 RPC 不拖慢主链路）')
     assert(clientSrc.indexOf("settingsSetQuiet({ usageBudgetMonthly: v })") >= 0, '预算保存链路 settings-set 通道 usageBudgetMonthly（settingsSetQuiet 低层通道）')
     assert(clientSrc.indexOf('已超预算 ') >= 0 && clientSrc.indexOf('（仅提醒，不阻断）') >= 0, '超预算 toast 文案（仅提醒，不阻断）')

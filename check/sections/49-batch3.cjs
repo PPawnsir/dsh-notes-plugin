@@ -251,11 +251,11 @@ module.exports = {
     const TIP = '速记合并：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）'
     for (const pair of [['app.html', APP_SRC49], ['原型', PROTO49]]) {
       assert(pair[1].indexOf('id="btnArchive" title="' + TIP + '"') >= 0, pair[0] + ' 按钮 tooltip 改名引导')
-      assert(pair[1].indexOf('</svg>速记</button>') >= 0, pair[0] + ' 按钮可见 label=速记')
+      assert(pair[1].indexOf('</svg><span class="tb-t">速记</span></button>') >= 0, pair[0] + ' 按钮可见 label=速记（文字包 tb-t，notes-041-topbar-400 窄宽收图标配套）')
       assert(pair[1].indexOf('归档：把同一会话的速记合并成一篇') < 0, pair[0] + ' 旧 tooltip 清零')
     }
-    assert(clientSrc.indexOf("onClick: openArchive, 'data-tooltip': '" + TIP + "'") >= 0 && clientSrc.indexOf(" }, '速记')") >= 0, 'client 标题栏按钮改名速记 + tooltip')
-    assert(CLIENT_PKG49.indexOf("onClick: openArchive, 'data-tooltip': '" + TIP + "'") >= 0, '发布包 client 同步（build-dist 已跑）')
+    assert(clientSrc.indexOf("onClick: openArchive, 'data-tooltip': tt('topbar.archiveTip')") >= 0 && clientSrc.indexOf(" }, tt('topbar.archive'))") >= 0, 'client 标题栏按钮改名速记 + tooltip（i18n 覆盖卡A 起走 t() 字典）')
+    assert(CLIENT_PKG49.indexOf("onClick: openArchive, 'data-tooltip': tt('topbar.archiveTip')") >= 0, '发布包 client 同步（build-dist 已跑）')
     assert(clientSrc.indexOf('「速记」：弹出预览，勾选速记组后才合并') >= 0, '使用说明气泡同步改名')
   })
   }

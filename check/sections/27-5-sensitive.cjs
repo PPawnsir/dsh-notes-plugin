@@ -228,7 +228,7 @@ module.exports = {
     assert(clientSrc.indexOf("const [edSens, setEdSens] = React.useState(false)") >= 0, 'edSens 状态')
     assert(clientSrc.indexOf('const edSensRef = React.useRef(false)') >= 0 && clientSrc.indexOf('edSensRef.current = edSens') >= 0, 'edSensRef 镜像（自动保存读最新值）')
     assert(clientSrc.indexOf('function toggleSens() { setEdSens(!edSens); triggerAutoSave() }') >= 0, 'toggleSens')
-    assert(clientSrc.indexOf('onClick: toggleSens') >= 0 && clientSrc.indexOf("I('lock', 11), '敏感'") >= 0, 'meta chip（目录可见旁）')
+    assert(clientSrc.indexOf('onClick: toggleSens') >= 0 && clientSrc.indexOf("I('lock', 11), tt('meta.sens')") >= 0, 'meta chip（目录可见旁；i18n 覆盖卡B 起走 tt() 字典）')
     assert(clientSrc.indexOf("lock: [e('rect'") >= 0, 'IC.lock 锁形图标')
     assert(clientSrc.indexOf('sensitive: edSensRef.current === true') >= 0, 'doSave 携带 sensitive')
     assert(clientSrc.indexOf('setEdSens(n.sensitive === true)') >= 0, 'selectNote 回填')
@@ -236,11 +236,12 @@ module.exports = {
   await t('发布包 lib/client.js 同步敏感 toggle 链路（需先跑 scripts/build-dist.cjs）', () => {
     assert(clientPkgSrc.indexOf('edSens') >= 0 && clientPkgSrc.indexOf('toggleSens') >= 0, '发布包含 edSens/toggleSens')
     assert(clientPkgSrc.indexOf('sensitive: edSensRef.current === true') >= 0, '发布包 doSave 携带 sensitive')
-    assert(clientPkgSrc.indexOf("I('lock', 11), '敏感'") >= 0, '发布包敏感 chip')
+    assert(clientPkgSrc.indexOf("I('lock', 11), tt('meta.sens')") >= 0, '发布包敏感 chip（i18n 覆盖卡B 起走 tt() 字典）')
   })
   await t('client/app.html 速记 toast 敏感标注（sensitiveSuggested 命中告知）', () => {
-    assert(clientSrc.indexOf("res.sensitiveSuggested ? '，已标记敏感（注入自动脱敏）' : ''") >= 0, 'client-impl 速记 toast 追加敏感标注')
-    assert(appSrc.indexOf("res && res.sensitiveSuggested ? '，已标记敏感（注入自动脱敏）' : ''") >= 0, 'app.html 速记 toast 追加敏感标注')
+    /* i18n 覆盖卡F：速记敏感标注后缀走 t() 字典（cap.sensSuffix，zh 原串在 src/i18n/zh.js） */
+    assert(clientSrc.indexOf("res.sensitiveSuggested ? tt('cap.sensSuffix') : ''") >= 0 && clientSrc.indexOf("if (res.sensitiveSuggested) msg += tt('cap.sensSuffix')") >= 0, 'client-impl 速记 toast 追加敏感标注（覆盖卡F 起走 tt()）')
+    assert(appSrc.indexOf("res && res.sensitiveSuggested ? t('cap.sensSuffix') : ''") >= 0, 'app.html 速记 toast 追加敏感标注（覆盖卡F 起走 t()）')
   })
   await t('app.html 敏感 toggle：i-lock symbol + mSens chip + doSave 携带 sensitive', () => {
     assert(appSrc.indexOf('id="i-lock"') >= 0, 'i-lock symbol')

@@ -3,6 +3,7 @@
 // 片段是「单文件时代的连续切片」：按序串接后 = 迁移前 app.html 全文（LF 归一后），零插入零改写
 // 目录镜像 React 态域（architecture-modular.md §3.1）：kernel 无 UI / panels 页面区域 / modals 弹窗 / popovers 浮层 / shell 页面壳
 // 以 @shared/ 开头的条目解析到 src/shared/（两态物理共源块，§4.3 例外），其余条目解析到 src/app/
+// 以 @i18n/ 开头的条目解析到 src/i18n/（notes-042-i18n-mech 双语字典；app 态列 0 原样纳入，client 态同 @shared/ 基座缩进）
 // 解析契约：模块路径独占一行、单引号包裹；注释中禁止出现单引号字符——
 // scripts/concat-app.cjs 按单引号正则文本解析本文件（与 client 侧同一规则）。
 module.exports = [
@@ -12,6 +13,8 @@ module.exports = [
   'kernel/state.js',
   'kernel/dom.js',
   '@shared/editor-kernel.js',
+  '@i18n/zh.js',
+  '@i18n/en.js',
   'kernel/helpers.js',
   'kernel/data.js',
   'panels/wiki.js',
@@ -27,6 +30,7 @@ module.exports = [
   'modals/newnote.js',
   'panels/search.js',
   'modals/framework.js',
+  'modals/folder-input.js',
   'modals/cheatsheet.js',
   'modals/dispatch.js',
   'modals/history.js',

@@ -183,11 +183,11 @@ module.exports = {
   await t('client 整理建议：设置卡片「整理建议」行入口 + 三段式 modal + Esc + 错误条互斥（开发版 + 发布包）', () => {
     for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
       const s = pair[1], label = pair[0]
-      assert(s.indexOf("key: 'suggest', label: '整理建议'") >= 0, label + ' 设置卡片「整理建议」行（底部收敛后的入口）')
-      assert(s.indexOf("onClick: openSuggest }, '打开'") >= 0, label + ' 整理建议行控件 → openSuggest')
+      assert(s.indexOf("key: 'suggest', label: tt('settings.suggest')") >= 0, label + ' 设置卡片「整理建议」行（底部收敛后的入口；覆盖卡 C 起 label 走 tt() 字典）')
+      assert(s.indexOf("onClick: openSuggest }, tt('settings.openBtn')") >= 0, label + ' 整理建议行控件 → openSuggest')
       assert(s.indexOf('整理建议：速记组归档') >= 0, label + ' 整理建议入口 tooltip 文案保留')
       assert(s.indexOf('function openSuggest()') >= 0 && s.indexOf('function loadSuggest()') >= 0, label + ' openSuggest/loadSuggest 存在')
-      assert(s.indexOf("' 整理建议'") >= 0 && s.indexOf('只提名不自动执行') >= 0, label + ' modal 标题 + 红线副标')
+      assert(s.indexOf("' ' + tt('settings.suggest')") >= 0 && s.indexOf('只提名不自动执行') >= 0, label + ' modal 标题 + 红线副标（i18n 覆盖卡E 起标题走 tt()，副标 zh 原串字典内嵌）')
       assert(s.indexOf('可整理的速记组') >= 0 && s.indexOf('过期未引用') >= 0 && s.indexOf('可能无用') >= 0, label + ' 三段标题')
       assert(s.indexOf('库很干净，无需整理') >= 0, label + ' 空态文案「库很干净，无需整理」')
       assert(s.indexOf('dsh-notes-suggest-sec') >= 0, label + ' 分节样式类')
@@ -212,8 +212,8 @@ module.exports = {
     assert(clientSrc.indexOf('loadSuggest()') >= 0, '删后刷新建议数据（三段联动）')
     // ③ 孤儿仅展示：「查看」逐条跳转（jumpToWikiTarget 同款过滤退回）；无批量操作（启发式判定防误伤）
     assert(clientSrc.indexOf('function suggestViewNote(id) { setSuggestOpen(false); jumpToWikiTarget(id) }') >= 0, '孤儿「查看」逐条跳转')
-    const sec3 = clientSrc.match(/'可能无用',[\s\S]*?判定口径/)   // 锚定③段标题行（JSX 形态），避开段头注释与②段批量按钮
-    assert(sec3 && sec3[0].indexOf('查看') >= 0 && sec3[0].indexOf('一键批量') < 0 && sec3[0].indexOf('danger') < 0, '孤儿段仅展示（查看按钮，无批量/danger 操作）')
+    const sec3 = clientSrc.match(/tt\('sugg\.secOrphan'\)[\s\S]*?tt\('sugg\.criteriaClient'\)/)   // 锚定③段标题行（tt() 字典形态，i18n 覆盖卡E），避开段头注释与②段批量按钮
+    assert(sec3 && sec3[0].indexOf("tt('sugg.view')") >= 0 && sec3[0].indexOf('doSuggestBatchDelete') < 0 && sec3[0].indexOf('danger') < 0, '孤儿段仅展示（查看按钮走 tt()，无批量/danger 操作）')
   })
   await t('整理建议样式双端：styles.css ⇄ 发布包 lib/styles.css', () => {
     const cssDevS = fsNative.readFileSync(SRC_STYLES, 'utf8')
@@ -241,8 +241,11 @@ module.exports = {
       assert(s.indexOf('function undoSuggestBatchDelete(ids)') >= 0, label + ' 批量软删撤销函数存在（逐条 notes-restore）')
       assert(s.indexOf("rpc('notes-delete', { id: n.id })") >= 0, label + ' 逐条 notes-delete payload')
       assert(s.indexOf('sgGoArch') >= 0 && s.indexOf('openArchive()') >= 0, label + ' 「去归档」直达归档预览')
-      const sec3 = s.match(/>可能无用<span[\s\S]*?判定口径/)   // 锚定③段标题行（HTML 字符串形态），避开段头注释与②段批量按钮
-      assert(sec3 && sec3[0].indexOf('查看') >= 0 && sec3[0].indexOf('一键批量') < 0 && sec3[0].indexOf('danger') < 0, label + ' 孤儿段仅展示（无批量操作）')
+      /* i18n 覆盖卡E：app 端三段标题/孤儿段文案走 t() 字典（zh 原串随字典内嵌），原型不双语保留中文原文（分侧断言） */
+      const sec3 = label === 'app.html' ? s.match(/t\('sugg\.secOrphan'\)[\s\S]*?t\('sugg\.criteria'\)/) : s.match(/>可能无用<span[\s\S]*?判定口径/)   // 锚定③段标题行，避开段头注释与②段批量按钮
+      assert(sec3, label + ' 孤儿段锚点可提取')
+      if (label === 'app.html') assert(sec3[0].indexOf("t('sugg.view')") >= 0 && sec3[0].indexOf('sgBatchDel') < 0 && sec3[0].indexOf('danger') < 0, label + ' 孤儿段仅展示（查看按钮走 t()，无批量操作）')
+      else assert(sec3[0].indexOf('查看') >= 0 && sec3[0].indexOf('一键批量') < 0 && sec3[0].indexOf('danger') < 0, label + ' 孤儿段仅展示（无批量操作）')
       assert(s.indexOf('suggestState = null; histState = null; memEnableState = null; dState = null; return }') >= 0, label + ' Esc 统一关建议框（连带历史面板 histState / 工作记忆启用框 memEnableState / 派发框 dState 复位——notes-034-sched-ui 起追加 dState）')
     }
     // 双端 UI 标记一致（共享 DOM id / 函数名 / 样式类）

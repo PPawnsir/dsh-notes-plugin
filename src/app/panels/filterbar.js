@@ -7,12 +7,15 @@ function renderFilterBar() {
   $('filterBd').style.display = n > 0 ? '' : 'none';
   $('filterBd').textContent = n;
   var h = '';
+  /* i18n 覆盖卡F：chip 文案/标题走 t()（FILTER_STATUS.label/KIND 字面量仅作四端同构锚，渲染经 filterStatusLabel/kindLabel 条件映射） */
   FILTER_STATUS.forEach(function (s) {
     if (!filters[s.id]) return;
-    h += '<span class="fchip" data-ft="' + s.id + '" title="筛选条件：状态 / ' + s.label + '（点 × 移除）">' + icon(s.icon, 10) + s.label + '<span class="x" role="button" aria-label="移除条件 ' + s.label + '">' + icon('i-x', 9) + '</span></span>';
+    var sl = filterStatusLabel(s.id);
+    h += '<span class="fchip" data-ft="' + s.id + '" title="' + t('side.fchipStatusTip', { label: sl }) + '">' + icon(s.icon, 10) + sl + '<span class="x" role="button" aria-label="' + t('filter.removeAria', { label: sl }) + '">' + icon('i-x', 9) + '</span></span>';
   });
   filters.kinds.forEach(function (k) {
-    h += '<span class="fchip" data-fk="' + k + '" title="筛选条件：类型 / ' + KIND[k] + '（点 × 移除）"><span class="dot" style="background:' + (KCOLOR[k] || KCOLOR.note) + '"></span>' + KIND[k] + '<span class="x" role="button" aria-label="移除条件 ' + KIND[k] + '">' + icon('i-x', 9) + '</span></span>';
+    var kl = kindLabel(k);
+    h += '<span class="fchip" data-fk="' + k + '" title="' + t('side.fchipKindTip', { label: kl }) + '"><span class="dot" style="background:' + (KCOLOR[k] || KCOLOR.note) + '"></span>' + kl + '<span class="x" role="button" aria-label="' + t('filter.removeAria', { label: kl }) + '">' + icon('i-x', 9) + '</span></span>';
   });
   $('fchips').innerHTML = h;
   var sb = $('btnSort');
@@ -28,24 +31,24 @@ function renderFilterBar() {
 function renderFilterPop() {
   var p = $('fpop'); if (!p) return;
   var showEver = hasInjectEver();
-  var h = '<div class="fg-h"><span>状态</span><span class="fg-rule">组内多选 = OR</span></div>';
+  var h = '<div class="fg-h"><span>' + t('filter.statusGroup') + '</span><span class="fg-rule">' + t('filter.ruleOr') + '</span></div>';
   FILTER_STATUS.forEach(function (s) {
     if (s.id === 'injectEver' && !showEver) return;   /* feature-detect：slim 无 injectEver 字段时不显示 */
     h += '<label class="fg-item"><input type="checkbox" data-ft="' + s.id + '"' + (filters[s.id] === true ? ' checked' : '') + '>'
-      + icon(s.icon, 11) + '<span class="fl">' + s.label + '</span><span class="cnt2">' + notes.filter(s.pred).length + '</span></label>';
+      + icon(s.icon, 11) + '<span class="fl">' + filterStatusLabel(s.id) + '</span><span class="cnt2">' + notes.filter(s.pred).length + '</span></label>';
   });
-  h += '<div class="fg-h"><span>类型</span><span class="fg-rule">组内 OR · 与状态组 = AND</span></div>';
+  h += '<div class="fg-h"><span>' + t('filter.kindGroup') + '</span><span class="fg-rule">' + t('filter.ruleOrAnd') + '</span></div>';
   FILTER_KINDS.forEach(function (k) {
     h += '<label class="fg-item"><input type="checkbox" data-fk="' + k + '"' + (filters.kinds.indexOf(k) >= 0 ? ' checked' : '') + '>'
-      + '<span class="dot" style="background:' + (KCOLOR[k] || KCOLOR.note) + '"></span><span class="fl">' + KIND[k] + '</span><span class="cnt2">' + notes.filter(function (n) { return (n.kind || 'note') === k }).length + '</span></label>';
+      + '<span class="dot" style="background:' + (KCOLOR[k] || KCOLOR.note) + '"></span><span class="fl">' + kindLabel(k) + '</span><span class="cnt2">' + notes.filter(function (n) { return (n.kind || 'note') === k }).length + '</span></label>';
   });
-  h += '<div class="fpop-foot"><span class="pcnt">命中 ' + notes.filter(matches).length + ' 条</span><button class="pbtn" id="popClear">清空</button><button class="pbtn primary" id="popDone">完成</button></div>';
+  h += '<div class="fpop-foot"><span class="pcnt">' + t('filter.hitCount', { n: notes.filter(matches).length }) + '</span><button class="pbtn" id="popClear">' + t('filter.clear') + '</button><button class="pbtn primary" id="popDone">' + t('filter.done') + '</button></div>';
   p.innerHTML = h;
 }
 /* 独立排序菜单（单选；排序与筛选正交，互不重置） */
 function renderSortMenu() {
   $('fsortMenu').innerHTML = FILTER_SORTS.map(function (s) {
-    return '<div class="fsort-item' + (sortBy === s.id ? ' on' : '') + '" data-fs="' + s.id + '"><span class="tick">' + icon('i-check', 11) + '</span><span>' + s.label + '</span><span class="sd">' + s.desc + '</span></div>';
+    return '<div class="fsort-item' + (sortBy === s.id ? ' on' : '') + '" data-fs="' + s.id + '"><span class="tick">' + icon('i-check', 11) + '</span><span>' + sortLabelOf(s.id) + '</span><span class="sd">' + sortDescOf(s.id) + '</span></div>';
   }).join('');
 }
 /* 过滤条件变化且搜索词非空：重跑防抖搜索（host notes-search 组合过滤口径同步） */

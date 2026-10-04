@@ -28,7 +28,7 @@
             catch (err) { fail++ }
           }
           setSelDelPending(false); setSelMode(false); setSelIds({})
-          showToast('已删除 ' + ok + ' 条（可在回收站恢复）' + (fail ? '，失败 ' + fail + ' 条' : ''), okIds.length ? { label: '撤销', fn: () => undoBatchDelete(okIds) } : undefined)
+          showToast(t('arch.deletedBatch', { ok: ok }) + (fail ? t('inj.batchDoneFail', { n: fail }) : ''), okIds.length ? { label: t('meta.undo'), fn: () => undoBatchDelete(okIds) } : undefined)
           afterArchiveCleanup(ids)   // 正打开的笔记在被删集合中则退出选中态（归档/建议器批量软删同款语义）
           await loadNotes(true); notifyNotesChanged()
         }
@@ -39,15 +39,16 @@
             try { const res = await host.call('notes-restore', { id: id }); if (res && res.error) fail++; else ok++ }
             catch (err) { fail++ }
           }
-          showToast('已恢复 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''))
+          showToast(t('common.restoredBatch', { ok: ok }) + (fail ? t('inj.batchDoneFail', { n: fail }) : ''))
           await loadNotes(true); notifyNotesChanged()
         }
         // 多选操作条（「选择」chip / 右键「合并为一篇」进多选态后浮于侧栏底部）：已选 N 条 | 合并 | 删除 | 取消
+        // i18n 覆盖卡F：复用 A/E 卡 sel.selCount/merge、common.delete/cancel、meta.undo 字典；sel.deleting 本卡建
         const selbarEl = selMode ? e('div', { className: 'dsh-notes-selbar' },
-            e('span', { className: 'dsh-notes-selbar-n' }, '已选 ' + Object.keys(selIds).length + ' 条'),
-            e('button', { className: 'dsh-notes-dispatch-ok', onClick: openMerge, disabled: Object.keys(selIds).length < 2 }, '合并'),
-            e('button', { className: 'dsh-notes-data-danger', onClick: doSelBatchDelete, disabled: Object.keys(selIds).length < 1 || selDelPending }, selDelPending ? '删除中…' : '删除'),
-            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: toggleSelMode }, '取消'))
+            e('span', { className: 'dsh-notes-selbar-n' }, t('sel.selCount', { n: Object.keys(selIds).length })),
+            e('button', { className: 'dsh-notes-dispatch-ok', onClick: openMerge, disabled: Object.keys(selIds).length < 2 }, t('sel.merge')),
+            e('button', { className: 'dsh-notes-data-danger', onClick: doSelBatchDelete, disabled: Object.keys(selIds).length < 1 || selDelPending }, selDelPending ? t('sel.deleting') : t('common.delete')),
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: toggleSelMode }, t('common.cancel')))
           : null
         return { selMode: selMode, selIds: selIds, selDelPending: selDelPending, setSelMode: setSelMode, setSelIds: setSelIds, toggleSelMode: toggleSelMode, toggleSelId: toggleSelId, selbarEl: selbarEl }
     }

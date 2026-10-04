@@ -63,7 +63,7 @@ module.exports = {
     // ① client-impl 新建子文件夹：右键菜单项 + subFolderFor 内联输入行（父夹子内容容器首位）+ create 带 parent
     assert(/const \[subFolderFor, setSubFolderFor\] = React\.useState\(null\)/.test(clientSrc), 'subFolderFor state（新建子文件夹内联输入的父夹 id）')
     assert(clientSrc.indexOf("'新建子文件夹'") >= 0 && clientSrc.indexOf('expandFolder(mf.id); setSubFolderFor(mf.id)') >= 0, '文件夹右键菜单「新建子文件夹」（展开父夹 + 打开内联输入）')
-    assert(clientSrc.indexOf("placeholder: '子文件夹名…'") >= 0 && clientSrc.indexOf("if (subFolderFor === f.id)") >= 0, '子文件夹内联输入行渲染在父夹子内容容器首位')
+    assert(clientSrc.indexOf("placeholder: tt('tree.subFolderPlaceholder')") >= 0 && clientSrc.indexOf("if (subFolderFor === f.id)") >= 0, '子文件夹内联输入行渲染在父夹子内容容器首位（i18n 覆盖卡A 起 placeholder 走 t() 字典）')
     assert(clientSrc.indexOf('const parent = subFolderFor || \'\'') >= 0, 'doCreateFolder 取 subFolderFor 为 parent（\'\'=根级）')
     // ② client-impl 拖拽换父：文件夹行可拖 + dragFolderIdRef 通道 + doReparentFolder（cycle 本地拦 + 深度 host 拒绝 toast）
     assert(/const dragFolderIdRef = React\.useRef\(null\)/.test(clientSrc), 'dragFolderIdRef（文件夹拖拽源，与笔记拖拽互斥）')
@@ -72,7 +72,8 @@ module.exports = {
     assert(clientSrc.indexOf('draggable: true, onDragStart: (ev) => onFolderDragStart(ev, f)') >= 0, '文件夹行 draggable + 挂载拖拽源处理器')
     assert(/async function doReparentFolder\(fid, parentId\)/.test(clientSrc), 'doReparentFolder 存在（reorder parents 改挂）')
     assert(clientSrc.indexOf("parents: { [fid]: parentId || '' }") >= 0, 'reorder 携带 parents 映射（\'\'=移回根级）')
-    assert(clientSrc.indexOf("showToast('文件夹不能挂到自己下面')") >= 0 && clientSrc.indexOf("showToast('文件夹不能挂到自己的子孙文件夹下面（cycle）')") >= 0, 'cycle/自挂本地拦截 toast（省一次 RPC）')
+    /* i18n 覆盖卡F：cycle/自挂本地拦截 toast 走 t() 字典（fld.errSelf/errCycle，zh 原串在 src/i18n/zh.js） */
+    assert(clientSrc.indexOf("showToast(t('fld.errSelf'))") >= 0 && clientSrc.indexOf("showToast(t('fld.errCycle'))") >= 0, 'cycle/自挂本地拦截 toast（省一次 RPC；覆盖卡F 起走 t()）')
     assert((clientSrc.match(/String\(res\.error\)\.replace\(\/\^notes-folders\\\.\\\w\+\\s\*\/, ''\)/g) || []).length >= 2, 'host 拒绝（深度上限/父不存在）错误串去 RPC 前缀后 toast（create + reparent 两处）')
     assert(clientSrc.indexOf("if (fid === f.id || folderSubtreeIdsOf(fid)[f.id]) return") >= 0, 'dragover 非法落点抑制（自挂/子孙不高亮不接管）')
     assert(clientSrc.indexOf("if (fid) { if (fid !== f.id) doReparentFolder(fid, f.id); return }") >= 0, 'drop 文件夹行 = 换父')
@@ -94,7 +95,12 @@ module.exports = {
       assert(s.indexOf("{ op: 'create', name: name.trim(), parent: parentId || '' }") >= 0, label + ' create 携带 parent')
       assert(/var dragId = null, dragFolderId = null/.test(s), label + ' dragFolderId 拖拽源状态')
       assert(/function reparentFolder\(fid, parentId\)/.test(s) && s.indexOf('var parents = {}; parents[fid] = parentId || \'\';') >= 0, label + ' reparentFolder（reorder parents 改挂）')
-      assert(s.indexOf("toast('文件夹不能挂到自己下面')") >= 0 && s.indexOf("toast('文件夹不能挂到自己的子孙文件夹下面（cycle）')") >= 0, label + ' cycle/自挂本地拦截 toast')
+      /* i18n 覆盖卡F：app 端 cycle/自挂拦截 toast 走 t() 字典（fld.errSelf/errCycle）；原型不双语红线保留中文原文（分侧断言） */
+      if (label === 'app.html') {
+        assert(s.indexOf("toast(t('fld.errSelf'))") >= 0 && s.indexOf("toast(t('fld.errCycle'))") >= 0, label + ' cycle/自挂本地拦截 toast（覆盖卡F 起走 t()）')
+      } else {
+        assert(s.indexOf("toast('文件夹不能挂到自己下面')") >= 0 && s.indexOf("toast('文件夹不能挂到自己的子孙文件夹下面（cycle）')") >= 0, label + ' cycle/自挂本地拦截 toast')
+      }
       assert(s.indexOf('if (tid === dragFolderId || folderSubtree(dragFolderId)[tid]) return') >= 0, label + ' dragover 非法落点抑制（cycle/自挂）')
       assert(s.indexOf('reparentFolder(fid, target); return') >= 0, label + ' drop 委托：文件夹拖拽 = 换父')
       assert(s.indexOf('拖到此处移回根级') >= 0, label + ' 文件夹拖拽中落点提示行文案（移回根级）')
@@ -109,21 +115,22 @@ module.exports = {
 
   await t('嵌套 UI：级联删除 confirm 子树统计 + 面包屑路径可点击 + maxFolderDepth 设置行（四端同步）', () => {
     // ① client-impl 级联删除：confirm 明示「连子删除：N 子文件夹 + M 笔记移入回收站；文件夹结构不可恢复」（本地子树预估）+ cascade:true
-    assert(clientSrc.indexOf("'删除文件夹「' + f.name + '」？连子删除：' + childN + ' 个子文件夹 + ' + noteN + ' 条笔记移入回收站（可恢复）；文件夹结构不可恢复。'") >= 0, 'client-impl 级联删除 confirm 文案（子树统计 + 不可恢复明示）')
+    //    i18n 覆盖卡F：confirm 文案走 t() 字典（fld.delConfirmCascade/delConfirmEmpty，zh 原串在 src/i18n/zh.js）
+    assert(clientSrc.indexOf("t('fld.delConfirmCascade', { name: f.name, childN: childN, noteN: noteN })") >= 0 && clientSrc.indexOf("t('fld.delConfirmEmpty', { name: f.name })") >= 0, 'client-impl 级联删除 confirm 文案（子树统计 + 不可恢复明示；覆盖卡F 起走 t()）')
     assert(clientSrc.indexOf('const childN = folders.filter(x => x.id !== f.id && sub[x.id]).length') >= 0 && clientSrc.indexOf("const noteN = notes.filter(n => sub[(n.folder || '')]).length") >= 0, 'client-impl 子树统计本地预估（folders/notes 清单）')
     assert(clientSrc.indexOf("{ op: 'delete', id: f.id, cascade: true }") >= 0, 'client-impl 删除带 cascade:true（confirm 后整棵删除）')
     assert(clientSrc.indexOf("if (view.type === 'folder' && sub[view.id]) setView({ type: 'all', id: '' })") >= 0, 'client-impl 视图落在被删子树内 → 回全部视图')
     assert(clientSrc.indexOf('移回未分类') < 0, 'client-impl 旧「移回未分类」删除文案已移除（cascade 语义 = 笔记进回收站）')
     // ② client-impl 面包屑：单文件夹名升级为「父/子/孙」路径，每段可点击 = 切到该文件夹视图
     assert(clientSrc.indexOf('folderPathOf(curNote.folder).map(pf =>') >= 0, 'client-impl 面包屑文件夹路径段（folderPathOf）')
-    assert(clientSrc.indexOf("'切换到文件夹视图：' + pf.name") >= 0 && clientSrc.indexOf("setView({ type: 'folder', id: pf.id })") >= 0, 'client-impl 面包屑每段可点击切文件夹视图')
+    assert(clientSrc.indexOf("tt('meta.crumbFolderTip', { name: pf.name })") >= 0 && clientSrc.indexOf("setView({ type: 'folder', id: pf.id })") >= 0, 'client-impl 面包屑每段可点击切文件夹视图（tooltip i18n 覆盖卡B 起走 tt() 字典）')
     // ③ client-impl 设置卡片 maxFolderDepth 数值行（同 staleDays 输入交互：失焦/Enter 即保存）
     assert(/const \[setMaxDepth, setSetMaxDepth\] = React\.useState\('3'\)/.test(clientSrc), 'setMaxDepth state（缺省 3）')
     assert(/function saveSettingsMaxDepth\(\)/.test(clientSrc) && clientSrc.indexOf('settingsSetQuiet({ maxFolderDepth: v })') >= 0, 'saveSettingsMaxDepth 保存链路（settingsSetQuiet 低层通道）')
-    assert(clientSrc.indexOf("{ key: 'maxdepth', label: '文件夹嵌套深度'") >= 0, '设置卡片「文件夹嵌套深度」行')
+    assert(clientSrc.indexOf("{ key: 'maxdepth', label: tt('settings.maxDepth')") >= 0, '设置卡片「文件夹嵌套深度」行（覆盖卡 C 起 label 走 tt() 字典）')
     assert(clientSrc.indexOf('已保存：文件夹最多嵌套 ') >= 0, '保存 toast 文案')
     // ④ 发布包同步（需先跑 scripts/build-dist.cjs）
-    for (const k of ['连子删除：', '文件夹结构不可恢复', 'folderPathOf(curNote.folder)', 'saveSettingsMaxDepth', "label: '文件夹嵌套深度'", "cascade: true"]) {
+    for (const k of ['连子删除：', '文件夹结构不可恢复', 'folderPathOf(curNote.folder)', 'saveSettingsMaxDepth', "label: tt('settings.maxDepth')", "cascade: true"]) {
       assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺「' + k + '」（需先跑 scripts/build-dist.cjs）')
     }
     // ⑤ app.html / 原型同步：级联 confirm + 面包屑路径 + 设置行
