@@ -1,0 +1,167 @@
+﻿== node scratch/p2-host-concat/gen-parts.cjs ==
+  [lint-warn] host-impl（开发版沙箱拼接） notes/persist.js 切点上一行非空行/}："    // opts.history===false：自动元数据回写（useCount 防抖/idle 派发回执）不算编辑，不产生历史快照；其"
+  [lint-warn] host-impl（开发版沙箱拼接） notes/quick.js 切点上一行非空行/}："    let quickChain = Promise.resolve()"
+  [lint-warn] host-impl（开发版沙箱拼接） dispatch/sessions.js 切点上一行非空行/}："    // sessionPersistence.list() 返回 SessionPersistenceSnapshot[]（{header"
+  [lint-warn] host-impl（开发版沙箱拼接） inject/conventions.js 切点上一行非空行/}："    // 工作区 = 其全部会话的注入并集，injectTo 与集合有交集即命中；空数组 = 只命中 injectTo=[] 的全局笔记）。"
+  [lint-warn] host-impl（开发版沙箱拼接） memory/guide.js 切点上一行非空行/}："    }))"
+[gen-parts] host-impl（开发版沙箱拼接）：26 片 / 3377 行 → out/src-host（拼接恒等 ✓）
+    kernel/head.js  L1–L30（30 行）
+    kernel/format.js  L31–L57（27 行）
+    inject/sensitive-helpers.js  L58–L102（45 行）
+    notes/front-matter.js  L103–L168（66 行）
+    kernel/session-ctx.js  L169–L198（30 行）
+    settings/store.js  L199–L271（73 行）
+    llm/usage-classify.js  L272–L484（213 行）
+    notes/store-cache.js  L485–L623（139 行）
+    history-trash/engine.js  L624–L872（249 行）
+    notes/persist.js  L873–L898（26 行）
+    folders/tree.js  L899–L1105（207 行）
+    notes/create-list.js  L1106–L1226（121 行）
+    notes/get-update.js  L1227–L1286（60 行）
+    notes/quick.js  L1287–L1444（158 行）
+    llm/organize.js  L1445–L1506（62 行）
+    history-trash/trash.js  L1507–L1546（40 行）
+    notes/archive-suggest.js  L1547–L1888（342 行）
+    dispatch/sessions.js  L1889–L2104（216 行）
+    search/helpers.js  L2105–L2144（40 行）
+    transfer/import-export.js  L2145–L2599（455 行）
+    inject/conventions.js  L2600–L2752（153 行）
+    server/rpc-a.js  L2753–L2864（112 行）
+    memory/guide.js  L2865–L2934（70 行）
+    server/rpc-b.js  L2935–L3119（185 行）
+    server/tools.js  L3120–L3361（242 行）
+    kernel/bootstrap-tail.js  L3362–L3377（16 行）
+  [lint-warn] index.mjs（发布版构建期拼接） notes/persist.js 切点上一行非空行/}："    // opts.history===false：自动元数据回写（useCount 防抖/idle 派发回执）不算编辑，不产生历史快照；其"
+  [lint-warn] index.mjs（发布版构建期拼接） notes/quick.js 切点上一行非空行/}："    let quickChain = Promise.resolve()"
+  [lint-warn] index.mjs（发布版构建期拼接） dispatch/sessions.js 切点上一行非空行/}："    // sessionPersistence.list() 返回 SessionPersistenceSnapshot[]（{header"
+  [lint-warn] index.mjs（发布版构建期拼接） inject/conventions.js 切点上一行非空行/}："    // 工作区 = 其全部会话的注入并集，injectTo 与集合有交集即命中；空数组 = 只命中 injectTo=[] 的全局笔记）。"
+  [lint-warn] index.mjs（发布版构建期拼接） memory/guide.js 切点上一行非空行/}："    }))"
+  [lint-warn] index.mjs（发布版构建期拼接） server/tools.js 切点上一行非空行/}："    // 仅在 harness 缺失时回退到 ctx.tools.register（task-board 的服务路径）。两通道互斥，不会重复"
+  [lint-warn] index.mjs（发布版构建期拼接） kernel/bootstrap-tail.js 切点上一行非空行/}："    let migrationDone = migrateLegacyNotes()"
+[gen-parts] index.mjs（发布版构建期拼接）：28 片 / 3719 行 → out/pkg-host（拼接恒等 ✓）
+    head.js  L1–L84（84 行）
+    apply-head.js  L85–L103（19 行）
+    kernel/format.js  L104–L130（27 行）
+    inject/sensitive-helpers.js  L131–L175（45 行）
+    notes/front-matter.js  L176–L241（66 行）
+    kernel/session-ctx.js  L242–L271（30 行）
+    settings/store.js  L272–L340（69 行）
+    llm/usage-classify.js  L341–L553（213 行）
+    notes/store-cache.js  L554–L694（141 行）
+    history-trash/engine.js  L695–L950（256 行）
+    notes/persist.js  L951–L976（26 行）
+    folders/tree.js  L977–L1215（239 行）
+    notes/create-list.js  L1216–L1338（123 行）
+    notes/get-update.js  L1339–L1403（65 行）
+    notes/quick.js  L1404–L1561（158 行）
+    llm/organize.js  L1562–L1622（61 行）
+    history-trash/trash.js  L1623–L1669（47 行）
+    notes/archive-suggest.js  L1670–L2011（342 行）
+    dispatch/sessions.js  L2012–L2227（216 行）
+    search/helpers.js  L2228–L2267（40 行）
+    transfer/import-export.js  L2268–L2732（465 行）
+    inject/conventions.js  L2733–L2885（153 行）
+    server/rpc-a.js  L2886–L3019（134 行）
+    memory/guide.js  L3020–L3089（70 行）
+    server/rpc-b.js  L3090–L3383（294 行）
+    server/tools.js  L3384–L3634（251 行）
+    server/migration.js  L3635–L3674（40 行）
+    kernel/bootstrap-tail.js  L3675–L3719（45 行）
+
+
+== node scratch/p2-host-concat/verify-dev-sandbox.cjs ==
+[verify-dev] 开发版沙箱「加载时拼接」验证
+  [timing] manifest + 26 片读盘拼接耗时 18ms（引导壳启动一次性成本）
+  ✓ A. 拼接产物与 src/host-impl.js 逐字节一致（26 片，LF 归一后）
+  ✓ B. CRLF 鲁棒性：切片改写为 CRLF 后拼接归一仍逐字节一致
+  ✓ C0. 拼接产物经 new Function 求值返回插件对象（inject/apply 形态不变）
+notes plugin: host ready, dir = D:\deepseek-work\dsh-notes-plugin\notes , llm = true , adm = true
+  ✓ C1. 39 个 RPC handler 全注册（与 §8.1 清单同名同数）
+  ✓ C2. 3 个工具注册（note_search / note_get / note_manage）
+  ✓ C3. systemPrompt.context 两条注入注册（order 130 约定 / 131 目录）
+  ✓ D1. notes-create 返回 id
+  ✓ D2. notes-list 含新笔记且瘦身（不含 body）
+  ✓ D3. notes-get 带正文往返一致
+  ✓ D4. notes-update 改题后列表已变
+  ✓ D5. notes-search 命中正文且瘦身
+  ✓ D6. inject=true 后 notes-conventions 注入文本含条目（order 130 通道）
+  ✓ D7. notes-inject-preview 返回 conventions/catalog/stats 结构
+  ✓ D8. notes-folders 无参列表可用
+  ✓ D9. notes-settings-get 初始空设置 + models 目录
+  ✓ D10. notes-suggest 三段返回 + 零写入
+  ✓ D11. notes-usage-get 结构（today/week/month/allTime/byFeature）
+  ✓ D12. 删除后列表隐藏 / 恢复后可见
+  ✓ D13. note_search 工具 execute 命中
+  ✓ D14. note_manage.create / note_get 路由可用
+  ✓ E. 心跳 .last-host-load 写入（拼接实例自检契约不变）
+
+[verify-dev] 结果：passed=21 failed=0
+
+exit=0
+
+
+== node scratch/p2-host-concat/verify-dist-build.cjs ==
+[verify-dist] 发布版「构建期拼接」验证
+  ✓ A. 拼接产物与 packages/dsh-notes-plugin/index.mjs 逐字节一致（LF 归一后）
+  ✓ B. node --check 语法校验通过（ESM）
+  ✓ C. 动态 import 成功：export name/inject/apply 形态不变（inject 9 服务）
+notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\notes , llm = false , adm = false , rpc = /dsh-notes , app = /dsh-notes-app , asset = /dsh-notes/asset
+  ✓ D1. harness 缺失：3 条 webServer exact 路由注册（RPC/app/asset）
+  ✓ D2. harness 缺失：3 个工具经 ctx.tools.register 注册
+notes: workspace backfill done, fixed=0 skipped=0
+  ✓ D3. POST /dsh-notes 路由分发：notes-ping 200
+  ✓ D4. POST /dsh-notes 全链路：notes-create → notes-list 可见
+  ✓ D5. 约定注入两条注册（order 130/131）
+notes plugin: host ready (static pkg), notes dir = C:\Users\USER708201\.dsh\notes , llm = false , adm = false , rpc = /dsh-notes , app = /dsh-notes-app , asset = /dsh-notes/asset
+  ✓ E1. harness 存在：40 个 RPC 经 harness.handle 注册（39 + notes-ping）
+  ✓ E2. harness 存在：webServer 路由同登（第二传送门无副作用）
+  ✓ E3. harness 存在：工具走 harness.defineTool/registerTool 主通道
+
+[verify-dist] 结果：passed=11 failed=0
+
+exit=0
+
+
+== node check.js --core ==
+
+[1m=== 结果 ===[0m
+  passed: 107
+  failed: 0
+  mode:   --core（核心快检 107 条，跳过 471 条；全量回归：node check.js）
+  reads:  36 / writes: 78（in-memory mock）
+
+
+== node check.js（全量） ==
+EXIT=0
+passed: 578 / failed: 0（reads: 124 / writes: 169，in-memory mock）
+
+== node scratch/p2-host-concat/compare-flavors.cjs ==
+diff       dispatch/sessions.js（216 vs 216 行）
+diff       folders/tree.js（207 vs 239 行）
+diff       history-trash/engine.js（249 vs 256 行）
+diff       history-trash/trash.js（40 vs 47 行）
+diff       inject/conventions.js（153 vs 153 行）
+IDENTICAL  inject/sensitive-helpers.js
+diff       kernel/bootstrap-tail.js（15 vs 44 行）
+IDENTICAL  kernel/format.js
+dev-only  kernel/head.js
+IDENTICAL  kernel/session-ctx.js
+diff       llm/organize.js（62 vs 61 行）
+diff       llm/usage-classify.js（213 vs 213 行）
+IDENTICAL  memory/guide.js
+diff       notes/archive-suggest.js（342 vs 342 行）
+diff       notes/create-list.js（121 vs 123 行）
+IDENTICAL  notes/front-matter.js
+diff       notes/get-update.js（60 vs 65 行）
+diff       notes/persist.js（26 vs 26 行）
+diff       notes/quick.js（158 vs 158 行）
+diff       notes/store-cache.js（139 vs 141 行）
+IDENTICAL  search/helpers.js
+diff       server/rpc-a.js（112 vs 134 行）
+diff       server/rpc-b.js（185 vs 294 行）
+diff       server/tools.js（242 vs 251 行）
+diff       settings/store.js（73 vs 69 行）
+diff       transfer/import-export.js（455 vs 465 行）
+
+[compare-flavors] 同名切片 26 片：逐字节一致 6 / 有差异 19
+

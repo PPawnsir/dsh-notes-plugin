@@ -1,19 +1,20 @@
-// dsh-notes — P3 构建脚本：开发版 bootstrap 壳 → 发布版静态包（client 端）
+// dsh-notes — P3 构建脚本：开发版 bootstrap 壳 → 发布版静态包（client 端转换 + host 端 index.mjs 拼接）
 //
 // 用法：node scripts/build-dist.cjs      （在 dsh-notes-plugin 目录下，或任意目录）
 //
 // 背景（见 task-board-plugin/docs/PACKAGING.md 第 4 节）：
-//   开发版 client-impl.js 是「动态插件」形态——整个文件是 `return { inject, apply(ctx) }`，
+//   开发版 client（src/client/** 拼接产物）是「动态插件」形态——整个文件是 `return { inject, apply(ctx) }`，
 //   被 client.js 引导壳用 new Function('React','styles','host', src) 执行，因此可以吃到加载器
 //   注入的全局 React / styles / host 桥。发布版静态包不行，四类 API 必须机械换掉：
 //     · React       → factory 里 require('react')
 //     · host 调用桥  → fetch('/dsh-notes', { method:'POST', body:JSON.stringify({method,args}) })
 //     · styles 服务  → fetch CSS + document.createElement('style') 注入 doc
 //     · timer 快捷方式 → ctx.get('timer') + ctx.effect（动态插件的 ctx.interval 不存在）
-//   本脚本把这套机械转换固定下来：以后改开发版 client-impl.js，跑一次本脚本即可刷新发布包，
+//   本脚本把这套机械转换固定下来：以后改开发版 client 模块（src/client/**），跑一次本脚本即可刷新发布包，
 //   避免手工迁移漏改（脚本带计数断言，漏改会直接报错而不是静默产出坏包）。
 //
-// 产物：packages/dsh-notes/lib/client.js（本文件即最终源码，不再二次生成）
+// 产物：packages/dsh-notes-plugin/lib/client.js（本文件即最终源码，不再二次生成）
+//      + packages/dsh-notes-plugin/index.mjs（P2·2 起：src/host/** 按 manifest.dist.js 逐字节拼接，写盘提交）
 'use strict'
 
 const fs = require('fs')
@@ -21,22 +22,23 @@ const path = require('path')
 
 // __dirname = <plugin>/scripts → 插件根目录
 const ROOT = path.resolve(__dirname, '..')
-const IMPL_PATH = path.join(ROOT, 'src', 'client-impl.js')
 const OUT_PATH = path.join(ROOT, 'packages', 'dsh-notes-plugin', 'lib', 'client.js')
 const RPC_PATH = '/dsh-notes'   // 必须与 index.mjs 的 RPC_PATH 一致（webServer exact 路由）
 
-// 归一化换行为 LF：Windows 上开发版可能是 CRLF，不归一化会产出混合换行（且每次 checkout 后产物字节不同）
-const impl = fs.readFileSync(IMPL_PATH, 'utf8').replace(/\r\n/g, '\n')
-// ---- 1. 语法预检：开发版必须是合法的 `return { inject, apply }` 形态 ----
+// client 单文件源 = src/client/** 按 manifest 逐字节拼接（architecture-modular.md §4.1；
+// 与 notes-src 下发共用 scripts/concat-client.cjs 同一组装器，开发/发布两出口同源；输出已 LF 归一）
+const { concatClient } = require('./concat-client.cjs')
+const impl = concatClient()
+// ---- 1. 语法预检：拼接产物必须是合法的 `return { inject, apply }` 形态 ----
 try { new Function(impl) } catch (e) {
-  console.error('[build-dist] client-impl.js 语法错误，转换中止：' + (e && e.message))
+  console.error('[build-dist] client 拼接产物语法错误，转换中止：' + (e && e.message))
   process.exit(1)
 }
 
 // ---- 2. 抽取 apply 函数体（大括号配平，跳过字符串/模板串/注释）----
 function extractApplyBody(src) {
   const start = src.indexOf('return {')
-  if (start < 0) throw new Error('未找到 `return {`：client-impl.js 不是 bootstrap 形态？')
+  if (start < 0) throw new Error('未找到 `return {`：client 拼接产物不是 bootstrap 形态？')
   const anchor = src.indexOf('apply(ctx)', start)
   if (anchor < 0) throw new Error('未找到 `apply(ctx)`')
   const braceStart = src.indexOf('{', anchor + 'apply(ctx)'.length)
@@ -197,7 +199,7 @@ const header = [
   '/* global window, document, fetch, localStorage, performance, PerformanceObserver, console */',
   '// dsh-notes — Browser 侧 bundle（CJS 工厂，供 dsh web 客户端 ModuleLoader 注入）。',
   '//',
-  '// 本文件是发布版静态包的 **最终源码**（P3）：由 scripts/build-dist.cjs 从开发版 client-impl.js',
+  '// 本文件是发布版静态包的 **最终源码**（P3）：由 scripts/build-dist.cjs 从开发版 src/client/** 拼接产物',
   '// 机械转换而来，转换规则见 task-board-plugin/docs/PACKAGING.md 第 4 节：',
   '//   · React        ：require(\'react\')（静态包无全局 React）',
   '//   · RPC          ：fetch(\'' + RPC_PATH + '\', POST {method, args}) —— index.mjs 的 webServer exact 路由',
@@ -207,7 +209,7 @@ const header = [
   '//   · 定时器        ：动态插件的 ctx.interval 快捷方式不存在，用 ctx.get(\'timer\') + ctx.effect',
   '//   · inject       ：声明全部服务（slots/timer/sessions/workspaces），保证就绪后才 apply',
   '//',
-  '// 要改 client 行为：改开发版 client-impl.js，然后 `node scripts/build-dist.cjs` 重新生成。',
+  '// 要改 client 行为：改开发版 src/client/** 模块源，然后 `node scripts/build-dist.cjs` 重新生成。',
   'window.__ModuleLoader__.load({',
   '  id: \'dsh-notes-plugin\',',
   '  factory: (require) => {',
@@ -258,8 +260,26 @@ const CSS_OUT = path.join(ROOT, 'packages', 'dsh-notes-plugin', 'lib', 'styles.c
 const cssText = fs.readFileSync(CSS_SRC, 'utf8').replace(/\r\n/g, '\n')
 fs.writeFileSync(CSS_OUT, cssText, 'utf8')
 
-console.log('[build-dist] ' + path.relative(ROOT, IMPL_PATH) + ' → ' + path.relative(ROOT, OUT_PATH))
+// ---- 8. 同步 app 页产物：src/app/**（manifest 拼接） → 包内 app.html ----
+// app 出口与 client 两出口同一入口刷新（architecture-modular.md §7 对策：防「改了 src/app 忘跑 concat-app」）；
+// check.js 另有「app.html 可复现」断言读产物兜底。
+const { concatApp } = require('./concat-app.cjs')
+const APP_OUT = path.join(ROOT, 'packages', 'dsh-notes-plugin', 'app.html')
+const appText = concatApp()
+fs.writeFileSync(APP_OUT, appText, 'utf8')
+
+// ---- 9. 同步 host 产物：src/host/**（manifest.dist.js 逐字节拼接） → 包内 index.mjs ----
+// P2·2 起 index.mjs 转为构建期产物（architecture-modular.md §8.4.1 发布版出口），与本脚本同一入口刷新，
+// 防「改了 src/host/** 忘跑拼接」；check.js 另有「index.mjs 可复现」断言读产物兜底。
+const { concatHostDist } = require('./concat-host.cjs')
+const HOST_OUT = path.join(ROOT, 'packages', 'dsh-notes-plugin', 'index.mjs')
+const hostText = concatHostDist()
+fs.writeFileSync(HOST_OUT, hostText, 'utf8')
+
+console.log('[build-dist] src/client/**（manifest 拼接） → ' + path.relative(ROOT, OUT_PATH))
 console.log('  转换计数：host.call→rpc ' + counts['host-call'] + ' 处，styles.insert→<style> 段 ' + counts['styles-block'] + ' 处，'
   + 'services-header ' + counts['services-header'] + '，perf-timer ' + counts['perf-timer'] + '，perf-wrap ' + counts['perf-wrap'])
 console.log('  产出：' + out.split('\n').length + ' 行 / ' + Buffer.byteLength(out, 'utf8') + ' 字节')
 console.log('  样式：styles.css → ' + path.relative(ROOT, CSS_OUT) + '（' + Buffer.byteLength(cssText, 'utf8') + ' 字节）')
+console.log('  app 页：src/app/**（manifest 拼接） → ' + path.relative(ROOT, APP_OUT) + '（' + Buffer.byteLength(appText, 'utf8') + ' 字节）')
+console.log('  host：src/host/**（manifest.dist.js 拼接） → ' + path.relative(ROOT, HOST_OUT) + '（' + Buffer.byteLength(hostText, 'utf8') + ' 字节）')

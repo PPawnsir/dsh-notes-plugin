@@ -1,0 +1,173 @@
+// check/helpers.cjs —— check.js 模块化拆分的共享设施层（notes-check-split）
+// 内容来源：原 check.js 头部常量/源码读取 + t()/section() + 节 2 mock 构造（逐字节迁移，仅计数器收口 io）。
+// DSH 笔记插件回归测试套件
+// 架构：host.js/client.js = 引导壳；src/host/** = host 模块源（P2·2 起，concat-host.cjs 按 manifest 拼接）；src/client/** = client 模块源（architecture-modular 起）
+// 测试：host 全链路逻辑（内存 mock fs/llm）+ 工具 schema 校验 + 实现源码结构断言
+// 不触碰真实笔记目录。
+const fsNative = require('fs')
+const path = require('path')
+const osNative = require('os')
+const assert = require('assert')
+const { pathToFileURL } = require('url')
+
+const DIR = 'D:\\deepseek-work\\dsh-notes-plugin'
+// 开发版源码集中在 src/（v0.3 工程整理）；路径引用统一收敛为以下常量，断言体内不再散落拼路径
+// P2·5：src/host/** 模块树终态（whole.js 余量清零，续切为 server/dispatch/inject/memory/search/transfer/index；
+// 本常量仅为历史锚点保留（断言体不读它），指向尾模块 index.js（收口装配：工具层 + 启动收尾）
+const SRC_HOST = path.join(DIR, 'src', 'host', 'index.js')
+const SRC_STYLES = path.join(DIR, 'src', 'styles.css')
+const bootHostSrc = fsNative.readFileSync(path.join(DIR, 'host.js'), 'utf8')
+const bootClientSrc = fsNative.readFileSync(path.join(DIR, 'client.js'), 'utf8')
+// host 源唯一口径 = src/host/** 经 scripts/concat-host.cjs 按 manifest.dev.js 逐字节拼接的产物（LF 归一）：
+// 断言读的始终是「产物文本」（与迁移前 src/host-impl.js 逐字节一致），模块源改名/移动对断言无感（与下行 clientSrc 同一先例）
+const hostSrc = require(path.join(DIR, 'scripts', 'concat-host.cjs')).concatHost()
+// client 源唯一口径 = src/client/** 经 scripts/concat-client.cjs 按 manifest 逐字节拼接的产物（LF 归一）：
+// 断言读的始终是「产物文本」（与迁移前 src/client-impl.js 逐字节一致），模块源改名/移动对断言无感
+const clientSrc = require(path.join(DIR, 'scripts', 'concat-client.cjs')).concatClient()
+// P2：发布版静态包 host（ESM）。开发版 host-impl.js 之上的回归照旧，这里额外覆盖静态包。
+const INDEX_PATH = path.join(DIR, 'packages', 'dsh-notes-plugin', 'index.mjs')
+const indexSrc = fsNative.readFileSync(INDEX_PATH, 'utf8')
+
+// ===== 运行状态（原模块顶层 let passed/failed/skipped 收口为 state；io = 磁盘读写/会话标题读取计数器）=====
+const state = {
+  passed: 0, failed: 0, skipped: 0,
+  CORE_MODE: false, CORE: null,          // --core：名单过滤 + 命中校验（名单本体在 runner check.js）
+  ONLY: null, ONLY_MODE: false,          // --only=39,42：分节运行（新增能力；只跳过非选中节的 t() 断言体，节间造数照常）
+  currentSelected: true,                 // 当前执行节是否被 --only 选中（runner 经 beginSection 设置）
+  coreSeen: new Set(),
+  pendingSection: null,                  // core/only 模式：section 头延迟到首个被执行的断言前打印（无执行断言的 section 不输出空标题）
+}
+const io = { reads: 0, writes: 0, sharedTitleReads: 0 }
+const S = {}   // 跨节共享状态：节 2 mock 集群 + 各节 Object.assign 导出的造数引用
+
+function init(opts) {
+  state.CORE_MODE = opts.CORE_MODE
+  state.CORE = opts.CORE
+  state.ONLY = opts.ONLY
+  state.ONLY_MODE = opts.ONLY_MODE
+}
+function beginSection(selected) { state.currentSelected = selected }
+
+// 必须 await fn()：大量测试是 async 的，不 await 会导致 promise 内断言未执行就 passed++（假通过）
+async function t(name, fn) {
+  if (state.ONLY_MODE && !state.currentSelected) { state.skipped++; return }
+  if (state.CORE_MODE && !state.CORE.has(name)) { state.skipped++; return }
+  if (state.CORE_MODE || state.ONLY_MODE) {
+    if (state.CORE_MODE) state.coreSeen.add(name)
+    if (state.pendingSection) { console.log('\n[1m' + state.pendingSection + '[0m'); state.pendingSection = null }
+  }
+  try { await fn(); state.passed++; console.log('  \x1b[32m✓\x1b[0m ' + name) }
+  catch (e) { state.failed++; console.log('  \x1b[31m✗\x1b[0m ' + name + '\n      ' + (e.message || e)) }
+}
+function section(name) { if (state.CORE_MODE || state.ONLY_MODE) { state.pendingSection = name; return } console.log('\n[1m' + name + '[0m') }
+
+// ===== 节 2 迁移：Host 全链路 mock 实例构造（内存 mock fs/llm/agents/...，apply 后 handlers 常驻 S）=====
+function createHostMocks() {
+  const store = new Map()
+  // io.reads/io.writes 计数器：收进 helpers.io（io.reads / io.writes），断言侧同口径读取
+  const NOTES_DIR = 'D:\\deepseek-work\\dsh-notes-plugin\\notes'
+  const fsMock = {
+    resolve: async (p) => p,
+    stat: async (p) => (p === NOTES_DIR ? { dir: true } : (store.has(p) ? { file: true } : null)),
+    listDir: async (p) => {
+      const prefix = p + '\\'
+      const out = []
+      for (const k of store.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+      return out
+    },
+    readText: async (p) => { io.reads++; if (!store.has(p)) throw new Error('ENOENT: ' + p); return store.get(p) },
+    writeText: async (p, c) => { io.writes++; store.set(p, c) },
+  }
+  const llmMock = {
+    stream: async function* (req) {
+      const sys = (req && req.system) || ''
+      // T3 指令元数据提取：返回固定 JSON（断言原文不变 + 元数据应用）
+      if (sys.indexOf('元数据') >= 0) {
+        yield { type: 'text-delta', text: '{"tags":["重要","bug"],"titleHint":"登录崩溃修复","kind":"todo","inject":true}' }
+        yield { type: 'finish' }
+      } else if (sys.indexOf('笔记整理助手') >= 0) {
+        // 二期 ✨整理（27 节）：返回带 ```markdown 围栏的重写正文（断言 host 剥离围栏 + 尾随换行）
+        yield { type: 'text-delta', text: '```markdown\n## 背景\n\n（问题与上下文）\n\n## 结论\n\n采用方案 A\n' }
+        yield { type: 'text-delta', text: '\n\n## 理由\n\n成本最低\n```' }
+        yield { type: 'finish' }
+      } else {
+        yield { type: 'text-delta', text: '开发' }
+        yield { type: 'finish' }
+      }
+    },
+    // 模型目录探针（notes-settings-get 的 models 数据源）：listProviders() → listModels(provider)
+    listProviders: () => [{ id: 'p', name: 'MockProvider' }],
+    listModels: async (prov) => (prov === 'p' ? [{ provider: 'p', id: 'm', name: 'MockModel' }] : []),
+  }
+  const admMock = { currentSelection: () => ({ provider: 'p', model: 'm' }) }
+  const handlers = {}
+  const registeredTools = []
+  global.harness = {
+    handle: (name, fn) => { handlers[name] = fn; return () => { delete handlers[name] } },
+    defineTool: (def) => def,
+    registerTool: (ctx, def) => { registeredTools.push(def); return () => {} },
+  }
+  const sentMessages = []
+  const liveAgent = {
+    id: 'session-abc12345-0000-0000-0000-000000000000',
+    session: { id: 'session-abc12345-0000-0000-0000-000000000000', header: { cwd: 'D:\\deepseek-work' } },
+    send: (msg, target, wakeup) => { sentMessages.push({ msg, target, wakeup }) }
+  }
+  const agentsMock = {
+    currentInitiator: () => ({ sessionId: 'session-abc12345-0000-0000-0000-000000000000', session: { id: 'session-abc12345-0000-0000-0000-000000000000', header: { cwd: 'D:\\deepseek-work' } } }),
+    roots: () => [liveAgent],
+    get: (id) => id === 'session-abc12345-0000-0000-0000-000000000000' ? liveAgent : undefined
+  }
+  const registeredContexts = []
+  const systemPromptMock = { context: (c) => { registeredContexts.push(c); return () => {} } }
+  const sessionPersistenceMock = {
+    // 返回 SessionPersistenceSnapshot 结构（{header, revision}），模拟 DSH 新版 list() 返回
+    list: async () => [
+      { header: { id: 'session-abc12345-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T01:00:00.000Z' }, revision: 'r1' },
+      { header: { id: 'session-sub9900000-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T02:00:00.000Z', origin: 'subagent' }, revision: 'r2' },
+      { header: { id: 'session-arch00000-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T03:00:00.000Z' }, revision: 'r3' }
+    ],
+    inspect: async (id) => ({ meta: { id: id, cwd: 'D:\\deepseek-work' }, events: [{ type: 'session/title', data: { title: '开发会话' } }] })
+  }
+  const workspaceRegistryMock = {
+    archivedSessionIds: ['session-arch00000-0000-0000-0000-000000000000'],
+    // 工作区（含 sessionIds，= 左侧列表有效会话数据源）
+    list: () => [
+      { id: 'ws1', title: 'deepseek-work', path: 'D:\\deepseek-work', sessionIds: ['session-abc12345-0000-0000-0000-000000000000', 'session-sub9900000-0000-0000-0000-000000000000', 'session-arch00000-0000-0000-0000-000000000000'] }
+    ]
+  }
+  const sessionTitleMock = { get: (session) => ({ title: '开发会话' }) }
+  // 0.1.7 会话元数据缓存断言用：readTitleSnapshots 调用计数（缓存命中后不应再触发）
+  // io.sharedTitleReads 计数器：收进 helpers.io.sharedTitleReads
+  const sessionQueryMock = {
+    // 批量读 title + header（origin/cwd/createdAt）
+    readTitleSnapshots: async (sids) => {
+      io.sharedTitleReads++
+      return (sids || []).map(sid => ({
+        sessionId: sid,
+        status: 'fulfilled',
+        value: {
+          session: { id: sid, cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T01:00:00.000Z', origin: sid.indexOf('sub99') >= 0 ? 'subagent' : undefined },
+          title: { title: '开发会话' }
+        }
+      }))
+    }
+  }
+  const evtListeners = {}   // P3 派发闭环：ctx.on 事件订阅捕获（模拟 agent/status 触发）
+  const ctx = {
+    fs: fsMock, sandboxPolicy: { resolve: () => ({}) },
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: systemPromptMock, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    effect: () => {},
+    on: (name, fn) => { (evtListeners[name] = evtListeners[name] || []).push(fn); return () => {} },
+  }
+  const plugin = new Function('harness', 'pluginDir', hostSrc)(global.harness, DIR)
+  plugin.apply(ctx)
+  Object.assign(S, { NOTES_DIR, admMock, agentsMock, ctx, evtListeners, fsMock, handlers, liveAgent, llmMock, plugin, registeredContexts, registeredTools, sentMessages, sessionPersistenceMock, sessionQueryMock, sessionTitleMock, store, systemPromptMock, workspaceRegistryMock })
+}
+
+module.exports = {
+  t, section, init, beginSection, createHostMocks, state, io, S,
+  assert, fsNative, path, osNative, pathToFileURL,
+  DIR, SRC_HOST, SRC_STYLES, INDEX_PATH,
+  bootHostSrc, bootClientSrc, hostSrc, clientSrc, indexSrc,
+}

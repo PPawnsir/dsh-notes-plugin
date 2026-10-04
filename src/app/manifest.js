@@ -1,0 +1,49 @@
+// dsh-notes app 页模块清单（唯一组装依据）
+// 顺序 = 拼接顺序 = packages/dsh-notes-plugin/app.html 的字节顺序（architecture-modular.md §4.1 app 出口）
+// 片段是「单文件时代的连续切片」：按序串接后 = 迁移前 app.html 全文（LF 归一后），零插入零改写
+// 目录镜像 React 态域（architecture-modular.md §3.1）：kernel 无 UI / panels 页面区域 / modals 弹窗 / popovers 浮层 / shell 页面壳
+// 以 @shared/ 开头的条目解析到 src/shared/（两态物理共源块，§4.3 例外），其余条目解析到 src/app/
+// 解析契约：模块路径独占一行、单引号包裹；注释中禁止出现单引号字符——
+// scripts/concat-app.cjs 按单引号正则文本解析本文件（与 client 侧同一规则）。
+module.exports = [
+  'shell/head.html',
+  'shell/body.html',
+  'kernel/rpc.js',
+  'kernel/state.js',
+  'kernel/dom.js',
+  '@shared/editor-kernel.js',
+  'kernel/helpers.js',
+  'kernel/data.js',
+  'panels/wiki.js',
+  'panels/query.js',
+  'panels/filterbar.js',
+  'panels/tree.js',
+  'panels/folders.js',
+  'panels/editor.js',
+  'modals/image.js',
+  'modals/link.js',
+  'panels/organize.js',
+  'panels/editor-meta.js',
+  'modals/newnote.js',
+  'panels/search.js',
+  'modals/framework.js',
+  'modals/dispatch.js',
+  'modals/history.js',
+  'modals/settings.js',
+  'modals/memory-guide.js',
+  'modals/inject-preview.js',
+  'modals/inject-manager.js',
+  'modals/export.js',
+  'modals/import.js',
+  'modals/prune.js',
+  'modals/trash.js',
+  'modals/suggest.js',
+  'panels/selection.js',
+  'modals/archive.js',
+  'panels/topbar.js',
+  'popovers/filter-pop.js',
+  'panels/splitter.js',
+  'panels/keyboard.js',
+  'kernel/bootstrap.js',
+  'shell/tail.html',
+]

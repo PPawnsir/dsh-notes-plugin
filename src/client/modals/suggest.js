@@ -1,0 +1,134 @@
+    // ===== modal: suggest —— 整理建议对话框（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
+    // provides: store.modal.suggest / suggestOpenRef / setSuggestOpen / setSuggestData / setSuggestPending / setLogHgExpand /
+    //           openSuggest / loadSuggest / suggestGoArchive / suggestViewNote / SuggestModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError/jumpToWikiTarget 别名）、kernel/format.js（fmtBytes）、
+    //        kernel/icons.js（e/I）、kernel/bus.js（showToast/notifyNotesChanged）、modals/archive.js（openArchive，序位在前可见）
+    // state 托管：open/data/pending/logHgExpand 迁入 store.modal.suggest 切片；suggestOpenRef 为 Esc 栈同步镜像（模块级单例）；
+    // 「去归档」直调 archive 模块 openArchive（同域序位共享）；孤儿「查看」经 kernel jumpToWikiTarget 转发别名；
+    // 批量软删收尾（afterArchiveCleanup/loadNotes）经 panelBridge 中转；与设置卡片互斥经 panelBridge.setSettingsOpen 中转
+    store.modal.suggest = createStore({ open: false, data: null, pending: false, logHgExpand: {} })
+    const suggestOpenRef = { current: false }   // 整理建议对话框镜像（Esc 优先关）
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setSuggestOpen(v) { const nv = typeof v === 'function' ? v(suggestOpenRef.current) : v; suggestOpenRef.current = nv; store.modal.suggest.set({ open: nv }) }
+    function setSuggestData(v) { store.modal.suggest.set({ data: typeof v === 'function' ? v(store.modal.suggest.get().data) : v }) }
+    function setSuggestPending(v) { store.modal.suggest.set({ pending: typeof v === 'function' ? v(store.modal.suggest.get().pending) : v }) }
+    function setLogHgExpand(v) { store.modal.suggest.set({ logHgExpand: typeof v === 'function' ? v(store.modal.suggest.get().logHgExpand) : v }) }
+    // ===== 整理建议（设置卡片「整理建议」行入口）：notes-suggest（dry-run 零写入）四段式 modal =====
+    // 契约：{ archiveCandidates:速记组（结构与 notes-archive-preview 同源）, staleCandidates:过期未引用, orphanCandidates:孤儿（仅展示）, logHygieneCandidates:{weekly,monthly}:日志卫生（工作记忆 v0，仅展示明细）, generatedAt }
+    // 红线：只提名不自动执行——速记组「去归档」直达归档预览对话框；过期未引用「一键批量软删除」window.confirm 后才逐条 notes-delete（软删可恢复）；
+    // 孤儿候选是启发式判定（可能误伤），不提供批量操作，逐条跳转人工过目；日志卫生 v0 仅展开明细（聚合执行留待 Phase 2，日志只聚合不淘汰）。
+    function openSuggest() {
+      setSuggestData(null); setSuggestPending(false); setError('')
+      panelBridge.setSettingsOpen(false); setSuggestOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
+      loadSuggest()
+    }
+    function loadSuggest() {
+      const empty = { archiveCandidates: [], staleCandidates: [], orphanCandidates: [], logHygieneCandidates: { weekly: [], monthly: [] } }
+      host.call('notes-suggest', {}).then(res => {
+        if (res && res.error) { setError(res.error); setSuggestData(empty); return }
+        setSuggestData(res || empty)
+      }).catch(err => { setError(String(err.message || err)); setSuggestData(empty) })
+    }
+    // 速记组「去归档」：关建议框 → 复用归档预览对话框（数据同源，勾选/执行/撤销链路不变）
+    function suggestGoArchive() { setSuggestOpen(false); openArchive() }
+    // 孤儿「查看」：关建议框 → 双链跳转同款（目标被当前视图/kind/置顶过滤藏掉时退回「全部」再选中）
+    function suggestViewNote(id) { setSuggestOpen(false); jumpToWikiTarget(id) }
+    // 整理建议对话框宿主（设置卡片「整理建议」行入口；复用归档预览的列表样式）：
+    // 四段式——① 可整理的速记组（「去归档」直达归档预览对话框，数据与 notes-archive-preview 同源）
+    //          ② 过期未引用（超 staleDays 且 useCount=0；「一键批量软删除」confirm 后才逐条 notes-delete）
+    //          ③ 可能无用（孤儿候选：启发式判定可能误伤，仅展示逐条「查看」跳转，不提供批量操作）
+    //          ④ 日志卫生（工作记忆 v0：超窗日志 周/月 聚合提名——只提名不执行，v0 「明细」展开逐条「查看」）
+    function SuggestModal(props) {
+      const suggestOpen = store.modal.suggest.useSel(s => s.open)
+      const suggestData = store.modal.suggest.useSel(s => s.data)
+      const suggestPending = store.modal.suggest.useSel(s => s.pending)
+      const logHgExpand = store.modal.suggest.useSel(s => s.logHgExpand)
+      const error = props.error
+      // 过期未引用一键批量软删：confirm 确认后才执行；逐条 notes-delete（host 软删，回收站可恢复）；
+      // 删后刷新建议数据（三段联动，全空 → 空态文案）+ 列表
+      async function doSuggestBatchDelete() {
+        const list = (suggestData && suggestData.staleCandidates) || []
+        if (!list.length || suggestPending) return
+        if (!window.confirm('一键批量软删除：' + list.length + ' 条过期且从未被引用的笔记将移入回收站（可恢复）。\n确认删除？')) return
+        setSuggestPending(true); setError('')
+        let ok = 0, fail = 0
+        for (const n of list) {
+          try { const res = await host.call('notes-delete', { id: n.id }); if (res && res.error) fail++; else ok++ }
+          catch (err) { fail++ }
+        }
+        setSuggestPending(false)
+        showToast('已软删除 ' + ok + ' 条（回收站可恢复）' + (fail ? '，失败 ' + fail + ' 条' : ''))
+        panelBridge.afterArchiveCleanup(list.map(n => n.id))   // 正打开的笔记在被删集合中则退出选中态（归档收尾同款语义）
+        await panelBridge.loadNotes(true); notifyNotesChanged()
+        loadSuggest()
+      }
+      return suggestOpen ? (() => {
+        const d = suggestData
+        const arch = (d && d.archiveCandidates) || []
+        const stale = (d && d.staleCandidates) || []
+        const orphans = (d && d.orphanCandidates) || []
+        // 工作记忆 v0 日志卫生（第四段）：周聚合/月聚合两组提名（只提名不执行——v0 仅展示明细，聚合执行留待 Phase 2）
+        const logHg = (d && d.logHygieneCandidates) || { weekly: [], monthly: [] }
+        const logHgGroups = logHg.weekly.map(g => ({ g: g, tier: '周聚合' })).concat(logHg.monthly.map(g => ({ g: g, tier: '月聚合' })))
+        const allEmpty = d !== null && arch.length === 0 && stale.length === 0 && orphans.length === 0 && logHgGroups.length === 0
+        return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !suggestPending) setSuggestOpen(false) } },
+          e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-arch-modal dsh-notes-suggest-modal' },
+            e('div', { className: 'dsh-notes-settings-modal-t' }, I('sparkle', 14), ' 整理建议', e('span', { className: 'dsh-notes-imgup-sub' }, '只提名不自动执行 · 软删除可恢复')),
+            d === null
+              ? e('div', { className: 'dsh-notes-data-hint' }, '分析中…')
+              : allEmpty
+                ? e('div', { className: 'dsh-notes-data-hint' }, '库很干净，无需整理。')
+                : e(React.Fragment, null,
+                    e('div', { className: 'dsh-notes-suggest-sec' },
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, '可整理的速记组', e('span', { className: 'dsh-notes-suggest-sec-n' }, arch.length + ' 组'),
+                        arch.length ? e('button', { className: 'dsh-notes-trash-act', onClick: suggestGoArchive }, '去归档') : null),
+                      arch.length
+                        ? e('div', { className: 'dsh-notes-arch-list' },
+                            arch.map(g => {
+                              const span = g.dateSpan && g.dateSpan.from ? (g.dateSpan.from === g.dateSpan.to ? g.dateSpan.from : g.dateSpan.from + ' ~ ' + g.dateSpan.to) : ''
+                              return e('div', { key: g.sessionId, className: 'dsh-notes-arch-row' },
+                                e('span', { className: 'dsh-notes-arch-ti', title: g.title }, g.title),
+                                e('span', { className: 'dsh-notes-arch-meta' }, span + ' · ' + g.members.length + ' 条 · ' + fmtBytes(g.totalBytes) + ((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : '')))
+                            }))
+                        : e('div', { className: 'dsh-notes-data-hint' }, '没有可归档的速记组（同一会话 ≥2 条速记才会成组）。')),
+                    e('div', { className: 'dsh-notes-suggest-sec' },
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, '过期未引用', e('span', { className: 'dsh-notes-suggest-sec-n' }, stale.length + ' 条'),
+                        stale.length ? e('button', { className: 'dsh-notes-trash-act danger', onClick: doSuggestBatchDelete, disabled: suggestPending }, suggestPending ? '删除中…' : '一键批量软删除') : null),
+                      stale.length
+                        ? e('div', { className: 'dsh-notes-arch-list' },
+                            stale.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
+                              e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
+                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || '未分类') + ' · ' + n.staleDays + ' 天未更新'))))
+                        : e('div', { className: 'dsh-notes-data-hint' }, '没有过期且从未被引用的笔记。')),
+                    e('div', { className: 'dsh-notes-suggest-sec' },
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, '可能无用', e('span', { className: 'dsh-notes-suggest-sec-n' }, orphans.length + ' 条')),
+                      orphans.length
+                        ? e('div', { className: 'dsh-notes-arch-list' },
+                            orphans.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
+                              e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
+                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || '未分类') + ' · ' + (n.updatedAt ? String(n.updatedAt).slice(0, 10) : '—')),
+                              e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(n.id) }, '查看'))))
+                        : e('div', { className: 'dsh-notes-data-hint' }, '没有孤儿笔记（无双链关联且从未被引用）。')),
+                    // ④ 日志卫生（工作记忆 v0 裁决 B②：超窗旧日志两级聚合提名——只提名不执行，v0 展开明细逐条过目）
+                    e('div', { className: 'dsh-notes-suggest-sec' },
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, '日志卫生', e('span', { className: 'dsh-notes-suggest-sec-n' }, logHgGroups.length + ' 组')),
+                      logHgGroups.length
+                        ? e('div', { className: 'dsh-notes-arch-list' },
+                            logHgGroups.map(({ g, tier }) => e(React.Fragment, { key: tier + g.key },
+                              e('div', { className: 'dsh-notes-arch-row' },
+                                e('span', { className: 'dsh-notes-arch-ti', title: g.title }, g.title),
+                                e('span', { className: 'dsh-notes-arch-meta' }, tier + ' · ' + g.members.length + ' 条'),
+                                e('button', { className: 'dsh-notes-trash-act', onClick: () => setLogHgExpand(prev => { const nx = Object.assign({}, prev); if (nx[tier + g.key]) delete nx[tier + g.key]; else nx[tier + g.key] = true; return nx }) }, logHgExpand[tier + g.key] ? '收起' : '明细')),
+                              logHgExpand[tier + g.key] ? e('div', { className: 'dsh-notes-arch-list' },
+                                g.members.map(m => e('div', { key: m.id, className: 'dsh-notes-arch-row' },
+                                  e('span', { className: 'dsh-notes-arch-ti', title: m.title || 'Untitled' }, m.title || 'Untitled'),
+                                  e('span', { className: 'dsh-notes-arch-meta' }, (m.logDate || '—') + (m.sessionId ? ' · 会话 ' + String(m.sessionId).replace(/^session-/, '').slice(0, 8) : '')),
+                                  e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(m.id) }, '查看')))) : null)))
+                        : e('div', { className: 'dsh-notes-data-hint' }, '没有待聚合的工作日志（超窗日志按 工作区×周/月 归组，同组 ≥2 条才提名）。')),
+                    e('div', { className: 'dsh-notes-data-hint' }, '判定口径：过期 = 超过时效阈值（设置卡片可调）且从未被引用；可能无用 = 无 [[双链]] 关联、未注入、从未被引用的进行中普通笔记（启发式，请逐条过目）。日志卫生 = 超 7 天周聚合 / 超 90 天月聚合提名（设置卡片「工作记忆」区可调窗口）；日志只聚合不淘汰，永不进过期/孤儿候选；v0 仅展示明细，一键合并将在后续版本提供。')),
+            error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+            e('div', { className: 'dsh-notes-dispatch-actions' },
+              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setSuggestOpen(false), disabled: suggestPending }, '关闭'))))
+      })()
+      : null
+    }

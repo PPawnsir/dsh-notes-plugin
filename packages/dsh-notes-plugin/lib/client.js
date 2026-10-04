@@ -1,7 +1,7 @@
 /* global window, document, fetch, localStorage, performance, PerformanceObserver, console */
 // dsh-notes — Browser 侧 bundle（CJS 工厂，供 dsh web 客户端 ModuleLoader 注入）。
 //
-// 本文件是发布版静态包的 **最终源码**（P3）：由 scripts/build-dist.cjs 从开发版 client-impl.js
+// 本文件是发布版静态包的 **最终源码**（P3）：由 scripts/build-dist.cjs 从开发版 src/client/** 拼接产物
 // 机械转换而来，转换规则见 task-board-plugin/docs/PACKAGING.md 第 4 节：
 //   · React        ：require('react')（静态包无全局 React）
 //   · RPC          ：fetch('/dsh-notes', POST {method, args}) —— index.mjs 的 webServer exact 路由
@@ -11,7 +11,7 @@
 //   · 定时器        ：动态插件的 ctx.interval 快捷方式不存在，用 ctx.get('timer') + ctx.effect
 //   · inject       ：声明全部服务（slots/timer/sessions/workspaces），保证就绪后才 apply
 //
-// 要改 client 行为：改开发版 client-impl.js，然后 `node scripts/build-dist.cjs` 重新生成。
+// 要改 client 行为：改开发版 src/client/** 模块源，然后 `node scripts/build-dist.cjs` 重新生成。
 window.__ModuleLoader__.load({
   id: 'dsh-notes-plugin',
   factory: (require) => {
@@ -35,6 +35,19 @@ window.__ModuleLoader__.load({
     let toastEmit = null
     // toast 支持动作按钮：act = { label, fn }（先例 = app.html toast(m, act)；归档「撤销」用它）
     function showToast(msg, act) { try { if (toastEmit) toastEmit(act && act.label ? { msg: msg, act: act } : msg) } catch (e) {} }
+
+    // ===== toast 宿主（architecture-modular §6 步骤 C：由 SelectionCapture 内 state 迁入 kernel/bus）=====
+    // 数据桶 toastStore 在 kernel/state.js 回填（createStore 序位在后，bus 不可前向引用，故此处仅声明挂点）；
+    // emit/自动消失计时在本文件——showToast/toastEmit 契约不变：toast 值 '' = 无；string = 纯文本；{ msg, act } = 带动作按钮
+    let toastStore = null
+    let toastTimerOff = null
+    function setToast(toast) {
+      if (toastTimerOff) { try { toastTimerOff() } catch (err) {} toastTimerOff = null }
+      toastStore.set({ toast: toast })
+      // toast 自动消失：带动作按钮（如归档「撤销」）时延长展示（先例 = app.html toast(m, act) 的 4200ms）
+      if (toast) toastTimerOff = timer.timeout(() => setToast(''), typeof toast === 'object' && toast.act ? 4200 : 2600)
+    }
+    toastEmit = setToast
     // 入口双模式：'header'（会话头部按钮）| 'fab'（可拖拽悬浮气泡）；互斥、可持久化
     let entryMode = 'header'
     let fabPos = { x: 16, y: 80 }   // 悬浮气泡默认位置（左上角）
@@ -52,6 +65,111 @@ window.__ModuleLoader__.load({
     function saveEntryState() { try { localStorage.setItem('dsh-notes-entry', JSON.stringify({ mode: entryMode, fabX: fabPos.x, fabY: fabPos.y })) } catch (err) {} }
     function notifyEntry() { entryListeners.forEach(fn => fn({ entryMode })) }
     function setEntryMode(m) { entryMode = m; saveEntryState(); notifyEntry() }
+
+    // ===== 最小 store（architecture-modular.md §4.4 裁决）：带订阅的命名空间状态桶，禁 reducer/action/中间件 =====
+    // createStore(slice) → { get, set(patch), subscribe(fn), useSel(selector) }；步骤 C/D 起各 modal state 迁入 store 切片
+    function createStore(slice) {
+      let state = slice || {}
+      const subs = new Set()
+      function get() { return state }
+      function set(patch) { state = Object.assign({}, state, patch); subs.forEach(fn => fn()) }
+      function subscribe(fn) { subs.add(fn); return () => subs.delete(fn) }
+      function useSel(selector) {
+        if (typeof React.useSyncExternalStore === 'function') return React.useSyncExternalStore(subscribe, () => selector(state))
+        const pair = React.useState(() => selector(state))
+        React.useEffect(() => subscribe(() => pair[1](selector(state))), [])
+        return pair[0]
+      }
+      return { get, set, subscribe, useSel }
+    }
+
+    // ===== toast store（§6 步骤 C）：kernel/bus.js toast 宿主的数据桶；panels 侧经 toastStore.useSel(s => s.toast) 订阅 =====
+    toastStore = createStore({ toast: '' })
+
+    // ===== modal store 群 + panel 能力桥（architecture-modular §4.2/§4.4，§6 步骤 D1）=====
+    // store.modal.<name> = 每个 modal 一个 createStore 切片（modals/*.js 各自回填 open/数据字段）；
+    // open 态同时供 whole.js 订阅（Esc 栈/全局错误条互斥/自动聚焦等渲染期读取口径与单文件时代一致）。
+    const store = { modal: {} }
+    // panelBridge = FloatingPanel 每渲染回填的面板能力登记表（modal 模块禁横向引用，面板内部能力经此中转）
+    const panelBridge = {}
+    // 转发别名：check.js 锚定昔日单文件的源码形态（openNewNote 全文 / renderMarkdown(x, wikiResolve) / fn: doArchiveUndo 等），
+    // modal 模块中的同名标识符解析到此处——运行期转调 panelBridge 内 FloatingPanel 回填的实函数，行为不变
+    function setError(v) { return panelBridge.setError(v) }
+    function setNewNoteKind(v) { return panelBridge.setNewNoteKind(v) }
+    function wikiResolve(w) { return panelBridge.wikiResolve(w) }
+    function doArchiveUndo() { return panelBridge.doArchiveUndo() }
+    // jumpToWikiTarget（双链跳转/选中）属面板域（whole.js 内局部实现遮蔽本别名）：suggest「查看」/memory-guide「查看约定」经此中转（§6 步骤 D2）
+    function jumpToWikiTarget(t) { return panelBridge.jumpToWikiTarget(t) }
+    // selectedRef（当前选中笔记 id 镜像）迁入 kernel：历史版本 modal 的预览/恢复调用点被 check 锚定 selectedRef.current 原文，
+    // 由 whole.js 渲染期写入、modal 模块直读（纯逻辑镜像 ref，从不挂 JSX——plain object 与 useRef 等价；面板为 shell.overlay 单例）
+    const selectedRef = { current: null }
+
+    // ===== panel 子域跨域转发别名群（architecture-modular §6 步骤 E）=====
+    // FloatingPanel 拆为 panel/* 子域 hook + popovers/* 后，跨域调用点保持昔日裸名（Esc 栈长链/右键菜单/视图求值等
+    // 调用点文本被 check.js 锚定，须原样保留）：统一经 kernel 转发别名 → panelBridge（panel/index.js 主组件每渲染
+    // 自各子域 hook 回填实函数；setter 值/updater 函数形态透传不变）。依赖方向保持「popovers/panels → kernel」——
+    // 子域 hook 内部同名局部绑定（useState 解构/嵌套函数声明）遮蔽本群别名，故子域内部代码逐字不动。
+    function setView(v) { return panelBridge.setView(v) }
+    function setFilters(v) { return panelBridge.setFilters(v) }
+    function setSortBy(v) { return panelBridge.setSortBy(v) }
+    function selectNote(n) { return panelBridge.selectNote(n) }
+    function doDelete(id) { return panelBridge.doDelete(id) }
+    function loadNotes(silent) { return panelBridge.loadNotes(silent) }
+    function loadFolders() { return panelBridge.loadFolders() }
+    function ctxMoveToFolder(n, folderId) { return panelBridge.ctxMoveToFolder(n, folderId) }
+    function openCtxMenu(ev, n) { return panelBridge.openCtxMenu(ev, n) }
+    function openFolderMenu(ev, f) { return panelBridge.openFolderMenu(ev, f) }
+    function injectScopeLabel(injectTo) { return panelBridge.injectScopeLabel(injectTo) }
+    function hasWikiLinks(n) { return panelBridge.hasWikiLinks(n) }
+    function setVisibleCount(v) { return panelBridge.setVisibleCount(v) }
+    function setSelected(v) { return panelBridge.setSelected(v) }
+    function setFocusId(v) { return panelBridge.setFocusId(v) }
+    function later(fn, ms) { return panelBridge.later(fn, ms) }
+    function expandFolder(id) { return panelBridge.expandFolder(id) }
+    function toggleFolder(id) { return panelBridge.toggleFolder(id) }
+    function isFolderExpanded(id) { return panelBridge.isFolderExpanded(id) }
+    function folderSubtreeIdsOf(id) { return panelBridge.folderSubtreeIdsOf(id) }
+    function childFoldersOf(pid) { return panelBridge.childFoldersOf(pid) }
+    function rootFolders() { return panelBridge.rootFolders() }
+    function folderPathOf(fid) { return panelBridge.folderPathOf(fid) }
+    function folderName(fid) { return panelBridge.folderName(fid) }
+    function doCreateFolder() { return panelBridge.doCreateFolder() }
+    function doRenameFolder() { return panelBridge.doRenameFolder() }
+    function doDeleteFolder(f) { return panelBridge.doDeleteFolder(f) }
+    function doReorderFolder(f, delta) { return panelBridge.doReorderFolder(f, delta) }
+    function doReparentFolder(fid, parentId) { return panelBridge.doReparentFolder(fid, parentId) }
+    function setRenamingId(v) { return panelBridge.setRenamingId(v) }
+    function setRenameText(v) { return panelBridge.setRenameText(v) }
+    function setFolderInputOpen(v) { return panelBridge.setFolderInputOpen(v) }
+    function setFolderInputText(v) { return panelBridge.setFolderInputText(v) }
+    function setSubFolderFor(v) { return panelBridge.setSubFolderFor(v) }
+    function toggleSelMode() { return panelBridge.toggleSelMode() }
+    function toggleSelId(id) { return panelBridge.toggleSelId(id) }
+    function setSelMode(v) { return panelBridge.setSelMode(v) }
+    function setSelIds(v) { return panelBridge.setSelIds(v) }
+    function afterArchiveCleanup(ids) { return panelBridge.afterArchiveCleanup(ids) }
+    function setCtxMenu(v) { return panelBridge.setCtxMenu(v) }
+    function setFolderMenu(v) { return panelBridge.setFolderMenu(v) }
+    function setScopeOpen(v) { return panelBridge.setScopeOpen(v) }
+    function setFilterOpen(v) { return panelBridge.setFilterOpen(v) }
+    function setSortOpen(v) { return panelBridge.setSortOpen(v) }
+    function setShowHelp(v) { return panelBridge.setShowHelp(v) }
+    function setSearchText(v) { return panelBridge.setSearchText(v) }
+    function setSearchIds(v) { return panelBridge.setSearchIds(v) }
+    function setSearchMatches(v) { return panelBridge.setSearchMatches(v) }
+    function toggleScope(key) { return panelBridge.toggleScope(key) }
+
+    // ===== panel 跨域镜像 ref 群（architecture-modular §6 步骤 E）=====
+    // keydown 长链（panel/keyboard.js）/双链解析/搜索防抖等「监听挂一次、读最新值」的共享镜像：
+    // 模块级 plain object 与昔日 FloatingPanel 内 useRef 等价（面板为 shell.overlay 单例，selectedRef 先例）；
+    // 渲染期由 panel/index.js 装配层镜像块/各子域 hook 写入，panel/keyboard.js、panel/wiki.js 等按序位直读
+    const notesRef = { current: [] }          // 笔记清单镜像（wiki 解析 / keyboard Enter 打开 / renderFolderNode 计数）
+    const searchRef = { current: '' }         // 搜索词镜像（防抖闭包 / Esc 清搜索 / 侧栏输入框写入）
+    const searchDebRef = { current: null }    // 搜索 250ms 防抖器句柄（一次性注册；侧栏输入/筛选变更/清空动作触发重搜）
+    const searchInputRef = { current: null }  // 侧栏搜索框 DOM（Ctrl+K 聚焦）
+    const pagedIdsRef = { current: [] }       // 当前分页渲染 id 序（树渲染写入，keyboard j/k/Enter 导航读）
+    const switchModeRef = { current: null }   // 双模式切换最新闭包（Ctrl+/ 经 ref 调最新 switchMode）
+    const editorModeRef = { current: 'source' }   // 编辑器模式镜像（Ctrl+/ 守卫 / selectNote / 富文本序列化判读最新值）
     // 文件夹折叠态持久化：JSON 数组记录「展开中」的文件夹 id（'__pinned__' 是置顶折叠组固定 key）；null/缺省 = 全部展开
     const PINNED_KEY = '__pinned__'
     function loadFoldersExpanded() { try { const v = localStorage.getItem('dsh-notes-folders-expanded'); if (!v) return null; const arr = JSON.parse(v); return Array.isArray(arr) ? arr : null } catch (err) { return null } }
@@ -516,502 +634,2051 @@ window.__ModuleLoader__.load({
       document.addEventListener('mousemove', onMove)
       document.addEventListener('mouseup', onUp)
     }
-    const d1 = slots.inject('conversation.session.header.actions', () => {
-      function HeaderBtn(props) {
-        perf.hdrRender++
-        const [, force] = React.useState(0)
-        if (props && props.sessionId) currentSessionId = props.sessionId
-        React.useEffect(() => { const fn = () => force(v => v + 1); entryListeners.add(fn); listeners.add(fn); return () => { entryListeners.delete(fn); listeners.delete(fn) } }, [])
-        // 模式互斥：fab 模式时隐藏会话头部按钮
-        if (entryMode !== 'header') return null
-        return e('button', { className: 'dsh-notes-hdr-btn dsh-nt' + (panelOpen ? ' active' : ''), onClick: () => { panelOpen = !panelOpen; notify() }, 'data-tooltip': '智能笔记' }, e('span', { className: 'dsh-notes-hdr-ic' }, I('note', 13)), e('span', null, '智能笔记'))
+    // ===== modal: link —— 链接插入弹窗（architecture-modular §6 步骤 D1，自 panels/whole.js 拆出）=====
+    // provides: store.modal.link / linkModalRef / setLinkModal / LinkModal
+    // needs: kernel/state.js（store/createStore/panelBridge）、kernel/icons.js（e/I）、kernel/bus.js（showToast）
+    // state 托管：linkModal（null | { text, url }）迁入 store.modal.link 切片（modal 字段）；
+    // linkModalRef 为 Esc 栈/Ctrl+/ 守卫的同步镜像（模块级单例——面板是 shell.overlay 单例，与昔日 FloatingPanel 内 useRef 等价）
+    store.modal.link = createStore({ modal: null })
+    const linkModalRef = { current: null }
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：同步写 ref 镜像 + store（订阅方 = LinkModal）
+    function setLinkModal(v) { const nv = typeof v === 'function' ? v(linkModalRef.current) : v; linkModalRef.current = nv; store.modal.link.set({ modal: nv }) }
+    // 富文本工具栏「链接」按钮的弹窗宿主：选中文字由 toolbarAction（whole.js）经 keepSel 缓存后 setLinkModal 打开
+    function LinkModal() {
+      const linkModal = store.modal.link.useSel(s => s.modal)
+      // 链接弹窗确认（原型 openLinkModal 的确定分支）：仅 http/https；编辑器选区/富文本运行时经 panelBridge 中转
+      function doInsertLink() {
+        const m = linkModalRef.current
+        const url = m ? String(m.url || '').trim() : ''
+        if (url.indexOf('http://') !== 0 && url.indexOf('https://') !== 0) { showToast('仅支持 http/https 链接'); return }
+        setLinkModal(null)
+        panelBridge.restoreSel()
+        const el = panelBridge.richRef.current; if (el) el.focus()
+        document.execCommand('createLink', false, url)
+        panelBridge.keepSel(); panelBridge.richDirtyRef.current = true; panelBridge.scheduleRichSync()
       }
-      slots.register({ name: 'conversation.session.header.actions', id: 'dsh-notes-btn', order: 40 }, (props) => e(HeaderBtn, props))
-    })
-    if (typeof d1 === 'function') disposers.push(d1)
-    const d2 = slots.inject('shell.overlay', () => {
-      // 悬浮气泡入口（可拖拽；点击展开面板；位置持久化；与会话头部按钮互斥）
-      function FabEntry() {
-        const [, force] = React.useState(0)
-        const [pos, setPos] = React.useState({ x: fabPos.x, y: fabPos.y })
-        const posRef = React.useRef(pos)
-        React.useEffect(() => { posRef.current = pos }, [pos])
-        React.useEffect(() => { const fn = () => force(v => v + 1); entryListeners.add(fn); listeners.add(fn); return () => { entryListeners.delete(fn); listeners.delete(fn) } }, [])
-        React.useEffect(() => {
-          // 窗口尺寸变化时把气泡 clamp 进视口
-          function onResize() {
-            const p = posRef.current, nx = Math.max(0, Math.min(window.innerWidth - 44, p.x)), ny = Math.max(0, Math.min(window.innerHeight - 44, p.y))
-            if (nx !== p.x || ny !== p.y) { posRef.current = { x: nx, y: ny }; setPos({ x: nx, y: ny }) }
-          }
-          window.addEventListener('resize', onResize)
-          return () => window.removeEventListener('resize', onResize)
-        }, [])
-        // 模式互斥：header 模式时隐藏悬浮气泡
-        if (entryMode !== 'fab') return null
-        const SIZE = 44
-        function onMouseDown(ev) {
-          ev.preventDefault()
-          const sx = ev.clientX, sy = ev.clientY, px = pos.x, py = pos.y
-          let moved = false
-          drag(
-            (ev2) => {
-              const dx = ev2.clientX - sx, dy = ev2.clientY - sy
-              if (!moved && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) moved = true
-              if (moved) {
-                const nx = Math.max(0, Math.min(window.innerWidth - SIZE, px + dx))
-                const ny = Math.max(0, Math.min(window.innerHeight - SIZE, py + dy))
-                posRef.current = { x: nx, y: ny }
-                setPos({ x: nx, y: ny })
-              }
-            },
-            () => {
-              // 区分点击与拖拽：未移动视为点击 → 展开面板；移动则持久化最终位置
-              if (!moved) { panelOpen = true; notify() }
-              else { fabPos = { x: posRef.current.x, y: posRef.current.y }; saveEntryState() }
+      // 链接插入弹窗（富文本工具栏「链接」按钮，需先选中文字）：URL 仅 http/https
+      return linkModal ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setLinkModal(null) } },
+        e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
+          e('div', { className: 'dsh-notes-settings-modal-t' }, I('link', 14), ' 插入链接', e('span', { className: 'dsh-notes-imgup-sub' }, '选中文字：' + (linkModal.text.length > 24 ? linkModal.text.slice(0, 24) + '…' : linkModal.text))),
+          e('input', { className: 'dsh-notes-data-input', placeholder: 'https://…', value: linkModal.url, autoFocus: true, onChange: (ev) => setLinkModal(Object.assign({}, linkModal, { url: ev.target.value })), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doInsertLink() } } }),
+          e('div', { className: 'dsh-notes-dispatch-actions' },
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setLinkModal(null) }, '取消'),
+            e('button', { className: 'dsh-notes-dispatch-ok', onClick: doInsertLink }, '插入'))))
+      : null
+    }
+    // ===== modal: image —— 图片插入弹窗（architecture-modular §6 步骤 D1，自 panels/whole.js 拆出）=====
+    // provides: store.modal.image / imgModalRef / imgFileInputRef / setImgModal / openImgModal / pickImageFile / ImageModal
+    //   （IMG_COMPRESS_THRESHOLD/compressImageData 仅服务 pickImageFile，随弹窗同域迁入；insertImageMd 是编辑器域，滞留 whole.js 经 panelBridge 中转）
+    // needs: kernel/state.js（store/createStore/panelBridge）、kernel/icons.js（e/I）、kernel/format.js（fmtBytes）、kernel/bus.js（showToast）
+    // state 托管：imgModal（null | { name, dataURL, mime, size, alt, uploading, error }）迁入 store.modal.image 切片（modal 字段）；
+    // imgModalRef 为 Esc 栈/Ctrl+/ 守卫的同步镜像（模块级单例，与昔日 FloatingPanel 内 useRef 等价）
+    store.modal.image = createStore({ modal: null })
+    const imgModalRef = { current: null }
+    const imgFileInputRef = { current: null }   // 图片弹窗隐藏 file input
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：同步写 ref 镜像 + store（订阅方 = ImageModal）
+    function setImgModal(v) { const nv = typeof v === 'function' ? v(imgModalRef.current) : v; imgModalRef.current = nv; store.modal.image.set({ modal: nv }) }
+    // ---- 二期 图片压缩：>1MB 的 PNG/JPEG 上传前前端 canvas 降质转 JPEG（GIF/WebP 不动，保动画/透明语义）----
+    // 策略：长边封顶 2560px → 质量阶梯 0.85→0.45 逐档试；仍超 1MB 则长边 0.8 递减（下限 800px）；
+    // PNG 透明底刷白（JPEG 无 alpha）；任何一步失败 → cb(null) 回退原图上传。压缩产物 <1MB 即收。
+    const IMG_COMPRESS_THRESHOLD = 1024 * 1024
+    function compressImageData(dataURL, cb) {
+      try {
+        const img = new Image()
+        img.onload = () => {
+          try {
+            let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height
+            if (!w || !h) { cb(null); return }
+            const MAX_DIM = 2560
+            if (Math.max(w, h) > MAX_DIM) { const r = MAX_DIM / Math.max(w, h); w = Math.round(w * r); h = Math.round(h * r) }
+            const canvas = document.createElement('canvas')
+            const c2d = canvas.getContext('2d')
+            if (!c2d) { cb(null); return }
+            const qs = [0.85, 0.75, 0.65, 0.55, 0.45]
+            let out = '', bytes = 0, round = 0
+            while (round < 8) {
+              canvas.width = w; canvas.height = h
+              c2d.fillStyle = '#ffffff'; c2d.fillRect(0, 0, w, h)
+              c2d.drawImage(img, 0, 0, w, h)
+              out = canvas.toDataURL('image/jpeg', qs[Math.min(round, qs.length - 1)])
+              bytes = Math.max(0, Math.round((out.length - 23) * 3 / 4))   // 去掉 data:image/jpeg;base64, 头估算字节
+              if (bytes <= IMG_COMPRESS_THRESHOLD) { cb({ dataURL: out, bytes: bytes }); return }
+              round++
+              if (round >= qs.length && (w > 800 || h > 800)) { w = Math.max(800, Math.round(w * 0.8)); h = Math.max(800, Math.round(h * 0.8)); round = qs.length - 1 }
             }
-          )
+            cb(out ? { dataURL: out, bytes: bytes } : null)   // 兜底：尽力压缩产物（可能仍 >1MB，5MB 上限内可用）
+          } catch (err) { cb(null) }
         }
-        // v2 卡片式 FAB（G 大图标版）：中央 note 22px + 右下 kind 三色点（todo/decision/quote），无计数角标
-        return e('button', { className: 'dsh-notes-fab dsh-nt' + (panelOpen ? ' active' : ''), style: { left: pos.x + 'px', top: pos.y + 'px' }, onMouseDown, 'data-tooltip': '笔记' },
-          e('span', { className: 'dsh-notes-fab-ic' }, I('note', 22)),
-          e('span', { className: 'dsh-notes-fab-tridots', 'aria-hidden': 'true' },
-            e('i', { style: { background: 'var(--nkind-todo)' } }),
-            e('i', { style: { background: 'var(--nkind-decision)' } }),
-            e('i', { style: { background: 'var(--nkind-quote)' } })))
+        img.onerror = () => cb(null)
+        img.src = dataURL
+      } catch (err) { cb(null) }
+    }
+    // 图片文件校验 + 读 dataURL → 打开插入弹窗（mime 白名单 png/jpeg/gif/webp、≤5MB，与 host 口径一致）
+    // 二期：>1MB 的 PNG/JPEG 先走 compressImageData 压缩转 JPEG 再进弹窗（弹窗大小行显示「已压缩 原 → 现」）
+    function pickImageFile(f) {
+      if (!f) return
+      const MIME_OK = { 'image/png': 1, 'image/jpeg': 1, 'image/gif': 1, 'image/webp': 1 }
+      if (!MIME_OK[f.type]) { showToast('仅支持 PNG/JPEG/GIF/WebP 图片'); return }
+      if (f.size > 5 * 1024 * 1024) { showToast('图片超过 5MB 上限'); return }
+      const rd = new FileReader()
+      rd.onload = () => {
+        const base = { name: f.name || ('pasted-' + Date.now() + '.png'), dataURL: String(rd.result), mime: f.type, size: f.size, alt: (f.name || '').replace(/\.[^.]+$/, ''), uploading: false, error: '' }
+        if (f.size > IMG_COMPRESS_THRESHOLD && (f.type === 'image/png' || f.type === 'image/jpeg')) {
+          compressImageData(base.dataURL, (res) => {
+            if (res && res.dataURL) setImgModal(Object.assign({}, base, { name: base.name.replace(/\.[^.]+$/, '') + '.jpg', dataURL: res.dataURL, mime: 'image/jpeg', size: res.bytes, origSize: f.size }))
+            else setImgModal(base)   // 压缩失败回退原图（不阻塞上传）
+          })
+        } else setImgModal(base)
       }
-      slots.register({ name: 'shell.overlay', id: 'dsh-notes-fab', order: 199 }, (props) => e(FabEntry, props))
-    })
-    if (typeof d2 === 'function') disposers.push(d2)
-    const d3 = slots.inject('shell.overlay', () => {
-      function FloatingPanel() {
-        perf.panelRender++
-        const [open, setOpen] = React.useState(panelOpen)
-        const [notes, setNotes] = React.useState([])
-        const [selected, setSelected] = React.useState(null)
-        const [edTitle, setEdTitle] = React.useState('')
-        const [edTopic, setEdTopic] = React.useState('')
-        const [edTags, setEdTags] = React.useState('')
-        const [edBody, setEdBody] = React.useState('')
-        const [edKind, setEdKind] = React.useState('note')
-        const [edStatus, setEdStatus] = React.useState('active')
-        const [edRole, setEdRole] = React.useState('off')   // 注入三态：off=不注入 / convention=约定（须遵守）/ reference=资料（按需取用）
-        const [edRecall, setEdRecall] = React.useState(true)   // 目录可见（recall 字段，缺省 true=进目录；与 inject 正交）
-        const [edSens, setEdSens] = React.useState(false)   // 敏感标记（sensitive 字段，缺省 false；开启后注入系统提示时正文按行打码）
-        const [edScope, setEdScope] = React.useState([])
-        const [savedAt, setSavedAt] = React.useState(0)
-        const [searchText, setSearchText] = React.useState('')
-        const [searchIds, setSearchIds] = React.useState(null)
-        const [loading, setLoading] = React.useState(false)
-        const [error, setError] = React.useState('')
-        const [pos, setPos] = React.useState({ x: null, y: null })
-        const [size, setSize] = React.useState({ width: 920, height: 640 })
-        // 侧栏宽度：分隔条拖拽调整（clamp 200px–60% 面板宽），localStorage 记忆（SIDE_W_KEY），双击分隔条重置缺省
-        const [sideW, setSideW] = React.useState(() => loadSideW() || SIDE_W_DEFAULT)
-        const [sideDrag, setSideDrag] = React.useState(false)   // 拖拽中：分隔条高亮 + body 禁文本选择
-        const sideWRef = React.useRef(0)   // 拖拽期间最新宽镜像（mouseup 持久化读 ref，防闭包过期）
-        // UI v2 视图单选（原型 view）：all=全部 / folder=文件夹视图 / topic=主题全局过滤（跨文件夹）
-        const [view, setView] = React.useState({ type: 'all', id: '' })
+      rd.onerror = () => showToast('图片读取失败')
+      rd.readAsDataURL(f)
+    }
+    // 图片入口③：工具栏按钮 → 弹窗选文件（draft=null 时打开空弹窗）
+    function openImgModal(draft) { setImgModal(draft || { name: '', dataURL: '', mime: '', size: 0, alt: '', uploading: false, error: '' }) }
+    // 图片插入弹窗宿主（v3 三入口共用：粘贴/拖拽/工具栏按钮）：选文件 → 预览 + alt → 上传 → 光标处插入
+    function ImageModal() {
+      const imgModal = store.modal.image.useSel(s => s.modal)
+      // 上传并插入：notes-asset-upload RPC → assets/<ts>-<安全名>；成功 → 光标处插入 ![](assets/…)；失败留在弹窗内报错可重试 + toast
+      // 插入动作是编辑器域能力（insertImageMd 滞留 whole.js），经 panelBridge 中转
+      function doUploadImage() {
+        const m = imgModalRef.current
+        if (!m || !m.dataURL || m.uploading) return
+        setImgModal(Object.assign({}, m, { uploading: true, error: '' }))
+        rpc('notes-asset-upload', { name: m.name, data: m.dataURL, mime: m.mime }).then(res => {
+          if (res && res.error) {
+            showToast('图片上传失败：' + res.error)
+            const cur = imgModalRef.current
+            if (cur) setImgModal(Object.assign({}, cur, { uploading: false, error: res.error }))
+            return
+          }
+          const file = res && res.file
+          if (!file) {
+            const cur2 = imgModalRef.current
+            if (cur2) setImgModal(Object.assign({}, cur2, { uploading: false, error: '上传返回异常（缺 file 字段）' }))
+            return
+          }
+          const alt = (m.alt || '').trim()
+          setImgModal(null)
+          panelBridge.insertImageMd(file, alt)
+          showToast('已插入图片：' + file)
+        }).catch(err => {
+          showToast('图片上传失败：' + String(err.message || err))
+          const cur = imgModalRef.current
+          if (cur) setImgModal(Object.assign({}, cur, { uploading: false, error: String(err.message || err) }))
+        })
+      }
+      return imgModal ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !imgModal.uploading) setImgModal(null) } },
+        e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
+          e('div', { className: 'dsh-notes-settings-modal-t' }, I('image', 14), ' 插入图片', e('span', { className: 'dsh-notes-imgup-sub' }, '上传到笔记库 assets/（PNG/JPEG/GIF/WebP，≤5MB；>1MB 的 PNG/JPG 自动压缩转 JPEG）')),
+          imgModal.dataURL
+            ? e(React.Fragment, null,
+                e('div', { className: 'dsh-notes-imgup-pv' },
+                  e('img', { src: imgModal.dataURL, alt: '' }),
+                  e('div', null,
+                    e('div', { className: 'dsh-notes-imgup-nm' }, imgModal.name),
+                    e('div', { className: 'dsh-notes-imgup-sz' }, (imgModal.origSize ? '已压缩 ' + fmtBytes(imgModal.origSize) + ' → ' : '') + (imgModal.size ? fmtBytes(imgModal.size) + ' · ' : '') + (imgModal.mime || '')))),
+                e('input', { className: 'dsh-notes-data-input', placeholder: '替代文本 alt（可留空）', value: imgModal.alt, autoFocus: true, onChange: (ev) => setImgModal(Object.assign({}, imgModal, { alt: ev.target.value })), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doUploadImage() } } }))
+            : e('div', { className: 'dsh-notes-imgup-zone', onClick: () => { if (imgFileInputRef.current) imgFileInputRef.current.click() } },
+                '点击选择本地图片文件（也可直接把图片文件拖进编辑区，或 Ctrl+V 粘贴）',
+                e('input', { ref: imgFileInputRef, type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', style: { display: 'none' }, onChange: (ev) => { const f = ev.target.files && ev.target.files[0]; if (f) pickImageFile(f); ev.target.value = '' } })),
+          imgModal.uploading ? e('div', { className: 'dsh-notes-imgup-prog on' }, e('i', null)) : null,
+          imgModal.error ? e('div', { className: 'dsh-notes-dispatch-err' }, imgModal.error) : null,
+          e('div', { className: 'dsh-notes-dispatch-actions' },
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setImgModal(null), disabled: imgModal.uploading }, '取消'),
+            e('button', { className: 'dsh-notes-dispatch-ok', onClick: doUploadImage, disabled: !imgModal.dataURL || imgModal.uploading }, imgModal.uploading ? '上传中…' : '上传并插入'))))
+      : null
+    }
+    // ===== modal: merge —— 多选合并标题输入框（architecture-modular §6 步骤 D1，自 panels/whole.js 拆出）=====
+    // provides: store.modal.merge / mergeOpenRef / setMergeOpen / setMergeTitle / setMergePending / openMerge / MergeModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/icons.js（e/I）、kernel/bus.js（showToast/notifyNotesChanged + doArchiveUndo 别名）
+    // state 托管：open/title/pending 迁入 store.modal.merge 切片；mergeOpenRef 为 Esc 栈同步镜像（模块级单例）
+    // 多选集合 selIds / 笔记清单 notes 是面板多选域状态（滞留 whole.js）：打开时经 panelBridge 读快照，弹窗内经 props 订阅
+    store.modal.merge = createStore({ open: false, title: '', pending: false })
+    const mergeOpenRef = { current: false }   // 多选合并对话框镜像（Esc 优先关）
+    function setMergeOpen(v) { const nv = typeof v === 'function' ? v(mergeOpenRef.current) : v; mergeOpenRef.current = nv; store.modal.merge.set({ open: nv }) }
+    function setMergeTitle(v) { store.modal.merge.set({ title: typeof v === 'function' ? v(store.modal.merge.get().title) : v }) }
+    function setMergePending(v) { store.modal.merge.set({ pending: typeof v === 'function' ? v(store.modal.merge.get().pending) : v }) }
+    // 打开合并标题输入框：默认标题 = 所选笔记中最早更新者的 topic（原型口径）
+    function openMerge() {
+      const selIdsNow = panelBridge.selIds || {}
+      const ids = Object.keys(selIdsNow)
+      if (ids.length < 2) { showToast('至少选择 2 条笔记'); return }
+      const sel = (panelBridge.notes || []).filter(n => selIdsNow[n.id]).sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')))
+      setMergeTitle((sel[0] && sel[0].topic) || '合并笔记'); setMergePending(false); setError(''); setMergeOpen(true)
+    }
+    // 多选合并标题输入框宿主（多选操作条「合并」入口）
+    function MergeModal(props) {
+      const mergeOpen = store.modal.merge.useSel(s => s.open)
+      const mergeTitle = store.modal.merge.useSel(s => s.title)
+      const mergePending = store.modal.merge.useSel(s => s.pending)
+      const error = props.error
+      const selIds = props.selIds || {}
+      async function doMergeConfirm() {
+        const ids = Object.keys(selIds)
+        const t = mergeTitle.trim()
+        if (ids.length < 2 || mergePending || !t) return
+        setMergePending(true)
+        try {
+          const g = { memberIds: ids }; if (t) g.title = t   // payload 禁 undefined：空标题不传 title 字段
+          const res = await rpc('notes-archive', { groups: [g] })
+          if (res && res.error) { setError(res.error); setMergePending(false); return }
+          setMergeOpen(false); setMergePending(false); panelBridge.setSelMode(false)
+          showToast('已合并所选 ' + ids.length + ' 条', { label: '撤销', fn: doArchiveUndo })
+          panelBridge.afterArchiveCleanup(ids)
+          await panelBridge.loadNotes(true); notifyNotesChanged()
+        } catch (err) { setError(String(err.message || err)); setMergePending(false) }
+      }
+      // 多选合并标题输入框（多选操作条「合并」入口）：默认标题 = 所选最早更新笔记的 topic，可改；Enter 确认
+      return mergeOpen ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setMergeOpen(false) } },
+        e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
+          e('div', { className: 'dsh-notes-settings-modal-t' }, I('note', 14), ' 合并所选笔记'),
+          e('div', { className: 'dsh-notes-data-hint' }, '把所选的 ' + Object.keys(selIds).length + ' 条笔记合并为一篇（正文按更新时间分节拼接，原笔记软删除，可撤销）。'),
+          e('input', { className: 'dsh-notes-data-input', placeholder: '合并后标题…', value: mergeTitle, autoFocus: true, onChange: (ev) => setMergeTitle(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doMergeConfirm() } } }),
+          error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+          e('div', { className: 'dsh-notes-dispatch-actions' },
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setMergeOpen(false) }, '取消'),
+            e('button', { className: 'dsh-notes-dispatch-ok', onClick: doMergeConfirm, disabled: mergePending || !mergeTitle.trim() }, mergePending ? '合并中…' : '合并'))))
+      : null
+    }
+    // ===== modal: newnote —— 新建笔记弹窗（architecture-modular §6 步骤 D1，自 panels/whole.js 拆出）=====
+    // provides: store.modal.newnote / newNoteOpenRef / newNoteInputRef / setNewNoteOpen / setNewNoteTitle / setNewNotePending / openNewNote / NewNoteModal
+    // needs: kernel/state.js（store/createStore/panelBridge + setError/setNewNoteKind 转发别名）、kernel/constants.js（KIND_LABELS/KIND_TEMPLATES）、
+    //        kernel/icons.js（e/I）、kernel/bus.js（showToast/notifyNotesChanged）
+    // state 托管：open/title/pending 迁入 store.modal.newnote 切片；newNoteOpenRef 为 Esc 栈同步镜像、newNoteInputRef 为标题输入框 DOM 通道
+    // （模块级单例——面板是 shell.overlay 单例，与昔日 FloatingPanel 内 useRef 等价）；
+    // newNoteKind 因 check.js 锚定其 useState 声明原文而滞留 whole.js（面板侧声明），经 props（读）+ kernel 转发别名（openNewNote 内复位写）双向接入
+    store.modal.newnote = createStore({ open: false, title: '', pending: false })
+    const newNoteOpenRef = { current: false }   // 新建笔记 modal 镜像（Esc 优先关 modal）
+    const newNoteInputRef = { current: null }   // 新建笔记 modal 标题输入框（whole.js 打开自动聚焦 effect 经此聚焦）
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setNewNoteOpen(v) { const nv = typeof v === 'function' ? v(newNoteOpenRef.current) : v; newNoteOpenRef.current = nv; store.modal.newnote.set({ open: nv }) }
+    function setNewNoteTitle(v) { store.modal.newnote.set({ title: typeof v === 'function' ? v(store.modal.newnote.get().title) : v }) }
+    function setNewNotePending(v) { store.modal.newnote.set({ pending: typeof v === 'function' ? v(store.modal.newnote.get().pending) : v }) }
+    // 新建笔记 modal：侧栏「新建」chip / Ctrl+N 打开（清空上次标题，类型复位 note）
+    function openNewNote() { setNewNoteTitle(''); setNewNoteKind('note'); setNewNotePending(false); setError(''); setNewNoteOpen(true) }
+    // 新建笔记 modal 宿主：输标题 + 选类型（二期：按类型预填模板骨架）创建 → 选中 → 聚焦正文
+    function NewNoteModal(props) {
+      const newNoteOpen = store.modal.newnote.useSel(s => s.open)
+      const newNoteTitle = store.modal.newnote.useSel(s => s.title)
+      const newNotePending = store.modal.newnote.useSel(s => s.pending)
+      const error = props.error
+      const notes = props.notes
+      const selected = props.selected
+      const view = props.view
+      const newNoteKind = props.newNoteKind
+      const setNewNoteKind = props.setNewNoteKind
+      // 创建流程：notes-create → 静默刷新列表 → 选中新笔记 → 聚焦正文 textarea → toast
+      // 落位规则（原型 btnNew）：文件夹视图落当前文件夹；主题视图带当前主题；否则落选中笔记所在文件夹/未分类
+      // 面板能力（选中/闪现高亮/聚焦正文/切源码态/刷新列表）经 panelBridge 中转（禁横向引用）
+      async function doCreateNote() {
+        const title = newNoteTitle.trim()
+        if (!title || newNotePending) return
+        setNewNotePending(true); setError('')
+        try {
+          const selNote = notes.find(n => n.id === selected)
+          const createFolder = view.type === 'folder' ? view.id : ((selNote && selNote.folder) || '')
+          // 二期 kind 模板骨架：按所选类型预填（note=空自由格式；机器信息类由 ✨整理按内容适配，建时不预判）
+          const payload = { title: title, body: KIND_TEMPLATES[newNoteKind] || '', kind: newNoteKind }
+          if (createFolder) payload.folder = createFolder
+          if (view.type === 'topic' && view.id) payload.topic = view.id
+          const res = await rpc('notes-create', payload)
+          if (res && res.error) { setError(res.error); return }
+          setNewNoteOpen(false); setNewNoteTitle('')
+          showToast('已创建')
+          // 立即用创建返回值选中新笔记（不等列表刷新，避免列表时序影响选中链路）
+          if (res && res.id) {
+            panelBridge.selectNote({ id: res.id, title: res.title || title, topic: res.topic || payload.topic || '', kind: res.kind || 'note', status: res.status || 'active', folder: createFolder, tags: [], inject: false, injectTo: [], sensitive: false })
+            panelBridge.setFlashId(res.id); panelBridge.later(() => panelBridge.setFlashId(null), 1800)
+            // 聚焦正文：等选中态渲染出 textarea 再 focus（富文本态先切回源码态，否则没有 textarea 可聚焦）
+            panelBridge.setEditorModeState('source')
+            panelBridge.later(() => { try { if (panelBridge.edBodyDomRef.current) panelBridge.edBodyDomRef.current.focus() } catch (err) {} }, 300)
+            panelBridge.later(() => { try { if (panelBridge.edBodyDomRef.current && document.activeElement !== panelBridge.edBodyDomRef.current) panelBridge.edBodyDomRef.current.focus() } catch (err) {} }, 700)
+          }
+          notifyNotesChanged()
+          panelBridge.loadNotes(true)  // 后台刷新列表（不 await，不阻塞选中/聚焦链路）
+        } catch (err) { setError(String(err.message || err)) } finally { setNewNotePending(false) }
+      }
+      return newNoteOpen ? e('div', { className: 'dsh-notes-newnote-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setNewNoteOpen(false) } },
+        e('div', { className: 'dsh-notes-newnote-modal' },
+          e('div', { className: 'dsh-notes-newnote-t' }, '新建笔记'),
+          e('input', { ref: newNoteInputRef, className: 'dsh-notes-newnote-input', placeholder: '笔记标题…', value: newNoteTitle, onChange: (ev) => setNewNoteTitle(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doCreateNote() } } }),
+          e('div', { className: 'dsh-notes-newnote-kind-row' },
+            e('span', { className: 'dsh-notes-newnote-kind-lb' }, '类型'),
+            e('select', { className: 'dsh-notes-newnote-select', value: newNoteKind, onChange: (ev) => setNewNoteKind(ev.target.value) },
+              ['note', 'decision', 'todo', 'link', 'quote', 'log'].map(k => e('option', { key: k, value: k }, KIND_LABELS[k]))),
+            e('span', { className: 'dsh-notes-newnote-kind-hint' }, KIND_TEMPLATES[newNoteKind] ? '将预填模板骨架' : '自由格式（空正文）')),
+          error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+          e('div', { className: 'dsh-notes-newnote-actions' },
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setNewNoteOpen(false) }, '取消'),
+            e('button', { className: 'dsh-notes-dispatch-ok', onClick: doCreateNote, disabled: newNotePending || !newNoteTitle.trim() }, newNotePending ? '创建中…' : '创建'))))
+      : null
+    }
+    // ===== modal: history —— 历史版本面板（architecture-modular §6 步骤 D1，自 panels/whole.js 拆出）=====
+    // provides: store.modal.history / histOpenRef / setHistOpen / setHistList / setHistSel / setHistPreview / setHistPending / openHistory / selectHistVersion / HistoryModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError/wikiResolve 别名/selectedRef）、kernel/format.js（fmtHistTs/fmtBytes）、
+    //        kernel/icons.js（e/I）、kernel/bus.js（showToast/notifyNotesChanged）、editor-kernel.js（renderMarkdown）
+    // state 托管：open/list/sel/preview/pending 迁入 store.modal.history 切片；histOpenRef 为 Esc 栈同步镜像（模块级单例）。
+    // 入口计数探测 probeHistCount 与恢复回填 applyRestoredBody 属面板/编辑器域（滞留 whole.js），经 panelBridge 中转；
+    // histCount（meta 行入口可见性）滞留 whole.js，本模块经 panelBridge.histCountRef/setHistCount 同步
+    store.modal.history = createStore({ open: false, list: null, sel: 0, preview: null, pending: false })
+    const histOpenRef = { current: false }   // 历史版本面板镜像（Esc 优先关）
+    function setHistOpen(v) { const nv = typeof v === 'function' ? v(histOpenRef.current) : v; histOpenRef.current = nv; store.modal.history.set({ open: nv }) }
+    function setHistList(v) { store.modal.history.set({ list: typeof v === 'function' ? v(store.modal.history.get().list) : v }) }
+    function setHistSel(v) { store.modal.history.set({ sel: typeof v === 'function' ? v(store.modal.history.get().sel) : v }) }
+    function setHistPreview(v) { store.modal.history.set({ preview: typeof v === 'function' ? v(store.modal.history.get().preview) : v }) }
+    function setHistPending(v) { store.modal.history.set({ pending: typeof v === 'function' ? v(store.modal.history.get().pending) : v }) }
+    // 打开历史面板：重置态 → 拉版本列表（默认选中最新版并加载预览）
+    function openHistory() {
+      const id = selectedRef.current
+      if (!id) { showToast('先选择一条笔记'); return }
+      setHistList(null); setHistSel(0); setHistPreview(null); setHistPending(false); setError('')
+      setHistOpen(true)
+      rpc('notes-history', { id: id }).then(res => {
+        if (res && res.error) { setError(res.error); setHistList([]); return }
+        const vs = (res && res.versions) || []
+        setHistList(vs)
+        panelBridge.histCountRef.current = vs.length; panelBridge.setHistCount(vs.length)
+        if (vs.length) selectHistVersion(vs[0].ts)
+      }).catch(err => { setError(String(err.message || err)); setHistList([]) })
+    }
+    // 点选版本 → notes-history-get 拉该版正文（只读预览；渲染走 renderMarkdown 内核，全量转义零注入面）
+    function selectHistVersion(ts) {
+      setHistSel(ts); setHistPreview(null)
+      rpc('notes-history-get', { id: selectedRef.current, ts: ts }).then(res => {
+        if (res && res.error) { setError(res.error); return }
+        if (res) setHistPreview({ ts: ts, body: res.body || '' })
+      }).catch(err => setError(String(err.message || err)))
+    }
+    // 历史版本面板宿主（详情 meta 行「历史」入口；mask/modal 复用设置卡片风格）：
+    // 左列版本列表（时间+大小，倒序）→ 点选右侧只读预览 →「恢复此版本」confirm 后 notes-restore-history
+    function HistoryModal(props) {
+      const histOpen = store.modal.history.useSel(s => s.open)
+      const histList = store.modal.history.useSel(s => s.list)
+      const histSel = store.modal.history.useSel(s => s.sel)
+      const histPreview = store.modal.history.useSel(s => s.preview)
+      const histPending = store.modal.history.useSel(s => s.pending)
+      const error = props.error
+      // 一键恢复：confirm（明示"当前版本会先自动快照，可再撤销"）→ notes-restore-history → 刷新正文与列表 + toast
+      // 恢复回填走 panelBridge.applyRestoredBody（whole.js 编辑器域；恢复版已由 host 落盘，不走自动保存）
+      async function doRestoreHistory() {
+        const id = selectedRef.current
+        const ts0 = histSel
+        if (histPending || !ts0 || !id) return
+        if (!window.confirm('恢复到 ' + fmtHistTs(ts0) + ' 的版本？\n当前版本会先自动快照进历史版本，可再撤销（重新打开历史恢复回滚）。')) return
+        setHistPending(true); setError('')
+        try {
+          const res = await rpc('notes-restore-history', { id: id, ts: ts0 })
+          if (res && res.error) { setError(res.error); return }
+          setHistOpen(false)
+          // 恢复已由 host 落盘（恢复前当前版已自动快照）：本地只回填编辑器，不触发自动保存
+          const g = await rpc('notes-get', { id: id })
+          if (g && g.note && selectedRef.current === id) panelBridge.applyRestoredBody(id, g.note.body || '')
+          await panelBridge.loadNotes(true); notifyNotesChanged()
+          panelBridge.probeHistCount(id)   // 恢复前置快照使版本数 +1，重探刷新入口计数
+          showToast('已恢复到 ' + fmtHistTs(ts0) + ' 的版本（原当前版已自动快照，可再恢复回滚）')
+        } catch (err) { setError(String(err.message || err)) } finally { setHistPending(false) }
+      }
+      return histOpen ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setHistOpen(false) } },
+        e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-hist-modal' },
+          e('div', { className: 'dsh-notes-settings-modal-t' }, I('clock', 14), ' 历史版本', e('span', { className: 'dsh-notes-imgup-sub' }, '每次保存自动留快照 · 恢复前当前版本会先自动快照，可再撤销')),
+          e('div', { className: 'dsh-notes-hist-body' },
+            e('div', { className: 'dsh-notes-hist-list' },
+              histList === null
+                ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
+                : !histList.length
+                  ? e('div', { className: 'dsh-notes-data-hint' }, '暂无历史版本（每次保存自动留快照）')
+                  : histList.map(v => e('div', { key: v.ts, className: 'dsh-notes-hist-item' + (histSel === v.ts ? ' on' : ''), onClick: () => selectHistVersion(v.ts) },
+                      e('div', { className: 'dsh-notes-hist-item-t' }, fmtHistTs(v.ts)),
+                      e('div', { className: 'dsh-notes-hist-item-b' }, fmtBytes(v.bytes))))),
+            e('div', { className: 'dsh-notes-hist-view' },
+              !histSel
+                ? e('div', { className: 'dsh-notes-data-hint' }, '选择左侧版本查看预览（只读）')
+                : histPreview
+                  ? e('div', { className: 'dsh-notes-hist-preview dsh-notes-rich', dangerouslySetInnerHTML: { __html: renderMarkdown(histPreview.body, wikiResolve) } })
+                  : e('div', { className: 'dsh-notes-data-hint' }, '预览加载中…'))),
+          error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+          e('div', { className: 'dsh-notes-dispatch-actions' },
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setHistOpen(false) }, '关闭'),
+            e('button', { className: 'dsh-notes-dispatch-ok', onClick: doRestoreHistory, disabled: histPending || !histSel }, histPending ? '恢复中…' : '恢复此版本'))))
+      : null
+    }
+    // ===== modal: trash —— 回收站（architecture-modular §6 步骤 D1，自 panels/whole.js 拆出）=====
+    // provides: store.modal.trash / trashOpenRef / setTrashOpen / setTrashList / setTrashPending / setTrashSel / setTrashPreview / openTrash / loadTrash / TrashModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/icons.js（e/I）、kernel/bus.js（showToast/notifyNotesChanged）、
+    //        editor-kernel.js（renderMarkdown）+ kernel 转发别名 wikiResolve（行内预览只读渲染）
+    // state 托管：open/list/pending/sel/preview 迁入 store.modal.trash 切片；trashOpenRef 为 Esc 栈同步镜像（模块级单例）；
+    // 列表刷新/文件夹计数刷新属面板域（滞留 whole.js），经 panelBridge 中转
+    store.modal.trash = createStore({ open: false, list: null, pending: '', sel: {}, preview: null })
+    const trashOpenRef = { current: false }   // 回收站对话框镜像（Esc 优先关）
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setTrashOpen(v) { const nv = typeof v === 'function' ? v(trashOpenRef.current) : v; trashOpenRef.current = nv; store.modal.trash.set({ open: nv }) }
+    function setTrashList(v) { store.modal.trash.set({ list: typeof v === 'function' ? v(store.modal.trash.get().list) : v }) }
+    function setTrashPending(v) { store.modal.trash.set({ pending: typeof v === 'function' ? v(store.modal.trash.get().pending) : v }) }
+    function setTrashSel(v) { store.modal.trash.set({ sel: typeof v === 'function' ? v(store.modal.trash.get().sel) : v }) }
+    function setTrashPreview(v) { store.modal.trash.set({ preview: typeof v === 'function' ? v(store.modal.trash.get().preview) : v }) }
+    // ===== P1 回收站（侧栏底部「回收站」入口）：notes-list {includeDeleted:true} 过滤 deleted → 恢复（notes-restore）/ 彻底删除（notes-purge）=====
+    // 彻底删除双确认：点「彻底删除」→ window.confirm「彻底删除不可恢复」确认才执行；host 侧安全闸只接受已软删除的笔记
+    function openTrash() {
+      setTrashList(null); setTrashPending(''); setTrashSel({}); setTrashPreview(null); setError('')
+      panelBridge.setSettingsOpen(false); setTrashOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
+      loadTrash()
+    }
+    function loadTrash() {
+      rpc('notes-list', { includeDeleted: true }).then(res => {
+        if (res && res.error) { setError(res.error); setTrashList([]); return }
+        const del = ((res && res.notes) || []).filter(n => n.deleted === true)
+        del.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))   // 删除时间（updatedAt 近似）降序
+        setTrashList(del)
+        // 列表刷新后清洗勾选/预览态：已不在回收站的 id 剔除（单条恢复/彻底删除后残留勾选会误伤后续批量操作）
+        const alive = {}
+        del.forEach(n => { alive[n.id] = true })
+        setTrashSel(prev => { const nx = {}; let changed = false; for (const id of Object.keys(prev)) { if (alive[id]) nx[id] = true; else changed = true } return changed ? nx : prev })
+        setTrashPreview(prev => (prev && !alive[prev.id]) ? null : prev)
+      }).catch(err => { setError(String(err.message || err)); setTrashList([]) })
+    }
+    // 回收站对话框宿主（复用归档预览的列表样式）
+    function TrashModal(props) {
+      const trashOpen = store.modal.trash.useSel(s => s.open)
+      const trashList = store.modal.trash.useSel(s => s.list)
+      const trashPending = store.modal.trash.useSel(s => s.pending)
+      const trashSel = store.modal.trash.useSel(s => s.sel)
+      const trashPreview = store.modal.trash.useSel(s => s.preview)
+      const error = props.error
+      async function doTrashRestore(id) {
+        if (!id || trashPending) return
+        setTrashPending(id); setError('')
+        try {
+          const res = await rpc('notes-restore', { id: id })
+          if (res && res.error) { setError(res.error); return }
+          showToast('已恢复')
+          loadTrash(); await panelBridge.loadNotes(true); panelBridge.loadFolders(); notifyNotesChanged()
+        } catch (err) { setError(String(err.message || err)) } finally { setTrashPending('') }
+      }
+      async function doTrashPurge(id, title) {
+        if (!id || trashPending) return
+        if (!window.confirm('彻底删除不可恢复：「' + (title || id) + '」\n删除后正文与归档备份将一并移除，确认彻底删除？')) return
+        setTrashPending(id); setError('')
+        try {
+          const res = await rpc('notes-purge', { id: id })
+          if (res && res.error) { setError(res.error); return }
+          showToast('已彻底删除')
+          loadTrash(); await panelBridge.loadNotes(true); notifyNotesChanged()
+        } catch (err) { setError(String(err.message || err)) } finally { setTrashPending('') }
+      }
+      // ===== 回收站增强（notes-trash-batch-preview）：批量选择/全选 + 批量恢复/批量彻底删除 + 行内容只读预览 =====
+      // 行勾选/全选（trashSel: id→true；全选 = 当前列表全部勾选时再点则清空）
+      function toggleTrashSel(id) { setTrashSel(prev => { const nx = Object.assign({}, prev); if (nx[id]) delete nx[id]; else nx[id] = true; return nx }) }
+      function toggleTrashAll() {
+        const list = trashList || []
+        const all = list.length > 0 && list.every(n => trashSel[n.id])
+        const nx = {}
+        if (!all) list.forEach(n => { nx[n.id] = true })
+        setTrashSel(nx)
+      }
+      // 行预览：notes-get {id, includeDeleted:true} 取已删正文（host includeDeleted 路径，墓碑仍拒绝）→ renderMarkdown 只读渲染（esc 先行零注入面）；再点收起
+      function toggleTrashPreview(id) {
+        if (trashPreview && trashPreview.id === id) { setTrashPreview(null); return }
+        setTrashPreview({ id: id, body: null, error: '' })
+        rpc('notes-get', { id: id, includeDeleted: true }).then(res => {
+          if (res && res.note && typeof res.note.body === 'string') setTrashPreview(prev => (prev && prev.id === id) ? { id: id, body: res.note.body, error: '' } : prev)
+          else setTrashPreview(prev => (prev && prev.id === id) ? { id: id, body: null, error: '预览失败：' + ((res && res.error) || '无正文') } : prev)
+        }).catch(err => setTrashPreview(prev => (prev && prev.id === id) ? { id: id, body: null, error: '预览失败：' + String(err.message || err) } : prev))
+      }
+      // 批量恢复：confirm 后逐条 notes-restore（单条失败计数不中断）；完成后清空勾选/预览 + 刷新
+      async function doTrashRestoreBatch() {
+        const ids = Object.keys(trashSel)
+        if (!ids.length || trashPending) return
+        if (!window.confirm('批量恢复：所选的 ' + ids.length + ' 条笔记将移出回收站（恢复后回到正常列表）。\n确认恢复？')) return
+        setTrashPending('batch'); setError('')
+        let ok = 0, fail = 0
+        for (const id of ids) {
+          try { const res = await rpc('notes-restore', { id: id }); if (res && res.error) fail++; else ok++ }
+          catch (err) { fail++ }
+        }
+        setTrashPending(''); setTrashSel({}); setTrashPreview(null)
+        showToast('已恢复 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''))
+        loadTrash(); await panelBridge.loadNotes(true); panelBridge.loadFolders(); notifyNotesChanged()
+      }
+      // 批量彻底删除：confirm 双确认（「不可恢复 + 含历史版本」+ 条数，与单条同口径）→ 逐条 notes-purge（host 安全闸仅限已软删除）
+      async function doTrashPurgeBatch() {
+        const ids = Object.keys(trashSel)
+        if (!ids.length || trashPending) return
+        if (!window.confirm('批量彻底删除：所选的 ' + ids.length + ' 条笔记将彻底删除，不可恢复（含历史版本）。\n删除后正文、历史版本快照与归档备份将一并移除，确认彻底删除？')) return
+        setTrashPending('batch'); setError('')
+        let ok = 0, fail = 0
+        for (const id of ids) {
+          try { const res = await rpc('notes-purge', { id: id }); if (res && res.error) fail++; else ok++ }
+          catch (err) { fail++ }
+        }
+        setTrashPending(''); setTrashSel({}); setTrashPreview(null)
+        showToast('已彻底删除 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''))
+        loadTrash(); await panelBridge.loadNotes(true); notifyNotesChanged()
+      }
+      // P1 回收站对话框（侧栏底部「回收站」入口；复用归档预览的列表样式）：
+      // 批量操作条（全选 + 选中计数 + 恢复所选/彻底删除所选）+ 行 = 勾选框 + 标题（点击展开只读预览）+ 删除时间 + 预览/恢复/彻底删除；
+      // 彻底删除 confirm 双确认（不可恢复）；批量彻底删除同口径文案 + 条数 + 含历史版本；
+      // 行预览 = notes-get {id, includeDeleted:true} 取已删正文 → renderMarkdown 只读渲染（内核全量转义，esc 先行零注入面）
+      return trashOpen ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !trashPending) setTrashOpen(false) } },
+        e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-arch-modal dsh-notes-trash-modal' },
+          e('div', { className: 'dsh-notes-settings-modal-t' }, I('trash', 14), ' 回收站', e('span', { className: 'dsh-notes-imgup-sub' }, '软删除的笔记 · 恢复可找回 · 彻底删除不可恢复')),
+          trashList === null
+            ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
+            : trashList.length === 0
+              ? e('div', { className: 'dsh-notes-data-hint' }, '回收站为空（删除的笔记会出现在这里）。')
+              : e(React.Fragment, null,
+                  e('div', { className: 'dsh-notes-trash-batch' },
+                    e('label', { className: 'dsh-notes-trash-all' },
+                      e('input', { type: 'checkbox', className: 'dsh-notes-trash-check', checked: trashList.length > 0 && trashList.every(n => trashSel[n.id]), disabled: !!trashPending, onChange: toggleTrashAll }),
+                      '全选'),
+                    e('span', { className: 'dsh-notes-trash-selcnt' }, '已选 ' + Object.keys(trashSel).length + ' 条'),
+                    e('button', { className: 'dsh-notes-trash-act', onClick: doTrashRestoreBatch, disabled: !!trashPending || Object.keys(trashSel).length < 1 }, '恢复所选'),
+                    e('button', { className: 'dsh-notes-trash-act danger', onClick: doTrashPurgeBatch, disabled: !!trashPending || Object.keys(trashSel).length < 1 }, '彻底删除所选')),
+                  e('div', { className: 'dsh-notes-arch-list' },
+                    trashList.map(n => e('div', { key: n.id },
+                      e('div', { className: 'dsh-notes-arch-row' },
+                        e('input', { type: 'checkbox', className: 'dsh-notes-trash-check', checked: !!trashSel[n.id], disabled: !!trashPending, onChange: () => toggleTrashSel(n.id) }),
+                        e('span', { className: 'dsh-notes-arch-ti dsh-notes-trash-ti', title: (n.title || 'Untitled') + '（点击预览正文，只读）', onClick: () => toggleTrashPreview(n.id) }, n.title || 'Untitled'),
+                        e('span', { className: 'dsh-notes-arch-meta' }, '删于 ' + (n.updatedAt ? String(n.updatedAt).slice(0, 10) : '—')),
+                        e('button', { className: 'dsh-notes-trash-act', onClick: () => toggleTrashPreview(n.id), disabled: !!trashPending }, trashPreview && trashPreview.id === n.id ? '收起' : '预览'),
+                        e('button', { className: 'dsh-notes-trash-act', onClick: () => doTrashRestore(n.id), disabled: !!trashPending }, '恢复'),
+                        e('button', { className: 'dsh-notes-trash-act danger', onClick: () => doTrashPurge(n.id, n.title), disabled: !!trashPending }, '彻底删除')),
+                      // 行内只读预览：正文只经 renderMarkdown 内核渲染（全量转义零注入面）；加载/错误态走 React 文本插值（自动转义）
+                      trashPreview && trashPreview.id === n.id
+                        ? (typeof trashPreview.body === 'string'
+                            ? e('div', { className: 'dsh-notes-trash-preview dsh-notes-rich', dangerouslySetInnerHTML: { __html: renderMarkdown(trashPreview.body, wikiResolve) } })
+                            : e('div', { className: 'dsh-notes-data-hint' }, trashPreview.error || '预览加载中…'))
+                        : null)))),
+          error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+          e('div', { className: 'dsh-notes-dispatch-actions' },
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setTrashOpen(false), disabled: !!trashPending }, '关闭'))))
+      : null
+    }
+    // ===== modal: prune —— 孤儿资产清理弹窗（architecture-modular §6 步骤 D1，自 panels/whole.js 拆出）=====
+    // provides: store.modal.prune / pruneOpenRef / setPruneOpen / setPruneData / setPruneChecked / setPrunePending / openPrune / PruneModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/format.js（fmtBytes）、kernel/icons.js（e/I）、kernel/bus.js（showToast）
+    // state 托管：open/data/checked/pending 迁入 store.modal.prune 切片；pruneOpenRef 为 Esc 栈同步镜像（模块级单例）；
+    // 与设置卡片互斥经 panelBridge.setSettingsOpen 中转（设置卡滞留 whole.js，D2 再迁）
+    store.modal.prune = createStore({ open: false, data: null, checked: {}, pending: false })
+    const pruneOpenRef = { current: false }   // 资产清理对话框镜像（Esc 优先关）
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setPruneOpen(v) { const nv = typeof v === 'function' ? v(pruneOpenRef.current) : v; pruneOpenRef.current = nv; store.modal.prune.set({ open: nv }) }
+    function setPruneData(v) { store.modal.prune.set({ data: typeof v === 'function' ? v(store.modal.prune.get().data) : v }) }
+    function setPruneChecked(v) { store.modal.prune.set({ checked: typeof v === 'function' ? v(store.modal.prune.get().checked) : v }) }
+    function setPrunePending(v) { store.modal.prune.set({ pending: typeof v === 'function' ? v(store.modal.prune.get().pending) : v }) }
+    // ===== 二期 孤儿资产清理（设置卡片「资产清理」入口）：dry-run 预览（零写入）→ 勾选 → 白名单执行 =====
+    // 契约：notes-assets-prune 缺省 dryRun=true 返回 { orphans:[{name,bytes}], totalBytes, referenced, tombstoned, notes }；
+    // 执行 dryRun:false + files 白名单（host 调用内重扫实时孤儿防漂移；软删除笔记的引用也计入保护，宁留勿删）。
+    function openPrune() {
+      setPruneData(null); setPruneChecked({}); setPrunePending(false); setError('')
+      panelBridge.setSettingsOpen(false); setPruneOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
+      rpc('notes-assets-prune', { dryRun: true }).then(res => {
+        if (res && res.error) { setError(res.error); setPruneData({ orphans: [], totalBytes: 0 }); return }
+        setPruneData(res || { orphans: [], totalBytes: 0 })
+      }).catch(err => { setError(String(err.message || err)); setPruneData({ orphans: [], totalBytes: 0 }) })
+    }
+    // 资产清理对话框宿主（设置卡片「资产清理」入口；复用归档预览的列表样式）
+    function PruneModal(props) {
+      const pruneOpen = store.modal.prune.useSel(s => s.open)
+      const pruneData = store.modal.prune.useSel(s => s.data)
+      const pruneChecked = store.modal.prune.useSel(s => s.checked)
+      const prunePending = store.modal.prune.useSel(s => s.pending)
+      const error = props.error
+      async function doPruneConfirm() {
+        const orphans = (pruneData && pruneData.orphans) || []
+        const files = orphans.filter(o => pruneChecked[o.name] !== false).map(o => o.name)
+        if (!files.length || prunePending) return
+        setPrunePending(true)
+        try {
+          const res = await rpc('notes-assets-prune', { dryRun: false, files: files })
+          if (res && res.error) { setError(res.error); setPrunePending(false); return }
+          setPruneOpen(false); setPrunePending(false)
+          showToast('已清理 ' + ((res.deleted || []).length) + ' 个孤儿资产，释放 ' + fmtBytes(res.freedBytes || 0) + ((res.modes && res.modes.tombstoned) ? '（开发版为清空占位）' : ''))
+        } catch (err) { setError(String(err.message || err)); setPrunePending(false) }
+      }
+      // 资产清理对话框（设置卡片「资产清理」入口；复用归档预览的列表样式）：dry-run 孤儿清单默认全勾，
+      // 行 = 复选框 + 文件名 + 字节数；底部统计扫描笔记数/引用中/墓碑；「删除所选（N 项 · x KB）」danger 确认才执行
+      return pruneOpen ? (() => {
+        const orphans = (pruneData && pruneData.orphans) || []
+        const checked = orphans.filter(o => pruneChecked[o.name] !== false)
+        const checkedBytes = checked.reduce((s, o) => s + (o.bytes || 0), 0)
+        return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !prunePending) setPruneOpen(false) } },
+          e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-arch-modal' },
+            e('div', { className: 'dsh-notes-settings-modal-t' }, I('trash', 14), ' 资产清理', e('span', { className: 'dsh-notes-imgup-sub' }, '预览勾选后才删除 · 宁留勿删')),
+            e('div', { className: 'dsh-notes-data-hint' }, 'assets/ 中未被任何笔记正文引用的文件（已删除笔记的引用仍计入保护）。' + (pruneData && pruneData.notes != null ? '已扫描 ' + pruneData.notes + ' 条笔记：引用中 ' + (pruneData.referenced || 0) + ' 个，历史清理占位 ' + (pruneData.tombstoned || 0) + ' 个。' : '')),
+            pruneData === null
+              ? e('div', { className: 'dsh-notes-data-hint' }, '扫描中…')
+              : orphans.length === 0
+                ? e('div', { className: 'dsh-notes-data-hint' }, '没有孤儿资产（assets/ 全部文件均被引用）。')
+                : e('div', { className: 'dsh-notes-arch-list' },
+                    orphans.map(o => e('div', { key: o.name, className: 'dsh-notes-arch-row' },
+                      e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: pruneChecked[o.name] !== false, onChange: () => setPruneChecked(Object.assign({}, pruneChecked, { [o.name]: pruneChecked[o.name] === false })) }),
+                      e('span', { className: 'dsh-notes-arch-ti', title: o.name }, o.name),
+                      e('span', { className: 'dsh-notes-arch-meta' }, fmtBytes(o.bytes))))),
+            error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+            e('div', { className: 'dsh-notes-dispatch-actions' },
+              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setPruneOpen(false), disabled: prunePending }, '取消'),
+              e('button', { className: 'dsh-notes-data-danger', onClick: doPruneConfirm, disabled: prunePending || checked.length === 0 }, prunePending ? '删除中…' : '删除所选（' + checked.length + ' 项 · ' + fmtBytes(checkedBytes) + '）'))))
+      })()
+      : null
+    }
+    // ===== modal: archive —— 归档预览对话框（architecture-modular §6 步骤 D1，自 panels/whole.js 拆出）=====
+    // provides: store.modal.archive / archOpenRef / setArchOpen / setArchGroups / setArchChecked / setArchExpand / setArchPending / openArchive / ArchiveModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/format.js（fmtBytes）、kernel/icons.js（e/I）、kernel/bus.js（showToast/notifyNotesChanged）
+    // state 托管：open/groups/checked/expand/pending 迁入 store.modal.archive 切片；archOpenRef 为 Esc 栈同步镜像（模块级单例）；
+    // 归档后清理 afterArchiveCleanup 属面板多选/选中域（滞留 whole.js），经 panelBridge 中转；
+    // doArchiveUndo 在本组件渲染期回填 panelBridge——merge modal 的撤销 toast 经 kernel 转发别名调最新实例（禁横向引用）
+    store.modal.archive = createStore({ open: false, groups: null, checked: {}, expand: {}, pending: false })
+    const archOpenRef = { current: false }   // 归档预览对话框镜像（Esc 优先关）
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setArchOpen(v) { const nv = typeof v === 'function' ? v(archOpenRef.current) : v; archOpenRef.current = nv; store.modal.archive.set({ open: nv }) }
+    function setArchGroups(v) { store.modal.archive.set({ groups: typeof v === 'function' ? v(store.modal.archive.get().groups) : v }) }
+    function setArchChecked(v) { store.modal.archive.set({ checked: typeof v === 'function' ? v(store.modal.archive.get().checked) : v }) }
+    function setArchExpand(v) { store.modal.archive.set({ expand: typeof v === 'function' ? v(store.modal.archive.get().expand) : v }) }
+    function setArchPending(v) { store.modal.archive.set({ pending: typeof v === 'function' ? v(store.modal.archive.get().pending) : v }) }
+    // 打开归档预览（替代旧的直接执行）：dry-run 拉速记组（notes-archive-preview 零写入），默认全勾
+    async function openArchive() {
+      setError(''); setArchOpen(true); setArchGroups(null); setArchChecked({}); setArchExpand({}); setArchPending(false)
+      try {
+        const res = await rpc('notes-archive-preview')
+        if (res && res.error) { setError(res.error); setArchGroups([]); return }
+        setArchGroups((res && res.quickGroups) || [])
+      } catch (err) { setError(String(err.message || err)); setArchGroups([]) }
+    }
+    // 归档预览对话框宿主（标题栏「归档」入口）
+    function ArchiveModal(props) {
+      const archOpen = store.modal.archive.useSel(s => s.open)
+      const archGroups = store.modal.archive.useSel(s => s.groups)
+      const archChecked = store.modal.archive.useSel(s => s.checked)
+      const archExpand = store.modal.archive.useSel(s => s.expand)
+      const archPending = store.modal.archive.useSel(s => s.pending)
+      const error = props.error
+      // 撤销最近一次归档（undo 事务文件）：归档笔记软删 + 成员批量恢复
+      async function doArchiveUndo() {
+        try {
+          const res = await rpc('notes-archive-undo')
+          if (res && res.error) { setError(res.error); return }
+          showToast(res && res.undone ? '已撤销归档' : '没有可撤销的归档')
+          await panelBridge.loadNotes(true); notifyNotesChanged()
+        } catch (err) { setError(String(err.message || err)) }
+      }
+      // 回填 panelBridge：本组件卸载/面板关闭后 toast「撤销」仍可调（bridge 持有最近一次渲染的实例，与昔日闭包捕获语义等价）
+      panelBridge.doArchiveUndo = doArchiveUndo
+      // 确认归档：勾选组 → notes-archive 白名单组（host 先全量校验再动手）→ toast「已合并 N 组」+ 撤销按钮
+      async function doArchiveConfirm() {
+        const gs = (archGroups || []).filter(g => archChecked[g.sessionId] !== false)
+        if (!gs.length || archPending) return
+        setArchPending(true)
+        try {
+          // payload 禁 undefined：白名单组不带 title（用 host 默认标题规则）
+          const res = await rpc('notes-archive', { groups: gs.map(g => ({ memberIds: g.members.map(m => m.id) })) })
+          if (res && res.error) { setError(res.error); setArchPending(false); return }
+          setArchOpen(false); setArchPending(false)
+          showToast('已合并 ' + (res.merged || 0) + ' 组', { label: '撤销', fn: doArchiveUndo })
+          panelBridge.afterArchiveCleanup(gs.reduce((acc, g) => acc.concat(g.members.map(m => m.id)), []))
+          await panelBridge.loadNotes(true); notifyNotesChanged()
+        } catch (err) { setError(String(err.message || err)); setArchPending(false) }
+      }
+      // 归档预览对话框（标题栏「归档」→ notes-archive-preview dry-run，零写入）：速记组列表默认全勾——
+      // 组行 = 复选框 + 展开 caret + 组标题 + dateSpan · N 条 · totalBytes；caret 展开成员明细（标题+日期）；
+      // 底部提示手动笔记走多选合并；「归档所选（N 组）」确认才执行（notes-archive 白名单组）
+      return archOpen ? (() => {
+        const groups = archGroups || []
+        const checkedCount = groups.filter(g => archChecked[g.sessionId] !== false).length
+        return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setArchOpen(false) } },
+          e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-arch-modal' },
+            e('div', { className: 'dsh-notes-settings-modal-t' }, I('check', 14), ' 归档预览', e('span', { className: 'dsh-notes-imgup-sub' }, '勾选后才执行 · 合并可撤销')),
+            e('div', { className: 'dsh-notes-data-hint' }, '速记按会话分组，勾选的组合并成一篇归档笔记（原笔记 .bak 备份后软删除）。'),
+            archGroups === null
+              ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
+              : groups.length === 0
+                ? e('div', { className: 'dsh-notes-data-hint' }, '没有可归档的速记组（同一会话 ≥2 条速记才会成组）。')
+                : e('div', { className: 'dsh-notes-arch-list' },
+                    groups.map(g => {
+                      const checked = archChecked[g.sessionId] !== false
+                      const expanded = archExpand[g.sessionId] === true
+                      const span = g.dateSpan && g.dateSpan.from ? (g.dateSpan.from === g.dateSpan.to ? g.dateSpan.from : g.dateSpan.from + ' ~ ' + g.dateSpan.to) : ''
+                      return e('div', { key: g.sessionId, className: 'dsh-notes-arch-group' + (checked ? '' : ' off') },
+                        e('div', { className: 'dsh-notes-arch-row' },
+                          e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: checked, onChange: () => setArchChecked(Object.assign({}, archChecked, { [g.sessionId]: !checked })) }),
+                          e('span', { className: 'dsh-notes-caret' + (expanded ? ' open' : ''), onClick: () => setArchExpand(Object.assign({}, archExpand, { [g.sessionId]: !expanded })) }, I('chev', 10)),
+                          e('span', { className: 'dsh-notes-arch-ti', title: g.title }, g.title),
+                          e('span', { className: 'dsh-notes-arch-meta' }, span + ' · ' + g.members.length + ' 条 · ' + fmtBytes(g.totalBytes) + ((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : ''))),
+                        expanded ? e('div', { className: 'dsh-notes-arch-members' },
+                          g.members.map(m => e('div', { key: m.id, className: 'dsh-notes-arch-member' },
+                            e('span', { className: 'dsh-notes-arch-member-ti' }, m.title || '无标题'),
+                            e('span', { className: 'dsh-notes-arch-member-dt' }, (m.updatedAt || '').slice(0, 10))))) : null)
+                    })),
+            e('div', { className: 'dsh-notes-data-hint' }, '手动笔记不受影响；如需合并手动笔记，请在列表多选后右键合并。'),
+            error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+            e('div', { className: 'dsh-notes-dispatch-actions' },
+              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setArchOpen(false) }, '取消'),
+              e('button', { className: 'dsh-notes-dispatch-ok', onClick: doArchiveConfirm, disabled: archPending || checkedCount === 0 }, archPending ? '归档中…' : '归档所选（' + checkedCount + ' 组）'))))
+      })()
+      : null
+    }
+    // ===== modal: export —— 导出全部笔记对话框（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
+    // provides: store.modal.export / exportOpenRef / setExportOpen / setExportDir / setExportPending / openExport / doExport / ExportModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/icons.js（e/I）、kernel/bus.js（showToast）
+    // state 托管：open/dir/pending 迁入 store.modal.export 切片；exportOpenRef 为 Esc 栈同步镜像（模块级单例）；
+    // 与设置卡片互斥经 panelBridge.setSettingsOpen 中转（禁横向引用）
+    store.modal.export = createStore({ open: false, dir: '', pending: false })
+    const exportOpenRef = { current: false }   // 导出对话框镜像（Esc 优先关）
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setExportOpen(v) { const nv = typeof v === 'function' ? v(exportOpenRef.current) : v; exportOpenRef.current = nv; store.modal.export.set({ open: nv }) }
+    function setExportDir(v) { store.modal.export.set({ dir: typeof v === 'function' ? v(store.modal.export.get().dir) : v }) }
+    function setExportPending(v) { store.modal.export.set({ pending: typeof v === 'function' ? v(store.modal.export.get().pending) : v }) }
+    // ===== 数据导入/导出（设置卡片「数据」区入口）=====
+    // 导出：打开对话框时回填上次导出目录（localStorage 记忆）；确认 → notes-export → toast 含快照目录路径
+    function openExport() {
+      let last = ''
+      try { last = localStorage.getItem('dsh-notes-last-export-dir') || '' } catch (err) {}
+      setExportDir(last); setExportPending(false); setError('')
+      panelBridge.setSettingsOpen(false); setExportOpen(true)   // 与设置卡片互斥：modal 不叠 modal
+    }
+    // 导出对话框宿主（设置卡片「数据」区入口；mask/modal 复用设置卡片风格）：选目标目录 → notes-export → 成功 toast 含快照路径
+    function ExportModal(props) {
+      const exportOpen = store.modal.export.useSel(s => s.open)
+      const exportDir = store.modal.export.useSel(s => s.dir)
+      const exportPending = store.modal.export.useSel(s => s.pending)
+      const error = props.error
+      async function doExport() {
+        const dir = exportDir.trim()
+        if (!dir || exportPending) return
+        setExportPending(true); setError('')
+        try {
+          const res = await rpc('notes-export', { dir: dir })   // payload 不传 undefined 字段
+          if (res && res.error) { setError(res.error); return }
+          try { localStorage.setItem('dsh-notes-last-export-dir', dir) } catch (err) {}
+          setExportOpen(false)
+          showToast('已导出 ' + (res.exported || 0) + ' 条笔记到 ' + (res.target || dir))
+        } catch (err) { setError(String(err.message || err)) } finally { setExportPending(false) }
+      }
+      return exportOpen ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setExportOpen(false) } },
+        e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
+          e('div', { className: 'dsh-notes-settings-modal-t' }, I('up', 14), ' 导出全部笔记'),
+          e('div', { className: 'dsh-notes-data-hint' }, '把整个笔记库（含 folders.json）完整快照到目标目录下的 dsh-notes-export-<时间戳> 子目录，不打包不压缩，目录即格式。'),
+          e('input', { className: 'dsh-notes-data-input', placeholder: '目标目录，如 D:\\backup 或桌面路径…', value: exportDir, autoFocus: true, onChange: (ev) => setExportDir(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doExport() } } }),
+          error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+          e('div', { className: 'dsh-notes-dispatch-actions' },
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setExportOpen(false) }, '取消'),
+            e('button', { className: 'dsh-notes-dispatch-ok', onClick: doExport, disabled: exportPending || !exportDir.trim() }, exportPending ? '导出中…' : '导出'))))
+      : null
+    }
+    // ===== modal: export-single —— 单文件导出对话框（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
+    // provides: store.modal.exportSingle / sExportOpenRef / setSExportOpen / setSExportDir / setSExportScope / setSExportFolder / setSExportTag / setSExportToc / setSExportPending / openSExport / SExportModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/icons.js（e/I）、kernel/bus.js（showToast）
+    // state 托管：open/dir/scope/folder/tag/toc/pending 迁入 store.modal.exportSingle 切片；sExportOpenRef 为 Esc 栈同步镜像（模块级单例）；
+    // 标签/文件夹选项数据源（notes/folders）属面板域，经 props 注入（禁横向引用）；与设置卡片互斥经 panelBridge.setSettingsOpen 中转
+    store.modal.exportSingle = createStore({ open: false, dir: '', scope: 'all', folder: '', tag: '', toc: true, pending: false })
+    const sExportOpenRef = { current: false }   // P3 单文件导出对话框镜像（Esc 优先关）
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setSExportOpen(v) { const nv = typeof v === 'function' ? v(sExportOpenRef.current) : v; sExportOpenRef.current = nv; store.modal.exportSingle.set({ open: nv }) }
+    function setSExportDir(v) { store.modal.exportSingle.set({ dir: typeof v === 'function' ? v(store.modal.exportSingle.get().dir) : v }) }
+    function setSExportScope(v) { store.modal.exportSingle.set({ scope: typeof v === 'function' ? v(store.modal.exportSingle.get().scope) : v }) }
+    function setSExportFolder(v) { store.modal.exportSingle.set({ folder: typeof v === 'function' ? v(store.modal.exportSingle.get().folder) : v }) }
+    function setSExportTag(v) { store.modal.exportSingle.set({ tag: typeof v === 'function' ? v(store.modal.exportSingle.get().tag) : v }) }
+    function setSExportToc(v) { store.modal.exportSingle.set({ toc: typeof v === 'function' ? v(store.modal.exportSingle.get().toc) : v }) }
+    function setSExportPending(v) { store.modal.exportSingle.set({ pending: typeof v === 'function' ? v(store.modal.exportSingle.get().pending) : v }) }
+    // P3 单文件导出（设置卡片「数据」区入口；复用导出 modal 模式）：选 scope（全部/文件夹/标签）+ 目录 → notes-export-single → toast 含文件路径（>20MB 带 warning）
+    function openSExport() {
+      let last = ''
+      try { last = localStorage.getItem('dsh-notes-last-export-single-dir') || '' } catch (err) {}
+      setSExportDir(last); setSExportScope('all'); setSExportFolder(''); setSExportTag(''); setSExportToc(true); setSExportPending(false); setError('')
+      panelBridge.setSettingsOpen(false); setSExportOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
+    }
+    // P3 单文件导出对话框宿主（设置卡片「数据」区「导出单文件…」入口；mask/modal 复用导出对话框风格）：
+    // scope 三选一（全部/文件夹/标签，联动下拉）+ 目录页开关 + 目标目录 → notes-export-single → toast 含文件路径（>20MB 带 warning）
+    function SExportModal(props) {
+      const sExportOpen = store.modal.exportSingle.useSel(s => s.open)
+      const sExportDir = store.modal.exportSingle.useSel(s => s.dir)
+      const sExportScope = store.modal.exportSingle.useSel(s => s.scope)
+      const sExportFolder = store.modal.exportSingle.useSel(s => s.folder)
+      const sExportTag = store.modal.exportSingle.useSel(s => s.tag)
+      const sExportToc = store.modal.exportSingle.useSel(s => s.toc)
+      const sExportPending = store.modal.exportSingle.useSel(s => s.pending)
+      const error = props.error
+      const notes = props.notes || []
+      const folders = props.folders || []
+      async function doSExport() {
+        const dir = sExportDir.trim()
+        if (!dir || sExportPending) return
+        if (sExportScope === 'folder' && !sExportFolder) { setError('请选择文件夹'); return }
+        if (sExportScope === 'tag' && !sExportTag) { setError('请选择标签'); return }
+        setSExportPending(true); setError('')
+        try {
+          const scope = sExportScope === 'folder' ? { folder: sExportFolder } : (sExportScope === 'tag' ? { tag: sExportTag } : { all: true })
+          const res = await rpc('notes-export-single', { dir: dir, scope: scope, format: 'md', toc: sExportToc })   // payload 不传 undefined 字段
+          if (res && res.error) { setError(res.error); return }
+          try { localStorage.setItem('dsh-notes-last-export-single-dir', dir) } catch (err) {}
+          setSExportOpen(false)
+          showToast('已导出 ' + (res.exported || 0) + ' 篇到 ' + (res.target || dir) + (res.warning ? '；⚠ ' + res.warning : ''))
+        } catch (err) { setError(String(err.message || err)) } finally { setSExportPending(false) }
+      }
+      return sExportOpen ? (() => {
+        const tagSet = {}
+        for (const n of notes) for (const tg of (n.tags || [])) tagSet[tg] = true
+        const tagOptions = Object.keys(tagSet).sort()
+        return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setSExportOpen(false) } },
+          e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
+            e('div', { className: 'dsh-notes-settings-modal-t' }, I('note', 14), ' 导出单文件'),
+            e('div', { className: 'dsh-notes-data-hint' }, '把所选范围的笔记拼接为单个 Markdown 文件（每篇 = 标题 + 元信息 + 正文，篇间分隔线）：图片 base64 内联、零外部依赖，可直接分享。超过 20MB 会告警但仍照常导出。'),
+            e('div', { className: 'dsh-notes-dispatch-modes' },
+              [['all', '全部'], ['folder', '按文件夹'], ['tag', '按标签']].map(pair => e('button', { key: pair[0], className: 'dsh-notes-dispatch-mode' + (sExportScope === pair[0] ? ' on' : ''), onClick: () => setSExportScope(pair[0]) }, pair[1]))),
+            sExportScope === 'folder' ? e('select', { className: 'dsh-notes-dispatch-select', value: sExportFolder, onChange: (ev) => setSExportFolder(ev.target.value) },
+              e('option', { value: '' }, '选择文件夹…'),
+              folders.map(f => e('option', { key: f.id, value: f.id }, f.name + '（' + (f.count || 0) + '）')))
+            : null,
+            sExportScope === 'tag' ? e('select', { className: 'dsh-notes-dispatch-select', value: sExportTag, onChange: (ev) => setSExportTag(ev.target.value) },
+              e('option', { value: '' }, tagOptions.length ? '选择标签…' : '（笔记暂无标签）'),
+              tagOptions.map(tg => e('option', { key: tg, value: tg }, tg)))
+            : null,
+            e('label', { className: 'dsh-notes-settings-checkwrap dsh-nt', 'data-tooltip': '在文档头部生成目录页（篇名 + id 清单）' },
+              e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: sExportToc, onChange: (ev) => setSExportToc(!!ev.target.checked) }),
+              '生成目录页'),
+            e('input', { className: 'dsh-notes-data-input', placeholder: '目标目录，如 D:\\backup 或桌面路径…', value: sExportDir, autoFocus: true, onChange: (ev) => setSExportDir(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doSExport() } } }),
+            error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+            e('div', { className: 'dsh-notes-dispatch-actions' },
+              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setSExportOpen(false) }, '取消'),
+              e('button', { className: 'dsh-notes-dispatch-ok', onClick: doSExport, disabled: sExportPending || !sExportDir.trim() || (sExportScope === 'folder' && !sExportFolder) || (sExportScope === 'tag' && !sExportTag) }, sExportPending ? '导出中…' : '导出'))))
+      })()
+      : null
+    }
+    // ===== modal: import —— 导入笔记对话框（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
+    // provides: store.modal.import / importOpenRef / setImportOpen / setImportDir / setImportPreview / setImportOverwrite / setImportPending / openImport / ImportModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/icons.js（e/I）、kernel/bus.js（showToast/notifyNotesChanged）
+    // state 托管：open/dir/preview/overwrite/pending 迁入 store.modal.import 切片；importOpenRef 为 Esc 栈同步镜像（模块级单例）；
+    // 导入完成后列表/文件夹刷新经 panelBridge.loadNotes/loadFolders 中转；与设置卡片互斥经 panelBridge.setSettingsOpen 中转
+    store.modal.import = createStore({ open: false, dir: '', preview: null, overwrite: false, pending: false })
+    const importOpenRef = { current: false }   // 导入对话框镜像（Esc 优先关）
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setImportOpen(v) { const nv = typeof v === 'function' ? v(importOpenRef.current) : v; importOpenRef.current = nv; store.modal.import.set({ open: nv }) }
+    function setImportDir(v) { store.modal.import.set({ dir: typeof v === 'function' ? v(store.modal.import.get().dir) : v }) }
+    function setImportPreview(v) { store.modal.import.set({ preview: typeof v === 'function' ? v(store.modal.import.get().preview) : v }) }
+    function setImportOverwrite(v) { store.modal.import.set({ overwrite: typeof v === 'function' ? v(store.modal.import.get().overwrite) : v }) }
+    function setImportPending(v) { store.modal.import.set({ pending: typeof v === 'function' ? v(store.modal.import.get().pending) : v }) }
+    // 导入两步式：第一步选目录 → notes-import-preview 出预览；第二步勾选覆盖 → notes-import 执行
+    function openImport() {
+      setImportDir(''); setImportPreview(null); setImportOverwrite(false); setImportPending(false); setError('')
+      panelBridge.setSettingsOpen(false); setImportOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
+    }
+    // 导入对话框宿主（两步式）：第一步选目录 → notes-import-preview 预览明细（新增/相同/不同 + 文件夹合并统计）；
+    // 第二步勾选「覆盖内容不同的笔记」（默认不勾）→ danger 按钮执行 notes-import → toast 含备份目录提示 → 刷新列表/文件夹
+    function ImportModal(props) {
+      const importOpen = store.modal.import.useSel(s => s.open)
+      const importDir = store.modal.import.useSel(s => s.dir)
+      const importPreview = store.modal.import.useSel(s => s.preview)
+      const importOverwrite = store.modal.import.useSel(s => s.overwrite)
+      const importPending = store.modal.import.useSel(s => s.pending)
+      const error = props.error
+      async function doImportPreview() {
+        const dir = importDir.trim()
+        if (!dir || importPending) return
+        setImportPending(true); setError('')
+        try {
+          const res = await rpc('notes-import-preview', { dir: dir })
+          if (res && res.error) { setError(res.error); return }
+          if (!res.total) { setError('该目录没有可导入的笔记：' + dir); return }
+          setImportPreview(res); setImportOverwrite(false)   // 每次新预览重置覆盖勾选（默认不勾）
+        } catch (err) { setError(String(err.message || err)) } finally { setImportPending(false) }
+      }
+      async function doImportExecute() {
+        const dir = importDir.trim()
+        if (!dir || !importPreview || importPending) return
+        setImportPending(true); setError('')
+        try {
+          const res = await rpc('notes-import', { dir: dir, overwrite: !!importOverwrite })
+          if (res && res.error) { setError(res.error); return }
+          setImportOpen(false); setImportPreview(null)
+          const got = (res.imported || 0) + (res.overwritten || 0)
+          const skipped = (res.skippedSame || 0) + (res.skippedDiff || 0)
+          const bak = String(res.backupDir || '').split(/[\\/]/).filter(Boolean).pop() || ''   // toast 只带备份目录名（全路径过长）
+          showToast('已导入 ' + got + ' 条（跳过 ' + skipped + ' 条）' + (res.foldersMerged ? '，合并文件夹 ' + res.foldersMerged + ' 个' : '') + (bak ? '，已自动备份到 ' + bak : ''))
+          await panelBridge.loadNotes(true); panelBridge.loadFolders(); notifyNotesChanged()
+        } catch (err) { setError(String(err.message || err)) } finally { setImportPending(false) }
+      }
+      return importOpen ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setImportOpen(false) } },
+        e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
+          e('div', { className: 'dsh-notes-settings-modal-t' }, I('down', 14), ' 导入笔记'),
+          e('div', { className: 'dsh-notes-data-hint' }, '从目录快照导入（只增改不删）：库中不存在的直接入库，内容相同的跳过，内容不同的默认跳过；执行前自动全量备份当前库。'),
+          e('input', { className: 'dsh-notes-data-input', placeholder: '来源目录（dsh-notes-export-… 或 notes-backup-… 目录）…', value: importDir, autoFocus: true, onChange: (ev) => { setImportDir(ev.target.value); if (importPreview) setImportPreview(null) }, onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doImportPreview() } } }),
+          importPreview ? (() => {
+            const IMP_STATUS_LABELS = { added: '新增', same: '相同', diff: '不同' }
+            const folders = importPreview.folders || { total: 0, new: 0 }
+            return e(React.Fragment, null,
+              e('div', { className: 'dsh-notes-data-summary' },
+                e('span', { className: 'added' }, '新增 ', e('b', null, importPreview.added)),
+                e('span', null, '相同 ', e('b', null, importPreview.same)),
+                e('span', { className: importPreview.diff ? 'diff' : '' }, '不同 ', e('b', null, importPreview.diff)),
+                folders.total ? e('span', null, '文件夹新增 ', e('b', null, folders.new), ' / 共 ' + folders.total) : null),
+              importPreview.unreadable ? e('div', { className: 'dsh-notes-data-warn' }, '⚠ ' + importPreview.unreadable + ' 个文件无法读取，已跳过') : null,
+              e('div', { className: 'dsh-notes-imp-list' },
+                (importPreview.detail || []).map(d => e('div', { key: d.id, className: 'dsh-notes-imp-row' },
+                  e('span', { className: 'dsh-notes-imp-badge ' + d.status }, IMP_STATUS_LABELS[d.status] || d.status),
+                  e('span', { className: 'dsh-notes-imp-title', title: d.title || 'Untitled' }, d.title || 'Untitled'),
+                  d.deleted ? e('span', { className: 'dsh-notes-imp-deltag' }, '已删除') : null))),
+              e('label', { className: 'dsh-notes-settings-checkwrap dsh-notes-imp-overwrite' + (importPreview.diff ? '' : ' off') },
+                e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: importOverwrite, disabled: !importPreview.diff, onChange: (ev) => setImportOverwrite(!!ev.target.checked) }),
+                '覆盖内容不同的笔记（' + importPreview.diff + ' 条，不勾则跳过）'),
+              error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+              e('div', { className: 'dsh-notes-dispatch-actions' },
+                e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setImportOpen(false) }, '取消'),
+                e('button', { className: 'dsh-notes-data-danger', onClick: doImportExecute, disabled: importPending }, importPending ? '导入中…' : '执行导入')))
+          })()
+          : e(React.Fragment, null,
+              error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+              e('div', { className: 'dsh-notes-dispatch-actions' },
+                e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setImportOpen(false) }, '取消'),
+                e('button', { className: 'dsh-notes-dispatch-ok', onClick: doImportPreview, disabled: importPending || !importDir.trim() }, importPending ? '检查中…' : '预览')))))
+      : null
+    }
+    // ===== modal: inject-preview —— 注入预览对话框（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
+    // provides: store.modal.injectPreview / injectPreviewOpenRef / setInjectPreviewOpen / setInjectPreviewData / setInjectPreviewSid / openInjectPreview / loadInjectPreview / InjectPreviewModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/icons.js（e/I）
+    // state 托管：open/data/sid 迁入 store.modal.injectPreview 切片；injectPreviewOpenRef 为 Esc 栈同步镜像（模块级单例）；
+    // tab 因 check 锚定其 useState 声明原文滞留 whole.js（同 newNoteKind 先例）——组件经 props 注入，open 复位经 panelBridge.setInjectPreviewTab 中转；
+    // 视角下拉数据源（sessList/sessPending）属面板域，经 props 注入（禁横向引用）；与设置卡片互斥经 panelBridge.setSettingsOpen 中转
+    store.modal.injectPreview = createStore({ open: false, data: null, sid: '' })
+    const injectPreviewOpenRef = { current: false }   // 注入预览对话框镜像（Esc 优先关）
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setInjectPreviewOpen(v) { const nv = typeof v === 'function' ? v(injectPreviewOpenRef.current) : v; injectPreviewOpenRef.current = nv; store.modal.injectPreview.set({ open: nv }) }
+    function setInjectPreviewData(v) { store.modal.injectPreview.set({ data: typeof v === 'function' ? v(store.modal.injectPreview.get().data) : v }) }
+    function setInjectPreviewSid(v) { store.modal.injectPreview.set({ sid: typeof v === 'function' ? v(store.modal.injectPreview.get().sid) : v }) }
+    // ===== 注入预览（设置卡片「注入预览」入口）：notes-inject-preview 纯复用 host 注入渲染（约定桶 + 目录桶），
+    // 双 tab 只读等宽展示 + 三档视角下拉（全局 / 工作区并集 / 单会话；sessList 数据源）+ 底部统计条（总字符/打码/时效标注/预算截断）=====
+    function openInjectPreview() {
+      setInjectPreviewData(null); panelBridge.setInjectPreviewTab('conv'); setInjectPreviewSid(''); setError('')
+      panelBridge.setSettingsOpen(false); setInjectPreviewOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
+      loadInjectPreview('')
+    }
+    // 视角值编码：'' = 全局；'ws:<工作区标题>' = 工作区并集视角（host workspace 参数）；其余 = 会话短 id（sessionId 参数）
+    function loadInjectPreview(sid) {
+      const pvArgs = sid ? (sid.indexOf('ws:') === 0 ? { workspace: sid.slice(3) } : { sessionId: sid }) : {}
+      rpc('notes-inject-preview', pvArgs).then(res => {
+        if (res && res.error) { setError(res.error); setInjectPreviewData({ conventions: '', catalog: '', stats: null }); return }
+        setInjectPreviewData(res || { conventions: '', catalog: '', stats: null })
+      }).catch(err => { setError(String(err.message || err)); setInjectPreviewData({ conventions: '', catalog: '', stats: null }) })
+    }
+    // 注入预览对话框宿主（设置卡片「注入预览」入口；mask/modal 复用设置卡片风格）：
+    // 双 tab（约定/目录）+ 三档视角下拉（全局 / 工作区并集 / 单会话；sessList 数据源）+ 只读等宽文本区 + 底部统计条（总字符/打码/时效标注/预算截断）
+    function InjectPreviewModal(props) {
+      const injectPreviewOpen = store.modal.injectPreview.useSel(s => s.open)
+      const injectPreviewData = store.modal.injectPreview.useSel(s => s.data)
+      const injectPreviewSid = store.modal.injectPreview.useSel(s => s.sid)
+      const error = props.error
+      const sessList = props.sessList || []
+      const sessPending = props.sessPending || []
+      const injectPreviewTab = props.injectPreviewTab
+      const setInjectPreviewTab = props.setInjectPreviewTab
+      return injectPreviewOpen ? (() => {
+        const d = injectPreviewData
+        const stats = d && d.stats ? d.stats : null
+        const text = !d ? '' : (injectPreviewTab === 'cat' ? (d.catalog || '') : (d.conventions || ''))
+        // 会话选项 = sessList（注入范围浮层同数据源）；工作区选项 = 会话 workspace 字段去重（含 pending 占位）；已选值不在列表时追加一项保证回显
+        const sidOpts = sessList.slice()
+        if (injectPreviewSid && injectPreviewSid.indexOf('ws:') !== 0 && !sidOpts.find(s => s.short === injectPreviewSid)) sidOpts.push({ short: injectPreviewSid, name: '' })
+        const wsOpts = []
+        for (const s of sessList.concat(sessPending)) { if (s && s.workspace && wsOpts.indexOf(s.workspace) < 0) wsOpts.push(s.workspace) }
+        if (injectPreviewSid.indexOf('ws:') === 0 && wsOpts.indexOf(injectPreviewSid.slice(3)) < 0) wsOpts.push(injectPreviewSid.slice(3))
+        return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setInjectPreviewOpen(false) } },
+          e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-injprev-modal' },
+            e('div', { className: 'dsh-notes-settings-modal-t' }, I('eye', 14), ' 注入预览', e('span', { className: 'dsh-notes-imgup-sub' }, 'Agent 实际收到的注入文本 · 只读')),
+            e('div', { className: 'dsh-notes-injprev-bar' },
+              e('div', { className: 'dsh-notes-injprev-tabs' },
+                e('button', { className: 'dsh-notes-injprev-tab' + (injectPreviewTab === 'conv' ? ' on' : ''), onClick: () => setInjectPreviewTab('conv') }, '约定'),
+                e('button', { className: 'dsh-notes-injprev-tab' + (injectPreviewTab === 'cat' ? ' on' : ''), onClick: () => setInjectPreviewTab('cat') }, '目录')),
+              e('select', { className: 'dsh-notes-settings-select dsh-notes-injprev-sess', value: injectPreviewSid, 'data-tooltip': '预览视角三档：全局 = 所有会话共享（injectTo=[]）；工作区 = 该工作区全部会话的注入并集；会话 = 单会话 injectTo 命中口径', onChange: (ev) => { const v = ev.target.value; setInjectPreviewSid(v); loadInjectPreview(v) } },
+                e('option', { value: '' }, '全局'),
+                wsOpts.length ? e('optgroup', { label: '工作区' }, wsOpts.map(w => e('option', { key: 'ws:' + w, value: 'ws:' + w }, w))) : null,
+                e('optgroup', { label: '会话' }, sidOpts.map(s => e('option', { key: s.short, value: s.short }, s.short + (s.name ? ' · ' + s.name : '')))))),
+            d === null
+              ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
+              : e('pre', { className: 'dsh-notes-injprev-text' }, text || (injectPreviewTab === 'cat' ? '（无目录内容）' : '（无约定内容）')),
+            stats ? e('div', { className: 'dsh-notes-injprev-stats' },
+              '总字符 ' + stats.totalChars + '（约定 ' + stats.conventionsChars + ' / 目录 ' + stats.catalogChars + '）· 打码 ' + stats.maskedNotes + ' 条 · 时效标注 ' + stats.staleMarked + ' 条 · 预算截断 ' + (stats.budgetTruncated ? '是' : '否')) : null,
+            error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+            e('div', { className: 'dsh-notes-dispatch-actions' },
+              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setInjectPreviewOpen(false) }, '关闭'))))
+      })()
+      : null
+    }
+    // ===== modal: inject-manager —— 注入管理面板（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
+    // provides: store.modal.injMgr / injMgrOpenRef / injMgrSearchRef / injMgrSearchDebRef / setInjMgrOpen / setInjMgrList / setInjMgrFilter /
+    //           setInjMgrSearch / setInjMgrQ / setInjMgrSel / setInjMgrPending / openInjectManager / loadInjectManager / injMgrRole / injMgrScopeLabel / InjMgrModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/icons.js（e/I）、kernel/bus.js（showToast/notifyNotesChanged）、kernel/bootstrap.js（timer）
+    // state 托管：open/list/filter/search/q/sel/pending 迁入 store.modal.injMgr 切片；injMgrOpenRef 为 Esc 栈同步镜像 + injMgrSearchRef/injMgrSearchDebRef
+    // 搜索防抖镜像（模块级单例，防抖 effect 挂 InjMgrModal 组件）；列表刷新经 panelBridge.loadNotes 中转；与设置卡片互斥经 panelBridge.setSettingsOpen 中转
+    store.modal.injMgr = createStore({ open: false, list: null, filter: 'all', search: '', q: '', sel: {}, pending: false })
+    const injMgrOpenRef = { current: false }          // 注入管理面板镜像（Esc 优先关）
+    const injMgrSearchRef = { current: '' }           // 搜索框即时值镜像（防抖回调读 ref 防闭包过期；plain object 与 useRef 等价——面板为 shell.overlay 单例）
+    const injMgrSearchDebRef = { current: null }      // 防抖句柄镜像
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setInjMgrOpen(v) { const nv = typeof v === 'function' ? v(injMgrOpenRef.current) : v; injMgrOpenRef.current = nv; store.modal.injMgr.set({ open: nv }) }
+    function setInjMgrList(v) { store.modal.injMgr.set({ list: typeof v === 'function' ? v(store.modal.injMgr.get().list) : v }) }
+    function setInjMgrFilter(v) { store.modal.injMgr.set({ filter: typeof v === 'function' ? v(store.modal.injMgr.get().filter) : v }) }
+    function setInjMgrSearch(v) { store.modal.injMgr.set({ search: typeof v === 'function' ? v(store.modal.injMgr.get().search) : v }) }
+    function setInjMgrQ(v) { store.modal.injMgr.set({ q: typeof v === 'function' ? v(store.modal.injMgr.get().q) : v }) }
+    function setInjMgrSel(v) { store.modal.injMgr.set({ sel: typeof v === 'function' ? v(store.modal.injMgr.get().sel) : v }) }
+    function setInjMgrPending(v) { store.modal.injMgr.set({ pending: typeof v === 'function' ? v(store.modal.injMgr.get().pending) : v }) }
+    // ===== 注入管理面板（设置卡片「注入管理」入口；notes-inject-manager）：全库注入总览 + 单行直改 + 多选批量 =====
+    // 契约：数据源 notes-list {includeLogs:true} slim（inject/injectRole/injectEver/sensitive/kind/injectTo 齐备，零新 RPC）；
+    // 三态语义与详情区三态分段控件完全一致：off→notes-update {inject:false}；约定/资料→{inject:true, injectRole}（payload 禁 undefined）；
+    // 护栏：kind=log 注入硬禁（勾选/档位禁用 + tooltip；host 侧同口径强制 inject=false 并回 injectForcedOff）；
+    //       sensitive 允许注入但行内提示「注入时自动脱敏」；排序：注入中在前（约定>资料），组内 updatedAt 降序。
+    function openInjectManager() {
+      setInjMgrList(null); setInjMgrFilter('all'); setInjMgrSearch(''); setInjMgrQ(''); setInjMgrSel({}); setInjMgrPending(false); setError('')
+      injMgrSearchRef.current = ''
+      panelBridge.setSettingsOpen(false); setInjMgrOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入/注入预览同款）
+      loadInjectManager()
+    }
+    function loadInjectManager() {
+      rpc('notes-list', { includeLogs: true }).then(res => {
+        if (res && res.error) { setError(res.error); setInjMgrList([]); return }
+        setInjMgrList((res && res.notes) || [])
+      }).catch(err => { setError(String(err.message || err)); setInjMgrList([]) })
+    }
+    // 笔记三态（与详情区同口径）：inject=true → injectRole（缺省 convention）；否则 off
+    function injMgrRole(n) { return n.inject === true ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off' }
+    // 作用域摘要（injectTo 数；缺省/存量 global·workspace 值 = 全局）
+    function injMgrScopeLabel(injectTo) { const arr = (injectTo || []).filter(t => t !== 'global' && t !== 'workspace'); return arr.length === 0 ? '全局' : arr.length + ' 个会话' }
+    // 注入管理面板宿主（设置卡片「注入管理」入口；mask/modal 复用设置卡片风格；notes-inject-manager）：
+    // 顶部统计 chips（约定 N / 资料 M / 未注入 K，点击=过滤）+ 搜索框（250ms 防抖）+ 批量条（全选/已选计数/设为约定/设为资料/关闭注入）
+    // + 总览列表（行 = 勾选 + kind 色点 + 标题 + 敏感提示 + 曾注入徽章 + 作用域摘要 + 三态 segmented；注入中在前（约定>资料），组内 updatedAt 降序）
+    function InjMgrModal(props) {
+      const injMgrOpen = store.modal.injMgr.useSel(s => s.open)
+      const injMgrList = store.modal.injMgr.useSel(s => s.list)
+      const injMgrFilter = store.modal.injMgr.useSel(s => s.filter)
+      const injMgrSearch = store.modal.injMgr.useSel(s => s.search)
+      const injMgrQ = store.modal.injMgr.useSel(s => s.q)
+      const injMgrSel = store.modal.injMgr.useSel(s => s.sel)
+      const injMgrPending = store.modal.injMgr.useSel(s => s.pending)
+      const error = props.error
+      // 注入管理面板搜索防抖（250ms，与列表搜索同口径）：输入即更新受控值，防抖后才落过滤词 injMgrQ
+      React.useEffect(() => {
+        const d = timer.debounce(() => setInjMgrQ(injMgrSearchRef.current.trim().toLowerCase()), 250)
+        injMgrSearchDebRef.current = d
+        return () => { if (d && d.dispose) d.dispose() }
+      }, [])
+      // 单行直改：点 segmented 档位即切换（同详情区通道 notes-update {inject, injectRole}），toast 反馈
+      async function doInjMgrSet(n, role) {
+        if (!n || injMgrPending) return
+        if ((n.kind || 'note') === 'log' && role !== 'off') return   // 日志隐身硬禁（按钮已禁用，双保险）
+        if (injMgrRole(n) === role) return
+        setError('')
+        const upd = { id: n.id, inject: role !== 'off' }
+        if (upd.inject) upd.injectRole = role   // 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘）
+        try {
+          const res = await rpc('notes-update', upd)
+          if (res && res.error) { setError(res.error); return }
+          if (res && res.injectForcedOff) showToast('「' + (n.title || n.id) + '」日志默认隐身：inject 已强制关闭')
+          else showToast(role === 'off' ? '已关闭注入：' + (n.title || n.id) : '已设为' + (role === 'reference' ? '资料' : '约定') + '：' + (n.title || n.id))
+          // 本地即时回写（injectEver 粘性：开启即曾注入），后台刷新对齐 host
+          setInjMgrList(prev => (prev || []).map(x => x.id === n.id ? Object.assign({}, x, role === 'off' ? { inject: false } : { inject: true, injectRole: role, injectEver: true }) : x))
+          panelBridge.loadNotes(true); notifyNotesChanged()
+        } catch (err) { setError(String(err.message || err)) }
+      }
+      // 多选：log 行不可选（隐身硬禁——批量三档位对日志无意义）
+      function toggleInjMgrSel(id) { setInjMgrSel(prev => { const nx = Object.assign({}, prev); if (nx[id]) delete nx[id]; else nx[id] = true; return nx }) }
+      // 批量设为约定/资料/关闭：confirm 条数 → 逐条 notes-update（单条失败计数不中断）；完成后清选 + 刷新
+      async function doInjMgrBatch(role) {
+        const ids = Object.keys(injMgrSel)
+        if (!ids.length || injMgrPending) return
+        const label = role === 'off' ? '关闭注入' : ('设为' + (role === 'reference' ? '资料' : '约定'))
+        if (!window.confirm('批量' + label + '：所选的 ' + ids.length + ' 条笔记将' + (role === 'off' ? '关闭上下文注入。' : '注入为' + (role === 'reference' ? '资料（按需取用）。' : '约定（须遵守）。')) + '\n确认执行？')) return
+        setInjMgrPending(true); setError('')
+        let ok = 0, fail = 0
+        for (const id of ids) {
+          const upd = { id: id, inject: role !== 'off' }
+          if (upd.inject) upd.injectRole = role
+          try { const res = await rpc('notes-update', upd); if (res && res.error) fail++; else ok++ }
+          catch (err) { fail++ }
+        }
+        setInjMgrPending(false); setInjMgrSel({})
+        showToast('已' + label + ' ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''))
+        loadInjectManager(); panelBridge.loadNotes(true); notifyNotesChanged()
+      }
+      return injMgrOpen ? (() => {
+        const listAll = injMgrList || []
+        let cntConv = 0, cntRef = 0, cntOff = 0
+        listAll.forEach(n => { const r = injMgrRole(n); if (r === 'convention') cntConv++; else if (r === 'reference') cntRef++; else cntOff++ })
+        // 排序：注入中在前（约定 > 资料 > 未注入），组内 updatedAt 降序
+        const injMgrWeight = { convention: 0, reference: 1, off: 2 }
+        let shown = listAll.slice().sort((a, b) => (injMgrWeight[injMgrRole(a)] - injMgrWeight[injMgrRole(b)]) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+        if (injMgrFilter !== 'all') shown = shown.filter(n => injMgrRole(n) === injMgrFilter)
+        if (injMgrQ) shown = shown.filter(n => (n.title || '').toLowerCase().indexOf(injMgrQ) >= 0 || (n.topic || '').toLowerCase().indexOf(injMgrQ) >= 0 || (n.tags || []).join(' ').toLowerCase().indexOf(injMgrQ) >= 0)
+        const selectable = shown.filter(n => (n.kind || 'note') !== 'log')   // log 行不可选（隐身硬禁）
+        const selCnt = Object.keys(injMgrSel).length
+        const allChecked = selectable.length > 0 && selectable.every(n => injMgrSel[n.id])
+        const chipBtn = (f, label) => e('button', { key: f, className: 'dsh-notes-injmgr-chip' + (injMgrFilter === f ? ' on' : ''), onClick: () => setInjMgrFilter(f) }, label)
+        // 行内三态 segmented（语义与详情区三态分段控件完全一致）；log 行约定/资料档禁用（隐身硬禁 + tooltip）
+        const segOpt = (n, role, r, label, tip) => {
+          const dis = (n.kind || 'note') === 'log' && r !== 'off'
+          return e('span', { key: r, className: 'dsh-notes-injmgr-opt dsh-nt' + (role === r ? ' on' : '') + (dis ? ' dis' : ''), 'data-tooltip': dis ? '日志默认隐身：inject 强制关闭（kind=log 硬禁）' : tip, onClick: () => { if (!dis) doInjMgrSet(n, r) } }, label)
+        }
+        return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !injMgrPending) setInjMgrOpen(false) } },
+          e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-injmgr-modal' },
+            e('div', { className: 'dsh-notes-settings-modal-t' }, I('bolt', 14), ' 注入管理', e('span', { className: 'dsh-notes-imgup-sub' }, '全库注入总览 · 单行直改 / 多选批量 · 日志隐身硬禁')),
+            e('div', { className: 'dsh-notes-injmgr-bar' },
+              e('div', { className: 'dsh-notes-injmgr-chips' },
+                chipBtn('all', '全部 ' + listAll.length), chipBtn('convention', '约定 ' + cntConv), chipBtn('reference', '资料 ' + cntRef), chipBtn('off', '未注入 ' + cntOff)),
+              e('input', { className: 'dsh-notes-injmgr-search', placeholder: '搜索标题 / 主题 / 标签…', value: injMgrSearch, onChange: (ev) => { injMgrSearchRef.current = ev.target.value; setInjMgrSearch(ev.target.value); if (injMgrSearchDebRef.current) injMgrSearchDebRef.current() } })),
+            injMgrList === null
+              ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
+              : shown.length === 0
+                ? e('div', { className: 'dsh-notes-data-hint' }, listAll.length ? '无匹配笔记（调整过滤或搜索词）。' : '笔记库为空。')
+                : e(React.Fragment, null,
+                    e('div', { className: 'dsh-notes-injmgr-batch' },
+                      e('label', { className: 'dsh-notes-trash-all' },
+                        e('input', { type: 'checkbox', className: 'dsh-notes-trash-check', checked: allChecked, disabled: injMgrPending || selectable.length === 0, onChange: () => {
+                          const nx = {}
+                          if (!allChecked) selectable.forEach(n => { nx[n.id] = true })
+                          setInjMgrSel(nx)
+                        } }),
+                        '全选'),
+                      e('span', { className: 'dsh-notes-trash-selcnt' }, '已选 ' + selCnt + ' 条'),
+                      e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('convention'), disabled: injMgrPending || selCnt < 1 }, '设为约定'),
+                      e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('reference'), disabled: injMgrPending || selCnt < 1 }, '设为资料'),
+                      e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('off'), disabled: injMgrPending || selCnt < 1 }, injMgrPending ? '执行中…' : '关闭注入')),
+                    e('div', { className: 'dsh-notes-injmgr-list' },
+                      shown.map(n => {
+                        const role = injMgrRole(n)
+                        const isLog = (n.kind || 'note') === 'log'
+                        return e('div', { key: n.id, className: 'dsh-notes-injmgr-row' },
+                          e('span', { className: isLog ? 'dsh-nt' : '', 'data-tooltip': isLog ? '日志默认隐身：inject 强制关闭，不参与注入批量操作' : null },
+                            e('input', { type: 'checkbox', className: 'dsh-notes-trash-check', checked: !!injMgrSel[n.id], disabled: isLog || injMgrPending, onChange: () => toggleInjMgrSel(n.id) })),
+                          e('span', { className: 'dsh-notes-kind-dot', style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' } }),
+                          e('span', { className: 'dsh-notes-injmgr-ti', title: n.title || '无标题' }, n.title || '无标题'),
+                          n.sensitive === true ? e('span', { className: 'dsh-notes-injmgr-sens dsh-nt', 'data-tooltip': '敏感笔记：注入时自动脱敏（正文按行打码，键保留值遮蔽）' }, I('lock', 9), '注入时自动脱敏') : null,
+                          n.injectEver === true && !n.inject ? e('span', { className: 'dsh-notes-injmgr-ever dsh-nt', 'data-tooltip': '曾注入：历史上开启过上下文注入（现已关闭；injectEver 为粘性标记，不随关闭回退）' }, I('clock', 9), '曾注入') : null,
+                          e('span', { className: 'dsh-notes-injmgr-scope' }, injMgrScopeLabel(n.injectTo)),
+                          e('span', { className: 'dsh-notes-injmgr-seg' }, I('bolt', 10),
+                            segOpt(n, role, 'off', '关闭', '不注入系统提示'),
+                            segOpt(n, role, 'convention', '约定', '须遵守的行为规则'),
+                            segOpt(n, role, 'reference', '资料', '事实性补充信息，Agent 按需取用')))
+                      }))),                error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+            e('div', { className: 'dsh-notes-dispatch-actions' },
+              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setInjMgrOpen(false), disabled: injMgrPending }, '关闭'))))
+      })()
+      : null
+    }
+    // ===== modal: suggest —— 整理建议对话框（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
+    // provides: store.modal.suggest / suggestOpenRef / setSuggestOpen / setSuggestData / setSuggestPending / setLogHgExpand /
+    //           openSuggest / loadSuggest / suggestGoArchive / suggestViewNote / SuggestModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError/jumpToWikiTarget 别名）、kernel/format.js（fmtBytes）、
+    //        kernel/icons.js（e/I）、kernel/bus.js（showToast/notifyNotesChanged）、modals/archive.js（openArchive，序位在前可见）
+    // state 托管：open/data/pending/logHgExpand 迁入 store.modal.suggest 切片；suggestOpenRef 为 Esc 栈同步镜像（模块级单例）；
+    // 「去归档」直调 archive 模块 openArchive（同域序位共享）；孤儿「查看」经 kernel jumpToWikiTarget 转发别名；
+    // 批量软删收尾（afterArchiveCleanup/loadNotes）经 panelBridge 中转；与设置卡片互斥经 panelBridge.setSettingsOpen 中转
+    store.modal.suggest = createStore({ open: false, data: null, pending: false, logHgExpand: {} })
+    const suggestOpenRef = { current: false }   // 整理建议对话框镜像（Esc 优先关）
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setSuggestOpen(v) { const nv = typeof v === 'function' ? v(suggestOpenRef.current) : v; suggestOpenRef.current = nv; store.modal.suggest.set({ open: nv }) }
+    function setSuggestData(v) { store.modal.suggest.set({ data: typeof v === 'function' ? v(store.modal.suggest.get().data) : v }) }
+    function setSuggestPending(v) { store.modal.suggest.set({ pending: typeof v === 'function' ? v(store.modal.suggest.get().pending) : v }) }
+    function setLogHgExpand(v) { store.modal.suggest.set({ logHgExpand: typeof v === 'function' ? v(store.modal.suggest.get().logHgExpand) : v }) }
+    // ===== 整理建议（设置卡片「整理建议」行入口）：notes-suggest（dry-run 零写入）四段式 modal =====
+    // 契约：{ archiveCandidates:速记组（结构与 notes-archive-preview 同源）, staleCandidates:过期未引用, orphanCandidates:孤儿（仅展示）, logHygieneCandidates:{weekly,monthly}:日志卫生（工作记忆 v0，仅展示明细）, generatedAt }
+    // 红线：只提名不自动执行——速记组「去归档」直达归档预览对话框；过期未引用「一键批量软删除」window.confirm 后才逐条 notes-delete（软删可恢复）；
+    // 孤儿候选是启发式判定（可能误伤），不提供批量操作，逐条跳转人工过目；日志卫生 v0 仅展开明细（聚合执行留待 Phase 2，日志只聚合不淘汰）。
+    function openSuggest() {
+      setSuggestData(null); setSuggestPending(false); setError('')
+      panelBridge.setSettingsOpen(false); setSuggestOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
+      loadSuggest()
+    }
+    function loadSuggest() {
+      const empty = { archiveCandidates: [], staleCandidates: [], orphanCandidates: [], logHygieneCandidates: { weekly: [], monthly: [] } }
+      rpc('notes-suggest', {}).then(res => {
+        if (res && res.error) { setError(res.error); setSuggestData(empty); return }
+        setSuggestData(res || empty)
+      }).catch(err => { setError(String(err.message || err)); setSuggestData(empty) })
+    }
+    // 速记组「去归档」：关建议框 → 复用归档预览对话框（数据同源，勾选/执行/撤销链路不变）
+    function suggestGoArchive() { setSuggestOpen(false); openArchive() }
+    // 孤儿「查看」：关建议框 → 双链跳转同款（目标被当前视图/kind/置顶过滤藏掉时退回「全部」再选中）
+    function suggestViewNote(id) { setSuggestOpen(false); jumpToWikiTarget(id) }
+    // 整理建议对话框宿主（设置卡片「整理建议」行入口；复用归档预览的列表样式）：
+    // 四段式——① 可整理的速记组（「去归档」直达归档预览对话框，数据与 notes-archive-preview 同源）
+    //          ② 过期未引用（超 staleDays 且 useCount=0；「一键批量软删除」confirm 后才逐条 notes-delete）
+    //          ③ 可能无用（孤儿候选：启发式判定可能误伤，仅展示逐条「查看」跳转，不提供批量操作）
+    //          ④ 日志卫生（工作记忆 v0：超窗日志 周/月 聚合提名——只提名不执行，v0 「明细」展开逐条「查看」）
+    function SuggestModal(props) {
+      const suggestOpen = store.modal.suggest.useSel(s => s.open)
+      const suggestData = store.modal.suggest.useSel(s => s.data)
+      const suggestPending = store.modal.suggest.useSel(s => s.pending)
+      const logHgExpand = store.modal.suggest.useSel(s => s.logHgExpand)
+      const error = props.error
+      // 过期未引用一键批量软删：confirm 确认后才执行；逐条 notes-delete（host 软删，回收站可恢复）；
+      // 删后刷新建议数据（三段联动，全空 → 空态文案）+ 列表
+      async function doSuggestBatchDelete() {
+        const list = (suggestData && suggestData.staleCandidates) || []
+        if (!list.length || suggestPending) return
+        if (!window.confirm('一键批量软删除：' + list.length + ' 条过期且从未被引用的笔记将移入回收站（可恢复）。\n确认删除？')) return
+        setSuggestPending(true); setError('')
+        let ok = 0, fail = 0
+        for (const n of list) {
+          try { const res = await rpc('notes-delete', { id: n.id }); if (res && res.error) fail++; else ok++ }
+          catch (err) { fail++ }
+        }
+        setSuggestPending(false)
+        showToast('已软删除 ' + ok + ' 条（回收站可恢复）' + (fail ? '，失败 ' + fail + ' 条' : ''))
+        panelBridge.afterArchiveCleanup(list.map(n => n.id))   // 正打开的笔记在被删集合中则退出选中态（归档收尾同款语义）
+        await panelBridge.loadNotes(true); notifyNotesChanged()
+        loadSuggest()
+      }
+      return suggestOpen ? (() => {
+        const d = suggestData
+        const arch = (d && d.archiveCandidates) || []
+        const stale = (d && d.staleCandidates) || []
+        const orphans = (d && d.orphanCandidates) || []
+        // 工作记忆 v0 日志卫生（第四段）：周聚合/月聚合两组提名（只提名不执行——v0 仅展示明细，聚合执行留待 Phase 2）
+        const logHg = (d && d.logHygieneCandidates) || { weekly: [], monthly: [] }
+        const logHgGroups = logHg.weekly.map(g => ({ g: g, tier: '周聚合' })).concat(logHg.monthly.map(g => ({ g: g, tier: '月聚合' })))
+        const allEmpty = d !== null && arch.length === 0 && stale.length === 0 && orphans.length === 0 && logHgGroups.length === 0
+        return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !suggestPending) setSuggestOpen(false) } },
+          e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-arch-modal dsh-notes-suggest-modal' },
+            e('div', { className: 'dsh-notes-settings-modal-t' }, I('sparkle', 14), ' 整理建议', e('span', { className: 'dsh-notes-imgup-sub' }, '只提名不自动执行 · 软删除可恢复')),
+            d === null
+              ? e('div', { className: 'dsh-notes-data-hint' }, '分析中…')
+              : allEmpty
+                ? e('div', { className: 'dsh-notes-data-hint' }, '库很干净，无需整理。')
+                : e(React.Fragment, null,
+                    e('div', { className: 'dsh-notes-suggest-sec' },
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, '可整理的速记组', e('span', { className: 'dsh-notes-suggest-sec-n' }, arch.length + ' 组'),
+                        arch.length ? e('button', { className: 'dsh-notes-trash-act', onClick: suggestGoArchive }, '去归档') : null),
+                      arch.length
+                        ? e('div', { className: 'dsh-notes-arch-list' },
+                            arch.map(g => {
+                              const span = g.dateSpan && g.dateSpan.from ? (g.dateSpan.from === g.dateSpan.to ? g.dateSpan.from : g.dateSpan.from + ' ~ ' + g.dateSpan.to) : ''
+                              return e('div', { key: g.sessionId, className: 'dsh-notes-arch-row' },
+                                e('span', { className: 'dsh-notes-arch-ti', title: g.title }, g.title),
+                                e('span', { className: 'dsh-notes-arch-meta' }, span + ' · ' + g.members.length + ' 条 · ' + fmtBytes(g.totalBytes) + ((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : '')))
+                            }))
+                        : e('div', { className: 'dsh-notes-data-hint' }, '没有可归档的速记组（同一会话 ≥2 条速记才会成组）。')),
+                    e('div', { className: 'dsh-notes-suggest-sec' },
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, '过期未引用', e('span', { className: 'dsh-notes-suggest-sec-n' }, stale.length + ' 条'),
+                        stale.length ? e('button', { className: 'dsh-notes-trash-act danger', onClick: doSuggestBatchDelete, disabled: suggestPending }, suggestPending ? '删除中…' : '一键批量软删除') : null),
+                      stale.length
+                        ? e('div', { className: 'dsh-notes-arch-list' },
+                            stale.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
+                              e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
+                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || '未分类') + ' · ' + n.staleDays + ' 天未更新'))))
+                        : e('div', { className: 'dsh-notes-data-hint' }, '没有过期且从未被引用的笔记。')),
+                    e('div', { className: 'dsh-notes-suggest-sec' },
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, '可能无用', e('span', { className: 'dsh-notes-suggest-sec-n' }, orphans.length + ' 条')),
+                      orphans.length
+                        ? e('div', { className: 'dsh-notes-arch-list' },
+                            orphans.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
+                              e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
+                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || '未分类') + ' · ' + (n.updatedAt ? String(n.updatedAt).slice(0, 10) : '—')),
+                              e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(n.id) }, '查看'))))
+                        : e('div', { className: 'dsh-notes-data-hint' }, '没有孤儿笔记（无双链关联且从未被引用）。')),
+                    // ④ 日志卫生（工作记忆 v0 裁决 B②：超窗旧日志两级聚合提名——只提名不执行，v0 展开明细逐条过目）
+                    e('div', { className: 'dsh-notes-suggest-sec' },
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, '日志卫生', e('span', { className: 'dsh-notes-suggest-sec-n' }, logHgGroups.length + ' 组')),
+                      logHgGroups.length
+                        ? e('div', { className: 'dsh-notes-arch-list' },
+                            logHgGroups.map(({ g, tier }) => e(React.Fragment, { key: tier + g.key },
+                              e('div', { className: 'dsh-notes-arch-row' },
+                                e('span', { className: 'dsh-notes-arch-ti', title: g.title }, g.title),
+                                e('span', { className: 'dsh-notes-arch-meta' }, tier + ' · ' + g.members.length + ' 条'),
+                                e('button', { className: 'dsh-notes-trash-act', onClick: () => setLogHgExpand(prev => { const nx = Object.assign({}, prev); if (nx[tier + g.key]) delete nx[tier + g.key]; else nx[tier + g.key] = true; return nx }) }, logHgExpand[tier + g.key] ? '收起' : '明细')),
+                              logHgExpand[tier + g.key] ? e('div', { className: 'dsh-notes-arch-list' },
+                                g.members.map(m => e('div', { key: m.id, className: 'dsh-notes-arch-row' },
+                                  e('span', { className: 'dsh-notes-arch-ti', title: m.title || 'Untitled' }, m.title || 'Untitled'),
+                                  e('span', { className: 'dsh-notes-arch-meta' }, (m.logDate || '—') + (m.sessionId ? ' · 会话 ' + String(m.sessionId).replace(/^session-/, '').slice(0, 8) : '')),
+                                  e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(m.id) }, '查看')))) : null)))
+                        : e('div', { className: 'dsh-notes-data-hint' }, '没有待聚合的工作日志（超窗日志按 工作区×周/月 归组，同组 ≥2 条才提名）。')),
+                    e('div', { className: 'dsh-notes-data-hint' }, '判定口径：过期 = 超过时效阈值（设置卡片可调）且从未被引用；可能无用 = 无 [[双链]] 关联、未注入、从未被引用的进行中普通笔记（启发式，请逐条过目）。日志卫生 = 超 7 天周聚合 / 超 90 天月聚合提名（设置卡片「工作记忆」区可调窗口）；日志只聚合不淘汰，永不进过期/孤儿候选；v0 仅展示明细，一键合并将在后续版本提供。')),
+            error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+            e('div', { className: 'dsh-notes-dispatch-actions' },
+              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setSuggestOpen(false), disabled: suggestPending }, '关闭'))))
+      })()
+      : null
+    }
+    // ===== modal: memory-guide —— 工作记忆启用沉淀引导对话框（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
+    // provides: store.modal.memory / memOpenRef / setMemStatus / setMemOpen / setMemScope / setMemWsPick / setMemSidPick / setMemPending /
+    //           memScopeResolve / openMemEnable / doMemEnable / doMemDisable / memViewNote / MemoryGuideModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError/jumpToWikiTarget 别名）、kernel/icons.js（e/I）、kernel/bus.js（showToast/notifyNotesChanged）
+    // state 托管：status/open/scope/wsPick/sidPick/pending 迁入 store.modal.memory 切片；memOpenRef 为 Esc 栈同步镜像（模块级单例）；
+    // 作用域解析/多选清单数据源（sessList/sessPending）属面板域：渲染期经 props 注入，动作期经 panelBridge 中转（禁横向引用）；
+    // 「查看约定」跳转经 kernel jumpToWikiTarget 转发别名；与设置卡片互斥经 panelBridge.setSettingsOpen 中转；
+    // memStatus 同时供 settings 模块状态行订阅（序位在前的本模块顶层绑定对 settings.js 可见）
+    store.modal.memory = createStore({ status: null, open: false, scope: 'global', wsPick: {}, sidPick: {}, pending: false })
+    const memOpenRef = { current: false }   // 工作记忆启用对话框镜像（Esc 优先关）
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setMemStatus(v) { store.modal.memory.set({ status: typeof v === 'function' ? v(store.modal.memory.get().status) : v }) }
+    function setMemOpen(v) { const nv = typeof v === 'function' ? v(memOpenRef.current) : v; memOpenRef.current = nv; store.modal.memory.set({ open: nv }) }
+    function setMemScope(v) { store.modal.memory.set({ scope: typeof v === 'function' ? v(store.modal.memory.get().scope) : v }) }
+    function setMemWsPick(v) { store.modal.memory.set({ wsPick: typeof v === 'function' ? v(store.modal.memory.get().wsPick) : v }) }
+    function setMemSidPick(v) { store.modal.memory.set({ sidPick: typeof v === 'function' ? v(store.modal.memory.get().sidPick) : v }) }
+    function setMemPending(v) { store.modal.memory.set({ pending: typeof v === 'function' ? v(store.modal.memory.get().pending) : v }) }
+    // ===== 工作记忆 v0（设置卡片「工作记忆」区，r3 车道模型）：启用沉淀引导 = 创建预填约定笔记（contractType: memory-guide 身份标记 + tag 兼容发现键，inject=true + 作用域三档）=====
+    // 车道并行语义：记忆车道与约定车道并行不互斥（无冲突确认闸门）；启用状态不落 settings.json（host 单一事实源 = 存在 contractType=memory-guide 且 inject=true 的笔记）；停用 = 关闭该约定 inject
+    // 作用域三档解析（injectTo 落值语义不变：[] = 所有会话；会话短 id 数组 = 仅限这些会话——无「工作区」维度，
+    // 指定工作区档展开为所选工作区全部会话短 id 的并集。全局视角多选清单：sessList + pending 占位会话，数据源 notes-sessions）
+    function memScopeResolve() {
+      const memScope = store.modal.memory.get().scope
+      const memWsPick = store.modal.memory.get().wsPick
+      const memSidPick = store.modal.memory.get().sidPick
+      const sessList = panelBridge.sessList || []
+      const sessPending = panelBridge.sessPending || []
+      if (memScope === 'global') return []
+      if (memScope === 'session') return Object.keys(memSidPick)
+      // workspace 档：属于所选工作区的全部会话短 id（并集去重）
+      const ids = []
+      for (const s of sessList.concat(sessPending)) {
+        if (s && s.workspace && memWsPick[s.workspace] && s.short && ids.indexOf(s.short) < 0) ids.push(s.short)
+      }
+      return ids
+    }
+    // 启用入口（r3 车道模型）：对话框 = 车道说明文案 + 作用域三档多选；不再有 op:'check' 重叠扫描与冲突确认——
+    // enable 幂等直建（已启用返回 already:true，toast 提示现状）
+    function openMemEnable() {
+      setMemScope('global'); setMemWsPick({}); setMemSidPick({}); setMemPending(false); setError('')
+      panelBridge.setSettingsOpen(false); setMemOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
+    }
+    async function doMemEnable() {
+      const memPending = store.modal.memory.get().pending
+      const memScope = store.modal.memory.get().scope
+      const memWsPick = store.modal.memory.get().wsPick
+      const memSidPick = store.modal.memory.get().sidPick
+      if (memPending) return
+      // 多选档校验：至少勾 1 项（指定工作区档解析为空 = 所选工作区暂无有效会话，同样拦截）
+      if (memScope === 'workspace' && !Object.keys(memWsPick).length) { setError('「指定工作区」需至少勾选 1 个工作区（或改选所有会话）'); return }
+      if (memScope === 'session' && !Object.keys(memSidPick).length) { setError('「指定会话」需至少勾选 1 个会话（或改选所有会话）'); return }
+      const scope = memScopeResolve()
+      if (memScope !== 'global' && !scope.length) { setError('所选范围暂无可注入会话（请先在其中打开会话）'); return }
+      setMemPending(true); setError('')
+      try {
+        const res = await rpc('notes-memory-guide', { op: 'enable', scope: memScopeResolve() })
+        if (res && res.error) { setError(res.error); return }
+        setMemOpen(false)
+        showToast(res && res.already ? '沉淀引导已启用（约定笔记已存在）' : '已启用沉淀引导：约定笔记已创建并注入')
+        setMemStatus({ enabled: true, noteId: res && res.id || '' })
+        panelBridge.loadNotes(true); notifyNotesChanged()
+      } catch (err) { setError(String(err.message || err)) } finally { setMemPending(false) }
+    }
+    // 停用 = 关闭引导约定笔记 inject（笔记保留可再启用；彻底退出可在面板删除该笔记）
+    async function doMemDisable() {
+      const memPending = store.modal.memory.get().pending
+      if (memPending) return
+      setMemPending(true); setError('')
+      try {
+        const res = await rpc('notes-memory-guide', { op: 'disable' })
+        if (res && res.error) { setError(res.error); return }
+        showToast(res && res.disabled ? '已停用沉淀引导（约定笔记保留，inject 已关闭）' : '当前未启用沉淀引导')
+        setMemStatus(prev => Object.assign({}, prev || {}, { enabled: false }))
+        panelBridge.loadNotes(true); notifyNotesChanged()
+      } catch (err) { setError(String(err.message || err)) } finally { setMemPending(false) }
+    }
+    // 「查看约定」：关设置卡片 → 双链跳转同款选中引导笔记（被过滤藏掉时退回「全部」）
+    function memViewNote() { const memStatus = store.modal.memory.get().status; if (memStatus && memStatus.noteId) { panelBridge.setSettingsOpen(false); jumpToWikiTarget(memStatus.noteId) } }
+    // 工作记忆 v0 启用沉淀引导对话框宿主（设置卡片「工作记忆」区入口；mask/modal 复用设置卡片风格；r3 车道模型）：
+    // 车道说明文案（并行通道，无冲突确认）→ 作用域三档（全局视角挑选：所有会话 / 指定工作区多选 / 指定会话多选，数据源 notes-sessions）→ 确认启用（op:'enable' 幂等直建）
+    function MemoryGuideModal(props) {
+      const memOpen = store.modal.memory.useSel(s => s.open)
+      const memScope = store.modal.memory.useSel(s => s.scope)
+      const memWsPick = store.modal.memory.useSel(s => s.wsPick)
+      const memSidPick = store.modal.memory.useSel(s => s.sidPick)
+      const memPending = store.modal.memory.useSel(s => s.pending)
+      const error = props.error
+      const sessList = props.sessList || []
+      const sessPending = props.sessPending || []
+      return memOpen ? (() => {
+        // 多选清单数据源：sessList + pending 占位会话；工作区清单 = 会话 workspace 字段去重（全局视角：可挑任意工作区/会话，不以「当前」为基准）
+        const memSessAll = sessList.concat(sessPending)
+        const memWsList = []
+        for (const s of memSessAll) { if (s && s.workspace && memWsList.indexOf(s.workspace) < 0) memWsList.push(s.workspace) }
+        const scopeOpt = (id, label, tip) => e('label', { key: id, className: 'dsh-notes-scope-item dsh-nt', 'data-tooltip': tip, style: { display: 'flex', gap: 6, padding: '3px 2px', cursor: 'pointer' } },
+          e('input', { type: 'radio', name: 'dsh-notes-mem-scope', checked: memScope === id, onChange: () => setMemScope(id) }), label)
+        const pickItem = (key, checked, onToggle, label) => e('label', { key: key, className: 'dsh-notes-scope-item', style: { display: 'flex', gap: 6, padding: '2px 2px', cursor: 'pointer' } },
+          e('input', { type: 'checkbox', checked: checked, onChange: onToggle }), label)
+        const togglePick = (setFn, key) => setFn(prev => { const next = Object.assign({}, prev); if (next[key]) delete next[key]; else next[key] = true; return next })
+        return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !memPending) setMemOpen(false) } },
+          e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
+            e('div', { className: 'dsh-notes-settings-modal-t' }, I('bolt', 14), ' 启用沉淀引导', e('span', { className: 'dsh-notes-imgup-sub' }, '工作记忆 v0 · 约定笔记方案')),
+            e('div', { className: 'dsh-notes-data-hint' }, '将创建一条预填约定笔记「约定：工作日志沉淀（工作记忆 v0）」（inject=true，contractType: memory-guide），引导 Agent 在任务收尾/你示意时把会话结论写为工作日志（kind=log）。工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看），记忆管 Agent 自己沉淀什么（自用召回），两者可同时对同一事件生效，产物重复是设计意图而非冲突。日志默认隐身：不进系统提示、不进目录、不出现在默认列表与默认搜索；筛选中心类型「日志」为专入口。该约定可见/可改/可停用/可删除。'),
+            e('div', { className: 'dsh-notes-suggest-sec' },
+              e('div', { className: 'dsh-notes-suggest-sec-t' }, '注入范围（作用域）'),
+              scopeOpt('global', '所有会话（缺省）', 'injectTo=[]：任何会话的系统提示都注入该约定'),
+              scopeOpt('workspace', '指定工作区（多选）', '展开为所选工作区全部会话的短 id 清单（injectTo 无工作区维度）'),
+              memScope === 'workspace' ? e('div', { style: { maxHeight: 120, overflow: 'auto', margin: '2px 0 4px 20px' } },
+                memWsList.length
+                  ? memWsList.map(w => pickItem(w, !!memWsPick[w], () => togglePick(setMemWsPick, w), w + '（' + memSessAll.filter(s => s.workspace === w).length + ' 个会话）'))
+                  : e('div', { className: 'dsh-notes-data-hint' }, '没有可选工作区')) : null,
+              scopeOpt('session', '指定会话（多选）', 'injectTo=[勾选的会话短 id]：只有这些会话注入该约定'),
+              memScope === 'session' ? e('div', { style: { maxHeight: 160, overflow: 'auto', margin: '2px 0 4px 20px' } },
+                memSessAll.length
+                  ? memSessAll.map(s => pickItem(s.short, !!memSidPick[s.short], () => togglePick(setMemSidPick, s.short), s.short + (s.name ? ' · ' + s.name : '') + (s.workspace ? '（' + s.workspace + '）' : '')))
+                  : e('div', { className: 'dsh-notes-data-hint' }, '没有可选会话')) : null),
+            error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+            e('div', { className: 'dsh-notes-dispatch-actions' },
+              e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setMemOpen(false), disabled: memPending }, '取消'),
+              e('button', { className: 'dsh-notes-dispatch-ok', onClick: doMemEnable, disabled: memPending }, memPending ? '启用中…' : '确认启用'))))
+      })()
+      : null
+    }
+    // ===== modal: dispatch —— 派发待办对话框（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
+    // provides: store.modal.dispatch / dispatchOpenRef / setDispatchOpen / setActiveSessions / setDispatchPending / setDispatching /
+    //           setDispatchMode / setDispatchInstr / setDispatchWsId / setDispatchSessWs / setDispatchSessId / setWsList /
+    //           loadActiveSessions / loadWorkspaces / openDispatch / doDispatchConfirm / doDispatchDone / DispatchModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError 别名/selectedRef）、kernel/icons.js（e/I）、
+    //        kernel/bus.js（showToast/notifyNotesChanged）、kernel/bootstrap.js（timer/sessions/workspaces 服务接入）
+    // state 托管：open/activeSessions/pending/dispatching/mode/instr/wsId/sessWs/sessId/wsList 迁入 store.modal.dispatch 切片；
+    // dispatchOpenRef 为 titlesPending 轮询终止条件的同步镜像（模块级单例）；轮询调度经 panelBridge.later（面板 timersRef 统一簿记/dispose）；
+    // 当前选中笔记 id 读 kernel selectedRef（渲染期镜像）；确认后正文回填/列表刷新经 panelBridge.setEdBody/loadNotes 中转（禁横向引用）
+    store.modal.dispatch = createStore({ open: false, activeSessions: [], pending: [], dispatching: false, mode: 'existing', instr: '', wsId: '', sessWs: '', sessId: '', wsList: [] })
+    const dispatchOpenRef = { current: false }   // 派发对话框镜像（titlesPending 轮询重拉的终止条件）
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setDispatchOpen(v) { const nv = typeof v === 'function' ? v(dispatchOpenRef.current) : v; dispatchOpenRef.current = nv; store.modal.dispatch.set({ open: nv }) }
+    function setActiveSessions(v) { store.modal.dispatch.set({ activeSessions: typeof v === 'function' ? v(store.modal.dispatch.get().activeSessions) : v }) }
+    function setDispatchPending(v) { store.modal.dispatch.set({ pending: typeof v === 'function' ? v(store.modal.dispatch.get().pending) : v }) }
+    function setDispatching(v) { store.modal.dispatch.set({ dispatching: typeof v === 'function' ? v(store.modal.dispatch.get().dispatching) : v }) }
+    function setDispatchMode(v) { store.modal.dispatch.set({ mode: typeof v === 'function' ? v(store.modal.dispatch.get().mode) : v }) }
+    function setDispatchInstr(v) { store.modal.dispatch.set({ instr: typeof v === 'function' ? v(store.modal.dispatch.get().instr) : v }) }
+    function setDispatchWsId(v) { store.modal.dispatch.set({ wsId: typeof v === 'function' ? v(store.modal.dispatch.get().wsId) : v }) }
+    function setDispatchSessWs(v) { store.modal.dispatch.set({ sessWs: typeof v === 'function' ? v(store.modal.dispatch.get().sessWs) : v }) }
+    function setDispatchSessId(v) { store.modal.dispatch.set({ sessId: typeof v === 'function' ? v(store.modal.dispatch.get().sessId) : v }) }
+    function setWsList(v) { store.modal.dispatch.set({ wsList: typeof v === 'function' ? v(store.modal.dispatch.get().wsList) : v }) }
+    // 任务派发：加载活跃会话/工作区 + 打开对话框 + 确认派发
+    // 0.1.7 首屏提速：host 对缓存未命中会话先返回占位（titlesPending + pendingSessions），对话框立即渲染
+    // （占位条目显示「短id · 标题加载中…」）；仍 pending 则 1.5s 轮询重拉，直到标题补齐或对话框关闭。
+    async function loadActiveSessions() {
+      try {
+        const res = await rpc('notes-active-sessions', {})
+        if (!res) return
+        if (res.sessions) setActiveSessions(res.sessions)
+        setDispatchPending(res.titlesPending && Array.isArray(res.pendingSessions) ? res.pendingSessions : [])
+        if (res.titlesPending && dispatchOpenRef.current) panelBridge.later(loadActiveSessions, 1500)
+      } catch (e) {}
+    }
+    async function loadWorkspaces() {
+      try { const res = await rpc('notes-workspaces', {}); if (res && res.workspaces) setWsList(res.workspaces) } catch (e) {}
+    }
+    function openDispatch() {
+      setDispatchInstr(''); setDispatchSessId(''); setDispatchSessWs(''); setDispatchWsId(''); setDispatchMode('existing'); setError('')
+      loadActiveSessions(); loadWorkspaces(); setDispatchOpen(true)
+    }
+    async function doDispatchConfirm() {
+      const selected = selectedRef.current
+      const dispatching = store.modal.dispatch.get().dispatching
+      const dispatchMode = store.modal.dispatch.get().mode
+      const dispatchInstr = store.modal.dispatch.get().instr
+      const dispatchWsId = store.modal.dispatch.get().wsId
+      const dispatchSessId = store.modal.dispatch.get().sessId
+      const wsList = store.modal.dispatch.get().wsList
+      const activeSessions = store.modal.dispatch.get().activeSessions
+      if (!selected || dispatching) return
+      setDispatching(true); setError('')
+      try {
+        if (dispatchMode === 'new') {
+          // 新建会话派发：client connectWorkspace 复用/新建一个 live 会话，再注入上下文+触发工作
+          if (!dispatchWsId) { setError('请选择工作区'); setDispatching(false); return }
+          if (!workspaces || !workspaces.connectWorkspace) { setError('workspaces 服务不可用'); setDispatching(false); return }
+          const ws = wsList.find(w => w.id === dispatchWsId)
+          const newSid = await workspaces.connectWorkspace(dispatchWsId)
+          const res = await rpc('notes-dispatch', { id: selected, sessionId: newSid, sessionName: (ws ? ws.title : '新会话'), workspace: ws ? ws.title : '', mode: 'new', instruction: dispatchInstr })
+          if (res && res.error) { setError(res.error); setDispatching(false); return }
+          if (sessions && newSid) { try { sessions.open(newSid) } catch (e) {} }
+          showToast('已新建会话，待办已注入并开始处理')
+        } else {
+          // 已有会话派发
+          if (!dispatchSessId) { setError('请选择目标会话'); setDispatching(false); return }
+          const sess = activeSessions.find(s => s.id === dispatchSessId)
+          // 目标未打开（不 live）：先打开激活，等它上线后再注入触发
+          if (sess && !sess.live && sessions && sessions.open) {
+            try { sessions.open(sess.id) } catch (e) {}
+            await timer.timeout(1200)
+          }
+          const res = await rpc('notes-dispatch', { id: selected, sessionId: dispatchSessId, sessionName: sess ? sess.name : '', workspace: sess ? sess.workspace : '', mode: 'existing', instruction: dispatchInstr })
+          if (res && res.error) { setError(res.error); setDispatching(false); return }
+          showToast((sess && !sess.live ? '已打开并派发待办到「' : '已派发待办到「') + (sess ? sess.name : '') + '」（开始处理）')
+        }
+        setDispatchOpen(false); setDispatchInstr('')
+        const g = await rpc('notes-get', { id: selected }); if (g && g.note) panelBridge.setEdBody(g.note.body || '')
+        await panelBridge.loadNotes(true); notifyNotesChanged()
+      } catch (err) { setError(String(err.message || err)) } finally { setDispatching(false) }
+    }
+    // 标记一条派发待办为完成（停止注入目标会话系统提示）
+    async function doDispatchDone(origIndex) {
+      const selected = selectedRef.current
+      try {
+        const r = await rpc('notes-dispatch-done', { id: selected, dispatchIndex: origIndex })
+        if (r && r.error) { setError(r.error); return }
+        showToast('已标记完成'); await panelBridge.loadNotes(true); notifyNotesChanged()
+      } catch (err) { setError(String(err.message || err)) }
+    }
+    // 派发对话框宿主（modal）：todo 上下文预览 + 补充具体要求 + 已有/新建会话（级联下拉）
+    function DispatchModal(props) {
+      const dispatchOpen = store.modal.dispatch.useSel(s => s.open)
+      const activeSessions = store.modal.dispatch.useSel(s => s.activeSessions)
+      const dispatchPending = store.modal.dispatch.useSel(s => s.pending)
+      const dispatching = store.modal.dispatch.useSel(s => s.dispatching)
+      const dispatchMode = store.modal.dispatch.useSel(s => s.mode)
+      const dispatchInstr = store.modal.dispatch.useSel(s => s.instr)
+      const dispatchWsId = store.modal.dispatch.useSel(s => s.wsId)
+      const dispatchSessWs = store.modal.dispatch.useSel(s => s.sessWs)
+      const dispatchSessId = store.modal.dispatch.useSel(s => s.sessId)
+      const wsList = store.modal.dispatch.useSel(s => s.wsList)
+      const error = props.error
+      const curNote = props.curNote
+      // 派发对话框：已有会话模式按工作区过滤活跃会话；新建会话模式选工作区
+      const dispatchWsKeys = []
+      const dispatchSessByWs = {}
+      for (const s of activeSessions) { const w = s.workspace || '其他'; if (!dispatchSessByWs[w]) { dispatchSessByWs[w] = []; dispatchWsKeys.push(w) } dispatchSessByWs[w].push(s) }
+      // 标题后台补齐中的占位会话（0.1.7）：同一下拉按工作区分组，禁用态显示「短id · 标题加载中…」
+      for (const p of dispatchPending) { const w = p.workspace || '其他'; if (!dispatchSessByWs[w]) { dispatchSessByWs[w] = []; dispatchWsKeys.push(w) } dispatchSessByWs[w].push({ id: p.id, short: p.short, name: '', pending: true }) }
+      return (dispatchOpen && curNote) ? e('div', { className: 'dsh-notes-dispatch-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setDispatchOpen(false) } },
+        e('div', { className: 'dsh-notes-dispatch-modal' },
+          e('div', { className: 'dsh-notes-dispatch-modal-t' }, I('play', 13), ' 派发待办', e('span', { style: { fontSize: '10px', color: 'var(--nt3)', fontWeight: 400, marginLeft: '8px' } }, '工作区' + wsList.length + ' / 活跃会话' + activeSessions.length + (dispatchPending.length ? '（+' + dispatchPending.length + ' 标题加载中…）' : ''))),
+          e('div', { className: 'dsh-notes-dispatch-todo' },
+            e('div', { className: 'dsh-notes-dispatch-todo-t' }, curNote.title || 'Untitled'),
+            e('div', { className: 'dsh-notes-dispatch-todo-b' }, String(curNote.preview || '').trim() || '（无正文）')),
+          e('textarea', { className: 'dsh-notes-dispatch-instr', placeholder: '补充具体要求 / 指令（可选）…', value: dispatchInstr, onChange: (ev) => setDispatchInstr(ev.target.value), rows: 3 }),
+          e('div', { className: 'dsh-notes-dispatch-modes' },
+            e('button', { className: 'dsh-notes-dispatch-mode' + (dispatchMode === 'existing' ? ' on' : ''), onClick: () => setDispatchMode('existing') }, '已有会话'),
+            e('button', { className: 'dsh-notes-dispatch-mode' + (dispatchMode === 'new' ? ' on' : ''), onClick: () => setDispatchMode('new') }, '新建会话')),
+          dispatchMode === 'existing' ? e(React.Fragment, null,
+            e('select', { className: 'dsh-notes-dispatch-select', value: dispatchSessWs, onChange: (ev) => { setDispatchSessWs(ev.target.value); setDispatchSessId('') } },
+              e('option', { value: '' }, '选择工作区…'),
+              wsList.map(w => e('option', { key: w.id, value: w.title }, w.title))),
+            e('select', { className: 'dsh-notes-dispatch-select', value: dispatchSessId, onChange: (ev) => setDispatchSessId(ev.target.value), disabled: !dispatchSessWs },
+              e('option', { value: '' }, dispatchSessWs ? ((dispatchSessByWs[dispatchSessWs] || []).length ? '选择会话…' : '该工作区暂无会话') : '先选工作区'),
+              (dispatchSessByWs[dispatchSessWs] || []).map(s => e('option', { key: s.id, value: s.id, disabled: !!s.pending }, s.pending ? (s.short + ' · 标题加载中…') : (s.name + (s.live ? '' : '（未打开）'))))))
+          : e('select', { className: 'dsh-notes-dispatch-select', value: dispatchWsId, onChange: (ev) => setDispatchWsId(ev.target.value) },
+              e('option', { value: '' }, '选择工作区（在其下新建会话）…'),
+              wsList.map(w => e('option', { key: w.id, value: w.id }, w.title))),
+          error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
+          e('div', { className: 'dsh-notes-dispatch-actions' },
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setDispatchOpen(false) }, '取消'),
+            e('button', { className: 'dsh-notes-dispatch-ok', onClick: doDispatchConfirm, disabled: dispatching }, dispatching ? '派发中…' : '派发'))))
+      : null
+    }
+    // ===== modal: settings —— 设置卡片（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出；D2 收尾模块，序位最末）=====
+    // provides: store.modal.settings / settingsOpenRef / usageBudgetRef / setPersistRef / settingsFlushRef / setSettingsOpen / setSettingsData /
+    //           setSetLlmProvider / setSetLlmModel / setSetCatalog / setSetStale / setSetBudget / setUsageData / setSetUsageBudget /
+    //           setSetSaving / setSetLogWeek / setSetLogRetention / openSettings / maybeToastUsageBudget /
+    //           settingsSetQuiet / setPersistMerge / saveSettings*（Llm/Catalog/Stale/MaxDepth/Budget/UsageBudget/LlmManual/LogWeek/LogRetention）/
+    //           SET_NUM_FIELDS / saveSettingsAll / restoreSettingsAll / flushSettingsPending / closeSettings / SettingsModal
+    // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/format.js（fmtTok）、kernel/icons.js（e/I）、kernel/bus.js（showToast）、
+    //        modals/export.js + export-single.js + import.js + trash.js + prune.js + suggest.js + inject-preview.js + inject-manager.js + memory-guide.js
+    //        （设置行入口 open*/do*/memViewNote 与 setMemStatus——序位在前可见，非横向引用）
+    // state 托管：open/data/llmProvider/llmModel/catalog/stale/budget/usageData/usageBudget/saving/logWeek/logRetention
+    // 迁入 store.modal.settings 切片；maxDepth/snap/inflight 因 check 锚定其 useState 声明原文滞留 whole.js（同 newNoteKind 先例）——
+    // 组件经 props 注入，模块函数经 panelBridge.setMaxDepth/setSetMaxDepth/setSnap/setSetSnap/setInflight/setSetInflight 中转；
+    // settingsOpenRef（Esc 栈）/usageBudgetRef（预算判定）/setPersistRef（已落盘镜像）/settingsFlushRef（Esc 兜底 flush）
+    // 为模块级单例（plain object 与 useRef 等价——面板为 shell.overlay 单例）；whole.js 经 panelBridge.setSettingsOpen 回填别名中转互斥关闭
+    store.modal.settings = createStore({ open: false, data: null, llmProvider: '', llmModel: '', catalog: true, stale: '90', budget: '0', usageData: null, usageBudget: '0', saving: false, logWeek: '7', logRetention: '90' })
+    const settingsOpenRef = { current: false }   // 设置卡片镜像（Esc 优先关设置卡片）
+    const usageBudgetRef = { current: 0 }   // 预算镜像 ref：usage-get 与 settings-get 并发放射，toast 判定读 ref 防闭包过期
+    const setPersistRef = { current: null }   // 已落盘值镜像（兜底 flush/还原只写真不同的键）
+    const settingsFlushRef = { current: null }   // 关闭兜底 flush 镜像（Esc 闭包挂一次，读最新控件值）
+    // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
+    function setSettingsOpen(v) { const nv = typeof v === 'function' ? v(settingsOpenRef.current) : v; settingsOpenRef.current = nv; store.modal.settings.set({ open: nv }) }
+    function setSettingsData(v) { store.modal.settings.set({ data: typeof v === 'function' ? v(store.modal.settings.get().data) : v }) }
+    function setSetLlmProvider(v) { store.modal.settings.set({ llmProvider: typeof v === 'function' ? v(store.modal.settings.get().llmProvider) : v }) }
+    function setSetLlmModel(v) { store.modal.settings.set({ llmModel: typeof v === 'function' ? v(store.modal.settings.get().llmModel) : v }) }
+    function setSetCatalog(v) { store.modal.settings.set({ catalog: typeof v === 'function' ? v(store.modal.settings.get().catalog) : v }) }
+    function setSetStale(v) { store.modal.settings.set({ stale: typeof v === 'function' ? v(store.modal.settings.get().stale) : v }) }
+    function setSetBudget(v) { store.modal.settings.set({ budget: typeof v === 'function' ? v(store.modal.settings.get().budget) : v }) }
+    function setUsageData(v) { store.modal.settings.set({ usageData: typeof v === 'function' ? v(store.modal.settings.get().usageData) : v }) }
+    function setSetUsageBudget(v) { store.modal.settings.set({ usageBudget: typeof v === 'function' ? v(store.modal.settings.get().usageBudget) : v }) }
+    function setSetSaving(v) { store.modal.settings.set({ saving: typeof v === 'function' ? v(store.modal.settings.get().saving) : v }) }
+    function setSetLogWeek(v) { store.modal.settings.set({ logWeek: typeof v === 'function' ? v(store.modal.settings.get().logWeek) : v }) }
+    function setSetLogRetention(v) { store.modal.settings.set({ logRetention: typeof v === 'function' ? v(store.modal.settings.get().logRetention) : v }) }
+    // 设置卡片：打开即拉取 settings + 可用模型列表（host 探 llm 服务目录；探不到时 models=[]，控件退化为手输）
+    function openSettings() {
+      setSetLlmProvider(''); setSetLlmModel(''); setSettingsData(null); setUsageData(null); setError(''); setSettingsOpen(true)
+      panelBridge.setSetSnap(null); setPersistRef.current = null; setSetSaving(false)   // dirty 基准复位（加载完成后再捕获快照）
+      // LLM 用量统计接力 settings 拉取（预算 ref 就绪后再判超预算 toast，避免并发竞态漏提醒；settings-get 为本地 RPC 不慢）：
+      // 今日/本周/本月/累计 + 按功能分列；超月度预算仅 toast 提醒，不阻断
+      const loadUsage = () => rpc('notes-usage-get', {}).then(res => {
+        if (!res || res.error) return
+        setUsageData(res)
+        maybeToastUsageBudget(res)
+      }).catch(() => {})
+      rpc('notes-settings-get', {}).then(res => {
+        if (!res) { loadUsage(); return }
+        setSettingsData(res)
+        const l = res.settings && res.settings.llm
+        if (l && l.provider && l.model) { setSetLlmProvider(l.provider); setSetLlmModel(l.model) }
+        setSetCatalog(!res.settings || res.settings.catalogEnabled !== false)   // 目录注入总开关：缺省开
+        setSetStale(String(res.settings && typeof res.settings.staleDays === 'number' ? res.settings.staleDays : 90))   // 时效提醒阈值：缺省 90
+        panelBridge.setSetMaxDepth(String(res.settings && typeof res.settings.maxFolderDepth === 'number' ? res.settings.maxFolderDepth : 3))   // 文件夹嵌套深度上限：缺省 3（0=不限）
+        setSetBudget(String(res.settings && typeof res.settings.injectBudgetChars === 'number' ? res.settings.injectBudgetChars : 0))   // 注入预算：缺省 0=不限
+        setSetUsageBudget(String(res.settings && typeof res.settings.usageBudgetMonthly === 'number' ? res.settings.usageBudgetMonthly : 0))   // 月度用量预算提醒：缺省 0=关闭
+        usageBudgetRef.current = (res.settings && typeof res.settings.usageBudgetMonthly === 'number') ? res.settings.usageBudgetMonthly : 0
+        setSetLogWeek(String(res.settings && typeof res.settings.logWeekAfterDays === 'number' ? res.settings.logWeekAfterDays : 7))   // 工作记忆 v0：日志周聚合窗口，缺省 7
+        setSetLogRetention(String(res.settings && typeof res.settings.logRetentionDays === 'number' ? res.settings.logRetentionDays : 90))   // 日志月聚合窗口，缺省 90（0=关闭本级）
+        // dirty/还原基准（notes-settings-feedback）：打开时快照（UI 形态字符串口径，与控件受控值同构）+ 已落盘镜像初始化
+        const snap0 = {
+          llmP: (l && l.provider && l.model) ? l.provider : '', llmM: (l && l.provider && l.model) ? l.model : '',
+          catalog: !res.settings || res.settings.catalogEnabled !== false,
+          stale: String(res.settings && typeof res.settings.staleDays === 'number' ? res.settings.staleDays : 90),
+          maxDepth: String(res.settings && typeof res.settings.maxFolderDepth === 'number' ? res.settings.maxFolderDepth : 3),
+          budget: String(res.settings && typeof res.settings.injectBudgetChars === 'number' ? res.settings.injectBudgetChars : 0),
+          usageBudget: String(res.settings && typeof res.settings.usageBudgetMonthly === 'number' ? res.settings.usageBudgetMonthly : 0),
+          logWeek: String(res.settings && typeof res.settings.logWeekAfterDays === 'number' ? res.settings.logWeekAfterDays : 7),
+          logRetention: String(res.settings && typeof res.settings.logRetentionDays === 'number' ? res.settings.logRetentionDays : 90),
+        }
+        panelBridge.setSetSnap(snap0); setPersistRef.current = snap0
+        loadUsage()
+      }).catch(() => { loadUsage() })
+      // 工作记忆 v0：沉淀引导启用状态探测（单一事实源 = tag memory-guide 且 inject=true 的笔记，不落 settings.json）
+      setMemStatus(null)
+      rpc('notes-memory-guide', { op: 'status' }).then(res => {
+        setMemStatus(res && !res.error ? res : { enabled: false, noteId: '' })
+      }).catch(() => setMemStatus({ enabled: false, noteId: '' }))
+    }
+    // 月度预算提醒：usage.month.total 超 usageBudgetMonthly → toast（仅提醒，不阻断）；budget 读 ref（settings-get/保存预算时同步）
+    function maybeToastUsageBudget(u) {
+      try {
+        const b = usageBudgetRef.current
+        if (b > 0 && u && u.month && u.month.total > b) showToast('⚠ 本月笔记 LLM 用量 ' + fmtTok(u.month.total) + ' tokens 已超预算 ' + fmtTok(b) + '（仅提醒，不阻断）')
+      } catch (e) {}
+    }
+    // ===== 设置写通道（notes-settings-feedback）：settingsSetQuiet = 全部 settings-set 的低层共用通道 =====
+    // 在途计数（dirty 口径「存在尚未落盘的待写」）+ 已落盘镜像逐键跟进；不 toast——自动保存 saver 自带文案，保存/还原/兜底 flush 统一收口
+    function settingsSetQuiet(patch) {
+      panelBridge.setSetInflight(n => n + 1)
+      return rpc('notes-settings-set', patch).then(res => {
+        panelBridge.setSetInflight(n => Math.max(0, n - 1))
+        if (res && res.error) throw new Error(res.error)
+        if (res && res.settings) setSettingsData(prev => Object.assign({}, prev || {}, { settings: res.settings }))
+        setPersistMerge(patch)
+        return res
+      }, err => { panelBridge.setSetInflight(n => Math.max(0, n - 1)); throw err })
+    }
+    // 已落盘镜像逐键跟进（写成功后才调；UI 形态字符串口径与快照同构）
+    function setPersistMerge(patch) {
+      const p = setPersistRef.current; if (!p) return
+      const n = Object.assign({}, p)
+      if ('llm' in patch) { n.llmP = patch.llm ? patch.llm.provider : ''; n.llmM = patch.llm ? patch.llm.model : '' }
+      if ('catalogEnabled' in patch) n.catalog = !!patch.catalogEnabled
+      if ('staleDays' in patch) n.stale = String(patch.staleDays)
+      if ('maxFolderDepth' in patch) n.maxDepth = String(patch.maxFolderDepth)
+      if ('injectBudgetChars' in patch) n.budget = String(patch.injectBudgetChars)
+      if ('usageBudgetMonthly' in patch) n.usageBudget = String(patch.usageBudgetMonthly)
+      if ('logWeekAfterDays' in patch) n.logWeek = String(patch.logWeekAfterDays)
+      if ('logRetentionDays' in patch) n.logRetention = String(patch.logRetentionDays)
+      setPersistRef.current = n
+    }
+    // 选择即保存：llm=null 恢复跟随当前会话（默认）；否则保存 { provider, model }
+    function saveSettingsLlm(llm) {
+      settingsSetQuiet({ llm: llm }).then(() => {
+        showToast(llm ? ('已保存：笔记 LLM = ' + llm.provider + ' / ' + llm.model) : '已恢复跟随当前会话（默认）')
+      }).catch(err => setError(String(err.message || err)))
+    }
+    // 目录注入总开关：勾选即保存（只传布尔 catalogEnabled；host 侧 null 才是恢复默认开，这里不用）
+    function saveSettingsCatalog(enabled) {
+      settingsSetQuiet({ catalogEnabled: enabled }).then(() => {
+        showToast(enabled ? '已开启笔记目录注入' : '已关闭笔记目录注入')
+      }).catch(err => setError(String(err.message || err)))
+    }
+    // P1 时效衰减提醒阈值：失焦/Enter 即保存（非负整数；0 = 关闭；非法输入报错不落盘）
+    function saveSettingsStale() {
+      const setStale = store.modal.settings.get().stale
+      const raw = setStale.trim()
+      if (!/^\d+$/.test(raw)) { setError('时效提醒阈值需为非负整数（0 = 关闭）'); return }
+      const v = parseInt(raw, 10)
+      settingsSetQuiet({ staleDays: v }).then(() => {
+        showToast(v === 0 ? '已关闭时效衰减提醒' : '已保存：超过 ' + v + ' 天未更新的资料将在目录标注 ⚠')
+      }).catch(err => setError(String(err.message || err)))
+    }
+    // 文件夹嵌套深度上限（maxFolderDepth，层；根级=第 1 层，缺省 3，0=不限）：失焦/Enter 即保存（非负整数；非法输入报错不落盘）
+    function saveSettingsMaxDepth() {
+      const setMaxDepth = panelBridge.setMaxDepth
+      const raw = setMaxDepth.trim()
+      if (!/^\d+$/.test(raw)) { setError('文件夹嵌套深度上限需为非负整数（0 = 不限层数）'); return }
+      const v = parseInt(raw, 10)
+      settingsSetQuiet({ maxFolderDepth: v }).then(() => {
+        showToast(v === 0 ? '已保存：文件夹嵌套不限层数' : '已保存：文件夹最多嵌套 ' + v + ' 层')
+      }).catch(err => setError(String(err.message || err)))
+    }
+    // P1 注入体积预算（约，字符数）：失焦/Enter 即保存（非负整数；0 = 不限；约定条目永不截断）
+    function saveSettingsBudget() {
+      const setBudget = store.modal.settings.get().budget
+      const raw = setBudget.trim()
+      if (!/^\d+$/.test(raw)) { setError('注入体积预算需为非负整数（0 = 不限）'); return }
+      const v = parseInt(raw, 10)
+      settingsSetQuiet({ injectBudgetChars: v }).then(() => {
+        showToast(v === 0 ? '已关闭注入体积预算（不限）' : '已保存：注入预算约 ' + v + ' 字符')
+      }).catch(err => setError(String(err.message || err)))
+    }
+    // LLM 月度用量预算提醒（tokens/月）：失焦/Enter 即保存（非负整数；0 = 关闭提醒）；保存后即按当前用量复核一次（超预算 toast，不阻断）
+    function saveSettingsUsageBudget() {
+      const setUsageBudget = store.modal.settings.get().usageBudget
+      const usageData = store.modal.settings.get().usageData
+      const raw = setUsageBudget.trim()
+      if (!/^\d+$/.test(raw)) { setError('月度用量预算需为非负整数（0 = 关闭提醒）'); return }
+      const v = parseInt(raw, 10)
+      settingsSetQuiet({ usageBudgetMonthly: v }).then(() => {
+        usageBudgetRef.current = v
+        showToast(v === 0 ? '已关闭月度用量预算提醒' : '已保存：月度用量预算 ' + fmtTok(v) + ' tokens')
+        if (usageData) maybeToastUsageBudget(usageData)
+      }).catch(err => setError(String(err.message || err)))
+    }
+    // 手输模式（探不到模型列表时）：provider/model 两框齐备才保存；清除按钮恢复跟随会话
+    function saveSettingsLlmManual() {
+      const setLlmProvider = store.modal.settings.get().llmProvider
+      const setLlmModel = store.modal.settings.get().llmModel
+      const p = setLlmProvider.trim(), m = setLlmModel.trim()
+      if (!p || !m) return
+      saveSettingsLlm({ provider: p, model: m })
+    }
+    // ===== 工作记忆 v0：日志卫生窗口保存（设置卡片「工作记忆」区）=====
+    // 日志周聚合窗口（天，缺省 7）：失焦/Enter 即保存（非负整数；非法输入报错不落盘）
+    function saveSettingsLogWeek() {
+      const setLogWeek = store.modal.settings.get().logWeek
+      const raw = setLogWeek.trim()
+      if (!/^\d+$/.test(raw)) { setError('日志周聚合窗口需为非负整数（天）'); return }
+      const v = parseInt(raw, 10)
+      settingsSetQuiet({ logWeekAfterDays: v }).then(() => {
+        showToast('已保存：超过 ' + v + ' 天的日志将提名周聚合')
+      }).catch(err => setError(String(err.message || err)))
+    }
+    // 日志月聚合窗口（天，缺省 90；0 = 关闭月聚合本级）
+    function saveSettingsLogRetention() {
+      const setLogRetention = store.modal.settings.get().logRetention
+      const raw = setLogRetention.trim()
+      if (!/^\d+$/.test(raw)) { setError('日志月聚合窗口需为非负整数（0 = 关闭月聚合）'); return }
+      const v = parseInt(raw, 10)
+      settingsSetQuiet({ logRetentionDays: v }).then(() => {
+        showToast(v === 0 ? '已关闭日志月聚合提名' : '已保存：超过 ' + v + ' 天的日志将提名月聚合')
+      }).catch(err => setError(String(err.message || err)))
+    }
+    // ===== 设置卡交互反馈（notes-settings-feedback）：显式保存 / 还原 / 关闭兜底 flush =====
+    // 数值字段登记表（快照键 ↔ 设置 RPC 键 ↔ 校验文案）：保存校验/兜底 flush/还原回滚三处共用同一份口径
+    const SET_NUM_FIELDS = [
+      ['stale', 'staleDays', '时效提醒阈值需为非负整数（0 = 关闭）'],
+      ['maxDepth', 'maxFolderDepth', '文件夹嵌套深度上限需为非负整数（0 = 不限层数）'],
+      ['budget', 'injectBudgetChars', '注入体积预算需为非负整数（0 = 不限）'],
+      ['usageBudget', 'usageBudgetMonthly', '月度用量预算需为非负整数（0 = 关闭提醒）'],
+      ['logWeek', 'logWeekAfterDays', '日志周聚合窗口需为非负整数（天）'],
+      ['logRetention', 'logRetentionDays', '日志月聚合窗口需为非负整数（0 = 关闭月聚合）'],
+    ]
+    // 「保存」：显式确认 + 兜底 flush——先校验全部数值字段（任一非法即中止并报错，改动保留继续编辑），
+    // 再串行落盘全部「控件值 ≠ 已落盘」的键（串行防写竞态），全部成功后快照跟进 + toast「设置已保存」+ dirty 复位
+    function saveSettingsAll() {
+      const setSaving = store.modal.settings.get().saving
+      const setSnap = panelBridge.setSnap
+      const setStale = store.modal.settings.get().stale
+      const setMaxDepth = panelBridge.setMaxDepth
+      const setBudget = store.modal.settings.get().budget
+      const setUsageBudget = store.modal.settings.get().usageBudget
+      const setLogWeek = store.modal.settings.get().logWeek
+      const setLogRetention = store.modal.settings.get().logRetention
+      const setLlmProvider = store.modal.settings.get().llmProvider
+      const setLlmModel = store.modal.settings.get().llmModel
+      const setCatalog = store.modal.settings.get().catalog
+      const settingsData = store.modal.settings.get().data
+      if (setSaving || !setSnap) return
+      const vals = { stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention }
+      for (const f of SET_NUM_FIELDS) { if (!/^\d+$/.test(vals[f[0]].trim())) { setError(f[2]); return } }
+      const p = setPersistRef.current || setSnap
+      const patches = []
+      // 手输 LLM 两框齐备且 ≠ 已落盘才补写（下拉选择/开关变更即存无待写；单框不齐 = 存量失焦口径静默跳过）
+      const models0 = (settingsData && settingsData.models) || []
+      if (!models0.length && setLlmProvider.trim() && setLlmModel.trim() && (setLlmProvider !== p.llmP || setLlmModel !== p.llmM)) patches.push({ llm: { provider: setLlmProvider.trim(), model: setLlmModel.trim() } })
+      for (const f of SET_NUM_FIELDS) { const raw = vals[f[0]].trim(); if (raw !== p[f[0]]) { const o = {}; o[f[1]] = parseInt(raw, 10); patches.push(o) } }
+      setSetSaving(true)
+      let seq = Promise.resolve()
+      for (const pt of patches) seq = seq.then(() => settingsSetQuiet(pt))
+      seq.then(() => {
+        setSetSaving(false)
+        // 快照跟进到当前控件值（显式确认完成 → dirty 复位，保存按钮回禁用态）
+        panelBridge.setSetSnap({ llmP: setLlmProvider, llmM: setLlmModel, catalog: setCatalog, stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention })
+        usageBudgetRef.current = parseInt(setUsageBudget.trim(), 10)
+        showToast('设置已保存')
+      }, err => { setSetSaving(false); setError('保存失败：' + String(err && err.message || err)) })
+    }
+    // 「还原」：回滚到打开时快照——已落盘 ≠ 快照的键逐键串行写回（逐键恢复），全部控件复位到快照值
+    function restoreSettingsAll() {
+      const setSaving = store.modal.settings.get().saving
+      const setSnap = panelBridge.setSnap
+      if (setSaving || !setSnap) return
+      const s = setSnap, p = setPersistRef.current || s
+      const patches = []
+      if (p.llmP !== s.llmP || p.llmM !== s.llmM) patches.push({ llm: (s.llmP && s.llmM) ? { provider: s.llmP, model: s.llmM } : null })
+      if (p.catalog !== s.catalog) patches.push({ catalogEnabled: s.catalog })
+      for (const f of SET_NUM_FIELDS) { if (p[f[0]] !== s[f[0]]) { const o = {}; o[f[1]] = parseInt(s[f[0]], 10); patches.push(o) } }
+      setSetSaving(true)
+      let seq = Promise.resolve()
+      for (const pt of patches) seq = seq.then(() => settingsSetQuiet(pt))
+      seq.then(() => {
+        setSetSaving(false)
+        setSetLlmProvider(s.llmP); setSetLlmModel(s.llmM); setSetCatalog(s.catalog)
+        setSetStale(s.stale); panelBridge.setSetMaxDepth(s.maxDepth); setSetBudget(s.budget)
+        setSetUsageBudget(s.usageBudget); setSetLogWeek(s.logWeek); setSetLogRetention(s.logRetention)
+        usageBudgetRef.current = parseInt(s.usageBudget, 10)
+        showToast('已还原：设置回滚到打开时的状态')
+      }, err => { setSetSaving(false); setError('还原失败：' + String(err && err.message || err)) })
+    }
+    // 关闭兜底 flush（✕/Esc/点遮罩同口径）：「控件值 ≠ 已落盘」的有效改动串行静默落盘；
+    // 非法输入按存量口径丢弃（同关闭即弃）；≥1 项落盘则 toast 一次确认
+    function flushSettingsPending() {
+      const settingsData = store.modal.settings.get().data
+      const setLlmProvider = store.modal.settings.get().llmProvider
+      const setLlmModel = store.modal.settings.get().llmModel
+      const setStale = store.modal.settings.get().stale
+      const setMaxDepth = panelBridge.setMaxDepth
+      const setBudget = store.modal.settings.get().budget
+      const setUsageBudget = store.modal.settings.get().usageBudget
+      const setLogWeek = store.modal.settings.get().logWeek
+      const setLogRetention = store.modal.settings.get().logRetention
+      const p = setPersistRef.current
+      if (!p) return
+      const patches = []
+      const models0 = (settingsData && settingsData.models) || []
+      if (!models0.length && setLlmProvider.trim() && setLlmModel.trim() && (setLlmProvider !== p.llmP || setLlmModel !== p.llmM)) patches.push({ llm: { provider: setLlmProvider.trim(), model: setLlmModel.trim() } })
+      const vals = { stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention }
+      for (const f of SET_NUM_FIELDS) { const raw = vals[f[0]].trim(); if (/^\d+$/.test(raw) && raw !== p[f[0]]) { const o = {}; o[f[1]] = parseInt(raw, 10); patches.push(o) } }
+      if (!patches.length) return
+      let seq = Promise.resolve()
+      for (const pt of patches) seq = seq.then(() => settingsSetQuiet(pt))
+      seq.then(() => { showToast('设置已保存') }, err => { showToast('设置保存失败：' + String(err && err.message || err)) })
+    }
+    // ✕/Esc/点遮罩统一关闭入口：有未落盘改动先兜底 flush（fire-and-forget，落盘完成自 toast），再收起
+    function closeSettings() { flushSettingsPending(); setSettingsOpen(false) }
+    // 设置卡片宿主（modal，居中，复用派发 modal 的 mask/modal 风格）：通用结构——标题「设置」+ 设置项行列表
+    // （每行：左 label + 右控件）。以后加设置项只需往 settingsRows 数组加行，结构不变。
+    // 交互（notes-settings-feedback）：自动保存保留（选择即存/失焦/Enter 即存，走 notes-settings-set）；
+    // 标题栏 ✕ 常驻关闭 + dirty 态「保存」（accent 实心，显式确认 + 兜底 flush）/「还原」（回滚打开时快照）；
+    // 点遮罩 / Esc = ✕ 同义（有未落盘改动先兜底 flush 再关，Esc 在全局 keydown 里优先关本卡片）。
+    function SettingsModal(props) {
+      const settingsOpen = store.modal.settings.useSel(s => s.open)
+      const settingsData = store.modal.settings.useSel(s => s.data)
+      const setLlmProvider = store.modal.settings.useSel(s => s.llmProvider)
+      const setLlmModel = store.modal.settings.useSel(s => s.llmModel)
+      const setCatalog = store.modal.settings.useSel(s => s.catalog)
+      const setStale = store.modal.settings.useSel(s => s.stale)
+      const setBudget = store.modal.settings.useSel(s => s.budget)
+      const usageData = store.modal.settings.useSel(s => s.usageData)
+      const setUsageBudget = store.modal.settings.useSel(s => s.usageBudget)
+      const setSaving = store.modal.settings.useSel(s => s.saving)
+      const setLogWeek = store.modal.settings.useSel(s => s.logWeek)
+      const setLogRetention = store.modal.settings.useSel(s => s.logRetention)
+      // maxDepth/snap/inflight 滞留 whole.js（check 锚定 useState 声明原文），经 props 注入
+      const setMaxDepth = props.setMaxDepth
+      const setSetMaxDepth = props.setSetMaxDepth
+      const setSnap = props.setSnap
+      const setInflight = props.setInflight
+      // 工作记忆 v0 状态行数据源（memory-guide 模块切片；设置卡「工作记忆」区状态行/停用按钮消费）
+      const memStatus = store.modal.memory.useSel(s => s.status)
+      const memPending = store.modal.memory.useSel(s => s.pending)
+      const error = props.error
+      React.useEffect(() => { settingsFlushRef.current = flushSettingsPending })   // 关闭兜底 flush 镜像：每渲染刷新（Esc 闭包读最新控件值；函数声明提升可前引）
+      return settingsOpen ? (() => {
+        // dirty 判定口径：存在在途未落盘待写（setInflight>0）或 任一控件值 ≠ 打开时快照
+        const setDirty = setInflight > 0 || (setSnap ? (
+          setLlmProvider !== setSnap.llmP || setLlmModel !== setSnap.llmM || setCatalog !== setSnap.catalog ||
+          setStale !== setSnap.stale || setMaxDepth !== setSnap.maxDepth || setBudget !== setSnap.budget ||
+          setUsageBudget !== setSnap.usageBudget || setLogWeek !== setSnap.logWeek || setLogRetention !== setSnap.logRetention) : false)
+        const modelList = (settingsData && settingsData.models) || []
+        // 下拉选项 = provider/model 组合，第一项「跟随当前会话（默认）」；
+        // 已保存值不在列表中（如模型已下线）时追加一项保证回显正确
+        const selIdx = modelList.findIndex(m => m.provider === setLlmProvider && m.model === setLlmModel)
+        const opts = (setLlmProvider && setLlmModel && selIdx < 0)
+          ? modelList.concat([{ provider: setLlmProvider, model: setLlmModel, label: setLlmProvider + ' / ' + setLlmModel + '（已保存）' }])
+          : modelList
+        const curVal = selIdx >= 0 ? String(selIdx) : (opts.length > modelList.length ? String(opts.length - 1) : '')
+        const llmControl = modelList.length
+          ? e('select', { className: 'dsh-notes-settings-select', value: curVal, 'data-tooltip': '笔记自动分类 / 指令提取使用的模型', onChange: (ev) => {
+                const v = ev.target.value
+                if (v === '') { setSetLlmProvider(''); setSetLlmModel(''); saveSettingsLlm(null) }
+                else { const m = opts[+v]; if (m) { setSetLlmProvider(m.provider); setSetLlmModel(m.model); saveSettingsLlm({ provider: m.provider, model: m.model }) } }
+              } },
+              e('option', { value: '' }, '跟随当前会话（默认）'),
+              opts.map((m, i) => e('option', { key: m.provider + '/' + m.model + '-' + i, value: String(i) }, m.label || (m.provider + ' / ' + m.model))))
+          : e(React.Fragment, null,
+              e('input', { className: 'dsh-notes-settings-input', placeholder: 'provider', value: setLlmProvider, onChange: (ev) => setSetLlmProvider(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
+              e('input', { className: 'dsh-notes-settings-input', placeholder: 'model', value: setLlmModel, onChange: (ev) => setSetLlmModel(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
+              (setLlmProvider || setLlmModel) ? e('button', { className: 'dsh-notes-settings-clear', onClick: () => { setSetLlmProvider(''); setSetLlmModel(''); saveSettingsLlm(null) } }, '跟随当前会话（默认）') : null)
+        // 目录注入总开关控件：checkbox 勾选即保存（catalogEnabled，缺省开）；label 挂 tooltip 说明注入形态
+        const catalogControl = e('label', { className: 'dsh-notes-settings-checkwrap dsh-nt', 'data-tooltip': '向 Agent 系统提示注入笔记目录（一行一条），供其规划时参考并按需 note_get 取全文' },
+          e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: setCatalog, onChange: (ev) => { const v = !!ev.target.checked; setSetCatalog(v); saveSettingsCatalog(v) } }),
+          setCatalog ? '已开启' : '已关闭')
+        // P1 时效衰减提醒控件：数值输入（天），失焦/Enter 即保存；0 = 关闭
+        const staleControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1, value: setStale, 'data-tooltip': '目录行对超过 N 天未更新的笔记/链接追加「 ⚠ N 天未更新」标注；0 = 关闭', onChange: (ev) => setSetStale(ev.target.value), onBlur: saveSettingsStale, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsStale() } })
+        // 文件夹嵌套深度上限控件（同 staleDays 输入交互）：数值输入（层），失焦/Enter 即保存；0 = 不限层数
+        const maxDepthControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1, value: setMaxDepth, 'data-tooltip': '虚拟文件夹最大嵌套层级（根级 = 第 1 层）；新建子文件夹/拖拽换父超限将拒绝并 toast 提示；0 = 不限', onChange: (ev) => setSetMaxDepth(ev.target.value), onBlur: saveSettingsMaxDepth, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsMaxDepth() } })
+        // P1 注入体积预算控件：数值输入（约，字符数）+ 仪表（最近一次注入体积 vs 预算，超预算变红）；约定条目永不截断
+        const lastChars = (settingsData && typeof settingsData.lastInjectChars === 'number') ? settingsData.lastInjectChars : 0
+        const budgetNum = /^\d+$/.test(setBudget.trim()) ? parseInt(setBudget.trim(), 10) : 0
+        const gaugePct = budgetNum > 0 ? Math.min(100, Math.round(lastChars / budgetNum * 100)) : 0
+        const budgetControl = e('div', { style: { width: '100%' } },
+          e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 100, value: setBudget, 'data-tooltip': '单次注入笔记全文的上限（约，按字符数近似）；约定条目永不截断，资料条目从最旧开始省略；0 = 不限', onChange: (ev) => setSetBudget(ev.target.value), onBlur: saveSettingsBudget, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsBudget() } }),
+          e('div', { className: 'dsh-notes-inject-gauge dsh-nt', 'data-tooltip': '最近一次注入的笔记全文体积（约，按字符数）' },
+            e('div', { className: 'dsh-notes-inject-gauge-bar' + (budgetNum > 0 && lastChars > budgetNum ? ' over' : ''), style: { width: gaugePct + '%' } })),
+          e('span', { className: 'dsh-notes-inject-gauge-t' }, '当前注入约 ' + lastChars + ' 字符' + (budgetNum > 0 ? ' / 预算约 ' + budgetNum + ' 字符' : '（不限）')))
+        // 数据区控件：导出全部（目录快照）/ 导出单文件…（P3 scope 拼接 + 图片内联）/ 导入…（两步式预览后执行）/ 回收站（底部收敛后的兜底入口）；点击即关设置卡片、开各自对话框
+        const dataControl = e(React.Fragment, null,
+          e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '把整个笔记库（含 folders.json）快照到目标目录', onClick: openExport }, '导出全部'),
+          e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '按范围（全部/文件夹/标签）拼接为单个 Markdown 文件：图片 base64 内联，可直接分享；超 20MB 告警仍导出', onClick: openSExport }, '导出单文件…'),
+          e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '从目录快照导入：先预览明细再执行，只增改不删、自动备份', onClick: openImport }, '导入…'),
+          e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '回收站：查看已删除的笔记，可恢复或彻底删除', onClick: openTrash }, '回收站'))
+        // 二期 资产清理控件：notes-assets-prune dry-run 预览 → 勾选删除（点击即关设置卡片、开预览对话框）
+        const assetsControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '预览 assets/ 中未被任何笔记引用的孤儿文件，勾选后删除（dry-run 先行，零写入）', onClick: openPrune }, '清理…')
+        // 整理建议控件：打开三段式建议 modal（点击即关设置卡片、modal 不叠 modal）——底部「整理」按钮收敛后此处为入口
+        const suggestControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '整理建议：速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）', onClick: openSuggest }, '打开')
+        // 注入预览控件：打开预览 modal（点击即关设置卡片、modal 不叠 modal）——agent 实际收到的注入文本即所见
+        const injPrevControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '预览 Agent 系统提示中实际注入的笔记文本（约定桶 + 目录桶），含敏感打码 / 时效标注 / 预算截断效果；可按会话过滤', onClick: openInjectPreview }, '预览…')
+        // 注入管理控件：打开注入管理面板（点击即关设置卡片、modal 不叠 modal）——全库注入三态总览 + 单行直改 / 多选批量
+        const injMgrControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '打开注入管理面板：总览全部笔记的注入三态（约定/资料/关闭），单行直改或多选批量调整；顶部统计 chips 点击即过滤；日志隐身硬禁，敏感笔记注入自动脱敏', onClick: openInjectManager }, '管理…')
+        // ===== 工作记忆 v0 控件（设置卡片「工作记忆」区）：状态行（已启用→查看约定/停用）+「启用沉淀引导…」=====
+        const memoryControl = memStatus === null
+          ? e('span', { className: 'dsh-notes-settings-label-s' }, '探测中…')
+          : memStatus.enabled
+            ? e(React.Fragment, null,
+                e('span', { className: 'dsh-notes-settings-label-s' }, '已启用 '),
+                e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '查看引导约定笔记（可见/可改/可删——单一注入源）', onClick: memViewNote }, '查看约定'),
+                e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '停用 = 关闭引导约定笔记的注入（笔记保留可再启用）', onClick: doMemDisable, disabled: memPending }, memPending ? '处理中…' : '停用'))
+            : e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '创建一条预填约定笔记（inject=true，contractType: memory-guide），引导 Agent 在任务收尾时把会话结论写为工作日志（kind=log，默认隐身）——与既有约定并行不冲突', onClick: openMemEnable }, '启用沉淀引导…')
+        // 日志卫生窗口控件：周聚合（缺省 7 天）/ 月聚合（缺省 90 天，0=关闭本级）数值输入，失焦/Enter 即保存
+        const logWeekControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1, value: setLogWeek, 'data-tooltip': '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行）', onChange: (ev) => setSetLogWeek(ev.target.value), onBlur: saveSettingsLogWeek, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLogWeek() } })
+        const logRetentionControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1, value: setLogRetention, 'data-tooltip': '超过 N 天提名月聚合（原始日志与周志混合归组）；0 = 关闭月聚合本级', onChange: (ev) => setSetLogRetention(ev.target.value), onBlur: saveSettingsLogRetention, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLogRetention() } })
+        // LLM 用量区（notes-token-stats）：今日/本周/本月/累计 + 按功能分列（分类/整理/总结）；含字符估算时标注「约」
+        const usageControl = e('div', { style: { width: '100%' } },
+          (usageData && !usageData.error)
+            ? e(React.Fragment, null,
+                e('div', { className: 'dsh-notes-usage-line' },
+                  '今日 ' + fmtTok(usageData.today.total) + ' · 本周 ' + fmtTok(usageData.week.total) + ' · 本月 ' + fmtTok(usageData.month.total) + ' · 累计 ' + fmtTok(usageData.allTime.total) + ' tokens',
+                  usageData.calls > 0 ? '（' + usageData.calls + ' 次调用）' : ''),
+                e('div', { className: 'dsh-notes-usage-line dsh-notes-usage-sub' },
+                  '分类 ' + fmtTok(usageData.byFeature.classify.allTime) + ' · 整理 ' + fmtTok(usageData.byFeature.organize.allTime) + ' · 总结 ' + fmtTok(usageData.byFeature.summarize.allTime)
+                    + (usageData.estimatedTokens > 0 ? '（含字符估算，约）' : '')))
+            : e('span', { className: 'dsh-notes-settings-label-s' }, usageData && usageData.error ? '用量数据读取失败' : '加载中…'))
+        // 月度预算提醒控件：数值输入（tokens/月），失焦/Enter 即保存；0 = 关闭提醒
+        const usageBudgetControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1000, value: setUsageBudget, 'data-tooltip': '本月 LLM token 消耗超过该值时 toast 提醒（仅提醒，不阻断调用）；0 = 关闭', onChange: (ev) => setSetUsageBudget(ev.target.value), onBlur: saveSettingsUsageBudget, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsUsageBudget() } })
+        // 通用设置项行列表：以后加设置项只需往这里加行
+        const settingsRows = [
+          { key: 'llm', label: 'LLM 模型', sub: '笔记自动分类 / 指令提取使用的模型', control: llmControl },
+          { key: 'usage', label: 'LLM 用量', sub: '笔记功能的 token 消耗统计（真实 usage 优先，未回传时按字符估算）；按日累计，usage.json 落盘', control: usageControl },
+          { key: 'usagebudget', label: '用量预算提醒', sub: '本月 token 消耗超过该值时提醒（仅 toast 提示，不阻断调用）；0 = 关闭', control: usageBudgetControl },
+          { key: 'catalog', label: '笔记目录注入', sub: '向 Agent 系统提示注入笔记目录（一行一条），供其规划时参考并按需 note_get 取全文', control: catalogControl },
+          { key: 'stale', label: '时效衰减提醒', sub: '目录行对超过 N 天未更新的笔记/链接追加「 ⚠ N 天未更新」标注（提醒参考资料可能过期）；0 = 关闭', control: staleControl },
+          { key: 'maxdepth', label: '文件夹嵌套深度', sub: '虚拟文件夹最大嵌套层级（根级 = 第 1 层，缺省 3）；新建子文件夹/拖拽换父超限将拒绝并提示；0 = 不限', control: maxDepthControl },
+          { key: 'budget', label: '注入体积预算', sub: '单次注入笔记全文的上限（约，按字符数近似）；约定条目永不截断，资料条目从最旧开始省略；0 = 不限', control: budgetControl },
+          { key: 'injprev', label: '注入预览', sub: '查看 Agent 实际收到的注入文本（约定 + 目录）：敏感打码 / 时效标注 / 预算截断效果即所见；可按会话过滤', control: injPrevControl },
+          { key: 'injmgr', label: '注入管理', sub: '全库注入总览：逐篇三态直改（关闭/约定/资料）+ 多选批量 + 三态过滤/搜索；日志隐身硬禁，敏感笔记注入自动脱敏', control: injMgrControl },
+          // 工作记忆 v0「工作记忆」区：启用沉淀引导（约定笔记方案，裁决 A）+ 日志卫生两级窗口（裁决 B②）
+          { key: 'memory', label: '工作记忆', sub: '会话工作结论沉淀为工作日志（kind=log，默认隐身：不进系统提示/目录/默认列表与搜索，筛选中心类型「日志」为专入口）；启用 = 创建一条预填约定笔记（可见/可改/可停用）', control: memoryControl },
+          { key: 'logweek', label: '日志周聚合窗口', sub: '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行；缺省 7 天）', control: logWeekControl },
+          { key: 'logmonth', label: '日志月聚合窗口', sub: '超过 N 天提名月聚合（原始日志与周志混合归组；缺省 90 天）；0 = 关闭月聚合', control: logRetentionControl },
+          { key: 'data', label: '数据', sub: '全库目录快照导出 / 单文件拼接导出（图片内联，可分享）/ 从快照目录导入（只增改不删，导入前自动全量备份）/ 回收站兜底（恢复或彻底删除）', control: dataControl },
+          { key: 'assets', label: '资产清理', sub: '扫描 assets/ 中未被任何笔记引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删）', control: assetsControl },
+          { key: 'suggest', label: '整理建议', sub: '速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）', control: suggestControl },
+        ]
+        return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) closeSettings() } },
+          e('div', { className: 'dsh-notes-settings-modal' },
+            // 标题栏动作区（notes-settings-feedback）：还原/保存（dirty 状态机驱动 disabled）+ ✕ 常驻关闭
+            e('div', { className: 'dsh-notes-settings-modal-t' }, I('gear', 14), ' 设置',
+              e('span', { className: 'dsh-notes-settings-t-acts' },
+                e('button', { className: 'dsh-notes-settings-restore dsh-nt', 'data-tooltip': '还原：全部回滚到打开时的设置（逐键恢复）', disabled: !setDirty || setSaving, onClick: restoreSettingsAll }, '还原'),
+                e('button', { className: 'dsh-notes-settings-save dsh-nt', 'data-tooltip': '保存：flush 全部未落盘改动并显式确认（自动保存不变，此为兜底 + 确认）', disabled: !setDirty || setSaving, onClick: saveSettingsAll }, setSaving ? '保存中…' : '保存'),
+                e('button', { className: 'dsh-notes-settings-close dsh-nt', 'data-tooltip': '关闭（Esc；有未落盘改动先自动 flush）', onClick: closeSettings }, I('x', 12)))),
+            e('div', { className: 'dsh-notes-settings-list' },
+              settingsRows.map(row => e('div', { key: row.key, className: 'dsh-notes-settings-row' },
+                e('div', { className: 'dsh-notes-settings-label' }, row.label, row.sub ? e('span', { className: 'dsh-notes-settings-label-s' }, row.sub) : null),
+                e('div', { className: 'dsh-notes-settings-control' }, row.control)))),
+            error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null))
+      })()
+      : null
+    }
+    // ===== popover: help —— 使用说明气泡（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelHelp（showHelp 态 + 气泡 JSX）
+    // needs: kernel/icons.js（e/I）；跨域写入（标题栏「?」按钮）经 kernel/state.js setShowHelp 转发别名 → panelBridge
+    // state 托管：showHelp 留 hook 内 useState——popover 与主面板同一组件渲染边界（注册函数经 panel/index.js 装配调用），
+    // 重渲染口径与昔日 FloatingPanel 内联态完全一致；check 锚定 useState 族不迁 store（§6 E 裁决记录见 panel/index.js 头注）
+    function usePanelHelp() {
         const [showHelp, setShowHelp] = React.useState(false)
-        const [flashId, setFlashId] = React.useState(null)
-        const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
-        const [focusId, setFocusId] = React.useState(null)
-        // ===== 筛选中心（design/notes-filter-center.html 落地）：filters 状态 {pinned, injected, injectEver, sensitive, kinds[]} =====
-        // 组内 OR / 跨组 AND，与文件夹/主题视图/搜索 AND 叠加；localStorage 持久化（dsh-notes-filters，含 sortBy）
-        const [filters, setFilters] = React.useState(() => loadFiltersState().filters)
-        // P2 使用遥测：列表排序方式（'time'=按更新（缺省，与 host _list 一致）| 'use'=按被引用次数降序 | 'rel'=相关度（搜索时：标题命中>标签>正文，同级 updatedAt 降序））
-        // 筛选中心口径：排序是独立控件，与筛选条件正交（互不重置）
-        const [sortBy, setSortBy] = React.useState(() => loadFiltersState().sortBy)
-        // 筛选 popover（分组面板：状态组/类型组多选）+ 排序菜单浮层开关
-        const [filterOpen, setFilterOpen] = React.useState(false)
-        const [sortOpen, setSortOpen] = React.useState(false)
-        // 筛选条件/排序变化即持久化（与 folders-expanded 等现有 localStorage 记忆同口径）
-        React.useEffect(() => { try { localStorage.setItem('dsh-notes-filters', JSON.stringify({ filters, sortBy })) } catch (err) {} }, [filters, sortBy])
-        // host notes-search 返回的命中字段（noteId → ['title'|'tags'|'body']）：「相关度」排序数据源；本地即时命中/旧 host 无该字段时按本地字段估算
-        const [searchMatches, setSearchMatches] = React.useState({})
+        const helpEl = showHelp ? e('div', { className: 'dsh-notes-help-bubble' },
+            e('button', { className: 'dsh-notes-help-close', onClick: () => setShowHelp(false) }, '×'),
+            e('h4', null, '使用说明'),
+            e('ul', null,
+              e('li', null, '点侧栏「新建」或按 ', e('kbd', null, 'Ctrl+N'), ' 输入标题新建笔记，创建后直接编辑正文'),
+              e('li', null, '在页面划选文字松手，弹出快速记录卡片（自动识别为引用）'),
+              e('li', null, '同一会话 10 分钟内的速记自动合并'),
+              e('li', null, '点面包屑/编辑器里的主题可按主题全局过滤（跨文件夹）'),
+              e('li', null, '拖笔记到文件夹行移入，拖到树根部未入夹笔记区移出（拖拽中显示落点提示）'),
+              e('li', null, '快捷键：', e('kbd', null, 'Ctrl+K'), ' 搜索、', e('kbd', null, 'Ctrl+N'), ' 新建、', e('kbd', null, 'j/k'), ' 或 ', e('kbd', null, '↑↓'), ' 移动、', e('kbd', null, 'Enter'), ' 打开、', e('kbd', null, 'Esc'), ' 关闭'),
+              e('li', null, '「归档」：弹出预览，勾选速记组后才合并（可撤销）；手动笔记点「选择」多选合并'),
+              e('li', null, '编辑器「整理」：AI 按类型模板重写正文（替换后可撤销一次）；新建笔记按类型预填模板骨架'),
+              e('li', null, '图片超过 1MB 自动压缩转 JPEG；设置卡片「资产清理」清理未被引用的孤儿文件'),
+              e('li', null, '删除是软删除：侧栏底部「回收站」可恢复或彻底删除（彻底删除不可恢复）'))) : null
+        return { showHelp: showHelp, setShowHelp: setShowHelp, helpEl: helpEl }
+    }
+    // ===== popover: selbar —— 多选操作条（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelSelbar（selMode/selIds/selDelPending 态 + toggleSelMode/toggleSelId/doSelBatchDelete + 操作条 JSX）/ selModeRef
+    // needs: kernel/state.js（panelBridge + setError/afterArchiveCleanup/loadNotes 转发别名）、kernel/bus.js（showToast）、
+    //        kernel/format.js（notifyNotesChanged）、kernel/icons.js（e/I）、modals/merge.js（openMerge，序位在前）
+    // state 托管：selMode/selIds 的 useState 声明原文被 check.js 锚定（26 节），连同 selDelPending 留 hook 内 useState——
+    // popover 与主面板同一组件渲染边界，重渲染口径与昔日 FloatingPanel 内联态一致（§6 E 裁决记录见 panel/index.js 头注）；
+    // selModeRef 为 Esc 栈/拖拽守卫的同步镜像（模块级单例——面板是 shell.overlay 单例，与昔日 FloatingPanel 内 useRef 等价）
+    const selModeRef = { current: false }      // 多选态镜像（Esc 退出多选）
+    function usePanelSelbar() {
+        const [selMode, setSelMode] = React.useState(false)        // 列表多选态（复选框勾选，与搜索/过滤共存）
+        const [selIds, setSelIds] = React.useState({})             // 多选勾选集合：noteId → true
+        const [selDelPending, setSelDelPending] = React.useState(false)   // 多选批量删除执行中（confirm 后才执行；按钮禁用防重入）
+        React.useEffect(() => { selModeRef.current = selMode }, [selMode])
+        // ===== 手动笔记多选合并：「选择」chip / 右键「合并为一篇」进多选态 → 底部操作条 → 标题输入 → notes-archive =====
+        function toggleSelMode() { setSelMode(!selMode); setSelIds({}) }
+        function toggleSelId(id) { setSelIds(prev => { const next = Object.assign({}, prev); if (next[id]) delete next[id]; else next[id] = true; return next }) }
+        // 多选合并弹窗已拆出（modals/merge.js：openMerge/doMergeConfirm 迁入）；toggleSelMode/toggleSelId 属多选操作条域
+        // 多选批量删除（软删进回收站，与整理建议器批量软删同通道）：confirm 注明可恢复 → 逐条 notes-delete → 退出多选态 + 刷新
+        async function doSelBatchDelete() {
+          const ids = Object.keys(selIds)
+          if (!ids.length || selDelPending) return
+          if (!window.confirm('批量删除：所选的 ' + ids.length + ' 条笔记将移入回收站（可在回收站恢复）。\n确认删除？')) return
+          setSelDelPending(true); setError('')
+          let ok = 0, fail = 0
+          for (const id of ids) {
+            try { const res = await rpc('notes-delete', { id: id }); if (res && res.error) fail++; else ok++ }
+            catch (err) { fail++ }
+          }
+          setSelDelPending(false); setSelMode(false); setSelIds({})
+          showToast('已删除 ' + ok + ' 条（可在回收站恢复）' + (fail ? '，失败 ' + fail + ' 条' : ''))
+          afterArchiveCleanup(ids)   // 正打开的笔记在被删集合中则退出选中态（归档/建议器批量软删同款语义）
+          await loadNotes(true); notifyNotesChanged()
+        }
+        // 多选操作条（「选择」chip / 右键「合并为一篇」进多选态后浮于侧栏底部）：已选 N 条 | 合并 | 删除 | 取消
+        const selbarEl = selMode ? e('div', { className: 'dsh-notes-selbar' },
+            e('span', { className: 'dsh-notes-selbar-n' }, '已选 ' + Object.keys(selIds).length + ' 条'),
+            e('button', { className: 'dsh-notes-dispatch-ok', onClick: openMerge, disabled: Object.keys(selIds).length < 2 }, '合并'),
+            e('button', { className: 'dsh-notes-data-danger', onClick: doSelBatchDelete, disabled: Object.keys(selIds).length < 1 || selDelPending }, selDelPending ? '删除中…' : '删除'),
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: toggleSelMode }, '取消'))
+          : null
+        return { selMode: selMode, selIds: selIds, selDelPending: selDelPending, setSelMode: setSelMode, setSelIds: setSelIds, toggleSelMode: toggleSelMode, toggleSelId: toggleSelId, selbarEl: selbarEl }
+    }
+    // ===== popover: folder-menu —— 文件夹右键菜单 + 文件夹管理动作族（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelFolderMenu（folders/foldersExpanded/内联输入四态/renaming 二态/folderMenu 态 + 树 helper 族 +
+    //           loadFolders + openFolderMenu + doCreateFolder/doRenameFolder/doDeleteFolder/doReorderFolder/doReparentFolder + 菜单 JSX）/
+    //           folderMenuRef/renamingIdRef/folderInputOpenRef/subFolderForRef
+    // needs: kernel/state.js（panelBridge + setView/setCtxMenu/setError/loadNotes 转发别名）、kernel/persist.js（loadFoldersExpanded 族）、
+    //        kernel/bus.js（showToast）、kernel/format.js（notifyNotesChanged）、kernel/icons.js（e/I）
+    // 说明：文件夹管理动作（新建/重命名/删除/排序/换父）的全部触发入口是本右键菜单 + 树内联输入/拖拽（panel/tree.js 经回填回调），
+    // 故动作族与树 helper 集中于本模块；Esc 栈直读本模块 ref 镜像（序位在前，与 modal 先例同口径）。
+    // state 托管：全部 state 留 hook 内 useState（foldersExpanded 声明原文被 check.js 21 节锚定；§6 E 裁决记录见 panel/index.js 头注）
+    const folderMenuRef = { current: null }   // 文件夹右键菜单镜像（Esc 栈读最新）
+    const renamingIdRef = { current: null }   // 文件夹重命名输入镜像（Esc 取消）
+    const folderInputOpenRef = { current: false }   // 文件夹新建输入镜像（Esc 取消）
+    const subFolderForRef = { current: null }   // 「新建子文件夹」输入镜像（Esc 取消）
+    function usePanelFolderMenu(args) {
+        const notes = args.notes
+        const view = args.view
         // 虚拟文件夹树：清单走 notes-folders RPC（list/create/rename/delete/reorder）；折叠态持久化 localStorage
         const [folders, setFolders] = React.useState([])
         const [foldersExpanded, setFoldersExpanded] = React.useState(loadFoldersExpanded)
-        // 主题过滤行原地展开态（点行主体=展开/收起该主题子列表；object map，session 内有效，不持久化；缺省折叠）
-        const [topicExpanded, setTopicExpanded] = React.useState({})
-        // 主题过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「主题 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
-        const [topicSecOpen, setTopicSecOpen] = React.useState(false)
         const [folderInputOpen, setFolderInputOpen] = React.useState(false)   // 文件夹分组头 ＋ → 内联输入（根级新建）
         const [folderInputText, setFolderInputText] = React.useState('')
         const [subFolderFor, setSubFolderFor] = React.useState(null)   // 「新建子文件夹」内联输入的父文件夹 id（null=关闭；输入行渲染在该父夹的子内容容器首位）
         const [folderMenu, setFolderMenu] = React.useState(null)   // 文件夹项右键菜单：{ x, y, folder }（面板内坐标）或 null
         const [renamingId, setRenamingId] = React.useState(null)   // 树内内联重命名中的文件夹 id
         const [renameText, setRenameText] = React.useState('')
-        const [ctxNewFolderText, setCtxNewFolderText] = React.useState('')   // 笔记行右键菜单「新建文件夹…」内联输入
-        // 新建笔记 modal（侧栏「新建」chip / Ctrl+N 打开，输标题创建）
-        const [newNoteOpen, setNewNoteOpen] = React.useState(false)
-        const [newNoteTitle, setNewNoteTitle] = React.useState('')
-        const [newNotePending, setNewNotePending] = React.useState(false)
-        const [newNoteKind, setNewNoteKind] = React.useState('note')   // 二期：新建选类型，按 KIND_TEMPLATES 预填骨架
-        const [sessList, setSessList] = React.useState([])
-        const [sessPending, setSessPending] = React.useState([])   // 注入范围浮层：标题后台补齐中的占位会话 [{id, short, workspace}]（0.1.7 首屏提速）
-        const [scopeOpen, setScopeOpen] = React.useState(false)
-        const [dispatchOpen, setDispatchOpen] = React.useState(false)
-        const [activeSessions, setActiveSessions] = React.useState([])
-        const [dispatchPending, setDispatchPending] = React.useState([])   // 派发对话框：标题后台补齐中的占位会话 [{id, short, workspace}]（0.1.7 首屏提速）
-        const [dispatching, setDispatching] = React.useState(false)
-        const [dispatchMode, setDispatchMode] = React.useState('existing')  // existing=派发到活跃会话 / new=新建会话派发
-        const [dispatchInstr, setDispatchInstr] = React.useState('')
-        // ===== 双模式编辑器 v3（原型 design/notes-editor-v3.html）：源码 textarea ⇄ 富文本受限 WYSIWYG =====
-        // editorMode：'source' 源码 | 'rich' 富文本；默认源码；Ctrl+/ 或 meta 行两段开关切换
-        const [editorMode, setEditorModeState] = React.useState('source')
-        const editorModeRef = React.useRef('source')
-        // 白名单降级分析（analyzeMarkdown 内核）：正文含嵌套引用/h4+/任务列表/多行 HTML 块 → 富文本入口置灰（行内 HTML 自 L1、表格自 L2 起不再降级——表格只读渲染 + 序列化逐字回吐）
-        const [degraded, setDegraded] = React.useState({ ok: true, reasons: [] })
-        const degradedRef = React.useRef({ ok: true, reasons: [] })
-        // 图片插入弹窗：null | { name, dataURL, mime, size, alt, uploading, error }（三入口共用：粘贴/拖拽/工具栏按钮）
-        const [imgModal, setImgModal] = React.useState(null)
-        const imgModalRef = React.useRef(null)
-        // 链接插入弹窗：null | { text, url }
-        const [linkModal, setLinkModal] = React.useState(null)
-        const linkModalRef = React.useRef(null)
-        // 富文本同步态徽标（工具栏右侧）：false=已同步源码 / true=编辑中（防抖未回写）；同值 setState React 自动 bail，逐击键调无重渲染开销
-        const [richSyncing, setRichSyncing] = React.useState(false)
-        const [ctxMenu, setCtxMenu] = React.useState(null)   // 笔记行右键菜单：{ x, y, note }（面板内坐标）或 null
-        const [dispatchWsId, setDispatchWsId] = React.useState('')       // new 模式：选中的工作区 id
-        const [dispatchSessWs, setDispatchSessWs] = React.useState('')   // existing 模式：选中的工作区名
-        const [dispatchSessId, setDispatchSessId] = React.useState('')   // existing 模式：选中的会话 id
-        const [wsList, setWsList] = React.useState([])
-        const [dispatchHistoryOpen, setDispatchHistoryOpen] = React.useState(false)   // 派发历史折叠态：默认折叠，点标题行展开
-        // 设置卡片（通用结构：标题「设置」+ 设置项行列表；选择即保存，点遮罩/Esc 关闭）
-        const [settingsOpen, setSettingsOpen] = React.useState(false)
-        const [settingsData, setSettingsData] = React.useState(null)   // notes-settings-get 返回：{ settings, models }
-        const [setLlmProvider, setSetLlmProvider] = React.useState('')
-        const [setLlmModel, setSetLlmModel] = React.useState('')
-        const [setCatalog, setSetCatalog] = React.useState(true)   // 笔记目录注入总开关（catalogEnabled，缺省开）
-        const [setStale, setSetStale] = React.useState('90')   // P1 时效衰减提醒阈值（天；0=关闭，缺省 90）
-        const [setMaxDepth, setSetMaxDepth] = React.useState('3')   // 文件夹嵌套深度上限（maxFolderDepth，层；0=不限，缺省 3）
-        const [setBudget, setSetBudget] = React.useState('0')   // P1 注入体积预算（约，字符数；0=不限）
-        // LLM 用量统计（notes-token-stats）：usageData = notes-usage-get 返回 { today, week, month, allTime, byFeature, estimatedTokens, exactTokens, calls }
-        const [usageData, setUsageData] = React.useState(null)
-        const [setUsageBudget, setSetUsageBudget] = React.useState('0')   // 月度用量预算提醒阈值（tokens/月；0=关闭提醒，超预算仅 toast 不阻断）
-        const usageBudgetRef = React.useRef(0)   // 预算镜像 ref：usage-get 与 settings-get 并发放射，toast 判定读 ref 防闭包过期
-        // 数据导入/导出（设置卡片「数据」区入口）
-        const [exportOpen, setExportOpen] = React.useState(false)
-        const [exportDir, setExportDir] = React.useState('')
-        const [exportPending, setExportPending] = React.useState(false)
-        // P3 单文件导出（设置卡片「数据」区「导出单文件…」入口）：scope 三选一（全部/文件夹/标签）+ 目标目录 + 目录页开关
-        const [sExportOpen, setSExportOpen] = React.useState(false)
-        const [sExportDir, setSExportDir] = React.useState('')
-        const [sExportScope, setSExportScope] = React.useState('all')   // 'all' | 'folder' | 'tag'
-        const [sExportFolder, setSExportFolder] = React.useState('')    // 文件夹 id（host resolveFolderRef 兼容名称）
-        const [sExportTag, setSExportTag] = React.useState('')
-        const [sExportToc, setSExportToc] = React.useState(true)        // 目录页开关（缺省开）
-        const [sExportPending, setSExportPending] = React.useState(false)
-        const [importOpen, setImportOpen] = React.useState(false)
-        const [importDir, setImportDir] = React.useState('')
-        const [importPreview, setImportPreview] = React.useState(null)   // notes-import-preview 返回：{ total, same, diff, added, detail, folders, unreadable }
-        const [importOverwrite, setImportOverwrite] = React.useState(false)   // 「覆盖内容不同的笔记」勾选（默认不勾 = diff 跳过）
-        const [importPending, setImportPending] = React.useState(false)   // 预览中 / 执行中共用（按钮禁用防重入）
-        // ===== 显式归档 UI：预览对话框（速记组勾选 → 确认执行 → toast 可撤销）+ 手动笔记多选合并 =====
-        const [archOpen, setArchOpen] = React.useState(false)      // 归档预览对话框
-        const [archGroups, setArchGroups] = React.useState(null)   // notes-archive-preview 返回的速记组（null=加载中）
-        const [archChecked, setArchChecked] = React.useState({})   // sessionId → false 取消勾选（缺省全勾）
-        const [archExpand, setArchExpand] = React.useState({})     // sessionId → true 展开成员明细
-        const [archPending, setArchPending] = React.useState(false)   // 归档执行中（按钮禁用防重入）
-        const [selMode, setSelMode] = React.useState(false)        // 列表多选态（复选框勾选，与搜索/过滤共存）
-        const [selIds, setSelIds] = React.useState({})             // 多选勾选集合：noteId → true
-        const [mergeOpen, setMergeOpen] = React.useState(false)    // 多选合并标题输入小对话框
-        const [mergeTitle, setMergeTitle] = React.useState('')
-        const [mergePending, setMergePending] = React.useState(false)
-        const [selDelPending, setSelDelPending] = React.useState(false)   // 多选批量删除执行中（confirm 后才执行；按钮禁用防重入）
-        // ===== 二期 ✨整理：notes-ai-organize 按 kind 模板重写正文；organizeUndoRef = 一次撤销栈（toast「撤销」恢复）=====
-        const [organizing, setOrganizing] = React.useState(false)
-        const organizeUndoRef = React.useRef(null)   // { body } | null
-        // ===== 二期 孤儿资产清理：设置卡片「资产清理」→ 预览对话框（dry-run 零写入）→ 勾选删除 =====
-        const [pruneOpen, setPruneOpen] = React.useState(false)
-        const [pruneData, setPruneData] = React.useState(null)     // notes-assets-prune dryRun 返回：{ orphans:[{name,bytes}], totalBytes, referenced, tombstoned, notes }
-        const [pruneChecked, setPruneChecked] = React.useState({}) // name → false 取消勾选（缺省全勾，归档预览同款口径）
-        const [prunePending, setPrunePending] = React.useState(false)
-        // ===== P1 回收站：侧栏底部「回收站」→ 已删笔记列表（notes-list {includeDeleted:true}）→ 恢复 / 彻底删除（notes-purge）=====
-        const [trashOpen, setTrashOpen] = React.useState(false)
-        const [trashList, setTrashList] = React.useState(null)     // 回收站列表（null=加载中；[]=空）
-        const [trashPending, setTrashPending] = React.useState('') // 执行中的笔记 id（'batch'=批量执行中；按钮禁用防重入）
-        // 回收站增强（notes-trash-batch-preview）：批量选择（id→true）+ 行内只读预览（{id, body, error}；body null=加载中）
-        const [trashSel, setTrashSel] = React.useState({})
-        const [trashPreview, setTrashPreview] = React.useState(null)
-        // ===== 整理建议（设置卡片「整理建议」行入口）：notes-suggest 四类候选（速记组/过期未引用/孤儿/日志卫生）——只提名不自动执行 =====
-        const [suggestOpen, setSuggestOpen] = React.useState(false)
-        const [suggestData, setSuggestData] = React.useState(null)     // notes-suggest 返回：{ archiveCandidates, staleCandidates, orphanCandidates, logHygieneCandidates, generatedAt }（null=加载中）
-        const [suggestPending, setSuggestPending] = React.useState(false)   // 批量软删执行中（confirm 后才执行；按钮禁用防重入）
-        const [logHgExpand, setLogHgExpand] = React.useState({})       // 日志卫生组明细展开态：group.key → true（v0 仅展示明细，聚合执行留待 Phase 2）
-        // ===== 注入预览（设置卡片「注入预览」入口）：notes-inject-preview 纯复用 host 注入渲染——双 tab + 会话过滤 + 统计条 =====
-        const [injectPreviewOpen, setInjectPreviewOpen] = React.useState(false)
-        const [injectPreviewData, setInjectPreviewData] = React.useState(null)   // notes-inject-preview 返回：{ conventions, catalog, stats }（null=加载中）
-        const [injectPreviewTab, setInjectPreviewTab] = React.useState('conv')   // 'conv' 约定 | 'cat' 目录
-        const [injectPreviewSid, setInjectPreviewSid] = React.useState('')       // 预览视角值：'' = 全局 / 'ws:<工作区标题>' = 工作区并集 / 会话短 id = 单会话（injectTo 命中口径）
-        // ===== 工作记忆 v0（设置卡片「工作记忆」区）：启用沉淀引导 = 创建预填约定笔记（tag memory-guide，inject=true + 作用域三档）=====
-        // 启用状态不落 settings.json（host 单一事实源 = 存在 tag=memory-guide 且 inject=true 的笔记）；停用 = 关闭该约定 inject
-        const [memStatus, setMemStatus] = React.useState(null)       // notes-memory-guide {op:'status'} 返回：{ enabled, noteId }（null=未探测）
-        const [memOpen, setMemOpen] = React.useState(false)          // 启用沉淀引导对话框
-        const [memCheck, setMemCheck] = React.useState(null)         // {op:'check'} 返回：{ overlaps:[{id,title,topic,preview}] }（null=检查中）
-        const [memScope, setMemScope] = React.useState('global')     // 作用域三档（全局视角挑选）：global 所有会话（缺省）/ workspace 指定工作区（多选）/ session 指定会话（多选）
-        const [memWsPick, setMemWsPick] = React.useState({})         // 指定工作区多选：{ 工作区标题: true }（数据源 notes-sessions 的 workspace 字段）
-        const [memSidPick, setMemSidPick] = React.useState({})       // 指定会话多选：{ 会话短 id: true }
-        const [memPending, setMemPending] = React.useState(false)    // 启用/停用执行中（按钮禁用防重入）
-        const [setLogWeek, setSetLogWeek] = React.useState('7')      // 日志卫生·周聚合窗口（天，缺省 7）：超窗日志在整理建议中提名周聚合
-        const [setLogRetention, setSetLogRetention] = React.useState('90')   // 日志卫生·月聚合窗口（天，缺省 90；0=关闭月聚合）
-        // ===== 历史版本面板（notes-history-ui）：详情 meta 行「历史」入口（有版本才显示）→ modal：版本列表（时间+大小）→ 点选只读预览 → 恢复 =====
-        // 契约：notes-history {id}→{versions:[{ts,bytes}]}（倒序零正文）/ notes-history-get {id,ts}→{body} / notes-restore-history {id,ts}（恢复前当前版自动快照，可再撤销）
-        const [histOpen, setHistOpen] = React.useState(false)
-        const [histCount, setHistCount] = React.useState(null)    // 当前笔记历史版本数（null=未探测；0=无版本不显示入口）
-        const [histList, setHistList] = React.useState(null)      // notes-history 返回 [{ts,bytes}]（null=加载中）
-        const [histSel, setHistSel] = React.useState(0)           // 选中版本 ts（0=未选）
-        const [histPreview, setHistPreview] = React.useState(null) // { ts, body }（null=加载中/未选）
-        const [histPending, setHistPending] = React.useState(false) // 恢复执行中（按钮禁用防重入）
-        // ===== P2 笔记双链：全库正文惰性索引（列表瘦身不含 body；后台 notes-get 小批量补齐，驱动行尾双链标记与反向链接面板；host 不改）=====
-        const [wikiVer, setWikiVer] = React.useState(0)      // 索引版本号：索引推进触发重渲染（行尾标记/反向链接随缓存刷新）
-        const wikiBodiesRef = React.useRef({})               // noteId → { body, updatedAt }
-        const wikiIdxGenRef = React.useRef(0)                // 索引构建代际：列表刷新作废旧任务
-        const jumpWikiRef = React.useRef(null)               // 富文本 click 委托调最新 jumpToWikiTarget（监听器挂一次，读 ref 防闭包过期）
-        const keepQuickRef = React.useRef(false)
-        const newNoteInputRef = React.useRef(null)   // 新建笔记 modal 标题输入框（打开自动聚焦）
-        const edBodyDomRef = React.useRef(null)      // 正文 textarea DOM（新建笔记创建后聚焦）
-        const edLoadingRef = React.useRef(false)     // 正文异步加载中（notes-get 未返回）：期间 doSave 省略 body 字段，防改名触发保存把空正文写盘
-        // 双模式编辑器 DOM/运行时 ref（富文本非受控：编辑期间 React 不重渲染其内容，防 IME 打断/光标丢失）
-        const richRef = React.useRef(null)           // 富文本 contenteditable DOM
-        const richWrapRef = React.useRef(null)       // 富文本滚动容器（拖拽图片 drop 目标 + 工具栏宿主）
-        const richDirtyRef = React.useRef(false)     // 富文本编辑中（未序列化回源码）
-        const composingRef = React.useRef(false)     // IME 组合输入中（期间不序列化）
-        const savedRangeRef = React.useRef(null)     // 富文本选区缓存（工具栏/弹窗操作后恢复）
-        const richSyncTimerRef = React.useRef(null)  // 富文本→源码 900ms 防抖 timer 句柄（disposer）
-        const degTimerRef = React.useRef(null)       // 源码→降级分析 450ms 防抖 timer 句柄
-        const imgFileInputRef = React.useRef(null)   // 图片弹窗隐藏 file input
-        const timersRef = React.useRef([])
-        const selectedRef = React.useRef(null)
-        const dragNoteIdRef = React.useRef(null)   // 笔记拖拽状态：dragstart 记录 noteId（ref 防闭包过期），dragend 清空
-        const dragFolderIdRef = React.useRef(null)   // 文件夹拖拽状态（换父）：dragstart 记录 folderId，dragend 清空；与笔记拖拽互斥
-        // 拖拽进行中标记（dragstart 置位 / dragend 复位）：驱动未入夹区「移出文件夹」落点提示行渲染（空态下保证拖拽中仍有可拖出落点）
-        const [dragActive, setDragActive] = React.useState(false)
-        // 键盘导航所需的 ref（keydown 监听挂一次，回调读最新值）
-        const focusIdRef = React.useRef(null)
-        const openRef = React.useRef(false)
-        const pagedIdsRef = React.useRef([])
-        const notesRef = React.useRef([])
-        const selectNoteRef = React.useRef(null)
-        const closeRef = React.useRef(null)
-        const searchInputRef = React.useRef(null)
-        const moveFocusRef = React.useRef(null)
-        const openNewNoteRef = React.useRef(null)   // Ctrl+N 调最新 openNewNote（keydown 闭包挂一次）
-        // 展开态镜像到 ref（keydown 闭包挂一次，需读最新值避免过期）
-        const newNoteOpenRef = React.useRef(false)   // 新建笔记 modal 镜像（Esc 优先关 modal）
-        const ctxMenuRef = React.useRef(null)   // 右键菜单镜像（keydown 闭包读最新值）
-        const folderMenuRef = React.useRef(null)   // 文件夹右键菜单镜像
-        const renamingIdRef = React.useRef(null)   // 文件夹重命名输入镜像（Esc 取消）
-        const folderInputOpenRef = React.useRef(false)   // 文件夹新建输入镜像（Esc 取消）
-        const subFolderForRef = React.useRef(null)   // 「新建子文件夹」输入镜像（Esc 取消）
-        const settingsOpenRef = React.useRef(false)   // 设置卡片镜像（Esc 优先关设置卡片）
-        const dispatchOpenRef = React.useRef(false)   // 派发对话框镜像（titlesPending 轮询重拉的终止条件）
-        const exportOpenRef = React.useRef(false)   // 导出对话框镜像（Esc 优先关）
-        const sExportOpenRef = React.useRef(false)  // P3 单文件导出对话框镜像（Esc 优先关）
-        const importOpenRef = React.useRef(false)   // 导入对话框镜像（Esc 优先关）
-        const archOpenRef = React.useRef(false)     // 归档预览对话框镜像（Esc 优先关）
-        const pruneOpenRef = React.useRef(false)    // 资产清理对话框镜像（Esc 优先关）
-        const trashOpenRef = React.useRef(false)    // 回收站对话框镜像（Esc 优先关）
-        const suggestOpenRef = React.useRef(false)  // 整理建议对话框镜像（Esc 优先关）
-        const injectPreviewOpenRef = React.useRef(false)   // 注入预览对话框镜像（Esc 优先关）
-        const memOpenRef = React.useRef(false)             // 工作记忆启用对话框镜像（Esc 优先关）
-        const histOpenRef = React.useRef(false)     // 历史版本面板镜像（Esc 优先关）
-        const histCountRef = React.useRef(null)     // 历史版本计数镜像（doSave/openHistory 闭包读最新值）
-        const mergeOpenRef = React.useRef(false)    // 多选合并对话框镜像（Esc 优先关）
-        const selModeRef = React.useRef(false)      // 多选态镜像（Esc 退出多选）
-        // 自动保存：编辑字段的最新值 ref（debounce 回调读 ref 而非闭包 state，避免过期）
-        const edTitleRef = React.useRef('')
-        const edTopicRef = React.useRef('')
-        const edTagsRef = React.useRef('')
-        const edBodyRef = React.useRef('')
-        const edKindRef = React.useRef('note')
-        const edStatusRef = React.useRef('active')
-        const edRoleRef = React.useRef('off')
-        const edRecallRef = React.useRef(true)
-        const edSensRef = React.useRef(false)
-        const edScopeRef = React.useRef([])
-        const autoSaveRef = React.useRef(null)
-        React.useEffect(() => { selectedRef.current = selected }, [selected])
-        function later(fn, ms) { try { const d = timer.timeout(fn, ms); timersRef.current.push(d); return d } catch (err) { return null } }
-        React.useEffect(() => {
-          const arr = timersRef.current
-          timersRef.current = []
-          for (const d of arr) { try { d() } catch (err) {} }
-        }, [])
-        React.useEffect(() => { try { const saved = localStorage.getItem('dsh-notes-panel-state'); if (saved) { const s = JSON.parse(saved); if (s.x !== undefined && s.y !== undefined) setPos({ x: s.x, y: s.y }); if (s.width !== undefined && s.height !== undefined) setSize({ width: s.width, height: s.height }) } } catch (err) {} }, [])
-        function saveState() { try { localStorage.setItem('dsh-notes-panel-state', JSON.stringify({ x: pos.x, y: pos.y, width: size.width, height: size.height })) } catch (err) {} }
-        React.useEffect(() => { const fn = (s) => { if (s.panelOpen !== undefined) setOpen(s.panelOpen) }; listeners.add(fn); return () => listeners.delete(fn) }, [])
-        // 注入范围下拉的会话列表：面板打开时 + 笔记数变化时刷新（新会话可能出现）
-        // 0.1.7 首屏提速：响应带 titlesPending 说明有会话标题在后台读盘补齐——立即渲染已 resolve 条目 +
-        // 占位条目（「短id · 标题加载中…」），1.5s 轮询重拉直到补齐或面板关闭（冷缓存首读可能上百秒，轮询成本≈0）
-        React.useEffect(() => {
-          if (!open) return
-          let stopped = false
-          let pendingTimer = null
-          function pullSessList() {
-            rpc('notes-sessions', {}).then(res => {
-              if (stopped || !res) return
-              if (res.sessions) setSessList(res.sessions)
-              setSessPending(res.titlesPending && Array.isArray(res.pendingSessions) ? res.pendingSessions : [])
-              if (res.titlesPending && !stopped) pendingTimer = timer.timeout(pullSessList, 1500)
-            }).catch(() => {})
-          }
-          pullSessList()
-          return () => { stopped = true; if (typeof pendingTimer === 'function') pendingTimer() }
-        }, [open, notes.length])
-        // 范围浮层：点击外部关闭
-        React.useEffect(() => {
-          if (!scopeOpen) return
-          const onDown = (ev) => { if (!(ev.target && ev.target.closest && ev.target.closest('.dsh-notes-ed-scope-wrap'))) setScopeOpen(false) }
-          document.addEventListener('mousedown', onDown)
-          return () => document.removeEventListener('mousedown', onDown)
-        }, [scopeOpen])
-        // 筛选中心浮层：点击外部关闭（popover + 排序菜单均在 .dsh-notes-filterbar 内，同一选择器覆盖）
-        React.useEffect(() => {
-          if (!filterOpen && !sortOpen) return
-          const onDown = (ev) => { if (!(ev.target && ev.target.closest && ev.target.closest('.dsh-notes-filterbar'))) { setFilterOpen(false); setSortOpen(false) } }
-          document.addEventListener('mousedown', onDown)
-          return () => document.removeEventListener('mousedown', onDown)
-        }, [filterOpen, sortOpen])
-        // 派发对话框是 modal（自带 mask 点击外部关闭），无需 document 监听
-        React.useEffect(() => { const fn = () => loadNotes(true); noteRefreshListeners.add(fn); return () => noteRefreshListeners.delete(fn) }, [])
-        React.useEffect(() => { if (open) loadNotes() }, [open])
-        React.useEffect(() => { if (open && pos.x === null) { const w = window.innerWidth; const h = window.innerHeight; setPos({ x: Math.max(w - 980, w * 0.3), y: Math.max(48, (h - 640) / 2) }) } }, [open])
-        // 搜索两段式：输入即本地过滤（标题/主题/标签/预览），250ms 防抖后 host 全文检索（含正文）补充
-        // 用一次性注册的 timer.debounce：每击键调 timer.timeout 等于每击键在 fiber 上注册一次 ctx.effect，是持续簿记开销
-        const searchRef = React.useRef('')
-        const searchDebRef = React.useRef(null)
-        // 搜索防抖闭包只注册一次，过滤条件经 ref 镜像供其读取（避免闭包过期）
-        const filtersRef = React.useRef(filters)
-        const filterOpenRef = React.useRef(false)
-        const sortOpenRef = React.useRef(false)
-        React.useEffect(() => {
-          const d = timer.debounce(() => {
-            const qq = searchRef.current.trim()
-            if (!qq) { setSearchIds(null); setSearchMatches({}); return }
-            // 筛选中心组合过滤同步 host：类型组恰选 1 个时可传 kind；状态组仅单条件独活时可传 sensitive/inject
-            // （多选 OR / 曾注入 语义 host 无法表达，由本地 matchFilters 兜底全量语义）；matches 命中字段供「相关度」排序
-            const sArgs = { query: qq }
-            const F = filtersRef.current
-            if (F.kinds.length === 1) sArgs.kind = F.kinds[0]
-            const stOn = FILTER_STATUS.filter(s => F[s.id]).map(s => s.id)
-            if (stOn.length === 1 && stOn[0] === 'sensitive') sArgs.sensitive = true
-            if (stOn.length === 1 && stOn[0] === 'injected') sArgs.inject = true
-            rpc('notes-search', sArgs).then(res => {
-              const ns = (res && res.notes) || []
-              setSearchIds(ns.map(n => n.id))
-              const mm = {}
-              ns.forEach(n => { if (Array.isArray(n.matches)) mm[n.id] = n.matches })
-              setSearchMatches(mm)
-            }).catch(() => {})
-          }, 250)
-          searchDebRef.current = d
-          return () => { if (d && d.dispose) d.dispose() }
-        }, [])
-        // 搜索/视图/筛选中心条件变化时重置分页（新结果从头开始）
-        React.useEffect(() => { setVisibleCount(PAGE_SIZE) }, [searchText, searchIds, view, filters])
-        // 展开态同步到 ref（keydown 闭包读 ref 避免过期）
-        React.useEffect(() => { newNoteOpenRef.current = newNoteOpen }, [newNoteOpen])
-        React.useEffect(() => { filtersRef.current = filters }, [filters])
-        // 工作记忆 v0 日志专入口：类型组「日志」勾选态变化时重拉列表（host 默认排除日志；includeLogs=true 才返回，避免日常视图混入）
-        React.useEffect(() => {
-          const w = filters.kinds.indexOf('log') >= 0
-          if (w !== wantLogsRef.current) { wantLogsRef.current = w; loadNotes(true) }
-        }, [filters])
-        React.useEffect(() => { filterOpenRef.current = filterOpen }, [filterOpen])
-        React.useEffect(() => { sortOpenRef.current = sortOpen }, [sortOpen])
-        React.useEffect(() => { ctxMenuRef.current = ctxMenu }, [ctxMenu])
+        // 展开态/菜单镜像到 ref（Esc 栈闭包挂一次，需读最新值避免过期）
         React.useEffect(() => { folderMenuRef.current = folderMenu }, [folderMenu])
         React.useEffect(() => { renamingIdRef.current = renamingId }, [renamingId])
         React.useEffect(() => { folderInputOpenRef.current = folderInputOpen }, [folderInputOpen])
         React.useEffect(() => { subFolderForRef.current = subFolderFor }, [subFolderFor])
-        React.useEffect(() => { settingsOpenRef.current = settingsOpen }, [settingsOpen])
-        React.useEffect(() => { exportOpenRef.current = exportOpen }, [exportOpen])
-        React.useEffect(() => { sExportOpenRef.current = sExportOpen }, [sExportOpen])
-        React.useEffect(() => { importOpenRef.current = importOpen }, [importOpen])
-        React.useEffect(() => { archOpenRef.current = archOpen }, [archOpen])
-        React.useEffect(() => { pruneOpenRef.current = pruneOpen }, [pruneOpen])
-        React.useEffect(() => { trashOpenRef.current = trashOpen }, [trashOpen])
-        React.useEffect(() => { suggestOpenRef.current = suggestOpen }, [suggestOpen])
-        React.useEffect(() => { injectPreviewOpenRef.current = injectPreviewOpen }, [injectPreviewOpen])
-        React.useEffect(() => { memOpenRef.current = memOpen }, [memOpen])
-        React.useEffect(() => { histOpenRef.current = histOpen }, [histOpen])
-        React.useEffect(() => { histCountRef.current = histCount }, [histCount])
-        React.useEffect(() => { mergeOpenRef.current = mergeOpen }, [mergeOpen])
-        React.useEffect(() => { selModeRef.current = selMode }, [selMode])
-        React.useEffect(() => { dispatchOpenRef.current = dispatchOpen }, [dispatchOpen])
-        // 新建 modal 打开时自动聚焦标题输入框（Ctrl+N / 侧栏「新建」chip 均由此聚焦）
-        React.useEffect(() => { if (newNoteOpen && newNoteInputRef.current) newNoteInputRef.current.focus() }, [newNoteOpen])
-        // 键盘导航：j/k 或 ↑/↓ 移动高亮，Enter 打开，Esc 关闭，Ctrl+K 聚焦搜索，Ctrl+N 新建笔记
-        React.useEffect(() => {
-          function onKeyDown(ev) {
-            if (!openRef.current) return
-            const t = ev.target
-            const inField = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
-            const mod = ev.ctrlKey || ev.metaKey
-            // UI v2：搜索框在侧栏常显，Ctrl+K 直接聚焦（不再走展开态）
-            if (mod && (ev.key === 'k' || ev.key === 'K')) { ev.preventDefault(); if (searchInputRef.current) searchInputRef.current.focus(); return }
-            if (mod && (ev.key === 'n' || ev.key === 'N')) { ev.preventDefault(); openNewNoteRef.current(); return }
-            // v3：Ctrl+/ 双模式切换（源码⇄富文本）；降级时 switchMode 内部拦截并 toast（弹窗打开时不切）
-            if (mod && ev.key === '/') { ev.preventDefault(); if (!imgModalRef.current && !linkModalRef.current && switchModeRef.current) switchModeRef.current(editorModeRef.current === 'source' ? 'rich' : 'source'); return }
-            if (ev.key === 'Escape') { ev.preventDefault(); const cm = ctxMenuRef.current; if (imgModalRef.current) { setImgModal(null); return } if (linkModalRef.current) { setLinkModal(null); return } if (renamingIdRef.current) { setRenamingId(null); return } if (folderInputOpenRef.current) { setFolderInputOpen(false); return } if (subFolderForRef.current) { setSubFolderFor(null); return } if (cm && cm.newFolder) { setCtxMenu({ x: cm.x, y: cm.y, note: cm.note, moveOpen: true }); return } if (folderMenuRef.current) { setFolderMenu(null); return } if (sortOpenRef.current) { setSortOpen(false); return } if (filterOpenRef.current) { setFilterOpen(false); return } if (newNoteOpenRef.current) { setNewNoteOpen(false); return } if (exportOpenRef.current) { setExportOpen(false); return } if (sExportOpenRef.current) { setSExportOpen(false); return } if (importOpenRef.current) { setImportOpen(false); return } if (pruneOpenRef.current) { setPruneOpen(false); return } if (trashOpenRef.current) { setTrashOpen(false); return } if (suggestOpenRef.current) { setSuggestOpen(false); return } if (memOpenRef.current) { setMemOpen(false); return } if (injectPreviewOpenRef.current) { setInjectPreviewOpen(false); return } if (histOpenRef.current) { setHistOpen(false); return } if (mergeOpenRef.current) { setMergeOpen(false); return } if (archOpenRef.current) { setArchOpen(false); return } if (settingsOpenRef.current) { setSettingsOpen(false); return } if (cm) { setCtxMenu(null); return } if (selModeRef.current) { setSelMode(false); setSelIds({}); return } if (searchRef.current) { searchRef.current = ''; setSearchText(''); setSearchIds(null); setSearchMatches({}); return } closeRef.current(); return }
-            if (inField) return
-            if (ctxMenuRef.current) return   // 右键菜单打开时暂停列表导航/打开
-            const ids = pagedIdsRef.current
-            if (!ids.length) return
-            if (ev.key === 'j' || ev.key === 'ArrowDown') { ev.preventDefault(); moveFocusRef.current(ids, 1) }
-            else if (ev.key === 'k' || ev.key === 'ArrowUp') { ev.preventDefault(); moveFocusRef.current(ids, -1) }
-            else if (ev.key === 'Enter') {
-              const fid = focusIdRef.current
-              if (fid && ids.indexOf(fid) >= 0) { const n = notesRef.current.find(x => x.id === fid); if (n) selectNoteRef.current(n) }
-            }
-          }
-          document.addEventListener('keydown', onKeyDown)
-          return () => document.removeEventListener('keydown', onKeyDown)
-        }, [])
-        function onTitlebarMouseDown(ev) {
-          if (ev.target.closest('.dsh-notes-titlebar-btn')) return
-          const sx = ev.clientX, sy = ev.clientY, px = pos.x || 0, py = pos.y || 0
-          drag((ev2) => setPos({ x: Math.max(0, Math.min(window.innerWidth - 200, px + ev2.clientX - sx)), y: Math.max(0, Math.min(window.innerHeight - 100, py + ev2.clientY - sy)) }), saveState)
-        }
-        function onResizeMouseDown(direction, ev) {
-          ev.stopPropagation(); ev.preventDefault()
-          const sx = ev.clientX, sy = ev.clientY, ox = pos.x || 0, oy = pos.y || 0, sw = size.width, sh = size.height
-          drag((ev2) => {
-            const dx = ev2.clientX - sx, dy = ev2.clientY - sy
-            let nw = sw, nh = sh, nx = ox, ny = oy
-            if (direction.indexOf('e') >= 0) nw = sw + dx
-            if (direction.indexOf('s') >= 0) nh = sh + dy
-            if (direction.indexOf('w') >= 0) nw = sw - dx
-            if (direction.indexOf('n') >= 0) nh = sh - dy
-            nw = Math.max(680, Math.min(window.innerWidth - 40, nw)); nh = Math.max(420, Math.min(window.innerHeight - 40, nh))
-            if (direction.indexOf('w') >= 0) nx = ox + sw - nw
-            if (direction.indexOf('n') >= 0) ny = oy + sh - nh
-            setSize({ width: nw, height: nh }); setPos({ x: nx, y: ny })
-          }, saveState)
-        }
-        // ===== 侧栏分隔条拖拽：mousedown 起拖 → drag() 内 document mousemove 按面板内相对坐标增量算宽 → mouseup 卸监听防泄漏 =====
-        // 拖拽期间 body 挂 .dsh-notes-split-drag（禁文本选择 + 强制 col-resize）；mouseup 持久化（读 ref 防闭包过期）
-        function onSplitterMouseDown(ev) {
-          ev.preventDefault(); ev.stopPropagation()
-          const appEl = ev.currentTarget.parentElement   // .dsh-notes-app（分隔条是两栏间的 flex 子项）
-          const sx = ev.clientX, sw = sideW
-          sideWRef.current = 0
-          setSideDrag(true); document.body.classList.add('dsh-notes-split-drag')
-          drag((ev2) => {
-            const nw = clampSideW(sw + ev2.clientX - sx, appEl ? appEl.getBoundingClientRect().width : size.width)
-            sideWRef.current = nw; setSideW(nw)
-          }, () => {
-            setSideDrag(false); document.body.classList.remove('dsh-notes-split-drag')
-            if (sideWRef.current) saveSideW(sideWRef.current)
-          })
-        }
-        // 双击分隔条 = 重置缺省宽度（清除持久化，回 styles.css 缺省 300px）
-        function resetSideW() { sideWRef.current = SIDE_W_DEFAULT; setSideW(SIDE_W_DEFAULT); saveSideW(null) }
-        // silent=true 时不显 loading（后台静默刷新，避免闪烁）
-        // 工作记忆 v0：筛选中心类型组勾选「日志」时列表数据源带 kind=log（host 默认排除日志——默认隐身；勾选即专入口，includeLogs 召回）
-        const wantLogsRef = React.useRef(false)
-        async function loadNotes(silent) { if (!silent) setLoading(true); setError(''); let list = []; try { const res = await rpc('notes-list', wantLogsRef.current ? { includeLogs: true } : undefined); list = res.notes || []; setNotes(list) } catch (err) { setError(String(err.message || err)) } loadFolders(); ensureWikiIndex(list); if (!silent) setLoading(false); return list }
         // 文件夹清单（含各文件夹计数）：与列表同链路刷新（不 await，不阻塞列表链路）；
         // 文件夹异步到达后顺手清洗展开态陈旧 id（pruneFoldersExpanded：失效 id 剔除 + 空集回 null 缺省全展开）
         async function loadFolders() {
@@ -1023,267 +2690,6 @@ window.__ModuleLoader__.load({
             }
           } catch (err) {}
         }
-        // ===== P2 笔记双链：解析 / 索引 / 跳转（内核 extractWikiTargets/wikiLinksTo 同一口径；库已在内存，host 不改）=====
-        // 渲染时解析：[[n-xxx]] 精确 id 优先，其次 [[标题]] 全库标题精确匹配；均不中 → null（渲染为纯文本）
-        function resolveWikiTarget(target) {
-          const t = String(target || '')
-          if (!t) return null
-          const list = notesRef.current || []
-          return list.find(n => n.id === t) || list.find(n => (n.title || '') === t) || null
-        }
-        // 渲染器行内扩展入参（renderMarkdown 第二参）：命中 → {id,title}（锚显示标题）；不中 → null（纯文本）
-        function wikiResolve(w) { const n = resolveWikiTarget(w); return n ? { id: n.id, title: n.title || '' } : null }
-        // 全库正文索引：补缺/过期（updatedAt 漂移）条目，4 路并发后台拉取；整批完成一次性推进版本号（防逐条重渲染闪烁/滚动跳动）
-        function ensureWikiIndex(list) {
-          const gen = ++wikiIdxGenRef.current
-          const cache = wikiBodiesRef.current
-          const stale = (list || []).filter(n => { const c = cache[n.id]; return !c || c.updatedAt !== (n.updatedAt || '') })
-          if (!stale.length) return
-          let idx = 0
-          async function worker() {
-            while (idx < stale.length) {
-              if (gen !== wikiIdxGenRef.current) return
-              const n = stale[idx++]
-              try {
-                const res = await rpc('notes-get', { id: n.id })
-                if (gen !== wikiIdxGenRef.current) return
-                if (res && res.note) cache[n.id] = { body: res.note.body || '', updatedAt: res.note.updatedAt || n.updatedAt || '' }
-              } catch (err) {}
-            }
-          }
-          Promise.all([worker(), worker(), worker(), worker()]).then(() => { if (gen === wikiIdxGenRef.current) setWikiVer(v => v + 1) }).catch(() => {})
-        }
-        // 单条正文写缓存（选中加载/保存后即时新鲜；updatedAt 缺省 '' → 下轮索引复核 reconcile）
-        function bumpWikiBody(id, body, updatedAt) { if (!id) return; wikiBodiesRef.current[id] = { body: body || '', updatedAt: updatedAt || '' }; setWikiVer(v => v + 1) }
-        // 行尾双链标记：缓存正文优先，索引未到时 preview（host slim 前 200 字符）兜底
-        function hasWikiLinks(n) { const c = wikiBodiesRef.current[n.id]; return extractWikiTargets(c ? c.body : (n.preview || '')).length > 0 }
-        // 双链跳转：解析 → 选中；目标被当前视图/筛选中心条件藏掉时退回「全部」（搜索词不动，保留用户上下文）
-        function jumpToWikiTarget(target) {
-          const n = resolveWikiTarget(target)
-          if (!n) { showToast('未找到链接目标：' + target); return }
-          const vis = (view.type === 'all' || (view.type === 'folder' && (n.folder || '') === view.id) || (view.type === 'topic' && (n.topic || '') === view.id))
-            && matchFilters(n, filters)
-          if (!vis) { setView({ type: 'all', id: '' }); setFilters(FILTERS0()) }
-          selectNote(n)
-        }
-        function selectNote(n) {
-          // 双模式：切换笔记前把富文本在途编辑序列化落回 edBody 并立即保存（防 900ms debounce 打到新笔记上）
-          if (editorModeRef.current === 'rich' && richDirtyRef.current) { syncFromRich('切换笔记'); doSave() }
-          // 选中笔记所在文件夹自动展开（保证选中笔记在树中可见）
-          if (n.folder) expandFolder(n.folder)
-          setSelected(n.id); setFocusId(n.id); setEdTitle(n.title); setEdTopic(n.topic && n.topic !== '分类中' ? n.topic : '')
-          keepQuickRef.current = (n.tags || []).indexOf('quick') >= 0
-          setEdTags((n.tags || []).filter(t => t !== 'quick').join(', '))
-          setEdKind(n.kind || 'note'); setEdStatus(n.status || 'active'); setEdRole(n.inject ? (n.injectRole || 'convention') : 'off'); setEdScope(n.injectTo || []); setEdRecall(n.recall !== false); setEdSens(n.sensitive === true)
-          setEdBody('')
-          setDegraded({ ok: true, reasons: [] })   // 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果）
-          // 列表是瘦身数据，正文按需加载；加载期间 edLoadingRef=true，doSave 省略 body（防改名等保存把空正文写盘）
-          edLoadingRef.current = true
-          const id = n.id
-          histCountRef.current = null; setHistCount(null)   // 换笔记重置「历史」入口可见性，随即探测版本计数
-          probeHistCount(id)
-          rpc('notes-get', { id: id }).then(res => {
-            if (res && res.note && selectedRef.current === id) {
-              const body = res.note.body || ''
-              setEdBody(body)
-              bumpWikiBody(id, body, res.note.updatedAt)   // 双链索引即时新鲜（不等后台补缺）
-              // 正文到达后跑降级分析；富文本模式下新正文含白名单外语法 → 回落源码模式，否则重渲染富文本
-              const a = analyzeMarkdown(body)
-              setDegraded(a)
-              if (editorModeRef.current === 'rich') {
-                if (!a.ok) { setEditorModeState('source'); showToast('含高级语法（' + a.reasons.map(r => r.label).join('、') + '），请在源码模式编辑') }
-                else { richDirtyRef.current = false; try { if (richRef.current) richRef.current.innerHTML = renderMarkdown(body, wikiResolve) } catch (err) {} }
-              }
-            }
-            edLoadingRef.current = false
-          }).catch(() => { edLoadingRef.current = false })
-        }
-        // 新建笔记 modal：侧栏「新建」chip / Ctrl+N 打开（清空上次标题，类型复位 note）
-        function openNewNote() { setNewNoteTitle(''); setNewNoteKind('note'); setNewNotePending(false); setError(''); setNewNoteOpen(true) }
-        openNewNoteRef.current = openNewNote
-        // 创建流程：notes-create → 静默刷新列表 → 选中新笔记 → 聚焦正文 textarea → toast
-        // 落位规则（原型 btnNew）：文件夹视图落当前文件夹；主题视图带当前主题；否则落选中笔记所在文件夹/未分类
-        async function doCreateNote() {
-          const title = newNoteTitle.trim()
-          if (!title || newNotePending) return
-          setNewNotePending(true); setError('')
-          try {
-            const selNote = notes.find(n => n.id === selected)
-            const createFolder = view.type === 'folder' ? view.id : ((selNote && selNote.folder) || '')
-            // 二期 kind 模板骨架：按所选类型预填（note=空自由格式；机器信息类由 ✨整理按内容适配，建时不预判）
-            const payload = { title: title, body: KIND_TEMPLATES[newNoteKind] || '', kind: newNoteKind }
-            if (createFolder) payload.folder = createFolder
-            if (view.type === 'topic' && view.id) payload.topic = view.id
-            const res = await rpc('notes-create', payload)
-            if (res && res.error) { setError(res.error); return }
-            setNewNoteOpen(false); setNewNoteTitle('')
-            showToast('已创建')
-            // 立即用创建返回值选中新笔记（不等列表刷新，避免列表时序影响选中链路）
-            if (res && res.id) {
-              selectNote({ id: res.id, title: res.title || title, topic: res.topic || payload.topic || '', kind: res.kind || 'note', status: res.status || 'active', folder: createFolder, tags: [], inject: false, injectTo: [], sensitive: false })
-              setFlashId(res.id); later(() => setFlashId(null), 1800)
-              // 聚焦正文：等选中态渲染出 textarea 再 focus（富文本态先切回源码态，否则没有 textarea 可聚焦）
-              setEditorModeState('source')
-              later(() => { try { if (edBodyDomRef.current) edBodyDomRef.current.focus() } catch (err) {} }, 300)
-              later(() => { try { if (edBodyDomRef.current && document.activeElement !== edBodyDomRef.current) edBodyDomRef.current.focus() } catch (err) {} }, 700)
-            }
-            notifyNotesChanged()
-            loadNotes(true)  // 后台刷新列表（不 await，不阻塞选中/聚焦链路）
-          } catch (err) { setError(String(err.message || err)) } finally { setNewNotePending(false) }
-        }
-        async function doSave() {
-          const id = selectedRef.current
-          if (!id) return
-          setError('')
-          const tags = (edTagsRef.current || '').split(/[,，;；]/).map(s => s.trim()).filter(Boolean)
-          if (keepQuickRef.current && tags.indexOf('quick') < 0) tags.push('quick')
-          const upd = { id: id, title: edTitleRef.current, tags: tags, kind: edKindRef.current, status: edStatusRef.current, inject: edRoleRef.current !== 'off', injectTo: edScopeRef.current, recall: edRecallRef.current, sensitive: edSensRef.current === true }
-          if (!edLoadingRef.current) upd.body = edBodyRef.current   // 正文加载中省略 body（host 对 undefined 保留原内容，防竞态清空正文）
-          if (upd.inject) upd.injectRole = edRoleRef.current   // 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘）
-          if ((edTopicRef.current || '').trim()) upd.topic = edTopicRef.current.trim()
-          try {
-            const res = await rpc('notes-update', upd)
-            if (res && res.error) { setError(res.error); return }
-            setSavedAt(Date.now())
-            bumpWikiBody(id, edBodyRef.current, '')   // 双链索引：自有正文即时新鲜（updatedAt 置空 → loadNotes 后索引复核 reconcile）
-            await loadNotes(true); notifyNotesChanged()
-            if (histCountRef.current === 0) probeHistCount(id)   // 首次真实保存产生首份快照（0→1 转折点）→ 补探「历史」入口
-          } catch (err) { setError(String(err.message || err)) }
-        }
-        async function doDelete(id) {
-          if (!id) return
-          setError('')
-          try {
-            const res = await rpc('notes-delete', { id: id })
-            if (res.error) { setError(res.error); return }
-            if (selected === id) { setSelected(null); setEdTitle(''); setEdTopic(''); setEdTags(''); setEdBody('') }
-            showToast('已删除（可由 Agent 恢复）')
-            await loadNotes(true); notifyNotesChanged()
-          } catch (err) { setError(String(err.message || err)) }
-        }
-        // ===== 二期 ✨整理：当前草稿经 notes-ai-organize（notes-quick-instruct 同款 LLM 通道）按 kind 模板结构化重写 =====
-        // 契约：host 只返回重写正文不落盘；client 替换编辑器内容后走既有自动保存；原正文进一次撤销栈（toast「撤销」恢复）。
-        // 容错：正文为空/加载中/整理中不重入；error 或空返回一律不动原文。
-        async function doAiOrganize() {
-          if (organizing) return
-          if (!selectedRef.current) { showToast('先选择一条笔记'); return }
-          if (edLoadingRef.current) { showToast('正文加载中，稍后再整理'); return }
-          // 富文本在途编辑先序列化落回源码（整理对象是 edBody 源码文本）
-          if (editorModeRef.current === 'rich' && richDirtyRef.current) syncFromRich('整理前同步')
-          const body = edBodyRef.current
-          if (!body || !body.trim()) { showToast('正文为空，无可整理内容'); return }
-          setOrganizing(true); setError('')
-          try {
-            const res = await rpc('notes-ai-organize', { body: body, kind: edKindRef.current, title: edTitleRef.current })
-            if (res && res.error) { showToast('整理失败：' + res.error); return }
-            if (!res || !res.body || !res.body.trim()) { showToast('整理返回为空，原文未动'); return }
-            organizeUndoRef.current = { body: body }   // 一次撤销栈：只保留最近一次整理前的正文
-            applyOrganizedBody(res.body)
-            showToast('已按「' + (KIND_LABELS[edKindRef.current] || '笔记') + '」模板整理', { label: '撤销', fn: undoAiOrganize })
-          } catch (err) { showToast('整理失败：' + String(err.message || err)) } finally { setOrganizing(false) }
-        }
-        // 重写正文落进编辑器双模式：源码 textarea 受控随 edBody 更新；富文本重渲染内核产物（白名单外语法则回落源码模式）
-        function applyOrganizedBody(text) {
-          edBodyRef.current = text; setEdBody(text)
-          const a = analyzeMarkdown(text)
-          setDegraded(a)
-          if (editorModeRef.current === 'rich') {
-            if (!a.ok) setEditorModeState('source')   // 如 todo 模板含任务列表语法 → 自动落源码模式（横幅给出原因）
-            else { richDirtyRef.current = false; try { if (richRef.current) richRef.current.innerHTML = renderMarkdown(text, wikiResolve) } catch (err) {} }
-          }
-          triggerAutoSave()   // 走既有 900ms 防抖自动保存（notes-update）
-        }
-        // 撤销最近一次整理（一次撤销栈，用后即清）
-        function undoAiOrganize() {
-          const u = organizeUndoRef.current
-          if (!u) { showToast('没有可撤销的整理'); return }
-          organizeUndoRef.current = null
-          applyOrganizedBody(u.body)
-          showToast('已恢复整理前正文')
-        }
-        // ===== 历史版本面板（notes-history-ui）：「历史」入口探测 + 列表/预览/恢复链路 =====
-        // 入口可见性探测：选中笔记后拉版本计数（notes-history 是轻量列表 RPC，零正文明文）；0 版本不显示入口。
-        // doSave 完成后仅在 0→1 转折点补探一次（首次真实保存产生首份快照），其余保存不增 RPC。
-        function probeHistCount(id) {
-          if (!id) return
-          rpc('notes-history', { id: id }).then(res => {
-            if (res && !res.error && selectedRef.current === id) { const c = (res.versions || []).length; histCountRef.current = c; setHistCount(c) }
-          }).catch(() => {})
-        }
-        // 打开历史面板：重置态 → 拉版本列表（默认选中最新版并加载预览）
-        function openHistory() {
-          const id = selectedRef.current
-          if (!id) { showToast('先选择一条笔记'); return }
-          setHistList(null); setHistSel(0); setHistPreview(null); setHistPending(false); setError('')
-          setHistOpen(true)
-          rpc('notes-history', { id: id }).then(res => {
-            if (res && res.error) { setError(res.error); setHistList([]); return }
-            const vs = (res && res.versions) || []
-            setHistList(vs)
-            histCountRef.current = vs.length; setHistCount(vs.length)
-            if (vs.length) selectHistVersion(vs[0].ts)
-          }).catch(err => { setError(String(err.message || err)); setHistList([]) })
-        }
-        // 点选版本 → notes-history-get 拉该版正文（只读预览；渲染走 renderMarkdown 内核，全量转义零注入面）
-        function selectHistVersion(ts) {
-          setHistSel(ts); setHistPreview(null)
-          rpc('notes-history-get', { id: selectedRef.current, ts: ts }).then(res => {
-            if (res && res.error) { setError(res.error); return }
-            if (res) setHistPreview({ ts: ts, body: res.body || '' })
-          }).catch(err => setError(String(err.message || err)))
-        }
-        // 恢复回填（与 applyOrganizedBody 差别：恢复版已由 host 落盘，不走 triggerAutoSave——恢复不是新编辑，不能再把恢复版快照一遍污染历史）
-        function applyRestoredBody(id, text) {
-          edBodyRef.current = text; setEdBody(text)
-          const a = analyzeMarkdown(text)
-          setDegraded(a)
-          if (editorModeRef.current === 'rich') {
-            if (!a.ok) setEditorModeState('source')
-            else { richDirtyRef.current = false; try { if (richRef.current) richRef.current.innerHTML = renderMarkdown(text, wikiResolve) } catch (err) {} }
-          }
-          bumpWikiBody(id, text, '')
-        }
-        // 一键恢复：confirm（明示"当前版本会先自动快照，可再撤销"）→ notes-restore-history → 刷新正文与列表 + toast
-        async function doRestoreHistory() {
-          const id = selectedRef.current
-          const ts0 = histSel
-          if (histPending || !ts0 || !id) return
-          if (!window.confirm('恢复到 ' + fmtHistTs(ts0) + ' 的版本？\n当前版本会先自动快照进历史版本，可再撤销（重新打开历史恢复回滚）。')) return
-          setHistPending(true); setError('')
-          try {
-            const res = await rpc('notes-restore-history', { id: id, ts: ts0 })
-            if (res && res.error) { setError(res.error); return }
-            setHistOpen(false)
-            // 恢复已由 host 落盘（恢复前当前版已自动快照）：本地只回填编辑器，不触发自动保存
-            const g = await rpc('notes-get', { id: id })
-            if (g && g.note && selectedRef.current === id) applyRestoredBody(id, g.note.body || '')
-            await loadNotes(true); notifyNotesChanged()
-            probeHistCount(id)   // 恢复前置快照使版本数 +1，重探刷新入口计数
-            showToast('已恢复到 ' + fmtHistTs(ts0) + ' 的版本（原当前版已自动快照，可再恢复回滚）')
-          } catch (err) { setError(String(err.message || err)) } finally { setHistPending(false) }
-        }
-        // 笔记行右键菜单（面板内绝对定位；与文件夹菜单互斥）
-        function openCtxMenu(ev, n) {
-          ev.preventDefault(); ev.stopPropagation()
-          const floatEl = ev.currentTarget.closest('.dsh-notes-floating')
-          const rect = floatEl ? floatEl.getBoundingClientRect() : { left: 0, top: 0, width: 600, height: 500 }
-          const mw = 172, mh = 148
-          let x = ev.clientX - rect.left, y = ev.clientY - rect.top
-          x = Math.max(4, Math.min(x, rect.width - mw - 4))
-          y = Math.max(4, Math.min(y, rect.height - mh - 4))
-          setCtxMenu({ x: x, y: y, note: n })
-          setFolderMenu(null); setCtxNewFolderText('')   // 互斥：关文件夹菜单；清空上次的内联新建输入
-          selectNote(n)
-        }
-        async function ctxSetStatus(n, status) {
-          setCtxMenu(null); setError('')
-          try {
-            const res = await rpc('notes-update', { id: n.id, status: status })
-            if (res && res.error) { setError(res.error); return }
-            await loadNotes(true); notifyNotesChanged()
-          } catch (err) { setError(String(err.message || err)) }
-        }
-        // ===== 虚拟文件夹树交互：折叠切换/自动展开/新建/重命名/删除/排序 + 笔记移动（管理走 notes-folders RPC，移动走 notes-update 的 folder 字段）=====
         // ===== 嵌套 helper（notes-nested-folder-ui；与 host folder-tree-helpers 同口径的客户端纯函数版，数据全经入参/当前 state）=====
         // folderSubtreeIdsOf(id)：子树 id 集合（含自身 + 全部子孙；BFS 下行，visited 防御存量 cycle 数据）
         function folderSubtreeIdsOf(id) {
@@ -1314,8 +2720,6 @@ window.__ModuleLoader__.load({
             return next
           })
         }
-        // 主题过滤行原地展开切换（与文件夹 toggleFolder 同义「点哪个展开哪个」；不持久化）
-        function toggleTopicExpanded(tn) { setTopicExpanded(prev => { const next = Object.assign({}, prev); next[tn] = !next[tn]; return next }) }
         // 自动展开目标文件夹（选中笔记/新建文件夹/移入笔记时调用；已展开或缺省全展开时不动）
         function expandFolder(id) {
           if (!id) return
@@ -1426,6 +2830,74 @@ window.__ModuleLoader__.load({
           } catch (err) { setError(String(err.message || err)) }
         }
         // 笔记行右键「移动到文件夹」：notes-update 只改 folder 字段；'' = 移出到未分类
+        function folderName(fid) { const f = folders.find(x => x.id === fid); return f ? f.name : '' }
+        // 文件夹右键菜单：点击菜单外部关闭（与笔记行菜单共用 .dsh-notes-ctxmenu 样式）
+        React.useEffect(() => {
+          if (!folderMenu) return
+          const onDown = (ev) => { if (!(ev.target && ev.target.closest && ev.target.closest('.dsh-notes-ctxmenu'))) setFolderMenu(null) }
+          document.addEventListener('mousedown', onDown)
+          return () => document.removeEventListener('mousedown', onDown)
+        }, [folderMenu])
+        // 文件夹右键菜单的上移/下移边界（嵌套语义：同级兄弟内首项不可上移、末项不可下移）
+        const folderMenuSibs = folderMenu ? childFoldersOf(folderMenu.folder.parent || '') : []
+        const folderMenuIdx = folderMenu ? folderMenuSibs.findIndex(f => f.id === folderMenu.folder.id) : -1
+        // 文件夹项右键菜单：进入文件夹视图 / 新建子文件夹（嵌套内联输入）/ 重命名 / 上移 / 下移（同级兄弟内）/ 移回根级（有父级时）/ 删除（级联 confirm）
+        const folderMenuEl = folderMenu ? e('div', { className: 'dsh-notes-ctxmenu', style: { left: folderMenu.x + 'px', top: folderMenu.y + 'px' } },
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); expandFolder(mf.id); setView({ type: 'folder', id: mf.id }) } }, I('filter', 12), '进入文件夹视图'),
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); setFolderInputOpen(false); setFolderInputText(''); expandFolder(mf.id); setSubFolderFor(mf.id) } }, I('plus', 12), '新建子文件夹'),
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { setRenamingId(folderMenu.folder.id); setRenameText(folderMenu.folder.name); setFolderMenu(null) } }, '重命名'),
+            e('button', { className: 'dsh-notes-ctxmenu-item', disabled: folderMenuIdx <= 0, onClick: () => doReorderFolder(folderMenu.folder, -1) }, '上移'),
+            e('button', { className: 'dsh-notes-ctxmenu-item', disabled: folderMenuIdx < 0 || folderMenuIdx >= folderMenuSibs.length - 1, onClick: () => doReorderFolder(folderMenu.folder, 1) }, '下移'),
+            (folderMenu.folder.parent || '') ? e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); doReparentFolder(mf.id, '') } }, '移回根级') : null,
+            e('div', { className: 'dsh-notes-ctxmenu-sep' }),
+            e('button', { className: 'dsh-notes-ctxmenu-item danger', onClick: () => doDeleteFolder(folderMenu.folder) }, '删除文件夹'))
+          : null
+        return {
+          folders: folders, foldersExpanded: foldersExpanded, folderInputOpen: folderInputOpen, folderInputText: folderInputText,
+          subFolderFor: subFolderFor, folderMenu: folderMenu, renamingId: renamingId, renameText: renameText,
+          setFolderInputOpen: setFolderInputOpen, setFolderInputText: setFolderInputText, setSubFolderFor: setSubFolderFor,
+          setFolderMenu: setFolderMenu, setRenamingId: setRenamingId, setRenameText: setRenameText,
+          loadFolders: loadFolders, folderSubtreeIdsOf: folderSubtreeIdsOf, childFoldersOf: childFoldersOf, rootFolders: rootFolders,
+          folderPathOf: folderPathOf, isFolderExpanded: isFolderExpanded, toggleFolder: toggleFolder, expandFolder: expandFolder,
+          folderName: folderName, openFolderMenu: openFolderMenu, doCreateFolder: doCreateFolder, doRenameFolder: doRenameFolder,
+          doDeleteFolder: doDeleteFolder, doReorderFolder: doReorderFolder, doReparentFolder: doReparentFolder, folderMenuEl: folderMenuEl
+        }
+    }
+    // ===== popover: ctx-menu —— 笔记行右键菜单（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelCtxMenu（ctxMenu/ctxNewFolderText 态 + openCtxMenu/ctxSetStatus/ctxMoveToFolder/ctxCreateFolderMove + 菜单 JSX）/ ctxMenuRef
+    // needs: kernel/state.js（panelBridge + setError/setFolderMenu/setSelMode/setSelIds/expandFolder/doDelete/selectNote/loadNotes/loadFolders 转发别名）、
+    //        kernel/bus.js（showToast）、kernel/format.js（notifyNotesChanged）、kernel/icons.js（e/I）；
+    //        folders 清单经 hook 入参注入（panel/index.js 自 folder-menu hook 回填，渲染期新鲜值）
+    // state 托管：ctxMenu/ctxNewFolderText 留 hook 内 useState（与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）；
+    // ctxMenuRef 为 Esc 栈/Ctrl+/ 守卫的同步镜像（模块级单例——面板是 shell.overlay 单例，与昔日 FloatingPanel 内 useRef 等价）
+    const ctxMenuRef = { current: null }   // 右键菜单镜像（keydown 闭包读最新值）
+    function usePanelCtxMenu(args) {
+        const folders = args.folders
+        const [ctxMenu, setCtxMenu] = React.useState(null)   // 笔记行右键菜单：{ x, y, note }（面板内坐标）或 null
+        const [ctxNewFolderText, setCtxNewFolderText] = React.useState('')   // 笔记行右键菜单「新建文件夹…」内联输入
+        React.useEffect(() => { ctxMenuRef.current = ctxMenu }, [ctxMenu])
+        // 笔记行右键菜单（面板内绝对定位；与文件夹菜单互斥）
+        function openCtxMenu(ev, n) {
+          ev.preventDefault(); ev.stopPropagation()
+          const floatEl = ev.currentTarget.closest('.dsh-notes-floating')
+          const rect = floatEl ? floatEl.getBoundingClientRect() : { left: 0, top: 0, width: 600, height: 500 }
+          const mw = 172, mh = 148
+          let x = ev.clientX - rect.left, y = ev.clientY - rect.top
+          x = Math.max(4, Math.min(x, rect.width - mw - 4))
+          y = Math.max(4, Math.min(y, rect.height - mh - 4))
+          setCtxMenu({ x: x, y: y, note: n })
+          setFolderMenu(null); setCtxNewFolderText('')   // 互斥：关文件夹菜单；清空上次的内联新建输入
+          selectNote(n)
+        }
+        async function ctxSetStatus(n, status) {
+          setCtxMenu(null); setError('')
+          try {
+            const res = await rpc('notes-update', { id: n.id, status: status })
+            if (res && res.error) { setError(res.error); return }
+            await loadNotes(true); notifyNotesChanged()
+          } catch (err) { setError(String(err.message || err)) }
+        }
+        // 笔记行右键「移动到文件夹」：notes-update 只改 folder 字段；'' = 移出到未分类
         async function ctxMoveToFolder(n, folderId) {
           setCtxMenu(null); setCtxNewFolderText(''); setError('')
           const fname = folderId ? ((folders.find(f => f.id === folderId) || {}).name || '') : ''
@@ -1436,6 +2908,364 @@ window.__ModuleLoader__.load({
             await loadNotes(true); notifyNotesChanged()
           } catch (err) { setError(String(err.message || err)) }
         }
+        // 笔记行右键「新建文件夹…」：建文件夹并把笔记移入（不切换当前视图）
+        async function ctxCreateFolderMove(n) {
+          const name = ctxNewFolderText.trim()
+          if (!name) return
+          setError('')
+          try {
+            const res = await rpc('notes-folders', { op: 'create', name: name })
+            if (res && res.error) { setError(res.error); return }
+            setCtxNewFolderText('')
+            if (res.folder && res.folder.id) {
+              expandFolder(res.folder.id)
+              const u = await rpc('notes-update', { id: n.id, folder: res.folder.id })
+              if (u && u.error) { setError(u.error); return }
+              showToast('已移动到「' + res.folder.name + '」')
+            }
+            setCtxMenu(null)
+            await loadFolders(); await loadNotes(true); notifyNotesChanged()
+          } catch (err) { setError(String(err.message || err)) }
+        }
+        // 点击菜单外部关闭（Esc 在全局 keydown 里处理）
+        React.useEffect(() => {
+          if (!ctxMenu) return
+          const onDown = (ev) => { if (!(ev.target && ev.target.closest && ev.target.closest('.dsh-notes-ctxmenu'))) setCtxMenu(null) }
+          document.addEventListener('mousedown', onDown)
+          return () => document.removeEventListener('mousedown', onDown)
+        }, [ctxMenu])
+        // 笔记行右键菜单：置顶/已解决/移动到文件夹/删除（纯文字标签 + SVG 图标面板内统一风格）
+        const ctxMenuEl = ctxMenu ? e('div', { className: 'dsh-notes-ctxmenu', style: { left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' } },
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => ctxSetStatus(ctxMenu.note, ctxMenu.note.status === 'pinned' ? 'active' : 'pinned') }, I('pin', 12), ctxMenu.note.status === 'pinned' ? '取消置顶' : '置顶'),
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => ctxSetStatus(ctxMenu.note, ctxMenu.note.status === 'resolved' ? 'active' : 'resolved') }, I('check', 12), ctxMenu.note.status === 'resolved' ? '重开' : '标记已解决'),
+            // 移动到文件夹：点击内联展开子菜单（文件夹列表 + 移出 + 新建），避免二级浮层被面板 overflow:hidden 裁切
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => setCtxMenu({ x: ctxMenu.x, y: ctxMenu.y, note: ctxMenu.note, moveOpen: !ctxMenu.moveOpen }) }, I('folder', 12), '移动到文件夹' + (ctxMenu.moveOpen ? ' ▾' : ' ▸')),
+            ctxMenu.moveOpen ? e(React.Fragment, null,
+              folders.map(f => e('button', { key: f.id, className: 'dsh-notes-ctxmenu-item dsh-notes-ctxmenu-sub', onClick: () => ctxMoveToFolder(ctxMenu.note, f.id) }, ((ctxMenu.note.folder || '') === f.id ? '✓ ' : '') + f.name)),
+              (ctxMenu.note.folder || '') ? e('button', { className: 'dsh-notes-ctxmenu-item dsh-notes-ctxmenu-sub', onClick: () => ctxMoveToFolder(ctxMenu.note, '') }, '移出文件夹（未分类）') : null,
+              ctxMenu.newFolder
+                ? e('input', { className: 'dsh-notes-ctxmenu-input', placeholder: '新文件夹名…', value: ctxNewFolderText, autoFocus: true, onChange: (ev) => setCtxNewFolderText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ctxCreateFolderMove(ctxMenu.note) } } })
+                : e('button', { className: 'dsh-notes-ctxmenu-item dsh-notes-ctxmenu-sub', onClick: () => setCtxMenu({ x: ctxMenu.x, y: ctxMenu.y, note: ctxMenu.note, moveOpen: true, newFolder: true }) }, '新建文件夹…'))
+            : null,
+            // 合并为一篇：进多选态并预勾当前笔记（再到列表勾选其余 ≥1 条，底部操作条合并）
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const nid = ctxMenu.note.id; setCtxMenu(null); setSelMode(true); setSelIds({ [nid]: true }) } }, I('check', 12), '合并为一篇'),
+            e('button', { className: 'dsh-notes-ctxmenu-item danger', onClick: () => { setCtxMenu(null); doDelete(ctxMenu.note.id) } }, I('trash', 12), '删除'))
+          : null
+        return { ctxMenu: ctxMenu, setCtxMenu: setCtxMenu, openCtxMenu: openCtxMenu, ctxMoveToFolder: ctxMoveToFolder, ctxMenuEl: ctxMenuEl }
+    }
+    // ===== popover: scope —— 注入范围浮层（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelScope（sessList/sessPending/scopeOpen 态 + 会话清单轮询 + injectScopeLabel + 浮层 JSX）
+    // needs: kernel/state.js（panelBridge + toggleScope 转发别名）、kernel/icons.js（e/I）；
+    //        open/notes/edScope 经 hook 入参注入（panel/index.js 装配层回填，渲染期新鲜值）
+    // state 托管：scopeOpen/sessList/sessPending 留 hook 内 useState（与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）；
+    // 编辑器 setRoleSeg 联动开合经 kernel 转发别名 setScopeOpen → panelBridge 回填
+    function usePanelScope(args) {
+        const open = args.open
+        const notes = args.notes
+        const edScope = args.edScope
+        const [sessList, setSessList] = React.useState([])
+        const [sessPending, setSessPending] = React.useState([])   // 注入范围浮层：标题后台补齐中的占位会话 [{id, short, workspace}]（0.1.7 首屏提速）
+        const [scopeOpen, setScopeOpen] = React.useState(false)
+        // 注入范围下拉的会话列表：面板打开时 + 笔记数变化时刷新（新会话可能出现）
+        // 0.1.7 首屏提速：响应带 titlesPending 说明有会话标题在后台读盘补齐——立即渲染已 resolve 条目 +
+        // 占位条目（「短id · 标题加载中…」），1.5s 轮询重拉直到补齐或面板关闭（冷缓存首读可能上百秒，轮询成本≈0）
+        React.useEffect(() => {
+          if (!open) return
+          let stopped = false
+          let pendingTimer = null
+          function pullSessList() {
+            rpc('notes-sessions', {}).then(res => {
+              if (stopped || !res) return
+              if (res.sessions) setSessList(res.sessions)
+              setSessPending(res.titlesPending && Array.isArray(res.pendingSessions) ? res.pendingSessions : [])
+              if (res.titlesPending && !stopped) pendingTimer = timer.timeout(pullSessList, 1500)
+            }).catch(() => {})
+          }
+          pullSessList()
+          return () => { stopped = true; if (typeof pendingTimer === 'function') pendingTimer() }
+        }, [open, notes.length])
+        // 范围浮层：点击外部关闭
+        React.useEffect(() => {
+          if (!scopeOpen) return
+          const onDown = (ev) => { if (!(ev.target && ev.target.closest && ev.target.closest('.dsh-notes-ed-scope-wrap'))) setScopeOpen(false) }
+          document.addEventListener('mousedown', onDown)
+          return () => document.removeEventListener('mousedown', onDown)
+        }, [scopeOpen])
+        // 注入范围文字（injectTo 是多选数组）：缺省 = 所有会话（存量 global/workspace 值同样视为所有会话）；否则列出所选会话名
+        function injectScopeLabel(injectTo) {
+          const arr = (injectTo || []).filter(t => t !== 'global' && t !== 'workspace')
+          if (arr.length === 0) return '所有会话'
+          const names = arr.map(t => {
+            const s = sessList.find(x => x.short === t)
+            return s ? s.name : ('会话 ' + t)
+          })
+          return names.join('、')
+        }
+        // 范围浮层：会话按工作区分组（两级：工作区 → 会话）
+        const scopeByWs = {}
+        for (const s of sessList) { const w = s.workspace || '其他'; if (!scopeByWs[w]) scopeByWs[w] = []; scopeByWs[w].push(s) }
+        // 标题后台补齐中的占位会话（0.1.7）：禁用态占位「短id · 标题加载中…」，补齐后轮询重拉自动替换为真名
+        for (const p of sessPending) { const w = p.workspace || '其他'; if (!scopeByWs[w]) scopeByWs[w] = []; scopeByWs[w].push({ id: p.id, short: p.short, name: '', pending: true }) }
+        const scopeWsKeys = Object.keys(scopeByWs).sort()
+        const scopePanelEl = scopeOpen ? e('div', { className: 'dsh-notes-scope-panel' },
+                  // 默认提示行：注入无「工作区/全局」维度——缺省注入所有会话，勾选会话则仅限这些会话
+                  e('div', { className: 'dsh-notes-scope-hint' }, '默认注入到所有会话；勾选会话则仅限这些会话'),
+                  scopeWsKeys.map(ws => e('div', { key: ws, className: 'dsh-notes-scope-group' },
+                    e('div', { className: 'dsh-notes-scope-ws' }, ws),
+                    scopeByWs[ws].map(s => e('label', { key: s.id, className: 'dsh-notes-scope-item dsh-notes-scope-sess' },
+                      e('input', { type: 'checkbox', checked: s.pending ? false : edScope.indexOf(s.short) >= 0, onChange: () => { if (!s.pending) toggleScope(s.short) }, disabled: !!s.pending }),
+                      ' ' + (s.pending ? (s.short + ' · 标题加载中…') : s.name))))))
+                : null
+        return { sessList: sessList, sessPending: sessPending, scopeOpen: scopeOpen, setScopeOpen: setScopeOpen, injectScopeLabel: injectScopeLabel, scopePanelEl: scopePanelEl }
+    }
+    // ===== popover: filter-pop —— 筛选中心分组浮层（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelFilterPop（filterOpen 态 + renderFilterPop 渲染函数）/ filterOpenRef
+    // needs: kernel/state.js（panelBridge + setFilters 转发别名）、kernel/constants.js（FILTER_STATUS/FILTER_KINDS/FILTERS0/KIND_LABELS）、
+    //        kernel/icons.js（e/I）；filters/notes/hasInjectEver/filteredCount/searchDebRef 经渲染函数入参注入（装配层 post-guard 新鲜值）
+    // state 托管：filterOpen 留 hook 内 useState（与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）；
+    // filterOpenRef 为 Esc 栈的同步镜像（模块级单例——面板是 shell.overlay 单例，与昔日 FloatingPanel 内 useRef 等价）；
+    // 浮层 JSX 依赖 post-guard 视图求值结果（filtered.length/hasInjectEver），故导出渲染函数由装配层在求值后调用（口径不变）
+    const filterOpenRef = { current: false }
+    function usePanelFilterPop(args) {
+        const filters = args.filters, sortBy = args.sortBy
+        const [filterOpen, setFilterOpen] = React.useState(false)
+        React.useEffect(() => { filterOpenRef.current = filterOpen }, [filterOpen])
+        // 筛选条件/排序变化即持久化（与 folders-expanded 等现有 localStorage 记忆同口径）
+        React.useEffect(() => { try { localStorage.setItem('dsh-notes-filters', JSON.stringify({ filters, sortBy })) } catch (err) {} }, [filters, sortBy])
+        function renderFilterPop(args) {
+          const filters = args.filters, notes = args.notes, hasInjectEver = args.hasInjectEver, filteredCount = args.filteredCount, searchDebRef = args.searchDebRef
+          return filterOpen ? e('div', { className: 'dsh-notes-fpop' },
+                  e('div', { className: 'dsh-notes-fg-h' }, e('span', null, '状态'), e('span', { className: 'dsh-notes-fg-rule' }, '组内多选 = OR')),
+                  FILTER_STATUS.filter(f => f.id !== 'injectEver' || hasInjectEver).map(f => e('label', { key: f.id, className: 'dsh-notes-fg-item' },
+                    e('input', { type: 'checkbox', checked: filters[f.id] === true, onChange: (ev) => { setFilters(Object.assign({}, filters, { [f.id]: ev.target.checked })); if (searchDebRef.current) searchDebRef.current() } }),
+                    I(f.icon, 11), e('span', { className: 'dsh-notes-fg-fl' }, f.label), e('span', { className: 'dsh-notes-fg-cnt' }, String(notes.filter(f.pred).length)))),
+                  e('div', { className: 'dsh-notes-fg-h' }, e('span', null, '类型'), e('span', { className: 'dsh-notes-fg-rule' }, '组内 OR · 与状态组 = AND')),
+                  FILTER_KINDS.map(k => e('label', { key: k, className: 'dsh-notes-fg-item' },
+                    e('input', { type: 'checkbox', checked: filters.kinds.indexOf(k) >= 0, onChange: (ev) => { setFilters(Object.assign({}, filters, { kinds: ev.target.checked ? filters.kinds.concat(k) : filters.kinds.filter(x => x !== k) })); if (searchDebRef.current) searchDebRef.current() } }),
+                    e('span', { className: 'dsh-notes-fg-dot', style: { background: 'var(--nkind-' + k + ')' } }), e('span', { className: 'dsh-notes-fg-fl' }, KIND_LABELS[k]), e('span', { className: 'dsh-notes-fg-cnt' }, String(notes.filter(n => (n.kind || 'note') === k).length)))),
+                  e('div', { className: 'dsh-notes-fpop-foot' },
+                    e('span', { className: 'dsh-notes-fpop-pcnt' }, '命中 ' + filteredCount + ' 条'),
+                    e('button', { className: 'dsh-notes-pbtn', onClick: () => { setFilters(FILTERS0()); if (searchDebRef.current) searchDebRef.current() } }, '清空'),
+                    e('button', { className: 'dsh-notes-pbtn primary', onClick: () => setFilterOpen(false) }, '完成'))) : null
+        }
+        return { filterOpen: filterOpen, setFilterOpen: setFilterOpen, renderFilterPop: renderFilterPop }
+    }
+    // ===== popover: sort-menu —— 排序菜单浮层（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelSortMenu（sortOpen 态 + 菜单 JSX + 筛选/排序共享点外关闭 effect）/ sortOpenRef
+    // needs: kernel/state.js（panelBridge + setSortBy/setFilterOpen 转发别名）、kernel/constants.js（FILTER_SORTS）、kernel/icons.js（e/I）；
+    //        sortBy/filterOpen 经 hook 入参注入（装配层回填，渲染期新鲜值）
+    // state 托管：sortOpen 留 hook 内 useState（与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）；
+    // sortOpenRef 为 Esc 栈的同步镜像（模块级单例——面板是 shell.overlay 单例，与昔日 FloatingPanel 内 useRef 等价）；
+    // 筛选 popover + 排序菜单共享同一点外关闭 effect（均在 .dsh-notes-filterbar 内）——随序位在后的本模块收容（同文）
+    const sortOpenRef = { current: false }
+    function usePanelSortMenu(args) {
+        const sortBy = args.sortBy
+        const filterOpen = args.filterOpen
+        const [sortOpen, setSortOpen] = React.useState(false)
+        React.useEffect(() => { sortOpenRef.current = sortOpen }, [sortOpen])
+        // 筛选中心浮层：点击外部关闭（popover + 排序菜单均在 .dsh-notes-filterbar 内，同一选择器覆盖）
+        React.useEffect(() => {
+          if (!filterOpen && !sortOpen) return
+          const onDown = (ev) => { if (!(ev.target && ev.target.closest && ev.target.closest('.dsh-notes-filterbar'))) { setFilterOpen(false); setSortOpen(false) } }
+          document.addEventListener('mousedown', onDown)
+          return () => document.removeEventListener('mousedown', onDown)
+        }, [filterOpen, sortOpen])
+        const sortMenuEl = sortOpen ? e('div', { className: 'dsh-notes-fsort-menu' },
+                    FILTER_SORTS.map(s => e('div', { key: s.id, className: 'dsh-notes-fsort-item' + (sortBy === s.id ? ' on' : ''), onClick: () => { setSortBy(s.id); setSortOpen(false) } }, e('span', { className: 'dsh-notes-fsort-tick' }, I('check', 11)), s.label, e('span', { className: 'dsh-notes-fsort-sd' }, s.desc)))) : null
+        return { sortOpen: sortOpen, setSortOpen: setSortOpen, sortMenuEl: sortMenuEl }
+    }
+    const d1 = slots.inject('conversation.session.header.actions', () => {
+      function HeaderBtn(props) {
+        perf.hdrRender++
+        const [, force] = React.useState(0)
+        if (props && props.sessionId) currentSessionId = props.sessionId
+        React.useEffect(() => { const fn = () => force(v => v + 1); entryListeners.add(fn); listeners.add(fn); return () => { entryListeners.delete(fn); listeners.delete(fn) } }, [])
+        // 模式互斥：fab 模式时隐藏会话头部按钮
+        if (entryMode !== 'header') return null
+        return e('button', { className: 'dsh-notes-hdr-btn dsh-nt' + (panelOpen ? ' active' : ''), onClick: () => { panelOpen = !panelOpen; notify() }, 'data-tooltip': '智能笔记' }, e('span', { className: 'dsh-notes-hdr-ic' }, I('note', 13)), e('span', null, '智能笔记'))
+      }
+      slots.register({ name: 'conversation.session.header.actions', id: 'dsh-notes-btn', order: 40 }, (props) => e(HeaderBtn, props))
+    })
+    if (typeof d1 === 'function') disposers.push(d1)
+    const d2 = slots.inject('shell.overlay', () => {
+      // 悬浮气泡入口（可拖拽；点击展开面板；位置持久化；与会话头部按钮互斥）
+      function FabEntry() {
+        const [, force] = React.useState(0)
+        const [pos, setPos] = React.useState({ x: fabPos.x, y: fabPos.y })
+        const posRef = React.useRef(pos)
+        React.useEffect(() => { posRef.current = pos }, [pos])
+        React.useEffect(() => { const fn = () => force(v => v + 1); entryListeners.add(fn); listeners.add(fn); return () => { entryListeners.delete(fn); listeners.delete(fn) } }, [])
+        React.useEffect(() => {
+          // 窗口尺寸变化时把气泡 clamp 进视口
+          function onResize() {
+            const p = posRef.current, nx = Math.max(0, Math.min(window.innerWidth - 44, p.x)), ny = Math.max(0, Math.min(window.innerHeight - 44, p.y))
+            if (nx !== p.x || ny !== p.y) { posRef.current = { x: nx, y: ny }; setPos({ x: nx, y: ny }) }
+          }
+          window.addEventListener('resize', onResize)
+          return () => window.removeEventListener('resize', onResize)
+        }, [])
+        // 模式互斥：header 模式时隐藏悬浮气泡
+        if (entryMode !== 'fab') return null
+        const SIZE = 44
+        function onMouseDown(ev) {
+          ev.preventDefault()
+          const sx = ev.clientX, sy = ev.clientY, px = pos.x, py = pos.y
+          let moved = false
+          drag(
+            (ev2) => {
+              const dx = ev2.clientX - sx, dy = ev2.clientY - sy
+              if (!moved && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) moved = true
+              if (moved) {
+                const nx = Math.max(0, Math.min(window.innerWidth - SIZE, px + dx))
+                const ny = Math.max(0, Math.min(window.innerHeight - SIZE, py + dy))
+                posRef.current = { x: nx, y: ny }
+                setPos({ x: nx, y: ny })
+              }
+            },
+            () => {
+              // 区分点击与拖拽：未移动视为点击 → 展开面板；移动则持久化最终位置
+              if (!moved) { panelOpen = true; notify() }
+              else { fabPos = { x: posRef.current.x, y: posRef.current.y }; saveEntryState() }
+            }
+          )
+        }
+        // v2 卡片式 FAB（G 大图标版）：中央 note 22px + 右下 kind 三色点（todo/decision/quote），无计数角标
+        return e('button', { className: 'dsh-notes-fab dsh-nt' + (panelOpen ? ' active' : ''), style: { left: pos.x + 'px', top: pos.y + 'px' }, onMouseDown, 'data-tooltip': '笔记' },
+          e('span', { className: 'dsh-notes-fab-ic' }, I('note', 22)),
+          e('span', { className: 'dsh-notes-fab-tridots', 'aria-hidden': 'true' },
+            e('i', { style: { background: 'var(--nkind-todo)' } }),
+            e('i', { style: { background: 'var(--nkind-decision)' } }),
+            e('i', { style: { background: 'var(--nkind-quote)' } })))
+      }
+      slots.register({ name: 'shell.overlay', id: 'dsh-notes-fab', order: 199 }, (props) => e(FabEntry, props))
+    })
+    if (typeof d2 === 'function') disposers.push(d2)
+    // ===== panel/search —— 两段式搜索（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelSearch（searchText/searchIds/searchMatches 态 + 250ms 防抖 host 全文检索）/ highlight（行内高亮，纯函数模块级共享）
+    // needs: kernel/state.js（searchRef/searchDebRef 跨域镜像 + filtersRef 同步）、kernel/constants.js（FILTER_STATUS）、kernel/icons.js（e）；
+    //        filters 经 hook 入参注入（装配层回填，渲染期新鲜值）
+    // state 托管：三态留 hook 内 useState（与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）；
+    // searchRef/searchDebRef 在 kernel/state.js 跨域镜像群（Esc 清搜索/侧栏输入框/筛选变更跨域直读）
+    // 搜索防抖闭包只注册一次，过滤条件经 ref 镜像供其读取（避免闭包过期）
+    const filtersRef = { current: null }   // 筛选条件镜像（debounce 闭包读最新值；hook 内 effect 同步）
+    function highlight(text, q) { if (!q || !text) return text; const s = String(text); const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); const parts = s.split(new RegExp('(' + esc + ')', 'gi')); if (parts.length === 1) return s; return parts.map((p, i) => i % 2 === 1 ? e('mark', { key: i, className: 'dsh-notes-mark' }, p) : p) }
+    function usePanelSearch(args) {
+        const filters = args.filters
+        const [searchText, setSearchText] = React.useState('')
+        const [searchIds, setSearchIds] = React.useState(null)
+        // host notes-search 返回的命中字段（noteId → ['title'|'tags'|'body']）：「相关度」排序数据源；本地即时命中/旧 host 无该字段时按本地字段估算
+        const [searchMatches, setSearchMatches] = React.useState({})
+        React.useEffect(() => { filtersRef.current = filters }, [filters])
+        // 搜索两段式：输入即本地过滤（标题/主题/标签/预览），250ms 防抖后 host 全文检索（含正文）补充
+        // 用一次性注册的 timer.debounce：每击键调 timer.timeout 等于每击键在 fiber 上注册一次 ctx.effect，是持续簿记开销
+        React.useEffect(() => {
+          const d = timer.debounce(() => {
+            const qq = searchRef.current.trim()
+            if (!qq) { setSearchIds(null); setSearchMatches({}); return }
+            // 筛选中心组合过滤同步 host：类型组恰选 1 个时可传 kind；状态组仅单条件独活时可传 sensitive/inject
+            // （多选 OR / 曾注入 语义 host 无法表达，由本地 matchFilters 兜底全量语义）；matches 命中字段供「相关度」排序
+            const sArgs = { query: qq }
+            const F = filtersRef.current
+            if (F.kinds.length === 1) sArgs.kind = F.kinds[0]
+            const stOn = FILTER_STATUS.filter(s => F[s.id]).map(s => s.id)
+            if (stOn.length === 1 && stOn[0] === 'sensitive') sArgs.sensitive = true
+            if (stOn.length === 1 && stOn[0] === 'injected') sArgs.inject = true
+            rpc('notes-search', sArgs).then(res => {
+              const ns = (res && res.notes) || []
+              setSearchIds(ns.map(n => n.id))
+              const mm = {}
+              ns.forEach(n => { if (Array.isArray(n.matches)) mm[n.id] = n.matches })
+              setSearchMatches(mm)
+            }).catch(() => {})
+          }, 250)
+          searchDebRef.current = d
+          return () => { if (d && d.dispose) d.dispose() }
+        }, [])
+        return { searchText: searchText, searchIds: searchIds, searchMatches: searchMatches, setSearchText: setSearchText, setSearchIds: setSearchIds, setSearchMatches: setSearchMatches }
+    }
+    // ===== panel/wiki —— 笔记双链：索引/解析/跳转（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelWiki（wikiVer 态 + resolveWikiTarget/wikiResolve/ensureWikiIndex/bumpWikiBody/hasWikiLinks/jumpToWikiTarget）/ wikiBodiesRef/wikiIdxGenRef/jumpWikiRef
+    // needs: kernel/state.js（notesRef 跨域镜像 + setView/setFilters/selectNote 转发别名）、kernel/bus.js（showToast）、kernel/constants.js（FILTERS0/matchFilters）、
+    //        editor-kernel.js（extractWikiTargets/wikiLinksTo）；view/filters 经 hook 入参注入（装配层回填，渲染期新鲜值）
+    // state 托管：wikiVer 留 hook 内 useState（索引推进触发主面板重渲染，与昔日同边界；§6 E 裁决记录见 panel/index.js 头注）；
+    // wikiBodiesRef/wikiIdxGenRef/jumpWikiRef 为模块级单例（与昔日 FloatingPanel 内 useRef 等价——面板是 shell.overlay 单例）
+    const wikiBodiesRef = { current: {} }               // noteId → { body, updatedAt }
+    const wikiIdxGenRef = { current: 0 }                // 索引构建代际：列表刷新作废旧任务
+    const jumpWikiRef = { current: null }               // 富文本 click 委托调最新 jumpToWikiTarget（监听器挂一次，读 ref 防闭包过期）
+    function usePanelWiki(args) {
+        const view = args.view
+        const filters = args.filters
+        // ===== P2 笔记双链：全库正文惰性索引（列表瘦身不含 body；后台 notes-get 小批量补齐，驱动行尾双链标记与反向链接面板；host 不改）=====
+        const [wikiVer, setWikiVer] = React.useState(0)      // 索引版本号：索引推进触发重渲染（行尾标记/反向链接随缓存刷新）
+        // ===== P2 笔记双链：解析 / 索引 / 跳转（内核 extractWikiTargets/wikiLinksTo 同一口径；库已在内存，host 不改）=====
+        // 渲染时解析：[[n-xxx]] 精确 id 优先，其次 [[标题]] 全库标题精确匹配；均不中 → null（渲染为纯文本）
+        function resolveWikiTarget(target) {
+          const t = String(target || '')
+          if (!t) return null
+          const list = notesRef.current || []
+          return list.find(n => n.id === t) || list.find(n => (n.title || '') === t) || null
+        }
+        // 渲染器行内扩展入参（renderMarkdown 第二参）：命中 → {id,title}（锚显示标题）；不中 → null（纯文本）
+        function wikiResolve(w) { const n = resolveWikiTarget(w); return n ? { id: n.id, title: n.title || '' } : null }
+        // 全库正文索引：补缺/过期（updatedAt 漂移）条目，4 路并发后台拉取；整批完成一次性推进版本号（防逐条重渲染闪烁/滚动跳动）
+        function ensureWikiIndex(list) {
+          const gen = ++wikiIdxGenRef.current
+          const cache = wikiBodiesRef.current
+          const stale = (list || []).filter(n => { const c = cache[n.id]; return !c || c.updatedAt !== (n.updatedAt || '') })
+          if (!stale.length) return
+          let idx = 0
+          async function worker() {
+            while (idx < stale.length) {
+              if (gen !== wikiIdxGenRef.current) return
+              const n = stale[idx++]
+              try {
+                const res = await rpc('notes-get', { id: n.id })
+                if (gen !== wikiIdxGenRef.current) return
+                if (res && res.note) cache[n.id] = { body: res.note.body || '', updatedAt: res.note.updatedAt || n.updatedAt || '' }
+              } catch (err) {}
+            }
+          }
+          Promise.all([worker(), worker(), worker(), worker()]).then(() => { if (gen === wikiIdxGenRef.current) setWikiVer(v => v + 1) }).catch(() => {})
+        }
+        // 单条正文写缓存（选中加载/保存后即时新鲜；updatedAt 缺省 '' → 下轮索引复核 reconcile）
+        function bumpWikiBody(id, body, updatedAt) { if (!id) return; wikiBodiesRef.current[id] = { body: body || '', updatedAt: updatedAt || '' }; setWikiVer(v => v + 1) }
+        // 行尾双链标记：缓存正文优先，索引未到时 preview（host slim 前 200 字符）兜底
+        function hasWikiLinks(n) { const c = wikiBodiesRef.current[n.id]; return extractWikiTargets(c ? c.body : (n.preview || '')).length > 0 }
+        // 双链跳转：解析 → 选中；目标被当前视图/筛选中心条件藏掉时退回「全部」（搜索词不动，保留用户上下文）
+        function jumpToWikiTarget(target) {
+          const n = resolveWikiTarget(target)
+          if (!n) { showToast('未找到链接目标：' + target); return }
+          const vis = (view.type === 'all' || (view.type === 'folder' && (n.folder || '') === view.id) || (view.type === 'topic' && (n.topic || '') === view.id))
+            && matchFilters(n, filters)
+          if (!vis) { setView({ type: 'all', id: '' }); setFilters(FILTERS0()) }
+          selectNote(n)
+        }
+        return { wikiVer: wikiVer, ensureWikiIndex: ensureWikiIndex, bumpWikiBody: bumpWikiBody, hasWikiLinks: hasWikiLinks, wikiResolve: wikiResolve, jumpToWikiTarget: jumpToWikiTarget }
+    }
+    // ===== panel/tree —— 文件夹树渲染 + 拖拽换位 + 懒加载分页（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelTree（visibleCount/topicExpanded/topicSecOpen/dragActive 态 + 分页重置/onListScroll + 双向拖拽族 +
+    //           renderTreeEls 渲染函数（内含 renderNoteRow/renderFolderNode，签名/正文逐字））
+    // needs: kernel/state.js（pagedIdsRef 跨域镜像 + 文件夹域/多选/右键/编辑器域转发别名群）、kernel/constants.js（PAGE_SIZE/PINNED_KEY/FILTER_KINDS/KIND_LABELS/FILTERS0）、
+    //        kernel/icons.js（e/I）、kernel/bus.js（showToast）、kernel/format.js（notifyNotesChanged）、panel/search.js（highlight，序位在前）、
+    //        modals/newnote.js（openNewNote，序位在前）；notes/view/filters/searchText/searchIds 经 hook 入参注入（装配层回填，渲染期新鲜值）；
+    //        post-guard 求值结果（filtered/paged/q/filtersActive 等）经 renderTreeEls 入参注入
+    // state 托管：四态留 hook 内 useState（与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）；
+    // dragNoteIdRef/dragFolderIdRef 的 React.useRef 声明原文被 check.js 锚定（21/41 节）——留 hook 内（useRef 不可模块顶层调用）
+    function usePanelTree(args) {
+        const notes = args.notes, view = args.view, filters = args.filters, searchText = args.searchText, searchIds = args.searchIds, folders = args.folders
+        const dragNoteIdRef = React.useRef(null)   // 笔记拖拽状态：dragstart 记录 noteId（ref 防闭包过期），dragend 清空
+        const dragFolderIdRef = React.useRef(null)   // 文件夹拖拽状态（换父）：dragstart 记录 folderId，dragend 清空；与笔记拖拽互斥
+        const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
+        // 主题过滤行原地展开态（点行主体=展开/收起该主题子列表；object map，session 内有效，不持久化；缺省折叠）
+        const [topicExpanded, setTopicExpanded] = React.useState({})
+        // 主题过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「主题 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
+        const [topicSecOpen, setTopicSecOpen] = React.useState(false)
+        // 拖拽进行中标记（dragstart 置位 / dragend 复位）：驱动未入夹区「移出文件夹」落点提示行渲染（空态下保证拖拽中仍有可拖出落点）
+        const [dragActive, setDragActive] = React.useState(false)
+        // 搜索/视图/筛选中心条件变化时重置分页（新结果从头开始）
+        React.useEffect(() => { setVisibleCount(PAGE_SIZE) }, [searchText, searchIds, view, filters])
+        // 主题过滤行原地展开切换（与文件夹 toggleFolder 同义「点哪个展开哪个」；不持久化）
+        function toggleTopicExpanded(tn) { setTopicExpanded(prev => { const next = Object.assign({}, prev); next[tn] = !next[tn]; return next }) }
         // ===== 拖拽挪入/挪出文件夹（HTML5 DnD；与右键「移动到文件夹」共用 ctxMoveToFolder 移动逻辑）=====
         // dragstart：noteId 记到 ref + dataTransfer（Firefox 需 setData 才能起拖），源行加 .dragging 半透明
         function onNoteDragStart(ev, n) {
@@ -1506,40 +3336,368 @@ window.__ModuleLoader__.load({
           const noteObj = notes.find(x => x.id === id)
           if (noteObj && (noteObj.folder || '')) ctxMoveToFolder({ id: id }, '')
         }
-        // 笔记行右键「新建文件夹…」：建文件夹并把笔记移入（不切换当前视图）
-        async function ctxCreateFolderMove(n) {
-          const name = ctxNewFolderText.trim()
-          if (!name) return
-          setError('')
-          try {
-            const res = await rpc('notes-folders', { op: 'create', name: name })
-            if (res && res.error) { setError(res.error); return }
-            setCtxNewFolderText('')
-            if (res.folder && res.folder.id) {
-              expandFolder(res.folder.id)
-              const u = await rpc('notes-update', { id: n.id, folder: res.folder.id })
-              if (u && u.error) { setError(u.error); return }
-              showToast('已移动到「' + res.folder.name + '」')
+        // 懒加载分页：只渲染前 visibleCount 条笔记行，滚动到底再加载更多（避免笔记多时全量渲染 + 每条跑 highlight）
+        function onListScroll(ev) {
+          const el = ev.target
+          if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) { setVisibleCount(c => c + PAGE_SIZE) }
+        }
+        // ===== 侧栏树渲染（原型 renderTree 翻译）：视图求值结果经 R 注入（装配层 post-guard 新鲜值）=====
+        function renderTreeEls(R) {
+          const loading = R.loading, selected = R.selected, focusId = R.focusId, flashId = R.flashId, selMode = R.selMode, selIds = R.selIds
+          const q = R.q, filtered = R.filtered, paged = R.paged, filtersActive = R.filtersActive, filterCount = R.filterCount, hasInjectEver = R.hasInjectEver
+          // 文件夹域内联输入/重命名态（popovers/folder-menu.js 托管）经 R 注入
+          const renamingId = R.renamingId, renameText = R.renameText, subFolderFor = R.subFolderFor, folderInputOpen = R.folderInputOpen, folderInputText = R.folderInputText
+          // ===== 侧栏笔记行（原型 note-row）：kind 色点 + 标题(+置顶 pin) + 注入 bolt + 行尾 =====
+          // 行尾（原型 noteRow）：主题视图内显示所属文件夹徽章；文件夹上下文内显示淡灰主题字（方案A）；其余显示日期
+          function renderNoteRow(n, inFolderCtx) {
+            let tail
+            if (view.type === 'topic' && (n.folder || '')) tail = e('span', { className: 'dsh-notes-fbadge' }, I('folder', 9), folderName(n.folder))
+            else if (inFolderCtx && n.topic && n.topic !== '分类中') tail = e('span', { className: 'dsh-notes-note-tp', title: '主题：' + n.topic }, n.topic)
+            else tail = e('span', { className: 'dsh-notes-note-dt' }, n.updatedAt ? n.updatedAt.slice(5, 10) : '')
+            // 多选态：行点击=勾选/取消（不再打开笔记），行首渲染复选框；与搜索/过滤共存（勾选按 noteId 记账，过滤不清选）
+            return e('div', { key: n.id, className: 'dsh-notes-note-row' + (selected === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (flashId === n.id ? ' flash' : '') + (n.status === 'resolved' ? ' resolved' : '') + (n.status === 'superseded' ? ' superseded' : '') + (selMode && selIds[n.id] ? ' pick' : ''), onClick: () => { if (selMode) { toggleSelId(n.id); return } selectNote(n) }, onContextMenu: (ev) => openCtxMenu(ev, n), draggable: true, onDragStart: (ev) => onNoteDragStart(ev, n), onDragEnd: (ev) => onNoteDragEnd(ev) },
+              selMode ? e('input', { type: 'checkbox', className: 'dsh-notes-pick-check', checked: !!selIds[n.id], onChange: () => toggleSelId(n.id), onClick: (ev) => ev.stopPropagation() }) : null,
+              // 行首槽位对齐（notes-tree-typography）：caret 槽同宽透明占位（笔记行无折叠箭头）+ 图标槽 16px（kind 色点居中），与文件夹行标题文字起点一致
+              e('span', { className: 'dsh-notes-caret-spacer' }),
+              e('span', { className: 'dsh-notes-kind-slot' }, e('span', { className: 'dsh-notes-kind-dot', style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' } })),
+              e('span', { className: 'dsh-notes-note-ti' }, n.status === 'pinned' ? I('pin', 10, 'dsh-notes-note-pin') : null, highlight(n.title || '无标题', q)),
+              n.inject === true ? e('span', { className: 'dsh-notes-note-inj dsh-nt', 'data-tooltip': '注入为上下文 · ' + (n.injectRole === 'reference' ? '资料' : '约定') + ' · 范围：' + injectScopeLabel(n.injectTo) }, I('bolt', 10)) : null,
+              // 曾注入徽章（injectEver 粘性标记：历史上开启过注入、现已关闭；已注入时由 bolt 徽章表达，不重复显示；不满足不渲染）
+              n.inject !== true && n.injectEver === true ? e('span', { className: 'dsh-notes-note-injevr dsh-nt', 'data-tooltip': '曾注入：历史上开启过上下文注入（现已关闭）' }, I('clock', 9)) : null,
+              // 使用遥测（P2）：被引用徽章（0 次不显示）
+              (n.useCount || 0) > 0 ? e('span', { className: 'dsh-notes-note-use dsh-nt', 'data-tooltip': '被 Agent 引用（note_get 命中）' + n.useCount + ' 次' }, I('quote', 9), String(n.useCount)) : null,
+              // 双链标记（P2）：正文含 [[..]] 时行尾显示链接图标（缓存正文优先，preview 兜底）
+              hasWikiLinks(n) ? e('span', { className: 'dsh-notes-note-wiki dsh-nt', 'data-tooltip': '含双链 [[…]]（详情富文本中可点击跳转）' }, I('link', 9)) : null,
+              tail)
+          }
+          // ===== 侧栏树（原型 renderTree 翻译）：视图头 → 置顶组 → 文件夹组（nested 子笔记）→ 未入夹根级平铺（drop 移出落点）→ 主题全局过滤 =====
+          const treeIds = []
+          const treeEls = []
+          const viewTitle = view.type === 'topic' ? ('主题 · ' + view.id) : view.type === 'folder' ? ('文件夹 · ' + folderName(view.id)) : '全部笔记'
+          treeEls.push(e('div', { key: 'sec-view', className: 'dsh-notes-sec-h' },
+            I('filter', 11),
+            e('span', { className: 'dsh-notes-sec-h-t' }, viewTitle),
+            view.type === 'topic' ? e('span', { className: 'dsh-notes-sec-h-sub' }, '（跨文件夹 ' + filtered.length + ' 条）') : null,
+            view.type !== 'all' ? e('span', { className: 'dsh-notes-sec-h-clear dsh-nt', 'data-tooltip': '清除视图过滤', onClick: (ev) => { ev.stopPropagation(); setView({ type: 'all', id: '' }) } }, '×') : null))
+          // 置顶组：置顶笔记仍在其所属位置显示（带 pin 视觉），本组是跨文件夹的置顶聚合视图（可折叠，PINNED_KEY 持久化）
+          const pinnedAll = filtered.filter(n => n.status === 'pinned')
+          if (pinnedAll.length > 0) {
+            // 过滤激活自动展开：含命中的置顶组强制展开（纯计算 OR，不写回 foldersExpanded——清除过滤即恢复手动折叠态）
+            const pinOpen = isFolderExpanded(PINNED_KEY) || (filtersActive && pinnedAll.length > 0)
+            treeEls.push(e('div', { key: 'sec-pinned', className: 'dsh-notes-sec-h dsh-notes-sec-toggle', onClick: () => toggleFolder(PINNED_KEY) },
+              e('span', { className: 'dsh-notes-caret' + (pinOpen ? ' open' : '') }, I('chev', 10)),
+              I('pin', 11),
+              e('span', { className: 'dsh-notes-sec-h-t' }, '置顶'),
+              e('span', { className: 'dsh-notes-sec-h-n' }, pinnedAll.length)))
+            if (pinOpen) {
+              const pinRows = []
+              paged.filter(n => n.status === 'pinned').forEach(n => { treeIds.push(n.id); pinRows.push(renderNoteRow(n, false)) })
+              if (pinRows.length) treeEls.push(e('div', { key: 'pinned-kids', className: 'dsh-notes-nested' }, pinRows))
             }
-            setCtxMenu(null)
-            await loadFolders(); await loadNotes(true); notifyNotesChanged()
+          }
+          // 文件夹组：行 = caret + folder 图标 + 名称 + 计数 + 行尾过滤图标；点行主体 = 原地展开/折叠（与 caret 同义，「点哪个展开哪个」）；
+          // 进入/退出文件夹视图降级为行尾过滤图标按钮（不抢占单击）+ 右键菜单项；右键管理
+          treeEls.push(e('div', { key: 'sec-folders', className: 'dsh-notes-sec-h' },
+            I('folder', 11),
+            e('span', { className: 'dsh-notes-sec-h-t' }, '文件夹'),
+            e('span', { className: 'dsh-notes-sec-h-add dsh-nt', 'data-tooltip': '新建文件夹', onClick: (ev) => { ev.stopPropagation(); setFolderInputText(''); setSubFolderFor(null); setFolderInputOpen(true) } }, I('plus', 12))))
+          // 嵌套递归渲染（notes-nested-folder-ui）：depth-first——文件夹行 → 展开时 [内联子新建输入 → 子文件夹递归 → 直挂笔记] 包一层
+          // .dsh-notes-nested 缩进容器（同级同字体/行首槽位对齐沿用排版体系；嵌套行缩进+小字由 styles.css .dsh-notes-nested 口径承担）；
+          // 键盘导航顺序 = 渲染顺序（treeIds 按 depth-first 推入）；过滤命中与展开语义按子树（子树含命中 → 自动展开 + 计数=子树命中数，
+          // 与 host f.count 子树口径一致；纯计算 OR 不写回 foldersExpanded——清除过滤即恢复手动折叠态）
+          function renderFolderNode(f, sink) {
+            const sub = folderSubtreeIdsOf(f.id)
+            const kids = paged.filter(n => (n.folder || '') === f.id)
+            const subHits = filtersActive ? filtered.filter(n => sub[(n.folder || '')]).length : 0
+            const fOpen = isFolderExpanded(f.id) || (filtersActive && subHits > 0)
+            // 计数口径：过滤激活（视图/筛选中心/搜索任一）显示子树命中数（无命中 0）；否则显示子树总数（host count 已递归）
+            const cnt = filtersActive ? subHits : (f.count || 0)
+            sink.push(renamingId === f.id
+              ? e('div', { key: 'folder-' + f.id, className: 'dsh-notes-folder-row' },
+                  e('span', { className: 'dsh-notes-caret' }, I('chev', 10)),
+                  e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
+                  e('input', { className: 'dsh-notes-folder-rename', value: renameText, autoFocus: true, onChange: (ev) => setRenameText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doRenameFolder() } else if (ev.key === 'Escape') { ev.preventDefault(); setRenamingId(null) } }, onBlur: () => setRenamingId(null) }))
+              : e('div', { key: 'folder-' + f.id, className: 'dsh-notes-folder-row' + (view.type === 'folder' && view.id === f.id ? ' on' : ''), onClick: () => toggleFolder(f.id), onContextMenu: (ev) => openFolderMenu(ev, f), draggable: true, onDragStart: (ev) => onFolderDragStart(ev, f), onDragEnd: (ev) => onFolderDragEnd(ev), onDragOver: (ev) => onFolderDragOver(ev, f), onDragLeave: onFolderDragLeave, onDrop: (ev) => onFolderDrop(ev, f) },
+                  e('span', { className: 'dsh-notes-caret' + (fOpen ? ' open' : '') }, I('chev', 10)),
+                  e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
+                  e('span', { className: 'dsh-notes-row-nm' }, f.name),
+                  e('span', { className: 'dsh-notes-row-n' }, cnt),
+                  e('span', { className: 'dsh-notes-row-vfilter dsh-nt' + (view.type === 'folder' && view.id === f.id ? ' on' : ''), 'data-tooltip': '文件夹视图（含子孙文件夹）', onClick: (ev) => { ev.stopPropagation(); setView(view.type === 'folder' && view.id === f.id ? { type: 'all', id: '' } : { type: 'folder', id: f.id }) } }, I('filter', 11))))
+            if (!fOpen) return
+            const childEls = []
+            // 「新建子文件夹」内联输入行（右键菜单打开；渲染在本夹子内容容器首位，Enter 提交 / Esc 或空串失焦取消）
+            if (subFolderFor === f.id) {
+              childEls.push(e('div', { key: 'folder-add-sub', className: 'dsh-notes-folder-row' },
+                e('span', { className: 'dsh-notes-caret' }, I('chev', 10)),
+                e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
+                e('input', { className: 'dsh-notes-folder-rename', placeholder: '子文件夹名…', value: folderInputText, autoFocus: true, onChange: (ev) => setFolderInputText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doCreateFolder() } else if (ev.key === 'Escape') { ev.preventDefault(); setSubFolderFor(null) } }, onBlur: () => { if (!folderInputText.trim()) setSubFolderFor(null) } })))
+            }
+            for (const cf of childFoldersOf(f.id)) renderFolderNode(cf, childEls)
+            kids.forEach(n => { treeIds.push(n.id); childEls.push(renderNoteRow(n, true)) })
+            if (childEls.length) sink.push(e('div', { key: 'kids-' + f.id, className: 'dsh-notes-nested' }, childEls))
+          }
+          for (const f of rootFolders()) renderFolderNode(f, treeEls)
+          // 新建文件夹内联输入行（分组头 ＋ 展开；Enter 提交 / Esc 或空串失焦取消）
+          if (folderInputOpen) {
+            treeEls.push(e('div', { key: 'folder-add', className: 'dsh-notes-folder-row' },
+              e('span', { className: 'dsh-notes-caret' }, I('chev', 10)),
+              e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
+              e('input', { className: 'dsh-notes-folder-rename', placeholder: '文件夹名…', value: folderInputText, autoFocus: true, onChange: (ev) => setFolderInputText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doCreateFolder() } else if (ev.key === 'Escape') { ev.preventDefault(); setFolderInputOpen(false) } }, onBlur: () => { if (!folderInputText.trim()) setFolderInputOpen(false) } })))
+          }
+          // 未入夹笔记：根级同级直显——无 folder 的笔记平铺在树根部，与文件夹行同一缩进层级（紧随文件夹列表之后、主题过滤区之前；
+          // 不再渲染「未分类」分组头/分区计数——数量已并入 brand 行总计数；主题聚合由底部「主题过滤」区承担，不重复聚合）；
+          // .dsh-notes-unfiled-drop 包裹容器保留为「移出文件夹」drop 落点（拖到本区任意位置 = 移出），仅在 有未入夹笔记 或 拖拽进行中 渲染——
+          // 空态非拖拽不渲染任何占位；拖拽中本区头部显示淡提示行「拖到此处移出文件夹」（dragActive 驱动，空态下也保证有可拖出落点）
+          const unfiled = paged.filter(n => !(n.folder || ''))
+          const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })
+          if (unfiledKids.length || dragActive) {
+            treeEls.push(e('div', { key: 'unfiled-drop', className: 'dsh-notes-unfiled-drop', onDragOver: onUnfiledDragOver, onDragLeave: onUnfiledDragLeave, onDrop: onUnfiledDrop },
+              dragActive ? e('div', { key: 'unfiled-hint', className: 'dsh-notes-unfiled-hint' }, dragFolderIdRef.current ? '拖到此处移回根级' : '拖到此处移出文件夹') : null,
+              unfiledKids))
+          }
+          // 主题全局过滤（原型底部区）：全库主题 + 计数；点行主体 = 原地展开/收起该主题的笔记子列表（topicExpanded，不持久化）；
+          // 主题视图（跨文件夹过滤）降级为行尾过滤图标按钮（不抢占单击）
+          const allTopics = {}
+          notes.forEach(n => { if (n.topic) allTopics[n.topic] = (allTopics[n.topic] || 0) + 1 })
+          const topicNames = Object.keys(allTopics).sort()
+          if (topicNames.length) {
+            // 整区默认折叠（notes-topic-collapse）：常态只显示「主题 (N)」一行（N=主题数），点分组头展开/收起（topicSecOpen，session 记忆不持久化）；
+            // 展开行为与置顶折叠组（PINNED_KEY）同款：过滤激活且有主题命中时纯计算 OR 自动展开（不写回 topicSecOpen——清除过滤即恢复手动折叠态），
+            // 头部计数同步切换为命中主题数（folders「过滤激活=命中数」同口径）
+            const topicHitSet = {}
+            filtered.forEach(n => { if (n.topic) topicHitSet[n.topic] = true })
+            const topicHitCount = Object.keys(topicHitSet).length
+            const topicSecOpenEff = topicSecOpen || (filtersActive && topicHitCount > 0)
+            treeEls.push(e('div', { key: 'sec-topics', className: 'dsh-notes-sec-h dsh-notes-sec-toggle', onClick: () => setTopicSecOpen(!topicSecOpen) },
+              e('span', { className: 'dsh-notes-caret' + (topicSecOpenEff ? ' open' : '') }, I('chev', 10)),
+              I('topic', 11),
+              e('span', { className: 'dsh-notes-sec-h-t' }, '主题 (' + (filtersActive ? topicHitCount : topicNames.length) + ')'),
+              e('span', { className: 'dsh-notes-sec-h-sub' }, '跨文件夹')))
+            if (topicSecOpenEff) topicNames.forEach(tn => {
+              const tkidsAll = filtered.filter(n => (n.topic || '') === tn)
+              // 过滤激活自动展开：含命中的主题行强制展开（纯计算 OR，不写回 topicExpanded——清除过滤即恢复）；计数同步切换为命中数
+              const tOpen = !!topicExpanded[tn] || (filtersActive && tkidsAll.length > 0)
+              treeEls.push(e('div', { key: 'tp-' + tn, className: 'dsh-notes-row dsh-notes-topic-row' + (view.type === 'topic' && view.id === tn ? ' on' : ''), onClick: () => toggleTopicExpanded(tn) },
+                e('span', { className: 'dsh-notes-caret' + (tOpen ? ' open' : '') }, I('chev', 10)),
+                e('span', { className: 'dsh-notes-ic-slot' }, I('topic', 12)),
+                e('span', { className: 'dsh-notes-row-nm' }, tn === '分类中' ? '识别中' : tn),
+                e('span', { className: 'dsh-notes-row-n' }, filtersActive ? tkidsAll.length : allTopics[tn]),
+                e('span', { className: 'dsh-notes-row-vfilter dsh-nt' + (view.type === 'topic' && view.id === tn ? ' on' : ''), 'data-tooltip': '主题视图（跨文件夹过滤）', onClick: (ev) => { ev.stopPropagation(); setView(view.type === 'topic' && view.id === tn ? { type: 'all', id: '' } : { type: 'topic', id: tn }) } }, I('filter', 11))))
+              if (tOpen) {
+                const tkids = paged.filter(n => (n.topic || '') === tn)
+                if (tkids.length) { tkids.forEach(n => { treeIds.push(n.id) }); treeEls.push(e('div', { key: 'tpk-' + tn, className: 'dsh-notes-nested' }, tkids.map(n => renderNoteRow(n, false)))) }
+              }
+            })
+          }
+          // 空态：全库为空 → 引导新建；有库但过滤为空 → 无匹配提示
+          if (notes.length === 0 && !loading) {
+            treeEls.push(e('div', { key: 'empty', className: 'dsh-notes-empty-state' },
+              e('div', { className: 'dsh-notes-empty-ic' }, I('note', 30)),
+              e('div', { className: 'dsh-notes-empty-t' }, '还没有笔记'),
+              e('div', { className: 'dsh-notes-empty-s' }, '点侧栏「新建」输入标题，创建第一条笔记'),
+              e('button', { className: 'dsh-notes-empty-btn', onClick: openNewNote }, '记第一条')))
+          } else if (filtered.length === 0 && filtersActive) {
+            // 空结果态：提示 + 筛选中心条件激活时附「清空筛选」快捷动作（设计稿口径⑦）
+            treeEls.push(e('div', { key: 'no-match', className: 'dsh-notes-sec-h' }, e('span', { className: 'dsh-notes-sec-h-t' }, '无匹配笔记'),
+              filterCount > 0 ? e('span', { className: 'dsh-notes-sec-h-clear dsh-nt', 'data-tooltip': '清空全部筛选条件', onClick: () => { setFilters(FILTERS0()); if (searchDebRef.current) searchDebRef.current() } }, '清空筛选') : null))
+          }
+          if (loading && notes.length === 0) treeEls.unshift(e('div', { key: 'loading', className: 'dsh-notes-loading' }, '加载中...'))
+          // 键盘导航顺序 = 树渲染顺序（置顶组与所属位置重复出现的笔记去重）
+          pagedIdsRef.current = Array.from(new Set(treeIds))
+          return treeEls
+        }
+        return {
+          visibleCount: visibleCount, setVisibleCount: setVisibleCount, dragActive: dragActive, onListScroll: onListScroll,
+          onNoteDragStart: onNoteDragStart, onNoteDragEnd: onNoteDragEnd, renderTreeEls: renderTreeEls
+        }
+    }
+    // ===== panel/editor —— 编辑器区：meta chips/双模式交互/自动保存/面包屑/反向链接/底栏（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelEditor（ed* 字段态/历史计数/派发历史折叠/整理撤销栈 + selectNote/doSave/doDelete/AI 整理/历史恢复回填/三态开关/双模式运行时 +
+    //           renderEditorEl 渲染函数（内含 editorEl/curNote/isInjected/面包屑/反向链接求值））
+    // needs: kernel/state.js（selectedRef/editorModeRef/switchModeRef 跨域镜像 + setSelected/setFocusId/setError/setView/setSelIds/setScopeOpen/expandFolder/
+    //        folderPathOf/folderName/injectScopeLabel/loadNotes/later 转发别名）、kernel/constants.js（KIND_LABELS）、kernel/format.js（shortSid/isDispatchDone/notifyNotesChanged）、
+    //        kernel/bus.js（showToast）、kernel/icons.js（e/I）、editor-kernel.js（esc/renderMarkdown/serializeRich/analyzeMarkdown/sanitizeFragment/assetDisplaySrc/wikiLinksTo）、
+    //        panel/wiki.js（jumpWikiRef/wikiBodiesRef 顶层绑定，序位在前）、modals/link.js（setLinkModal）+ modals/image.js（openImgModal/pickImageFile）+
+    //        modals/dispatch.js（openDispatch/doDispatchDone）+ modals/history.js（openHistory）——序位在前；
+    //        selected/notes/dispatching/wikiVer/wikiResolve/bumpWikiBody/jumpToWikiTarget 经 hook 入参注入（装配层回填，渲染期新鲜值）
+    // state 托管：全部 state/ref 留 hook 内（useState/useRef 声明原文被 check.js 锚定者不迁 store——27-5 节 edSens/edSensRef 等；
+    // 与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）
+    function usePanelEditor(args) {
+        const selected = args.selected, notes = args.notes, dispatching = args.dispatching
+        const wikiVer = args.wikiVer, wikiResolve = args.wikiResolve, bumpWikiBody = args.bumpWikiBody, jumpToWikiTarget = args.jumpToWikiTarget
+        const [edTitle, setEdTitle] = React.useState('')
+        const [edTopic, setEdTopic] = React.useState('')
+        const [edTags, setEdTags] = React.useState('')
+        const [edBody, setEdBody] = React.useState('')
+        const [edKind, setEdKind] = React.useState('note')
+        const [edStatus, setEdStatus] = React.useState('active')
+        const [edRole, setEdRole] = React.useState('off')   // 注入三态：off=不注入 / convention=约定（须遵守）/ reference=资料（按需取用）
+        const [edRecall, setEdRecall] = React.useState(true)   // 目录可见（recall 字段，缺省 true=进目录；与 inject 正交）
+        const [edSens, setEdSens] = React.useState(false)   // 敏感标记（sensitive 字段，缺省 false；开启后注入系统提示时正文按行打码）
+        const [edScope, setEdScope] = React.useState([])
+        const [savedAt, setSavedAt] = React.useState(0)
+        // ===== 双模式编辑器 v3（原型 design/notes-editor-v3.html）：源码 textarea ⇄ 富文本受限 WYSIWYG =====
+        // editorMode：'source' 源码 | 'rich' 富文本；默认源码；Ctrl+/ 或 meta 行两段开关切换
+        const [editorMode, setEditorModeState] = React.useState('source')
+        // editorModeRef 在 kernel/state.js 跨域镜像群（panel/keyboard.js Ctrl+/ 直读；下方镜像块每渲染写入）
+        // 白名单降级分析（analyzeMarkdown 内核）：正文含嵌套引用/h4+/任务列表/多行 HTML 块 → 富文本入口置灰（行内 HTML 自 L1、表格自 L2 起不再降级——表格只读渲染 + 序列化逐字回吐）
+        const [degraded, setDegraded] = React.useState({ ok: true, reasons: [] })
+        const degradedRef = React.useRef({ ok: true, reasons: [] })
+        // 富文本同步态徽标（工具栏右侧）：false=已同步源码 / true=编辑中（防抖未回写）；同值 setState React 自动 bail，逐击键调无重渲染开销
+        const [richSyncing, setRichSyncing] = React.useState(false)
+        const [dispatchHistoryOpen, setDispatchHistoryOpen] = React.useState(false)   // 派发历史折叠态：默认折叠，点标题行展开
+        // ===== 二期 ✨整理：notes-ai-organize 按 kind 模板重写正文；organizeUndoRef = 一次撤销栈（toast「撤销」恢复）=====
+        const [organizing, setOrganizing] = React.useState(false)
+        const organizeUndoRef = React.useRef(null)   // { body } | null
+        // ===== 历史版本面板（notes-history-ui）：详情 meta 行「历史」入口（有版本才显示）→ modal：版本列表（时间+大小）→ 点选只读预览 → 恢复 =====
+        const [histCount, setHistCount] = React.useState(null)    // 当前笔记历史版本数（null=未探测；0=无版本不显示入口）
+        const keepQuickRef = React.useRef(false)
+        const edBodyDomRef = React.useRef(null)      // 正文 textarea DOM（新建笔记创建后聚焦）
+        const edLoadingRef = React.useRef(false)     // 正文异步加载中（notes-get 未返回）：期间 doSave 省略 body 字段，防改名触发保存把空正文写盘
+        // 双模式编辑器 DOM/运行时 ref（富文本非受控：编辑期间 React 不重渲染其内容，防 IME 打断/光标丢失）
+        const richRef = React.useRef(null)           // 富文本 contenteditable DOM
+        const richWrapRef = React.useRef(null)       // 富文本滚动容器（拖拽图片 drop 目标 + 工具栏宿主）
+        const richDirtyRef = React.useRef(false)     // 富文本编辑中（未序列化回源码）
+        const composingRef = React.useRef(false)     // IME 组合输入中（期间不序列化）
+        const savedRangeRef = React.useRef(null)     // 富文本选区缓存（工具栏/弹窗操作后恢复）
+        const richSyncTimerRef = React.useRef(null)  // 富文本→源码 900ms 防抖 timer 句柄（disposer）
+        const degTimerRef = React.useRef(null)       // 源码→降级分析 450ms 防抖 timer 句柄
+        const histCountRef = React.useRef(null)     // 历史版本计数镜像（doSave/openHistory 闭包读最新值；histOpenRef 随 modal 迁入 modals/history.js）
+        // 自动保存：编辑字段的最新值 ref（debounce 回调读 ref 而非闭包 state，避免过期）
+        const edTitleRef = React.useRef('')
+        const edTopicRef = React.useRef('')
+        const edTagsRef = React.useRef('')
+        const edBodyRef = React.useRef('')
+        const edKindRef = React.useRef('note')
+        const edStatusRef = React.useRef('active')
+        const edRoleRef = React.useRef('off')
+        const edRecallRef = React.useRef(true)
+        const edSensRef = React.useRef(false)
+        const edScopeRef = React.useRef([])
+        const autoSaveRef = React.useRef(null)
+        React.useEffect(() => { histCountRef.current = histCount }, [histCount])
+        function selectNote(n) {
+          // 双模式：切换笔记前把富文本在途编辑序列化落回 edBody 并立即保存（防 900ms debounce 打到新笔记上）
+          if (editorModeRef.current === 'rich' && richDirtyRef.current) { syncFromRich('切换笔记'); doSave() }
+          // 选中笔记所在文件夹自动展开（保证选中笔记在树中可见）
+          if (n.folder) expandFolder(n.folder)
+          setSelected(n.id); setFocusId(n.id); setEdTitle(n.title); setEdTopic(n.topic && n.topic !== '分类中' ? n.topic : '')
+          keepQuickRef.current = (n.tags || []).indexOf('quick') >= 0
+          setEdTags((n.tags || []).filter(t => t !== 'quick').join(', '))
+          setEdKind(n.kind || 'note'); setEdStatus(n.status || 'active'); setEdRole(n.inject ? (n.injectRole || 'convention') : 'off'); setEdScope(n.injectTo || []); setEdRecall(n.recall !== false); setEdSens(n.sensitive === true)
+          setEdBody('')
+          setDegraded({ ok: true, reasons: [] })   // 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果）
+          // 列表是瘦身数据，正文按需加载；加载期间 edLoadingRef=true，doSave 省略 body（防改名等保存把空正文写盘）
+          edLoadingRef.current = true
+          const id = n.id
+          histCountRef.current = null; setHistCount(null)   // 换笔记重置「历史」入口可见性，随即探测版本计数
+          probeHistCount(id)
+          rpc('notes-get', { id: id }).then(res => {
+            if (res && res.note && selectedRef.current === id) {
+              const body = res.note.body || ''
+              setEdBody(body)
+              bumpWikiBody(id, body, res.note.updatedAt)   // 双链索引即时新鲜（不等后台补缺）
+              // 正文到达后跑降级分析；富文本模式下新正文含白名单外语法 → 回落源码模式，否则重渲染富文本
+              const a = analyzeMarkdown(body)
+              setDegraded(a)
+              if (editorModeRef.current === 'rich') {
+                if (!a.ok) { setEditorModeState('source'); showToast('含高级语法（' + a.reasons.map(r => r.label).join('、') + '），请在源码模式编辑') }
+                else { richDirtyRef.current = false; try { if (richRef.current) richRef.current.innerHTML = renderMarkdown(body, wikiResolve) } catch (err) {} }
+              }
+            }
+            edLoadingRef.current = false
+          }).catch(() => { edLoadingRef.current = false })
+        }
+        async function doSave() {
+          const id = selectedRef.current
+          if (!id) return
+          setError('')
+          const tags = (edTagsRef.current || '').split(/[,，;；]/).map(s => s.trim()).filter(Boolean)
+          if (keepQuickRef.current && tags.indexOf('quick') < 0) tags.push('quick')
+          const upd = { id: id, title: edTitleRef.current, tags: tags, kind: edKindRef.current, status: edStatusRef.current, inject: edRoleRef.current !== 'off', injectTo: edScopeRef.current, recall: edRecallRef.current, sensitive: edSensRef.current === true }
+          if (!edLoadingRef.current) upd.body = edBodyRef.current   // 正文加载中省略 body（host 对 undefined 保留原内容，防竞态清空正文）
+          if (upd.inject) upd.injectRole = edRoleRef.current   // 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘）
+          if ((edTopicRef.current || '').trim()) upd.topic = edTopicRef.current.trim()
+          try {
+            const res = await rpc('notes-update', upd)
+            if (res && res.error) { setError(res.error); return }
+            setSavedAt(Date.now())
+            bumpWikiBody(id, edBodyRef.current, '')   // 双链索引：自有正文即时新鲜（updatedAt 置空 → loadNotes 后索引复核 reconcile）
+            await loadNotes(true); notifyNotesChanged()
+            if (histCountRef.current === 0) probeHistCount(id)   // 首次真实保存产生首份快照（0→1 转折点）→ 补探「历史」入口
           } catch (err) { setError(String(err.message || err)) }
         }
-        // 点击菜单外部关闭（Esc 在全局 keydown 里处理）
-        React.useEffect(() => {
-          if (!ctxMenu) return
-          const onDown = (ev) => { if (!(ev.target && ev.target.closest && ev.target.closest('.dsh-notes-ctxmenu'))) setCtxMenu(null) }
-          document.addEventListener('mousedown', onDown)
-          return () => document.removeEventListener('mousedown', onDown)
-        }, [ctxMenu])
-        // 文件夹右键菜单：点击菜单外部关闭（与笔记行菜单共用 .dsh-notes-ctxmenu 样式）
-        React.useEffect(() => {
-          if (!folderMenu) return
-          const onDown = (ev) => { if (!(ev.target && ev.target.closest && ev.target.closest('.dsh-notes-ctxmenu'))) setFolderMenu(null) }
-          document.addEventListener('mousedown', onDown)
-          return () => document.removeEventListener('mousedown', onDown)
-        }, [folderMenu])
-        function close() { panelOpen = false; notify() }
+        async function doDelete(id) {
+          if (!id) return
+          setError('')
+          try {
+            const res = await rpc('notes-delete', { id: id })
+            if (res.error) { setError(res.error); return }
+            if (selected === id) { setSelected(null); setEdTitle(''); setEdTopic(''); setEdTags(''); setEdBody('') }
+            showToast('已删除（可由 Agent 恢复）')
+            await loadNotes(true); notifyNotesChanged()
+          } catch (err) { setError(String(err.message || err)) }
+        }
+        // ===== 二期 ✨整理：当前草稿经 notes-ai-organize（notes-quick-instruct 同款 LLM 通道）按 kind 模板结构化重写 =====
+        // 契约：host 只返回重写正文不落盘；client 替换编辑器内容后走既有自动保存；原正文进一次撤销栈（toast「撤销」恢复）。
+        // 容错：正文为空/加载中/整理中不重入；error 或空返回一律不动原文。
+        async function doAiOrganize() {
+          if (organizing) return
+          if (!selectedRef.current) { showToast('先选择一条笔记'); return }
+          if (edLoadingRef.current) { showToast('正文加载中，稍后再整理'); return }
+          // 富文本在途编辑先序列化落回源码（整理对象是 edBody 源码文本）
+          if (editorModeRef.current === 'rich' && richDirtyRef.current) syncFromRich('整理前同步')
+          const body = edBodyRef.current
+          if (!body || !body.trim()) { showToast('正文为空，无可整理内容'); return }
+          setOrganizing(true); setError('')
+          try {
+            const res = await rpc('notes-ai-organize', { body: body, kind: edKindRef.current, title: edTitleRef.current })
+            if (res && res.error) { showToast('整理失败：' + res.error); return }
+            if (!res || !res.body || !res.body.trim()) { showToast('整理返回为空，原文未动'); return }
+            organizeUndoRef.current = { body: body }   // 一次撤销栈：只保留最近一次整理前的正文
+            applyOrganizedBody(res.body)
+            showToast('已按「' + (KIND_LABELS[edKindRef.current] || '笔记') + '」模板整理', { label: '撤销', fn: undoAiOrganize })
+          } catch (err) { showToast('整理失败：' + String(err.message || err)) } finally { setOrganizing(false) }
+        }
+        // 重写正文落进编辑器双模式：源码 textarea 受控随 edBody 更新；富文本重渲染内核产物（白名单外语法则回落源码模式）
+        function applyOrganizedBody(text) {
+          edBodyRef.current = text; setEdBody(text)
+          const a = analyzeMarkdown(text)
+          setDegraded(a)
+          if (editorModeRef.current === 'rich') {
+            if (!a.ok) setEditorModeState('source')   // 如 todo 模板含任务列表语法 → 自动落源码模式（横幅给出原因）
+            else { richDirtyRef.current = false; try { if (richRef.current) richRef.current.innerHTML = renderMarkdown(text, wikiResolve) } catch (err) {} }
+          }
+          triggerAutoSave()   // 走既有 900ms 防抖自动保存（notes-update）
+        }
+        // 撤销最近一次整理（一次撤销栈，用后即清）
+        function undoAiOrganize() {
+          const u = organizeUndoRef.current
+          if (!u) { showToast('没有可撤销的整理'); return }
+          organizeUndoRef.current = null
+          applyOrganizedBody(u.body)
+          showToast('已恢复整理前正文')
+        }
+        // ===== 历史版本面板（notes-history-ui）：「历史」入口探测 + 列表/预览/恢复链路 =====
+        // 入口可见性探测：选中笔记后拉版本计数（notes-history 是轻量列表 RPC，零正文明文）；0 版本不显示入口。
+        // doSave 完成后仅在 0→1 转折点补探一次（首次真实保存产生首份快照），其余保存不增 RPC。
+        function probeHistCount(id) {
+          if (!id) return
+          rpc('notes-history', { id: id }).then(res => {
+            if (res && !res.error && selectedRef.current === id) { const c = (res.versions || []).length; histCountRef.current = c; setHistCount(c) }
+          }).catch(() => {})
+        }
+        // 恢复回填（与 applyOrganizedBody 差别：恢复版已由 host 落盘，不走 triggerAutoSave——恢复不是新编辑，不能再把恢复版快照一遍污染历史）
+        function applyRestoredBody(id, text) {
+          edBodyRef.current = text; setEdBody(text)
+          const a = analyzeMarkdown(text)
+          setDegraded(a)
+          if (editorModeRef.current === 'rich') {
+            if (!a.ok) setEditorModeState('source')
+            else { richDirtyRef.current = false; try { if (richRef.current) richRef.current.innerHTML = renderMarkdown(text, wikiResolve) } catch (err) {} }
+          }
+          bumpWikiBody(id, text, '')
+        }
         function jumpToSession(sessionId) { if (sessions && sessionId) { try { sessions.open(sessionId) } catch (err) {} } }
         // 注入三态切换：独立字段 inject + injectRole（off→inject:false；约定/资料→inject:true+injectRole），不碰标签
         // off→非off 时自动展开范围浮层（与原 toggle 开启行为一致）；切到 off 收起浮层
@@ -1563,7 +3721,7 @@ window.__ModuleLoader__.load({
           triggerAutoSave()
         }
         // ===== 双模式编辑器 v3：模式切换 / 序列化同步 / 工具栏 / 图片三入口（规格：design/notes-editor-v3.html）=====
-        const switchModeRef = React.useRef(null)   // 全局 keydown（闭包挂一次）经 ref 调最新 switchMode
+        // switchModeRef 在 kernel/state.js 跨域镜像群（全局 keydown 闭包挂一次，经 ref 调最新 switchMode）
         // 模式切换（原型 setMode）：进富文本前跑降级分析；离开富文本先把在途编辑序列化落回源码
         function switchMode(m) {
           if (m === editorModeRef.current) return
@@ -1669,91 +3827,6 @@ window.__ModuleLoader__.load({
           }
           richDirtyRef.current = true; scheduleRichSync()
         }
-        // ---- 二期 图片压缩：>1MB 的 PNG/JPEG 上传前前端 canvas 降质转 JPEG（GIF/WebP 不动，保动画/透明语义）----
-        // 策略：长边封顶 2560px → 质量阶梯 0.85→0.45 逐档试；仍超 1MB 则长边 0.8 递减（下限 800px）；
-        // PNG 透明底刷白（JPEG 无 alpha）；任何一步失败 → cb(null) 回退原图上传。压缩产物 <1MB 即收。
-        const IMG_COMPRESS_THRESHOLD = 1024 * 1024
-        function compressImageData(dataURL, cb) {
-          try {
-            const img = new Image()
-            img.onload = () => {
-              try {
-                let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height
-                if (!w || !h) { cb(null); return }
-                const MAX_DIM = 2560
-                if (Math.max(w, h) > MAX_DIM) { const r = MAX_DIM / Math.max(w, h); w = Math.round(w * r); h = Math.round(h * r) }
-                const canvas = document.createElement('canvas')
-                const c2d = canvas.getContext('2d')
-                if (!c2d) { cb(null); return }
-                const qs = [0.85, 0.75, 0.65, 0.55, 0.45]
-                let out = '', bytes = 0, round = 0
-                while (round < 8) {
-                  canvas.width = w; canvas.height = h
-                  c2d.fillStyle = '#ffffff'; c2d.fillRect(0, 0, w, h)
-                  c2d.drawImage(img, 0, 0, w, h)
-                  out = canvas.toDataURL('image/jpeg', qs[Math.min(round, qs.length - 1)])
-                  bytes = Math.max(0, Math.round((out.length - 23) * 3 / 4))   // 去掉 data:image/jpeg;base64, 头估算字节
-                  if (bytes <= IMG_COMPRESS_THRESHOLD) { cb({ dataURL: out, bytes: bytes }); return }
-                  round++
-                  if (round >= qs.length && (w > 800 || h > 800)) { w = Math.max(800, Math.round(w * 0.8)); h = Math.max(800, Math.round(h * 0.8)); round = qs.length - 1 }
-                }
-                cb(out ? { dataURL: out, bytes: bytes } : null)   // 兜底：尽力压缩产物（可能仍 >1MB，5MB 上限内可用）
-              } catch (err) { cb(null) }
-            }
-            img.onerror = () => cb(null)
-            img.src = dataURL
-          } catch (err) { cb(null) }
-        }
-        // 图片文件校验 + 读 dataURL → 打开插入弹窗（mime 白名单 png/jpeg/gif/webp、≤5MB，与 host 口径一致）
-        // 二期：>1MB 的 PNG/JPEG 先走 compressImageData 压缩转 JPEG 再进弹窗（弹窗大小行显示「已压缩 原 → 现」）
-        function pickImageFile(f) {
-          if (!f) return
-          const MIME_OK = { 'image/png': 1, 'image/jpeg': 1, 'image/gif': 1, 'image/webp': 1 }
-          if (!MIME_OK[f.type]) { showToast('仅支持 PNG/JPEG/GIF/WebP 图片'); return }
-          if (f.size > 5 * 1024 * 1024) { showToast('图片超过 5MB 上限'); return }
-          const rd = new FileReader()
-          rd.onload = () => {
-            const base = { name: f.name || ('pasted-' + Date.now() + '.png'), dataURL: String(rd.result), mime: f.type, size: f.size, alt: (f.name || '').replace(/\.[^.]+$/, ''), uploading: false, error: '' }
-            if (f.size > IMG_COMPRESS_THRESHOLD && (f.type === 'image/png' || f.type === 'image/jpeg')) {
-              compressImageData(base.dataURL, (res) => {
-                if (res && res.dataURL) setImgModal(Object.assign({}, base, { name: base.name.replace(/\.[^.]+$/, '') + '.jpg', dataURL: res.dataURL, mime: 'image/jpeg', size: res.bytes, origSize: f.size }))
-                else setImgModal(base)   // 压缩失败回退原图（不阻塞上传）
-              })
-            } else setImgModal(base)
-          }
-          rd.onerror = () => showToast('图片读取失败')
-          rd.readAsDataURL(f)
-        }
-        // 图片入口③：工具栏按钮 → 弹窗选文件（draft=null 时打开空弹窗）
-        function openImgModal(draft) { setImgModal(draft || { name: '', dataURL: '', mime: '', size: 0, alt: '', uploading: false, error: '' }) }
-        // 上传并插入：notes-asset-upload RPC → assets/<ts>-<安全名>；成功 → 光标处插入 ![](assets/…)；失败留在弹窗内报错可重试 + toast
-        function doUploadImage() {
-          const m = imgModalRef.current
-          if (!m || !m.dataURL || m.uploading) return
-          setImgModal(Object.assign({}, m, { uploading: true, error: '' }))
-          rpc('notes-asset-upload', { name: m.name, data: m.dataURL, mime: m.mime }).then(res => {
-            if (res && res.error) {
-              showToast('图片上传失败：' + res.error)
-              const cur = imgModalRef.current
-              if (cur) setImgModal(Object.assign({}, cur, { uploading: false, error: res.error }))
-              return
-            }
-            const file = res && res.file
-            if (!file) {
-              const cur2 = imgModalRef.current
-              if (cur2) setImgModal(Object.assign({}, cur2, { uploading: false, error: '上传返回异常（缺 file 字段）' }))
-              return
-            }
-            const alt = (m.alt || '').trim()
-            setImgModal(null)
-            insertImageMd(file, alt)
-            showToast('已插入图片：' + file)
-          }).catch(err => {
-            showToast('图片上传失败：' + String(err.message || err))
-            const cur = imgModalRef.current
-            if (cur) setImgModal(Object.assign({}, cur, { uploading: false, error: String(err.message || err) }))
-          })
-        }
         // 光标处插入图片（原型 applyInsertImage）：源码模式插 Markdown 文本，富文本模式插 img 节点（随后序列化同步回源码）
         function insertImageMd(mdSrc, alt) {
           if (editorModeRef.current === 'rich') {
@@ -1780,17 +3853,6 @@ window.__ModuleLoader__.load({
             edBodyRef.current = next; setEdBody(next); triggerAutoSave(); scheduleDegAnalyze()
             later(() => { try { const t2 = edBodyDomRef.current; if (t2) { t2.focus(); t2.setSelectionRange(pos + ins.length, pos + ins.length) } } catch (err) {} }, 60)
           }
-        }
-        // 链接弹窗确认（原型 openLinkModal 的确定分支）：仅 http/https
-        function doInsertLink() {
-          const m = linkModalRef.current
-          const url = m ? String(m.url || '').trim() : ''
-          if (url.indexOf('http://') !== 0 && url.indexOf('https://') !== 0) { showToast('仅支持 http/https 链接'); return }
-          setLinkModal(null)
-          restoreSel()
-          const el = richRef.current; if (el) el.focus()
-          document.execCommand('createLink', false, url)
-          keepSel(); richDirtyRef.current = true; scheduleRichSync()
         }
         // 进入富文本 / 切换笔记：渲染内核产物进 contenteditable + 绑定编辑事件（编辑期间不重渲染，防 IME 打断）
         React.useEffect(() => {
@@ -1867,317 +3929,6 @@ window.__ModuleLoader__.load({
             document.removeEventListener('selectionchange', onSelChange)
           }
         }, [editorMode, selected])
-        // 任务派发：加载活跃会话/工作区 + 打开对话框 + 确认派发
-        // 0.1.7 首屏提速：host 对缓存未命中会话先返回占位（titlesPending + pendingSessions），对话框立即渲染
-        // （占位条目显示「短id · 标题加载中…」）；仍 pending 则 1.5s 轮询重拉，直到标题补齐或对话框关闭。
-        async function loadActiveSessions() {
-          try {
-            const res = await rpc('notes-active-sessions', {})
-            if (!res) return
-            if (res.sessions) setActiveSessions(res.sessions)
-            setDispatchPending(res.titlesPending && Array.isArray(res.pendingSessions) ? res.pendingSessions : [])
-            if (res.titlesPending && dispatchOpenRef.current) later(loadActiveSessions, 1500)
-          } catch (e) {}
-        }
-        async function loadWorkspaces() {
-          try { const res = await rpc('notes-workspaces', {}); if (res && res.workspaces) setWsList(res.workspaces) } catch (e) {}
-        }
-        function openDispatch() {
-          setDispatchInstr(''); setDispatchSessId(''); setDispatchSessWs(''); setDispatchWsId(''); setDispatchMode('existing'); setError('')
-          loadActiveSessions(); loadWorkspaces(); setDispatchOpen(true)
-        }
-        // 设置卡片：打开即拉取 settings + 可用模型列表（host 探 llm 服务目录；探不到时 models=[]，控件退化为手输）
-        function openSettings() {
-          setSetLlmProvider(''); setSetLlmModel(''); setSettingsData(null); setUsageData(null); setError(''); setSettingsOpen(true)
-          // LLM 用量统计接力 settings 拉取（预算 ref 就绪后再判超预算 toast，避免并发竞态漏提醒；settings-get 为本地 RPC 不慢）：
-          // 今日/本周/本月/累计 + 按功能分列；超月度预算仅 toast 提醒，不阻断
-          const loadUsage = () => rpc('notes-usage-get', {}).then(res => {
-            if (!res || res.error) return
-            setUsageData(res)
-            maybeToastUsageBudget(res)
-          }).catch(() => {})
-          rpc('notes-settings-get', {}).then(res => {
-            if (!res) { loadUsage(); return }
-            setSettingsData(res)
-            const l = res.settings && res.settings.llm
-            if (l && l.provider && l.model) { setSetLlmProvider(l.provider); setSetLlmModel(l.model) }
-            setSetCatalog(!res.settings || res.settings.catalogEnabled !== false)   // 目录注入总开关：缺省开
-            setSetStale(String(res.settings && typeof res.settings.staleDays === 'number' ? res.settings.staleDays : 90))   // 时效提醒阈值：缺省 90
-            setSetMaxDepth(String(res.settings && typeof res.settings.maxFolderDepth === 'number' ? res.settings.maxFolderDepth : 3))   // 文件夹嵌套深度上限：缺省 3（0=不限）
-            setSetBudget(String(res.settings && typeof res.settings.injectBudgetChars === 'number' ? res.settings.injectBudgetChars : 0))   // 注入预算：缺省 0=不限
-            setSetUsageBudget(String(res.settings && typeof res.settings.usageBudgetMonthly === 'number' ? res.settings.usageBudgetMonthly : 0))   // 月度用量预算提醒：缺省 0=关闭
-            usageBudgetRef.current = (res.settings && typeof res.settings.usageBudgetMonthly === 'number') ? res.settings.usageBudgetMonthly : 0
-            setSetLogWeek(String(res.settings && typeof res.settings.logWeekAfterDays === 'number' ? res.settings.logWeekAfterDays : 7))   // 工作记忆 v0：日志周聚合窗口，缺省 7
-            setSetLogRetention(String(res.settings && typeof res.settings.logRetentionDays === 'number' ? res.settings.logRetentionDays : 90))   // 日志月聚合窗口，缺省 90（0=关闭本级）
-            loadUsage()
-          }).catch(() => { loadUsage() })
-          // 工作记忆 v0：沉淀引导启用状态探测（单一事实源 = tag memory-guide 且 inject=true 的笔记，不落 settings.json）
-          setMemStatus(null)
-          rpc('notes-memory-guide', { op: 'status' }).then(res => {
-            setMemStatus(res && !res.error ? res : { enabled: false, noteId: '' })
-          }).catch(() => setMemStatus({ enabled: false, noteId: '' }))
-        }
-        // 月度预算提醒：usage.month.total 超 usageBudgetMonthly → toast（仅提醒，不阻断）；budget 读 ref（settings-get/保存预算时同步）
-        function maybeToastUsageBudget(u) {
-          try {
-            const b = usageBudgetRef.current
-            if (b > 0 && u && u.month && u.month.total > b) showToast('⚠ 本月笔记 LLM 用量 ' + fmtTok(u.month.total) + ' tokens 已超预算 ' + fmtTok(b) + '（仅提醒，不阻断）')
-          } catch (e) {}
-        }
-        // 选择即保存：llm=null 恢复跟随当前会话（默认）；否则保存 { provider, model }
-        function saveSettingsLlm(llm) {
-          rpc('notes-settings-set', { llm: llm }).then(res => {
-            if (res && res.error) { setError(res.error); return }
-            if (res && res.settings) setSettingsData(prev => Object.assign({}, prev || {}, { settings: res.settings }))
-            showToast(llm ? ('已保存：笔记 LLM = ' + llm.provider + ' / ' + llm.model) : '已恢复跟随当前会话（默认）')
-          }).catch(err => setError(String(err.message || err)))
-        }
-        // 目录注入总开关：勾选即保存（只传布尔 catalogEnabled；host 侧 null 才是恢复默认开，这里不用）
-        function saveSettingsCatalog(enabled) {
-          rpc('notes-settings-set', { catalogEnabled: enabled }).then(res => {
-            if (res && res.error) { setError(res.error); return }
-            if (res && res.settings) setSettingsData(prev => Object.assign({}, prev || {}, { settings: res.settings }))
-            showToast(enabled ? '已开启笔记目录注入' : '已关闭笔记目录注入')
-          }).catch(err => setError(String(err.message || err)))
-        }
-        // P1 时效衰减提醒阈值：失焦/Enter 即保存（非负整数；0 = 关闭；非法输入报错不落盘）
-        function saveSettingsStale() {
-          const raw = setStale.trim()
-          if (!/^\d+$/.test(raw)) { setError('时效提醒阈值需为非负整数（0 = 关闭）'); return }
-          const v = parseInt(raw, 10)
-          rpc('notes-settings-set', { staleDays: v }).then(res => {
-            if (res && res.error) { setError(res.error); return }
-            if (res && res.settings) setSettingsData(prev => Object.assign({}, prev || {}, { settings: res.settings }))
-            showToast(v === 0 ? '已关闭时效衰减提醒' : '已保存：超过 ' + v + ' 天未更新的资料将在目录标注 ⚠')
-          }).catch(err => setError(String(err.message || err)))
-        }
-        // 文件夹嵌套深度上限（maxFolderDepth，层；根级=第 1 层，缺省 3，0=不限）：失焦/Enter 即保存（非负整数；非法输入报错不落盘）
-        function saveSettingsMaxDepth() {
-          const raw = setMaxDepth.trim()
-          if (!/^\d+$/.test(raw)) { setError('文件夹嵌套深度上限需为非负整数（0 = 不限层数）'); return }
-          const v = parseInt(raw, 10)
-          rpc('notes-settings-set', { maxFolderDepth: v }).then(res => {
-            if (res && res.error) { setError(res.error); return }
-            if (res && res.settings) setSettingsData(prev => Object.assign({}, prev || {}, { settings: res.settings }))
-            showToast(v === 0 ? '已保存：文件夹嵌套不限层数' : '已保存：文件夹最多嵌套 ' + v + ' 层')
-          }).catch(err => setError(String(err.message || err)))
-        }
-        // P1 注入体积预算（约，字符数）：失焦/Enter 即保存（非负整数；0 = 不限；约定条目永不截断）
-        function saveSettingsBudget() {
-          const raw = setBudget.trim()
-          if (!/^\d+$/.test(raw)) { setError('注入体积预算需为非负整数（0 = 不限）'); return }
-          const v = parseInt(raw, 10)
-          rpc('notes-settings-set', { injectBudgetChars: v }).then(res => {
-            if (res && res.error) { setError(res.error); return }
-            if (res && res.settings) setSettingsData(prev => Object.assign({}, prev || {}, { settings: res.settings }))
-            showToast(v === 0 ? '已关闭注入体积预算（不限）' : '已保存：注入预算约 ' + v + ' 字符')
-          }).catch(err => setError(String(err.message || err)))
-        }
-        // LLM 月度用量预算提醒（tokens/月）：失焦/Enter 即保存（非负整数；0 = 关闭提醒）；保存后即按当前用量复核一次（超预算 toast，不阻断）
-        function saveSettingsUsageBudget() {
-          const raw = setUsageBudget.trim()
-          if (!/^\d+$/.test(raw)) { setError('月度用量预算需为非负整数（0 = 关闭提醒）'); return }
-          const v = parseInt(raw, 10)
-          rpc('notes-settings-set', { usageBudgetMonthly: v }).then(res => {
-            if (res && res.error) { setError(res.error); return }
-            if (res && res.settings) setSettingsData(prev => Object.assign({}, prev || {}, { settings: res.settings }))
-            usageBudgetRef.current = v
-            showToast(v === 0 ? '已关闭月度用量预算提醒' : '已保存：月度用量预算 ' + fmtTok(v) + ' tokens')
-            if (usageData) maybeToastUsageBudget(usageData)
-          }).catch(err => setError(String(err.message || err)))
-        }
-        // 手输模式（探不到模型列表时）：provider/model 两框齐备才保存；清除按钮恢复跟随会话
-        function saveSettingsLlmManual() {
-          const p = setLlmProvider.trim(), m = setLlmModel.trim()
-          if (!p || !m) return
-          saveSettingsLlm({ provider: p, model: m })
-        }
-        // ===== 工作记忆 v0：日志卫生窗口保存 + 沉淀引导启用/停用（设置卡片「工作记忆」区）=====
-        // 日志周聚合窗口（天，缺省 7）：失焦/Enter 即保存（非负整数；非法输入报错不落盘）
-        function saveSettingsLogWeek() {
-          const raw = setLogWeek.trim()
-          if (!/^\d+$/.test(raw)) { setError('日志周聚合窗口需为非负整数（天）'); return }
-          const v = parseInt(raw, 10)
-          rpc('notes-settings-set', { logWeekAfterDays: v }).then(res => {
-            if (res && res.error) { setError(res.error); return }
-            showToast('已保存：超过 ' + v + ' 天的日志将提名周聚合')
-          }).catch(err => setError(String(err.message || err)))
-        }
-        // 日志月聚合窗口（天，缺省 90；0 = 关闭月聚合本级）
-        function saveSettingsLogRetention() {
-          const raw = setLogRetention.trim()
-          if (!/^\d+$/.test(raw)) { setError('日志月聚合窗口需为非负整数（0 = 关闭月聚合）'); return }
-          const v = parseInt(raw, 10)
-          rpc('notes-settings-set', { logRetentionDays: v }).then(res => {
-            if (res && res.error) { setError(res.error); return }
-            showToast(v === 0 ? '已关闭日志月聚合提名' : '已保存：超过 ' + v + ' 天的日志将提名月聚合')
-          }).catch(err => setError(String(err.message || err)))
-        }
-        // 作用域三档解析（injectTo 落值语义不变：[] = 所有会话；会话短 id 数组 = 仅限这些会话——无「工作区」维度，
-        // 指定工作区档展开为所选工作区全部会话短 id 的并集。全局视角多选清单：sessList + pending 占位会话，数据源 notes-sessions）
-        function memScopeResolve() {
-          if (memScope === 'global') return []
-          if (memScope === 'session') return Object.keys(memSidPick)
-          // workspace 档：属于所选工作区的全部会话短 id（并集去重）
-          const ids = []
-          for (const s of sessList.concat(sessPending)) {
-            if (s && s.workspace && memWsPick[s.workspace] && s.short && ids.indexOf(s.short) < 0) ids.push(s.short)
-          }
-          return ids
-        }
-        // 启用入口：先 op:'check'（dry-run 零写入）列语义重叠候选 → 对话框内确认后 op:'enable' confirmed:true
-        function openMemEnable() {
-          setMemCheck(null); setMemScope('global'); setMemWsPick({}); setMemSidPick({}); setMemPending(false); setError('')
-          setSettingsOpen(false); setMemOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
-          rpc('notes-memory-guide', { op: 'check' }).then(res => {
-            if (res && res.error) { setError(res.error); setMemCheck({ overlaps: [] }); return }
-            setMemCheck(res || { overlaps: [] })
-          }).catch(err => { setError(String(err.message || err)); setMemCheck({ overlaps: [] }) })
-        }
-        async function doMemEnable() {
-          if (memPending) return
-          // 多选档校验：至少勾 1 项（指定工作区档解析为空 = 所选工作区暂无有效会话，同样拦截）
-          if (memScope === 'workspace' && !Object.keys(memWsPick).length) { setError('「指定工作区」需至少勾选 1 个工作区（或改选所有会话）'); return }
-          if (memScope === 'session' && !Object.keys(memSidPick).length) { setError('「指定会话」需至少勾选 1 个会话（或改选所有会话）'); return }
-          const scope = memScopeResolve()
-          if (memScope !== 'global' && !scope.length) { setError('所选范围暂无可注入会话（请先在其中打开会话）'); return }
-          setMemPending(true); setError('')
-          try {
-            const res = await rpc('notes-memory-guide', { op: 'enable', scope: memScopeResolve(), confirmed: true })
-            if (res && res.error) { setError(res.error); return }
-            setMemOpen(false)
-            showToast(res && res.already ? '沉淀引导已启用（约定笔记已存在）' : '已启用沉淀引导：约定笔记已创建并注入')
-            setMemStatus({ enabled: true, noteId: res && res.id || '' })
-            loadNotes(true); notifyNotesChanged()
-          } catch (err) { setError(String(err.message || err)) } finally { setMemPending(false) }
-        }
-        // 停用 = 关闭引导约定笔记 inject（笔记保留可再启用；彻底退出可在面板删除该笔记）
-        async function doMemDisable() {
-          if (memPending) return
-          setMemPending(true); setError('')
-          try {
-            const res = await rpc('notes-memory-guide', { op: 'disable' })
-            if (res && res.error) { setError(res.error); return }
-            showToast(res && res.disabled ? '已停用沉淀引导（约定笔记保留，inject 已关闭）' : '当前未启用沉淀引导')
-            setMemStatus(prev => Object.assign({}, prev || {}, { enabled: false }))
-            loadNotes(true); notifyNotesChanged()
-          } catch (err) { setError(String(err.message || err)) } finally { setMemPending(false) }
-        }
-        // 「查看约定」：关设置卡片 → 双链跳转同款选中引导笔记（被过滤藏掉时退回「全部」）
-        function memViewNote() { if (memStatus && memStatus.noteId) { setSettingsOpen(false); jumpToWikiTarget(memStatus.noteId) } }
-        // ===== 数据导入/导出（设置卡片「数据」区入口）=====
-        // 导出：打开对话框时回填上次导出目录（localStorage 记忆）；确认 → notes-export → toast 含快照目录路径
-        function openExport() {
-          let last = ''
-          try { last = localStorage.getItem('dsh-notes-last-export-dir') || '' } catch (err) {}
-          setExportDir(last); setExportPending(false); setError('')
-          setSettingsOpen(false); setExportOpen(true)   // 与设置卡片互斥：modal 不叠 modal
-        }
-        async function doExport() {
-          const dir = exportDir.trim()
-          if (!dir || exportPending) return
-          setExportPending(true); setError('')
-          try {
-            const res = await rpc('notes-export', { dir: dir })   // payload 不传 undefined 字段
-            if (res && res.error) { setError(res.error); return }
-            try { localStorage.setItem('dsh-notes-last-export-dir', dir) } catch (err) {}
-            setExportOpen(false)
-            showToast('已导出 ' + (res.exported || 0) + ' 条笔记到 ' + (res.target || dir))
-          } catch (err) { setError(String(err.message || err)) } finally { setExportPending(false) }
-        }
-        // P3 单文件导出（设置卡片「数据」区入口；复用导出 modal 模式）：选 scope（全部/文件夹/标签）+ 目录 → notes-export-single → toast 含文件路径（>20MB 带 warning）
-        function openSExport() {
-          let last = ''
-          try { last = localStorage.getItem('dsh-notes-last-export-single-dir') || '' } catch (err) {}
-          setSExportDir(last); setSExportScope('all'); setSExportFolder(''); setSExportTag(''); setSExportToc(true); setSExportPending(false); setError('')
-          setSettingsOpen(false); setSExportOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
-        }
-        async function doSExport() {
-          const dir = sExportDir.trim()
-          if (!dir || sExportPending) return
-          if (sExportScope === 'folder' && !sExportFolder) { setError('请选择文件夹'); return }
-          if (sExportScope === 'tag' && !sExportTag) { setError('请选择标签'); return }
-          setSExportPending(true); setError('')
-          try {
-            const scope = sExportScope === 'folder' ? { folder: sExportFolder } : (sExportScope === 'tag' ? { tag: sExportTag } : { all: true })
-            const res = await rpc('notes-export-single', { dir: dir, scope: scope, format: 'md', toc: sExportToc })   // payload 不传 undefined 字段
-            if (res && res.error) { setError(res.error); return }
-            try { localStorage.setItem('dsh-notes-last-export-single-dir', dir) } catch (err) {}
-            setSExportOpen(false)
-            showToast('已导出 ' + (res.exported || 0) + ' 篇到 ' + (res.target || dir) + (res.warning ? '；⚠ ' + res.warning : ''))
-          } catch (err) { setError(String(err.message || err)) } finally { setSExportPending(false) }
-        }
-        // 导入两步式：第一步选目录 → notes-import-preview 出预览；第二步勾选覆盖 → notes-import 执行
-        function openImport() {
-          setImportDir(''); setImportPreview(null); setImportOverwrite(false); setImportPending(false); setError('')
-          setSettingsOpen(false); setImportOpen(true)
-        }
-        async function doImportPreview() {
-          const dir = importDir.trim()
-          if (!dir || importPending) return
-          setImportPending(true); setError('')
-          try {
-            const res = await rpc('notes-import-preview', { dir: dir })
-            if (res && res.error) { setError(res.error); return }
-            if (!res.total) { setError('该目录没有可导入的笔记：' + dir); return }
-            setImportPreview(res); setImportOverwrite(false)   // 每次新预览重置覆盖勾选（默认不勾）
-          } catch (err) { setError(String(err.message || err)) } finally { setImportPending(false) }
-        }
-        async function doImportExecute() {
-          const dir = importDir.trim()
-          if (!dir || !importPreview || importPending) return
-          setImportPending(true); setError('')
-          try {
-            const res = await rpc('notes-import', { dir: dir, overwrite: !!importOverwrite })
-            if (res && res.error) { setError(res.error); return }
-            setImportOpen(false); setImportPreview(null)
-            const got = (res.imported || 0) + (res.overwritten || 0)
-            const skipped = (res.skippedSame || 0) + (res.skippedDiff || 0)
-            const bak = String(res.backupDir || '').split(/[\\/]/).filter(Boolean).pop() || ''   // toast 只带备份目录名（全路径过长）
-            showToast('已导入 ' + got + ' 条（跳过 ' + skipped + ' 条）' + (res.foldersMerged ? '，合并文件夹 ' + res.foldersMerged + ' 个' : '') + (bak ? '，已自动备份到 ' + bak : ''))
-            await loadNotes(true); loadFolders(); notifyNotesChanged()
-          } catch (err) { setError(String(err.message || err)) } finally { setImportPending(false) }
-        }
-        async function doDispatchConfirm() {
-          if (!selected || dispatching) return
-          setDispatching(true); setError('')
-          try {
-            if (dispatchMode === 'new') {
-              // 新建会话派发：client connectWorkspace 复用/新建一个 live 会话，再注入上下文+触发工作
-              if (!dispatchWsId) { setError('请选择工作区'); setDispatching(false); return }
-              if (!workspaces || !workspaces.connectWorkspace) { setError('workspaces 服务不可用'); setDispatching(false); return }
-              const ws = wsList.find(w => w.id === dispatchWsId)
-              const newSid = await workspaces.connectWorkspace(dispatchWsId)
-              const res = await rpc('notes-dispatch', { id: selected, sessionId: newSid, sessionName: (ws ? ws.title : '新会话'), workspace: ws ? ws.title : '', mode: 'new', instruction: dispatchInstr })
-              if (res && res.error) { setError(res.error); setDispatching(false); return }
-              if (sessions && newSid) { try { sessions.open(newSid) } catch (e) {} }
-              showToast('已新建会话，待办已注入并开始处理')
-            } else {
-              // 已有会话派发
-              if (!dispatchSessId) { setError('请选择目标会话'); setDispatching(false); return }
-              const sess = activeSessions.find(s => s.id === dispatchSessId)
-              // 目标未打开（不 live）：先打开激活，等它上线后再注入触发
-              if (sess && !sess.live && sessions && sessions.open) {
-                try { sessions.open(sess.id) } catch (e) {}
-                await timer.timeout(1200)
-              }
-              const res = await rpc('notes-dispatch', { id: selected, sessionId: dispatchSessId, sessionName: sess ? sess.name : '', workspace: sess ? sess.workspace : '', mode: 'existing', instruction: dispatchInstr })
-              if (res && res.error) { setError(res.error); setDispatching(false); return }
-              showToast((sess && !sess.live ? '已打开并派发待办到「' : '已派发待办到「') + (sess ? sess.name : '') + '」（开始处理）')
-            }
-            setDispatchOpen(false); setDispatchInstr('')
-            const g = await rpc('notes-get', { id: selected }); if (g && g.note) setEdBody(g.note.body || '')
-            await loadNotes(true); notifyNotesChanged()
-          } catch (err) { setError(String(err.message || err)) } finally { setDispatching(false) }
-        }
-        // 标记一条派发待办为完成（停止注入目标会话系统提示）
-        async function doDispatchDone(origIndex) {
-          try {
-            const r = await rpc('notes-dispatch-done', { id: selected, dispatchIndex: origIndex })
-            if (r && r.error) { setError(r.error); return }
-            showToast('已标记完成'); await loadNotes(true); notifyNotesChanged()
-          } catch (err) { setError(String(err.message || err)) }
-        }
         // ===== 显式归档：预览 → 勾选 → 执行 → toast 撤销 =====
         // 归档后清理：被合并的笔记从列表消失——清掉多选残留；若正打开的笔记被合并则退出编辑器选中态
         function afterArchiveCleanup(mergedMemberIds) {
@@ -2185,259 +3936,6 @@ window.__ModuleLoader__.load({
           for (const id of mergedMemberIds) gone[id] = true
           setSelIds(prev => { const next = {}; let dirty = false; for (const k of Object.keys(prev)) { if (gone[k]) dirty = true; else next[k] = true } return dirty ? next : prev })
           if (selected && gone[selected]) { setSelected(null); setEdTitle(''); setEdTopic(''); setEdTags(''); setEdBody('') }
-        }
-        // 打开归档预览（替代旧的直接执行）：dry-run 拉速记组（notes-archive-preview 零写入），默认全勾
-        async function openArchive() {
-          setError(''); setArchOpen(true); setArchGroups(null); setArchChecked({}); setArchExpand({}); setArchPending(false)
-          try {
-            const res = await rpc('notes-archive-preview')
-            if (res && res.error) { setError(res.error); setArchGroups([]); return }
-            setArchGroups((res && res.quickGroups) || [])
-          } catch (err) { setError(String(err.message || err)); setArchGroups([]) }
-        }
-        // 确认归档：勾选组 → notes-archive 白名单组（host 先全量校验再动手）→ toast「已合并 N 组」+ 撤销按钮
-        async function doArchiveConfirm() {
-          const gs = (archGroups || []).filter(g => archChecked[g.sessionId] !== false)
-          if (!gs.length || archPending) return
-          setArchPending(true)
-          try {
-            // payload 禁 undefined：白名单组不带 title（用 host 默认标题规则）
-            const res = await rpc('notes-archive', { groups: gs.map(g => ({ memberIds: g.members.map(m => m.id) })) })
-            if (res && res.error) { setError(res.error); setArchPending(false); return }
-            setArchOpen(false); setArchPending(false)
-            showToast('已合并 ' + (res.merged || 0) + ' 组', { label: '撤销', fn: doArchiveUndo })
-            afterArchiveCleanup(gs.reduce((acc, g) => acc.concat(g.members.map(m => m.id)), []))
-            await loadNotes(true); notifyNotesChanged()
-          } catch (err) { setError(String(err.message || err)); setArchPending(false) }
-        }
-        // 撤销最近一次归档（undo 事务文件）：归档笔记软删 + 成员批量恢复
-        async function doArchiveUndo() {
-          try {
-            const res = await rpc('notes-archive-undo')
-            if (res && res.error) { setError(res.error); return }
-            showToast(res && res.undone ? '已撤销归档' : '没有可撤销的归档')
-            await loadNotes(true); notifyNotesChanged()
-          } catch (err) { setError(String(err.message || err)) }
-        }
-        // ===== 二期 孤儿资产清理（设置卡片「资产清理」入口）：dry-run 预览（零写入）→ 勾选 → 白名单执行 =====
-        // 契约：notes-assets-prune 缺省 dryRun=true 返回 { orphans:[{name,bytes}], totalBytes, referenced, tombstoned, notes }；
-        // 执行 dryRun:false + files 白名单（host 调用内重扫实时孤儿防漂移；软删除笔记的引用也计入保护，宁留勿删）。
-        function openPrune() {
-          setPruneData(null); setPruneChecked({}); setPrunePending(false); setError('')
-          setSettingsOpen(false); setPruneOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
-          rpc('notes-assets-prune', { dryRun: true }).then(res => {
-            if (res && res.error) { setError(res.error); setPruneData({ orphans: [], totalBytes: 0 }); return }
-            setPruneData(res || { orphans: [], totalBytes: 0 })
-          }).catch(err => { setError(String(err.message || err)); setPruneData({ orphans: [], totalBytes: 0 }) })
-        }
-        async function doPruneConfirm() {
-          const orphans = (pruneData && pruneData.orphans) || []
-          const files = orphans.filter(o => pruneChecked[o.name] !== false).map(o => o.name)
-          if (!files.length || prunePending) return
-          setPrunePending(true)
-          try {
-            const res = await rpc('notes-assets-prune', { dryRun: false, files: files })
-            if (res && res.error) { setError(res.error); setPrunePending(false); return }
-            setPruneOpen(false); setPrunePending(false)
-            showToast('已清理 ' + ((res.deleted || []).length) + ' 个孤儿资产，释放 ' + fmtBytes(res.freedBytes || 0) + ((res.modes && res.modes.tombstoned) ? '（开发版为清空占位）' : ''))
-          } catch (err) { setError(String(err.message || err)); setPrunePending(false) }
-        }
-        // ===== P1 回收站（侧栏底部「回收站」入口）：notes-list {includeDeleted:true} 过滤 deleted → 恢复（notes-restore）/ 彻底删除（notes-purge）=====
-        // 彻底删除双确认：点「彻底删除」→ window.confirm「彻底删除不可恢复」确认才执行；host 侧安全闸只接受已软删除的笔记
-        function openTrash() {
-          setTrashList(null); setTrashPending(''); setTrashSel({}); setTrashPreview(null); setError('')
-          setSettingsOpen(false); setTrashOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
-          loadTrash()
-        }
-        function loadTrash() {
-          rpc('notes-list', { includeDeleted: true }).then(res => {
-            if (res && res.error) { setError(res.error); setTrashList([]); return }
-            const del = ((res && res.notes) || []).filter(n => n.deleted === true)
-            del.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))   // 删除时间（updatedAt 近似）降序
-            setTrashList(del)
-            // 列表刷新后清洗勾选/预览态：已不在回收站的 id 剔除（单条恢复/彻底删除后残留勾选会误伤后续批量操作）
-            const alive = {}
-            del.forEach(n => { alive[n.id] = true })
-            setTrashSel(prev => { const nx = {}; let changed = false; for (const id of Object.keys(prev)) { if (alive[id]) nx[id] = true; else changed = true } return changed ? nx : prev })
-            setTrashPreview(prev => (prev && !alive[prev.id]) ? null : prev)
-          }).catch(err => { setError(String(err.message || err)); setTrashList([]) })
-        }
-        async function doTrashRestore(id) {
-          if (!id || trashPending) return
-          setTrashPending(id); setError('')
-          try {
-            const res = await rpc('notes-restore', { id: id })
-            if (res && res.error) { setError(res.error); return }
-            showToast('已恢复')
-            loadTrash(); await loadNotes(true); loadFolders(); notifyNotesChanged()
-          } catch (err) { setError(String(err.message || err)) } finally { setTrashPending('') }
-        }
-        async function doTrashPurge(id, title) {
-          if (!id || trashPending) return
-          if (!window.confirm('彻底删除不可恢复：「' + (title || id) + '」\n删除后正文与归档备份将一并移除，确认彻底删除？')) return
-          setTrashPending(id); setError('')
-          try {
-            const res = await rpc('notes-purge', { id: id })
-            if (res && res.error) { setError(res.error); return }
-            showToast('已彻底删除')
-            loadTrash(); await loadNotes(true); notifyNotesChanged()
-          } catch (err) { setError(String(err.message || err)) } finally { setTrashPending('') }
-        }
-        // ===== 回收站增强（notes-trash-batch-preview）：批量选择/全选 + 批量恢复/批量彻底删除 + 行内容只读预览 =====
-        // 行勾选/全选（trashSel: id→true；全选 = 当前列表全部勾选时再点则清空）
-        function toggleTrashSel(id) { setTrashSel(prev => { const nx = Object.assign({}, prev); if (nx[id]) delete nx[id]; else nx[id] = true; return nx }) }
-        function toggleTrashAll() {
-          const list = trashList || []
-          const all = list.length > 0 && list.every(n => trashSel[n.id])
-          const nx = {}
-          if (!all) list.forEach(n => { nx[n.id] = true })
-          setTrashSel(nx)
-        }
-        // 行预览：notes-get {id, includeDeleted:true} 取已删正文（host includeDeleted 路径，墓碑仍拒绝）→ renderMarkdown 只读渲染（esc 先行零注入面）；再点收起
-        function toggleTrashPreview(id) {
-          if (trashPreview && trashPreview.id === id) { setTrashPreview(null); return }
-          setTrashPreview({ id: id, body: null, error: '' })
-          rpc('notes-get', { id: id, includeDeleted: true }).then(res => {
-            if (res && res.note && typeof res.note.body === 'string') setTrashPreview(prev => (prev && prev.id === id) ? { id: id, body: res.note.body, error: '' } : prev)
-            else setTrashPreview(prev => (prev && prev.id === id) ? { id: id, body: null, error: '预览失败：' + ((res && res.error) || '无正文') } : prev)
-          }).catch(err => setTrashPreview(prev => (prev && prev.id === id) ? { id: id, body: null, error: '预览失败：' + String(err.message || err) } : prev))
-        }
-        // 批量恢复：confirm 后逐条 notes-restore（单条失败计数不中断）；完成后清空勾选/预览 + 刷新
-        async function doTrashRestoreBatch() {
-          const ids = Object.keys(trashSel)
-          if (!ids.length || trashPending) return
-          if (!window.confirm('批量恢复：所选的 ' + ids.length + ' 条笔记将移出回收站（恢复后回到正常列表）。\n确认恢复？')) return
-          setTrashPending('batch'); setError('')
-          let ok = 0, fail = 0
-          for (const id of ids) {
-            try { const res = await rpc('notes-restore', { id: id }); if (res && res.error) fail++; else ok++ }
-            catch (err) { fail++ }
-          }
-          setTrashPending(''); setTrashSel({}); setTrashPreview(null)
-          showToast('已恢复 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''))
-          loadTrash(); await loadNotes(true); loadFolders(); notifyNotesChanged()
-        }
-        // 批量彻底删除：confirm 双确认（「不可恢复 + 含历史版本」+ 条数，与单条同口径）→ 逐条 notes-purge（host 安全闸仅限已软删除）
-        async function doTrashPurgeBatch() {
-          const ids = Object.keys(trashSel)
-          if (!ids.length || trashPending) return
-          if (!window.confirm('批量彻底删除：所选的 ' + ids.length + ' 条笔记将彻底删除，不可恢复（含历史版本）。\n删除后正文、历史版本快照与归档备份将一并移除，确认彻底删除？')) return
-          setTrashPending('batch'); setError('')
-          let ok = 0, fail = 0
-          for (const id of ids) {
-            try { const res = await rpc('notes-purge', { id: id }); if (res && res.error) fail++; else ok++ }
-            catch (err) { fail++ }
-          }
-          setTrashPending(''); setTrashSel({}); setTrashPreview(null)
-          showToast('已彻底删除 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''))
-          loadTrash(); await loadNotes(true); notifyNotesChanged()
-        }
-        // ===== 注入预览（设置卡片「注入预览」入口）：notes-inject-preview 纯复用 host 注入渲染（约定桶 + 目录桶），
-        // 双 tab 只读等宽展示 + 三档视角下拉（全局 / 工作区并集 / 单会话；sessList 数据源）+ 底部统计条（总字符/打码/时效标注/预算截断）=====
-        function openInjectPreview() {
-          setInjectPreviewData(null); setInjectPreviewTab('conv'); setInjectPreviewSid(''); setError('')
-          setSettingsOpen(false); setInjectPreviewOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
-          loadInjectPreview('')
-        }
-        // 视角值编码：'' = 全局；'ws:<工作区标题>' = 工作区并集视角（host workspace 参数）；其余 = 会话短 id（sessionId 参数）
-        function loadInjectPreview(sid) {
-          const pvArgs = sid ? (sid.indexOf('ws:') === 0 ? { workspace: sid.slice(3) } : { sessionId: sid }) : {}
-          rpc('notes-inject-preview', pvArgs).then(res => {
-            if (res && res.error) { setError(res.error); setInjectPreviewData({ conventions: '', catalog: '', stats: null }); return }
-            setInjectPreviewData(res || { conventions: '', catalog: '', stats: null })
-          }).catch(err => { setError(String(err.message || err)); setInjectPreviewData({ conventions: '', catalog: '', stats: null }) })
-        }
-        // ===== 整理建议（设置卡片「整理建议」行入口）：notes-suggest（dry-run 零写入）四段式 modal =====
-        // 契约：{ archiveCandidates:速记组（结构与 notes-archive-preview 同源）, staleCandidates:过期未引用, orphanCandidates:孤儿（仅展示）, logHygieneCandidates:{weekly,monthly}:日志卫生（工作记忆 v0，仅展示明细）, generatedAt }
-        // 红线：只提名不自动执行——速记组「去归档」直达归档预览对话框；过期未引用「一键批量软删除」window.confirm 后才逐条 notes-delete（软删可恢复）；
-        // 孤儿候选是启发式判定（可能误伤），不提供批量操作，逐条跳转人工过目；日志卫生 v0 仅展开明细（聚合执行留待 Phase 2，日志只聚合不淘汰）。
-        function openSuggest() {
-          setSuggestData(null); setSuggestPending(false); setError('')
-          setSettingsOpen(false); setSuggestOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
-          loadSuggest()
-        }
-        function loadSuggest() {
-          const empty = { archiveCandidates: [], staleCandidates: [], orphanCandidates: [], logHygieneCandidates: { weekly: [], monthly: [] } }
-          rpc('notes-suggest', {}).then(res => {
-            if (res && res.error) { setError(res.error); setSuggestData(empty); return }
-            setSuggestData(res || empty)
-          }).catch(err => { setError(String(err.message || err)); setSuggestData(empty) })
-        }
-        // 速记组「去归档」：关建议框 → 复用归档预览对话框（数据同源，勾选/执行/撤销链路不变）
-        function suggestGoArchive() { setSuggestOpen(false); openArchive() }
-        // 孤儿「查看」：关建议框 → 双链跳转同款（目标被当前视图/kind/置顶过滤藏掉时退回「全部」再选中）
-        function suggestViewNote(id) { setSuggestOpen(false); jumpToWikiTarget(id) }
-        // 过期未引用一键批量软删：confirm 确认后才执行；逐条 notes-delete（host 软删，回收站可恢复）；
-        // 删后刷新建议数据（三段联动，全空 → 空态文案）+ 列表
-        async function doSuggestBatchDelete() {
-          const list = (suggestData && suggestData.staleCandidates) || []
-          if (!list.length || suggestPending) return
-          if (!window.confirm('一键批量软删除：' + list.length + ' 条过期且从未被引用的笔记将移入回收站（可恢复）。\n确认删除？')) return
-          setSuggestPending(true); setError('')
-          let ok = 0, fail = 0
-          for (const n of list) {
-            try { const res = await rpc('notes-delete', { id: n.id }); if (res && res.error) fail++; else ok++ }
-            catch (err) { fail++ }
-          }
-          setSuggestPending(false)
-          showToast('已软删除 ' + ok + ' 条（回收站可恢复）' + (fail ? '，失败 ' + fail + ' 条' : ''))
-          afterArchiveCleanup(list.map(n => n.id))   // 正打开的笔记在被删集合中则退出选中态（归档收尾同款语义）
-          await loadNotes(true); notifyNotesChanged()
-          loadSuggest()
-        }
-        // ===== 手动笔记多选合并：「选择」chip / 右键「合并为一篇」进多选态 → 底部操作条 → 标题输入 → notes-archive =====
-        function toggleSelMode() { setSelMode(!selMode); setSelIds({}) }
-        function toggleSelId(id) { setSelIds(prev => { const next = Object.assign({}, prev); if (next[id]) delete next[id]; else next[id] = true; return next }) }
-        // 打开合并标题输入框：默认标题 = 所选笔记中最早更新者的 topic（原型口径）
-        function openMerge() {
-          const ids = Object.keys(selIds)
-          if (ids.length < 2) { showToast('至少选择 2 条笔记'); return }
-          const sel = notes.filter(n => selIds[n.id]).sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')))
-          setMergeTitle((sel[0] && sel[0].topic) || '合并笔记'); setMergePending(false); setError(''); setMergeOpen(true)
-        }
-        async function doMergeConfirm() {
-          const ids = Object.keys(selIds)
-          const t = mergeTitle.trim()
-          if (ids.length < 2 || mergePending || !t) return
-          setMergePending(true)
-          try {
-            const g = { memberIds: ids }; if (t) g.title = t   // payload 禁 undefined：空标题不传 title 字段
-            const res = await rpc('notes-archive', { groups: [g] })
-            if (res && res.error) { setError(res.error); setMergePending(false); return }
-            setMergeOpen(false); setMergePending(false); setSelMode(false)
-            showToast('已合并所选 ' + ids.length + ' 条', { label: '撤销', fn: doArchiveUndo })
-            afterArchiveCleanup(ids)
-            await loadNotes(true); notifyNotesChanged()
-          } catch (err) { setError(String(err.message || err)); setMergePending(false) }
-        }
-        // 多选批量删除（软删进回收站，与整理建议器批量软删同通道）：confirm 注明可恢复 → 逐条 notes-delete → 退出多选态 + 刷新
-        async function doSelBatchDelete() {
-          const ids = Object.keys(selIds)
-          if (!ids.length || selDelPending) return
-          if (!window.confirm('批量删除：所选的 ' + ids.length + ' 条笔记将移入回收站（可在回收站恢复）。\n确认删除？')) return
-          setSelDelPending(true); setError('')
-          let ok = 0, fail = 0
-          for (const id of ids) {
-            try { const res = await rpc('notes-delete', { id: id }); if (res && res.error) fail++; else ok++ }
-            catch (err) { fail++ }
-          }
-          setSelDelPending(false); setSelMode(false); setSelIds({})
-          showToast('已删除 ' + ok + ' 条（可在回收站恢复）' + (fail ? '，失败 ' + fail + ' 条' : ''))
-          afterArchiveCleanup(ids)   // 正打开的笔记在被删集合中则退出选中态（归档/建议器批量软删同款语义）
-          await loadNotes(true); notifyNotesChanged()
-        }
-        // 同步键盘导航所需 ref（keydown 监听挂一次，每次渲染刷新最新值）
-        openRef.current = open
-        focusIdRef.current = focusId
-        notesRef.current = notes
-        selectNoteRef.current = selectNote
-        closeRef.current = close
-        moveFocusRef.current = (ids, delta) => {
-          setFocusId(prev => {
-            const idx = prev ? ids.indexOf(prev) : -1
-            const next = idx < 0 ? (delta > 0 ? 0 : ids.length - 1) : Math.max(0, Math.min(ids.length - 1, idx + delta))
-            return (ids[next] != null) ? ids[next] : null
-          })
         }
         // 同步编辑字段 ref（供自动保存 debounce 读最新值）
         edTitleRef.current = edTitle
@@ -2453,267 +3951,46 @@ window.__ModuleLoader__.load({
         // 双模式编辑器 ref 镜像（keydown/effect 闭包读最新值）
         editorModeRef.current = editorMode
         degradedRef.current = degraded
-        imgModalRef.current = imgModal
-        linkModalRef.current = linkModal
         switchModeRef.current = switchMode
-        jumpWikiRef.current = jumpToWikiTarget   // P2 双链跳转（富文本 click 委托读最新闭包）
+        jumpWikiRef.current = jumpToWikiTarget   // P2 双链跳转（富文本 click 委托读最新闭包；jumpWikiRef 为 panel/wiki.js 顶层绑定）
         // 自动保存：debounce 只注册一次（null 时赋值），回调读 ref 避免闭包过期
         if (!autoSaveRef.current) autoSaveRef.current = timer.debounce(() => { if (selectedRef.current) doSave() }, 900)
         function triggerAutoSave() { if (autoSaveRef.current) autoSaveRef.current() }
-        if (!open) return null
-        // 搜索关键词 <mark> 高亮（防 XSS）：q 先做正则元字符转义，split 片段全是纯文本、经 React 转义渲染后再包 mark 元素——绝不用 innerHTML 拼原文
-        function highlight(text, q) { if (!q || !text) return text; const s = String(text); const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); const parts = s.split(new RegExp('(' + esc + ')', 'gi')); if (parts.length === 1) return s; return parts.map((p, i) => i % 2 === 1 ? e('mark', { key: i, className: 'dsh-notes-mark' }, p) : p) }
-        function folderName(fid) { const f = folders.find(x => x.id === fid); return f ? f.name : '' }
-        const q = searchText.trim().toLowerCase()
-        const localFiltered = q ? notes.filter(n => { const hay = ((n.title || '') + ' ' + (n.preview || '') + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ') + ' ' + folderName(n.folder)).toLowerCase(); return hay.indexOf(q) >= 0 }) : notes
-        // 搜索结果取 host 全文 + 本地即时的并集，RPC 失败/延迟时本地结果保底
-        let filtered = searchIds ? notes.filter(n => searchIds.indexOf(n.id) >= 0 || localFiltered.indexOf(n) >= 0) : localFiltered
-        // 视图求值（原型 matches）：view 单选（all/folder/topic）∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索
-        if (view.type === 'topic') filtered = filtered.filter(n => (n.topic || '') === view.id)
-        // 文件夹视图 = 递归子树口径（notes-nested-folder-ui：点父文件夹视图含全部子孙文件夹内容，与 host notes-list folder 过滤同语义）
-        else if (view.type === 'folder') { const vsub = folderSubtreeIdsOf(view.id); filtered = filtered.filter(n => vsub[(n.folder || '')]) }
-        // 工作记忆 v0 隐身渲染守卫：类型组未勾「日志」时日志永不进日常视图（含搜索并集/清除筛选后的在途数据；专入口 = 勾选 kind=log）
-        filtered = filtered.filter(n => (n.kind || 'note') !== 'log' || filters.kinds.indexOf('log') >= 0)
-        filtered = filtered.filter(n => matchFilters(n, filters))
-        // 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0，如仅 topic 命中)，同级 updatedAt 降序；
-        // 命中字段优先取 host notes-search 返回的 matches（全文口径），无则按本地字段估算（preview 仅前 200 字，正文命中可能低估）；无搜索词时退化为 host 序
-        function relRank(n) {
-          const m = searchMatches[n.id]
-          if (m && m.length) { if (m.indexOf('title') >= 0) return 3; if (m.indexOf('tags') >= 0) return 2; if (m.indexOf('body') >= 0) return 1; return 0 }
-          if ((n.title || '').toLowerCase().indexOf(q) >= 0) return 3
-          if ((n.tags || []).join(' ').toLowerCase().indexOf(q) >= 0) return 2
-          if ((n.preview || '').toLowerCase().indexOf(q) >= 0) return 1
-          return 0
-        }
-        // 排序（P2 使用遥测 + 相关度档位）：缺省保持 host 序（pinned → updatedAt 降序）；「按引用」= useCount 降序（同数按 updatedAt 兜底），分组内顺序随过滤数组
-        if (sortBy === 'use') filtered = filtered.slice().sort((a, b) => ((b.useCount || 0) - (a.useCount || 0)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
-        else if (sortBy === 'rel' && q) filtered = filtered.slice().sort((a, b) => (relRank(b) - relRank(a)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
-        // 懒加载分页：只渲染前 visibleCount 条笔记行，滚动到底再加载更多（避免笔记多时全量渲染 + 每条跑 highlight）
-        const paged = filtered.slice(0, visibleCount)
-        const hasMore = filtered.length > visibleCount
-        function onListScroll(ev) {
-          const el = ev.target
-          if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) { setVisibleCount(c => c + PAGE_SIZE) }
-        }
-        // 注入范围文字（injectTo 是多选数组）：缺省 = 所有会话（存量 global/workspace 值同样视为所有会话）；否则列出所选会话名
-        function injectScopeLabel(injectTo) {
-          const arr = (injectTo || []).filter(t => t !== 'global' && t !== 'workspace')
-          if (arr.length === 0) return '所有会话'
-          const names = arr.map(t => {
-            const s = sessList.find(x => x.short === t)
-            return s ? s.name : ('会话 ' + t)
-          })
-          return names.join('、')
-        }
-        // ===== 侧栏笔记行（原型 note-row）：kind 色点 + 标题(+置顶 pin) + 注入 bolt + 行尾 =====
-        // 行尾（原型 noteRow）：主题视图内显示所属文件夹徽章；文件夹上下文内显示淡灰主题字（方案A）；其余显示日期
-        function renderNoteRow(n, inFolderCtx) {
-          let tail
-          if (view.type === 'topic' && (n.folder || '')) tail = e('span', { className: 'dsh-notes-fbadge' }, I('folder', 9), folderName(n.folder))
-          else if (inFolderCtx && n.topic && n.topic !== '分类中') tail = e('span', { className: 'dsh-notes-note-tp', title: '主题：' + n.topic }, n.topic)
-          else tail = e('span', { className: 'dsh-notes-note-dt' }, n.updatedAt ? n.updatedAt.slice(5, 10) : '')
-          // 多选态：行点击=勾选/取消（不再打开笔记），行首渲染复选框；与搜索/过滤共存（勾选按 noteId 记账，过滤不清选）
-          return e('div', { key: n.id, className: 'dsh-notes-note-row' + (selected === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (flashId === n.id ? ' flash' : '') + (n.status === 'resolved' ? ' resolved' : '') + (n.status === 'superseded' ? ' superseded' : '') + (selMode && selIds[n.id] ? ' pick' : ''), onClick: () => { if (selMode) { toggleSelId(n.id); return } selectNote(n) }, onContextMenu: (ev) => openCtxMenu(ev, n), draggable: true, onDragStart: (ev) => onNoteDragStart(ev, n), onDragEnd: (ev) => onNoteDragEnd(ev) },
-            selMode ? e('input', { type: 'checkbox', className: 'dsh-notes-pick-check', checked: !!selIds[n.id], onChange: () => toggleSelId(n.id), onClick: (ev) => ev.stopPropagation() }) : null,
-            // 行首槽位对齐（notes-tree-typography）：caret 槽同宽透明占位（笔记行无折叠箭头）+ 图标槽 16px（kind 色点居中），与文件夹行标题文字起点一致
-            e('span', { className: 'dsh-notes-caret-spacer' }),
-            e('span', { className: 'dsh-notes-kind-slot' }, e('span', { className: 'dsh-notes-kind-dot', style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' } })),
-            e('span', { className: 'dsh-notes-note-ti' }, n.status === 'pinned' ? I('pin', 10, 'dsh-notes-note-pin') : null, highlight(n.title || '无标题', q)),
-            n.inject === true ? e('span', { className: 'dsh-notes-note-inj dsh-nt', 'data-tooltip': '注入为上下文 · ' + (n.injectRole === 'reference' ? '资料' : '约定') + ' · 范围：' + injectScopeLabel(n.injectTo) }, I('bolt', 10)) : null,
-            // 曾注入徽章（injectEver 粘性标记：历史上开启过注入、现已关闭；已注入时由 bolt 徽章表达，不重复显示；不满足不渲染）
-            n.inject !== true && n.injectEver === true ? e('span', { className: 'dsh-notes-note-injevr dsh-nt', 'data-tooltip': '曾注入：历史上开启过上下文注入（现已关闭）' }, I('clock', 9)) : null,
-            // 使用遥测（P2）：被引用徽章（0 次不显示）
-            (n.useCount || 0) > 0 ? e('span', { className: 'dsh-notes-note-use dsh-nt', 'data-tooltip': '被 Agent 引用（note_get 命中）' + n.useCount + ' 次' }, I('quote', 9), String(n.useCount)) : null,
-            // 双链标记（P2）：正文含 [[..]] 时行尾显示链接图标（缓存正文优先，preview 兜底）
-            hasWikiLinks(n) ? e('span', { className: 'dsh-notes-note-wiki dsh-nt', 'data-tooltip': '含双链 [[…]]（详情富文本中可点击跳转）' }, I('link', 9)) : null,
-            tail)
-        }
-        // ===== 侧栏树（原型 renderTree 翻译）：视图头 → 置顶组 → 文件夹组（nested 子笔记）→ 未入夹根级平铺（drop 移出落点）→ 主题全局过滤 =====
-        const treeIds = []
-        const treeEls = []
-        // 筛选中心：激活条件数 = 状态组勾选数 + 类型组勾选数（排序档位不计入）
-        const filterCount = FILTER_STATUS.reduce((s, f) => s + (filters[f.id] ? 1 : 0), 0) + filters.kinds.length
-        const filtersActive = view.type !== 'all' || filterCount > 0 || !!q
-        // 曾注入条件 feature-detect：列表 slim 含 injectEver 字段才显示该选项（host 未提供时隐藏；存量激活条件仍渲染 chip 可 × 移除）
-        const hasInjectEver = notes.some(n => n.injectEver !== undefined)
-        const sortLabel = (FILTER_SORTS.find(s => s.id === sortBy) || FILTER_SORTS[0]).label
-        const viewTitle = view.type === 'topic' ? ('主题 · ' + view.id) : view.type === 'folder' ? ('文件夹 · ' + folderName(view.id)) : '全部笔记'
-        treeEls.push(e('div', { key: 'sec-view', className: 'dsh-notes-sec-h' },
-          I('filter', 11),
-          e('span', { className: 'dsh-notes-sec-h-t' }, viewTitle),
-          view.type === 'topic' ? e('span', { className: 'dsh-notes-sec-h-sub' }, '（跨文件夹 ' + filtered.length + ' 条）') : null,
-          view.type !== 'all' ? e('span', { className: 'dsh-notes-sec-h-clear dsh-nt', 'data-tooltip': '清除视图过滤', onClick: (ev) => { ev.stopPropagation(); setView({ type: 'all', id: '' }) } }, '×') : null))
-        // 置顶组：置顶笔记仍在其所属位置显示（带 pin 视觉），本组是跨文件夹的置顶聚合视图（可折叠，PINNED_KEY 持久化）
-        const pinnedAll = filtered.filter(n => n.status === 'pinned')
-        if (pinnedAll.length > 0) {
-          // 过滤激活自动展开：含命中的置顶组强制展开（纯计算 OR，不写回 foldersExpanded——清除过滤即恢复手动折叠态）
-          const pinOpen = isFolderExpanded(PINNED_KEY) || (filtersActive && pinnedAll.length > 0)
-          treeEls.push(e('div', { key: 'sec-pinned', className: 'dsh-notes-sec-h dsh-notes-sec-toggle', onClick: () => toggleFolder(PINNED_KEY) },
-            e('span', { className: 'dsh-notes-caret' + (pinOpen ? ' open' : '') }, I('chev', 10)),
-            I('pin', 11),
-            e('span', { className: 'dsh-notes-sec-h-t' }, '置顶'),
-            e('span', { className: 'dsh-notes-sec-h-n' }, pinnedAll.length)))
-          if (pinOpen) {
-            const pinRows = []
-            paged.filter(n => n.status === 'pinned').forEach(n => { treeIds.push(n.id); pinRows.push(renderNoteRow(n, false)) })
-            if (pinRows.length) treeEls.push(e('div', { key: 'pinned-kids', className: 'dsh-notes-nested' }, pinRows))
+        // ===== 编辑器区渲染（原型 .ed）：面包屑 + 大标题 + meta chips 行 + 正文 + 底部状态 =====
+        // 装配层 post-guard 调用（面板关闭时不求值）；scopePanelEl 等跨域渲染产物经 R 入参注入
+        function renderEditorEl(R) {
+          const scopePanelEl = R.scopePanelEl
+          const scopeOpen = R.scopeOpen
+          // 是否注入为上下文：由 inject + injectRole 双字段推出的三态决定（off 之外即注入中，不依赖标签）
+          const isInjected = edRole !== 'off'
+          // 当前选中笔记（编辑器区多处用）
+          const curNote = notes.find(n => n.id === selected) || null
+          const curFolderName = curNote && curNote.folder ? folderName(curNote.folder) : ''
+          const curTopicName = curNote && curNote.topic && curNote.topic !== '分类中' ? curNote.topic : ''
+          // 主题全局过滤跳转（面包屑主题段 + 主题 chip 跳钮共用）：未识别主题时提示不跳转
+          function jumpToTopicFilter() {
+            if (!curTopicName) { showToast('该笔记尚未识别主题'); return }
+            setView({ type: 'topic', id: curTopicName })
+            showToast('已按主题过滤：' + curTopicName)
           }
-        }
-        // 文件夹组：行 = caret + folder 图标 + 名称 + 计数 + 行尾过滤图标；点行主体 = 原地展开/折叠（与 caret 同义，「点哪个展开哪个」）；
-        // 进入/退出文件夹视图降级为行尾过滤图标按钮（不抢占单击）+ 右键菜单项；右键管理
-        treeEls.push(e('div', { key: 'sec-folders', className: 'dsh-notes-sec-h' },
-          I('folder', 11),
-          e('span', { className: 'dsh-notes-sec-h-t' }, '文件夹'),
-          e('span', { className: 'dsh-notes-sec-h-add dsh-nt', 'data-tooltip': '新建文件夹', onClick: (ev) => { ev.stopPropagation(); setFolderInputText(''); setSubFolderFor(null); setFolderInputOpen(true) } }, I('plus', 12))))
-        // 嵌套递归渲染（notes-nested-folder-ui）：depth-first——文件夹行 → 展开时 [内联子新建输入 → 子文件夹递归 → 直挂笔记] 包一层
-        // .dsh-notes-nested 缩进容器（同级同字体/行首槽位对齐沿用排版体系；嵌套行缩进+小字由 styles.css .dsh-notes-nested 口径承担）；
-        // 键盘导航顺序 = 渲染顺序（treeIds 按 depth-first 推入）；过滤命中与展开语义按子树（子树含命中 → 自动展开 + 计数=子树命中数，
-        // 与 host f.count 子树口径一致；纯计算 OR 不写回 foldersExpanded——清除过滤即恢复手动折叠态）
-        function renderFolderNode(f, sink) {
-          const sub = folderSubtreeIdsOf(f.id)
-          const kids = paged.filter(n => (n.folder || '') === f.id)
-          const subHits = filtersActive ? filtered.filter(n => sub[(n.folder || '')]).length : 0
-          const fOpen = isFolderExpanded(f.id) || (filtersActive && subHits > 0)
-          // 计数口径：过滤激活（视图/筛选中心/搜索任一）显示子树命中数（无命中 0）；否则显示子树总数（host count 已递归）
-          const cnt = filtersActive ? subHits : (f.count || 0)
-          sink.push(renamingId === f.id
-            ? e('div', { key: 'folder-' + f.id, className: 'dsh-notes-folder-row' },
-                e('span', { className: 'dsh-notes-caret' }, I('chev', 10)),
-                e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
-                e('input', { className: 'dsh-notes-folder-rename', value: renameText, autoFocus: true, onChange: (ev) => setRenameText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doRenameFolder() } else if (ev.key === 'Escape') { ev.preventDefault(); setRenamingId(null) } }, onBlur: () => setRenamingId(null) }))
-            : e('div', { key: 'folder-' + f.id, className: 'dsh-notes-folder-row' + (view.type === 'folder' && view.id === f.id ? ' on' : ''), onClick: () => toggleFolder(f.id), onContextMenu: (ev) => openFolderMenu(ev, f), draggable: true, onDragStart: (ev) => onFolderDragStart(ev, f), onDragEnd: (ev) => onFolderDragEnd(ev), onDragOver: (ev) => onFolderDragOver(ev, f), onDragLeave: onFolderDragLeave, onDrop: (ev) => onFolderDrop(ev, f) },
-                e('span', { className: 'dsh-notes-caret' + (fOpen ? ' open' : '') }, I('chev', 10)),
-                e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
-                e('span', { className: 'dsh-notes-row-nm' }, f.name),
-                e('span', { className: 'dsh-notes-row-n' }, cnt),
-                e('span', { className: 'dsh-notes-row-vfilter dsh-nt' + (view.type === 'folder' && view.id === f.id ? ' on' : ''), 'data-tooltip': '文件夹视图（含子孙文件夹）', onClick: (ev) => { ev.stopPropagation(); setView(view.type === 'folder' && view.id === f.id ? { type: 'all', id: '' } : { type: 'folder', id: f.id }) } }, I('filter', 11))))
-          if (!fOpen) return
-          const childEls = []
-          // 「新建子文件夹」内联输入行（右键菜单打开；渲染在本夹子内容容器首位，Enter 提交 / Esc 或空串失焦取消）
-          if (subFolderFor === f.id) {
-            childEls.push(e('div', { key: 'folder-add-sub', className: 'dsh-notes-folder-row' },
-              e('span', { className: 'dsh-notes-caret' }, I('chev', 10)),
-              e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
-              e('input', { className: 'dsh-notes-folder-rename', placeholder: '子文件夹名…', value: folderInputText, autoFocus: true, onChange: (ev) => setFolderInputText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doCreateFolder() } else if (ev.key === 'Escape') { ev.preventDefault(); setSubFolderFor(null) } }, onBlur: () => { if (!folderInputText.trim()) setSubFolderFor(null) } })))
-          }
-          for (const cf of childFoldersOf(f.id)) renderFolderNode(cf, childEls)
-          kids.forEach(n => { treeIds.push(n.id); childEls.push(renderNoteRow(n, true)) })
-          if (childEls.length) sink.push(e('div', { key: 'kids-' + f.id, className: 'dsh-notes-nested' }, childEls))
-        }
-        for (const f of rootFolders()) renderFolderNode(f, treeEls)
-        // 新建文件夹内联输入行（分组头 ＋ 展开；Enter 提交 / Esc 或空串失焦取消）
-        if (folderInputOpen) {
-          treeEls.push(e('div', { key: 'folder-add', className: 'dsh-notes-folder-row' },
-            e('span', { className: 'dsh-notes-caret' }, I('chev', 10)),
-            e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
-            e('input', { className: 'dsh-notes-folder-rename', placeholder: '文件夹名…', value: folderInputText, autoFocus: true, onChange: (ev) => setFolderInputText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doCreateFolder() } else if (ev.key === 'Escape') { ev.preventDefault(); setFolderInputOpen(false) } }, onBlur: () => { if (!folderInputText.trim()) setFolderInputOpen(false) } })))
-        }
-        // 未入夹笔记：根级同级直显——无 folder 的笔记平铺在树根部，与文件夹行同一缩进层级（紧随文件夹列表之后、主题过滤区之前；
-        // 不再渲染「未分类」分组头/分区计数——数量已并入 brand 行总计数；主题聚合由底部「主题过滤」区承担，不重复聚合）；
-        // .dsh-notes-unfiled-drop 包裹容器保留为「移出文件夹」drop 落点（拖到本区任意位置 = 移出），仅在 有未入夹笔记 或 拖拽进行中 渲染——
-        // 空态非拖拽不渲染任何占位；拖拽中本区头部显示淡提示行「拖到此处移出文件夹」（dragActive 驱动，空态下也保证有可拖出落点）
-        const unfiled = paged.filter(n => !(n.folder || ''))
-        const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })
-        if (unfiledKids.length || dragActive) {
-          treeEls.push(e('div', { key: 'unfiled-drop', className: 'dsh-notes-unfiled-drop', onDragOver: onUnfiledDragOver, onDragLeave: onUnfiledDragLeave, onDrop: onUnfiledDrop },
-            dragActive ? e('div', { key: 'unfiled-hint', className: 'dsh-notes-unfiled-hint' }, dragFolderIdRef.current ? '拖到此处移回根级' : '拖到此处移出文件夹') : null,
-            unfiledKids))
-        }
-        // 主题全局过滤（原型底部区）：全库主题 + 计数；点行主体 = 原地展开/收起该主题的笔记子列表（topicExpanded，不持久化）；
-        // 主题视图（跨文件夹过滤）降级为行尾过滤图标按钮（不抢占单击）
-        const allTopics = {}
-        notes.forEach(n => { if (n.topic) allTopics[n.topic] = (allTopics[n.topic] || 0) + 1 })
-        const topicNames = Object.keys(allTopics).sort()
-        if (topicNames.length) {
-          // 整区默认折叠（notes-topic-collapse）：常态只显示「主题 (N)」一行（N=主题数），点分组头展开/收起（topicSecOpen，session 记忆不持久化）；
-          // 展开行为与置顶折叠组（PINNED_KEY）同款：过滤激活且有主题命中时纯计算 OR 自动展开（不写回 topicSecOpen——清除过滤即恢复手动折叠态），
-          // 头部计数同步切换为命中主题数（folders「过滤激活=命中数」同口径）
-          const topicHitSet = {}
-          filtered.forEach(n => { if (n.topic) topicHitSet[n.topic] = true })
-          const topicHitCount = Object.keys(topicHitSet).length
-          const topicSecOpenEff = topicSecOpen || (filtersActive && topicHitCount > 0)
-          treeEls.push(e('div', { key: 'sec-topics', className: 'dsh-notes-sec-h dsh-notes-sec-toggle', onClick: () => setTopicSecOpen(!topicSecOpen) },
-            e('span', { className: 'dsh-notes-caret' + (topicSecOpenEff ? ' open' : '') }, I('chev', 10)),
-            I('topic', 11),
-            e('span', { className: 'dsh-notes-sec-h-t' }, '主题 (' + (filtersActive ? topicHitCount : topicNames.length) + ')'),
-            e('span', { className: 'dsh-notes-sec-h-sub' }, '跨文件夹')))
-          if (topicSecOpenEff) topicNames.forEach(tn => {
-            const tkidsAll = filtered.filter(n => (n.topic || '') === tn)
-            // 过滤激活自动展开：含命中的主题行强制展开（纯计算 OR，不写回 topicExpanded——清除过滤即恢复）；计数同步切换为命中数
-            const tOpen = !!topicExpanded[tn] || (filtersActive && tkidsAll.length > 0)
-            treeEls.push(e('div', { key: 'tp-' + tn, className: 'dsh-notes-row dsh-notes-topic-row' + (view.type === 'topic' && view.id === tn ? ' on' : ''), onClick: () => toggleTopicExpanded(tn) },
-              e('span', { className: 'dsh-notes-caret' + (tOpen ? ' open' : '') }, I('chev', 10)),
-              e('span', { className: 'dsh-notes-ic-slot' }, I('topic', 12)),
-              e('span', { className: 'dsh-notes-row-nm' }, tn === '分类中' ? '识别中' : tn),
-              e('span', { className: 'dsh-notes-row-n' }, filtersActive ? tkidsAll.length : allTopics[tn]),
-              e('span', { className: 'dsh-notes-row-vfilter dsh-nt' + (view.type === 'topic' && view.id === tn ? ' on' : ''), 'data-tooltip': '主题视图（跨文件夹过滤）', onClick: (ev) => { ev.stopPropagation(); setView(view.type === 'topic' && view.id === tn ? { type: 'all', id: '' } : { type: 'topic', id: tn }) } }, I('filter', 11))))
-            if (tOpen) {
-              const tkids = paged.filter(n => (n.topic || '') === tn)
-              if (tkids.length) { tkids.forEach(n => { treeIds.push(n.id) }); treeEls.push(e('div', { key: 'tpk-' + tn, className: 'dsh-notes-nested' }, tkids.map(n => renderNoteRow(n, false)))) }
+          const curDispatches = (curNote && curNote.dispatches) || []
+          // P3 派发闭环：待回执条数（驱动详情 meta 徽章）
+          const dispatchOpenCount = curDispatches.filter(d => !isDispatchDone(d)).length
+          // ===== P2 反向链接：全库正文索引扫描（extractWikiTargets/wikiLinksTo 与内核同一口径）；索引未到的条目暂不计，标题行提示「索引中…」=====
+          void wikiVer   // 索引版本号驱动本区重算（索引推进 → setWikiVer → 重渲染）
+          const wikiWarm = notes.every(n => !!wikiBodiesRef.current[n.id])
+          const backlinks = (() => {
+            if (!curNote) return []
+            const out = []
+            for (const n of notes) {
+              if (n.id === curNote.id) continue   // 自链不算反向链接
+              const c = wikiBodiesRef.current[n.id]
+              if (!c) continue
+              if (wikiLinksTo(c.body, curNote.id, curNote.title || '')) out.push(n)
             }
-          })
-        }
-        // 空态：全库为空 → 引导新建；有库但过滤为空 → 无匹配提示
-        if (notes.length === 0 && !loading) {
-          treeEls.push(e('div', { key: 'empty', className: 'dsh-notes-empty-state' },
-            e('div', { className: 'dsh-notes-empty-ic' }, I('note', 30)),
-            e('div', { className: 'dsh-notes-empty-t' }, '还没有笔记'),
-            e('div', { className: 'dsh-notes-empty-s' }, '点侧栏「新建」输入标题，创建第一条笔记'),
-            e('button', { className: 'dsh-notes-empty-btn', onClick: openNewNote }, '记第一条')))
-        } else if (filtered.length === 0 && filtersActive) {
-          // 空结果态：提示 + 筛选中心条件激活时附「清空筛选」快捷动作（设计稿口径⑦）
-          treeEls.push(e('div', { key: 'no-match', className: 'dsh-notes-sec-h' }, e('span', { className: 'dsh-notes-sec-h-t' }, '无匹配笔记'),
-            filterCount > 0 ? e('span', { className: 'dsh-notes-sec-h-clear dsh-nt', 'data-tooltip': '清空全部筛选条件', onClick: () => { setFilters(FILTERS0()); if (searchDebRef.current) searchDebRef.current() } }, '清空筛选') : null))
-        }
-        if (loading && notes.length === 0) treeEls.unshift(e('div', { key: 'loading', className: 'dsh-notes-loading' }, '加载中...'))
-        // 键盘导航顺序 = 树渲染顺序（置顶组与所属位置重复出现的笔记去重）
-        pagedIdsRef.current = Array.from(new Set(treeIds))
-        // 是否注入为上下文：由 inject + injectRole 双字段推出的三态决定（off 之外即注入中，不依赖标签）
-        const isInjected = edRole !== 'off'
-        // 当前选中笔记（编辑器区多处用）
-        const curNote = notes.find(n => n.id === selected) || null
-        const curFolderName = curNote && curNote.folder ? folderName(curNote.folder) : ''
-        const curTopicName = curNote && curNote.topic && curNote.topic !== '分类中' ? curNote.topic : ''
-        // 主题全局过滤跳转（面包屑主题段 + 主题 chip 跳钮共用）：未识别主题时提示不跳转
-        function jumpToTopicFilter() {
-          if (!curTopicName) { showToast('该笔记尚未识别主题'); return }
-          setView({ type: 'topic', id: curTopicName })
-          showToast('已按主题过滤：' + curTopicName)
-        }
-        // 文件夹右键菜单的上移/下移边界（嵌套语义：同级兄弟内首项不可上移、末项不可下移）
-        const folderMenuSibs = folderMenu ? childFoldersOf(folderMenu.folder.parent || '') : []
-        const folderMenuIdx = folderMenu ? folderMenuSibs.findIndex(f => f.id === folderMenu.folder.id) : -1
-        const curDispatches = (curNote && curNote.dispatches) || []
-        // P3 派发闭环：待回执条数（驱动详情 meta 徽章）
-        const dispatchOpenCount = curDispatches.filter(d => !isDispatchDone(d)).length
-        // ===== P2 反向链接：全库正文索引扫描（extractWikiTargets/wikiLinksTo 与内核同一口径）；索引未到的条目暂不计，标题行提示「索引中…」=====
-        void wikiVer   // 索引版本号驱动本区重算（索引推进 → setWikiVer → 重渲染）
-        const wikiWarm = notes.every(n => !!wikiBodiesRef.current[n.id])
-        const backlinks = (() => {
-          if (!curNote) return []
-          const out = []
-          for (const n of notes) {
-            if (n.id === curNote.id) continue   // 自链不算反向链接
-            const c = wikiBodiesRef.current[n.id]
-            if (!c) continue
-            if (wikiLinksTo(c.body, curNote.id, curNote.title || '')) out.push(n)
-          }
-          return out
-        })()
-        // 范围浮层：会话按工作区分组（两级：工作区 → 会话）
-        const scopeByWs = {}
-        for (const s of sessList) { const w = s.workspace || '其他'; if (!scopeByWs[w]) scopeByWs[w] = []; scopeByWs[w].push(s) }
-        // 标题后台补齐中的占位会话（0.1.7）：禁用态占位「短id · 标题加载中…」，补齐后轮询重拉自动替换为真名
-        for (const p of sessPending) { const w = p.workspace || '其他'; if (!scopeByWs[w]) scopeByWs[w] = []; scopeByWs[w].push({ id: p.id, short: p.short, name: '', pending: true }) }
-        const scopeWsKeys = Object.keys(scopeByWs).sort()
-        // 派发对话框：已有会话模式按工作区过滤活跃会话；新建会话模式选工作区
-        const dispatchWsKeys = []
-        const dispatchSessByWs = {}
-        for (const s of activeSessions) { const w = s.workspace || '其他'; if (!dispatchSessByWs[w]) { dispatchSessByWs[w] = []; dispatchWsKeys.push(w) } dispatchSessByWs[w].push(s) }
-        // 标题后台补齐中的占位会话（0.1.7）：同一下拉按工作区分组，禁用态显示「短id · 标题加载中…」
-        for (const p of dispatchPending) { const w = p.workspace || '其他'; if (!dispatchSessByWs[w]) { dispatchSessByWs[w] = []; dispatchWsKeys.push(w) } dispatchSessByWs[w].push({ id: p.id, short: p.short, name: '', pending: true }) }
-        // ===== 编辑器区（原型 .ed）：面包屑 + 大标题 + meta chips 行 + 正文 + 底部状态 =====
-        const editorEl = curNote ? e('section', { className: 'dsh-notes-ed' },
+            return out
+          })()
+          const editorEl = curNote ? e('section', { className: 'dsh-notes-ed' },
           e('div', { className: 'dsh-notes-ed-h' },
             e('div', { className: 'dsh-notes-ed-crumb' },
               // 面包屑文件夹段（notes-nested-folder-ui）：单文件夹名升级为「父/子/孙」路径，每段可点击 = 切到该文件夹视图
@@ -2753,15 +4030,7 @@ window.__ModuleLoader__.load({
               isInjected ? e('span', { className: 'dsh-notes-ed-scope-wrap' },
                 e('button', { className: 'dsh-notes-meta-chip dsh-notes-scope-trigger dsh-nt', onClick: (ev) => { ev.stopPropagation(); setScopeOpen(!scopeOpen) }, 'data-tooltip': '选择注入范围（可多选）' },
                   injectScopeLabel(edScope), e('span', { className: 'dsh-notes-scope-caret' }, '▾')),
-                scopeOpen ? e('div', { className: 'dsh-notes-scope-panel' },
-                  // 默认提示行：注入无「工作区/全局」维度——缺省注入所有会话，勾选会话则仅限这些会话
-                  e('div', { className: 'dsh-notes-scope-hint' }, '默认注入到所有会话；勾选会话则仅限这些会话'),
-                  scopeWsKeys.map(ws => e('div', { key: ws, className: 'dsh-notes-scope-group' },
-                    e('div', { className: 'dsh-notes-scope-ws' }, ws),
-                    scopeByWs[ws].map(s => e('label', { key: s.id, className: 'dsh-notes-scope-item dsh-notes-scope-sess' },
-                      e('input', { type: 'checkbox', checked: s.pending ? false : edScope.indexOf(s.short) >= 0, onChange: () => { if (!s.pending) toggleScope(s.short) }, disabled: !!s.pending }),
-                      ' ' + (s.pending ? (s.short + ' · 标题加载中…') : s.name))))))
-                : null)
+                scopePanelEl)
               : null,
               // 曾注入徽章（injectEver 粘性标记：单向只升不降，不随关闭回退；当前已注入时由上方注入角色段表达，不重复显示）
               curNote.injectEver === true && !isInjected ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': '曾注入：历史上开启过上下文注入（现已关闭；injectEver 为粘性标记，不随关闭回退）' }, I('clock', 11), '曾注入') : null,
@@ -2843,31 +4112,29 @@ window.__ModuleLoader__.load({
               e('div', { className: 'dsh-notes-ed-empty-ic' }, I('note', 26)),
               e('div', { className: 'dsh-notes-ed-empty-t' }, '选择一条笔记查看和编辑'),
               e('div', { className: 'dsh-notes-ed-empty-s' }, '点侧栏「新建」输入标题，新建一条笔记')))
-        // ===== 面板根：标题栏（拖拽/入口切换/归档/帮助/关闭）+ 两栏 app 区 + 浮层 =====
-        return e('div', { className: 'dsh-notes-floating', style: { left: (pos.x || 0) + 'px', top: (pos.y || 0) + 'px', width: size.width + 'px', height: size.height + 'px' } },
-          e('div', { className: 'dsh-notes-titlebar dsh-nt', onMouseDown: onTitlebarMouseDown, 'data-tooltip': '拖拽移动窗口' },
-            e('span', { className: 'dsh-notes-titlebar-title' }, I('note', 14), '笔记'),
-            e('div', { className: 'dsh-notes-titlebar-actions' },
-              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setEntryMode(entryMode === 'header' ? 'fab' : 'header'), 'data-tooltip': '切换入口模式：会话头部 / 悬浮气泡' }, I('swap', 13)),
-              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: openArchive, 'data-tooltip': '归档：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）' }, '归档'),
-              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setShowHelp(!showHelp), 'data-tooltip': '使用说明' }, '?'),
-              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: close, 'data-tooltip': '关闭' }, '×'))),
-          showHelp ? e('div', { className: 'dsh-notes-help-bubble' },
-            e('button', { className: 'dsh-notes-help-close', onClick: () => setShowHelp(false) }, '×'),
-            e('h4', null, '使用说明'),
-            e('ul', null,
-              e('li', null, '点侧栏「新建」或按 ', e('kbd', null, 'Ctrl+N'), ' 输入标题新建笔记，创建后直接编辑正文'),
-              e('li', null, '在页面划选文字松手，弹出快速记录卡片（自动识别为引用）'),
-              e('li', null, '同一会话 10 分钟内的速记自动合并'),
-              e('li', null, '点面包屑/编辑器里的主题可按主题全局过滤（跨文件夹）'),
-              e('li', null, '拖笔记到文件夹行移入，拖到树根部未入夹笔记区移出（拖拽中显示落点提示）'),
-              e('li', null, '快捷键：', e('kbd', null, 'Ctrl+K'), ' 搜索、', e('kbd', null, 'Ctrl+N'), ' 新建、', e('kbd', null, 'j/k'), ' 或 ', e('kbd', null, '↑↓'), ' 移动、', e('kbd', null, 'Enter'), ' 打开、', e('kbd', null, 'Esc'), ' 关闭'),
-              e('li', null, '「归档」：弹出预览，勾选速记组后才合并（可撤销）；手动笔记点「选择」多选合并'),
-              e('li', null, '编辑器「整理」：AI 按类型模板重写正文（替换后可撤销一次）；新建笔记按类型预填模板骨架'),
-              e('li', null, '图片超过 1MB 自动压缩转 JPEG；设置卡片「资产清理」清理未被引用的孤儿文件'),
-              e('li', null, '删除是软删除：侧栏底部「回收站」可恢复或彻底删除（彻底删除不可恢复）'))) : null,
-          e('div', { className: 'dsh-notes-app' },
-            e('aside', { className: 'dsh-notes-side', style: { width: clampSideW(sideW, size.width) + 'px' } },
+          return { editorEl: editorEl, curNote: curNote }
+        }
+        return {
+          edScope: edScope, selectNote: selectNote, doSave: doSave, doDelete: doDelete, applyRestoredBody: applyRestoredBody,
+          probeHistCount: probeHistCount, histCountRef: histCountRef, setHistCount: setHistCount, insertImageMd: insertImageMd,
+          afterArchiveCleanup: afterArchiveCleanup, toggleScope: toggleScope, keepSel: keepSel, restoreSel: restoreSel,
+          scheduleRichSync: scheduleRichSync, setEditorModeState: setEditorModeState, edBodyDomRef: edBodyDomRef,
+          richRef: richRef, richDirtyRef: richDirtyRef, setEdBody: setEdBody, renderEditorEl: renderEditorEl
+        }
+    }
+    // ===== panel/sidebar —— 侧栏：brand 行 / 搜索框 / 筛选中心控制行 / 树容器 / side-foot（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: renderSidebar(R)（侧栏 JSX 注册函数，装配层 post-guard 调用）
+    // needs: kernel/state.js（panelBridge 经 setter 转发别名 + searchRef/searchDebRef/searchInputRef 跨域镜像）、kernel/constants.js（PAGE_SIZE/FILTER_STATUS/KIND_LABELS）、
+    //        kernel/persist.js（clampSideW）、kernel/icons.js（e/I）、modals/newnote.js（openNewNote）+ modals/trash.js（openTrash）+
+    //        modals/settings.js（openSettings）——序位在前
+    // state 托管：本域无自有 state（filters/sortBy 的 useState 声明原文被 check.js 锚定，滞留装配层「state 堆编排」；
+    // §6 E 裁决记录见 panel/index.js 头注）；筛选持久化 effect 随 popovers/filter-pop.js（筛选中心条件编辑入口）收容
+    function renderSidebar(R) {
+              const sideW = R.sideW, size = R.size, notes = R.notes, filtersActive = R.filtersActive, filtered = R.filtered
+              const filters = R.filters, sortBy = R.sortBy, searchText = R.searchText, filterCount = R.filterCount
+              const filterOpen = R.filterOpen, sortOpen = R.sortOpen, sortLabel = R.sortLabel, sortMenuEl = R.sortMenuEl, filterPopEl = R.filterPopEl
+              const treeEls = R.treeEls, hasMore = R.hasMore, paged = R.paged, onListScroll = R.onListScroll, selMode = R.selMode
+              return e('aside', { className: 'dsh-notes-side', style: { width: clampSideW(sideW, size.width) + 'px' } },
               e('div', { className: 'dsh-notes-brand' },
                 e('span', { className: 'dsh-notes-brand-logo' }, I('note', 13)),
                 e('b', null, '笔记'),
@@ -2887,21 +4154,8 @@ window.__ModuleLoader__.load({
                   filters.kinds.map(k => e('span', { key: 'k-' + k, className: 'dsh-notes-fchip dsh-nt', 'data-tooltip': '筛选条件：类型 / ' + KIND_LABELS[k] + '（点 × 移除）' }, e('span', { className: 'dsh-notes-fchip-dot', style: { background: 'var(--nkind-' + k + ')' } }), KIND_LABELS[k], e('span', { className: 'dsh-notes-fchip-x', onClick: () => setFilters(Object.assign({}, filters, { kinds: filters.kinds.filter(x => x !== k) })) }, I('x', 9))))),
                 e('div', { className: 'dsh-notes-fsort-wrap' },
                   e('button', { className: 'dsh-notes-fsort-btn' + (sortBy !== 'time' || sortOpen ? ' on' : '') + ' dsh-nt', onClick: () => { setSortOpen(!sortOpen); if (!sortOpen) setFilterOpen(false) }, 'data-tooltip': '排序（与筛选正交，互不重置）' }, I('sort', 11), sortLabel),
-                  sortOpen ? e('div', { className: 'dsh-notes-fsort-menu' },
-                    FILTER_SORTS.map(s => e('div', { key: s.id, className: 'dsh-notes-fsort-item' + (sortBy === s.id ? ' on' : ''), onClick: () => { setSortBy(s.id); setSortOpen(false) } }, e('span', { className: 'dsh-notes-fsort-tick' }, I('check', 11)), s.label, e('span', { className: 'dsh-notes-fsort-sd' }, s.desc)))) : null),
-                filterOpen ? e('div', { className: 'dsh-notes-fpop' },
-                  e('div', { className: 'dsh-notes-fg-h' }, e('span', null, '状态'), e('span', { className: 'dsh-notes-fg-rule' }, '组内多选 = OR')),
-                  FILTER_STATUS.filter(f => f.id !== 'injectEver' || hasInjectEver).map(f => e('label', { key: f.id, className: 'dsh-notes-fg-item' },
-                    e('input', { type: 'checkbox', checked: filters[f.id] === true, onChange: (ev) => { setFilters(Object.assign({}, filters, { [f.id]: ev.target.checked })); if (searchDebRef.current) searchDebRef.current() } }),
-                    I(f.icon, 11), e('span', { className: 'dsh-notes-fg-fl' }, f.label), e('span', { className: 'dsh-notes-fg-cnt' }, String(notes.filter(f.pred).length)))),
-                  e('div', { className: 'dsh-notes-fg-h' }, e('span', null, '类型'), e('span', { className: 'dsh-notes-fg-rule' }, '组内 OR · 与状态组 = AND')),
-                  FILTER_KINDS.map(k => e('label', { key: k, className: 'dsh-notes-fg-item' },
-                    e('input', { type: 'checkbox', checked: filters.kinds.indexOf(k) >= 0, onChange: (ev) => { setFilters(Object.assign({}, filters, { kinds: ev.target.checked ? filters.kinds.concat(k) : filters.kinds.filter(x => x !== k) })); if (searchDebRef.current) searchDebRef.current() } }),
-                    e('span', { className: 'dsh-notes-fg-dot', style: { background: 'var(--nkind-' + k + ')' } }), e('span', { className: 'dsh-notes-fg-fl' }, KIND_LABELS[k]), e('span', { className: 'dsh-notes-fg-cnt' }, String(notes.filter(n => (n.kind || 'note') === k).length)))),
-                  e('div', { className: 'dsh-notes-fpop-foot' },
-                    e('span', { className: 'dsh-notes-fpop-pcnt' }, '命中 ' + filtered.length + ' 条'),
-                    e('button', { className: 'dsh-notes-pbtn', onClick: () => { setFilters(FILTERS0()); if (searchDebRef.current) searchDebRef.current() } }, '清空'),
-                    e('button', { className: 'dsh-notes-pbtn primary', onClick: () => setFilterOpen(false) }, '完成'))) : null),
+                  sortMenuEl),
+                filterPopEl),
               e('div', { className: 'dsh-notes-tree', onScroll: onListScroll },
                 treeEls,
                 hasMore ? e('div', { className: 'dsh-notes-more' }, '继续滚动加载更多（已显示 ' + paged.length + ' / ' + filtered.length + '）') : null),
@@ -2909,607 +4163,129 @@ window.__ModuleLoader__.load({
               e('div', { className: 'dsh-notes-side-foot' },
                 e('span', { className: 'dsh-notes-fbtn dsh-nt', onClick: openTrash, 'data-tooltip': '回收站：查看已删除的笔记，可恢复或彻底删除' }, I('trash', 12), '回收站'),
                 e('span', { className: 'dsh-notes-fbtn' + (selMode ? ' on' : '') + ' dsh-nt', onClick: toggleSelMode, 'data-tooltip': '多选笔记：勾选后可合并为一篇（Esc 退出）' }, I('check', 12), '选择'),
-                e('span', { className: 'dsh-notes-fbtn dsh-nt', onClick: openSettings, 'data-tooltip': '设置' }, I('gear', 12), '设置'))),
-            // ===== 侧栏分隔条：4px 拖拽条，叠加在两栏 10px 间隙上不占位（负 margin 抵消 gap）；hover/拖拽中高亮；双击重置 =====
-            e('div', { className: 'dsh-notes-splitter dsh-nt' + (sideDrag ? ' on' : ''), onMouseDown: onSplitterMouseDown, onDoubleClick: resetSideW, 'data-tooltip': '拖拽调整侧栏宽度（双击重置）' }),
-            editorEl),
-          e('div', { className: 'dsh-notes-resize-handle dsh-nt', style: { position: 'absolute', bottom: 0, right: 0 }, onMouseDown: (ev) => onResizeMouseDown('se', ev), 'data-tooltip': '拖拽调整' }),
-          error && !dispatchOpen && !exportOpen && !sExportOpen && !importOpen && !pruneOpen && !trashOpen && !injectPreviewOpen && !suggestOpen && !histOpen && !memOpen ? e('div', { className: 'dsh-notes-error' }, error) : null,
-          // 派发对话框（modal）：todo 上下文预览 + 补充具体要求 + 已有/新建会话（级联下拉）
-          (dispatchOpen && curNote) ? e('div', { className: 'dsh-notes-dispatch-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setDispatchOpen(false) } },
-            e('div', { className: 'dsh-notes-dispatch-modal' },
-              e('div', { className: 'dsh-notes-dispatch-modal-t' }, I('play', 13), ' 派发待办', e('span', { style: { fontSize: '10px', color: 'var(--nt3)', fontWeight: 400, marginLeft: '8px' } }, '工作区' + wsList.length + ' / 活跃会话' + activeSessions.length + (dispatchPending.length ? '（+' + dispatchPending.length + ' 标题加载中…）' : ''))),
-              e('div', { className: 'dsh-notes-dispatch-todo' },
-                e('div', { className: 'dsh-notes-dispatch-todo-t' }, curNote.title || 'Untitled'),
-                e('div', { className: 'dsh-notes-dispatch-todo-b' }, String(curNote.preview || '').trim() || '（无正文）')),
-              e('textarea', { className: 'dsh-notes-dispatch-instr', placeholder: '补充具体要求 / 指令（可选）…', value: dispatchInstr, onChange: (ev) => setDispatchInstr(ev.target.value), rows: 3 }),
-              e('div', { className: 'dsh-notes-dispatch-modes' },
-                e('button', { className: 'dsh-notes-dispatch-mode' + (dispatchMode === 'existing' ? ' on' : ''), onClick: () => setDispatchMode('existing') }, '已有会话'),
-                e('button', { className: 'dsh-notes-dispatch-mode' + (dispatchMode === 'new' ? ' on' : ''), onClick: () => setDispatchMode('new') }, '新建会话')),
-              dispatchMode === 'existing' ? e(React.Fragment, null,
-                e('select', { className: 'dsh-notes-dispatch-select', value: dispatchSessWs, onChange: (ev) => { setDispatchSessWs(ev.target.value); setDispatchSessId('') } },
-                  e('option', { value: '' }, '选择工作区…'),
-                  wsList.map(w => e('option', { key: w.id, value: w.title }, w.title))),
-                e('select', { className: 'dsh-notes-dispatch-select', value: dispatchSessId, onChange: (ev) => setDispatchSessId(ev.target.value), disabled: !dispatchSessWs },
-                  e('option', { value: '' }, dispatchSessWs ? ((dispatchSessByWs[dispatchSessWs] || []).length ? '选择会话…' : '该工作区暂无会话') : '先选工作区'),
-                  (dispatchSessByWs[dispatchSessWs] || []).map(s => e('option', { key: s.id, value: s.id, disabled: !!s.pending }, s.pending ? (s.short + ' · 标题加载中…') : (s.name + (s.live ? '' : '（未打开）'))))))
-              : e('select', { className: 'dsh-notes-dispatch-select', value: dispatchWsId, onChange: (ev) => setDispatchWsId(ev.target.value) },
-                  e('option', { value: '' }, '选择工作区（在其下新建会话）…'),
-                  wsList.map(w => e('option', { key: w.id, value: w.id }, w.title))),
-              error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-              e('div', { className: 'dsh-notes-dispatch-actions' },
-                e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setDispatchOpen(false) }, '取消'),
-                e('button', { className: 'dsh-notes-dispatch-ok', onClick: doDispatchConfirm, disabled: dispatching }, dispatching ? '派发中…' : '派发'))))
-          : null,
-          // 设置卡片（modal，居中，复用派发 modal 的 mask/modal 风格）：通用结构——标题「设置」+ 设置项行列表
-          // （每行：左 label + 右控件）。以后加设置项只需往 settingsRows 数组加行，结构不变。
-          // 交互：选择即保存（notes-settings-set）；点遮罩 / Esc 关闭（Esc 在全局 keydown 里优先关本卡片）。
-          settingsOpen ? (() => {
-            const modelList = (settingsData && settingsData.models) || []
-            // 下拉选项 = provider/model 组合，第一项「跟随当前会话（默认）」；
-            // 已保存值不在列表中（如模型已下线）时追加一项保证回显正确
-            const selIdx = modelList.findIndex(m => m.provider === setLlmProvider && m.model === setLlmModel)
-            const opts = (setLlmProvider && setLlmModel && selIdx < 0)
-              ? modelList.concat([{ provider: setLlmProvider, model: setLlmModel, label: setLlmProvider + ' / ' + setLlmModel + '（已保存）' }])
-              : modelList
-            const curVal = selIdx >= 0 ? String(selIdx) : (opts.length > modelList.length ? String(opts.length - 1) : '')
-            const llmControl = modelList.length
-              ? e('select', { className: 'dsh-notes-settings-select', value: curVal, 'data-tooltip': '笔记自动分类 / 指令提取使用的模型', onChange: (ev) => {
-                    const v = ev.target.value
-                    if (v === '') { setSetLlmProvider(''); setSetLlmModel(''); saveSettingsLlm(null) }
-                    else { const m = opts[+v]; if (m) { setSetLlmProvider(m.provider); setSetLlmModel(m.model); saveSettingsLlm({ provider: m.provider, model: m.model }) } }
-                  } },
-                  e('option', { value: '' }, '跟随当前会话（默认）'),
-                  opts.map((m, i) => e('option', { key: m.provider + '/' + m.model + '-' + i, value: String(i) }, m.label || (m.provider + ' / ' + m.model))))
-              : e(React.Fragment, null,
-                  e('input', { className: 'dsh-notes-settings-input', placeholder: 'provider', value: setLlmProvider, onChange: (ev) => setSetLlmProvider(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
-                  e('input', { className: 'dsh-notes-settings-input', placeholder: 'model', value: setLlmModel, onChange: (ev) => setSetLlmModel(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
-                  (setLlmProvider || setLlmModel) ? e('button', { className: 'dsh-notes-settings-clear', onClick: () => { setSetLlmProvider(''); setSetLlmModel(''); saveSettingsLlm(null) } }, '跟随当前会话（默认）') : null)
-            // 目录注入总开关控件：checkbox 勾选即保存（catalogEnabled，缺省开）；label 挂 tooltip 说明注入形态
-            const catalogControl = e('label', { className: 'dsh-notes-settings-checkwrap dsh-nt', 'data-tooltip': '向 Agent 系统提示注入笔记目录（一行一条），供其规划时参考并按需 note_get 取全文' },
-              e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: setCatalog, onChange: (ev) => { const v = !!ev.target.checked; setSetCatalog(v); saveSettingsCatalog(v) } }),
-              setCatalog ? '已开启' : '已关闭')
-            // P1 时效衰减提醒控件：数值输入（天），失焦/Enter 即保存；0 = 关闭
-            const staleControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1, value: setStale, 'data-tooltip': '目录行对超过 N 天未更新的笔记/链接追加「 ⚠ N 天未更新」标注；0 = 关闭', onChange: (ev) => setSetStale(ev.target.value), onBlur: saveSettingsStale, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsStale() } })
-            // 文件夹嵌套深度上限控件（同 staleDays 输入交互）：数值输入（层），失焦/Enter 即保存；0 = 不限层数
-            const maxDepthControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1, value: setMaxDepth, 'data-tooltip': '虚拟文件夹最大嵌套层级（根级 = 第 1 层）；新建子文件夹/拖拽换父超限将拒绝并 toast 提示；0 = 不限', onChange: (ev) => setSetMaxDepth(ev.target.value), onBlur: saveSettingsMaxDepth, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsMaxDepth() } })
-            // P1 注入体积预算控件：数值输入（约，字符数）+ 仪表（最近一次注入体积 vs 预算，超预算变红）；约定条目永不截断
-            const lastChars = (settingsData && typeof settingsData.lastInjectChars === 'number') ? settingsData.lastInjectChars : 0
-            const budgetNum = /^\d+$/.test(setBudget.trim()) ? parseInt(setBudget.trim(), 10) : 0
-            const gaugePct = budgetNum > 0 ? Math.min(100, Math.round(lastChars / budgetNum * 100)) : 0
-            const budgetControl = e('div', { style: { width: '100%' } },
-              e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 100, value: setBudget, 'data-tooltip': '单次注入笔记全文的上限（约，按字符数近似）；约定条目永不截断，资料条目从最旧开始省略；0 = 不限', onChange: (ev) => setSetBudget(ev.target.value), onBlur: saveSettingsBudget, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsBudget() } }),
-              e('div', { className: 'dsh-notes-inject-gauge dsh-nt', 'data-tooltip': '最近一次注入的笔记全文体积（约，按字符数）' },
-                e('div', { className: 'dsh-notes-inject-gauge-bar' + (budgetNum > 0 && lastChars > budgetNum ? ' over' : ''), style: { width: gaugePct + '%' } })),
-              e('span', { className: 'dsh-notes-inject-gauge-t' }, '当前注入约 ' + lastChars + ' 字符' + (budgetNum > 0 ? ' / 预算约 ' + budgetNum + ' 字符' : '（不限）')))
-            // 数据区控件：导出全部（目录快照）/ 导出单文件…（P3 scope 拼接 + 图片内联）/ 导入…（两步式预览后执行）/ 回收站（底部收敛后的兜底入口）；点击即关设置卡片、开各自对话框
-            const dataControl = e(React.Fragment, null,
-              e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '把整个笔记库（含 folders.json）快照到目标目录', onClick: openExport }, '导出全部'),
-              e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '按范围（全部/文件夹/标签）拼接为单个 Markdown 文件：图片 base64 内联，可直接分享；超 20MB 告警仍导出', onClick: openSExport }, '导出单文件…'),
-              e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '从目录快照导入：先预览明细再执行，只增改不删、自动备份', onClick: openImport }, '导入…'),
-              e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '回收站：查看已删除的笔记，可恢复或彻底删除', onClick: openTrash }, '回收站'))
-            // 二期 资产清理控件：notes-assets-prune dry-run 预览 → 勾选删除（点击即关设置卡片、开预览对话框）
-            const assetsControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '预览 assets/ 中未被任何笔记引用的孤儿文件，勾选后删除（dry-run 先行，零写入）', onClick: openPrune }, '清理…')
-            // 整理建议控件：打开三段式建议 modal（点击即关设置卡片、modal 不叠 modal）——底部「整理」按钮收敛后此处为入口
-            const suggestControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '整理建议：速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）', onClick: openSuggest }, '打开')
-            // 注入预览控件：打开预览 modal（点击即关设置卡片、modal 不叠 modal）——agent 实际收到的注入文本即所见
-            const injPrevControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '预览 Agent 系统提示中实际注入的笔记文本（约定桶 + 目录桶），含敏感打码 / 时效标注 / 预算截断效果；可按会话过滤', onClick: openInjectPreview }, '预览…')
-            // ===== 工作记忆 v0 控件（设置卡片「工作记忆」区）：状态行（已启用→查看约定/停用）+「启用沉淀引导…」=====
-            const memoryControl = memStatus === null
-              ? e('span', { className: 'dsh-notes-settings-label-s' }, '探测中…')
-              : memStatus.enabled
-                ? e(React.Fragment, null,
-                    e('span', { className: 'dsh-notes-settings-label-s' }, '已启用 '),
-                    e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '查看引导约定笔记（可见/可改/可删——单一注入源）', onClick: memViewNote }, '查看约定'),
-                    e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '停用 = 关闭引导约定笔记的注入（笔记保留可再启用）', onClick: doMemDisable, disabled: memPending }, memPending ? '处理中…' : '停用'))
-                : e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': '创建一条预填约定笔记（inject=true，tag memory-guide），引导 Agent 在任务收尾时把会话结论写为工作日志（kind=log，默认隐身）', onClick: openMemEnable }, '启用沉淀引导…')
-            // 日志卫生窗口控件：周聚合（缺省 7 天）/ 月聚合（缺省 90 天，0=关闭本级）数值输入，失焦/Enter 即保存
-            const logWeekControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1, value: setLogWeek, 'data-tooltip': '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行）', onChange: (ev) => setSetLogWeek(ev.target.value), onBlur: saveSettingsLogWeek, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLogWeek() } })
-            const logRetentionControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1, value: setLogRetention, 'data-tooltip': '超过 N 天提名月聚合（原始日志与周志混合归组）；0 = 关闭月聚合本级', onChange: (ev) => setSetLogRetention(ev.target.value), onBlur: saveSettingsLogRetention, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLogRetention() } })
-            // LLM 用量区（notes-token-stats）：今日/本周/本月/累计 + 按功能分列（分类/整理/总结）；含字符估算时标注「约」
-            const usageControl = e('div', { style: { width: '100%' } },
-              (usageData && !usageData.error)
-                ? e(React.Fragment, null,
-                    e('div', { className: 'dsh-notes-usage-line' },
-                      '今日 ' + fmtTok(usageData.today.total) + ' · 本周 ' + fmtTok(usageData.week.total) + ' · 本月 ' + fmtTok(usageData.month.total) + ' · 累计 ' + fmtTok(usageData.allTime.total) + ' tokens',
-                      usageData.calls > 0 ? '（' + usageData.calls + ' 次调用）' : ''),
-                    e('div', { className: 'dsh-notes-usage-line dsh-notes-usage-sub' },
-                      '分类 ' + fmtTok(usageData.byFeature.classify.allTime) + ' · 整理 ' + fmtTok(usageData.byFeature.organize.allTime) + ' · 总结 ' + fmtTok(usageData.byFeature.summarize.allTime)
-                        + (usageData.estimatedTokens > 0 ? '（含字符估算，约）' : '')))
-                : e('span', { className: 'dsh-notes-settings-label-s' }, usageData && usageData.error ? '用量数据读取失败' : '加载中…'))
-            // 月度预算提醒控件：数值输入（tokens/月），失焦/Enter 即保存；0 = 关闭提醒
-            const usageBudgetControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1000, value: setUsageBudget, 'data-tooltip': '本月 LLM token 消耗超过该值时 toast 提醒（仅提醒，不阻断调用）；0 = 关闭', onChange: (ev) => setSetUsageBudget(ev.target.value), onBlur: saveSettingsUsageBudget, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsUsageBudget() } })
-            // 通用设置项行列表：以后加设置项只需往这里加行
-            const settingsRows = [
-              { key: 'llm', label: 'LLM 模型', sub: '笔记自动分类 / 指令提取使用的模型', control: llmControl },
-              { key: 'usage', label: 'LLM 用量', sub: '笔记功能的 token 消耗统计（真实 usage 优先，未回传时按字符估算）；按日累计，usage.json 落盘', control: usageControl },
-              { key: 'usagebudget', label: '用量预算提醒', sub: '本月 token 消耗超过该值时提醒（仅 toast 提示，不阻断调用）；0 = 关闭', control: usageBudgetControl },
-              { key: 'catalog', label: '笔记目录注入', sub: '向 Agent 系统提示注入笔记目录（一行一条），供其规划时参考并按需 note_get 取全文', control: catalogControl },
-              { key: 'stale', label: '时效衰减提醒', sub: '目录行对超过 N 天未更新的笔记/链接追加「 ⚠ N 天未更新」标注（提醒参考资料可能过期）；0 = 关闭', control: staleControl },
-              { key: 'maxdepth', label: '文件夹嵌套深度', sub: '虚拟文件夹最大嵌套层级（根级 = 第 1 层，缺省 3）；新建子文件夹/拖拽换父超限将拒绝并提示；0 = 不限', control: maxDepthControl },
-              { key: 'budget', label: '注入体积预算', sub: '单次注入笔记全文的上限（约，按字符数近似）；约定条目永不截断，资料条目从最旧开始省略；0 = 不限', control: budgetControl },
-              { key: 'injprev', label: '注入预览', sub: '查看 Agent 实际收到的注入文本（约定 + 目录）：敏感打码 / 时效标注 / 预算截断效果即所见；可按会话过滤', control: injPrevControl },
-              // 工作记忆 v0「工作记忆」区：启用沉淀引导（约定笔记方案，裁决 A）+ 日志卫生两级窗口（裁决 B②）
-              { key: 'memory', label: '工作记忆', sub: '会话工作结论沉淀为工作日志（kind=log，默认隐身：不进系统提示/目录/默认列表与搜索，筛选中心类型「日志」为专入口）；启用 = 创建一条预填约定笔记（可见/可改/可停用）', control: memoryControl },
-              { key: 'logweek', label: '日志周聚合窗口', sub: '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行；缺省 7 天）', control: logWeekControl },
-              { key: 'logmonth', label: '日志月聚合窗口', sub: '超过 N 天提名月聚合（原始日志与周志混合归组；缺省 90 天）；0 = 关闭月聚合', control: logRetentionControl },
-              { key: 'data', label: '数据', sub: '全库目录快照导出 / 单文件拼接导出（图片内联，可分享）/ 从快照目录导入（只增改不删，导入前自动全量备份）/ 回收站兜底（恢复或彻底删除）', control: dataControl },
-              { key: 'assets', label: '资产清理', sub: '扫描 assets/ 中未被任何笔记引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删）', control: assetsControl },
-              { key: 'suggest', label: '整理建议', sub: '速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）', control: suggestControl },
-            ]
-            return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setSettingsOpen(false) } },
-              e('div', { className: 'dsh-notes-settings-modal' },
-                e('div', { className: 'dsh-notes-settings-modal-t' }, I('gear', 14), ' 设置'),
-                e('div', { className: 'dsh-notes-settings-list' },
-                  settingsRows.map(row => e('div', { key: row.key, className: 'dsh-notes-settings-row' },
-                    e('div', { className: 'dsh-notes-settings-label' }, row.label, row.sub ? e('span', { className: 'dsh-notes-settings-label-s' }, row.sub) : null),
-                    e('div', { className: 'dsh-notes-settings-control' }, row.control)))),
-                error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null))
-          })()
-          : null,
-          // 工作记忆 v0 启用沉淀引导对话框（设置卡片「工作记忆」区入口；mask/modal 复用设置卡片风格）：
-          // 说明文案 → 作用域三档（全局视角挑选：所有会话 / 指定工作区多选 / 指定会话多选，数据源 notes-sessions）→ 语义重叠检查（op:'check' dry-run 列命中约定）→ 确认启用（op:'enable' confirmed:true）
-          memOpen ? (() => {
-            const overlaps = (memCheck && memCheck.overlaps) || []
-            // 多选清单数据源：sessList + pending 占位会话；工作区清单 = 会话 workspace 字段去重（全局视角：可挑任意工作区/会话，不以「当前」为基准）
-            const memSessAll = sessList.concat(sessPending)
-            const memWsList = []
-            for (const s of memSessAll) { if (s && s.workspace && memWsList.indexOf(s.workspace) < 0) memWsList.push(s.workspace) }
-            const scopeOpt = (id, label, tip) => e('label', { key: id, className: 'dsh-notes-scope-item dsh-nt', 'data-tooltip': tip, style: { display: 'flex', gap: 6, padding: '3px 2px', cursor: 'pointer' } },
-              e('input', { type: 'radio', name: 'dsh-notes-mem-scope', checked: memScope === id, onChange: () => setMemScope(id) }), label)
-            const pickItem = (key, checked, onToggle, label) => e('label', { key: key, className: 'dsh-notes-scope-item', style: { display: 'flex', gap: 6, padding: '2px 2px', cursor: 'pointer' } },
-              e('input', { type: 'checkbox', checked: checked, onChange: onToggle }), label)
-            const togglePick = (setFn, key) => setFn(prev => { const next = Object.assign({}, prev); if (next[key]) delete next[key]; else next[key] = true; return next })
-            return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !memPending) setMemOpen(false) } },
-              e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
-                e('div', { className: 'dsh-notes-settings-modal-t' }, I('bolt', 14), ' 启用沉淀引导', e('span', { className: 'dsh-notes-imgup-sub' }, '工作记忆 v0 · 约定笔记方案')),
-                e('div', { className: 'dsh-notes-data-hint' }, '将创建一条预填约定笔记「约定：工作日志沉淀（工作记忆 v0）」（inject=true，tag memory-guide），引导 Agent 在任务收尾/你示意时把会话结论写为工作日志（kind=log）。日志默认隐身：不进系统提示、不进目录、不出现在默认列表与默认搜索；筛选中心类型「日志」为专入口。该约定可见/可改/可停用/可删除。'),
-                e('div', { className: 'dsh-notes-suggest-sec' },
-                  e('div', { className: 'dsh-notes-suggest-sec-t' }, '注入范围（作用域）'),
-                  scopeOpt('global', '所有会话（缺省）', 'injectTo=[]：任何会话的系统提示都注入该约定'),
-                  scopeOpt('workspace', '指定工作区（多选）', '展开为所选工作区全部会话的短 id 清单（injectTo 无工作区维度）'),
-                  memScope === 'workspace' ? e('div', { style: { maxHeight: 120, overflow: 'auto', margin: '2px 0 4px 20px' } },
-                    memWsList.length
-                      ? memWsList.map(w => pickItem(w, !!memWsPick[w], () => togglePick(setMemWsPick, w), w + '（' + memSessAll.filter(s => s.workspace === w).length + ' 个会话）'))
-                      : e('div', { className: 'dsh-notes-data-hint' }, '没有可选工作区')) : null,
-                  scopeOpt('session', '指定会话（多选）', 'injectTo=[勾选的会话短 id]：只有这些会话注入该约定'),
-                  memScope === 'session' ? e('div', { style: { maxHeight: 160, overflow: 'auto', margin: '2px 0 4px 20px' } },
-                    memSessAll.length
-                      ? memSessAll.map(s => pickItem(s.short, !!memSidPick[s.short], () => togglePick(setMemSidPick, s.short), s.short + (s.name ? ' · ' + s.name : '') + (s.workspace ? '（' + s.workspace + '）' : '')))
-                      : e('div', { className: 'dsh-notes-data-hint' }, '没有可选会话')) : null),
-                memCheck === null
-                  ? e('div', { className: 'dsh-notes-data-hint' }, '语义重叠检查中…')
-                  : overlaps.length
-                    ? e('div', { className: 'dsh-notes-suggest-sec' },
-                        e('div', { className: 'dsh-notes-suggest-sec-t' }, '发现语义重叠的已注入约定', e('span', { className: 'dsh-notes-suggest-sec-n' }, overlaps.length + ' 条')),
-                        e('div', { className: 'dsh-notes-arch-list' },
-                          overlaps.map(o => e('div', { key: o.id, className: 'dsh-notes-arch-row' },
-                            e('span', { className: 'dsh-notes-arch-ti', title: o.title || 'Untitled' }, o.title || 'Untitled'),
-                            e('span', { className: 'dsh-notes-arch-meta' }, (o.topic || '未分类') + (o.preview ? ' · ' + o.preview.slice(0, 60) : ''))))),
-                        e('div', { className: 'dsh-notes-data-hint' }, '这些约定含「记录/日志/总结/反馈」类指令。引导模板内置【分工边界】声明：反馈类内容仍走反馈约定，日志只收工作结论——两者正交不双记。确认后继续启用。'))
-                    : e('div', { className: 'dsh-notes-data-hint' }, '未发现语义重叠的已注入约定。'),
-                error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-                e('div', { className: 'dsh-notes-dispatch-actions' },
-                  e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setMemOpen(false), disabled: memPending }, '取消'),
-                  e('button', { className: 'dsh-notes-dispatch-ok', onClick: doMemEnable, disabled: memPending || memCheck === null }, memPending ? '启用中…' : (overlaps.length ? '仍要启用' : '确认启用')))))
-          })()
-          : null,
-          // 导出对话框（设置卡片「数据」区入口；mask/modal 复用设置卡片风格）：选目标目录 → notes-export → 成功 toast 含快照路径
-          exportOpen ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setExportOpen(false) } },
-            e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
-              e('div', { className: 'dsh-notes-settings-modal-t' }, I('up', 14), ' 导出全部笔记'),
-              e('div', { className: 'dsh-notes-data-hint' }, '把整个笔记库（含 folders.json）完整快照到目标目录下的 dsh-notes-export-<时间戳> 子目录，不打包不压缩，目录即格式。'),
-              e('input', { className: 'dsh-notes-data-input', placeholder: '目标目录，如 D:\\backup 或桌面路径…', value: exportDir, autoFocus: true, onChange: (ev) => setExportDir(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doExport() } } }),
-              error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-              e('div', { className: 'dsh-notes-dispatch-actions' },
-                e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setExportOpen(false) }, '取消'),
-                e('button', { className: 'dsh-notes-dispatch-ok', onClick: doExport, disabled: exportPending || !exportDir.trim() }, exportPending ? '导出中…' : '导出'))))
-          : null,
-          // P3 单文件导出对话框（设置卡片「数据」区「导出单文件…」入口；mask/modal 复用导出对话框风格）：
-          // scope 三选一（全部/文件夹/标签，联动下拉）+ 目录页开关 + 目标目录 → notes-export-single → toast 含文件路径（>20MB 带 warning）
-          sExportOpen ? (() => {
-            const tagSet = {}
-            for (const n of notes) for (const tg of (n.tags || [])) tagSet[tg] = true
-            const tagOptions = Object.keys(tagSet).sort()
-            return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setSExportOpen(false) } },
-              e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
-                e('div', { className: 'dsh-notes-settings-modal-t' }, I('note', 14), ' 导出单文件'),
-                e('div', { className: 'dsh-notes-data-hint' }, '把所选范围的笔记拼接为单个 Markdown 文件（每篇 = 标题 + 元信息 + 正文，篇间分隔线）：图片 base64 内联、零外部依赖，可直接分享。超过 20MB 会告警但仍照常导出。'),
-                e('div', { className: 'dsh-notes-dispatch-modes' },
-                  [['all', '全部'], ['folder', '按文件夹'], ['tag', '按标签']].map(pair => e('button', { key: pair[0], className: 'dsh-notes-dispatch-mode' + (sExportScope === pair[0] ? ' on' : ''), onClick: () => setSExportScope(pair[0]) }, pair[1]))),
-                sExportScope === 'folder' ? e('select', { className: 'dsh-notes-dispatch-select', value: sExportFolder, onChange: (ev) => setSExportFolder(ev.target.value) },
-                  e('option', { value: '' }, '选择文件夹…'),
-                  folders.map(f => e('option', { key: f.id, value: f.id }, f.name + '（' + (f.count || 0) + '）')))
-                : null,
-                sExportScope === 'tag' ? e('select', { className: 'dsh-notes-dispatch-select', value: sExportTag, onChange: (ev) => setSExportTag(ev.target.value) },
-                  e('option', { value: '' }, tagOptions.length ? '选择标签…' : '（笔记暂无标签）'),
-                  tagOptions.map(tg => e('option', { key: tg, value: tg }, tg)))
-                : null,
-                e('label', { className: 'dsh-notes-settings-checkwrap dsh-nt', 'data-tooltip': '在文档头部生成目录页（篇名 + id 清单）' },
-                  e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: sExportToc, onChange: (ev) => setSExportToc(!!ev.target.checked) }),
-                  '生成目录页'),
-                e('input', { className: 'dsh-notes-data-input', placeholder: '目标目录，如 D:\\backup 或桌面路径…', value: sExportDir, autoFocus: true, onChange: (ev) => setSExportDir(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doSExport() } } }),
-                error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-                e('div', { className: 'dsh-notes-dispatch-actions' },
-                  e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setSExportOpen(false) }, '取消'),
-                  e('button', { className: 'dsh-notes-dispatch-ok', onClick: doSExport, disabled: sExportPending || !sExportDir.trim() || (sExportScope === 'folder' && !sExportFolder) || (sExportScope === 'tag' && !sExportTag) }, sExportPending ? '导出中…' : '导出'))))
-          })()
-          : null,
-          // 导入对话框（两步式）：第一步选目录 → notes-import-preview 预览明细（新增/相同/不同 + 文件夹合并统计）；
-          // 第二步勾选「覆盖内容不同的笔记」（默认不勾）→ danger 按钮执行 notes-import → toast 含备份目录提示 → 刷新列表/文件夹
-          importOpen ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setImportOpen(false) } },
-            e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
-              e('div', { className: 'dsh-notes-settings-modal-t' }, I('down', 14), ' 导入笔记'),
-              e('div', { className: 'dsh-notes-data-hint' }, '从目录快照导入（只增改不删）：库中不存在的直接入库，内容相同的跳过，内容不同的默认跳过；执行前自动全量备份当前库。'),
-              e('input', { className: 'dsh-notes-data-input', placeholder: '来源目录（dsh-notes-export-… 或 notes-backup-… 目录）…', value: importDir, autoFocus: true, onChange: (ev) => { setImportDir(ev.target.value); if (importPreview) setImportPreview(null) }, onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doImportPreview() } } }),
-              importPreview ? (() => {
-                const IMP_STATUS_LABELS = { added: '新增', same: '相同', diff: '不同' }
-                const folders = importPreview.folders || { total: 0, new: 0 }
-                return e(React.Fragment, null,
-                  e('div', { className: 'dsh-notes-data-summary' },
-                    e('span', { className: 'added' }, '新增 ', e('b', null, importPreview.added)),
-                    e('span', null, '相同 ', e('b', null, importPreview.same)),
-                    e('span', { className: importPreview.diff ? 'diff' : '' }, '不同 ', e('b', null, importPreview.diff)),
-                    folders.total ? e('span', null, '文件夹新增 ', e('b', null, folders.new), ' / 共 ' + folders.total) : null),
-                  importPreview.unreadable ? e('div', { className: 'dsh-notes-data-warn' }, '⚠ ' + importPreview.unreadable + ' 个文件无法读取，已跳过') : null,
-                  e('div', { className: 'dsh-notes-imp-list' },
-                    (importPreview.detail || []).map(d => e('div', { key: d.id, className: 'dsh-notes-imp-row' },
-                      e('span', { className: 'dsh-notes-imp-badge ' + d.status }, IMP_STATUS_LABELS[d.status] || d.status),
-                      e('span', { className: 'dsh-notes-imp-title', title: d.title || 'Untitled' }, d.title || 'Untitled'),
-                      d.deleted ? e('span', { className: 'dsh-notes-imp-deltag' }, '已删除') : null))),
-                  e('label', { className: 'dsh-notes-settings-checkwrap dsh-notes-imp-overwrite' + (importPreview.diff ? '' : ' off') },
-                    e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: importOverwrite, disabled: !importPreview.diff, onChange: (ev) => setImportOverwrite(!!ev.target.checked) }),
-                    '覆盖内容不同的笔记（' + importPreview.diff + ' 条，不勾则跳过）'),
-                  error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-                  e('div', { className: 'dsh-notes-dispatch-actions' },
-                    e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setImportOpen(false) }, '取消'),
-                    e('button', { className: 'dsh-notes-data-danger', onClick: doImportExecute, disabled: importPending }, importPending ? '导入中…' : '执行导入')))
-              })()
-              : e(React.Fragment, null,
-                  error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-                  e('div', { className: 'dsh-notes-dispatch-actions' },
-                    e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setImportOpen(false) }, '取消'),
-                    e('button', { className: 'dsh-notes-dispatch-ok', onClick: doImportPreview, disabled: importPending || !importDir.trim() }, importPending ? '检查中…' : '预览')))))
-          : null,
-          // 图片插入弹窗（v3 三入口共用：粘贴/拖拽/工具栏按钮）：选文件 → 预览 + alt → 上传（notes-asset-upload）→ 光标处插入
-          imgModal ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !imgModal.uploading) setImgModal(null) } },
-            e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
-              e('div', { className: 'dsh-notes-settings-modal-t' }, I('image', 14), ' 插入图片', e('span', { className: 'dsh-notes-imgup-sub' }, '上传到笔记库 assets/（PNG/JPEG/GIF/WebP，≤5MB；>1MB 的 PNG/JPG 自动压缩转 JPEG）')),
-              imgModal.dataURL
-                ? e(React.Fragment, null,
-                    e('div', { className: 'dsh-notes-imgup-pv' },
-                      e('img', { src: imgModal.dataURL, alt: '' }),
-                      e('div', null,
-                        e('div', { className: 'dsh-notes-imgup-nm' }, imgModal.name),
-                        e('div', { className: 'dsh-notes-imgup-sz' }, (imgModal.origSize ? '已压缩 ' + fmtBytes(imgModal.origSize) + ' → ' : '') + (imgModal.size ? fmtBytes(imgModal.size) + ' · ' : '') + (imgModal.mime || '')))),
-                    e('input', { className: 'dsh-notes-data-input', placeholder: '替代文本 alt（可留空）', value: imgModal.alt, autoFocus: true, onChange: (ev) => setImgModal(Object.assign({}, imgModal, { alt: ev.target.value })), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doUploadImage() } } }))
-                : e('div', { className: 'dsh-notes-imgup-zone', onClick: () => { if (imgFileInputRef.current) imgFileInputRef.current.click() } },
-                    '点击选择本地图片文件（也可直接把图片文件拖进编辑区，或 Ctrl+V 粘贴）',
-                    e('input', { ref: imgFileInputRef, type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', style: { display: 'none' }, onChange: (ev) => { const f = ev.target.files && ev.target.files[0]; if (f) pickImageFile(f); ev.target.value = '' } })),
-              imgModal.uploading ? e('div', { className: 'dsh-notes-imgup-prog on' }, e('i', null)) : null,
-              imgModal.error ? e('div', { className: 'dsh-notes-dispatch-err' }, imgModal.error) : null,
-              e('div', { className: 'dsh-notes-dispatch-actions' },
-                e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setImgModal(null), disabled: imgModal.uploading }, '取消'),
-                e('button', { className: 'dsh-notes-dispatch-ok', onClick: doUploadImage, disabled: !imgModal.dataURL || imgModal.uploading }, imgModal.uploading ? '上传中…' : '上传并插入'))))
-          : null,
-          // 链接插入弹窗（富文本工具栏「链接」按钮，需先选中文字）：URL 仅 http/https
-          linkModal ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setLinkModal(null) } },
-            e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
-              e('div', { className: 'dsh-notes-settings-modal-t' }, I('link', 14), ' 插入链接', e('span', { className: 'dsh-notes-imgup-sub' }, '选中文字：' + (linkModal.text.length > 24 ? linkModal.text.slice(0, 24) + '…' : linkModal.text))),
-              e('input', { className: 'dsh-notes-data-input', placeholder: 'https://…', value: linkModal.url, autoFocus: true, onChange: (ev) => setLinkModal(Object.assign({}, linkModal, { url: ev.target.value })), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doInsertLink() } } }),
-              e('div', { className: 'dsh-notes-dispatch-actions' },
-                e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setLinkModal(null) }, '取消'),
-                e('button', { className: 'dsh-notes-dispatch-ok', onClick: doInsertLink }, '插入'))))
-          : null,
-          // 归档预览对话框（标题栏「归档」→ notes-archive-preview dry-run，零写入）：速记组列表默认全勾——
-          // 组行 = 复选框 + 展开 caret + 组标题 + dateSpan · N 条 · totalBytes；caret 展开成员明细（标题+日期）；
-          // 底部提示手动笔记走多选合并；「归档所选（N 组）」确认才执行（notes-archive 白名单组）
-          archOpen ? (() => {
-            const groups = archGroups || []
-            const checkedCount = groups.filter(g => archChecked[g.sessionId] !== false).length
-            return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setArchOpen(false) } },
-              e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-arch-modal' },
-                e('div', { className: 'dsh-notes-settings-modal-t' }, I('check', 14), ' 归档预览', e('span', { className: 'dsh-notes-imgup-sub' }, '勾选后才执行 · 合并可撤销')),
-                e('div', { className: 'dsh-notes-data-hint' }, '速记按会话分组，勾选的组合并成一篇归档笔记（原笔记 .bak 备份后软删除）。'),
-                archGroups === null
-                  ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
-                  : groups.length === 0
-                    ? e('div', { className: 'dsh-notes-data-hint' }, '没有可归档的速记组（同一会话 ≥2 条速记才会成组）。')
-                    : e('div', { className: 'dsh-notes-arch-list' },
-                        groups.map(g => {
-                          const checked = archChecked[g.sessionId] !== false
-                          const expanded = archExpand[g.sessionId] === true
-                          const span = g.dateSpan && g.dateSpan.from ? (g.dateSpan.from === g.dateSpan.to ? g.dateSpan.from : g.dateSpan.from + ' ~ ' + g.dateSpan.to) : ''
-                          return e('div', { key: g.sessionId, className: 'dsh-notes-arch-group' + (checked ? '' : ' off') },
-                            e('div', { className: 'dsh-notes-arch-row' },
-                              e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: checked, onChange: () => setArchChecked(Object.assign({}, archChecked, { [g.sessionId]: !checked })) }),
-                              e('span', { className: 'dsh-notes-caret' + (expanded ? ' open' : ''), onClick: () => setArchExpand(Object.assign({}, archExpand, { [g.sessionId]: !expanded })) }, I('chev', 10)),
-                              e('span', { className: 'dsh-notes-arch-ti', title: g.title }, g.title),
-                              e('span', { className: 'dsh-notes-arch-meta' }, span + ' · ' + g.members.length + ' 条 · ' + fmtBytes(g.totalBytes) + ((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : ''))),
-                            expanded ? e('div', { className: 'dsh-notes-arch-members' },
-                              g.members.map(m => e('div', { key: m.id, className: 'dsh-notes-arch-member' },
-                                e('span', { className: 'dsh-notes-arch-member-ti' }, m.title || '无标题'),
-                                e('span', { className: 'dsh-notes-arch-member-dt' }, (m.updatedAt || '').slice(0, 10))))) : null)
-                        })),
-                e('div', { className: 'dsh-notes-data-hint' }, '手动笔记不受影响；如需合并手动笔记，请在列表多选后右键合并。'),
-                error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-                e('div', { className: 'dsh-notes-dispatch-actions' },
-                  e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setArchOpen(false) }, '取消'),
-                  e('button', { className: 'dsh-notes-dispatch-ok', onClick: doArchiveConfirm, disabled: archPending || checkedCount === 0 }, archPending ? '归档中…' : '归档所选（' + checkedCount + ' 组）'))))
-          })()
-          : null,
-          // 资产清理对话框（设置卡片「资产清理」入口；复用归档预览的列表样式）：dry-run 孤儿清单默认全勾，
-          // 行 = 复选框 + 文件名 + 字节数；底部统计扫描笔记数/引用中/墓碑；「删除所选（N 项 · x KB）」danger 确认才执行
-          pruneOpen ? (() => {
-            const orphans = (pruneData && pruneData.orphans) || []
-            const checked = orphans.filter(o => pruneChecked[o.name] !== false)
-            const checkedBytes = checked.reduce((s, o) => s + (o.bytes || 0), 0)
-            return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !prunePending) setPruneOpen(false) } },
-              e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-arch-modal' },
-                e('div', { className: 'dsh-notes-settings-modal-t' }, I('trash', 14), ' 资产清理', e('span', { className: 'dsh-notes-imgup-sub' }, '预览勾选后才删除 · 宁留勿删')),
-                e('div', { className: 'dsh-notes-data-hint' }, 'assets/ 中未被任何笔记正文引用的文件（已删除笔记的引用仍计入保护）。' + (pruneData && pruneData.notes != null ? '已扫描 ' + pruneData.notes + ' 条笔记：引用中 ' + (pruneData.referenced || 0) + ' 个，历史清理占位 ' + (pruneData.tombstoned || 0) + ' 个。' : '')),
-                pruneData === null
-                  ? e('div', { className: 'dsh-notes-data-hint' }, '扫描中…')
-                  : orphans.length === 0
-                    ? e('div', { className: 'dsh-notes-data-hint' }, '没有孤儿资产（assets/ 全部文件均被引用）。')
-                    : e('div', { className: 'dsh-notes-arch-list' },
-                        orphans.map(o => e('div', { key: o.name, className: 'dsh-notes-arch-row' },
-                          e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: pruneChecked[o.name] !== false, onChange: () => setPruneChecked(Object.assign({}, pruneChecked, { [o.name]: pruneChecked[o.name] === false })) }),
-                          e('span', { className: 'dsh-notes-arch-ti', title: o.name }, o.name),
-                          e('span', { className: 'dsh-notes-arch-meta' }, fmtBytes(o.bytes))))),
-                error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-                e('div', { className: 'dsh-notes-dispatch-actions' },
-                  e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setPruneOpen(false), disabled: prunePending }, '取消'),
-                  e('button', { className: 'dsh-notes-data-danger', onClick: doPruneConfirm, disabled: prunePending || checked.length === 0 }, prunePending ? '删除中…' : '删除所选（' + checked.length + ' 项 · ' + fmtBytes(checkedBytes) + '）'))))
-          })()
-          : null,
-          // P1 回收站对话框（侧栏底部「回收站」入口；复用归档预览的列表样式）：
-          // 批量操作条（全选 + 选中计数 + 恢复所选/彻底删除所选）+ 行 = 勾选框 + 标题（点击展开只读预览）+ 删除时间 + 预览/恢复/彻底删除；
-          // 彻底删除 confirm 双确认（不可恢复）；批量彻底删除同口径文案 + 条数 + 含历史版本；
-          // 行预览 = notes-get {id, includeDeleted:true} 取已删正文 → renderMarkdown 只读渲染（内核全量转义，esc 先行零注入面）
-          trashOpen ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !trashPending) setTrashOpen(false) } },
-            e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-arch-modal dsh-notes-trash-modal' },
-              e('div', { className: 'dsh-notes-settings-modal-t' }, I('trash', 14), ' 回收站', e('span', { className: 'dsh-notes-imgup-sub' }, '软删除的笔记 · 恢复可找回 · 彻底删除不可恢复')),
-              trashList === null
-                ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
-                : trashList.length === 0
-                  ? e('div', { className: 'dsh-notes-data-hint' }, '回收站为空（删除的笔记会出现在这里）。')
-                  : e(React.Fragment, null,
-                      e('div', { className: 'dsh-notes-trash-batch' },
-                        e('label', { className: 'dsh-notes-trash-all' },
-                          e('input', { type: 'checkbox', className: 'dsh-notes-trash-check', checked: trashList.length > 0 && trashList.every(n => trashSel[n.id]), disabled: !!trashPending, onChange: toggleTrashAll }),
-                          '全选'),
-                        e('span', { className: 'dsh-notes-trash-selcnt' }, '已选 ' + Object.keys(trashSel).length + ' 条'),
-                        e('button', { className: 'dsh-notes-trash-act', onClick: doTrashRestoreBatch, disabled: !!trashPending || Object.keys(trashSel).length < 1 }, '恢复所选'),
-                        e('button', { className: 'dsh-notes-trash-act danger', onClick: doTrashPurgeBatch, disabled: !!trashPending || Object.keys(trashSel).length < 1 }, '彻底删除所选')),
-                      e('div', { className: 'dsh-notes-arch-list' },
-                        trashList.map(n => e('div', { key: n.id },
-                          e('div', { className: 'dsh-notes-arch-row' },
-                            e('input', { type: 'checkbox', className: 'dsh-notes-trash-check', checked: !!trashSel[n.id], disabled: !!trashPending, onChange: () => toggleTrashSel(n.id) }),
-                            e('span', { className: 'dsh-notes-arch-ti dsh-notes-trash-ti', title: (n.title || 'Untitled') + '（点击预览正文，只读）', onClick: () => toggleTrashPreview(n.id) }, n.title || 'Untitled'),
-                            e('span', { className: 'dsh-notes-arch-meta' }, '删于 ' + (n.updatedAt ? String(n.updatedAt).slice(0, 10) : '—')),
-                            e('button', { className: 'dsh-notes-trash-act', onClick: () => toggleTrashPreview(n.id), disabled: !!trashPending }, trashPreview && trashPreview.id === n.id ? '收起' : '预览'),
-                            e('button', { className: 'dsh-notes-trash-act', onClick: () => doTrashRestore(n.id), disabled: !!trashPending }, '恢复'),
-                            e('button', { className: 'dsh-notes-trash-act danger', onClick: () => doTrashPurge(n.id, n.title), disabled: !!trashPending }, '彻底删除')),
-                          // 行内只读预览：正文只经 renderMarkdown 内核渲染（全量转义零注入面）；加载/错误态走 React 文本插值（自动转义）
-                          trashPreview && trashPreview.id === n.id
-                            ? (typeof trashPreview.body === 'string'
-                                ? e('div', { className: 'dsh-notes-trash-preview dsh-notes-rich', dangerouslySetInnerHTML: { __html: renderMarkdown(trashPreview.body, wikiResolve) } })
-                                : e('div', { className: 'dsh-notes-data-hint' }, trashPreview.error || '预览加载中…'))
-                            : null)))),
-              error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-              e('div', { className: 'dsh-notes-dispatch-actions' },
-                e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setTrashOpen(false), disabled: !!trashPending }, '关闭'))))
-          : null,
-          // 整理建议对话框（设置卡片「整理建议」行入口；复用归档预览的列表样式）：
-          // 四段式——① 可整理的速记组（「去归档」直达归档预览对话框，数据与 notes-archive-preview 同源）
-          //          ② 过期未引用（超 staleDays 且 useCount=0；「一键批量软删除」confirm 后才逐条 notes-delete）
-          //          ③ 可能无用（孤儿候选：启发式判定可能误伤，仅展示逐条「查看」跳转，不提供批量操作）
-          //          ④ 日志卫生（工作记忆 v0：超窗日志 周/月 聚合提名——只提名不执行，v0 「明细」展开逐条「查看」）
-          suggestOpen ? (() => {
-            const d = suggestData
-            const arch = (d && d.archiveCandidates) || []
-            const stale = (d && d.staleCandidates) || []
-            const orphans = (d && d.orphanCandidates) || []
-            // 工作记忆 v0 日志卫生（第四段）：周聚合/月聚合两组提名（只提名不执行——v0 仅展示明细，聚合执行留待 Phase 2）
-            const logHg = (d && d.logHygieneCandidates) || { weekly: [], monthly: [] }
-            const logHgGroups = logHg.weekly.map(g => ({ g: g, tier: '周聚合' })).concat(logHg.monthly.map(g => ({ g: g, tier: '月聚合' })))
-            const allEmpty = d !== null && arch.length === 0 && stale.length === 0 && orphans.length === 0 && logHgGroups.length === 0
-            return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !suggestPending) setSuggestOpen(false) } },
-              e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-arch-modal dsh-notes-suggest-modal' },
-                e('div', { className: 'dsh-notes-settings-modal-t' }, I('sparkle', 14), ' 整理建议', e('span', { className: 'dsh-notes-imgup-sub' }, '只提名不自动执行 · 软删除可恢复')),
-                d === null
-                  ? e('div', { className: 'dsh-notes-data-hint' }, '分析中…')
-                  : allEmpty
-                    ? e('div', { className: 'dsh-notes-data-hint' }, '库很干净，无需整理。')
-                    : e(React.Fragment, null,
-                        e('div', { className: 'dsh-notes-suggest-sec' },
-                          e('div', { className: 'dsh-notes-suggest-sec-t' }, '可整理的速记组', e('span', { className: 'dsh-notes-suggest-sec-n' }, arch.length + ' 组'),
-                            arch.length ? e('button', { className: 'dsh-notes-trash-act', onClick: suggestGoArchive }, '去归档') : null),
-                          arch.length
-                            ? e('div', { className: 'dsh-notes-arch-list' },
-                                arch.map(g => {
-                                  const span = g.dateSpan && g.dateSpan.from ? (g.dateSpan.from === g.dateSpan.to ? g.dateSpan.from : g.dateSpan.from + ' ~ ' + g.dateSpan.to) : ''
-                                  return e('div', { key: g.sessionId, className: 'dsh-notes-arch-row' },
-                                    e('span', { className: 'dsh-notes-arch-ti', title: g.title }, g.title),
-                                    e('span', { className: 'dsh-notes-arch-meta' }, span + ' · ' + g.members.length + ' 条 · ' + fmtBytes(g.totalBytes) + ((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : '')))
-                                }))
-                            : e('div', { className: 'dsh-notes-data-hint' }, '没有可归档的速记组（同一会话 ≥2 条速记才会成组）。')),
-                        e('div', { className: 'dsh-notes-suggest-sec' },
-                          e('div', { className: 'dsh-notes-suggest-sec-t' }, '过期未引用', e('span', { className: 'dsh-notes-suggest-sec-n' }, stale.length + ' 条'),
-                            stale.length ? e('button', { className: 'dsh-notes-trash-act danger', onClick: doSuggestBatchDelete, disabled: suggestPending }, suggestPending ? '删除中…' : '一键批量软删除') : null),
-                          stale.length
-                            ? e('div', { className: 'dsh-notes-arch-list' },
-                                stale.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
-                                  e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
-                                  e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || '未分类') + ' · ' + n.staleDays + ' 天未更新'))))
-                            : e('div', { className: 'dsh-notes-data-hint' }, '没有过期且从未被引用的笔记。')),
-                        e('div', { className: 'dsh-notes-suggest-sec' },
-                          e('div', { className: 'dsh-notes-suggest-sec-t' }, '可能无用', e('span', { className: 'dsh-notes-suggest-sec-n' }, orphans.length + ' 条')),
-                          orphans.length
-                            ? e('div', { className: 'dsh-notes-arch-list' },
-                                orphans.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
-                                  e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
-                                  e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || '未分类') + ' · ' + (n.updatedAt ? String(n.updatedAt).slice(0, 10) : '—')),
-                                  e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(n.id) }, '查看'))))
-                            : e('div', { className: 'dsh-notes-data-hint' }, '没有孤儿笔记（无双链关联且从未被引用）。')),
-                        // ④ 日志卫生（工作记忆 v0 裁决 B②：超窗旧日志两级聚合提名——只提名不执行，v0 展开明细逐条过目）
-                        e('div', { className: 'dsh-notes-suggest-sec' },
-                          e('div', { className: 'dsh-notes-suggest-sec-t' }, '日志卫生', e('span', { className: 'dsh-notes-suggest-sec-n' }, logHgGroups.length + ' 组')),
-                          logHgGroups.length
-                            ? e('div', { className: 'dsh-notes-arch-list' },
-                                logHgGroups.map(({ g, tier }) => e(React.Fragment, { key: tier + g.key },
-                                  e('div', { className: 'dsh-notes-arch-row' },
-                                    e('span', { className: 'dsh-notes-arch-ti', title: g.title }, g.title),
-                                    e('span', { className: 'dsh-notes-arch-meta' }, tier + ' · ' + g.members.length + ' 条'),
-                                    e('button', { className: 'dsh-notes-trash-act', onClick: () => setLogHgExpand(prev => { const nx = Object.assign({}, prev); if (nx[tier + g.key]) delete nx[tier + g.key]; else nx[tier + g.key] = true; return nx }) }, logHgExpand[tier + g.key] ? '收起' : '明细')),
-                                  logHgExpand[tier + g.key] ? e('div', { className: 'dsh-notes-arch-list' },
-                                    g.members.map(m => e('div', { key: m.id, className: 'dsh-notes-arch-row' },
-                                      e('span', { className: 'dsh-notes-arch-ti', title: m.title || 'Untitled' }, m.title || 'Untitled'),
-                                      e('span', { className: 'dsh-notes-arch-meta' }, (m.logDate || '—') + (m.sessionId ? ' · 会话 ' + String(m.sessionId).replace(/^session-/, '').slice(0, 8) : '')),
-                                      e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(m.id) }, '查看')))) : null)))
-                            : e('div', { className: 'dsh-notes-data-hint' }, '没有待聚合的工作日志（超窗日志按 工作区×周/月 归组，同组 ≥2 条才提名）。')),
-                        e('div', { className: 'dsh-notes-data-hint' }, '判定口径：过期 = 超过时效阈值（设置卡片可调）且从未被引用；可能无用 = 无 [[双链]] 关联、未注入、从未被引用的进行中普通笔记（启发式，请逐条过目）。日志卫生 = 超 7 天周聚合 / 超 90 天月聚合提名（设置卡片「工作记忆」区可调窗口）；日志只聚合不淘汰，永不进过期/孤儿候选；v0 仅展示明细，一键合并将在后续版本提供。')),
-                error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-                e('div', { className: 'dsh-notes-dispatch-actions' },
-                  e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setSuggestOpen(false), disabled: suggestPending }, '关闭'))))
-          })()
-          : null,
-          // 注入预览对话框（设置卡片「注入预览」入口；mask/modal 复用设置卡片风格）：
-          // 双 tab（约定/目录）+ 三档视角下拉（全局 / 工作区并集 / 单会话；sessList 数据源）+ 只读等宽文本区 + 底部统计条（总字符/打码/时效标注/预算截断）
-          injectPreviewOpen ? (() => {
-            const d = injectPreviewData
-            const stats = d && d.stats ? d.stats : null
-            const text = !d ? '' : (injectPreviewTab === 'cat' ? (d.catalog || '') : (d.conventions || ''))
-            // 会话选项 = sessList（注入范围浮层同数据源）；工作区选项 = 会话 workspace 字段去重（含 pending 占位）；已选值不在列表时追加一项保证回显
-            const sidOpts = sessList.slice()
-            if (injectPreviewSid && injectPreviewSid.indexOf('ws:') !== 0 && !sidOpts.find(s => s.short === injectPreviewSid)) sidOpts.push({ short: injectPreviewSid, name: '' })
-            const wsOpts = []
-            for (const s of sessList.concat(sessPending)) { if (s && s.workspace && wsOpts.indexOf(s.workspace) < 0) wsOpts.push(s.workspace) }
-            if (injectPreviewSid.indexOf('ws:') === 0 && wsOpts.indexOf(injectPreviewSid.slice(3)) < 0) wsOpts.push(injectPreviewSid.slice(3))
-            return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setInjectPreviewOpen(false) } },
-              e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-injprev-modal' },
-                e('div', { className: 'dsh-notes-settings-modal-t' }, I('eye', 14), ' 注入预览', e('span', { className: 'dsh-notes-imgup-sub' }, 'Agent 实际收到的注入文本 · 只读')),
-                e('div', { className: 'dsh-notes-injprev-bar' },
-                  e('div', { className: 'dsh-notes-injprev-tabs' },
-                    e('button', { className: 'dsh-notes-injprev-tab' + (injectPreviewTab === 'conv' ? ' on' : ''), onClick: () => setInjectPreviewTab('conv') }, '约定'),
-                    e('button', { className: 'dsh-notes-injprev-tab' + (injectPreviewTab === 'cat' ? ' on' : ''), onClick: () => setInjectPreviewTab('cat') }, '目录')),
-                  e('select', { className: 'dsh-notes-settings-select dsh-notes-injprev-sess', value: injectPreviewSid, 'data-tooltip': '预览视角三档：全局 = 所有会话共享（injectTo=[]）；工作区 = 该工作区全部会话的注入并集；会话 = 单会话 injectTo 命中口径', onChange: (ev) => { const v = ev.target.value; setInjectPreviewSid(v); loadInjectPreview(v) } },
-                    e('option', { value: '' }, '全局'),
-                    wsOpts.length ? e('optgroup', { label: '工作区' }, wsOpts.map(w => e('option', { key: 'ws:' + w, value: 'ws:' + w }, w))) : null,
-                    e('optgroup', { label: '会话' }, sidOpts.map(s => e('option', { key: s.short, value: s.short }, s.short + (s.name ? ' · ' + s.name : '')))))),
-                d === null
-                  ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
-                  : e('pre', { className: 'dsh-notes-injprev-text' }, text || (injectPreviewTab === 'cat' ? '（无目录内容）' : '（无约定内容）')),
-                stats ? e('div', { className: 'dsh-notes-injprev-stats' },
-                  '总字符 ' + stats.totalChars + '（约定 ' + stats.conventionsChars + ' / 目录 ' + stats.catalogChars + '）· 打码 ' + stats.maskedNotes + ' 条 · 时效标注 ' + stats.staleMarked + ' 条 · 预算截断 ' + (stats.budgetTruncated ? '是' : '否')) : null,
-                error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-                e('div', { className: 'dsh-notes-dispatch-actions' },
-                  e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setInjectPreviewOpen(false) }, '关闭'))))
-          })()
-          : null,
-          // 历史版本面板（详情 meta 行「历史」入口；mask/modal 复用设置卡片风格）：
-          // 左列版本列表（时间+大小，倒序）→ 点选右侧只读预览（renderMarkdown 内核渲染，全量转义零注入面）→「恢复此版本」confirm 后 notes-restore-history
-          histOpen ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setHistOpen(false) } },
-            e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-hist-modal' },
-              e('div', { className: 'dsh-notes-settings-modal-t' }, I('clock', 14), ' 历史版本', e('span', { className: 'dsh-notes-imgup-sub' }, '每次保存自动留快照 · 恢复前当前版本会先自动快照，可再撤销')),
-              e('div', { className: 'dsh-notes-hist-body' },
-                e('div', { className: 'dsh-notes-hist-list' },
-                  histList === null
-                    ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
-                    : !histList.length
-                      ? e('div', { className: 'dsh-notes-data-hint' }, '暂无历史版本（每次保存自动留快照）')
-                      : histList.map(v => e('div', { key: v.ts, className: 'dsh-notes-hist-item' + (histSel === v.ts ? ' on' : ''), onClick: () => selectHistVersion(v.ts) },
-                          e('div', { className: 'dsh-notes-hist-item-t' }, fmtHistTs(v.ts)),
-                          e('div', { className: 'dsh-notes-hist-item-b' }, fmtBytes(v.bytes))))),
-                e('div', { className: 'dsh-notes-hist-view' },
-                  !histSel
-                    ? e('div', { className: 'dsh-notes-data-hint' }, '选择左侧版本查看预览（只读）')
-                    : histPreview
-                      ? e('div', { className: 'dsh-notes-hist-preview dsh-notes-rich', dangerouslySetInnerHTML: { __html: renderMarkdown(histPreview.body, wikiResolve) } })
-                      : e('div', { className: 'dsh-notes-data-hint' }, '预览加载中…'))),
-              error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-              e('div', { className: 'dsh-notes-dispatch-actions' },
-                e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setHistOpen(false) }, '关闭'),
-                e('button', { className: 'dsh-notes-dispatch-ok', onClick: doRestoreHistory, disabled: histPending || !histSel }, histPending ? '恢复中…' : '恢复此版本'))))
-          : null,
-          // 多选合并标题输入框（多选操作条「合并」入口）：默认标题 = 所选最早更新笔记的 topic，可改；Enter 确认
-          mergeOpen ? e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setMergeOpen(false) } },
-            e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
-              e('div', { className: 'dsh-notes-settings-modal-t' }, I('note', 14), ' 合并所选笔记'),
-              e('div', { className: 'dsh-notes-data-hint' }, '把所选的 ' + Object.keys(selIds).length + ' 条笔记合并为一篇（正文按更新时间分节拼接，原笔记软删除，可撤销）。'),
-              e('input', { className: 'dsh-notes-data-input', placeholder: '合并后标题…', value: mergeTitle, autoFocus: true, onChange: (ev) => setMergeTitle(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doMergeConfirm() } } }),
-              error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-              e('div', { className: 'dsh-notes-dispatch-actions' },
-                e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setMergeOpen(false) }, '取消'),
-                e('button', { className: 'dsh-notes-dispatch-ok', onClick: doMergeConfirm, disabled: mergePending || !mergeTitle.trim() }, mergePending ? '合并中…' : '合并'))))
-          : null,
-          // 新建笔记 modal（侧栏「新建」chip / Ctrl+N）：输标题 + 选类型（二期：按类型预填模板骨架）创建 → 选中 → 聚焦正文
-          newNoteOpen ? e('div', { className: 'dsh-notes-newnote-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setNewNoteOpen(false) } },
-            e('div', { className: 'dsh-notes-newnote-modal' },
-              e('div', { className: 'dsh-notes-newnote-t' }, '新建笔记'),
-              e('input', { ref: newNoteInputRef, className: 'dsh-notes-newnote-input', placeholder: '笔记标题…', value: newNoteTitle, onChange: (ev) => setNewNoteTitle(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doCreateNote() } } }),
-              e('div', { className: 'dsh-notes-newnote-kind-row' },
-                e('span', { className: 'dsh-notes-newnote-kind-lb' }, '类型'),
-                e('select', { className: 'dsh-notes-newnote-select', value: newNoteKind, onChange: (ev) => setNewNoteKind(ev.target.value) },
-                  ['note', 'decision', 'todo', 'link', 'quote', 'log'].map(k => e('option', { key: k, value: k }, KIND_LABELS[k]))),
-                e('span', { className: 'dsh-notes-newnote-kind-hint' }, KIND_TEMPLATES[newNoteKind] ? '将预填模板骨架' : '自由格式（空正文）')),
-              error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-              e('div', { className: 'dsh-notes-newnote-actions' },
-                e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setNewNoteOpen(false) }, '取消'),
-                e('button', { className: 'dsh-notes-dispatch-ok', onClick: doCreateNote, disabled: newNotePending || !newNoteTitle.trim() }, newNotePending ? '创建中…' : '创建'))))
-          : null,
-          // 笔记行右键菜单：置顶/已解决/移动到文件夹/删除（纯文字标签 + SVG 图标面板内统一风格）
-          ctxMenu ? e('div', { className: 'dsh-notes-ctxmenu', style: { left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' } },
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => ctxSetStatus(ctxMenu.note, ctxMenu.note.status === 'pinned' ? 'active' : 'pinned') }, I('pin', 12), ctxMenu.note.status === 'pinned' ? '取消置顶' : '置顶'),
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => ctxSetStatus(ctxMenu.note, ctxMenu.note.status === 'resolved' ? 'active' : 'resolved') }, I('check', 12), ctxMenu.note.status === 'resolved' ? '重开' : '标记已解决'),
-            // 移动到文件夹：点击内联展开子菜单（文件夹列表 + 移出 + 新建），避免二级浮层被面板 overflow:hidden 裁切
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => setCtxMenu({ x: ctxMenu.x, y: ctxMenu.y, note: ctxMenu.note, moveOpen: !ctxMenu.moveOpen }) }, I('folder', 12), '移动到文件夹' + (ctxMenu.moveOpen ? ' ▾' : ' ▸')),
-            ctxMenu.moveOpen ? e(React.Fragment, null,
-              folders.map(f => e('button', { key: f.id, className: 'dsh-notes-ctxmenu-item dsh-notes-ctxmenu-sub', onClick: () => ctxMoveToFolder(ctxMenu.note, f.id) }, ((ctxMenu.note.folder || '') === f.id ? '✓ ' : '') + f.name)),
-              (ctxMenu.note.folder || '') ? e('button', { className: 'dsh-notes-ctxmenu-item dsh-notes-ctxmenu-sub', onClick: () => ctxMoveToFolder(ctxMenu.note, '') }, '移出文件夹（未分类）') : null,
-              ctxMenu.newFolder
-                ? e('input', { className: 'dsh-notes-ctxmenu-input', placeholder: '新文件夹名…', value: ctxNewFolderText, autoFocus: true, onChange: (ev) => setCtxNewFolderText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ctxCreateFolderMove(ctxMenu.note) } } })
-                : e('button', { className: 'dsh-notes-ctxmenu-item dsh-notes-ctxmenu-sub', onClick: () => setCtxMenu({ x: ctxMenu.x, y: ctxMenu.y, note: ctxMenu.note, moveOpen: true, newFolder: true }) }, '新建文件夹…'))
-            : null,
-            // 合并为一篇：进多选态并预勾当前笔记（再到列表勾选其余 ≥1 条，底部操作条合并）
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const nid = ctxMenu.note.id; setCtxMenu(null); setSelMode(true); setSelIds({ [nid]: true }) } }, I('check', 12), '合并为一篇'),
-            e('button', { className: 'dsh-notes-ctxmenu-item danger', onClick: () => { setCtxMenu(null); doDelete(ctxMenu.note.id) } }, I('trash', 12), '删除'))
-          : null,
-          // 文件夹项右键菜单：进入文件夹视图 / 新建子文件夹（嵌套内联输入）/ 重命名 / 上移 / 下移（同级兄弟内）/ 移回根级（有父级时）/ 删除（级联 confirm）
-          folderMenu ? e('div', { className: 'dsh-notes-ctxmenu', style: { left: folderMenu.x + 'px', top: folderMenu.y + 'px' } },
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); expandFolder(mf.id); setView({ type: 'folder', id: mf.id }) } }, I('filter', 12), '进入文件夹视图'),
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); setFolderInputOpen(false); setFolderInputText(''); expandFolder(mf.id); setSubFolderFor(mf.id) } }, I('plus', 12), '新建子文件夹'),
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { setRenamingId(folderMenu.folder.id); setRenameText(folderMenu.folder.name); setFolderMenu(null) } }, '重命名'),
-            e('button', { className: 'dsh-notes-ctxmenu-item', disabled: folderMenuIdx <= 0, onClick: () => doReorderFolder(folderMenu.folder, -1) }, '上移'),
-            e('button', { className: 'dsh-notes-ctxmenu-item', disabled: folderMenuIdx < 0 || folderMenuIdx >= folderMenuSibs.length - 1, onClick: () => doReorderFolder(folderMenu.folder, 1) }, '下移'),
-            (folderMenu.folder.parent || '') ? e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); doReparentFolder(mf.id, '') } }, '移回根级') : null,
-            e('div', { className: 'dsh-notes-ctxmenu-sep' }),
-            e('button', { className: 'dsh-notes-ctxmenu-item danger', onClick: () => doDeleteFolder(folderMenu.folder) }, '删除文件夹'))
-          : null,
-          // 多选操作条（「选择」chip / 右键「合并为一篇」进多选态后浮于侧栏底部）：已选 N 条 | 合并 | 删除 | 取消
-          selMode ? e('div', { className: 'dsh-notes-selbar' },
-            e('span', { className: 'dsh-notes-selbar-n' }, '已选 ' + Object.keys(selIds).length + ' 条'),
-            e('button', { className: 'dsh-notes-dispatch-ok', onClick: openMerge, disabled: Object.keys(selIds).length < 2 }, '合并'),
-            e('button', { className: 'dsh-notes-data-danger', onClick: doSelBatchDelete, disabled: Object.keys(selIds).length < 1 || selDelPending }, selDelPending ? '删除中…' : '删除'),
-            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: toggleSelMode }, '取消'))
-          : null)
-      }
-      slots.register({ name: 'shell.overlay', id: 'dsh-notes-panel', order: 200 }, (props) => e(FloatingPanel, props))
-    })
-    if (typeof d3 === 'function') disposers.push(d3)
+                e('span', { className: 'dsh-notes-fbtn dsh-nt', onClick: openSettings, 'data-tooltip': '设置' }, I('gear', 12), '设置')))
+    }
+    // ===== panel/chrome —— 窗口 chrome：pos/size/sideW 态 + 标题栏/分隔条/resize 拖拽族（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelChrome（面板位置/尺寸/侧栏宽 state + 持久化/居中 effect + onTitlebarMouseDown/onResizeMouseDown/onSplitterMouseDown/resetSideW +
+    //           titlebarEl/splitterEl/resizeEl JSX）
+    // needs: kernel/state.js（setShowHelp 转发别名）、kernel/persist.js（loadSideW/saveSideW/SIDE_W_DEFAULT/clampSideW/entryMode/setEntryMode）、
+    //        kernel/drag.js（drag）、kernel/icons.js（e/I）、modals/archive.js（openArchive）——序位在前；
+    //        open/close/showHelp 经 hook 入参注入（装配层回填：open 主面板开合态、close 滞留装配层、showHelp 自 popovers/help.js 解构）
+    // state 托管：pos/size/sideW/sideDrag 留 hook 内 useState（与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）
+    function usePanelChrome(args) {
+        const open = args.open, close = args.close, showHelp = args.showHelp
+        const [pos, setPos] = React.useState({ x: null, y: null })
+        const [size, setSize] = React.useState({ width: 920, height: 640 })
+        // 侧栏宽度：分隔条拖拽调整（clamp 200px–60% 面板宽），localStorage 记忆（SIDE_W_KEY），双击分隔条重置缺省
+        const [sideW, setSideW] = React.useState(() => loadSideW() || SIDE_W_DEFAULT)
+        const [sideDrag, setSideDrag] = React.useState(false)   // 拖拽中：分隔条高亮 + body 禁文本选择
+        const sideWRef = React.useRef(0)   // 拖拽期间最新宽镜像（mouseup 持久化读 ref，防闭包过期）
+        React.useEffect(() => { try { const saved = localStorage.getItem('dsh-notes-panel-state'); if (saved) { const s = JSON.parse(saved); if (s.x !== undefined && s.y !== undefined) setPos({ x: s.x, y: s.y }); if (s.width !== undefined && s.height !== undefined) setSize({ width: s.width, height: s.height }) } } catch (err) {} }, [])
+        function saveState() { try { localStorage.setItem('dsh-notes-panel-state', JSON.stringify({ x: pos.x, y: pos.y, width: size.width, height: size.height })) } catch (err) {} }
+        React.useEffect(() => { if (open && pos.x === null) { const w = window.innerWidth; const h = window.innerHeight; setPos({ x: Math.max(w - 980, w * 0.3), y: Math.max(48, (h - 640) / 2) }) } }, [open])
+        function onTitlebarMouseDown(ev) {
+          if (ev.target.closest('.dsh-notes-titlebar-btn')) return
+          const sx = ev.clientX, sy = ev.clientY, px = pos.x || 0, py = pos.y || 0
+          drag((ev2) => setPos({ x: Math.max(0, Math.min(window.innerWidth - 200, px + ev2.clientX - sx)), y: Math.max(0, Math.min(window.innerHeight - 100, py + ev2.clientY - sy)) }), saveState)
+        }
+        function onResizeMouseDown(direction, ev) {
+          ev.stopPropagation(); ev.preventDefault()
+          const sx = ev.clientX, sy = ev.clientY, ox = pos.x || 0, oy = pos.y || 0, sw = size.width, sh = size.height
+          drag((ev2) => {
+            const dx = ev2.clientX - sx, dy = ev2.clientY - sy
+            let nw = sw, nh = sh, nx = ox, ny = oy
+            if (direction.indexOf('e') >= 0) nw = sw + dx
+            if (direction.indexOf('s') >= 0) nh = sh + dy
+            if (direction.indexOf('w') >= 0) nw = sw - dx
+            if (direction.indexOf('n') >= 0) nh = sh - dy
+            nw = Math.max(680, Math.min(window.innerWidth - 40, nw)); nh = Math.max(420, Math.min(window.innerHeight - 40, nh))
+            if (direction.indexOf('w') >= 0) nx = ox + sw - nw
+            if (direction.indexOf('n') >= 0) ny = oy + sh - nh
+            setSize({ width: nw, height: nh }); setPos({ x: nx, y: ny })
+          }, saveState)
+        }
+        // ===== 侧栏分隔条拖拽：mousedown 起拖 → drag() 内 document mousemove 按面板内相对坐标增量算宽 → mouseup 卸监听防泄漏 =====
+        // 拖拽期间 body 挂 .dsh-notes-split-drag（禁文本选择 + 强制 col-resize）；mouseup 持久化（读 ref 防闭包过期）
+        function onSplitterMouseDown(ev) {
+          ev.preventDefault(); ev.stopPropagation()
+          const appEl = ev.currentTarget.parentElement   // .dsh-notes-app（分隔条是两栏间的 flex 子项）
+          const sx = ev.clientX, sw = sideW
+          sideWRef.current = 0
+          setSideDrag(true); document.body.classList.add('dsh-notes-split-drag')
+          drag((ev2) => {
+            const nw = clampSideW(sw + ev2.clientX - sx, appEl ? appEl.getBoundingClientRect().width : size.width)
+            sideWRef.current = nw; setSideW(nw)
+          }, () => {
+            setSideDrag(false); document.body.classList.remove('dsh-notes-split-drag')
+            if (sideWRef.current) saveSideW(sideWRef.current)
+          })
+        }
+        // 双击分隔条 = 重置缺省宽度（清除持久化，回 styles.css 缺省 300px）
+        function resetSideW() { sideWRef.current = SIDE_W_DEFAULT; setSideW(SIDE_W_DEFAULT); saveSideW(null) }
+        const titlebarEl = e('div', { className: 'dsh-notes-titlebar dsh-nt', onMouseDown: onTitlebarMouseDown, 'data-tooltip': '拖拽移动窗口' },
+            e('span', { className: 'dsh-notes-titlebar-title' }, I('note', 14), '笔记'),
+            e('div', { className: 'dsh-notes-titlebar-actions' },
+              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setEntryMode(entryMode === 'header' ? 'fab' : 'header'), 'data-tooltip': '切换入口模式：会话头部 / 悬浮气泡' }, I('swap', 13)),
+              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: openArchive, 'data-tooltip': '归档：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）' }, '归档'),
+              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setShowHelp(!showHelp), 'data-tooltip': '使用说明' }, '?'),
+              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: close, 'data-tooltip': '关闭' }, '×')))
+        const splitterEl = e('div', { className: 'dsh-notes-splitter dsh-nt' + (sideDrag ? ' on' : ''), onMouseDown: onSplitterMouseDown, onDoubleClick: resetSideW, 'data-tooltip': '拖拽调整侧栏宽度（双击重置）' })
+        const resizeEl = e('div', { className: 'dsh-notes-resize-handle dsh-nt', style: { position: 'absolute', bottom: 0, right: 0 }, onMouseDown: (ev) => onResizeMouseDown('se', ev), 'data-tooltip': '拖拽调整' })
+        return { pos: pos, size: size, sideW: sideW, titlebarEl: titlebarEl, splitterEl: splitterEl, resizeEl: resizeEl }
+    }
+    // ===== panel/keyboard —— 键盘流（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelKeyboard（全局 keydown：Ctrl+K/N/// + j/k/↑↓/Enter + Esc 分层栈）
+    // needs: kernel/state.js（notesRef/searchRef/searchInputRef/pagedIdsRef/switchModeRef/editorModeRef + popover/树/搜索 setter 转发别名）、
+    //        modals/*.js（imgModalRef/setImgModal 等 open 镜像与 setter 别名，Esc 栈直读模块顶层绑定——D 步先例同口径）
+    // 键盘导航所需的私有 ref（keydown 监听挂一次，回调读最新值）：openRef/focusIdRef/selectNoteRef/closeRef/moveFocusRef/openNewNoteRef
+    // 为 keyboard 域模块级单例（与昔日 FloatingPanel 内 useRef 等价——面板是 shell.overlay 单例）；跨域共享镜像在 kernel/state.js
+    const openRef = { current: false }
+    const focusIdRef = { current: null }
+    const selectNoteRef = { current: null }
+    const closeRef = { current: null }
+    const moveFocusRef = { current: null }
+    const openNewNoteRef = { current: null }   // Ctrl+N 调最新 openNewNote（keydown 闭包挂一次）
+    function usePanelKeyboard() {
+        // 键盘导航：j/k 或 ↑/↓ 移动高亮，Enter 打开，Esc 关闭，Ctrl+K 聚焦搜索，Ctrl+N 新建笔记
+        React.useEffect(() => {
+          function onKeyDown(ev) {
+            if (!openRef.current) return
+            const t = ev.target
+            const inField = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+            const mod = ev.ctrlKey || ev.metaKey
+            // UI v2：搜索框在侧栏常显，Ctrl+K 直接聚焦（不再走展开态）
+            if (mod && (ev.key === 'k' || ev.key === 'K')) { ev.preventDefault(); if (searchInputRef.current) searchInputRef.current.focus(); return }
+            if (mod && (ev.key === 'n' || ev.key === 'N')) { ev.preventDefault(); openNewNoteRef.current(); return }
+            // v3：Ctrl+/ 双模式切换（源码⇄富文本）；降级时 switchMode 内部拦截并 toast（弹窗打开时不切）
+            if (mod && ev.key === '/') { ev.preventDefault(); if (!imgModalRef.current && !linkModalRef.current && switchModeRef.current) switchModeRef.current(editorModeRef.current === 'source' ? 'rich' : 'source'); return }
+            if (ev.key === 'Escape') { ev.preventDefault(); const cm = ctxMenuRef.current; if (imgModalRef.current) { setImgModal(null); return } if (linkModalRef.current) { setLinkModal(null); return } if (renamingIdRef.current) { setRenamingId(null); return } if (folderInputOpenRef.current) { setFolderInputOpen(false); return } if (subFolderForRef.current) { setSubFolderFor(null); return } if (cm && cm.newFolder) { setCtxMenu({ x: cm.x, y: cm.y, note: cm.note, moveOpen: true }); return } if (folderMenuRef.current) { setFolderMenu(null); return } if (sortOpenRef.current) { setSortOpen(false); return } if (filterOpenRef.current) { setFilterOpen(false); return } if (newNoteOpenRef.current) { setNewNoteOpen(false); return } if (exportOpenRef.current) { setExportOpen(false); return } if (sExportOpenRef.current) { setSExportOpen(false); return } if (importOpenRef.current) { setImportOpen(false); return } if (pruneOpenRef.current) { setPruneOpen(false); return } if (trashOpenRef.current) { setTrashOpen(false); return } if (suggestOpenRef.current) { setSuggestOpen(false); return } if (memOpenRef.current) { setMemOpen(false); return } if (injectPreviewOpenRef.current) { setInjectPreviewOpen(false); return } if (injMgrOpenRef.current) { setInjMgrOpen(false); return } if (histOpenRef.current) { setHistOpen(false); return } if (mergeOpenRef.current) { setMergeOpen(false); return } if (archOpenRef.current) { setArchOpen(false); return } if (settingsOpenRef.current) { if (settingsFlushRef.current) settingsFlushRef.current(); setSettingsOpen(false); return } if (cm) { setCtxMenu(null); return } if (selModeRef.current) { setSelMode(false); setSelIds({}); return } if (searchRef.current) { searchRef.current = ''; setSearchText(''); setSearchIds(null); setSearchMatches({}); return } closeRef.current(); return }
+            if (inField) return
+            if (ctxMenuRef.current) return   // 右键菜单打开时暂停列表导航/打开
+            const ids = pagedIdsRef.current
+            if (!ids.length) return
+            if (ev.key === 'j' || ev.key === 'ArrowDown') { ev.preventDefault(); moveFocusRef.current(ids, 1) }
+            else if (ev.key === 'k' || ev.key === 'ArrowUp') { ev.preventDefault(); moveFocusRef.current(ids, -1) }
+            else if (ev.key === 'Enter') {
+              const fid = focusIdRef.current
+              if (fid && ids.indexOf(fid) >= 0) { const n = notesRef.current.find(x => x.id === fid); if (n) selectNoteRef.current(n) }
+            }
+          }
+          document.addEventListener('keydown', onKeyDown)
+          return () => document.removeEventListener('keydown', onKeyDown)
+        }, [])
+    }
     const d4 = slots.inject('shell.overlay', () => {
       // ===== 快速记录卡片 v2（原型 SelectionCapture 重做）：头部（选区速记 + 识别为引用徽章）→ 选区预览 → 补充输入 → 复制/记录/取消 =====
       // 触发链路不变：selectionchange + mouseup；提交链路不变：notes-quick-instruct（备注非空）/ notes-quick（kind=quote）
       function SelectionCapture() {
         perf.selRender++
         const [cap, setCap] = React.useState(null)   // 卡片位置（null=隐藏）
-        const [toast, setToast] = React.useState('')
+        // toast 宿主已迁 kernel（architecture-modular §6 步骤 C）：数据桶 = kernel/state.js toastStore，emit/自动消失计时 = kernel/bus.js setToast
+        const toast = toastStore.useSel(s => s.toast)
         const [instrText, setInstrText] = React.useState('')
         const selTextRef = React.useRef('')
         const visibleRef = React.useRef(false)
         const instrRef = React.useRef(null)
-        React.useEffect(() => { toastEmit = setToast; return () => { if (toastEmit === setToast) toastEmit = null } }, [])
         React.useEffect(() => {
           let mx = -1, my = -1, watchMouse = false, mouseDown = false
           function hide() { if (visibleRef.current) { visibleRef.current = false; setCap(null) } }
@@ -3601,8 +4377,6 @@ window.__ModuleLoader__.load({
             if (debouncedShow && debouncedShow.dispose) debouncedShow.dispose()
           }
         }, [])
-        // toast 自动消失：带动作按钮（如归档「撤销」）时延长展示（先例 = app.html toast(m, act) 的 4200ms）
-        React.useEffect(() => { if (!toast) return; const d = timer.timeout(() => setToast(''), typeof toast === 'object' && toast.act ? 4200 : 2600); return () => d() }, [toast])
         // 弹卡片后不自动 focus 输入框：focus 会清除页面选区，打断拖拽并使选区丢失。
         // 选区文本已存于 selTextRef，提交不依赖实时选区；用户需备注时手动点击输入框（自然 focus）。
         // 选区预览：截断至 3 行 / 160 字符（原型上限），配合渐隐避免卡片过高
@@ -3692,6 +4466,453 @@ window.__ModuleLoader__.load({
       slots.register({ name: 'shell.overlay', id: 'dsh-notes-selection', order: 201 }, () => e(SelectionCapture))
     })
     if (typeof d4 === 'function') disposers.push(d4)
+    // ===== panel/index —— 主面板装配层（architecture-modular §6 步骤 E 收口：FloatingPanel 大组件消亡于此）=====
+    // provides: FloatingPanel（shell.overlay #200 主面板组件）+ slots.register + apply 收尾（ctx.effect 统一清理 + ready 日志）
+    // needs: kernel/*（bus/state/persist/constants/format/icons/perf/css-loader/drag + editor-kernel）+ modals/*（17 个）+
+    //        popovers/*（7 个）+ panels/panel/*（search/wiki/tree/editor/sidebar/chrome/keyboard）——全部经拼接序位在前可见
+    //
+    // 【§6 步骤 E 裁决记录】
+    // ① state 不迁 store：check.js 逐字锚定一批 useState/useRef 声明原文（selMode/selIds/sortBy/view/filters/foldersExpanded/dragActive/
+    //    dragNoteIdRef/dragFolderIdRef/edSens/edSensRef/newNoteKind/setSnap/setInflight/injectPreviewTab 等），且 popover 与 panel 子域 hook
+    //    均经本装配层在同一组件（FloatingPanel）渲染边界内按固定序调用——重渲染口径与单文件时代完全一致。store 切片（kernel/state.js
+    //    createStore）仅服务真正独立组件边界的 modals（§6 步骤 D 已建立），本步不为 panel 域新建 store 切片。
+    // ② 跨域调用：popover/panel 子域禁横向引用，跨域 setter/函数经 kernel/state.js 转发别名 → panelBridge（本组件每渲染回填）；
+    //    跨域镜像 ref（notesRef/searchRef/searchInputRef/editorModeRef/switchModeRef/pagedIdsRef 等）为 kernel/state.js 顶层单例；
+    //    渲染期 post-guard 求值结果经渲染函数入参注入（renderTreeEls(R)/renderFilterPop(R)/renderSidebar(R)/renderEditorEl(R)）。
+    // ③ 子域 hook 内部同名局部绑定遮蔽 kernel 别名，故子域内部代码逐字不动；check 锚点全部为拼接产物文本锚，逐字节保留。
+    // ④ apply 收尾 4 行自 panels/selection/capture.js 迁入本文件末尾（manifest 线性拼接契约：收尾必须在最后模块）。
+    // ⑤ toast 桶分置 kernel/bus.js（toastEmit 挂点）+ kernel/state.js（回填 createStore 序位约束）保持 C 步裁决：不合并（TDZ 风险）。
+    const d3 = slots.inject('shell.overlay', () => {
+      function FloatingPanel() {
+        perf.panelRender++
+        const [open, setOpen] = React.useState(panelOpen)
+        const [notes, setNotes] = React.useState([])
+        const [selected, setSelected] = React.useState(null)
+        // edTitle/edTopic/edTags/edBody/edKind/edStatus/edRole/edRecall/edSens/edScope + savedAt 已拆出（§6 步骤 E：panel/editor.js——
+        // 编辑器域归 usePanelEditor，下方 wiki 装配点后解构接入）
+        // searchText/searchIds/searchMatches 已拆出（§6 步骤 E：panel/search.js——归 usePanelSearch，下方防抖装配点解构接入）
+        const [loading, setLoading] = React.useState(false)
+        const [error, setError] = React.useState('')
+        // 窗口 chrome（pos/size/sideW/sideDrag + 标题栏/分隔条/resize 拖拽族 + titlebarEl/splitterEl/resizeEl JSX）已拆出
+        // （§6 步骤 E：panel/chrome.js——归 usePanelChrome；open/close/showHelp 经入参注入，open 居中/位置持久化 effect 同文随迁；
+        // hook 调用点位于 help hook 之后——入参 showHelp 自其解构，TDZ 约束）
+        // UI v2 视图单选（原型 view）：all=全部 / folder=文件夹视图 / topic=主题全局过滤（跨文件夹）
+        const [view, setView] = React.useState({ type: 'all', id: '' })
+        // 帮助气泡已拆出（§6 步骤 E：popovers/help.js——showHelp 态 + 气泡 JSX 归 usePanelHelp；标题栏「?」经 kernel 转发别名 setShowHelp）
+        const { showHelp, setShowHelp, helpEl } = usePanelHelp()
+        const { pos, size, sideW, titlebarEl, splitterEl, resizeEl } = usePanelChrome({ open: open, close: close, showHelp: showHelp })
+        const [flashId, setFlashId] = React.useState(null)
+        const [focusId, setFocusId] = React.useState(null)
+        // visibleCount/topicExpanded/topicSecOpen/dragActive 已拆出（§6 步骤 E：panel/tree.js——归 usePanelTree，下方树装配点解构接入）
+        // ===== 筛选中心（design/notes-filter-center.html 落地）：filters 状态 {pinned, injected, injectEver, sensitive, kinds[]} =====
+        // 组内 OR / 跨组 AND，与文件夹/主题视图/搜索 AND 叠加；localStorage 持久化（dsh-notes-filters，含 sortBy）
+        const [filters, setFilters] = React.useState(() => loadFiltersState().filters)
+        // P2 使用遥测：列表排序方式（'time'=按更新（缺省，与 host _list 一致）| 'use'=按被引用次数降序 | 'rel'=相关度（搜索时：标题命中>标签>正文，同级 updatedAt 降序））
+        // 筛选中心口径：排序是独立控件，与筛选条件正交（互不重置）
+        const [sortBy, setSortBy] = React.useState(() => loadFiltersState().sortBy)
+        // 筛选 popover + 排序菜单已拆出（§6 步骤 E：popovers/filter-pop.js + sort-menu.js——filterOpen/sortOpen 态与浮层 JSX 归各自 hook；
+        // filterOpenRef/sortOpenRef 为模块顶层绑定（Esc 直读）；共享点外关闭 effect 随 sort-menu 收容；浮层求值依赖 post-guard 结果经渲染函数入参注入）
+        const { filterOpen, setFilterOpen, renderFilterPop } = usePanelFilterPop({ filters: filters, sortBy: sortBy })
+        const { sortOpen, setSortOpen, sortMenuEl } = usePanelSortMenu({ sortBy: sortBy, filterOpen: filterOpen })
+        // 筛选条件/排序持久化 effect 已随 popovers/filter-pop.js 迁入（筛选中心条件编辑入口收容，hook 内同文，filters/sortBy 经入参注入）
+        // searchMatches（host notes-search 命中字段，「相关度」排序数据源）已随 panel/search.js 迁出
+        // 虚拟文件夹树：清单走 notes-folders RPC（list/create/rename/delete/reorder）；折叠态持久化 localStorage
+        // 文件夹右键菜单 + 管理动作族已拆出（§6 步骤 E：popovers/folder-menu.js——folders/foldersExpanded/内联输入/重命名/folderMenu 态 +
+        // 树 helper 族 + loadFolders + CRUD/reorder/reparent 归 usePanelFolderMenu；folderMenuRef/renamingIdRef/folderInputOpenRef/subFolderForRef
+        // 为该模块顶层绑定；Esc 栈/树渲染/面包屑经解构或 kernel 转发别名接入）
+        const { folders, foldersExpanded, folderInputOpen, folderInputText, subFolderFor, renamingId, renameText, setFolderMenu, setFolderInputOpen, setFolderInputText, setSubFolderFor, setRenamingId, setRenameText, loadFolders, folderSubtreeIdsOf, childFoldersOf, rootFolders, folderPathOf, isFolderExpanded, toggleFolder, expandFolder, folderName, openFolderMenu, doCreateFolder, doRenameFolder, doDeleteFolder, doReorderFolder, doReparentFolder, folderMenuEl } = usePanelFolderMenu({ notes: notes, view: view })
+        // 主题过滤行原地展开态（点行主体=展开/收起该主题子列表；object map，session 内有效，不持久化；缺省折叠）
+        // 主题过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「主题 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
+        // （topicExpanded/topicSecOpen 两态已随 panel/tree.js 迁出）
+        // folderInputOpen/folderInputText/subFolderFor/folderMenu/renamingId/renameText 六态已随 popovers/folder-menu.js 迁出（上方解构接入）
+        // ctxNewFolderText 已随 popovers/ctx-menu.js 迁出（usePanelCtxMenu hook 内）
+        // 新建笔记 modal 已拆出（§6 步骤 D1：modals/newnote.js）——open/title/pending 走 store.modal.newnote；newNoteOpenRef/newNoteInputRef/setNewNoteOpen/openNewNote 为该模块顶层绑定
+        // panel 订阅 open 供自动聚焦 effect（原口径）；newNoteKind 因 check 锚定其 useState 声明原文而滞留本面板，经 props/转发别名接入 modal
+        const newNoteOpen = store.modal.newnote.useSel(s => s.open)
+        const [newNoteKind, setNewNoteKind] = React.useState('note')   // 二期：新建选类型，按 KIND_TEMPLATES 预填骨架
+        // 注入范围浮层已拆出（§6 步骤 E：popovers/scope.js——sessList/sessPending/scopeOpen 态 + 会话轮询 + injectScopeLabel + 浮层 JSX
+        // 归 usePanelScope；setRoleSeg 联动开合经 kernel 转发别名 setScopeOpen；open/notes/edScope 经入参注入）
+        // 注入范围浮层 hook 调用点后移（§6 步骤 E：usePanelScope 依赖编辑器域 edScope——editor hook 先行，见 wiki 装配点后）
+        // 派发对话框已拆出（§6 步骤 D2：modals/dispatch.js）——open/activeSessions/pending/dispatching/mode/instr 走 store.modal.dispatch；
+        // dispatchOpenRef/loadActiveSessions/loadWorkspaces/openDispatch/doDispatchConfirm/doDispatchDone 为该模块顶层绑定（拼接序位对本面板可见）；
+        // panel 订阅 open/dispatching 供全局错误条互斥与编辑器「派发」按钮忙态（原渲染期读取口径）
+        const dispatchOpen = store.modal.dispatch.useSel(s => s.open)
+        const dispatching = store.modal.dispatch.useSel(s => s.dispatching)
+        // ===== 双模式编辑器 v3（原型 design/notes-editor-v3.html）：源码 textarea ⇄ 富文本受限 WYSIWYG =====
+        // editorMode/degraded/degradedRef/richSyncing 已随 panel/editor.js 迁出（usePanelEditor hook 内同文）；
+        // editorModeRef 在 kernel/state.js 跨域镜像群（panel/keyboard.js Ctrl+/ 直读；镜像写入随 panel/editor.js hook 内同文）
+        // 图片插入弹窗已拆出（architecture-modular §6 步骤 D1：modals/image.js）——state 走 store.modal.image，imgModalRef/setImgModal/openImgModal/pickImageFile 等为该模块顶层绑定
+        // 链接插入弹窗已拆出（architecture-modular §6 步骤 D1：modals/link.js）——state 走 store.modal.link，linkModalRef/setLinkModal 为该模块顶层绑定
+        // 笔记行右键菜单已拆出（§6 步骤 E：popovers/ctx-menu.js——ctxMenu/ctxNewFolderText 态 + openCtxMenu/ctxSetStatus/ctxMoveToFolder/
+        // ctxCreateFolderMove + 菜单 JSX 归 usePanelCtxMenu；ctxMenuRef 为该模块顶层绑定，Esc 直读；folders 经入参注入）
+        const { setCtxMenu, openCtxMenu, ctxMoveToFolder, ctxMenuEl } = usePanelCtxMenu({ folders: folders })
+        // 派发级联选择态（dispatchWsId/dispatchSessWs/dispatchSessId/wsList）随 dispatch modal 迁出（modals/dispatch.js）
+        // dispatchHistoryOpen（派发历史折叠态）已随 panel/editor.js 迁出（编辑器域派发历史区同文随迁）
+        // 设置卡片已拆出（§6 步骤 D2：modals/settings.js——open/data/llm/catalog/stale/budget/usageData/usageBudget/saving/logWeek/logRetention
+        // 走 store.modal.settings；usageBudgetRef/setPersistRef/settingsFlushRef/settingsOpenRef 为模块级单例；openSettings/saveSettings*/restoreSettingsAll/
+        // flushSettingsPending/closeSettings/SET_NUM_FIELDS 迁入）；panel 经 panelBridge.setSettingsOpen 回填别名中转互斥关闭
+        // 下列 3 项因 check 锚定其 useState 声明原文而滞留本面板（同 newNoteKind 先例），值经 props 注入 SettingsModal、setter/值经 panelBridge 供模块函数读写
+        const [setSnap, setSetSnap] = React.useState(null)        // 打开时快照（UI 形态值；dirty 判定与还原回滚的基准）
+        const [setInflight, setSetInflight] = React.useState(0)   // 在途设置写数（>0 = 存在尚未落盘的待写）
+        const [setMaxDepth, setSetMaxDepth] = React.useState('3')   // 文件夹嵌套深度上限（maxFolderDepth，层；0=不限，缺省 3）
+        // 数据导入/导出对话框已拆出（§6 步骤 D2：modals/export.js + export-single.js + import.js——open/dir/scope/folder/tag/toc/preview/overwrite/pending
+        // 各走 store 切片，exportOpenRef/sExportOpenRef/importOpenRef 为模块级 Esc 镜像）；panel 订阅 open 供全局错误条互斥（原渲染期读取口径）
+        const exportOpen = store.modal.export.useSel(s => s.open)
+        const sExportOpen = store.modal.exportSingle.useSel(s => s.open)
+        const importOpen = store.modal.import.useSel(s => s.open)
+        // ===== 显式归档 UI：预览对话框（速记组勾选 → 确认执行 → toast 可撤销）+ 手动笔记多选合并 =====
+        // 归档预览 modal 已拆出（§6 步骤 D1：modals/archive.js——open/groups/checked/expand/pending 走 store.modal.archive，openArchive/doArchiveConfirm/doArchiveUndo 迁入）
+        // 多选操作条已拆出（§6 步骤 E：popovers/selbar.js——selMode/selIds/selDelPending 态 + toggleSelMode/toggleSelId/
+        // doSelBatchDelete + 操作条 JSX 归 usePanelSelbar；selModeRef 为该模块顶层绑定；Esc/拖拽守卫直读该绑定，序位在前）
+        const { selMode, selIds, selDelPending, setSelMode, setSelIds, toggleSelMode, toggleSelId, selbarEl } = usePanelSelbar()
+        // 多选合并标题输入小对话框已拆出（§6 步骤 D1：modals/merge.js）——state 走 store.modal.merge，mergeOpenRef/setMergeOpen/openMerge 为该模块顶层绑定
+        // ===== 二期 ✨整理：notes-ai-organize 按 kind 模板重写正文；organizing/organizeUndoRef 已随 panel/editor.js 迁出（一次撤销栈同文）=====
+        // ===== 二期 孤儿资产清理已拆出（§6 步骤 D1：modals/prune.js——open/data/checked/pending 走 store.modal.prune，openPrune/doPruneConfirm 迁入）=====
+        // panel 订阅 open 供全局错误条互斥（原渲染期读取口径）；dryRun 返回：{ orphans:[{name,bytes}], totalBytes, referenced, tombstoned, notes }
+        const pruneOpen = store.modal.prune.useSel(s => s.open)
+        // ===== P1 回收站已拆出（§6 步骤 D1：modals/trash.js——open/list/pending/sel/preview 走 store.modal.trash，openTrash/loadTrash/doTrash*/toggleTrash* 迁入）=====
+        // panel 订阅 open 供全局错误条互斥（原渲染期读取口径）；回收站增强（notes-trash-batch-preview：批量选择 + 行内只读预览）随 modal 同域迁出
+        const trashOpen = store.modal.trash.useSel(s => s.open)
+        // 整理建议/注入预览/注入管理对话框已拆出（§6 步骤 D2：modals/suggest.js + inject-preview.js + inject-manager.js——
+        // open/data/pending/logHgExpand、open/data/tab/sid、open/list/filter/search/q/sel/pending 各走 store 切片，openRef/搜索防抖 ref 为模块级单例）；
+        // panel 订阅 open 供全局错误条互斥（原渲染期读取口径）
+        const suggestOpen = store.modal.suggest.useSel(s => s.open)
+        const injectPreviewOpen = store.modal.injectPreview.useSel(s => s.open)
+        const injMgrOpen = store.modal.injMgr.useSel(s => s.open)
+        // injectPreviewTab 因 check 锚定其 useState 声明原文而滞留本面板（同 newNoteKind 先例），经 props 注入 InjectPreviewModal、setter 经 panelBridge 供 openInjectPreview 复位
+        const [injectPreviewTab, setInjectPreviewTab] = React.useState('conv')   // 'conv' 约定 | 'cat' 目录
+        // 工作记忆 v0 启用对话框已拆出（§6 步骤 D2：modals/memory-guide.js——status/open/scope/wsPick/sidPick/pending 走 store.modal.memory，
+        // memScopeResolve/openMemEnable/doMemEnable/doMemDisable/memViewNote 迁入；memOpenRef 为模块级 Esc 镜像）；
+        // 日志卫生窗口设置项（setLogWeek/setLogRetention）随设置卡迁入 modals/settings.js；panel 订阅 open 供全局错误条互斥（原渲染期读取口径）
+        const memOpen = store.modal.memory.useSel(s => s.open)
+        // ===== 历史版本面板（notes-history-ui）：详情 meta 行「历史」入口（有版本才显示）→ modal：版本列表（时间+大小）→ 点选只读预览 → 恢复 =====
+        // 契约：notes-history {id}→{versions:[{ts,bytes}]}（倒序零正文）/ notes-history-get {id,ts}→{body} / notes-restore-history {id,ts}（恢复前当前版自动快照，可再撤销）
+        // modal 本体已拆出（§6 步骤 D1：modals/history.js——open/list/sel/preview/pending 走 store.modal.history，openHistory/selectHistVersion/doRestoreHistory 迁入）；
+        // panel 订阅 open 供全局错误条互斥（原渲染期读取口径）
+        const histOpen = store.modal.history.useSel(s => s.open)
+        // histCount/histCountRef 已随 panel/editor.js 迁出（历史入口探测归编辑器域；panelBridge.histCountRef/setHistCount 回填保持）
+        // ===== P2 笔记双链：全库正文惰性索引（列表瘦身不含 body；后台 notes-get 小批量补齐，驱动行尾双链标记与反向链接面板；host 不改）=====
+        // 双链域已拆出（§6 步骤 E：panel/wiki.js——wikiVer 态 + 解析/索引/跳转函数族归 usePanelWiki；wikiBodiesRef/wikiIdxGenRef/jumpWikiRef
+        // 为该模块顶层绑定；view/filters 经入参注入；selectNote/setView/setFilters 经 kernel 转发别名）
+        const { wikiVer, ensureWikiIndex, bumpWikiBody, hasWikiLinks, wikiResolve, jumpToWikiTarget } = usePanelWiki({ view: view, filters: filters })
+        // 编辑器域已拆出（§6 步骤 E：panel/editor.js——ed* 字段态/整理撤销栈/历史计数/双模式运行时 + selectNote/doSave/doDelete/
+        // applyRestoredBody/probeHistCount/insertImageMd/三态开关/工具栏/富文本绑定 + renderEditorEl 渲染函数 归 usePanelEditor；
+        // selected/notes/dispatching/wiki 族经入参注入；setSelected/setFocusId/later 等经 kernel 转发别名）
+        const { edScope, selectNote, doDelete, applyRestoredBody, probeHistCount, histCountRef, setHistCount, insertImageMd, afterArchiveCleanup, toggleScope, keepSel, restoreSel, scheduleRichSync, setEditorModeState, edBodyDomRef, richRef, richDirtyRef, setEdBody, renderEditorEl } = usePanelEditor({ selected: selected, notes: notes, dispatching: dispatching, wikiVer: wikiVer, wikiResolve: wikiResolve, bumpWikiBody: bumpWikiBody, jumpToWikiTarget: jumpToWikiTarget })
+        // 注入范围浮层已拆出（§6 步骤 E：popovers/scope.js；hook 调用点随 edScope 依赖后置于此——editor hook 先行回填 edScope）
+        const { sessList, sessPending, scopeOpen, setScopeOpen, injectScopeLabel, scopePanelEl } = usePanelScope({ open: open, notes: notes, edScope: edScope })
+        // keepQuickRef/edBodyDomRef/edLoadingRef/rich*Ref/ed*Ref/autoSaveRef 等编辑器运行时 ref 已随 panel/editor.js 迁出（hook 内同文）
+        const timersRef = React.useRef([])
+        // selectedRef 已迁 kernel/state.js（§6 步骤 D1：历史 modal 调用点被 check 锚定原文；本面板各处读写不变，解析到 kernel 同名绑定）
+        // 拖拽状态 ref（dragNoteIdRef/dragFolderIdRef）已随 panel/tree.js 迁出（该模块顶层绑定）
+        // 拖拽进行中标记 dragActive 同迁（驱动未入夹区「移出文件夹」落点提示行渲染）
+        // 键盘导航所需的 ref：openRef/focusIdRef/selectNoteRef/closeRef/moveFocusRef/openNewNoteRef 已随 panel/keyboard.js 迁出（该模块顶层绑定）；
+        // notesRef/searchRef/searchInputRef/searchDebRef/pagedIdsRef/switchModeRef/editorModeRef 迁 kernel/state.js 跨域镜像 ref 群（渲染期下方镜像块写入）
+        // 展开态镜像到 ref（keydown 闭包挂一次，需读最新值避免过期）
+        // ctxMenuRef 已随 popovers/ctx-menu.js 迁出（模块级单例，Esc 直读）
+        // folderMenuRef/renamingIdRef/folderInputOpenRef/subFolderForRef 已随 popovers/folder-menu.js 迁出（该模块顶层绑定，Esc 直读）
+        // 设置卡/派发/导出/单文件导出/导入/整理建议/注入预览/注入管理/工作记忆的 open 镜像 ref 随各 modal 迁入 modals/*.js
+        //（模块级单例，setter 别名同步写入；Esc 栈直读模块顶层绑定——setter 名与镜像名不变，keydown 长链逐字不动）
+        // histCountRef 已随 panel/editor.js 迁出（hook 内同文，经上方解构接入回填 panelBridge）
+        // selModeRef 已随多选操作条迁入 popovers/selbar.js（模块级单例，Esc 栈/拖拽守卫直读）
+        // 自动保存的编辑字段 ref 群 + autoSaveRef 已随 panel/editor.js 迁出（hook 内同文）
+        React.useEffect(() => { selectedRef.current = selected }, [selected])
+        function later(fn, ms) { try { const d = timer.timeout(fn, ms); timersRef.current.push(d); return d } catch (err) { return null } }
+        React.useEffect(() => {
+          const arr = timersRef.current
+          timersRef.current = []
+          for (const d of arr) { try { d() } catch (err) {} }
+        }, [])
+        // 面板位置/尺寸持久化恢复 + saveState 已随 panel/chrome.js 迁入（hook 内同文）
+        React.useEffect(() => { const fn = (s) => { if (s.panelOpen !== undefined) setOpen(s.panelOpen) }; listeners.add(fn); return () => listeners.delete(fn) }, [])
+        // 注入范围浮层的会话清单轮询 + 点外关闭 effect 已随 popovers/scope.js 迁入（该 hook 内同文，open/notes 经入参注入）
+        // 筛选中心浮层点外关闭 effect 已随 popovers/sort-menu.js 迁入（popover + 排序菜单共享同一 effect，同文）
+        // 派发对话框是 modal（自带 mask 点击外部关闭），无需 document 监听
+        React.useEffect(() => { const fn = () => loadNotes(true); noteRefreshListeners.add(fn); return () => noteRefreshListeners.delete(fn) }, [])
+        React.useEffect(() => { if (open) loadNotes() }, [open])
+        // 打开时居中定位 effect 已随 panel/chrome.js 迁入（hook 内同文，open 经入参注入）
+        // 搜索两段式已拆出（§6 步骤 E：panel/search.js——searchText/searchIds/searchMatches 态 + 250ms 防抖 host 检索归 usePanelSearch；
+        // searchRef/searchDebRef 在 kernel/state.js 跨域镜像群；filtersRef 镜像随该模块；filters 经入参注入）
+        const { searchText, searchIds, searchMatches, setSearchText, setSearchIds, setSearchMatches } = usePanelSearch({ filters: filters })
+        // 注入管理面板搜索防抖（250ms）随 modal 迁入 modals/inject-manager.js（injMgrSearchRef/injMgrSearchDebRef 为模块级单例，防抖 effect 挂 InjMgrModal）
+        // 搜索/视图/筛选中心条件变化时重置分页 effect 已随 panel/tree.js 迁入（该 hook 内同文，入参注入依赖值）
+        // 树渲染/分页/拖拽已拆出（§6 步骤 E：panel/tree.js——visibleCount/dragActive/topicExpanded/topicSecOpen 态 +
+        // onListScroll/双向拖拽族/renderTreeEls（内含 renderNoteRow/renderFolderNode）归 usePanelTree；post-guard 求值经 R 入参注入）
+        const { visibleCount, setVisibleCount, onListScroll, renderTreeEls } = usePanelTree({ notes: notes, view: view, filters: filters, searchText: searchText, searchIds: searchIds, folders: folders })
+        // 展开态同步到 ref（keydown 闭包读 ref 避免过期；已拆出 modal 的 open 镜像由各模块 setter 别名同步写入）
+        // filtersRef 镜像 + 同步 effect 已随 panel/search.js 迁入（该模块顶层绑定 + hook 内同文）
+        // 工作记忆 v0 日志专入口：类型组「日志」勾选态变化时重拉列表（host 默认排除日志；includeLogs=true 才返回，避免日常视图混入）
+        React.useEffect(() => {
+          const w = filters.kinds.indexOf('log') >= 0
+          if (w !== wantLogsRef.current) { wantLogsRef.current = w; loadNotes(true) }
+        }, [filters])
+        // filterOpen/sortOpen 的 ref 镜像 effect 已随 popovers/filter-pop.js / sort-menu.js 迁入（各自 hook 内同文）
+        // ctxMenuRef 同步 effect 已随 popovers/ctx-menu.js 迁入（该 hook 内同文）
+        // folderMenu/renamingId/folderInputOpen/subFolderFor 的 ref 镜像 effect 已随 popovers/folder-menu.js 迁入（该 hook 内同文）
+        // histCountRef 同步 effect 已随 panel/editor.js 迁入（hook 内同文）
+        // selModeRef 同步 effect 已随 popovers/selbar.js 迁入（该 hook 内同文）
+        // 新建 modal 打开时自动聚焦标题输入框（Ctrl+N / 侧栏「新建」chip 均由此聚焦）
+        React.useEffect(() => { if (newNoteOpen && newNoteInputRef.current) newNoteInputRef.current.focus() }, [newNoteOpen])
+        // 键盘导航已拆出（§6 步骤 E：panel/keyboard.js——keydown 监听（Esc 分层栈/Ctrl+K/N/// + j/k 导航）归 usePanelKeyboard；
+        // 所需 ref 为该模块顶层绑定 + kernel/state.js 跨域镜像群；本面板经下方镜像块每渲染回填最新值）
+        usePanelKeyboard()
+        // 标题栏/resize/分隔条拖拽族已随 panel/chrome.js 迁出（usePanelChrome hook 内同文）
+        // silent=true 时不显 loading（后台静默刷新，避免闪烁）
+        // 工作记忆 v0：筛选中心类型组勾选「日志」时列表数据源带 kind=log（host 默认排除日志——默认隐身；勾选即专入口，includeLogs 召回）
+        const wantLogsRef = React.useRef(false)
+        async function loadNotes(silent) { if (!silent) setLoading(true); setError(''); let list = []; try { const res = await rpc('notes-list', wantLogsRef.current ? { includeLogs: true } : undefined); list = res.notes || []; setNotes(list) } catch (err) { setError(String(err.message || err)) } loadFolders(); ensureWikiIndex(list); if (!silent) setLoading(false); return list }
+        // 文件夹清单加载已随 popovers/folder-menu.js 迁出（loadFolders 经解构接入；清洗陈旧展开 id 逻辑同文随迁）
+        // ===== P2 笔记双链：解析 / 索引 / 跳转 函数族已随 panel/wiki.js 迁出（上方解构接入；内核 extractWikiTargets/wikiLinksTo 同一口径）=====
+        // selectNote/doSave/doDelete 已随 panel/editor.js 迁出（经解构/kernel 转发别名接入；panelBridge 回填保持原名）
+        openNewNoteRef.current = openNewNote
+        // ===== 虚拟文件夹树交互：折叠切换/自动展开/新建/重命名/删除/排序 + 笔记移动（管理走 notes-folders RPC，移动走 notes-update 的 folder 字段）=====
+        // 嵌套 helper 族（folderSubtreeIdsOf/childFoldersOf/rootFolders/folderPathOf/isFolderExpanded/toggleFolder/expandFolder）+
+        // openFolderMenu + doCreateFolder/doRenameFolder/doDeleteFolder/doReorderFolder/doReparentFolder 已随 popovers/folder-menu.js 迁出（上方解构接入）
+        // 主题过滤行原地展开切换 toggleTopicExpanded 已随 panel/tree.js 迁出（同文）
+        // 自动展开/菜单打开/CRUD/reorder/reparent 已迁 popovers/folder-menu.js（同文）
+        // 笔记行右键「移动到文件夹」/「新建文件夹…」（ctxMoveToFolder/ctxCreateFolderMove）已随 popovers/ctx-menu.js 迁出
+        // ===== 拖拽挪入/挪出文件夹（HTML5 DnD；与右键「移动到文件夹」共用 ctxMoveToFolder 移动逻辑）=====
+        // 双向拖拽族（onNoteDrag*/onFolderDrag*/onUnfiled*）已随 panel/tree.js 迁出（同文；dragNoteIdRef/dragFolderIdRef 为该模块顶层绑定）
+        // 点击菜单外部关闭 effect 已随 popovers/ctx-menu.js / folder-menu.js 迁入各自 hook（同文）
+        function close() { panelOpen = false; notify() }
+        // jumpToSession（来源会话跳转）已随 panel/editor.js 迁出（编辑器 meta 行「来源」按钮同域）
+        // setRoleSeg/toggleRecall/toggleSens/toggleScope（注入三态/目录可见/敏感/范围多选）已随 panel/editor.js 迁出（同文；
+        // setScopeOpen 联动经 kernel 转发别名 → panelBridge 回填）
+        // ===== 双模式编辑器 v3：模式切换 / 序列化同步 / 工具栏 / 图片三入口 已随 panel/editor.js 迁出（switchMode/syncFromRich/scheduleRichSync/
+        // scheduleDegAnalyze/keepSel/restoreSel/toolbarAction/updateToolbarState/insertSanitizedHtml/insertImageMd + 富文本绑定 effect，同文）=====
+        // 派发链路已拆出（§6 步骤 D2：modals/dispatch.js——loadActiveSessions/loadWorkspaces/openDispatch 迁入，
+        // 模块顶层绑定经拼接序位对本面板可见；0.1.7 占位轮询经 panelBridge.later 中转，dispatchOpenRef 为模块级终止条件镜像）
+        // 设置卡链路已拆出（§6 步骤 D2：modals/settings.js——openSettings/maybeToastUsageBudget/settingsSetQuiet/setPersistMerge/saveSettings*/
+        // saveSettingsAll/restoreSettingsAll/flushSettingsPending/closeSettings/SET_NUM_FIELDS 迁入，模块顶层绑定经拼接序位对本面板可见；
+        // settingsOpenRef/usageBudgetRef/setPersistRef/settingsFlushRef 为模块级单例，Esc 栈直读模块绑定）
+        // 工作记忆 v0 链路已拆出（§6 步骤 D2：modals/memory-guide.js——memScopeResolve/openMemEnable/doMemEnable/doMemDisable/memViewNote 迁入，
+        // 模块顶层绑定经拼接序位对本面板可见；作用域解析数据源经 panelBridge.sessList/sessPending 中转）
+        // 数据导入/导出链路已拆出（§6 步骤 D2：modals/export.js + export-single.js + import.js——open/do 系列函数迁入，
+        // 模块顶层绑定经拼接序位对本面板可见；设置卡互斥经 panelBridge.setSettingsOpen 中转）
+        // 派发确认/回执已随 dispatch modal 迁出（§6 步骤 D2：modals/dispatch.js——doDispatchConfirm/doDispatchDone 迁入，
+        // 当前选中笔记读 kernel selectedRef，正文回填经 panelBridge.setEdBody 中转）
+        // ===== 显式归档：预览 → 勾选 → 执行 → toast 撤销 =====
+        // 归档后清理 afterArchiveCleanup 已随 panel/editor.js 迁出（同文；panelBridge.afterArchiveCleanup 回填保持）
+        // 归档预览弹窗链路已拆出（§6 步骤 D1：modals/archive.js——openArchive/doArchiveConfirm/doArchiveUndo 迁入，模块顶层绑定经拼接序位对本面板可见；
+        // doArchiveUndo 由 ArchiveModal 渲染期回填 panelBridge，merge modal 的撤销 toast 经 kernel 转发别名调最新实例）
+        // 孤儿资产清理弹窗链路已拆出（§6 步骤 D1：modals/prune.js——openPrune/doPruneConfirm 迁入，模块顶层绑定经拼接序位对本面板可见）
+        // 回收站弹窗链路已拆出（§6 步骤 D1：modals/trash.js——openTrash/loadTrash/doTrash*/toggleTrash* 迁入，模块顶层绑定经拼接序位对本面板可见）
+        // 注入预览链路已拆出（§6 步骤 D2：modals/inject-preview.js——openInjectPreview/loadInjectPreview 迁入，模块顶层绑定经拼接序位对本面板可见）
+        // 注入管理链路已拆出（§6 步骤 D2：modals/inject-manager.js——openInjectManager/loadInjectManager/injMgrRole/injMgrScopeLabel/doInjMgrSet/toggleInjMgrSel/doInjMgrBatch 迁入，
+        // 模块顶层绑定经拼接序位对本面板可见；搜索防抖 ref/句柄为模块级单例，防抖 effect 挂 InjMgrModal）
+        // 整理建议链路已拆出（§6 步骤 D2：modals/suggest.js——open/load/go-archive/view/batch-delete 系列函数迁入，
+        // 模块顶层绑定经拼接序位对本面板可见；「去归档」直调 archive 模块 openArchive（序位在前可见），孤儿「查看」经 kernel jumpToWikiTarget 别名中转）
+        // ===== 手动笔记多选合并：「选择」chip / 右键「合并为一篇」进多选态 → 底部操作条 → 标题输入 → notes-archive =====
+        // toggleSelMode/toggleSelId/doSelBatchDelete 已随多选操作条迁入 popovers/selbar.js（usePanelSelbar hook 内同文，
+        // 本面板经上方解构接入；selIds 快照供 merge modal 经 panelBridge.selIds 读取——回填行见下）
+        // 同步键盘导航所需 ref（keydown 监听挂一次，每次渲染刷新最新值）
+        openRef.current = open
+        focusIdRef.current = focusId
+        notesRef.current = notes
+        selectNoteRef.current = selectNote
+        closeRef.current = close
+        moveFocusRef.current = (ids, delta) => {
+          setFocusId(prev => {
+            const idx = prev ? ids.indexOf(prev) : -1
+            const next = idx < 0 ? (delta > 0 ? 0 : ids.length - 1) : Math.max(0, Math.min(ids.length - 1, idx + delta))
+            return (ids[next] != null) ? ids[next] : null
+          })
+        }
+        // 编辑字段 ref 镜像块 + 双模式 ref 镜像块已随 panel/editor.js 迁入（hook 内同文；editorModeRef/switchModeRef 写 kernel 镜像群）
+        // ===== panel 能力桥回填（architecture-modular §4.2/§6 步骤 D1：modals 禁横向引用，面板能力经 kernel panelBridge 中转）=====
+        // 每渲染刷新（与上方 ref 镜像群同口径）；ref 对象与 useState setter 恒等，函数取当次渲染闭包
+        panelBridge.setError = setError
+        panelBridge.setShowHelp = setShowHelp   // popovers/help.js（kernel 转发别名 → 本回填）
+        panelBridge.loadNotes = loadNotes
+        panelBridge.loadFolders = loadFolders
+        panelBridge.selectNote = selectNote
+        panelBridge.setFlashId = setFlashId
+        panelBridge.setSelected = setSelected   // 编辑器域跨域写入（selectNote/doDelete/afterArchiveCleanup 经 kernel 别名中转）
+        panelBridge.setFocusId = setFocusId     // 同上（selectNote 同步聚焦行）
+        panelBridge.setVisibleCount = setVisibleCount   // 侧栏搜索输入 onChange 重置分页（panel/tree.js setter 经 kernel 别名中转）
+        panelBridge.setView = setView           // 编辑器面包屑/双链跳转/树视图过滤跨域写入（kernel 别名中转）
+        panelBridge.later = later
+        panelBridge.edBodyDomRef = edBodyDomRef
+        panelBridge.setEditorModeState = setEditorModeState
+        panelBridge.setNewNoteKind = setNewNoteKind
+        panelBridge.insertImageMd = insertImageMd
+        panelBridge.applyRestoredBody = applyRestoredBody
+        panelBridge.probeHistCount = probeHistCount
+        panelBridge.histCountRef = histCountRef
+        panelBridge.setHistCount = setHistCount
+        panelBridge.setSettingsOpen = setSettingsOpen
+        panelBridge.setSelMode = setSelMode
+        panelBridge.setSelIds = setSelIds   // popovers/selbar.js（kernel 转发别名 → 本回填；Esc/右键「合并为一篇」跨域写入）
+        panelBridge.toggleSelMode = toggleSelMode   // 同上（侧栏「选择」chip 调用点文本被锚定，经 kernel 别名中转）
+        panelBridge.toggleSelId = toggleSelId   // 同上（树行复选框/行点击勾选）
+        // popovers/folder-menu.js 回填（kernel 转发别名 → 本桥；面板域内调用点经上方解构直取，不走本桥）
+        panelBridge.expandFolder = expandFolder
+        panelBridge.toggleFolder = toggleFolder
+        panelBridge.isFolderExpanded = isFolderExpanded
+        panelBridge.folderSubtreeIdsOf = folderSubtreeIdsOf
+        panelBridge.childFoldersOf = childFoldersOf
+        panelBridge.rootFolders = rootFolders
+        panelBridge.folderPathOf = folderPathOf
+        panelBridge.folderName = folderName
+        panelBridge.doCreateFolder = doCreateFolder
+        panelBridge.doRenameFolder = doRenameFolder
+        panelBridge.doDeleteFolder = doDeleteFolder
+        panelBridge.doReorderFolder = doReorderFolder
+        panelBridge.doReparentFolder = doReparentFolder
+        panelBridge.setRenamingId = setRenamingId
+        panelBridge.setRenameText = setRenameText
+        panelBridge.setFolderInputOpen = setFolderInputOpen
+        panelBridge.setFolderInputText = setFolderInputText
+        panelBridge.setSubFolderFor = setSubFolderFor
+        panelBridge.setFolderMenu = setFolderMenu
+        // popovers/ctx-menu.js 回填（kernel 转发别名 → 本桥；Esc/拖拽 drop 等调用点经别名中转）
+        panelBridge.setCtxMenu = setCtxMenu
+        panelBridge.ctxMoveToFolder = ctxMoveToFolder
+        panelBridge.doDelete = doDelete   // 编辑器域删除（ctx-menu「删除」项跨域调用；doDelete 滞留本面板，editor.js 迁出后同源回填）
+        panelBridge.setScopeOpen = setScopeOpen   // popovers/scope.js（kernel 转发别名 → 本回填；setRoleSeg 联动开合）
+        panelBridge.toggleScope = toggleScope   // 范围浮层勾选跨域调用（popover → 编辑器域，经 kernel 别名中转）
+        // popovers/filter-pop.js + sort-menu.js 回填（kernel 转发别名 → 本桥；筛选/排序状态机滞留本面板——useState 声明被锚定）
+        panelBridge.setFilters = setFilters
+        panelBridge.setSortBy = setSortBy
+        panelBridge.setFilterOpen = setFilterOpen
+        panelBridge.setSortOpen = setSortOpen
+        // 搜索域 setter 回填（kernel 转发别名 → 本桥；Esc 清搜索跨域调用；search.js 迁出后同源回填）
+        panelBridge.setSearchText = setSearchText
+        panelBridge.setSearchIds = setSearchIds
+        panelBridge.setSearchMatches = setSearchMatches
+        // panel/tree.js + popovers 域能力回填（kernel 转发别名 → 本桥；树行/树行右键/双链标记/范围文字跨域调用点经别名中转）
+        panelBridge.openCtxMenu = openCtxMenu
+        panelBridge.openFolderMenu = openFolderMenu
+        panelBridge.injectScopeLabel = injectScopeLabel
+        panelBridge.hasWikiLinks = hasWikiLinks
+        panelBridge.selIds = selIds
+        panelBridge.notes = notes
+        panelBridge.afterArchiveCleanup = afterArchiveCleanup
+        // doArchiveUndo 已随 archive modal 迁出：由 ArchiveModal 渲染期回填 panelBridge（本面板不再持有该函数）
+        panelBridge.wikiResolve = wikiResolve
+        panelBridge.restoreSel = restoreSel
+        panelBridge.keepSel = keepSel
+        panelBridge.richRef = richRef
+        panelBridge.richDirtyRef = richDirtyRef
+        panelBridge.scheduleRichSync = scheduleRichSync
+        panelBridge.sessList = sessList
+        panelBridge.sessPending = sessPending
+        panelBridge.jumpToWikiTarget = jumpToWikiTarget
+        panelBridge.setEdBody = setEdBody   // dispatch 确认后回填正文（modals/dispatch.js 经此中转，禁横向引用）
+        // check 锚定 useState 声明而滞留本面板的字段：值/ setter 回填供 modal 模块函数读写（每渲染刷新，点击期口径与昔日闭包一致）
+        panelBridge.setInjectPreviewTab = setInjectPreviewTab
+        panelBridge.setMaxDepth = setMaxDepth
+        panelBridge.setSetMaxDepth = setSetMaxDepth
+        panelBridge.setSnap = setSnap
+        panelBridge.setSetSnap = setSetSnap
+        panelBridge.setInflight = setInflight
+        panelBridge.setSetInflight = setSetInflight
+        // 自动保存 debounce 初始化 + triggerAutoSave 已随 panel/editor.js 迁入（hook 内同文，900ms 口径不变）
+        if (!open) return null
+        // 搜索关键词 <mark> 高亮（防 XSS）已迁 panel/search.js（模块级纯函数 highlight，序位在前对本面板可见）：q 先做正则元字符转义，split 片段全是纯文本、经 React 转义渲染后再包 mark 元素——绝不用 innerHTML 拼原文
+        // folderName 已随 popovers/folder-menu.js 迁出（经解构接入；树行尾/视图头/面包屑沿用）
+        const q = searchText.trim().toLowerCase()
+        const localFiltered = q ? notes.filter(n => { const hay = ((n.title || '') + ' ' + (n.preview || '') + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ') + ' ' + folderName(n.folder)).toLowerCase(); return hay.indexOf(q) >= 0 }) : notes
+        // 搜索结果取 host 全文 + 本地即时的并集，RPC 失败/延迟时本地结果保底
+        let filtered = searchIds ? notes.filter(n => searchIds.indexOf(n.id) >= 0 || localFiltered.indexOf(n) >= 0) : localFiltered
+        // 视图求值（原型 matches）：view 单选（all/folder/topic）∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索
+        if (view.type === 'topic') filtered = filtered.filter(n => (n.topic || '') === view.id)
+        // 文件夹视图 = 递归子树口径（notes-nested-folder-ui：点父文件夹视图含全部子孙文件夹内容，与 host notes-list folder 过滤同语义）
+        else if (view.type === 'folder') { const vsub = folderSubtreeIdsOf(view.id); filtered = filtered.filter(n => vsub[(n.folder || '')]) }
+        // 工作记忆 v0 隐身渲染守卫：类型组未勾「日志」时日志永不进日常视图（含搜索并集/清除筛选后的在途数据；专入口 = 勾选 kind=log）
+        filtered = filtered.filter(n => (n.kind || 'note') !== 'log' || filters.kinds.indexOf('log') >= 0)
+        filtered = filtered.filter(n => matchFilters(n, filters))
+        // 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0，如仅 topic 命中)，同级 updatedAt 降序；
+        // 命中字段优先取 host notes-search 返回的 matches（全文口径），无则按本地字段估算（preview 仅前 200 字，正文命中可能低估）；无搜索词时退化为 host 序
+        function relRank(n) {
+          const m = searchMatches[n.id]
+          if (m && m.length) { if (m.indexOf('title') >= 0) return 3; if (m.indexOf('tags') >= 0) return 2; if (m.indexOf('body') >= 0) return 1; return 0 }
+          if ((n.title || '').toLowerCase().indexOf(q) >= 0) return 3
+          if ((n.tags || []).join(' ').toLowerCase().indexOf(q) >= 0) return 2
+          if ((n.preview || '').toLowerCase().indexOf(q) >= 0) return 1
+          return 0
+        }
+        // 排序（P2 使用遥测 + 相关度档位）：缺省保持 host 序（pinned → updatedAt 降序）；「按引用」= useCount 降序（同数按 updatedAt 兜底），分组内顺序随过滤数组
+        if (sortBy === 'use') filtered = filtered.slice().sort((a, b) => ((b.useCount || 0) - (a.useCount || 0)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+        else if (sortBy === 'rel' && q) filtered = filtered.slice().sort((a, b) => (relRank(b) - relRank(a)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+        // 懒加载分页：只渲染前 visibleCount 条笔记行，滚动到底再加载更多（避免笔记多时全量渲染 + 每条跑 highlight）
+        const paged = filtered.slice(0, visibleCount)
+        const hasMore = filtered.length > visibleCount
+        // onListScroll 已随 panel/tree.js 迁出（经解构接入；树容器 onScroll 沿用）
+        // 注入范围文字函数 injectScopeLabel 已随 popovers/scope.js 迁出（经解构接入；树行尾 bolt tooltip 沿用）
+        // ===== 侧栏笔记行 renderNoteRow + 侧栏树构建已随 panel/tree.js 迁出（renderTreeEls 渲染函数内同文；求值上下文经 R 入参注入）=====
+        // 筛选中心：激活条件数 = 状态组勾选数 + 类型组勾选数（排序档位不计入）
+        const filterCount = FILTER_STATUS.reduce((s, f) => s + (filters[f.id] ? 1 : 0), 0) + filters.kinds.length
+        const filtersActive = view.type !== 'all' || filterCount > 0 || !!q
+        // 曾注入条件 feature-detect：列表 slim 含 injectEver 字段才显示该选项（host 未提供时隐藏；存量激活条件仍渲染 chip 可 × 移除）
+        const hasInjectEver = notes.some(n => n.injectEver !== undefined)
+        const sortLabel = (FILTER_SORTS.find(s => s.id === sortBy) || FILTER_SORTS[0]).label
+        // 筛选中心浮层 JSX 依赖视图求值结果（命中数/曾注入 feature-detect）——装配点在求值后渲染（popover 与主面板同渲染边界，口径不变）
+        const filterPopEl = renderFilterPop({ notes: notes, filters: filters, hasInjectEver: hasInjectEver, filteredCount: filtered.length, searchDebRef: searchDebRef })
+        // viewTitle 计算已随 panel/tree.js 迁入 renderTreeEls（同文）
+        const treeEls = renderTreeEls({ loading: loading, selected: selected, focusId: focusId, flashId: flashId, selMode: selMode, selIds: selIds, q: q, filtered: filtered, paged: paged, filtersActive: filtersActive, filterCount: filterCount, hasInjectEver: hasInjectEver, renamingId: renamingId, renameText: renameText, subFolderFor: subFolderFor, folderInputOpen: folderInputOpen, folderInputText: folderInputText })
+        // 侧栏 JSX 已随 panel/sidebar.js 迁出（renderSidebar 注册函数，post-guard 求值结果经 R 入参注入）
+        const sidebarEl = renderSidebar({ sideW: sideW, size: size, notes: notes, filtersActive: filtersActive, filtered: filtered, filters: filters, sortBy: sortBy, searchText: searchText, filterCount: filterCount, filterOpen: filterOpen, sortOpen: sortOpen, sortLabel: sortLabel, sortMenuEl: sortMenuEl, filterPopEl: filterPopEl, treeEls: treeEls, hasMore: hasMore, paged: paged, onListScroll: onListScroll, selMode: selMode })
+        // 树构建主体（视图头/置顶组/文件夹递归/未入夹平铺/主题全局过滤/空态/加载态 + pagedIdsRef 写入）已随 panel/tree.js 迁入 renderTreeEls（同文）
+        // ===== 编辑器区（原型 .ed）已随 panel/editor.js 迁出（renderEditorEl 渲染函数内同文：面包屑/meta chips/双模式正文/反向链接/底栏；post-guard 调用口径不变）=====
+        const { editorEl, curNote } = renderEditorEl({ scopePanelEl: scopePanelEl, scopeOpen: scopeOpen })
+        // ===== 面板根：标题栏（拖拽/入口切换/归档/帮助/关闭）+ 两栏 app 区 + 浮层 =====
+        return e('div', { className: 'dsh-notes-floating', style: { left: (pos.x || 0) + 'px', top: (pos.y || 0) + 'px', width: size.width + 'px', height: size.height + 'px' } },
+          titlebarEl,
+          helpEl,
+          e('div', { className: 'dsh-notes-app' },
+            sidebarEl,
+            // ===== 侧栏分隔条：4px 拖拽条，叠加在两栏 10px 间隙上不占位（负 margin 抵消 gap）；hover/拖拽中高亮；双击重置 =====
+            splitterEl,
+            editorEl),
+          resizeEl,
+          error && !dispatchOpen && !exportOpen && !sExportOpen && !importOpen && !pruneOpen && !trashOpen && !injectPreviewOpen && !suggestOpen && !histOpen && !memOpen && !injMgrOpen ? e('div', { className: 'dsh-notes-error' }, error) : null,
+          // 派发对话框已拆出（architecture-modular §6 步骤 D2：modals/dispatch.js；state 走 store.modal.dispatch，curNote 经 props 注入）
+          e(DispatchModal, { error: error, curNote: curNote }),
+          // 设置卡片已拆出（architecture-modular §6 步骤 D2：modals/settings.js；state 走 store.modal.settings，
+          // 工作记忆状态行经 store.modal.memory 订阅 + memory-guide 模块顶层绑定（序位在前）接入）
+          e(SettingsModal, { error: error, setMaxDepth: setMaxDepth, setSetMaxDepth: setSetMaxDepth, setSnap: setSnap, setInflight: setInflight }),
+          // 工作记忆启用对话框已拆出（architecture-modular §6 步骤 D2：modals/memory-guide.js；state 走 store.modal.memory，sessList/sessPending 经 props 注入）
+          e(MemoryGuideModal, { error: error, sessList: sessList, sessPending: sessPending }),
+          // 导出对话框已拆出（architecture-modular §6 步骤 D2：modals/export.js；state 走 store.modal.export）
+          e(ExportModal, { error: error }),
+          // 单文件导出对话框已拆出（architecture-modular §6 步骤 D2：modals/export-single.js；state 走 store.modal.exportSingle，notes/folders 经 props 注入）
+          e(SExportModal, { error: error, notes: notes, folders: folders }),
+          // 导入对话框已拆出（architecture-modular §6 步骤 D2：modals/import.js；state 走 store.modal.import）
+          e(ImportModal, { error: error }),
+          // 图片插入弹窗已拆出（architecture-modular §6 步骤 D1：modals/image.js；state 走 store.modal.image）
+          e(ImageModal),
+          // 链接插入弹窗已拆出（architecture-modular §6 步骤 D1：modals/link.js；state 走 store.modal.link）
+          e(LinkModal),
+          // 归档预览对话框已拆出（architecture-modular §6 步骤 D1：modals/archive.js；state 走 store.modal.archive）
+          e(ArchiveModal, { error: error }),
+          // 资产清理对话框已拆出（architecture-modular §6 步骤 D1：modals/prune.js；state 走 store.modal.prune）
+          e(PruneModal, { error: error }),
+          // 回收站对话框已拆出（architecture-modular §6 步骤 D1：modals/trash.js；state 走 store.modal.trash）
+          e(TrashModal, { error: error }),
+          // 整理建议对话框已拆出（architecture-modular §6 步骤 D2：modals/suggest.js；state 走 store.modal.suggest）
+          e(SuggestModal, { error: error }),
+          // 注入预览对话框已拆出（architecture-modular §6 步骤 D2：modals/inject-preview.js；state 走 store.modal.injectPreview，sessList/sessPending 经 props 注入）
+          e(InjectPreviewModal, { error: error, sessList: sessList, sessPending: sessPending, injectPreviewTab: injectPreviewTab, setInjectPreviewTab: setInjectPreviewTab }),
+          // 注入管理面板已拆出（architecture-modular §6 步骤 D2：modals/inject-manager.js；state 走 store.modal.injMgr，搜索防抖 effect 挂 InjMgrModal）
+          e(InjMgrModal, { error: error }),
+          // 历史版本面板已拆出（architecture-modular §6 步骤 D1：modals/history.js；state 走 store.modal.history）
+          e(HistoryModal, { error: error }),
+          // 多选合并标题输入框已拆出（architecture-modular §6 步骤 D1：modals/merge.js；state 走 store.modal.merge，selIds 经 props 注入）
+          e(MergeModal, { error: error, selIds: selIds }),
+          // 新建笔记 modal 已拆出（architecture-modular §6 步骤 D1：modals/newnote.js；open/title/pending 走 store.modal.newnote，kind/notes/selected/view/error 经 props 注入）
+          e(NewNoteModal, { error: error, notes: notes, selected: selected, view: view, newNoteKind: newNoteKind, setNewNoteKind: setNewNoteKind }),
+          // 笔记行右键菜单已拆出（§6 步骤 E：popovers/ctx-menu.js；ctxMenuEl 自 usePanelCtxMenu 解构）
+          ctxMenuEl,
+          // 文件夹项右键菜单已拆出（§6 步骤 E：popovers/folder-menu.js；folderMenuEl 自 usePanelFolderMenu 解构）
+          folderMenuEl,
+          // 多选操作条已拆出（§6 步骤 E：popovers/selbar.js；selbarEl 自 usePanelSelbar 解构）
+          selbarEl)
+      }
+      slots.register({ name: 'shell.overlay', id: 'dsh-notes-panel', order: 200 }, (props) => e(FloatingPanel, props))
+    })
+    if (typeof d3 === 'function') disposers.push(d3)
+
     ctx.effect(() => () => { for (const d of disposers) { try { d() } catch (e2) {} } })
     console.log('notes plugin: client ready')
     }

@@ -1,0 +1,3 @@
+# 本目录为 P2·1 技术验证 scratch（design/architecture-modular.md §8）
+# out/ 为 gen-parts.cjs 生成的切片与拼接产物（可再生，不进版本库）
+out/

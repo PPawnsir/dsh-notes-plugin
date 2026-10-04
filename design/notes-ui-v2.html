@@ -290,6 +290,11 @@
   /* 设置卡片 */
   .set-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--nbd-soft)}
   .set-row:last-child{border-bottom:0}
+  /* 设置卡标题栏动作区（notes-settings-feedback）：✕ 常驻关闭 + dirty 态「保存」（accent 实心主按钮）/「还原」（次按钮）——无改动时禁用灰显 */
+  .set-t-acts{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .set-t-acts .mbtn{padding:3px 12px;font-size:11px}
+  .set-t-acts .mbtn:disabled{opacity:.45;cursor:default}
+  .set-t-acts .set-x{padding:3px 6px;display:inline-flex;align-items:center}
   /* ===== 注入预览 modal（设置卡片「注入预览」入口）：双 tab + 只读等宽文本 + 底部统计条（app.html 同款） ===== */
   .modal.injprev{width:640px}
   .injprev-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px}
@@ -300,6 +305,30 @@
   .injprev-sess{margin-left:auto;width:auto;max-width:240px}
   .injprev-text{font-family:var(--nmono);font-size:11px;line-height:1.65;background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:10px 12px;max-height:48vh;min-height:120px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0;color:var(--nt2)}
   .injprev-stats{font-size:10.5px;color:var(--nt3);margin-top:10px;line-height:1.6}
+  /* ===== 注入管理面板 modal（设置卡片「注入管理」入口；notes-inject-manager）：统计 chips（点击=过滤）+ 搜索 + 批量条 + 三态 segmented 行（与原型 notes-ui-v2.html 同款） ===== */
+  /* 批量条/勾选复用 trash 系列（.trash-all/.selcnt/.trash-check/.trash-act） */
+  .modal.injmgr{width:680px}
+  .injmgr-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .injmgr-chips{display:flex;gap:4px;flex-shrink:0}
+  .injmgr-chip{font:inherit;font-size:11px;padding:3px 11px;border-radius:20px;border:1px solid var(--nbd);background:transparent;color:var(--nt2);cursor:pointer;white-space:nowrap}
+  .injmgr-chip:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .injmgr-chip.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:600}
+  .injmgr-search{flex:1;min-width:0;font:inherit;font-size:11.5px;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:4px 9px;outline:0}
+  .injmgr-search:focus{border-color:var(--nacc)}
+  .injmgr-batch{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11.5px;color:var(--nt2)}
+  .injmgr-list{border:1px solid var(--nbd-soft);border-radius:var(--nr-md);margin-bottom:10px;max-height:46vh;overflow-y:auto}
+  .injmgr-row{display:flex;align-items:center;gap:7px;padding:6px 9px;font-size:12px;border-bottom:1px solid var(--nbd-soft)}
+  .injmgr-row:last-child{border-bottom:none}
+  .injmgr-ti{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-weight:600}
+  .injmgr-scope{font-size:10.5px;color:var(--nt3);flex-shrink:0;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .injmgr-sens{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nwarn);flex-shrink:0}
+  .injmgr-ever{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nt3);flex-shrink:0}
+  .injmgr-seg{display:inline-flex;align-items:center;gap:2px;padding:2px 3px;border:1px solid var(--nbd);border-radius:14px;flex-shrink:0;color:var(--nt3)}
+  .injmgr-opt{padding:1px 8px;border-radius:11px;color:var(--nt3);cursor:pointer;user-select:none;font-size:11px}
+  .injmgr-opt:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .injmgr-opt.on{background:var(--nbg-sel);color:var(--nacc-tx);font-weight:600}
+  .injmgr-opt.dis{opacity:.38;cursor:default}
+  .injmgr-opt.dis:hover{background:transparent;color:var(--nt3)}
   /* ===== 历史版本面板 modal（详情 meta 行「历史」入口；notes-history-ui 示意；app.html 同款布局） ===== */
   .modal.hist{width:720px}
   .hist-body{display:flex;gap:10px;min-height:190px;margin-bottom:4px}
@@ -582,13 +611,19 @@ function _mockRpc(method, a) {
     if (a.body !== undefined && a.body !== n.body) _mockSnap(n);
     ['title', 'topic', 'tags', 'kind', 'status', 'injectTo', 'folder', 'body'].forEach(function (k) { if (a[k] !== undefined) n[k] = a[k] });
     if (a.inject !== undefined) n.inject = a.inject === true;
+    /* 工作记忆 v0 隐身硬闸（契约同 host _update）：生效 kind=log 时 inject 强制 false（injectForcedOff 告知，且不拉起 injectEver） */
+    var injForcedOff = false;
+    if ((a.kind || n.kind) === 'log' && n.inject === true) { n.inject = false; injForcedOff = true }
+    if (a.inject === true && !injForcedOff) n.injectEver = true;   /* injectEver 单向粘性（开启即曾注入，契约同 host _update） */
     if (a.injectRole !== undefined) n.injectRole = a.injectRole === 'reference' ? 'reference' : 'convention';
     if (a.recall !== undefined) n.recall = a.recall !== false;
     /* P3 派发闭环·保底联动（契约同 host _update）：置 resolved 自动回执全部未闭环派发 */
     var dispatchClosed = 0;
     if (a.status === 'resolved' && n.dispatches) n.dispatches.forEach(function (d, i) { if (!isDispDone(d)) { n.dispatches[i] = Object.assign({}, d, { done: true, dispatchStatus: 'done', doneAt: _mockNow(), receipt: 'resolved' }); dispatchClosed++ } });
     n.updatedAt = _mockNow();
-    return { id: n.id, kind: n.kind, status: n.status, dispatchClosed: dispatchClosed };
+    var ru = { id: n.id, kind: n.kind, status: n.status, dispatchClosed: dispatchClosed };
+    if (injForcedOff) ru.injectForcedOff = true;   /* 日志隐身硬闸命中告知（契约同 host _update） */
+    return ru;
   }
   if (method === 'notes-delete') { n = _mockNotes.find(function (x) { return x.id === a.id }); if (n) { _mockSnap(n); n.deleted = true; n.updatedAt = _mockNow() } return { id: a.id } }
   if (method === 'notes-restore') { n = _mockNotes.find(function (x) { return x.id === a.id }); if (n) { n.deleted = false; n.updatedAt = _mockNow() } return { id: a.id } }
@@ -882,25 +917,21 @@ function _mockRpc(method, a) {
       .map(function (g) { var cut = g.key.lastIndexOf('|'); var ws = g.key.slice(0, cut), mo = g.key.slice(cut + 1); return { key: g.key, title: '工作月志 · ' + (ws || '未分类') + ' · ' + mo, workspace: ws, month: mo, members: g.members } });
     return { archiveCandidates: (_mockRpc('notes-archive-preview', {}) || {}).quickGroups || [], staleCandidates: sgStale, orphanCandidates: sgOrph.slice(0, 20), logHygieneCandidates: { weekly: sgWeekly, monthly: sgMonthly }, generatedAt: _mockNow() };
   }
-  /* 工作记忆 v0 沉淀引导 mock（契约同 host notes-memory-guide）：发现键 tag memory-guide；状态 = 存在 tag 且 inject=true 的未删除笔记；
-     check = dry-run 扫描 inject=true 约定的「记录|日志|总结|沉淀|复盘|feedback|反馈」关键词命中（排除引导笔记自身）；enable 幂等 + confirmed 闸门 + 确保「工作日志」文件夹 */
+  /* 工作记忆 v0 沉淀引导 mock（契约同 host notes-memory-guide，r3 车道模型）：契约身份 contractType=memory-guide 主识别键 + tag memory-guide 兼容发现键；
+     状态 = 存在引导身份且 inject=true 的未删除笔记；check = 同类唯一性检查（已启用→返回已启用信息；跨车道重叠检测已删除）；enable 幂等无确认闸门 + 确保「工作日志」文件夹 */
   if (method === 'notes-memory-guide') {
-    var mgGuides = _mockNotes.filter(function (x) { return !x.deleted && (x.tags || []).indexOf('memory-guide') >= 0 });
+    var mgIsGuide = function (x) { return x && !x.deleted && (x.contractType === 'memory-guide' || (x.tags || []).indexOf('memory-guide') >= 0) };
+    var mgGuides = _mockNotes.filter(mgIsGuide);
     var mgActive = mgGuides.find(function (x) { return x.inject === true }) || null;
     var mgOp = a.op || 'status';
     if (mgOp === 'status') return { enabled: !!mgActive, noteId: mgActive ? mgActive.id : (mgGuides[0] ? mgGuides[0].id : ''), guideIds: mgGuides.map(function (x) { return x.id }) };
-    if (mgOp === 'check') {
-      var mgRe = /记录|日志|总结|沉淀|复盘|feedback|反馈/i;
-      return { overlaps: _mockNotes.filter(function (x) { return !x.deleted && x.inject === true && (x.tags || []).indexOf('memory-guide') < 0 && mgRe.test(String(x.title || '') + '\n' + String(x.body || '')) }).map(function (x) { return { id: x.id, title: x.title, topic: x.topic || '', preview: String(x.body || '').replace(/\s+/g, ' ').slice(0, 120) } }), enabled: !!mgActive, noteId: mgActive ? mgActive.id : '' };
-    }
+    if (mgOp === 'check') return { enabled: !!mgActive, already: !!mgActive, noteId: mgActive ? mgActive.id : '' };
     if (mgOp === 'enable') {
       if (mgActive) return { ok: true, id: mgActive.id, already: true };
-      var mgChk = _mockRpc('notes-memory-guide', { op: 'check' });
-      if (mgChk.overlaps.length && a.confirmed !== true) return { needConfirm: true, overlaps: mgChk.overlaps };
       if (!_mockFolders.some(function (f) { return f.name === '工作日志' })) _mockFolders.push({ id: 'f-' + Date.now().toString(36), name: '工作日志', order: _mockFolders.length });
       var mgId = _mockGenId(), mgNow = _mockNow();
-      _mockNotes.unshift({ id: mgId, title: '约定：工作日志沉淀（工作记忆 v0）', kind: 'note', topic: '约定', folder: '', status: 'active', inject: true, injectRole: 'convention', injectTo: Array.isArray(a.scope) ? a.scope : [], recall: true, tags: ['memory-guide'], createdAt: mgNow, updatedAt: mgNow, sessionId: '', cwd: '', dispatches: [], deleted: false, body: '【工作约定】会话工作沉淀（工作记忆 v0）\n\n（引导模板全文见 host MEMORY_GUIDE_BODY，原型从简）\n\n【分工边界】本约定只管「会话工作结论沉淀」；反馈类内容仍走反馈约定。' });
-      return { ok: true, id: mgId, overlaps: mgChk.overlaps.length };
+      _mockNotes.unshift({ id: mgId, title: '约定：工作日志沉淀（工作记忆 v0）', kind: 'note', topic: '约定', folder: '', status: 'active', inject: true, injectRole: 'convention', injectTo: Array.isArray(a.scope) ? a.scope : [], recall: true, tags: ['memory-guide'], contractType: 'memory-guide', createdAt: mgNow, updatedAt: mgNow, sessionId: '', cwd: '', dispatches: [], deleted: false, body: '【工作约定】会话工作沉淀（工作记忆 v0）\n\n（引导模板全文见 host MEMORY_GUIDE_BODY，原型从简）\n\n【分工边界】本约定只管「会话工作结论沉淀」；反馈类内容仍走反馈约定。' });
+      return { ok: true, id: mgId };
     }
     if (mgOp === 'disable') {
       if (!mgActive) return { ok: true, disabled: false };
@@ -1813,11 +1844,16 @@ $('q').addEventListener('input', function () {
 });
 
 /* ================= modal 框架 ================= */
+/* 设置卡交互反馈（notes-settings-feedback）：modalCloseHook = 关闭前兜底 flush 钩子（仅设置卡挂载；其余 modal 为 null，行为不变） */
+var modalCloseHook = null;
 function openModal(html) {
+  modalCloseHook = null;   /* 换 modal 即清钩子（设置卡在 openModal 后自行挂载） */
   $('modalHost').innerHTML = '<div class="mask" id="mask"><div class="modal" id="modal">' + html + '</div></div>';
-  $('mask').addEventListener('mousedown', function (ev) { if (ev.target === ev.currentTarget) closeModal() });
+  $('mask').addEventListener('mousedown', function (ev) { if (ev.target === ev.currentTarget) closeModalFlushed() });
 }
-function closeModal() { $('modalHost').innerHTML = '' }
+function closeModal() { $('modalHost').innerHTML = ''; modalCloseHook = null }
+/* ✕/Esc/点遮罩统一入口：先跑兜底 flush 钩子（读控件 DOM 需在清空前），再关 modal；无钩子 ≡ closeModal */
+function closeModalFlushed() { var h = modalCloseHook; if (h) h(); closeModal() }
 function modalErr(m) { var e = $('mErr'); if (e) { e.textContent = m; e.style.display = 'block' } }
 
 /* ================= 派发（notes-active-sessions + notes-dispatch；页面无 workspaces 服务，仅已有会话） ================= */
@@ -1970,8 +2006,20 @@ function doRestoreHistory() {
 }
 
 /* ================= 设置 / 导出 / 导入 ================= */
+/* 设置卡交互反馈（notes-settings-feedback）：✕ 常驻关闭 + dirty 跟踪「保存」（显式确认 + 兜底 flush）+「还原」回滚。
+   dirty 判定口径 = 在途待写（setInflight>0）或 任一控件值 ≠ 打开时快照（setSnap）；
+   自动保存（失焦/Enter/选择即存）零改动——「保存」按钮是显式确认 + 未落盘改动的兜底 flush，两者并存 */
+var setSnap = null;      /* 打开时快照 {llmP,llmM,catalog,stale,maxDepth,budget,usageBudget,logWeek,logMonth}（字符串口径同控件值） */
+var setPersist = null;   /* 已落盘镜像（兜底 flush/还原只写真不同的键） */
+var setInflight = 0;     /* 在途设置写数（>0 = 存在尚未落盘的待写） */
+var setSaving = false;   /* 保存/还原执行中（按钮防重入） */
 function openSettings() {
-  openModal('<div class="modal-t">' + icon('i-gear', 13) + ' 设置</div><div id="setBody"><div class="modal-hint">加载中…</div></div><div class="modal-err" id="mErr" style="display:none"></div>');
+  openModal('<div class="modal-t">' + icon('i-gear', 13) + ' 设置<span class="set-t-acts"><button class="mbtn" id="setRestore" disabled>还原</button><button class="mbtn primary" id="setSave" disabled>保存</button><button class="mbtn set-x" id="setClose" title="关闭（Esc；有未落盘改动先自动 flush）">' + icon('i-x', 11) + '</button></span></div><div id="setBody"><div class="modal-hint">加载中…</div></div><div class="modal-err" id="mErr" style="display:none"></div>');
+  modalCloseHook = flushSettingsPending;   /* ✕/Esc/点遮罩关闭前兜底 flush */
+  setSnap = null; setPersist = null; setSaving = false;   /* dirty 基准复位（settings-get 返回后再捕获快照） */
+  $('setClose').onclick = closeModalFlushed;
+  $('setSave').onclick = doSettingsSaveAll;
+  $('setRestore').onclick = doSettingsRestoreAll;
   rpc('notes-settings-get', {}).then(function (res) {
     if (!res || !$('setBody')) return;
     var settings = res.settings || {};
@@ -1990,6 +2038,9 @@ function openSettings() {
     var logRetentionDays = typeof settings.logRetentionDays === 'number' ? settings.logRetentionDays : 90;
     var lastChars = typeof res.lastInjectChars === 'number' ? res.lastInjectChars : 0;
     var gaugePct = budgetNum > 0 ? Math.min(100, Math.round(lastChars / budgetNum * 100)) : 0;
+    /* dirty/还原基准（notes-settings-feedback）：打开时快照 + 已落盘镜像初始化（字符串口径同控件值） */
+    setSnap = { llmP: l ? l.provider : '', llmM: l ? l.model : '', catalog: catalogOn, stale: String(staleDays), maxDepth: String(maxDepth), budget: String(budgetNum), usageBudget: String(usageBudget), logWeek: String(logWeekDays), logMonth: String(logRetentionDays) };
+    setPersist = setSnap;
     var llmCtrl;
     if (models.length) {
       llmCtrl = '<select class="minput" id="setLlmSel">'
@@ -2016,6 +2067,7 @@ function openSettings() {
       + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div></div>'
       + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>'
       + '<div class="set-row"><div class="set-label">注入预览<span class="s">查看 Agent 实际收到的注入文本（约定 + 目录）：敏感打码 / 时效标注 / 预算截断效果即所见；可按会话过滤</span></div><div class="set-ctrl"><button class="mbtn" id="setInjectPreview">预览…</button></div></div>'
+      + '<div class="set-row"><div class="set-label">注入管理<span class="s">全库注入总览：逐篇三态直改（关闭/约定/资料）+ 多选批量 + 三态过滤/搜索；日志隐身硬禁，敏感笔记注入自动脱敏</span></div><div class="set-ctrl"><button class="mbtn" id="setInjectManager">管理…</button></div></div>'
       + '<div class="set-row"><div class="set-label">数据<span class="s">全库目录快照导出 / 从快照目录导入（只增改不删，导入前自动全量备份）/ 回收站兜底（恢复或彻底删除）</span></div><div class="set-ctrl"><button class="mbtn" id="setExport">导出全部</button><button class="mbtn" id="setImport">导入…</button><button class="mbtn" id="setTrash">回收站</button></div></div>'
       + '<div class="set-row"><div class="set-label">资产清理<span class="s">扫描 assets/ 中未被任何笔记引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删）</span></div><div class="set-ctrl"><button class="mbtn" id="setPrune">清理…</button></div></div>'
       + '<div class="set-row"><div class="set-label">整理建议<span class="s">速记组归档 / 过期未引用清理 / 孤儿笔记候选 / 日志卫生提名（只提名不自动执行）</span></div><div class="set-ctrl"><button class="mbtn" id="setSuggest">打开</button></div></div>'
@@ -2064,6 +2116,7 @@ function openSettings() {
     $('setTrash').onclick = function () { openTrash() };
     $('setPrune').onclick = function () { openPrune() };
     $('setInjectPreview').onclick = function () { openInjectPreview() };
+    $('setInjectManager').onclick = function () { openInjectManager() };
     $('setSuggest').onclick = function () { openSuggest() };
     /* 工作记忆 v0：日志卫生窗口失焦即保存（非负整数；月聚合 0=关闭本级；非法输入报错不落盘） */
     $('setLogWeek').onchange = function () {
@@ -2076,7 +2129,7 @@ function openSettings() {
       if (!/^\d+$/.test(v)) { modalErr('日志月聚合窗口需为非负整数（0 = 关闭月聚合）'); return }
       saveSettings({ logRetentionDays: parseInt(v, 10) }, +v === 0 ? '已关闭日志月聚合提名' : '已保存：超过 ' + v + ' 天的日志将提名月聚合');
     };
-    /* 工作记忆 v0：沉淀引导状态行（单一事实源 = tag memory-guide 且 inject=true 的笔记；停用=关 inject，查看=跳转约定笔记） */
+    /* 工作记忆 v0 r3：沉淀引导状态行（单一事实源 = contractType: memory-guide（tag 兼容发现键）且 inject=true 的笔记；停用=关 inject，查看=跳转约定笔记） */
     rpc('notes-memory-guide', { op: 'status' }).then(function (st) { renderMemoryStatus(st && !st.error ? st : { enabled: false, noteId: '' }) }).catch(function () { renderMemoryStatus({ enabled: false, noteId: '' }) });
     /* LLM 月度用量预算提醒：失焦/Enter 即保存（非负整数；0 = 关闭） */
     $('setUsageBudget').onchange = function () {
@@ -2085,6 +2138,9 @@ function openSettings() {
       usageBudget = parseInt(v, 10);
       saveSettings({ usageBudgetMonthly: usageBudget }, +v === 0 ? '已关闭月度用量预算提醒' : '已保存：月度用量预算 ' + fmtTok(+v) + ' tokens');
     };
+    /* dirty 跟踪（notes-settings-feedback）：输入即刷新 保存/还原 按钮态（oninput 只刷新不落盘；失焦/Enter 即存的 onchange 链路不变） */
+    ['setStale', 'setMaxDepth', 'setBudget', 'setUsageBudget', 'setLogWeek', 'setLogMonth', 'setLlmP', 'setLlmM'].forEach(function (id) { var el = $(id); if (el) el.oninput = setDirtyRefresh });
+    setDirtyRefresh();
     /* LLM 用量统计（notes-token-stats）：独立 RPC 填充用量区；超月度预算 toast 提醒（不阻断） */
     rpc('notes-usage-get', {}).then(function (u) {
       var ub = $('setUsageBody');
@@ -2097,16 +2153,148 @@ function openSettings() {
   }).catch(function (e) { modalErr('设置加载失败：' + (e && e.message || e)) });
 }
 function saveSettings(patch, okMsg) {
+  setInflight++; setDirtyRefresh();
   rpc('notes-settings-set', patch).then(function (res) {
     if (res && res.error) { modalErr(res.error); return }
+    setPersistMerge(patch);
     if (okMsg) toast(okMsg);
-  }).catch(function (e) { modalErr('保存失败：' + (e && e.message || e)) });
+  }).catch(function (e) { modalErr('保存失败：' + (e && e.message || e)) }).then(function () { setInflight--; setDirtyRefresh() });
 }
-/* ================= 工作记忆 v0：沉淀引导启用流程（notes-memory-guide；裁决 A——约定笔记方案，无独立注入管线） =================
-   启用 = 创建预填约定笔记（inject=true + 作用域 injectTo，tag memory-guide 发现键）；状态不落 settings.json（存在且注入=启用）。
+/* ===== 设置卡交互反馈（notes-settings-feedback）：dirty 状态机 + 显式保存 / 还原 / 关闭兜底 flush ===== */
+/* dirty 判定：在途待写 > 0 或 任一控件值 ≠ 打开时快照 */
+function setDirtyCompute() {
+  if (!setSnap) return false;
+  if (setInflight > 0) return true;
+  if ($('setLlmSel') && $('setLlmSel').value !== (setSnap.llmP && setSnap.llmM ? setSnap.llmP + '/' + setSnap.llmM : '')) return true;
+  if ($('setLlmP') && ($('setLlmP').value.trim() !== setSnap.llmP || $('setLlmM').value.trim() !== setSnap.llmM)) return true;
+  if ($('setCatalog') && $('setCatalog').checked !== setSnap.catalog) return true;
+  var nums = [['setStale', 'stale'], ['setMaxDepth', 'maxDepth'], ['setBudget', 'budget'], ['setUsageBudget', 'usageBudget'], ['setLogWeek', 'logWeek'], ['setLogMonth', 'logMonth']];
+  for (var i = 0; i < nums.length; i++) { var el = $(nums[i][0]); if (el && String(el.value).trim() !== setSnap[nums[i][1]]) return true }
+  return false;
+}
+/* dirty 状态机出口：保存（accent 实心主按钮）/还原（次按钮）enabled ⇄ disabled 灰显 */
+function setDirtyRefresh() {
+  var d = setDirtyCompute();
+  var sv = $('setSave'), rs = $('setRestore');
+  if (sv) sv.disabled = !d || setSaving;
+  if (rs) rs.disabled = !d || setSaving;
+}
+/* 已落盘镜像逐键跟进（settings-set 成功后才调） */
+function setPersistMerge(patch) {
+  if (!setPersist) return;
+  var n = {}, k;
+  for (k in setPersist) n[k] = setPersist[k];
+  if ('llm' in patch) { n.llmP = patch.llm ? patch.llm.provider : ''; n.llmM = patch.llm ? patch.llm.model : '' }
+  if ('catalogEnabled' in patch) n.catalog = !!patch.catalogEnabled;
+  if ('staleDays' in patch) n.stale = String(patch.staleDays);
+  if ('maxFolderDepth' in patch) n.maxDepth = String(patch.maxFolderDepth);
+  if ('injectBudgetChars' in patch) n.budget = String(patch.injectBudgetChars);
+  if ('usageBudgetMonthly' in patch) n.usageBudget = String(patch.usageBudgetMonthly);
+  if ('logWeekAfterDays' in patch) n.logWeek = String(patch.logWeekAfterDays);
+  if ('logRetentionDays' in patch) n.logMonth = String(patch.logRetentionDays);
+  setPersist = n;
+}
+/* 低层写通道（保存/还原/关闭兜底 flush 共用）：不逐键 toast，错误 reject 透传；在途计数 + 已落盘镜像跟进 */
+function settingsSetQuiet(patch) {
+  setInflight++; setDirtyRefresh();
+  return rpc('notes-settings-set', patch).then(function (res) {
+    if (res && res.error) throw new Error(res.error);
+    setPersistMerge(patch);
+    return res;
+  }).then(function (r) { setInflight--; setDirtyRefresh(); return r }, function (e) { setInflight--; setDirtyRefresh(); throw e });
+}
+/* 数值字段登记表（DOM id ↔ 快照键 ↔ 设置 RPC 键 ↔ 校验文案）：保存校验/兜底 flush/还原回滚共用同一份口径 */
+var SET_NUM_FIELDS = [
+  ['setStale', 'stale', 'staleDays', '时效提醒阈值需为非负整数（0 = 关闭）'],
+  ['setMaxDepth', 'maxDepth', 'maxFolderDepth', '文件夹嵌套深度上限需为非负整数（0 = 不限层数）'],
+  ['setBudget', 'budget', 'injectBudgetChars', '注入体积预算需为非负整数（0 = 不限）'],
+  ['setUsageBudget', 'usageBudget', 'usageBudgetMonthly', '月度用量预算需为非负整数（0 = 关闭提醒）'],
+  ['setLogWeek', 'logWeek', 'logWeekAfterDays', '日志周聚合窗口需为非负整数（天）'],
+  ['setLogMonth', 'logMonth', 'logRetentionDays', '日志月聚合窗口需为非负整数（0 = 关闭月聚合）'],
+];
+/* 当前控件值 → 快照对象（保存成功后快照跟进用） */
+function setSnapFromControls() {
+  var s = { llmP: '', llmM: '', catalog: true, stale: '', maxDepth: '', budget: '', usageBudget: '', logWeek: '', logMonth: '' };
+  if ($('setLlmSel')) { var v = $('setLlmSel').value; s.llmP = v ? v.split('/')[0] : ''; s.llmM = v ? v.split('/').slice(1).join('/') : '' }
+  if ($('setLlmP')) { s.llmP = $('setLlmP').value.trim(); s.llmM = $('setLlmM').value.trim() }
+  if ($('setCatalog')) s.catalog = $('setCatalog').checked;
+  for (var i = 0; i < SET_NUM_FIELDS.length; i++) { var el = $(SET_NUM_FIELDS[i][0]); if (el) s[SET_NUM_FIELDS[i][1]] = String(el.value).trim() }
+  return s;
+}
+/* 「保存」：显式确认 + 兜底 flush——先校验全部数值字段（任一非法即中止并报错，改动保留继续编辑），
+   再串行落盘全部「控件值 ≠ 已落盘」的键（串行防写竞态），全部成功后快照跟进 + toast「设置已保存」+ dirty 复位 */
+function doSettingsSaveAll() {
+  if (setSaving || !setSnap || !setPersist) return;
+  var i, el, v;
+  for (i = 0; i < SET_NUM_FIELDS.length; i++) { el = $(SET_NUM_FIELDS[i][0]); if (el && !/^\d+$/.test(String(el.value).trim())) { modalErr(SET_NUM_FIELDS[i][3]); return } }
+  var patches = [];
+  /* 手输 LLM 两框齐备且 ≠ 已落盘才补写（下拉选择/开关变更即存无待写；单框不齐 = 存量失焦口径静默跳过） */
+  if ($('setLlmP')) {
+    var pv = $('setLlmP').value.trim(), mv = $('setLlmM').value.trim();
+    if (pv && mv && (pv !== setPersist.llmP || mv !== setPersist.llmM)) patches.push({ llm: { provider: pv, model: mv } });
+  }
+  for (i = 0; i < SET_NUM_FIELDS.length; i++) {
+    el = $(SET_NUM_FIELDS[i][0]); if (!el) continue;
+    v = String(el.value).trim();
+    if (v !== setPersist[SET_NUM_FIELDS[i][1]]) { var o = {}; o[SET_NUM_FIELDS[i][2]] = parseInt(v, 10); patches.push(o) }
+  }
+  setSaving = true; setDirtyRefresh();
+  var seq = Promise.resolve();
+  patches.forEach(function (p) { seq = seq.then(function () { return settingsSetQuiet(p) }) });
+  seq.then(function () {
+    setSaving = false;
+    setSnap = setSnapFromControls();   /* 快照跟进到当前控件值（显式确认完成 → dirty 复位，保存按钮回禁用态） */
+    toast('设置已保存');
+    setDirtyRefresh();
+  }, function (e) { setSaving = false; modalErr('保存失败：' + (e && e.message || e)); setDirtyRefresh() });
+}
+/* 「还原」：回滚到打开时快照——已落盘 ≠ 快照的键逐键串行写回（逐键恢复），全部控件复位到快照值 */
+function doSettingsRestoreAll() {
+  if (setSaving || !setSnap || !setPersist) return;
+  var s = setSnap, p = setPersist;
+  var patches = [];
+  if (p.llmP !== s.llmP || p.llmM !== s.llmM) patches.push({ llm: (s.llmP && s.llmM) ? { provider: s.llmP, model: s.llmM } : null });
+  if (p.catalog !== s.catalog) patches.push({ catalogEnabled: s.catalog });
+  for (var i = 0; i < SET_NUM_FIELDS.length; i++) { if (p[SET_NUM_FIELDS[i][1]] !== s[SET_NUM_FIELDS[i][1]]) { var o = {}; o[SET_NUM_FIELDS[i][2]] = parseInt(s[SET_NUM_FIELDS[i][1]], 10); patches.push(o) } }
+  setSaving = true; setDirtyRefresh();
+  var seq = Promise.resolve();
+  patches.forEach(function (pt) { seq = seq.then(function () { return settingsSetQuiet(pt) }) });
+  seq.then(function () {
+    setSaving = false;
+    /* UI 复位到打开时快照 */
+    if ($('setLlmSel')) $('setLlmSel').value = (s.llmP && s.llmM) ? s.llmP + '/' + s.llmM : '';
+    if ($('setLlmP')) { $('setLlmP').value = s.llmP; $('setLlmM').value = s.llmM }
+    if ($('setCatalog')) { $('setCatalog').checked = s.catalog; $('setCatalog').parentNode.lastChild.textContent = s.catalog ? ' 已开启' : ' 已关闭' }
+    for (var i = 0; i < SET_NUM_FIELDS.length; i++) { var el = $(SET_NUM_FIELDS[i][0]); if (el) el.value = s[SET_NUM_FIELDS[i][1]] }
+    toast('已还原：设置回滚到打开时的状态');
+    setDirtyRefresh();
+  }, function (e) { setSaving = false; modalErr('还原失败：' + (e && e.message || e)); setDirtyRefresh() });
+}
+/* 关闭兜底 flush（✕/Esc/点遮罩同口径，modalCloseHook 挂接）：「控件值 ≠ 已落盘」的有效改动串行静默落盘；
+   非法输入按存量口径丢弃（同关闭即弃）；≥1 项落盘则 toast 一次确认 */
+function flushSettingsPending() {
+  if (!setPersist || !$('setBody')) return;
+  var patches = [];
+  if ($('setLlmP')) {
+    var pv = $('setLlmP').value.trim(), mv = $('setLlmM').value.trim();
+    if (pv && mv && (pv !== setPersist.llmP || mv !== setPersist.llmM)) patches.push({ llm: { provider: pv, model: mv } });
+  }
+  for (var i = 0; i < SET_NUM_FIELDS.length; i++) {
+    var el = $(SET_NUM_FIELDS[i][0]); if (!el) continue;
+    var v = String(el.value).trim();
+    if (/^\d+$/.test(v) && v !== setPersist[SET_NUM_FIELDS[i][1]]) { var o = {}; o[SET_NUM_FIELDS[i][2]] = parseInt(v, 10); patches.push(o) }
+  }
+  if (!patches.length) return;
+  var seq = Promise.resolve();
+  patches.forEach(function (p) { seq = seq.then(function () { return settingsSetQuiet(p) }) });
+  seq.then(function () { toast('设置已保存') }, function (e) { toast('设置保存失败：' + (e && e.message || e)) });
+}
+/* ================= 工作记忆 v0：沉淀引导启用流程（notes-memory-guide；裁决 A——约定笔记方案，无独立注入管线；r3 车道模型） =================
+   启用 = 创建预填约定笔记（inject=true + 作用域 injectTo，contractType: memory-guide 身份标记，tag memory-guide 兼容发现键）；状态不落 settings.json（存在且注入=启用）。
+   r3 车道模型：记忆车道与约定车道并行——无冲突确认闸门、无跨车道重叠检测（产物重复是设计意图）；enable 幂等直建。
    作用域档（全局视角多选，不以「当前」为基准）= 所有会话（缺省，injectTo=[]）/ 指定工作区（多选，展开为所选工作区全部会话短 id 并集）/ 指定会话（多选会话短 id 清单）。 */
 var memStatus = null;   /* { enabled, noteId }（null=未探测） */
-var memEnableState = null;  /* 启用对话框状态：{ check:null=检查中|{overlaps}, scope:'global'|'workspace'|'session', sess:null=未加载|会话清单, wss:{工作区:true}, sids:{short:true}, pending } */
+var memEnableState = null;  /* 启用对话框状态：{ scope:'global'|'workspace'|'session', sess:null=未加载|会话清单, wss:{工作区:true}, sids:{short:true}, pending } */
 function renderMemoryStatus(st) {
   memStatus = st;
   var host = $('setMemoryCtrl'); if (!host) return;
@@ -2131,19 +2319,18 @@ function doMemDisable() {
   }).catch(function (e) { modalErr('停用失败：' + (e && e.message || e)) });
 }
 function openMemEnable() {
-  memEnableState = { check: null, scope: 'global', sess: null, wss: {}, sids: {}, pending: false };
+  memEnableState = { scope: 'global', sess: null, wss: {}, sids: {}, pending: false };
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' 启用沉淀引导<span class="sub">工作记忆 v0 · 约定笔记方案</span></div>'
-    + '<div class="modal-hint">将创建一条预填约定笔记「约定：工作日志沉淀（工作记忆 v0）」（inject=true，tag memory-guide），引导 Agent 在任务收尾/你示意时把会话结论写为工作日志（kind=log）。日志默认隐身：不进系统提示、不进目录、不出现在默认列表与默认搜索；筛选中心类型「日志」为专入口。该约定可见/可改/可停用/可删除。</div>'
+    + '<div class="modal-hint">将创建一条预填约定笔记「约定：工作日志沉淀（工作记忆 v0）」（inject=true，contractType: memory-guide），引导 Agent 在任务收尾/你示意时把会话结论写为工作日志（kind=log）。工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看），记忆管 Agent 自己沉淀什么（自用召回），两者可同时对同一事件生效，产物重复是设计意图而非冲突。日志默认隐身：不进系统提示、不进目录、不出现在默认列表与默认搜索；筛选中心类型「日志」为专入口。该约定可见/可改/可停用/可删除。</div>'
     + '<div class="sg-sec"><div class="sg-sec-t">注入范围（作用域）</div>'
     + '<label class="fg-item"><input type="radio" name="memScope" value="global" checked><span class="fl">所有会话（缺省）</span></label>'
     + '<label class="fg-item"><input type="radio" name="memScope" value="workspace"><span class="fl">指定工作区（多选，下方勾选）</span></label>'
     + '<div id="memWsList" style="display:none;max-height:120px;overflow:auto;margin:2px 0 4px 20px"></div>'
     + '<label class="fg-item"><input type="radio" name="memScope" value="session"><span class="fl">指定会话（多选，下方勾选）</span></label>'
     + '<div id="memSessList" style="display:none;max-height:160px;overflow:auto;margin:2px 0 4px 20px"></div></div>'
-    + '<div id="memOverlap"><div class="modal-hint">语义重叠检查中…</div></div>'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
-    + '<div class="modal-acts"><button class="mbtn" id="memCancel">取消</button><button class="mbtn primary" id="memOk" disabled>确认启用</button></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="memCancel">取消</button><button class="mbtn primary" id="memOk">确认启用</button></div>'
   );
   $('memCancel').onclick = function () { closeModal(); memEnableState = null };
   $('memOk').onclick = function () { doMemEnable() };
@@ -2183,26 +2370,7 @@ function openMemEnable() {
       }
     };
   });
-  /* 语义重叠检查（dry-run 零写入）：列出命中「记录/日志/总结/反馈」类关键词的已注入约定，确认后才创建 */
-  rpc('notes-memory-guide', { op: 'check' }).then(function (res) {
-    if (!memEnableState) return;
-    if (res && res.error) { memEnableState.check = { overlaps: [] }; renderMemOverlap(); modalErr(res.error); return }
-    memEnableState.check = res || { overlaps: [] };
-    renderMemOverlap();
-    $('memOk').disabled = false;
-  }).catch(function (e) { if (memEnableState) { memEnableState.check = { overlaps: [] }; renderMemOverlap(); modalErr('重叠检查失败：' + (e && e.message || e)) } });
-}
-function renderMemOverlap() {
-  var box = $('memOverlap'); if (!box || !memEnableState) return;
-  var overlaps = (memEnableState.check && memEnableState.check.overlaps) || [];
-  if (!overlaps.length) { box.innerHTML = '<div class="modal-hint">未发现语义重叠的已注入约定。</div>'; return }
-  box.innerHTML = '<div class="sg-sec"><div class="sg-sec-t">发现语义重叠的已注入约定<span class="sg-sec-n">' + overlaps.length + ' 条</span></div>'
-    + '<div class="arch-list">' + overlaps.map(function (o) {
-      return '<div class="arch-row"><span class="ti" title="' + esc(o.title || 'Untitled') + '">' + esc(o.title || 'Untitled') + '</span>'
-        + '<span class="meta">' + esc(o.topic || '未分类') + (o.preview ? ' · ' + esc(String(o.preview).slice(0, 60)) : '') + '</span></div>'
-    }).join('') + '</div>'
-    + '<div class="modal-hint">这些约定含「记录/日志/总结/反馈」类指令。引导模板内置【分工边界】声明：反馈类内容仍走反馈约定，日志只收工作结论——两者正交不双记。确认后继续启用。</div></div>';
-  $('memOk').textContent = '仍要启用';
+  /* r3 车道模型：无 op:'check' 重叠扫描与冲突确认——对话框打开即可确认启用（enable 幂等：已启用返回 already:true） */
 }
 function doMemEnable() {
   if (!memEnableState || memEnableState.pending) return;
@@ -2218,7 +2386,7 @@ function doMemEnable() {
     if (!scope.length) { modalErr('「指定会话」需至少勾选 1 个会话（或改选所有会话）'); return }
   }
   memEnableState.pending = true; $('memOk').disabled = true;
-  rpc('notes-memory-guide', { op: 'enable', scope: scope, confirmed: true }).then(function (res) {
+  rpc('notes-memory-guide', { op: 'enable', scope: scope }).then(function (res) {
     if (!memEnableState) return;
     if (res && res.error) { modalErr(res.error); memEnableState.pending = false; $('memOk').disabled = false; return }
     closeModal(); memEnableState = null;
@@ -2282,6 +2450,162 @@ function renderInjectPreview() {
   }
   var s = d && d.stats, se = $('injprevStats');
   if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.catalogChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') : '';
+}
+/* ================= 注入管理面板（设置卡片「注入管理」入口；notes-inject-manager）=================
+   数据源：notes-list {includeLogs:true} slim（inject/injectRole/injectEver/sensitive/kind/injectTo 齐备，零新 RPC；含日志——日志行禁用态展示）；
+   三态语义与详情区三态分段控件完全一致：off→notes-update {inject:false}；约定/资料→{inject:true, injectRole}（payload 禁 undefined）；
+   护栏：kind=log 注入硬禁（勾选/档位禁用 + title 提示；host 侧同口径强制 inject=false 并回 injectForcedOff）；
+         sensitive 允许注入但行内提示「注入时自动脱敏」；排序：注入中在前（约定 > 资料），组内 updatedAt 降序；
+   顶部统计 chips（约定 N / 资料 M / 未注入 K，点击=过滤）；搜索 250ms 防抖（与列表搜索同口径，本地过滤）。 */
+var injMgrState = null;   /* { list:null=加载中, filter:'all', search:'', q:'', sel:{}, pending:false } */
+var injMgrSearchTimer = null;
+/* 笔记三态（与详情区同口径）：inject=true → injectRole（缺省 convention）；否则 off */
+function injMgrRole(n) { return n.inject === true ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off' }
+/* 作用域摘要（injectTo 数；缺省/存量 global·workspace 值 = 全局） */
+function injMgrScopeLabel(injectTo) { var arr = (injectTo || []).filter(function (t) { return t !== 'global' && t !== 'workspace' }); return arr.length === 0 ? '全局' : arr.length + ' 个会话' }
+function openInjectManager() {
+  injMgrState = { list: null, filter: 'all', search: '', q: '', sel: {}, pending: false };
+  openModal(
+    '<div class="modal-t">' + icon('i-bolt', 13) + ' 注入管理<span class="sub">全库注入总览 · 单行直改 / 多选批量 · 日志隐身硬禁</span></div>'
+    + '<div class="injmgr-bar"><div class="injmgr-chips" id="injMgrChips"></div>'
+    + '<input class="injmgr-search" id="injMgrSearch" placeholder="搜索标题 / 主题 / 标签…"></div>'
+    + '<div id="injMgrBody"><div class="modal-hint">加载中…</div></div>'
+    + '<div class="modal-err" id="mErr" style="display:none"></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="injMgrClose">关闭</button></div>'
+  );
+  $('modal').classList.add('injmgr');
+  $('injMgrClose').onclick = function () { if (!injMgrState || !injMgrState.pending) { closeModal(); injMgrState = null } };
+  /* 搜索 250ms 防抖（与列表搜索同口径）：输入即更新受控值，防抖后才落过滤词 q */
+  $('injMgrSearch').oninput = function () {
+    if (!injMgrState) return;
+    injMgrState.search = this.value;
+    clearTimeout(injMgrSearchTimer);
+    injMgrSearchTimer = setTimeout(function () { if (injMgrState) { injMgrState.q = injMgrState.search.trim().toLowerCase(); renderInjectManager() } }, 250);
+  };
+  loadInjectManager();
+}
+function loadInjectManager() {
+  rpc('notes-list', { includeLogs: true }).then(function (res) {
+    if (!injMgrState) return;
+    if (res && res.error) { injMgrState.list = []; renderInjectManager(); modalErr(res.error); return }
+    injMgrState.list = (res && res.notes) || [];
+    renderInjectManager();
+  }).catch(function (e) { if (injMgrState) { injMgrState.list = []; renderInjectManager(); modalErr('加载失败：' + (e && e.message || e)) } });
+}
+/* 当前过滤视图（排序：注入中在前（约定 > 资料 > 未注入），组内 updatedAt 降序；三态过滤 + 搜索词本地过滤） */
+function injMgrShownList() {
+  var st = injMgrState; if (!st || !st.list) return [];
+  var w = { convention: 0, reference: 1, off: 2 };
+  var shown = st.list.slice().sort(function (a, b) { return (w[injMgrRole(a)] - w[injMgrRole(b)]) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) });
+  if (st.filter !== 'all') shown = shown.filter(function (n) { return injMgrRole(n) === st.filter });
+  if (st.q) shown = shown.filter(function (n) { return (n.title || '').toLowerCase().indexOf(st.q) >= 0 || (n.topic || '').toLowerCase().indexOf(st.q) >= 0 || (n.tags || []).join(' ').toLowerCase().indexOf(st.q) >= 0 });
+  return shown;
+}
+function renderInjectManager() {
+  var st = injMgrState, body = $('injMgrBody'), chips = $('injMgrChips');
+  if (!st || !body || !chips) return;
+  var list = st.list || [];
+  /* 顶部统计 chips（点击=过滤）：全部 / 约定 N / 资料 M / 未注入 K */
+  var cntConv = 0, cntRef = 0, cntOff = 0;
+  list.forEach(function (n) { var r = injMgrRole(n); if (r === 'convention') cntConv++; else if (r === 'reference') cntRef++; else cntOff++ });
+  chips.innerHTML = [['all', '全部 ' + list.length], ['convention', '约定 ' + cntConv], ['reference', '资料 ' + cntRef], ['off', '未注入 ' + cntOff]].map(function (c) {
+    return '<button class="injmgr-chip' + (st.filter === c[0] ? ' on' : '') + '" data-f="' + c[0] + '">' + c[1] + '</button>'
+  }).join('');
+  chips.querySelectorAll('.injmgr-chip').forEach(function (el) { el.onclick = function () { st.filter = el.getAttribute('data-f'); renderInjectManager() } });
+  if (!st.list) return;
+  var shown = injMgrShownList();
+  if (!shown.length) { body.innerHTML = '<div class="modal-hint">' + (list.length ? '无匹配笔记（调整过滤或搜索词）。' : '笔记库为空。') + '</div>'; return }
+  var selectable = shown.filter(function (n) { return (n.kind || 'note') !== 'log' });   /* log 行不可选（隐身硬禁） */
+  var selCnt = Object.keys(st.sel).length;
+  var allChecked = selectable.length > 0 && selectable.every(function (n) { return st.sel[n.id] });
+  body.innerHTML = '<div class="injmgr-batch">'
+      + '<label class="trash-all"><input type="checkbox" id="injMgrAll"' + (allChecked ? ' checked' : '') + (st.pending || !selectable.length ? ' disabled' : '') + '>全选</label>'
+      + '<span class="selcnt">已选 ' + selCnt + ' 条</span>'
+      + '<button class="mbtn trash-act" id="injMgrBatchConv"' + (st.pending || selCnt < 1 ? ' disabled' : '') + '>设为约定</button>'
+      + '<button class="mbtn trash-act" id="injMgrBatchRef"' + (st.pending || selCnt < 1 ? ' disabled' : '') + '>设为资料</button>'
+      + '<button class="mbtn trash-act" id="injMgrBatchOff"' + (st.pending || selCnt < 1 ? ' disabled' : '') + '>' + (st.pending ? '执行中…' : '关闭注入') + '</button></div>'
+    + '<div class="injmgr-list">'
+    + shown.map(function (n) {
+        var role = injMgrRole(n), isLog = (n.kind || 'note') === 'log';
+        /* 行内三态 segmented（语义与详情区三态分段控件完全一致）；log 行约定/资料档禁用（隐身硬禁 + title 提示） */
+        var seg = function (r, label, tip) {
+          var dis = isLog && r !== 'off';
+          return '<span class="injmgr-opt' + (role === r ? ' on' : '') + (dis ? ' dis' : '') + '" data-role="' + r + '" data-id="' + esc(n.id) + '" title="' + (dis ? '日志默认隐身：inject 强制关闭（kind=log 硬禁）' : tip) + '">' + label + '</span>'
+        };
+        return '<div class="injmgr-row">'
+          + '<span' + (isLog ? ' title="日志默认隐身：inject 强制关闭，不参与注入批量操作"' : '') + '><input type="checkbox" class="trash-check injmgr-check" data-id="' + esc(n.id) + '"' + (st.sel[n.id] ? ' checked' : '') + (isLog || st.pending ? ' disabled' : '') + '></span>'
+          + '<span class="dot" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>'
+          + '<span class="injmgr-ti" title="' + esc(n.title || '无标题') + '">' + esc(n.title || '无标题') + '</span>'
+          + (n.sensitive === true ? '<span class="injmgr-sens" title="敏感笔记：注入时自动脱敏（正文按行打码，键保留值遮蔽）">' + icon('i-lock', 9) + '注入时自动脱敏</span>' : '')
+          + (n.injectEver === true && !n.inject ? '<span class="injmgr-ever" title="曾注入：历史上开启过上下文注入（现已关闭；injectEver 为粘性标记，不随关闭回退）">' + icon('i-clock', 9) + '曾注入</span>' : '')
+          + '<span class="injmgr-scope">' + esc(injMgrScopeLabel(n.injectTo)) + '</span>'
+          + '<span class="injmgr-seg">' + icon('i-bolt', 10) + seg('off', '关闭', '不注入系统提示') + seg('convention', '约定', '须遵守的行为规则') + seg('reference', '资料', '事实性补充信息，Agent 按需取用') + '</span>'
+          + '</div>'
+      }).join('') + '</div>';
+  $('injMgrAll').onchange = toggleInjMgrAll;
+  $('injMgrBatchConv').onclick = function () { doInjMgrBatch('convention') };
+  $('injMgrBatchRef').onclick = function () { doInjMgrBatch('reference') };
+  $('injMgrBatchOff').onclick = function () { doInjMgrBatch('off') };
+  body.querySelectorAll('.injmgr-check').forEach(function (el) { el.onchange = function () { toggleInjMgrSel(el.getAttribute('data-id')) } });
+  body.querySelectorAll('.injmgr-opt').forEach(function (el) {
+    el.onclick = function () {
+      if (el.classList.contains('dis')) return;   /* log 禁用档不响应（双保险） */
+      var id = el.getAttribute('data-id'), n = (injMgrState && injMgrState.list || []).find(function (x) { return x.id === id });
+      if (n) doInjMgrSet(n, el.getAttribute('data-role'));
+    };
+  });
+}
+function toggleInjMgrSel(id) { if (!injMgrState || injMgrState.pending) return; if (injMgrState.sel[id]) delete injMgrState.sel[id]; else injMgrState.sel[id] = true; renderInjectManager() }
+/* 全选 = 当前过滤视图内可选（非 log）行；已全勾时再点清空 */
+function toggleInjMgrAll() {
+  if (!injMgrState || !injMgrState.list || injMgrState.pending) return;
+  var selectable = injMgrShownList().filter(function (n) { return (n.kind || 'note') !== 'log' });
+  var all = selectable.length > 0 && selectable.every(function (n) { return injMgrState.sel[n.id] });
+  injMgrState.sel = {};
+  if (!all) selectable.forEach(function (n) { injMgrState.sel[n.id] = true });
+  renderInjectManager();
+}
+/* 单行直改：点 segmented 档位即切换（同详情区通道 notes-update {inject, injectRole}），toast 反馈 */
+function doInjMgrSet(n, role) {
+  if (!n || !injMgrState || injMgrState.pending) return;
+  if ((n.kind || 'note') === 'log' && role !== 'off') return;   /* 日志隐身硬禁（按钮已禁用，双保险） */
+  if (injMgrRole(n) === role) return;
+  var upd = { id: n.id, inject: role !== 'off' };
+  if (upd.inject) upd.injectRole = role;   /* 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘） */
+  rpc('notes-update', upd).then(function (res) {
+    if (!injMgrState) return;
+    if (res && res.error) { modalErr(res.error); return }
+    if (res && res.injectForcedOff) toast('「' + (n.title || n.id) + '」日志默认隐身：inject 已强制关闭');
+    else toast(role === 'off' ? '已关闭注入：' + (n.title || n.id) : '已设为' + (role === 'reference' ? '资料' : '约定') + '：' + (n.title || n.id));
+    /* 本地即时回写（injectEver 粘性：开启即曾注入），后台刷新对齐 host */
+    n.inject = role !== 'off';
+    if (role !== 'off') { n.injectRole = role; n.injectEver = true }
+    renderInjectManager();
+    loadNotes(true);
+  }).catch(function (e) { modalErr('设置失败：' + (e && e.message || e)) });
+}
+/* 批量设为约定/资料/关闭：confirm 条数 → 逐条 notes-update（单条失败计数不中断）；完成后清选 + 刷新 */
+function doInjMgrBatch(role) {
+  if (!injMgrState || injMgrState.pending) return;
+  var ids = Object.keys(injMgrState.sel);
+  if (!ids.length) return;
+  var label = role === 'off' ? '关闭注入' : ('设为' + (role === 'reference' ? '资料' : '约定'));
+  if (!confirm('批量' + label + '：所选的 ' + ids.length + ' 条笔记将' + (role === 'off' ? '关闭上下文注入。' : '注入为' + (role === 'reference' ? '资料（按需取用）。' : '约定（须遵守）。')) + '\n确认执行？')) return;
+  injMgrState.pending = true; renderInjectManager();
+  var ok = 0, fail = 0, seq = Promise.resolve();
+  ids.forEach(function (id) {
+    var upd = { id: id, inject: role !== 'off' };
+    if (upd.inject) upd.injectRole = role;
+    seq = seq.then(function () {
+      return rpc('notes-update', upd).then(function (res) { if (res && res.error) fail++; else ok++ }, function () { fail++ });
+    });
+  });
+  seq.then(function () {
+    if (!injMgrState) return;
+    injMgrState.pending = false; injMgrState.sel = {};
+    toast('已' + label + ' ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''));
+    loadInjectManager(); loadNotes(true);
+  });
 }
 function openExport() {
   var last = '';
@@ -2968,7 +3292,7 @@ try { var savedTheme = localStorage.getItem('dsh-notes-app-theme'); if (savedThe
 document.addEventListener('keydown', function (ev) {
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'k') { ev.preventDefault(); $('q').focus(); return }
   if (ev.key === 'Escape') {
-    if ($('modalHost').firstChild) { closeModal(); archState = null; trashState = null; suggestState = null; histState = null; memEnableState = null; return }   /* 归档预览/合并/回收站/整理建议/历史版本/工作记忆启用对话框走 modalHost，Esc 统一关 */
+    if ($('modalHost').firstChild) { closeModalFlushed(); archState = null; trashState = null; injMgrState = null; suggestState = null; histState = null; memEnableState = null; return }   /* 归档预览/合并/回收站/注入管理/整理建议/历史版本/工作记忆启用对话框走 modalHost，Esc 统一关（设置卡先兜底 flush 再关，同 ✕） */
     if (sortOpen) { sortOpen = false; renderFilterBar(); return }   /* 排序菜单 Esc（优先于筛选 popover） */
     if (filterOpen) { filterOpen = false; renderFilterBar(); return }   /* 筛选 popover Esc 关闭 */
     if (scopeOpen) { scopeOpen = false; renderScopePanel(); return }

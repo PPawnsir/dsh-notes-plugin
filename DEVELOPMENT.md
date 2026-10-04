@@ -6,29 +6,80 @@
 
 | 文件 | 作用 |
 |---|---|
-| `host.js` | Host 引导壳（~20 行）：`fs.readText` 读 `src/host-impl.js` + `new Function('harness','pluginDir',src)` 执行。顶部 `PLUGIN_DIR` 是唯一需要配置的路径 |
-| `client.js` | Client 引导壳：经 `notes-src` RPC 拉 `src/client-impl.js` + `new Function('React','styles','host',src)`，带 800ms×15 重试 |
-| `src/host-impl.js` | Host 真正实现：fs 读写、LLM 主题分类、39 个 RPC、3 个 Agent 工具、约定注入、任务派发 |
-| `src/client-impl.js` | Client 真正实现：面板 UI、选区记录、键盘流、注入/派发交互 |
+| `host.js` | Host 引导壳（~33 行）：读 `src/host/manifest.dev.js` + 逐条目 `fs.readText` 拼接（LF 归一）+ `new Function('harness','pluginDir',src)` 执行。顶部 `PLUGIN_DIR` 是唯一需要配置的路径 |
+| `client.js` | Client 引导壳：经 `notes-src` RPC 拉 `src/client/**` 按 manifest 拼接的单文件 + `new Function('React','styles','host',src)`，带 800ms×15 重试 |
+| `src/host/**` | **Host 唯一源码**（P2·5 终态，昔日 `host-impl.js` 单体系谱已消亡）：模块树按 `src/host/manifest.dev.js`（开发版，host.js 运行时拼接）/ `manifest.dist.js`（发布版，`build-dist.cjs` 构建期拼接写盘 `index.mjs`）逐字节组装——`kernel/`（head/format/front-matter/session-ctx/settings-store/store-cache/persist）→ `inject/sensitive-helpers` → `llm/`（usage-classify/organize）→ `history-trash/`（engine/trash）→ `folders`/`notes` → `server`（RPC 基础设施 handle/perf + 核心注册表 + notes-css/notes-src 源下发；发布版 `server.dist.js` 同模块另含 webServer 三路由 + notes-ping）→ `inject/img-path-hint` → `dispatch`（会话元数据 + 派发闭环）→ `inject`（注入渲染 conventionText/catalogText + 双注入注册 order130/131 + settings-get/set/usage-get）→ `memory`（归档 + 整理建议 suggest + 日志卫生 + 工作记忆引导 memory-guide）→ `search` → `transfer`（导入导出 + 资产）→ `index`（工具层 3 工具 + 启动装配收尾，尾模块；发布版 `index.dist.js` 另含一次性迁移）。`kernel/format`、`kernel/front-matter`、`kernel/session-ctx`、`inject/sensitive-helpers`、`inject/img-path-hint`、`search` 六片双包逐字节一致 → 物理单份两清单同名引用；差异片以 `.dist.js` 后缀登记变体（§8.4.3 红线 9），`check/sections/45-host-modular.cjs` 锁定序位 + 共源/变体登记 + 方向断言 |
+| `src/client/**` | **Client（React 面板）唯一源码**：模块目录按 `src/client/manifest.js` 有序逐字节拼接为单文件（kernel 无 UI 域 / modals / popovers / panels，规格 `design/architecture-modular.md` §3.1）；拼接产物即昔日单文件 `client-impl.js` 全文（LF 归一），运行时经 `notes-src` 下发、`build-dist.cjs` 转换为发布包 |
+| `src/app/**` | **app 页（DOM 态）唯一源码**：片段目录按 `src/app/manifest.js` 有序逐字节拼接为 `packages/dsh-notes-plugin/app.html`（域结构镜像 client：kernel/panels/modals/popovers + 页面壳 shell/）；产物写盘提交，check.js 有可复现断言兜底 |
+| `src/shared/editor-kernel.js` | 编辑器内核 v3 标记块**物理单份**（两态共源，§4.3 唯一例外）：按列 0 维护；client 拼接侧逐非空行加 4 空格基座缩进（apply 体层级），app 拼接侧原样纳入；check.js 三端逐字节断言继续看守产物 |
 | `src/styles.css` | 全部样式（经 `notes-css` RPC 下发），Apple Notes 设计令牌 + 暗色适配 |
-| `check.js` | 回归测试套件（内存 mock，不碰真实笔记目录） |
+| `check.js` | 回归测试 **runner**（模式解析 + CORE 名单 + 节注册表 + 收尾总结）；内存 mock，不碰真实笔记目录 |
+| `check/helpers.cjs` | 测试共享设施：`t()`/`section()`/断言计数器/源码常量 + host mock 实例工厂 `createHostMocks()`（原单文件节 2 主体），跨节共享状态经 `S` 对象传递 |
+| `check/sections/*.cjs` | 60 个节断言模块（按节次命名如 `39-memory.cjs`），节体自原单文件逐字节迁移；节首从 `H`/`S` 解构依赖、节末 `Object.assign(S, {...})` 导出本节造数 |
 | `design/notes-ui-v2.html` | **UI 交互原型（唯一规格来源）**：单文件原生 JS，浏览器直接打开验证；UI 改动必须同步更新（见下方「UI 改动同步约定」） |
-| `scripts/build-dist.cjs` | **P3 发布构建**：把开发版 `src/client-impl.js` 机械转换为发布版 `packages/dsh-notes/lib/client.js`（带计数断言，漏改即中止） |
-| `packages/dsh-notes/` | **发布版静态包**（`dsh plugin add` 用）：`index.mjs`(host) / `lib/client.js`(client) / `package.json` / `cordis.patch.yml`；`lib/styles.css` 与开发版 `src/styles.css` 共用同一份（host 经 `notes-css` 下发） |
+| `scripts/concat-client.cjs` | **client 组装器**：`src/client/**` 按 manifest 逐字节拼接（零插入零改写零 banner，LF 归一）；`notes-src` 运行时下发与 `build-dist.cjs` 共用本规则（开发/发布同源）；`@shared/` 条目解析到 `src/shared/` 并加 4 空格基座缩进（同一规则在 `src/host/server.js` 与 `server.dist.js` 的 notes-src 各有一份内联实现） |
+| `scripts/concat-app.cjs` | **app 组装器**：`src/app/**` + `src/shared/` 按 manifest 逐字节拼接 → 写盘 `packages/dsh-notes-plugin/app.html`；`@shared/` 条目原样纳入（列 0 即页面形态） |
+| `scripts/concat-host.cjs` | **host 组装器**（P2·2 起）：`src/host/**` 按 `manifest.dev.js` / `manifest.dist.js` 双清单逐字节拼接——`concatHost()` 供 check.js 读开发版产物（与 host.js 运行时拼接同一规则），`concatHostDist()` 供 `build-dist.cjs` 写盘 `index.mjs`；`@shared-host/` 条目预留物理共源通道（暂无缩进提升，§8.4.1） |
+| `scripts/build-dist.cjs` | **P3 发布构建**：把 `src/client/**` 拼接产物机械转换为发布版 `packages/dsh-notes-plugin/lib/client.js`（带计数断言，漏改即中止），拼接 `src/host/**` → `index.mjs`，并同步 `lib/styles.css` 与 `app.html`（一次命令刷新四产物） |
+| `packages/dsh-notes-plugin/` | **发布版静态包**（`dsh plugin add` 用）：`index.mjs`(host) / `lib/client.js`(client，生成) / `app.html`(app 页，生成) / `lib/styles.css`(生成) / `package.json` / `cordis.patch.yml`；`lib/styles.css` 与开发版 `src/styles.css` 共用同一份（host 经 `notes-css` 下发） |
+
+### 模块树实景（P1+P2 终态）
+
+```
+src/
+├── client/                  ← React 面板唯一源码（46 片，manifest.js 有序逐字节拼接）
+│   ├── manifest.js          ← 唯一组装依据：kernel(10) + @shared(1) → modals(17) → popovers(7) → panels(11)
+│   ├── kernel/              ← 无 UI 域：bootstrap / bus / state(最小 store) / persist / constants / format / icons / perf / css-loader / drag
+│   ├── modals/              ← 17 个 modal 一文件一个：link image merge newnote history trash prune archive export export-single import inject-preview inject-manager suggest memory-guide dispatch settings
+│   ├── popovers/            ← 7 个浮层：help selbar folder-menu ctx-menu scope filter-pop sort-menu
+│   └── panels/              ← entries/(header-button fab) · selection/(capture=选区卡+toast 宿主) · panel/(search wiki tree editor sidebar chrome keyboard index=唯一装配点)
+├── app/                     ← app 页（DOM 态）唯一源码（40 片，manifest.js 拼接 → 写盘包内 app.html）
+│   ├── shell/               ← 页面壳片段 head.html / body.html / tail.html
+│   ├── kernel/              ← rpc / state / dom / helpers / data / bootstrap
+│   ├── panels/ modals/ popovers/  ← 域结构镜像 client（各自独立实现不共源，§4.3）；序位 = 昔日单文件字节序（域间交织，不为美学重排）
+│   └── manifest.js
+├── host/                    ← host 唯一源码（双清单：manifest.dev.js 22 片 / manifest.dist.js 23 片）
+│   ├── manifest.dev.js      ← 开发版清单：host.js 运行时拼接的唯一依据
+│   ├── manifest.dist.js     ← 发布版清单：build-dist.cjs 拼接写盘 index.mjs 的依据
+│   ├── kernel/              ← head(仅 dev) / format° / front-matter° / session-ctx° / settings-store* / store-cache* / persist*
+│   ├── inject/              ← sensitive-helpers° · img-path-hint°
+│   ├── llm/                 ← usage-classify* / organize*
+│   ├── history-trash/       ← engine* / trash*
+│   ├── folders.js* notes.js* server.js* dispatch.js* inject.js* memory.js* transfer.js* index.js*
+│   ├── search.js°           ← 共源单份片
+│   └── head.js apply-head.js（仅 dist，ESM 出口头）
+└── shared/
+    └── editor-kernel.js     ← 编辑器内核 v3 标记块物理单份（列 0 维护；client 侧拼接逐非空行加 4 空格基座缩进，app 侧原样纳入）
+```
+
+（`*` = 双包变体对：同名 `.js` + `.dist.js` 两清单各自登记，差异仅限 design/architecture-modular.md §8.1.5 清单内的设计内分歧，红线 9 禁止第三份拷贝；`°` = 双包逐字节一致、两清单同名引用同一物理文件的共源单份片，共 6 个——format / front-matter / session-ctx / sensitive-helpers / img-path-hint / search，节 45「共源片登记」断言显式看守其中 img-path-hint 与 search 两片不许出 .dist 变体。）
+
+**manifest 机制**：清单是「单引号路径一行一条」的纯文本（正则提取——host.js 沙箱内无 require），**注释中禁止出现单引号**；序位 = 拼接序 = 标识符可见序（后位可见前位顶层标识符，禁反向）。`@shared/` 条目解析到 `src/shared/`；host 侧预留 `@shared-host/` → `src/shared-host/` 通道（当前无条目）。
+
+### 组装器跑法（双出口）
+
+| 场景 | 命令 / 触发 | 说明 |
+|---|---|---|
+| 改 `src/host/**` 或 `src/client/**`（日常开发） | **无需跑脚本**：`cordis_run` 重启插件即生效 | host.js 运行时按 `manifest.dev.js` 拼接；client 由 host 的 `notes-src` RPC 按 `src/client/manifest.js` 拼接下发 |
+| 改 `src/app/**` 或 `src/shared/editor-kernel.js` | `node scripts/concat-app.cjs` | `app.html` 是写盘提交产物，改源后必须重拼（也可由 build-dist 一并刷新）；check.js「app.html 可复现」断言兜底防忘跑 |
+| 发布前 / 刷新发布包 | `node scripts/build-dist.cjs` | 一次刷新四产物：`lib/client.js`（拼接 + 6 组机械转换，计数断言漏改即中止）+ `lib/styles.css`（复制）+ `app.html`（拼接）+ `index.mjs`（按 `manifest.dist.js` 拼接写盘） |
+| 产物校验 | `node --check packages/dsh-notes-plugin/lib/client.js` + `node check.js` | index.mjs 为 ESM，其语法由 check.js 节 17 的动态 import 断言覆盖；回归见「测试」节 |
+
+`concat-client.cjs` / `concat-host.cjs` 是纯库（无 CLI 入口）：前者被 `build-dist.cjs` 与 `check/helpers.cjs` 复用；后者导出 `concatHost()` / `concatHostDist()`，分别供 check.js 读开发版拼接产物、`build-dist.cjs` 写盘 `index.mjs`。host 拼接规则共三份实现——host.js 引导壳、`server.js` / `server.dist.js` 的 `notes-src` host 分支、`scripts/concat-host.cjs`（沙箱无 require 无法共享代码），check.js 节 45 锚点断言锁定三者同规则（`manifest.dev.js` + 单引号清单纯文本解析）。
 
 ## 发布版静态包（P3）
 
-开发版（bootstrap 壳）与发布版（静态包）是**两份形态、同一份业务逻辑**：静态包由脚本从开发版生成，不手改产物。
+开发版（bootstrap 壳）与发布版（静态包）是**两份形态、同一份业务逻辑**：静态包由脚本从开发版模块源生成，不手改产物。
 
 ```bash
-node scripts/build-dist.cjs     # 改完 src/client-impl.js 后刷新 packages/dsh-notes/lib/client.js
-node --check packages/dsh-notes/lib/client.js
+node scripts/build-dist.cjs     # 改完 src/client/** 或 src/app/** 或 src/host/** 后一次性刷新四产物：lib/client.js + lib/styles.css + app.html + index.mjs
+node --check packages/dsh-notes-plugin/lib/client.js
 node check.js
 ```
 
 转换规则（详见 `task-board-plugin/docs/PACKAGING.md` 第 4 节，脚本里有对应的计数断言）：
 
-| 动态插件（`src/client-impl.js`） | 静态包（`lib/client.js`） |
+| 动态插件（`src/client/**` 拼接产物） | 静态包（`lib/client.js`） |
 |---|---|
 | `return { inject, apply }` + `new Function` 执行 | `window.__ModuleLoader__.load({ id, factory })`，`module.exports` 返回 `{name, inject, apply}` |
 | 全局 `React` | `require('react')`（factory 顶部） |
@@ -48,13 +99,13 @@ node check.js
 `cordis_define` 传输超长源码字符串可能被截断（历史上连续损坏过多次）。因此拆成：
 
 - **壳**（`host.js`/`client.js`）：极短、稳定，通过 `cordis_define` 传入，永不改业务逻辑
-- **实现**（`src/*-impl.js`/`src/styles.css`）：磁盘文件，运行时由壳加载
+- **实现**（`src/host/**` 模块树/`src/client/**` 模块源/`src/styles.css`）：磁盘文件，运行时由壳加载（host 侧由 host.js 按 `src/host/manifest.dev.js` 逐字节拼接；client 侧经 `notes-src` 按 `src/client/manifest.js` 逐字节拼接后下发）
 
-迭代流：**改磁盘实现文件 → `cordis_run(mode=run)` 重启即可，无需重新 define**。`src/host-impl.js` 每次加载会写 `.last-host-load` 心跳文件用于自检。
+迭代流：**改磁盘实现文件 → `cordis_run(mode=run)` 重启即可，无需重新 define**。host 拼接产物每次加载会写 `.last-host-load` 心跳文件用于自检（写入点在尾模块 `src/host/index.js`）。
 
 ## UI 改动同步约定（硬性）
 
-> ⚠️ **凡改动 UI（`src/client-impl.js` 布局/交互/视觉、`src/styles.css`），必须同步更新交互原型 `design/notes-ui-v2.html`**——原型是 UI 的唯一规格来源（单文件原生 JS + SVG 图标库 + DSH token 配色，浏览器直接打开即可验证），二者不允许出现行为或视觉偏差：
+> ⚠️ **凡改动 UI（`src/client/**` 布局/交互/视觉、`src/styles.css`），必须同步更新交互原型 `design/notes-ui-v2.html`**——原型是 UI 的唯一规格来源（单文件原生 JS + SVG 图标库 + DSH token 配色，浏览器直接打开即可验证），二者不允许出现行为或视觉偏差：
 >
 > - 新增/修改交互 → 原型先改或同一次改动内一起改，作为实现依据
 > - 视觉调整（间距/配色 token/图标）→ 同步进原型 CSS
@@ -81,7 +132,9 @@ node check.js
 
 `pluginDir` 由 `host.js` 经 `new Function('harness','pluginDir',src)(harness, PLUGIN_DIR)` 注入，实现内所有路径（`NOTES_DIR`/`CSS_PATH`/`perf-report`/心跳/`notes-src`）都从它派生，移植只需改 `host.js` 顶部一处。
 
-## Host 端（`src/host-impl.js`）
+## Host 端（`src/host/**`）
+
+模块树与双出口组装见上方「代码结构」表与 `design/architecture-modular.md` §8；序位 = 标识符可见序（后位可引用前位顶层标识符，禁前位引用后位——节 45 方向断言锁定关键跨模块依赖序），跨域共享态全部是 apply 作用域顶层标识符（§8.1.4），无 store 抽象。
 
 - `inject: ['fs','sandboxPolicy']`；`agents/llm/agentDefaultModel/systemPrompt/sessionPersistence/workspaceRegistry` 经 `ctx.get(...)` 可选读取
 - **缓存层**：`cache: Map<id, note>` 常驻内存；`persistNote` 写入即同步缓存，`_list` 命中零磁盘读；外部新增文件 list 时懒加载
@@ -94,7 +147,7 @@ node check.js
   - 导入导出：`copyNotesDir(target, { includeHistory })`——导出默认不含（`notes-export` 新参数 `includeHistory`，返回 `history` 计数），导入前备份恒含；导入合并仅 added 新笔记连带（同名快照跳过，返回 `historyMerged`），同 id 冲突跳过历史合并。
   - 红线：`_list/_get/_search` 主读取路径零新增 IO（`.history` 是子目录，列表只认 `n-*.md` 直子级）；快照/保留/预算全部挂写入路径；快照失败只 log 不阻塞保存。
 - **快速记录队列**：`quickChain` 串行化避免读-改-写竞态；同 session 且 10 分钟内合并，否则新建；主题分类异步回填（先落盘返回，不阻塞）
-- **39 个 RPC**：`notes-list/get/create/update/quick/quick-instruct/delete/restore/purge/archive/archive-preview/archive-undo/search/css/src/perf/conventions/inject-preview/sessions/active-sessions/workspaces/dispatch/dispatch-done/settings-get/settings-set/export/export-single/import-preview/import/asset-upload/folders/ai-organize/assets-prune/suggest/usage-get/history/history-get/restore-history/memory-guide`（工作记忆 v0 Phase 1：`notes-memory-guide {op:check/enable/status/disable}` 沉淀引导启用流程（约定笔记方案，tag memory-guide 发现键 + 语义重叠检查 + 确保「工作日志」文件夹）；kind=log 工作日志默认隐身（inject 硬 false / recall 缺省 false / 列表与默认搜索排除，筛选中心 kind=日志 专入口）且永不被过期/孤儿清理提名；front-matter 预留 logDate/entities/summarizedAt；规格 design/agent-memory-v0.md）（历史版本面板：`notes-history {id}` 版本列表倒序轻量零正文 `[{ts,bytes}]`、`notes-history-get {id,ts}` 取单版正文（预览只读）、`notes-restore-history {id,ts}` 把历史版写回正文——恢复前置自动快照：persistNote 缺省语义先把当前版入 `.history`，恢复动作本身可撤销；client 详情 meta 行「历史」入口（有版本才显示）→ modal 列表/预览/一键恢复）（二期新增 `notes-ai-organize` 按 kind 模板重写正文、`notes-assets-prune` 孤儿资产清理 dry-run 预览 + 白名单删除；P1 回收站：`notes-list` 参数化 `includeDeleted` + `notes-purge` 彻底删除——仅限已软删除笔记，`.md` 与 `.md.bak` 一并移除；ctx.fs 无删除契约，开发版落回墓碑式清空（0 字节占位，全链路视作不存在），静态包经 `fs.processPath` + `node:fs` 真删；P3 单文件导出：`notes-export-single` 按 scope（all/folder/tag）拼接单篇自包含 Markdown，图片 base64 内联，>20MB 告警仍导出；注入预览器：`notes-inject-preview {sessionId?, workspace?}` 纯复用 conventionText/catalogText 渲染产物 + 统计（脱敏/时效标注/预算截断），三档视角——缺省全局 / 传工作区标题（workspace）= 该工作区全部会话注入并集 / 传会话 id 按 injectTo 命中过滤（sessionId 与 workspace 互斥、同传 sessionId 优先），预览不更新 lastInjectChars；整理建议器：`notes-suggest` dry-run 零写入返回四类候选——archiveCandidates 速记组（内聚复用 `_archivePreview` 同款结构）/ staleCandidates 过期未引用（kind=note/link 且超 staleDays 且 useCount===0，遥测保护）/ orphanCandidates 孤儿 / logHygieneCandidates 日志卫生（工作记忆 v0：超 7 天周聚合 + 超 90 天月聚合提名，只提名不执行）（无 [[双链]] 出链与反向链接、inject=false、useCount=0、status=active 的普通笔记，排除速记与归档产物防误伤，上限 20），只提名不执行，client 三段式 modal 直达归档预览 / confirm 后批量软删 / 孤儿仅展示逐条跳转；LLM 用量统计：`notes-usage-get` 返回 { today, week, month, allTime, byFeature, estimatedTokens, exactTokens, calls }——llm-usage 标记块计量包装挂 3 个 llm 调用点（classifyTopic/extractInstruction=classify、_aiOrganize=organize，streamMetered 捕获 usage chunk 真实值优先、缺省字符估算 1.6 系数兜底），usage.json 独立于 settings.json 落盘（内存累积 + 5s 防抖 + 卸载 flush），settings 新键 `usageBudgetMonthly` 月度预算提醒阈值（tokens/月，0=关闭，超预算仅 client toast 不阻断））
+- **39 个 RPC**：`notes-list/get/create/update/quick/quick-instruct/delete/restore/purge/archive/archive-preview/archive-undo/search/css/src/perf/conventions/inject-preview/sessions/active-sessions/workspaces/dispatch/dispatch-done/settings-get/settings-set/export/export-single/import-preview/import/asset-upload/folders/ai-organize/assets-prune/suggest/usage-get/history/history-get/restore-history/memory-guide`（工作记忆 v0 Phase 1：`notes-memory-guide {op:check/enable/status/disable}` 沉淀引导启用流程（约定笔记方案；r3 车道模型——契约身份 contractType=memory-guide 主识别键 + tag 兼容发现键、check 同类唯一性零写入、enable 无 confirmed 闸门幂等直建、确保「工作日志」文件夹）；kind=log 工作日志默认隐身（inject 硬 false / recall 缺省 false / 列表与默认搜索排除，筛选中心 kind=日志 专入口）且永不被过期/孤儿清理提名；引导激活期日志自动落 origin=memory-guide 产物溯源；front-matter 预留 logDate/entities/summarizedAt；规格 design/agent-memory-v0.md）（历史版本面板：`notes-history {id}` 版本列表倒序轻量零正文 `[{ts,bytes}]`、`notes-history-get {id,ts}` 取单版正文（预览只读）、`notes-restore-history {id,ts}` 把历史版写回正文——恢复前置自动快照：persistNote 缺省语义先把当前版入 `.history`，恢复动作本身可撤销；client 详情 meta 行「历史」入口（有版本才显示）→ modal 列表/预览/一键恢复）（二期新增 `notes-ai-organize` 按 kind 模板重写正文、`notes-assets-prune` 孤儿资产清理 dry-run 预览 + 白名单删除；P1 回收站：`notes-list` 参数化 `includeDeleted` + `notes-purge` 彻底删除——仅限已软删除笔记，`.md` 与 `.md.bak` 一并移除；ctx.fs 无删除契约，开发版落回墓碑式清空（0 字节占位，全链路视作不存在），静态包经 `fs.processPath` + `node:fs` 真删；P3 单文件导出：`notes-export-single` 按 scope（all/folder/tag）拼接单篇自包含 Markdown，图片 base64 内联，>20MB 告警仍导出；注入预览器：`notes-inject-preview {sessionId?, workspace?}` 纯复用 conventionText/catalogText 渲染产物 + 统计（脱敏/时效标注/预算截断），三档视角——缺省全局 / 传工作区标题（workspace）= 该工作区全部会话注入并集 / 传会话 id 按 injectTo 命中过滤（sessionId 与 workspace 互斥、同传 sessionId 优先），预览不更新 lastInjectChars；整理建议器：`notes-suggest` dry-run 零写入返回四类候选——archiveCandidates 速记组（内聚复用 `_archivePreview` 同款结构）/ staleCandidates 过期未引用（kind=note/link 且超 staleDays 且 useCount===0，遥测保护）/ orphanCandidates 孤儿 / logHygieneCandidates 日志卫生（工作记忆 v0：超 7 天周聚合 + 超 90 天月聚合提名，只提名不执行）（无 [[双链]] 出链与反向链接、inject=false、useCount=0、status=active 的普通笔记，排除速记与归档产物防误伤，上限 20），只提名不执行，client 三段式 modal 直达归档预览 / confirm 后批量软删 / 孤儿仅展示逐条跳转；LLM 用量统计：`notes-usage-get` 返回 { today, week, month, allTime, byFeature, estimatedTokens, exactTokens, calls }——llm-usage 标记块计量包装挂 3 个 llm 调用点（classifyTopic/extractInstruction=classify、_aiOrganize=organize，streamMetered 捕获 usage chunk 真实值优先、缺省字符估算 1.6 系数兜底），usage.json 独立于 settings.json 落盘（内存累积 + 5s 防抖 + 卸载 flush），settings 新键 `usageBudgetMonthly` 月度预算提醒阈值（tokens/月，0=关闭，超预算仅 client toast 不阻断））
 - **3 个 Agent 工具**：`note_search`、`note_get`、`note_manage`（七 action：create/list/update/delete/restore/archive/dispatch）
 
 ### 约定注入（T2.3）
@@ -111,7 +164,9 @@ node check.js
 - `_dispatch` 共享函数：`_get` 笔记 → `agents.get(sessionId)` 校验活跃 → `agent.send(msg, 'next-turn', true)` 注入 → 正文追加「已派发→会话X @时间」
 - `note_manage dispatch` 无 `targetSessionId` 时返回活跃会话列表（`needTarget:true`）
 
-## Client 端（`src/client-impl.js`）
+## Client 端（`src/client/**`）
+
+模块目录按 `src/client/manifest.js` 拼接为单文件下发（kernel → modals → popovers → panels 序位 = 标识符可见顺序；禁横向引用，跨域走 kernel bus/store——规格 `design/architecture-modular.md` §4.2）。编辑器内核 v3 标记块是 `src/shared/editor-kernel.js` 物理单份，拼接时纳入。
 
 - 注入 `conversation.session.header.actions`（order 40）头部按钮 + `shell.overlay`（order 200 面板 / 201 选区按钮）
 - 面板状态（位置/尺寸/列宽）持久化 `localStorage` `dsh-notes-panel-state`
@@ -126,24 +181,60 @@ node check.js
 - 正文编辑走 `notes-get` 按需加载（列表是瘦身数据，不含 body）
 - 样式经 `notes-css`、实现源码经 `notes-src` 下发（避免 define 传大字符串）
 
+## app 页（`src/app/**` → `packages/dsh-notes-plugin/app.html`）
+
+- 半独立全窗口笔记页（`/dsh-notes-app` GET 路由下发）：原生 DOM 实现，与 React 面板两态并存、功能面大致平行但**不逐项等价**（页面专属 topbar/主题切换/无标题直建；面板专属双入口/标题 modal/帮助气泡）——两态不抽象（architecture-modular.md §4.3）
+- 源在 `src/app/**`（域结构镜像 client：kernel/panels/modals/popovers + shell 页面壳），改源后跑 `node scripts/concat-app.cjs`（或 `build-dist.cjs` 一并）拼回单文件 `app.html` **写盘提交**；check.js 读产物做锚点断言，另有可复现断言兜底防忘跑
+- 与 client 的物理共源仅 `src/shared/editor-kernel.js`（编辑器内核 v3 标记块，§4.3 唯一例外）；其余两态同步纪律不变：check.js 四端锚点断言 + 原型 `design/notes-ui-v2.html` 回写
+
+## 新增功能开发规范（模块往哪放）
+
+P1+P2 模块化落地后，一切改动都在 `src/**` 模块源上进行，**禁止手工编辑四产物**（`lib/client.js` / `lib/styles.css` / `app.html` / `index.mjs` 全部由组装器/构建脚本生成，check.js 可复现断言兜底）。新功能按下面落点表选文件：
+
+### 新 RPC（host 侧）
+
+1. **选域**：按功能归属放进现有域模块——笔记 CRUD → `src/host/notes.js`；文件夹 → `folders.js`；历史/回收站 → `history-trash/`；归档/整理建议/日志卫生/工作记忆 → `memory.js`；注入渲染/设置面 → `inject.js`；会话元数据与派发 → `dispatch.js`；检索 → `search.js`；导入导出/资产 → `transfer.js`；LLM → `llm/`；基础设施（handle 包装/perf/notes-css/notes-src 下发）→ `server.js`；工具层 → `index.js`（尾模块）。确实不属于任何域才新建模块文件。
+2. **双包形态**：开发/发布无差异 → 单文件、两 manifest 同名引用（先例：`search.js`、`inject/img-path-hint.js`）；有设计内差异（路径拼接/删除通道/webServer 路由/一次性迁移等，architecture-modular.md §8.1.5 清单）→ 建 `<name>.js` + `<name>.dist.js` 变体对，两 manifest 各自登记（§8.4.3 红线 9：禁止第三份拷贝）。
+3. **登记 manifest**：在 `src/host/manifest.dev.js` / `manifest.dist.js` 按序位插入——**序位 = 标识符可见序**，消费方必须排在定义方之后（节 45 方向断言锁定关键跨模块序位）；manifest 注释禁单引号。
+4. **配套断言**：带数字的 RPC 面断言（如「39 个 RPC」「host 应用成功」）同步 +1；新行为断言加进对应 check 节或新建节。
+5. 改完先 `node check.js --only=<相关节>` 聚焦，再全量收尾。
+
+### 新 client UI（modal / popover / panel）
+
+1. **落点**：modal → `src/client/modals/<name>.js`（一文件一个：open 态 + 数据加载 + 确认动作 + JSX 片段）；浮层 → `popovers/`；面板子域 → `panels/panel/`（唯一装配点 `panels/panel/index.js`）。
+2. **登记 manifest**：`src/client/manifest.js` 域内按序插入。**依赖红线：modals/popovers/panels 只依赖 kernel，禁横向引用**——modal 需要别的 modal 的数据（如设置卡开注入预览）经 kernel bus/store 中转，不许直接调对方的 open 函数；序位即可见性，kernel 先于一切。模块头部按 `// provides:` / `// needs:` 注释契约声明出入参。
+3. **状态**：modal state 挂 kernel store 的命名空间切片（`store.modal.<name>`），不在装配组件里加并列 useState；会话级状态按 sessionId 分桶（静态包进程单例约束，见「发布版静态包」节警告）。
+4. **同步纪律（硬性）**：UI/视觉/交互改动必须同步原型 `design/notes-ui-v2.html`（见上方「UI 改动同步约定」）；四端锚点断言（开发版 client / 发布包 lib/client.js / app.html / 原型）随功能补齐；app 页对应功能改 `src/app/**` 后跑 `node scripts/concat-app.cjs`。
+
+### 新测试节
+
+`check/sections/<节号>-<名称>.cjs` 一文件一节：`module.exports = { id, title, run(H, S) }`，节首从 `H`/`S` 解构依赖、节末 `Object.assign(S, {...})` 导出本节造数；在 `check.js` 的 `SECTIONS` 数组按节序注册（注册表注释照抄节标题）。代表性断言加进 `check.js` 顶部 `CORE` 名单（名单名与断言名逐字一致，收尾命中校验兜底改名/删除）。
+
 ## 笔记文件格式
 
-见 [README.md](README.md#数据模型)。完整字段：`id/title/topic/workspace/tags/kind/status/inject/injectTo/createdAt/updatedAt/sessionId/cwd/mergedFrom/archivedAt/deleted`。
+见 [README.md](README.md#数据位置)。完整字段：`id/title/topic/workspace/tags/kind/status/inject/injectTo/createdAt/updatedAt/sessionId/cwd/mergedFrom/archivedAt/deleted`。
 
 ## 测试
 
+测试套件为模块化结构：`check.js`（runner：模式解析/CORE 名单/节注册表/总结）+ `check/helpers.cjs`（共享设施）+ `check/sections/*.cjs`（60 节断言体）。断言总数 587（随版本演进；拆分自原单文件时逐字节迁移，语义零变化）。
+
 ```bash
-node check.js           # 全量回归（默认，514 条；verifier/发布前用）
-node check.js --core    # 核心快检：73 条主链路代表性断言，秒级（worker 自测用）；也可用 CHECK_CORE=1
+node check.js                 # 全量回归（默认，587 条；verifier/发布前用）
+node check.js --core          # 核心快检：108 条主链路代表性断言，秒级（worker 自测用）；也可用 CHECK_CORE=1
+node check.js --only=39,42    # 分节运行：只执行选中节的断言（逗号分隔节号或节名前缀）；也可用 CHECK_ONLY=39,42
+node check.js --core --only=40  # 可组合：选中节内再按 CORE 名单过滤（此时名单命中校验自动跳过）
 ```
+
+`--only` 匹配规则：节号精确（`42`）/ 节标题前缀（`42.`、`1.5`）/ 去编号后的节名前缀（`工作记忆`）。节间 mock 实例与造数代码**全部照常执行**（与 `--core` 同一原则），选中节看到的共享状态与全量完全一致，只跳过非选中节的 `t()` 断言体——因此 `--only=N` 可独立运行任意节，无需关心上游依赖。
 
 **两档约定（硬性）**：
 
-- **worker 自测跑 `--core`**：核心名单覆盖各主链路代表性失败面——RPC 面/缓存/quick 合并/搜索/软删/归档三连（preview→archive→undo）/工具路由/约定注入+脱敏/injectTo/派发+闭环/静态包全链路（迁移+资产路由+归档+perf）/设置持久化/构建可复现/编辑器内核 round-trip+XSS/文件夹/目录注入/资产上传/导入导出/三端内核同步/预算截断/遥测计数/注入预览/整理建议/组合过滤/injectEver/img-path-hint/快照式历史引擎（触发+去重+零读盘红线/导入导出适配）。
-- **verifier 验收 / 发布前跑全量**（无参），并 `node check.js > check-result.txt` 刷新基线存档；`--core` 模式不刷新 check-result.txt。
-- 核心名单 = `check.js` 顶部 `CORE` 集合，按断言名精确匹配。**新增/改名断言后跑一次 `--core`**：收尾会校验名单全命中，未命中（改名/删除）计 1 个 failed，防静默漏检。核心与非核心断言共享同一套 mock 实例与造数流程（节间 setup 两模式都照常执行，只跳过 t() 断言体），断言语义零差异。
+- **worker 自测跑 `--core`**：核心名单覆盖各主链路代表性失败面——RPC 面/缓存/quick 合并/搜索/软删/归档三连（preview→archive→undo）/工具路由/约定注入+脱敏/injectTo/派发+闭环/静态包全链路（迁移+资产路由+归档+perf）/设置持久化/构建可复现/app.html 可复现/发布面零 BOM/编辑器内核 round-trip+XSS/文件夹/目录注入/资产上传/导入导出/三端内核同步/预算截断/遥测计数/注入预览/整理建议/组合过滤/injectEver/img-path-hint/快照式历史引擎（触发+去重+零读盘红线/导入导出适配）。
+- **verifier 验收 / 发布前跑全量**（无参），并 `node check.js > check-result.txt` 刷新基线存档；`--core` 模式不刷新 check-result.txt。验收某个任务的相关节时可先 `--only=<节号>` 快速聚焦，再以全量为准。
+- 核心名单 = `check.js` 顶部 `CORE` 集合，按断言名精确匹配。**新增/改名断言后跑一次 `--core`**：收尾会校验名单全命中，未命中（改名/删除）计 1 个 failed，防静默漏检（`--only` 组合时跳过该校验——子集注定不全命中）。核心与非核心断言共享同一套 mock 实例与造数流程（节间 setup 两模式都照常执行，只跳过 t() 断言体），断言语义零差异。
+- **发布面零 BOM 断言（事故防御，节 1）**：扫描壳入口 + 发布包全发布面共 11 个文件（根 `package.json`/`host.js`/`client.js`/`README.md` + 包内 `package.json`/`index.mjs`/`app.html`/`README.md`/`cordis.patch.yml`/`lib/client.js`/`lib/styles.css`）首 3 字节非 EF BB BF——0.3.x 发版期真实事故：编辑器给 `package.json` 写入 BOM，DSH 解析失败**静默 skip 整个插件**（零报错）。编辑这些文件务必保持无 BOM UTF-8；新增发布面文件时把路径补进 `check/sections/1-static.cjs` 的 surfaces 清单。
 
-内存 mock（`fs`/`llm`/`agents`/`sessionPersistence`/`workspaceRegistry`/`systemPrompt`），不触碰真实笔记。覆盖：语法、host 全链路（create/list/缓存/update/quick 合并+异步分类/跨 session/search/delete/restore/archive）、注入范围（global/workspace/会话/旧文件兼容）、会话名与子 agent/归档过滤、任务派发、工具 schema、client 结构断言；第 17 节覆盖发布版 host（`packages/dsh-notes/index.mjs`），第 18 节覆盖发布版 client（`lib/client.js`：形态/API 面/UI 功能面/4 个 Slot 注册/React 树可构建/卸载清理/构建可复现）。
+内存 mock（`fs`/`llm`/`agents`/`sessionPersistence`/`workspaceRegistry`/`systemPrompt`），不触碰真实笔记。覆盖：语法、host 全链路（create/list/缓存/update/quick 合并+异步分类/跨 session/search/delete/restore/archive）、注入范围（global/workspace/会话/旧文件兼容）、会话名与子 agent/归档过滤、任务派发、工具 schema、client 结构断言；第 17 节覆盖发布版 host（`packages/dsh-notes-plugin/index.mjs`），第 18 节覆盖发布版 client（`lib/client.js`：形态/API 面/UI 功能面/4 个 Slot 注册/React 树可构建/卸载清理/构建可复现）；节 45 锁定 host 模块终态（manifest 序位 + 共源/变体登记 + 跨模块方向断言 + notes-src 死引用清零）。
 
 > ⚠️ 关键：`t(name, fn)` 必须 `await fn()`——曾不同步导致 async 断言未执行就 passed++（假通过）。修复后暴露并修正了 5 个假通过。
 

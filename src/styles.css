@@ -389,6 +389,16 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-settings-mask{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:70;display:flex;align-items:center;justify-content:center}
 .dsh-notes-settings-modal{width:400px;max-width:92%;background:var(--npanel);border:1px solid var(--nbd);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:16px;font-family:var(--nfont);max-height:80vh;overflow-y:auto;color:var(--ntx)}
 .dsh-notes-settings-modal-t{display:flex;align-items:center;font-size:14px;font-weight:700;color:var(--ntx);margin-bottom:8px}
+/* 设置卡标题栏动作区（notes-settings-feedback）：✕ 常驻关闭 + dirty 态「保存」（accent 实心主按钮）/「还原」（次按钮）——无改动时禁用灰显 */
+.dsh-notes-settings-t-acts{margin-left:auto;display:flex;align-items:center;gap:6px}
+.dsh-notes-settings-save{background:var(--nacc);border:1px solid transparent;border-radius:7px;color:#fff;font-size:11px;font-weight:600;padding:4px 12px;cursor:pointer;font-family:var(--nfont);white-space:nowrap;transition:opacity .15s}
+.dsh-notes-settings-save:hover:not(:disabled){opacity:.9}
+.dsh-notes-settings-save:disabled{opacity:.4;cursor:default}
+.dsh-notes-settings-restore{background:transparent;border:1px solid var(--nbd);border-radius:7px;color:var(--nt2);font-size:11px;padding:4px 12px;cursor:pointer;font-family:var(--nfont);white-space:nowrap;transition:all .15s}
+.dsh-notes-settings-restore:hover:not(:disabled){border-color:var(--nacc);color:var(--nacc)}
+.dsh-notes-settings-restore:disabled{opacity:.4;cursor:default}
+.dsh-notes-settings-close{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:transparent;border:0;border-radius:6px;color:var(--nt3);cursor:pointer;padding:0;font-family:var(--nfont)}
+.dsh-notes-settings-close:hover{background:var(--nbg-hover);color:var(--ntx)}
 .dsh-notes-settings-list{display:flex;flex-direction:column}
 .dsh-notes-settings-row{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:10px 2px 12px;border-bottom:1px solid var(--nbd-soft)}
 .dsh-notes-settings-row:last-child{border-bottom:none}
@@ -424,6 +434,32 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-injprev-sess{margin-left:auto;width:auto;max-width:230px;flex-shrink:1;min-width:0}
 .dsh-notes-injprev-text{font-family:var(--nmono);font-size:11px;line-height:1.65;background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:8px;padding:10px 12px;max-height:46vh;min-height:120px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0;color:var(--nt2);box-sizing:border-box}
 .dsh-notes-injprev-stats{font-size:10.5px;color:var(--nt3);margin-top:10px;line-height:1.6}
+
+/* ===== 注入管理面板 modal（设置卡片「注入管理」入口；notes-inject-manager）：统计 chips（点击=过滤）+ 搜索 + 批量条 + 三态 segmented 行 ===== */
+/* 批量条/勾选复用 trash 系列（.dsh-notes-trash-all/.dsh-notes-trash-selcnt/.dsh-notes-trash-check/.dsh-notes-trash-act）；三态 opt 复用 role-seg 视觉口径 */
+.dsh-notes-injmgr-modal{width:640px}   /* 总览列表需要更宽，覆盖 settings-modal 的 400px */
+.dsh-notes-injmgr-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.dsh-notes-injmgr-chips{display:flex;gap:4px;flex-shrink:0}
+.dsh-notes-injmgr-chip{font-family:var(--nfont);font-size:11px;padding:3px 11px;border-radius:20px;border:1px solid var(--nbd);background:transparent;color:var(--nt2);cursor:pointer;transition:all .15s;white-space:nowrap}
+.dsh-notes-injmgr-chip:hover{color:var(--ntx);background:var(--nbg-hover)}
+.dsh-notes-injmgr-chip.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:600}
+.dsh-notes-injmgr-search{flex:1;min-width:0;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:7px;color:var(--ntx);font-size:11.5px;padding:4px 9px;font-family:var(--nfont);outline:none}
+.dsh-notes-injmgr-search:focus{border-color:var(--nacc)}
+.dsh-notes-injmgr-search::placeholder{color:var(--nt3)}
+.dsh-notes-injmgr-batch{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11.5px;color:var(--nt2)}
+.dsh-notes-injmgr-list{border:1px solid var(--nbd-soft);border-radius:8px;margin-bottom:10px;max-height:44vh;overflow-y:auto}
+.dsh-notes-injmgr-row{display:flex;align-items:center;gap:7px;padding:6px 9px;font-size:12px;border-bottom:1px solid var(--nbd-soft)}
+.dsh-notes-injmgr-row:last-child{border-bottom:none}
+.dsh-notes-injmgr-ti{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-weight:600}
+.dsh-notes-injmgr-scope{font-size:10.5px;color:var(--nt3);flex-shrink:0;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsh-notes-injmgr-sens{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nwarn);flex-shrink:0}
+.dsh-notes-injmgr-ever{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nt3);flex-shrink:0}
+.dsh-notes-injmgr-seg{display:inline-flex;align-items:center;gap:2px;padding:2px 3px;border:1px solid var(--nbd);border-radius:14px;flex-shrink:0;color:var(--nt3)}
+.dsh-notes-injmgr-opt{padding:1px 8px;border-radius:11px;color:var(--nt3);cursor:pointer;user-select:none;font-size:11px}
+.dsh-notes-injmgr-opt:hover{color:var(--ntx);background:var(--nbg-hover)}
+.dsh-notes-injmgr-opt.on{background:var(--nbg-sel);color:var(--nacc-tx);font-weight:600}
+.dsh-notes-injmgr-opt.dis{opacity:.38;cursor:not-allowed}
+.dsh-notes-injmgr-opt.dis:hover{background:transparent;color:var(--nt3)}
 
 /* ===== 历史版本面板 modal（详情 meta 行「历史」入口；notes-history-ui）：左列版本列表（时间+大小，倒序）+ 右侧只读预览（renderMarkdown 内核渲染） ===== */
 .dsh-notes-hist-modal{width:640px}   /* 列表+预览双栏需要更宽，覆盖 settings-modal 的 400px */
