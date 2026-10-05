@@ -938,7 +938,7 @@ function _mockRpc(method, a) {
       + '\n\n（其中 1 条含敏感信息已脱敏，原文用 note_get 按 id 获取）';
     var pk = '本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：\n\n- [[n-ref1]] 部署高可用环境时查我\n\n（以上为挂载索引行：正文用 note_get <id> 获取）\n\n- [n1] oa 环境配置 (笔记, 运维) ⚠ 120 天未更新\n- [n5] DSH 插件发布指南 (笔记, 开发)\n- [n7] 🔒 数据库凭证 ******（敏感，note_get n7 获取） (笔记, 运维)\n（其中 1 条含敏感信息已脱敏，原文用 note_get 按 id 获取）\n规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手';
     var pkCat = '- [n1] oa 环境配置 (笔记, 运维) ⚠ 120 天未更新\n- [n5] DSH 插件发布指南 (笔记, 开发)\n- [n7] 🔒 数据库凭证 ******（敏感，note_get n7 获取） (笔记, 运维)\n（其中 1 条含敏感信息已脱敏，原文用 note_get 按 id 获取）';
-    return { conventions: pc, directory: '\n\n' + pk, catalog: pkCat, stats: { conventionsChars: pc.length, directoryChars: ('\n\n' + pk).length, catalogChars: pkCat.length, totalChars: pc.length + ('\n\n' + pk).length, maskedNotes: 2, staleMarked: 1, budgetTruncated: false } };
+    return { conventions: pc, directory: '\n\n' + pk, catalog: pkCat, stats: { conventionsChars: pc.length, directoryChars: ('\n\n' + pk).length, catalogChars: pkCat.length, totalChars: pc.length + ('\n\n' + pk).length, maskedNotes: 2, staleMarked: 1, budgetTruncated: false, catalogEnabled: true } };
   }
   if (method === 'notes-export') return { exported: _mockNotes.filter(function (x) { return !x.deleted }).length, foldersFile: true, target: (a.dir || 'D:\\mock') + '\\dsh-notes-export-20260929-203000' };
   if (method === 'notes-import-preview') return { total: 3, same: 1, diff: 1, added: 1, unreadable: 0, folders: { total: 2, new: 1 }, detail: [{ id: 'n1', title: 'oa 环境配置', status: 'same' }, { id: 'n5', title: 'DSH 插件发布指南', status: 'diff' }, { id: 'n-demo', title: '演示新增笔记', status: 'added' }] };
@@ -3119,7 +3119,7 @@ function renderInjectPreview() {
     tx.textContent = body || '（无注入内容）';
   }
   var s = d && d.stats, se = $('injprevStats');
-  if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.directoryChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') : '';
+  if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.directoryChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') + ' · 目录补充行：' + (s.catalogEnabled === true ? '开' : '关') : '';   /* 0.4.3⑫ 目录补充行开关徽标 */
 }
 /* ================= 注入管理面板（设置卡片「注入管理」入口；notes-inject-manager）=================
    数据源：notes-list {includeLogs:true} slim（inject/injectRole/injectEver/sensitive/kind/injectTo 齐备，零新 RPC；含日志——日志行禁用态展示）；

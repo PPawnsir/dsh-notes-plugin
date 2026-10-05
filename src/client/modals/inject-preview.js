@@ -80,7 +80,7 @@
                   (d.conventions || '') ? e('pre', { className: 'dsh-notes-injprev-conv' }, d.conventions) : null,
                   injPrevDirectoryRows(d.directory || '', tt)),   // 目录段：挂载行与普通行同段可点（补充/编辑 whenToUse）
             stats ? e('div', { className: 'dsh-notes-injprev-stats' },
-              '总字符 ' + stats.totalChars + '（约定 ' + stats.conventionsChars + ' / 目录 ' + stats.directoryChars + '）· 打码 ' + stats.maskedNotes + ' 条 · 时效标注 ' + stats.staleMarked + ' 条 · 预算截断 ' + (stats.budgetTruncated ? '是' : '否')) : null,
+              '总字符 ' + stats.totalChars + '（约定 ' + stats.conventionsChars + ' / 目录 ' + stats.directoryChars + '）· 打码 ' + stats.maskedNotes + ' 条 · 时效标注 ' + stats.staleMarked + ' 条 · 预算截断 ' + (stats.budgetTruncated ? '是' : '否') + ' · 目录补充行：' + (stats.catalogEnabled === true ? '开' : '关')) : null,   // 0.4.3⑫ 目录补充行开关徽标（stats.catalogEnabled，notes-043-final-polish）
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
             e('div', { className: 'dsh-notes-dispatch-actions' },
               e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setInjectPreviewOpen(false) }, '关闭'))))

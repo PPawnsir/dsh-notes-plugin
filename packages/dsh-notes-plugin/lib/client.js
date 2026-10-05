@@ -3277,7 +3277,7 @@ window.__ModuleLoader__.load({
                   (d.conventions || '') ? e('pre', { className: 'dsh-notes-injprev-conv' }, d.conventions) : null,
                   injPrevDirectoryRows(d.directory || '', tt)),   // 目录段：挂载行与普通行同段可点（补充/编辑 whenToUse）
             stats ? e('div', { className: 'dsh-notes-injprev-stats' },
-              '总字符 ' + stats.totalChars + '（约定 ' + stats.conventionsChars + ' / 目录 ' + stats.directoryChars + '）· 打码 ' + stats.maskedNotes + ' 条 · 时效标注 ' + stats.staleMarked + ' 条 · 预算截断 ' + (stats.budgetTruncated ? '是' : '否')) : null,
+              '总字符 ' + stats.totalChars + '（约定 ' + stats.conventionsChars + ' / 目录 ' + stats.directoryChars + '）· 打码 ' + stats.maskedNotes + ' 条 · 时效标注 ' + stats.staleMarked + ' 条 · 预算截断 ' + (stats.budgetTruncated ? '是' : '否') + ' · 目录补充行：' + (stats.catalogEnabled === true ? '开' : '关')) : null,   // 0.4.3⑫ 目录补充行开关徽标（stats.catalogEnabled，notes-043-final-polish）
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
             e('div', { className: 'dsh-notes-dispatch-actions' },
               e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setInjectPreviewOpen(false) }, '关闭'))))
@@ -5884,17 +5884,30 @@ window.__ModuleLoader__.load({
         // 0.4.3 验收修复⑪（notes-043-mount-ux-final）：切「资料」档不再静默翻转——先弹 MountModal（LLM 草稿预填 whenToUse，
         //   editor 在面板内非 modal 可直接开）；确认 = 弹层内 notes-mount 单点收口（落索引行 + host 同步翻 reference 档），
         //   onConfirmed 同步编辑器三态 + 走既有自动保存；取消/跳过 = 零副作用（不翻注入、不落行）
+        // 0.4.3 验收修复⑫（notes-043-final-polish）：开弹层前查 notes-mount-list 取 existing（预览目录行点击同款模式）——
+        //   已挂载笔记进编辑模式预填现文案（不调 LLM 草稿）；迟到响应丢弃（已切笔记）；查询失败静默回退草稿模式（读失败不阻塞切换）
         function setRoleSeg(r) {
           if (r === edRole) return
           if (r === 'reference') {
             const wasOff0 = edRole === 'off'
             const mid = selectedRef.current
             if (!mid) return
-            openMountModal({ id: mid, title: edTitleRef.current || mid }, { onConfirmed: () => {
-              setEdRole('reference')
-              if (wasOff0) setScopeOpen(true)
-              triggerAutoSave()
-            } })
+            rpc('notes-mount-list', {}).then(ml => {
+              if (selectedRef.current !== mid) return   // 迟到响应丢弃（已切走）
+              const line = ((ml && ml.lines) || []).filter(l => l.id === mid)[0]
+              openMountModal({ id: mid, title: edTitleRef.current || mid, existing: line ? line.when : undefined }, { onConfirmed: () => {
+                setEdRole('reference')
+                if (wasOff0) setScopeOpen(true)
+                triggerAutoSave()
+              } })
+            }).catch(() => {
+              if (selectedRef.current !== mid) return
+              openMountModal({ id: mid, title: edTitleRef.current || mid }, { onConfirmed: () => {
+                setEdRole('reference')
+                if (wasOff0) setScopeOpen(true)
+                triggerAutoSave()
+              } })
+            })
             return
           }
           const wasOff = edRole === 'off'

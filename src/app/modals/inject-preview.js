@@ -53,7 +53,7 @@ function renderInjectPreview() {
     }
   }
   var s = d && d.stats, se = $('injprevStats');
-  if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.directoryChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') : '';
+  if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.directoryChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') + ' · 目录补充行：' + (s.catalogEnabled === true ? '开' : '关') : '';   /* 0.4.3⑫ 目录补充行开关徽标（stats.catalogEnabled，notes-043-final-polish） */
 }
 /* 目录段文本逐行渲染：挂载行 `- [[n-xxx]]` 与普通行 `- [n-xxx]` 均可点（🔒 行 id 在方括号内不受打码影响），
    其余行（标题/轻推/计数提示/挂载引导）纯文本；行内容一律 textContent 赋值（无注入面） */

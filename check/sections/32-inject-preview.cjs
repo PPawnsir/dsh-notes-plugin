@@ -25,6 +25,7 @@ module.exports = {
       assert(s.indexOf('const lastCatStats = { masked: 0, stale: 0 }') >= 0, label + ' lastCatStats 渲染统计')
       assert(s.indexOf('lastCatStats.stale = staleCount') >= 0, label + ' 目录段普通行时效标注计数')
       assert(s.indexOf('conventionsChars: r.conventions.length') >= 0 && s.indexOf('directoryChars: r.directory.length') >= 0 && s.indexOf('budgetTruncated: lastConvStats.budgetTruncated') >= 0, label + ' stats 字段结构（0.4.3③ +directoryChars）')
+      assert(s.indexOf('catalogEnabled: !!(settingsCache && settingsCache.catalogEnabled === true)') >= 0, label + ' stats 含 catalogEnabled 布尔（0.4.3⑫ 目录补充行开关徽标数据源，与 renderInjected 填充同一 settingsCache 口径）')
       assert(s.indexOf('catalog: r.catalog') >= 0, label + ' catalog 兼容别名保留（= directory 中普通行部分）')
       assert(s.indexOf('if (sidOverride === undefined) lastInjectChars = full.length') >= 0, label + ' 预览渲染不更新 lastInjectChars（仪表只反映真实注入）')
       // notes-scope-global-pick：三档视角（全局/工作区并集/单会话）——workspace 参数 + conventionHit 集合口径（双包同步）
@@ -69,6 +70,14 @@ module.exports = {
     assert.strictEqual(st.catalogChars, r.catalog.length, 'catalogChars = catalog.length（兼容别名）')
     assert.strictEqual(st.totalChars, r.conventions.length + r.directory.length, 'totalChars = 约定段+目录段之和')
     assert(r.conventions.indexOf('预览全局约定') >= 0 && r.conventions.indexOf('全局约定正文') >= 0, '全局视角含 injectTo=[] 注入笔记')
+  })
+  await t('stats.catalogEnabled 布尔两态：徽标数据源跟随 settings 开关（0.4.3 验收修复⑫ notes-043-final-polish）', async () => {
+    const on = await handlersIP['notes-inject-preview']({})
+    assert.strictEqual(on.stats.catalogEnabled, true, '本节实例显式开后 stats.catalogEnabled=true（徽标呈「开」）')
+    await handlersIP['notes-settings-set']({ catalogEnabled: null })
+    const off = await handlersIP['notes-inject-preview']({})
+    assert.strictEqual(off.stats.catalogEnabled, false, '恢复缺省关后 stats.catalogEnabled=false（徽标呈「关」）')
+    await handlersIP['notes-settings-set']({ catalogEnabled: true })   // 恢复开：本节后续目录桶断言（脱敏/时效/预算）依赖
   })
   await t('sessionId 过滤：缺省全局不含定向笔记；传会话长 id 自动 shortSid 命中；其他会话不命中', async () => {
     await handlersIP['notes-create']({ title: '预览定向约定abc', body: '定向正文', inject: true, injectTo: ['abc12345'], topic: '约定' })
@@ -182,12 +191,14 @@ module.exports = {
     assert(clientSrc.indexOf('injectPreviewTab') < 0, '双 tab 状态已拆除（单段视图）')
     assert(clientSrc.indexOf('dsh-notes-injprev-text') >= 0 && clientSrc.indexOf('dsh-notes-injprev-stats') >= 0, '预览 modal 结构类（文本区/统计条）')
     assert(clientSrc.indexOf('预算截断 ') >= 0 && clientSrc.indexOf('时效标注 ') >= 0 && clientSrc.indexOf('stats.directoryChars') >= 0, '统计条文案（预算截断/时效标注/directoryChars）')
+    assert(clientSrc.indexOf('目录补充行：') >= 0 && clientSrc.indexOf("stats.catalogEnabled === true ? '开' : '关'") >= 0, '统计条含「目录补充行：开/关」徽标（0.4.3⑫ notes-043-final-polish）')
     assert(clientSrc.indexOf('if (injectPreviewOpenRef.current) { setInjectPreviewOpen(false); return }') >= 0, 'Esc 链路关预览对话框')
     assert(clientSrc.indexOf('!trashOpen && !injectPreviewOpen') >= 0, '全局错误条排除预览 modal（modal 内自显错误）')
     assert(clientSrc.indexOf('setSettingsOpen(false); setInjectPreviewOpen(true)') >= 0, '与设置卡片互斥（modal 不叠 modal）')
     for (const k of ['openInjectPreview', 'notes-inject-preview', 'dsh-notes-injprev-text', 'injPrevDirectoryRows', 'dsh-notes-injprev-conv', '注入预览']) {
       assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺 ' + k + '（需先跑 scripts/build-dist.cjs）')
     }
+    assert(clientPkgSrc.indexOf('目录补充行：') >= 0, '发布包 lib/client.js 统计条徽标同步（0.4.3⑫，需先跑 scripts/build-dist.cjs）')
   })
   await t('注入预览样式双端：styles.css ⇄ 发布包 lib/styles.css', () => {
     const cssDevP = fsNative.readFileSync(SRC_STYLES, 'utf8')
@@ -214,6 +225,7 @@ module.exports = {
       assert(s.indexOf('injprev-tab') < 0, label + ' 双 tab 已拆除（0.4.3③ 单段视图）')
       assert(s.indexOf('预算截断 ') >= 0 && s.indexOf('.modal.injprev{') >= 0, label + ' 统计条文案 + 宽 modal 样式')
       assert(s.indexOf('directoryChars') >= 0, label + ' 统计条读 directoryChars（0.4.3③ 目录段字符数）')
+      assert(s.indexOf('目录补充行：') >= 0 && s.indexOf('catalogEnabled') >= 0, label + ' 统计条含「目录补充行：开/关」徽标（0.4.3⑫ notes-043-final-polish）')
     }
     // 双端 UI 标记一致（共享 DOM id / 函数名 / 样式类）
     for (const k of ['setInjectPreview', 'openInjectPreview', 'loadInjectPreview', 'renderInjectPreview', 'injectPreviewState', 'injprevSess', 'injprevText', 'injprevStats']) {
@@ -226,7 +238,7 @@ module.exports = {
     assert(protoV2Src.indexOf('定向约定') >= 0, '原型 mock 演示 sessionId 过滤（定向约定）')
     assert(protoV2Src.indexOf('a.workspace') >= 0 && protoV2Src.indexOf('injectTo 并集演示') >= 0, '原型 mock 演示 workspace 视角（工作区定向约定）')
     assert(protoV2Src.indexOf('directory:') >= 0 && protoV2Src.indexOf('- [[n-ref1]]') >= 0, '原型 mock 含 directory 段 + 挂载行演示（0.4.3③ 合并段）')
-    assert(protoV2Src.indexOf('maskedNotes: 2') >= 0 && protoV2Src.indexOf('staleMarked: 1') >= 0 && protoV2Src.indexOf('budgetTruncated: false') >= 0, '原型 mock 统计演示值')
+    assert(protoV2Src.indexOf('maskedNotes: 2') >= 0 && protoV2Src.indexOf('staleMarked: 1') >= 0 && protoV2Src.indexOf('budgetTruncated: false') >= 0 && protoV2Src.indexOf('catalogEnabled: true') >= 0, '原型 mock 统计演示值（含 0.4.3⑫ catalogEnabled 徽标演示）')
   })
   }
 }

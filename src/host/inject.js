@@ -238,6 +238,8 @@
     // 两者缺省 = 「全局」视角（sidOverride=''，只命中 injectTo=[] / 存量 global/workspace 的笔记）。
     // sessionId 与 workspace 互斥、同传时 sessionId 优先；workspace 经 _activeSessions 解析（与 UI 下拉同一数据源 notes-sessions，pending 占位会话同计入——标题未补齐不影响命中）。
     // 预览渲染不更新 lastInjectChars（仪表只反映真实注入）；统计取自同步渲染的 lastConvStats/lastCatStats（无竞态）。
+    // 0.4.3 验收修复⑫（notes-043-final-polish）：stats + catalogEnabled 布尔——预览统计条「目录补充行：开/关」徽标数据源
+    // （与 renderInjected 目录普通行填充读同一 settingsCache 口径，显式 true 才为开；stats 尾加字段，存量消费方零破坏）。
     disposers.push(handle('notes-inject-preview', async (args) => {
       try {
         const sid = args && args.sessionId ? shortSid(String(args.sessionId)) : ''
@@ -262,7 +264,8 @@
             totalChars: r.full.length,
             maskedNotes: lastConvStats.masked + lastCatStats.masked,
             staleMarked: lastCatStats.stale,
-            budgetTruncated: lastConvStats.budgetTruncated
+            budgetTruncated: lastConvStats.budgetTruncated,
+            catalogEnabled: !!(settingsCache && settingsCache.catalogEnabled === true)
           }
         }
       } catch (e) { return { error: String(e.message || e) } }

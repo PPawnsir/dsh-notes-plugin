@@ -7,7 +7,7 @@ module.exports = {
   title: "73. 内核③⑤：注入索引根笔记 + 管线 reference 桶切换 + 挂载联动/弹层（notes-043-index）",
   async run(H, S) {
   const { t, section, assert, fsNative, osNative, path, DIR, hostSrc, indexSrc, clientSrc } = H
-  const { handlers, store, NOTES_DIR } = S
+  const { handlers, store, NOTES_DIR, clientPkgSrc } = S
   section('73. 内核③⑤：注入索引根笔记 + 管线 reference 桶切换 + 挂载联动/弹层（notes-043-index）')
 
   // ---- 73.0 落地结构：injectindex.js 双清单共源 + 管线切换 + 启动装配 + 弹层双端 + i18n/样式 ----
@@ -497,8 +497,13 @@ module.exports = {
   await t('0.4.3⑪ 设为资料弹框接线：三入口 modal-first + 取消零副作用 + 批量静默（行为不变）+ 确认后收敛刷新', () => {
     // 入口① client 详情三态：reference 档先弹 MountModal（确认才经 onConfirmed 同步三态 + 自动保存；取消零副作用）
     const edCli = fsNative.readFileSync(path.join(DIR, 'src', 'client', 'panels', 'panel', 'editor.js'), 'utf8')
-    assert(edCli.indexOf("if (r === 'reference') {") >= 0 && edCli.indexOf('openMountModal({ id: mid, title: edTitleRef.current || mid }, { onConfirmed:') >= 0, 'client 三态切资料 → openMountModal（modal-first + onConfirmed）')
+    assert(edCli.indexOf("if (r === 'reference') {") >= 0 && edCli.indexOf('openMountModal({ id: mid, title: edTitleRef.current || mid }, { onConfirmed:') >= 0, 'client 三态切资料 → openMountModal（modal-first + onConfirmed；0.4.3⑫ 读失败回退分支保原形）')
     assert(edCli.indexOf("setEdRole('reference')") >= 0, 'onConfirmed 同步编辑器三态（reference）')
+    // 0.4.3 验收修复⑫（notes-043-final-polish）：编辑器路径开弹层前查 notes-mount-list 取 existing——已挂载 = 编辑模式预填现文案（非草稿观感）；
+    //   未挂载/查询失败 = 回退草稿模式（LLM 预填由弹层自理）；迟到响应丢弃（已切笔记零副作用）
+    assert(edCli.indexOf("host.call('notes-mount-list', {})") >= 0 && edCli.indexOf('openMountModal({ id: mid, title: edTitleRef.current || mid, existing: line ? line.when : undefined }, { onConfirmed:') >= 0, 'client 三态切资料先查 notes-mount-list：已挂载预填现文案（编辑模式）/未挂载回退草稿（0.4.3⑫）')
+    assert(edCli.indexOf('if (selectedRef.current !== mid) return') >= 0, 'client 挂载清单查询迟到响应丢弃（已切走零副作用）')
+    assert(clientPkgSrc.indexOf('existing: line ? line.when : undefined') >= 0, '发布包 lib/client.js 编辑器预填链路同步（0.4.3⑫，需先跑 scripts/build-dist.cjs）')
     // 弹层机制：onConfirmed 回调存管 + 取消/关闭清零 + 确认后收敛刷新（loadNotes + notifyNotesChanged）
     assert(clientSrc.indexOf('const mountOnConfirmedRef = { current: null }') >= 0, 'client 挂载确认回调镜像在位')
     assert(clientSrc.indexOf("function closeMountModal() { mountOnConfirmedRef.current = null; setMountOpen(false) }") >= 0, '取消/跳过 = 回调清零（零副作用语义）')
@@ -521,11 +526,14 @@ module.exports = {
     assert(hostSrc.indexOf("if (!rl) { try { await _list(undefined, undefined, undefined, true, true, true) } catch (e) {} rl = idxNoteSync() }") >= 0, 'idxEnsure 冷缓存水化闸门（仅未命中才全量水化）')
     assert(hostSrc.indexOf('async function idxHealOrphans(rl)') >= 0, '孤儿自愈函数在位')
     assert(hostSrc.indexOf('idxEnsure().then(function (rl) { if (rl) idxHealOrphans(rl) })') >= 0, '启动装配接线：ensure 落定后自愈')
-    // 行为级（探针 S3/S3b 固化）：预置存量库 = 正式索引（指针）+ 孤儿索引（含存量行）+ 行目标笔记 → 启动后
-    //   不新建第三篇 + 孤儿行并入正式索引 + 孤儿软删
+    // 0.4.3 验收修复⑫（notes-043-final-polish）静态锚：并入前判挂载⇔资料不变量（不达标行跳过并入、不翻档）——双包同步
+    assert(hostSrc.indexOf("if (!(tn.inject === true && tn.injectRole === 'reference')) continue") >= 0, '自愈并入前判挂载⇔资料不变量（0.4.3⑫）')
+    assert(indexSrc.indexOf("if (!(tn.inject === true && tn.injectRole === 'reference')) continue") >= 0, 'index.mjs 同步自愈不变量（0.4.3⑫，需先跑 scripts/build-dist.cjs）')
+    // 行为级（探针 S3/S3b 固化 + 0.4.3⑫ 不变量分支）：预置存量库 = 正式索引（指针）+ 孤儿索引（含两条存量行）+ 两个行目标笔记
+    //   （TG=inject:true+reference 达标 / TG2=inject:false 不达标）→ 启动后不新建第三篇 + 达标行并入正式索引 + 不达标行跳过不翻档 + 孤儿软删
     const store11 = new Map()
     const PD11 = 'D:\\probe\\check73-11'
-    const IDX_A = 'n-idxaaaa0000001', IDX_B = 'n-idxbbbb0000002', TG = 'n-preexisting02'
+    const IDX_A = 'n-idxaaaa0000001', IDX_B = 'n-idxbbbb0000002', TG = 'n-preexisting02', TG2 = 'n-preexisting03'
     const idxMd = (id, extra) => [
       '---', 'id: ' + id, 'title: 注入索引（自动）', 'topic: 注入索引', 'workspace: ', 'folder: ', 'tags: 自动',
       'kind: sys', 'status: active', 'inject: false', 'injectEver: false', 'injectTo: ', 'recall: false', 'sensitive: false',
@@ -534,12 +542,18 @@ module.exports = {
     ].join('\n')
     store11.set(PD11 + '\\notes\\' + TG + '.md', [
       '---', 'id: ' + TG, 'title: 孤儿行目标', 'topic: 资料', 'workspace: ', 'folder: ', 'tags: ',
+      'kind: note', 'status: active', 'inject: true', 'injectEver: true', 'injectTo: ', 'injectRole: reference', 'recall: true', 'sensitive: false',
+      'createdAt: "2026-10-05T06:00:00.000Z"', 'updatedAt: "2026-10-05T06:00:00.000Z"', 'sessionId: ', 'cwd: ', 'logDate: ',
+      'mergedFrom: ', 'dispatches: "[]"', 'archivedAt: ', 'deleted: false', '---', 'x', ''
+    ].join('\n'))
+    store11.set(PD11 + '\\notes\\' + TG2 + '.md', [
+      '---', 'id: ' + TG2, 'title: 孤儿行目标-不达标', 'topic: 资料', 'workspace: ', 'folder: ', 'tags: ',
       'kind: note', 'status: active', 'inject: false', 'injectEver: false', 'injectTo: ', 'recall: true', 'sensitive: false',
       'createdAt: "2026-10-05T06:00:00.000Z"', 'updatedAt: "2026-10-05T06:00:00.000Z"', 'sessionId: ', 'cwd: ', 'logDate: ',
       'mergedFrom: ', 'dispatches: "[]"', 'archivedAt: ', 'deleted: false', '---', 'x', ''
     ].join('\n'))
     store11.set(PD11 + '\\notes\\' + IDX_A + '.md', idxMd(IDX_A, ''))                                  // 正式（settings 指针）
-    store11.set(PD11 + '\\notes\\' + IDX_B + '.md', idxMd(IDX_B, '- [[' + TG + ']] 孤儿索引存量文案'))   // 孤儿（无前缀旧行）
+    store11.set(PD11 + '\\notes\\' + IDX_B + '.md', idxMd(IDX_B, '- [[' + TG + ']] 孤儿索引存量文案\n- [[' + TG2 + ']] 不达标行随孤儿丢弃'))   // 孤儿（无前缀旧行 ×2：达标/不达标各一）
     store11.set(PD11 + '\\notes\\settings.json', JSON.stringify({ indexNoteId: IDX_A }))
     const fsMock11 = {
       resolve: async (p) => p,
@@ -572,6 +586,10 @@ module.exports = {
     const hit11 = (ml11.lines || []).filter(l => l.id === TG)
     assert.strictEqual(hit11.length, 1, '孤儿 §1 行并入正式索引（实得 ' + JSON.stringify(ml11.lines) + '）')
     assert.strictEqual(hit11[0].when, '孤儿索引存量文案', '并入行 when 解析（无前缀旧行同口径）')
+    // 0.4.3⑫ 不变量分支：TG2 目标 inject=false → 行不并入（随孤儿软删丢弃）+ 目标不翻档
+    assert((ml11.lines || []).every(l => l.id !== TG2), '不达标行（目标 inject=false）不并入正式索引（0.4.3⑫ 挂载⇔资料不变量）')
+    const tg2Note = await handlers11['notes-get']({ id: TG2 })
+    assert(tg2Note && tg2Note.note && tg2Note.note.inject === false, '不达标行目标 inject 保持 false（自愈不翻档；实得 ' + (tg2Note && tg2Note.note && tg2Note.note.inject) + '）')
     const lst11 = await handlers11['notes-list']({ includeLogs: true })
     assert(!lst11.notes.some(n => n.id === IDX_B), '孤儿索引已软删（常规列表消失）')
     const idxAlive11 = [...store11.keys()].filter(k => {

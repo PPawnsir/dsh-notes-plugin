@@ -3824,12 +3824,24 @@ function renderMeta() {
       /* 设为资料 = 先弹 whenToUse 挂载框（0.4.3 验收修复⑪：LLM 草稿预填，取消零副作用——不翻注入不落行；
          确认 = 弹层内 notes-mount 单点收口（落索引行 + host 同步翻 reference 档）→ onConfirm 回填编辑器三态并保存 */
       if (r === 'reference') {
-        openMountModal({ id: n.id, title: n.title }, function () {
-          edNote.inject = true; edNote.injectRole = 'reference';
-          if (!sessList.length) pullSessions();
-          scopeOpen = true;
-          triggerSave(); renderMeta();
-          toast(t('meta.injectOn', { role: t('tree.roleReference') }));
+        /* ⑫ 收尾对齐：开弹层前查 notes-mount-list 取 existing（client editor 同款）——已挂载进编辑模式预填现文案，非草稿观感；查询失败静默回退草稿 */
+        host.call('notes-mount-list', {}).then(function (ml) {
+          var line = ((ml && ml.lines) || []).filter(function (l) { return l.id === n.id })[0]
+          openMountModal({ id: n.id, title: n.title, existing: line ? line.when : undefined }, function () {
+            edNote.inject = true; edNote.injectRole = 'reference';
+            if (!sessList.length) pullSessions();
+            scopeOpen = true;
+            triggerSave(); renderMeta();
+            toast(t('meta.injectOn', { role: t('tree.roleReference') }));
+          })
+        }).catch(function () {
+          openMountModal({ id: n.id, title: n.title }, function () {
+            edNote.inject = true; edNote.injectRole = 'reference';
+            if (!sessList.length) pullSessions();
+            scopeOpen = true;
+            triggerSave(); renderMeta();
+            toast(t('meta.injectOn', { role: t('tree.roleReference') }));
+          })
         });
         return;
       }
@@ -5013,7 +5025,7 @@ function renderInjectPreview() {
     }
   }
   var s = d && d.stats, se = $('injprevStats');
-  if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.directoryChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') : '';
+  if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.directoryChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') + ' · 目录补充行：' + (s.catalogEnabled === true ? '开' : '关') : '';   /* 0.4.3⑫ 目录补充行开关徽标（stats.catalogEnabled，notes-043-final-polish） */
 }
 /* 目录段文本逐行渲染：挂载行 `- [[n-xxx]]` 与普通行 `- [n-xxx]` 均可点（🔒 行 id 在方括号内不受打码影响），
    其余行（标题/轻推/计数提示/挂载引导）纯文本；行内容一律 textContent 赋值（无注入面） */

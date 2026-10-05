@@ -2912,6 +2912,9 @@ export function apply(ctx) {
     // 孤儿索引自愈（0.4.3 验收修复⑪，启动装配处 idxEnsure().then 单次触发，见 index 收口模块）：正式索引之外仍存活的同名
     //   「注入索引（自动）」笔记（冷缓存竞态/指针丢失的历史产物）——其 §1 存量行并入正式索引（跳过已存在键与目标已死行，
     //   idxMount 幂等落行），然后软删孤儿（回收站可恢复）。孤儿正文只读不写（行级操作红线延伸到自愈路径）；异常全吞（失败下次启动重试）
+    // 0.4.3 验收修复⑫（notes-043-final-polish）：并入前判目标 inject===true && injectRole==='reference'（挂载⇔资料不变量）——
+    //   idxMount 直落不翻目标注入态，不达标行并入后会在目标下次 update 被 _idxSyncMount 静默摘回；故不达标行跳过并入
+    //   （行随孤儿软删丢弃——孤儿本就是要收敛的残骸，不强行复活注入态；notes-mount RPC 通道的翻档单点收口不动）
     async function idxHealOrphans(rl) {
       try {
         if (!rl) return
@@ -2922,6 +2925,7 @@ export function apply(ctx) {
           for (const l of lines) {
             const tn = cache.get(l.id)
             if (!tn || tn.deleted || tn.tombstoned) continue   // 死挂载行不并入（图内核死链不扩散）
+            if (!(tn.inject === true && tn.injectRole === 'reference')) continue   // 挂载⇔资料不变量：不达标行不并入（不翻档）
             if (!idxLinesSync().some(function (x) { return x.id === l.id })) await idxMount(l.id, l.when)
           }
           await _delete(dp.id)
@@ -4390,6 +4394,8 @@ export function apply(ctx) {
     // 两者缺省 = 「全局」视角（sidOverride=''，只命中 injectTo=[] / 存量 global/workspace 的笔记）。
     // sessionId 与 workspace 互斥、同传时 sessionId 优先；workspace 经 _activeSessions 解析（与 UI 下拉同一数据源 notes-sessions，pending 占位会话同计入——标题未补齐不影响命中）。
     // 预览渲染不更新 lastInjectChars（仪表只反映真实注入）；统计取自同步渲染的 lastConvStats/lastCatStats（无竞态）。
+    // 0.4.3 验收修复⑫（notes-043-final-polish）：stats + catalogEnabled 布尔——预览统计条「目录补充行：开/关」徽标数据源
+    // （与 renderInjected 目录普通行填充读同一 settingsCache 口径，显式 true 才为开；stats 尾加字段，存量消费方零破坏）。
     disposers.push(handle('notes-inject-preview', async (args) => {
       try {
         const sid = args && args.sessionId ? shortSid(String(args.sessionId)) : ''
@@ -4414,7 +4420,8 @@ export function apply(ctx) {
             totalChars: r.full.length,
             maskedNotes: lastConvStats.masked + lastCatStats.masked,
             staleMarked: lastCatStats.stale,
-            budgetTruncated: lastConvStats.budgetTruncated
+            budgetTruncated: lastConvStats.budgetTruncated,
+            catalogEnabled: !!(settingsCache && settingsCache.catalogEnabled === true)
           }
         }
       } catch (e) { return { error: String(e.message || e) } }
