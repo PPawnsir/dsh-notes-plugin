@@ -1,13 +1,13 @@
 function renderCrumb() {
   var n = edNote; if (!n) return;
-  /* 面包屑文件夹段（notes-nested-folder-ui）：单文件夹名升级为「父/子/孙」路径，每段可点击 = 切到该文件夹视图 */
+  /* 面包屑文件夹段（notes-nested-folder-ui）：「父/子/孙」路径；0.4.3⑦ 文件视图拆除后点击 = 树内展开该文件夹（含祖先链），不切视图 */
   var fhtml = '';
-  if (n.folder) folderPath(n.folder).forEach(function (pf) { fhtml += '<span class="lnk crumb-f" data-fid="' + pf.id + '" title="' + t('meta.crumbFolderTip', { name: esc(pf.name) }) + '">' + esc(pf.name) + '</span><span class="sep">/</span>' });
+  if (n.folder) folderPath(n.folder).forEach(function (pf) { fhtml += '<span class="lnk crumb-f" data-fid="' + pf.id + '" title="' + t('meta.crumbFolderExpandTip', { name: esc(pf.name) }) + '">' + esc(pf.name) + '</span><span class="sep">/</span>' });
   $('edCrumb').innerHTML = fhtml
     + '<span class="lnk" id="crumbTopic" title="' + t('meta.crumbTopicTip') + '">' + esc(n.topic || t('meta.uncategorized')) + '</span><span class="sep">/</span><span>' + esc(n.id || t('meta.unsavedDraft')) + '</span>';
   $('crumbTopic').onclick = function () { view = { type: 'topic', id: n.topic || '未分类' }; render(); toast(t('meta.filteredByTopic', { name: n.topic || t('meta.uncategorized') })) };
   $('edCrumb').querySelectorAll('.crumb-f').forEach(function (el) {
-    el.onclick = function () { var fid = el.getAttribute('data-fid'); view = { type: 'folder', id: fid }; foldOpen[fid] = true; saveFoldOpen(); render() };
+    el.onclick = function () { var fid = el.getAttribute('data-fid'); folderPath(fid).forEach(function (af) { foldOpen[af.id] = true }); saveFoldOpen(); render() };
   });
 }
 function renderMeta() {
@@ -21,7 +21,7 @@ function renderMeta() {
   var role = n.inject ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off';
   $('edMeta').innerHTML =
     '<span class="meta-chip" title="' + t('meta.kindTip') + '"><span class="dot" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span><select id="kindSel">'
-    + Object.keys(KIND).map(function (k) { return '<option value="' + k + '"' + (k === (n.kind || 'note') ? ' selected' : '') + '>' + kindLabel(k) + '</option>' }).join('') + '</select></span>'   /* i18n 覆盖卡F（B 卡交接②）：kind 下拉选项经 kindLabel() 条件映射走 t()（KIND 字面量仅作锚） */
+    + Object.keys(KIND).filter(function (k) { return k !== 'sys' || k === (n.kind || 'note') }).map(function (k) { return '<option value="' + k + '"' + (k === (n.kind || 'note') ? ' selected' : '') + '>' + kindLabel(k) + '</option>' }).join('') + '</select></span>'   /* i18n 覆盖卡F（B 卡交接②）：kind 下拉选项经 kindLabel() 条件映射走 t()（KIND 字面量仅作锚）；0.4.3⑩：sys 为机器托管 kind——仅当前笔记已是 sys 时渲染该选项（显示保真），人工不可转入 */
     + '<span class="meta-chip" title="' + t('meta.statusTip') + '"><select id="statusSel">'
     + ['active', 'resolved', 'superseded'].map(function (s) { return '<option value="' + s + '"' + (s === (isPinned(n) ? 'active' : n.status || 'active') ? ' selected' : '') + '>' + statusLabel(s) + '</option>' }).join('') + '</select></span>'   /* i18n 覆盖卡F（B 卡交接②）：status 下拉选项经 statusLabel() 条件映射走 t()（meta.status* 本卡建） */
     + '<span class="meta-chip" title="' + t('meta.topicTip') + '">' + icon('i-topic') + '<input id="mTopicInput" size="8" placeholder="' + t('meta.topicPlaceholder') + '" value="' + esc(n.topic === '分类中' ? '' : (n.topic || '')) + '"></span>'
@@ -31,10 +31,13 @@ function renderMeta() {
     + ((n.useCount || 0) > 0 ? '<span class="meta-chip" title="' + t('meta.useCountTip') + '">' + icon('i-quote') + t('meta.useCount', { n: n.useCount }) + '</span>' : '')
     /* P3 派发闭环徽章：有派发记录时聚合显示（pending=有待回执 / done=全部已回执），点击展开派发历史 */
     + (function () { var ds = n.dispatches || []; if (!ds.length) return ''; var openN = ds.filter(function (d) { return !isDispDone(d) }).length; return '<span class="meta-chip disp-badge ' + (openN ? 'pending' : 'done') + '" id="mDispBadge" title="' + (openN ? t('meta.dispPendingTip', { open: openN, total: ds.length }) : t('meta.dispDoneTip', { total: ds.length })) + '">' + icon(openN ? 'i-play' : 'i-check') + esc(openN ? t('meta.dispPending', { open: openN, total: ds.length }) : t('meta.dispDone')) + '</span>' })()
-    + '<span class="meta-chip role-seg" id="mRole">' + icon('i-bolt')
-    + '<span class="seg' + (role === 'off' ? ' on' : '') + '" data-role="off" title="' + t('meta.roleOffTip') + '">' + t('meta.roleOff') + '</span>'
-    + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="' + t('meta.roleConventionTip') + '">' + t('tree.roleConvention') + '</span>'
-    + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="' + t('meta.roleReferenceTip') + '">' + t('tree.roleReference') + '</span></span>'
+    /* 注入三态（0.4.3⑦ 注入硬关 UI 化）：kind=log 不渲染开关——UI 层不提供日志注入选项（host injectForcedOff 硬闸双保险保留） */
+    + ((n.kind || 'note') === 'log'
+      ? '<span class="meta-chip" title="' + t('meta.logNoInjectTip') + '">' + icon('i-bolt') + t('meta.logNoInject') + '</span>'
+      : '<span class="meta-chip role-seg" id="mRole">' + icon('i-bolt')
+      + '<span class="seg' + (role === 'off' ? ' on' : '') + '" data-role="off" title="' + t('meta.roleOffTip') + '">' + t('meta.roleOff') + '</span>'
+      + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="' + t('meta.roleConventionTip') + '">' + t('tree.roleConvention') + '</span>'
+      + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="' + t('meta.roleReferenceTip') + '">' + t('tree.roleReference') + '</span></span>')
     + (role !== 'off' ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="' + t('meta.scopeTip') + '">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
     + '<span class="meta-chip tgl' + (n.recall !== false ? ' on' : '') + '" id="mRecall" title="' + t('meta.recallTip') + '">' + icon('i-eye') + t('meta.recall') + '</span>'
     + '<span class="meta-chip tgl' + (n.sensitive === true ? ' on' : '') + '" id="mSens" title="' + t('meta.sensTip') + '">' + icon('i-lock') + t('meta.sens') + '</span>'
@@ -63,7 +66,8 @@ function renderMeta() {
   $('statusSel').onchange = function () { edNote.status = this.value; triggerSave(); renderMeta(); renderTree() };
   $('mTopicInput').oninput = function () { edNote.topic = this.value; triggerSave() };
   $('mTagsInput').oninput = function () { edNote._tagsStr = this.value; triggerSave() };
-  $('mRole').querySelectorAll('.seg').forEach(function (seg) {
+  var mRoleEl = $('mRole');   /* kind=log 时注入开关不渲染（0.4.3⑦ 硬关 UI 化）——守卫防空指针 */
+  if (mRoleEl) mRoleEl.querySelectorAll('.seg').forEach(function (seg) {
     seg.onclick = function () {
       var r = seg.getAttribute('data-role');
       if (r === role) return;

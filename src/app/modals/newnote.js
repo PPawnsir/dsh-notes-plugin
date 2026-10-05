@@ -7,9 +7,9 @@ function doNewNote() {
   if (draftNote) { var t0 = $('edTitle'); if (t0) t0.focus(); return }
   /* 从在编辑笔记切到草稿前，先把富文本在途编辑序列化落回并保存（与 selectNote 同款：防 900ms debounce 打到草稿上） */
   if (edMode === 'rich' && richDirty && edNote) { syncFromRich('新建切换'); doSave(); }
-  var seedFolder = view.type === 'folder' ? view.id : '';
+  var seedFolder = '';   /* 0.4.3⑦：文件视图拆除——原「文件夹视图落当前文件夹」种子随之移除（落未分类/编辑期再归类） */
   var seedTopic = view.type === 'topic' ? view.id : '';
-  var kind0 = filters.kinds.length === 1 ? filters.kinds[0] : 'note';
+  var kind0 = filters.kinds.length === 1 && filters.kinds[0] !== 'sys' ? filters.kinds[0] : 'note';   /* 0.4.3⑩：「机器」档（sys）下新建回退 note——sys 为机器托管 kind，人工新建不预填 */
   /* 二期 kind 模板骨架：筛选中心类型组恰选 1 个时按该 kind 预填（note=空自由格式）——预填不算「有效编辑」，零输入放弃仍不落库 */
   draftNote = {
     id: '', title: '', body: KIND_TEMPLATES[kind0] || '', kind: kind0, status: 'active',

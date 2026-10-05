@@ -3,7 +3,7 @@
     // （纯文本不压缩不加密，目录即格式；文件名 = UTC ISO 时间戳（':' 在 Windows 文件名非法 → '-'）+ 稳定内容 hash 后缀，字典序即时序，免读 mtime）。
     // 触发对齐 doSave 防抖：client 防抖后每次真实保存 = 一次 persistNote = 一次快照；创建首版无旧版可快照（缓存未命中自然跳过）。
     // 上一版来源 = persistNote 写盘前的 cache 原件经 noteFileContent 重建字节（插件写入全经 persistNote 同步缓存，缓存即盘上字节）——
-    //   零新增磁盘读（update 主路径红线）；例外：useCount 内存累积未落盘时重建字节比盘上多一行计数差、外部手写文件经 FM 规范化重建（均内容等价）。
+    //   零新增磁盘读（update 主路径红线）；例外：存量文件盘上残留已退役 useCount 行时重建字节不含该行（0.4.3 验收修复⑧字段退役，内容等价）、外部手写文件经 FM 规范化重建（均内容等价）。
     //   浅拷贝别名注意：派发等原地变异路径的元数据字段可能已是新值，正文始终正确（字符串不可变）。
     // 内容去重：hash 只覆盖「稳定内容」（剔除 updatedAt/useCount 易变字段——保存时间戳/遥测计数不算内容变化）；
     //   与该笔记最新快照文件名内嵌 hash 比对，相同则跳过（无变化重复保存场景）；hash 内嵌文件名使插件重载后去重仍零读盘有效。
@@ -12,7 +12,8 @@
     // 删除语义同 purge：ctx.fs 无删除契约 → 开发版墓碑式清空（0 字节，histEnsureScanned 视作不存在）；静态包 processPath 可用时 node:fs 真删。
     // 性能红线：_list/_get/_search 主读取路径零新增 IO（.history 是子目录，列表只认 n-*.md 直子级，天然不枚举）；
     //   快照/去重/保留/预算全部挂写入路径（persistNote/_purge/导入导出）；惰性全量扫描每 apply 生命周期至多一次。
-    // 自动元数据回写（useCount 防抖落盘 / agent status idle 派发回执）不算编辑：persistNote 第二参 { history:false } 不产生历史版本。
+    // 自动元数据回写（agent status idle 派发回执 / 根笔记与调度机器回写）不算编辑：persistNote 第二参 { history:false } 不产生历史版本。
+    //   （useCount 防抖落盘已于 0.4.3 验收修复⑧退役——统计归 telemetry.json facets.use，不经 persistNote，天然零快照。）
     const HISTORY_DIR = NOTES_DIR + '\\.history'
     const HIST_NOTE_CAP = 20                             // 单笔记硬上限（超限淘汰最旧）
     const HIST_GLOBAL_BUDGET = 50 * 1024 * 1024          // 全库 .history 总预算（LRU 淘汰最旧快照）
@@ -246,4 +247,4 @@
     }
     // ==== history-engine END ====
 
-    // opts.history===false：自动元数据回写（useCount 防抖/idle 派发回执）不算编辑，不产生历史快照；其余每次真实落盘前快照上一版
+    // opts.history===false：自动元数据回写（idle 派发回执/根笔记与调度机器回写）不算编辑，不产生历史快照；其余每次真实落盘前快照上一版

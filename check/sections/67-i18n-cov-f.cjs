@@ -1,4 +1,4 @@
-﻿// 节 67. i18n 覆盖卡 F（notes-042-i18n-cov-f：其余面板 + popovers + 共享常量表条件映射 + host toast 面）
+// 节 67. i18n 覆盖卡 F（notes-042-i18n-cov-f：其余面板 + popovers + 共享常量表条件映射 + host toast 面）
 // 规格源：反馈条目 n-mut488gske5v 覆盖卡统一方法（免调研模板）——grep 表面 [一-鿿] → 抽串进 zh.js（key=表面.语义）
 //   → 内联改 t()/tt()（变量 {name} 插值禁拼接）→ en.js 直译 → 断言（t( 命中≥抽串、字典双向覆盖、产物英文态抽查）。
 // 表面：app panels/{folders,wiki,selection,search,query,filterbar,organize}.js + panels/editor-meta.js 三处下拉/tooltip 遗留（B 卡交接②）
@@ -40,8 +40,9 @@ module.exports = {
   const clientPkgSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
   const protoSrc = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
   const srvSrc = fsNative.readFileSync(path.join(DIR, 'src', 'host', 'server.js'), 'utf8')
-  // 覆盖卡 F 抽串清单（100 条 = filter.* 10 + sort.* 6 + meta.status* 3 + fld.* 26（含 E 卡交接调用方传参）+ wiki.* 4
+  // 覆盖卡 F 抽串清单（99 条 = filter.* 10 + sort.* 6 + meta.status* 3 + fld.* 25（含 E 卡交接调用方传参）+ wiki.* 4
   //   + cap.* 21 + search.offline 1 + sel.deleting 1 + ctx.* 7 + help.* 20 + side.loadFailed 1；key=表面.语义）
+  // （0.4.3⑦：fld.menuView「进入文件夹视图」随「文件视图」拆除移出清单）
   const KEYS = [
     'filter.statusGroup', 'filter.ruleOr', 'filter.kindGroup', 'filter.ruleOrAnd', 'filter.hitCount',
     'filter.clear', 'filter.done', 'filter.removeAria', 'filter.clearedToast', 'filter.stInjected',
@@ -51,7 +52,7 @@ module.exports = {
     'fld.created', 'fld.createFailed', 'fld.renamed', 'fld.renameFailed', 'fld.delConfirmCascade',
     'fld.delConfirmEmpty', 'fld.deleted', 'fld.deletedDetail', 'fld.deleteFailed', 'fld.sortFailed',
     'fld.errSelf', 'fld.errCycle', 'fld.movedInto', 'fld.movedRoot', 'fld.moveFailed',
-    'fld.menuView', 'fld.menuUp', 'fld.menuDown', 'fld.menuRoot', 'fld.menuDeleteFolder',
+    'fld.menuUp', 'fld.menuDown', 'fld.menuRoot', 'fld.menuDeleteFolder',
     'fld.loadFailed',
     'wiki.idxFailedPartial', 'wiki.idxFailed', 'wiki.idxFailedClient', 'wiki.targetNotFound',
     'cap.title', 'cap.autoQuote', 'cap.autoQuoteClient', 'cap.placeholder', 'cap.placeholderClient',
@@ -72,9 +73,9 @@ module.exports = {
   const grab = (s, v) => new Function(s + '\nreturn ' + v)()
   const zh = grab(zhSrc, 'I18N_ZH'), en = grab(enSrc, 'I18N_EN')
 
-  // ===== ① 字典双向覆盖：100 条 key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
-  await t('覆盖F 字典双向覆盖：100 条 filter/sort/meta.status/fld/wiki/cap/search/sel/ctx/help/side key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
-    assert.strictEqual(KEYS.length, 100, '抽串清单条数（实得 ' + KEYS.length + '）')
+  // ===== ① 字典双向覆盖：99 条 key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
+  await t('覆盖F 字典双向覆盖：99 条 filter/sort/meta.status/fld/wiki/cap/search/sel/ctx/help/side key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
+    assert.strictEqual(KEYS.length, 99, '抽串清单条数（实得 ' + KEYS.length + '）')
     for (const k of KEYS) {
       assert(typeof zh[k] === 'string' && zh[k], 'zh 缺 key/空值：' + k)
       assert(typeof en[k] === 'string' && en[k], 'en 缺 key/空值：' + k)
@@ -92,24 +93,24 @@ module.exports = {
   })
 
   // ===== ② t()/tt() 改写命中 + 条件映射 helper 双端接线 + 常量表字面量锚保留 =====
-  await t('t()/tt() 改写命中：24 表面文件域内 t(/tt( 合计 ≥100（≥抽串数）+ 逐文件关键锚点 + helper 接线 + 常量表锚保留', () => {
+  await t('t()/tt() 改写命中：24 表面文件域内 t(/tt( 合计 ≥99（≥抽串数）+ 逐文件关键锚点 + helper 接线 + 常量表锚保留', () => {
     const cnt = (s) => (s.match(/[^\w]t{1,2}\('(?:fld|wiki|cap|search|sel|ctx|help|filter|sort|side|meta|tree|common|editor|arch|inj|mem|chrome)\./g) || []).length
     const per = [
-      ['folders.js(app)', foldersAppSrc, 27], ['wiki.js(app)', wikiAppSrc, 12], ['selection.js(app)', selAppSrc, 12],
+      ['folders.js(app)', foldersAppSrc, 26], ['wiki.js(app)', wikiAppSrc, 12], ['selection.js(app)', selAppSrc, 12],
       ['search.js(app)', searchAppSrc, 1], ['filterbar.js(app)', filterbarAppSrc, 11], ['organize.js(app)', orgAppSrc, 10],
       ['editor-meta.js(app)', emetaAppSrc, 100], ['filter-pop.js(app)', fpopAppSrc, 1], ['state.js(app)', stateAppSrc, 9],
       ['data.js(app)', dataAppSrc, 1],
       ['constants.js(client)', constCliSrc, 7], ['ctx-menu.js(client)', ctxCliSrc, 13], ['filter-pop.js(client)', fpopCliSrc, 7],
-      ['folder-menu.js(client)', fmenuCliSrc, 17], ['help.js(client)', helpCliSrc, 21], ['scope.js(client)', scopeCliSrc, 7],
+      ['folder-menu.js(client)', fmenuCliSrc, 16], ['help.js(client)', helpCliSrc, 21], ['scope.js(client)', scopeCliSrc, 7],
       ['selbar.js(client)', selbarCliSrc, 10], ['capture.js(client)', capCliSrc, 27], ['wiki.js(client)', wikiCliSrc, 3],
       ['sidebar.js(client)', sideCliSrc, 8], ['editor.js(client)', edCliSrc, 155],
     ]
     let total = 0
     for (const [label, s, min] of per) { const c = cnt(s); total += c; assert(c >= min, label + ' 域内 t(/tt( 命中 ≥' + min + '（实得 ' + c + '）') }
-    assert(total >= 100, '表面文件域内 t(/tt( 命中合计 ≥100 抽串数（实得 ' + total + '）')
+    assert(total >= 99, '表面文件域内 t(/tt( 命中合计 ≥99 抽串数（实得 ' + total + '）')
     // app 端锚点
     assert(foldersAppSrc.indexOf("title: parentId ? t('fld.titleNewSub') : t('fld.titleNew')") >= 0 && foldersAppSrc.indexOf("okText: t('fld.okNew')") >= 0, 'app folders 弹窗传参 t()（E 卡交接项：调用方 title/okText）')
-    assert(foldersAppSrc.indexOf("t('fld.delConfirmCascade', { name: f.name, childN: childN, noteN: noteN })") >= 0 && foldersAppSrc.indexOf("toast(t('fld.errSelf'))") >= 0 && foldersAppSrc.indexOf("t('fld.menuView')") >= 0, 'app folders 级联 confirm/cycle 拦截/右键菜单走 t()')
+    assert(foldersAppSrc.indexOf("t('fld.delConfirmCascade', { name: f.name, childN: childN, noteN: noteN })") >= 0 && foldersAppSrc.indexOf("toast(t('fld.errSelf'))") >= 0 && foldersAppSrc.indexOf("t('fld.menuView')") < 0, 'app folders 级联 confirm/cycle 拦截走 t()；0.4.3⑦「进入文件夹视图」菜单项（fld.menuView）随文件视图拆除移除')
     assert(wikiAppSrc.indexOf("t('wiki.idxFailedPartial', { n: failed })") >= 0 && wikiAppSrc.indexOf("t('wiki.targetNotFound', { target: target })") >= 0, 'app wiki 索引失败/未命中 toast 走 t()')
     assert(wikiAppSrc.indexOf("t('editor.backlinks') + (warm ? t('editor.backlinksCount', { n: bl.length }) : t('editor.backlinksWarming'))") >= 0, 'app wiki 反向链接标题复用 B 卡 editor.backlinks*（禁重复建别名）')
     assert(wikiAppSrc.indexOf("t('fld.loadFailed', { msg:") >= 0 && wikiAppSrc.indexOf("t('mem.sessLoadFailed', { msg:") >= 0, 'app wiki loadFolders/pullSessions 走 t()（复用 mem.sessLoadFailed）')
@@ -119,7 +120,7 @@ module.exports = {
     assert(filterbarAppSrc.indexOf('sortLabelOf(s.id)') >= 0 && filterbarAppSrc.indexOf('sortDescOf(s.id)') >= 0 && filterbarAppSrc.indexOf('filterStatusLabel(s.id)') >= 0 && filterbarAppSrc.indexOf('kindLabel(k)') >= 0, 'app filterbar 渲染经条件映射 helper（常量表字面量不直渲）')
     assert(orgAppSrc.indexOf("toast(t('editor.organized', { kind: kindLabel(edNote.kind) || t('meta.kindNote') }), { label: t('meta.undo'), fn: undoAiOrganize })") >= 0, 'app organize 整理 toast 走 t()（复用 B 卡 editor.organized/meta.undo）')
     assert(orgAppSrc.indexOf("t('editor.bodyLoading')") >= 0 && orgAppSrc.indexOf("t('editor.noOrganizeUndo')") >= 0 && orgAppSrc.indexOf("t('editor.organizeUndone')") >= 0, 'app organize 守卫/撤销 toast 复用 editor.* 字典')
-    assert(emetaAppSrc.indexOf("Object.keys(KIND).map(function (k) { return '<option value=\"' + k + '\"'") >= 0 && emetaAppSrc.indexOf("'>' + kindLabel(k) + '</option>'") >= 0, 'app editor-meta kind 下拉经 kindLabel()（B 卡交接②）')
+    assert(emetaAppSrc.indexOf("Object.keys(KIND).filter(function (k) { return k !== 'sys' || k === (n.kind || 'note') }).map(function (k) { return '<option value=\"' + k + '\"'") >= 0 && emetaAppSrc.indexOf("'>' + kindLabel(k) + '</option>'") >= 0, 'app editor-meta kind 下拉经 kindLabel()（B 卡交接②；0.4.3⑩ sys 仅当前已是时渲染——机器托管 kind 人工不转入）')
     assert(emetaAppSrc.indexOf("'>' + statusLabel(s) + '</option>'") >= 0, 'app editor-meta status 下拉经 statusLabel()（meta.status* 本卡建）')
     assert(emetaAppSrc.indexOf("t('meta.organizeTip', { kind: kindLabel(edNote.kind) || t('meta.kindNote') })") >= 0, 'app editor-meta 整理 tooltip kind 名走 t()')
     assert(fpopAppSrc.indexOf("t('filter.clearedToast')") >= 0, 'app filter-pop 清空筛选 toast 走 t()')
@@ -151,11 +152,11 @@ module.exports = {
     assert(stateAppSrc.indexOf('function sortLabel() { return sortLabelOf(sortBy) }') >= 0, 'app sortLabel() 走 t()（原 FILTER_SORTS[i].label 直读退锚）')
     assert(stateCliSrc.indexOf('function injectScopeLabel(injectTo) { return panelBridge.injectScopeLabel(injectTo) }') >= 0, 'client kernel/state.js injectScopeLabel 转发别名纯管道不动')
     // 常量表字面量锚保留（四端同构 + check 30/34/39 锁定 + 原型不双语红线：label 中文不抽，渲染走映射）
-    assert(stateAppSrc.indexOf("var KIND = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' };") >= 0
-      && stateAppSrc.indexOf("var STATUS_LABEL = { active: '进行中', pinned: '置顶', resolved: '已解决', superseded: '已取代' };") >= 0, 'app KIND/STATUS_LABEL 字面量锚保留')
+    assert(stateAppSrc.indexOf("var KIND = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '机器' };") >= 0
+      && stateAppSrc.indexOf("var STATUS_LABEL = { active: '进行中', pinned: '置顶', resolved: '已解决', superseded: '已取代' };") >= 0, 'app KIND/STATUS_LABEL 字面量锚保留（KIND 0.4.3⑩ +sys「机器」）')
     assert(stateAppSrc.indexOf("{ id: 'pinned', label: '置顶', icon: 'i-pin'") >= 0 && stateAppSrc.indexOf("{ id: 'time', label: '时间', desc: '置顶优先 · 更新降序（默认）' },") >= 0, 'app FILTER_STATUS/FILTER_SORTS 字面量锚保留')
-    assert(constCliSrc.indexOf("const KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' }") >= 0
-      && constCliSrc.indexOf("{ id: 'pinned', label: '置顶', icon: 'pin'") >= 0 && constCliSrc.indexOf("{ id: 'time', label: '时间', desc: '置顶优先 · 更新降序（默认）' },") >= 0, 'client KIND_LABELS/FILTER_STATUS/FILTER_SORTS 字面量锚保留')
+    assert(constCliSrc.indexOf("const KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '机器' }") >= 0
+      && constCliSrc.indexOf("{ id: 'pinned', label: '置顶', icon: 'pin'") >= 0 && constCliSrc.indexOf("{ id: 'time', label: '时间', desc: '置顶优先 · 更新降序（默认）' },") >= 0, 'client KIND_LABELS/FILTER_STATUS/FILTER_SORTS 字面量锚保留（KIND_LABELS 0.4.3⑩ +sys「机器」）')
   })
 
   // ===== ③ 行为级：eval 字典 + app i18n 块 + state.js 条件映射 helper——取值/插值/en 态逐条非裸 key =====

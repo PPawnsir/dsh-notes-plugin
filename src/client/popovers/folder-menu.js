@@ -23,18 +23,7 @@
         const [folderMenu, setFolderMenu] = React.useState(null)   // 文件夹项右键菜单：{ x, y, folder }（面板内坐标）或 null
         const [renamingId, setRenamingId] = React.useState(null)   // 树内内联重命名中的文件夹 id
         const [renameText, setRenameText] = React.useState('')
-        // 树展开「含日志的文件夹」懒加载（notes-041c-tree-log-children）：定向 includeLogs 拉取的 kind=log overlay + 按夹已拉标记
-        //（R-6 豁免面=「用户主动展开日志夹」动作；overlay 不并入 notes 主缓存——默认列表/搜索/目录隐身不变）
-        const [foldLogs, setFoldLogs] = React.useState([])
-        const [foldLogLoaded, setFoldLogLoaded] = React.useState({})
-        function ensureFoldLogs(fid) {
-          if (foldLogLoaded[fid]) return
-          setFoldLogLoaded(prev => Object.assign({}, prev, { [fid]: true }))
-          if (notes.some(n => (n.kind || 'note') === 'log')) return   // 列表已是 includeLogs 口径：日志随 notes 正常渲染，零请求
-          host.call('notes-list', { includeLogs: true }).then(res => {
-            if (res && res.notes) setFoldLogs(res.notes.filter(n => (n.kind || 'note') === 'log'))
-          }).catch(err => {})
-        }
+        // 日志同权（0.4.3 验收修复⑦）：按夹日志 overlay 懒加载已拆除——日志随 notes 主缓存直达，展开日志夹零额外 RPC
         // 展开态/菜单镜像到 ref（Esc 栈闭包挂一次，需读最新值避免过期）
         React.useEffect(() => { folderMenuRef.current = folderMenu }, [folderMenu])
         React.useEffect(() => { renamingIdRef.current = renamingId }, [renamingId])
@@ -73,15 +62,14 @@
         // 折叠判定：foldersExpanded=null 表示缺省全展开；否则数组为展开中的 id 集合（含置顶组 PINNED_KEY）
         function isFolderExpanded(id) { return foldersExpanded === null ? true : foldersExpanded.indexOf(id) >= 0 }
         // 折叠/展开切换（缺省全展开时先物化全量展开集合再切换，保证其余文件夹保持展开）
+        // 日志同权（0.4.3⑦）：展开不再触发日志懒加载（overlay 已拆）——纯折叠态翻转，零副作用
         function toggleFolder(id) {
-          const opening = !isFolderExpanded(id)
           setFoldersExpanded(prev => {
             const base = prev === null ? folders.map(f => f.id).concat([PINNED_KEY]) : prev
             const next = base.indexOf(id) >= 0 ? base.filter(x => x !== id) : base.concat([id])
             saveFoldersExpanded(next)
             return next
           })
-          if (opening) ensureFoldLogs(id)   // 仅展开动作触发日志懒加载（notes-041c），折叠不动作
         }
         // 自动展开目标文件夹（选中笔记/新建文件夹/移入笔记时调用；已展开或缺省全展开时不动）
         function expandFolder(id) {
@@ -105,7 +93,7 @@
           setFolderMenu({ x: x, y: y, folder: f })
           setCtxMenu(null)
         }
-        // 文件夹新建（分组头 ＋ 根级 / 右键「新建子文件夹」嵌套）→ 内联输入：Enter 提交（空串=取消）；建成即展开该文件夹并进入文件夹视图
+        // 文件夹新建（分组头 ＋ 根级 / 右键「新建子文件夹」嵌套）→ 内联输入：Enter 提交（空串=取消）；建成即展开该文件夹（树内浏览）
         // 嵌套：parent 取 subFolderFor（''=根级）；深度上限/父不存在由 host checkFolderAttach 拒绝 → 错误串去 RPC 前缀后 toast（友好提示）
         async function doCreateFolder() {
           const name = folderInputText.trim()
@@ -116,7 +104,7 @@
             const res = await host.call('notes-folders', { op: 'create', name: name, parent: parent })
             if (res && res.error) { showToast(String(res.error).replace(/^notes-folders\.\w+\s*/, '')); return }
             showToast(t('fld.created', { name: name }))
-            if (res.folder && res.folder.id) { if (parent) expandFolder(parent); expandFolder(res.folder.id); setView({ type: 'folder', id: res.folder.id }) }
+            if (res.folder && res.folder.id) { if (parent) expandFolder(parent); expandFolder(res.folder.id) }   // 0.4.3⑦：文件视图拆除——建成即展开（不再进文件夹视图）
             await loadFolders()
           } catch (err) { setError(String(err.message || err)) }
         }
@@ -151,8 +139,6 @@
             const res = await host.call('notes-folders', { op: 'delete', id: f.id, cascade: true })
             if (res && res.error) { setError(res.error); return }
             showToast(t('fld.deleted', { name: f.name }) + ((childN || noteN) ? t('fld.deletedDetail', { childN: childN, noteN: noteN }) : ''))
-            // 当前文件夹视图落在被删子树内 → 回全部视图（视图 id 悬空会显示空名单）
-            if (view.type === 'folder' && sub[view.id]) setView({ type: 'all', id: '' })
             await loadFolders(); await loadNotes(true); notifyNotesChanged()
           } catch (err) { setError(String(err.message || err)) }
         }
@@ -204,10 +190,10 @@
         // 文件夹右键菜单的上移/下移边界（嵌套语义：同级兄弟内首项不可上移、末项不可下移）
         const folderMenuSibs = folderMenu ? childFoldersOf(folderMenu.folder.parent || '') : []
         const folderMenuIdx = folderMenu ? folderMenuSibs.findIndex(f => f.id === folderMenu.folder.id) : -1
-        // 文件夹项右键菜单：进入文件夹视图 / 新建子文件夹（嵌套内联输入）/ 重命名 / 上移 / 下移（同级兄弟内）/ 移回根级（有父级时）/ 删除（级联 confirm）
+        // 文件夹项右键菜单：新建子文件夹（嵌套内联输入）/ 重命名 / 上移 / 下移（同级兄弟内）/ 移回根级（有父级时）/ 删除（级联 confirm）
+        // （0.4.3 验收修复⑦：文件夹右键「进视图」菜单项随文件视图模式拆除移除）
         // i18n 覆盖卡F：菜单项文案走 t()（fld.* 域；「删除文件夹」= fld.menuDeleteFolder 区别笔记行 common.delete）
         const folderMenuEl = folderMenu ? e('div', { className: 'dsh-notes-ctxmenu', style: { left: folderMenu.x + 'px', top: folderMenu.y + 'px' } },
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); expandFolder(mf.id); setView({ type: 'folder', id: mf.id }) } }, I('filter', 12), t('fld.menuView')),
             e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); setFolderInputOpen(false); setFolderInputText(''); expandFolder(mf.id); setSubFolderFor(mf.id) } }, I('plus', 12), t('fld.titleNewSub')),
             e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { setRenamingId(folderMenu.folder.id); setRenameText(folderMenu.folder.name); setFolderMenu(null) } }, t('fld.okRename')),
             e('button', { className: 'dsh-notes-ctxmenu-item', disabled: folderMenuIdx <= 0, onClick: () => doReorderFolder(folderMenu.folder, -1) }, t('fld.menuUp')),
@@ -224,7 +210,6 @@
           loadFolders: loadFolders, folderSubtreeIdsOf: folderSubtreeIdsOf, childFoldersOf: childFoldersOf, rootFolders: rootFolders,
           folderPathOf: folderPathOf, isFolderExpanded: isFolderExpanded, toggleFolder: toggleFolder, expandFolder: expandFolder,
           folderName: folderName, openFolderMenu: openFolderMenu, doCreateFolder: doCreateFolder, doRenameFolder: doRenameFolder,
-          doDeleteFolder: doDeleteFolder, doReorderFolder: doReorderFolder, doReparentFolder: doReparentFolder, folderMenuEl: folderMenuEl,
-          foldLogs: foldLogs, foldLogLoaded: foldLogLoaded, ensureFoldLogs: ensureFoldLogs   // notes-041c 树日志懒加载（panel/tree.js 消费）
+          doDeleteFolder: doDeleteFolder, doReorderFolder: doReorderFolder, doReparentFolder: doReparentFolder, folderMenuEl: folderMenuEl
         }
     }

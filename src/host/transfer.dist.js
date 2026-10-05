@@ -1,4 +1,5 @@
-    // ---- 导入/导出：全库目录快照（目录即格式，零新依赖；settings.json 与 *.md.bak 不进出）----
+    // ---- 导入/导出：全库目录快照（目录即格式，零新依赖；settings.json 与 *.md.bak 不进出；
+    //   telemetry.json 遥测 sidecar 进出（0.4.3 验收修复⑤ notes-043-metrics-storage：version 字段供迁移，导入按计数并入/冲突取大合并））----
     // 与 host-impl.js 同逻辑同步维护：仅路径拼接换为 path.join（ESM 静态包惯例）
     // 时间戳目录后缀：yyyyMMdd-HHmmss（本地时间），导出/备份目录共用
     function tsStamp(d) {
@@ -248,7 +249,7 @@
       } catch (e) { return [] }
     }
 
-    // 复制 NOTES_DIR 全部 n-*.md + folders.json + assets/ 到目标目录（导出与导入前全量备份共用）；
+    // 复制 NOTES_DIR 全部 n-*.md + folders.json + assets/ + telemetry.json 到目标目录（导出与导入前全量备份共用）；
     // writeText 原子写会递归创建父目录，目标目录不存在时随首个文件写入自动建好；
     // 无 assets/ 的旧库：listAssets 返回 []，assets=0，零回归。
     // opts.includeHistory：连带 .history 快照历史（导出默认不含——历史是本地安全网不随导出物流转；导入前全量备份恒带）
@@ -267,9 +268,18 @@
         await fs.writeText(await fs.resolve(path.join(targetDir, 'folders.json')), c, undefined, undefined, getPolicy())
         foldersFile = true
       } catch (e) { /* folders.json 缺失/不可读 → 跳过（foldersFile=false） */ }
+      // 遥测 sidecar（0.4.3 验收修复⑤）：导出/备份连带 telemetry.json（version 字段供迁移合并）；
+      //   先落账（防抖窗口内内存增量 flush 到盘，快照拿最新口径）再读盘复制；缺失/不可读 → 跳过（telemetry=false，旧库零回归）
+      let telemetry = false
+      try {
+        await _telemetryFlushNow()
+        const c = await fs.readText(await fs.resolve(TELEMETRY_PATH))
+        await fs.writeText(await fs.resolve(path.join(targetDir, 'telemetry.json')), c, undefined, undefined, getPolicy())
+        telemetry = true
+      } catch (e) { /* telemetry.json 缺失/不可读 → 跳过（遥测允许重来） */ }
       const assets = await copyAssetsDir(NOTES_DIR, targetDir, false)
       const history = opts && opts.includeHistory ? await copyHistoryDir(NOTES_DIR, targetDir, false) : 0
-      return { copied, foldersFile, assets, history }
+      return { copied, foldersFile, telemetry, assets, history }
     }
 
     // 扫描导入目录（只读不写）：n-*.md 逐条解析 front-matter 取 id（缺 id 按文件名兜底）+ folders.json；
@@ -307,7 +317,7 @@
     }
 
     // notes-export：NOTES_DIR 全库快照 → <dir>/dsh-notes-export-<ts>/（不打包不压缩，目录即格式；dir 不存在则随写入自建）
-    // 快照含 n-*.md + folders.json + assets/（图片资产连带；无 assets 的旧库 assets=0）；
+    // 快照含 n-*.md + folders.json + assets/（图片资产连带；无 assets 的旧库 assets=0）+ telemetry.json（遥测 sidecar，卡⑤）；
     // .history 快照历史默认不含（本地安全网不随导出物流转），includeHistory=true 时连带（返回 history 文件计数）
     async function _export(dir, includeHistory) {
       const d = String(dir || '').trim().replace(/[\\/]+$/, '')
@@ -316,7 +326,7 @@
       if (info && !(info.dir || info.type === 'directory')) return { error: '目标路径不是目录：' + d }
       const target = path.join(d, 'dsh-notes-export-' + tsStamp(new Date()))
       const r = await copyNotesDir(target, { includeHistory: includeHistory === true })
-      const out = { exported: r.copied, foldersFile: r.foldersFile, assets: r.assets, target: target }
+      const out = { exported: r.copied, foldersFile: r.foldersFile, telemetry: r.telemetry === true, assets: r.assets, target: target }
       if (includeHistory === true) out.history = r.history
       return out
     }
@@ -344,7 +354,8 @@
         folderName = rf.name
         notes = await _list(undefined, undefined, rf.id)
       } else {
-        notes = await _list()
+        // 导出全部 = 机器全量口径（includeSys=true）：0.4.3⑨ 缺省降噪只作用于平铺视图/检索管线，导出行为不变（含 kind=sys 机器笔记）
+        notes = await _list(undefined, undefined, undefined, undefined, undefined, true)
       }
       // 逐篇收集正文引用的 assets/<name> 并读盘（读失败/0 字节墓碑 → 不进键值表，inlineAssetsInBody 保留原引用）
       const wanted = {}
@@ -400,10 +411,12 @@
     }
 
     // notes-import：执行导入（只增改不删）
-    // 1) 任何改动前先把 NOTES_DIR 全量备份到 notes/notes-backup-<ts>/（含软删除笔记的全部 n-*.md + folders.json + assets/）
+    // 1) 任何改动前先把 NOTES_DIR 全量备份到 notes/notes-backup-<ts>/（含软删除笔记的全部 n-*.md + folders.json + assets/ + .history/ 快照历史 + telemetry.json 遥测 sidecar）
     // 2) added 原文件原样入库（deleted 导入后仍隐藏）；same 跳过；diff 默认跳过，overwrite=true 才覆盖
     // 3) folders.json 合并只增不删：清单外的文件夹 id 追加尾部（order 续排），已存在的不动
     // 4) assets/ 合并只增不改：同名文件跳过（文件名含秒级时间戳，同名即同物）；无 assets 的旧导出 assetsMerged=0
+    // 4b) telemetry.json 遥测合并（0.4.3 验收修复⑤）：计数并入、同键冲突取大 + receipts 签名去重并集（≤200 保最新）——换机器遥测不丢；
+    //     同一快照重复导入零变化（幂等，telemetryMerged=false）；缺失/损坏 → 跳过（遥测允许重来）
     // 5) .history 历史合并：仅 added（库内不存在）新笔记连带合并源 .history/<id>（同名快照跳过）；id 冲突（库内已有该笔记，
     //    same/diff/overwrite 任一）跳过历史合并——两库同 id 历史不混杂（文档见 README/DEVELOPMENT）
     async function _import(dir, overwrite) {
@@ -413,6 +426,7 @@
       await copyNotesDir(backupDir, { includeHistory: true })
       const scan = await scanImportDir(chk.dir)
       let imported = 0, skippedSame = 0, skippedDiff = 0, overwritten = 0, historyMerged = 0
+      const importedNoteIds = []   // 入库/覆盖笔记 id（导入后 useCount facet 双向同步用，0.4.3 验收修复⑧）
       for (const n of scan.notes) {
         const cur = await readLibraryRaw(n.id)
         if (cur === n.content) { skippedSame++; continue }
@@ -422,6 +436,7 @@
           // 同步内存缓存（约定/目录注入直接读 cache）：按导入内容重建解析结果
           const note = noteFromParsed(n.id, parseFM(n.content))
           cache.set(note.id, note)
+          importedNoteIds.push(note.id)
           if (cur === null) {
             imported++
             // 历史连带：仅 added 新笔记合并源 .history/<id>（同名快照跳过，只增不改）
@@ -448,9 +463,19 @@
       }
       // assets/ 合并：同名跳过，只增不改（备份已在上面 copyNotesDir 里含库内 assets）
       const assetsMerged = await copyAssetsDir(chk.dir, NOTES_DIR, true)
+      // 遥测 sidecar 合并（卡⑤）：导出物带 telemetry.json 时按 version 兼容并入（计数冲突取大 + receipts 去重并集）；
+      //   幂等——同一快照二次导入零变化（telemetryMerged=false）；缺失/损坏静默跳过
+      let telemetryMerged = false
+      try {
+        const tc = await fs.readText(await fs.resolve(path.join(chk.dir, 'telemetry.json')))
+        telemetryMerged = await _telemetryImportMerge(JSON.parse(tc))
+      } catch (e) { /* 无遥测文件/损坏 → 跳过（遥测允许重来） */ }
+      // useCount facet 双向同步（0.4.3 验收修复⑧）：导入直写 cache 不经 readNoteFile——此处补齐 seed/pull：
+      //   导入文件残留旧 front-matter useCount → seed 并入 facet；导入 telemetry.json facets.use 更大 → 视图抬头（facet 唯一事实源）
+      for (const id of importedNoteIds) { const n2 = cache.get(id); if (n2) await _useFacetSync(n2) }
       // 合并了外部历史 → 存活清单/预算记账失效，下次快照惰性重扫（histEnsureScanned）
       if (historyMerged > 0) histSizes = null
-      return { imported: imported, skippedSame: skippedSame, skippedDiff: skippedDiff, overwritten: overwritten, foldersMerged: foldersMerged, assetsMerged: assetsMerged, historyMerged: historyMerged, backupDir: backupDir, unreadable: scan.unreadable }
+      return { imported: imported, skippedSame: skippedSame, skippedDiff: skippedDiff, overwritten: overwritten, foldersMerged: foldersMerged, assetsMerged: assetsMerged, historyMerged: historyMerged, telemetryMerged: telemetryMerged, backupDir: backupDir, unreadable: scan.unreadable }
     }
 
 

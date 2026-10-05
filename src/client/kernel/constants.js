@@ -1,5 +1,5 @@
     const PAGE_SIZE = 50
-    const KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' }
+    const KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '机器' }   /* 0.4.3⑩ +sys「机器」（筛选中心「机器」档标签/持久化校验用；编辑器/新建 kind 选项不收 sys——机器托管 kind 人工不转） */
     // ---- 二期：kind 模板骨架（新建笔记预填）——与 host-impl.js / index.mjs / app.html / 原型同一份（check.js 断言一致）----
     // note 为自由格式（空骨架）；机器/运维信息类由 ✨整理按内容套用机器模板（建时无法预判内容，不进 KIND_TEMPLATES）
     const KIND_TEMPLATES = {
@@ -19,7 +19,7 @@
       { id: 'injectEver', label: '曾注入', icon: 'clock', pred: n => n.injectEver === true },
       { id: 'sensitive', label: '敏感', icon: 'lock', pred: n => n.sensitive === true },
     ]
-    const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log']   // 工作记忆 v0：类型组 + log（日志默认隐身——勾选「日志」即专入口，host 端 includeLogs 召回）
+    const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log', 'sys']   // 类型组含 log（0.4.3⑦ 日志同权：勾选「日志」= 只看日志，与普通 kind 过滤同语义，不再是隐身专入口）+ sys（0.4.3⑩「机器」档：勾选=全库 sys 机器笔记（含「记忆档案」夹内档案）经 host kind 通道直达，面板翻账本入口）
     const FILTER_SORTS = [
       { id: 'time', label: '时间', desc: '置顶优先 · 更新降序（默认）' },
       { id: 'use', label: '引用', desc: '被引用次数降序' },

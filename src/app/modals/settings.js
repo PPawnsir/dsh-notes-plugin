@@ -18,7 +18,7 @@ function openSettings() {
     var settings = res.settings || {};
     var models = res.models || [];
     var l = settings.llm || null;
-    var catalogOn = settings.catalogEnabled !== false;
+    var catalogOn = settings.catalogEnabled === true;   /* 0.4.3 验收修复：目录注入缺省关（显式 true 才开启） */
     /* P1 注入增强：时效衰减提醒阈值（天，缺省 90，0=关闭）+ 注入体积预算（约/字符数，缺省 0=不限）+ 仪表（lastInjectChars） */
     var staleDays = typeof settings.staleDays === 'number' ? settings.staleDays : 90;
     /* 文件夹嵌套深度上限（maxFolderDepth，层；根级=第 1 层，缺省 3，0=不限） */

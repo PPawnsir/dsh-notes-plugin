@@ -5,7 +5,7 @@
     //
     // 【§6 步骤 E 裁决记录】
     // ① state 不迁 store：check.js 逐字锚定一批 useState/useRef 声明原文（selMode/selIds/sortBy/view/filters/foldersExpanded/dragActive/
-    //    dragNoteIdRef/dragFolderIdRef/edSens/edSensRef/newNoteKind/setSnap/setInflight/injectPreviewTab 等），且 popover 与 panel 子域 hook
+    //    dragNoteIdRef/dragFolderIdRef/edSens/edSensRef/newNoteKind/setSnap/setInflight 等），且 popover 与 panel 子域 hook
     //    均经本装配层在同一组件（FloatingPanel）渲染边界内按固定序调用——重渲染口径与单文件时代完全一致。store 切片（kernel/state.js
     //    createStore）仅服务真正独立组件边界的 modals（§6 步骤 D 已建立），本步不为 panel 域新建 store 切片。
     // ② 跨域调用：popover/panel 子域禁横向引用，跨域 setter/函数经 kernel/state.js 转发别名 → panelBridge（本组件每渲染回填）；
@@ -28,7 +28,8 @@
         // 窗口 chrome（pos/size/sideW/sideDrag + 标题栏/分隔条/resize 拖拽族 + titlebarEl/splitterEl/resizeEl JSX）已拆出
         // （§6 步骤 E：panel/chrome.js——归 usePanelChrome；open/close/showHelp 经入参注入，open 居中/位置持久化 effect 同文随迁；
         // hook 调用点位于 help hook 之后——入参 showHelp 自其解构，TDZ 约束）
-        // UI v2 视图单选（原型 view）：all=全部 / folder=文件夹视图 / topic=主题全局过滤（跨文件夹）
+        // UI v2 视图单选（原型 view）：all=全部 / topic=主题全局过滤（跨文件夹）
+        // （0.4.3 验收修复⑦：「文件视图」（文件夹视图）模式整体拆除——树展开即文件夹浏览，漏斗进视图入口/求值分支/样式已移除）
         const [view, setView] = React.useState({ type: 'all', id: '' })
         // 帮助气泡已拆出（§6 步骤 E：popovers/help.js——showHelp 态 + 气泡 JSX 归 usePanelHelp；标题栏「?」经 kernel 转发别名 setShowHelp）
         const { showHelp, setShowHelp, helpEl } = usePanelHelp()
@@ -52,7 +53,7 @@
         // 文件夹右键菜单 + 管理动作族已拆出（§6 步骤 E：popovers/folder-menu.js——folders/foldersExpanded/内联输入/重命名/folderMenu 态 +
         // 树 helper 族 + loadFolders + CRUD/reorder/reparent 归 usePanelFolderMenu；folderMenuRef/renamingIdRef/folderInputOpenRef/subFolderForRef
         // 为该模块顶层绑定；Esc 栈/树渲染/面包屑经解构或 kernel 转发别名接入）
-        const { folders, foldersExpanded, folderInputOpen, folderInputText, subFolderFor, renamingId, renameText, setFolderMenu, setFolderInputOpen, setFolderInputText, setSubFolderFor, setRenamingId, setRenameText, loadFolders, folderSubtreeIdsOf, childFoldersOf, rootFolders, folderPathOf, isFolderExpanded, toggleFolder, expandFolder, folderName, openFolderMenu, doCreateFolder, doRenameFolder, doDeleteFolder, doReorderFolder, doReparentFolder, folderMenuEl, foldLogs, foldLogLoaded } = usePanelFolderMenu({ notes: notes, view: view })
+        const { folders, foldersExpanded, folderInputOpen, folderInputText, subFolderFor, renamingId, renameText, setFolderMenu, setFolderInputOpen, setFolderInputText, setSubFolderFor, setRenamingId, setRenameText, loadFolders, folderSubtreeIdsOf, childFoldersOf, rootFolders, folderPathOf, isFolderExpanded, toggleFolder, expandFolder, folderName, openFolderMenu, doCreateFolder, doRenameFolder, doDeleteFolder, doReorderFolder, doReparentFolder, folderMenuEl } = usePanelFolderMenu({ notes: notes, view: view })
         // 主题过滤行原地展开态（点行主体=展开/收起该主题子列表；object map，session 内有效，不持久化；缺省折叠）
         // 主题过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「主题 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
         // （topicExpanded/topicSecOpen 两态已随 panel/tree.js 迁出）
@@ -111,8 +112,7 @@
         const suggestOpen = store.modal.suggest.useSel(s => s.open)
         const injectPreviewOpen = store.modal.injectPreview.useSel(s => s.open)
         const injMgrOpen = store.modal.injMgr.useSel(s => s.open)
-        // injectPreviewTab 因 check 锚定其 useState 声明原文而滞留本面板（同 newNoteKind 先例），经 props 注入 InjectPreviewModal、setter 经 panelBridge 供 openInjectPreview 复位
-        const [injectPreviewTab, setInjectPreviewTab] = React.useState('conv')   // 'conv' 约定 | 'cat' 目录
+        // 0.4.3 验收修复③（notes-043-dir-merge）：注入预览改单段视图（约定段 + 合并目录段），原预览双 tab 状态已拆除
         // 工作记忆 v0 启用对话框已拆出（§6 步骤 D2：modals/memory-guide.js——status/open/scope/wsPick/sidPick/pending 走 store.modal.memory，
         // memScopeResolve/openMemEnable/doMemEnable/doMemDisable/memViewNote 迁入；memOpenRef 为模块级 Esc 镜像）；
         // 日志卫生窗口设置项（setLogWeek/setLogRetention）随设置卡迁入 modals/settings.js；panel 订阅 open 供全局错误条互斥（原渲染期读取口径）
@@ -162,6 +162,9 @@
         // 派发对话框是 modal（自带 mask 点击外部关闭），无需 document 监听
         React.useEffect(() => { const fn = () => loadNotes(true); noteRefreshListeners.add(fn); return () => noteRefreshListeners.delete(fn) }, [])
         React.useEffect(() => { if (open) loadNotes() }, [open])
+        // ⑩ kind 档切换重拉：类型组勾选变化改变取数口径（恰选 1 个 kind → host kind 通道；「机器」档 = sys 全库）——
+        // effect 依赖 kinds 数组身份（filter-pop 勾选产生新数组），该渲染闭包的 loadNotes 读最新 filters；面板关闭时不拉（下次 open  effect 兜底）
+        React.useEffect(() => { if (open) loadNotes(true) }, [filters.kinds])
         // 打开时居中定位 effect 已随 panel/chrome.js 迁入（hook 内同文，open 经入参注入）
         // 搜索两段式已拆出（§6 步骤 E：panel/search.js——searchText/searchIds/searchMatches 态 + 250ms 防抖 host 检索归 usePanelSearch；
         // searchRef/searchDebRef 在 kernel/state.js 跨域镜像群；filtersRef 镜像随该模块；filters 经入参注入）
@@ -170,16 +173,11 @@
         // 搜索/视图/筛选中心条件变化时重置分页 effect 已随 panel/tree.js 迁入（该 hook 内同文，入参注入依赖值）
         // 树渲染/分页/拖拽已拆出（§6 步骤 E：panel/tree.js——visibleCount/dragActive/topicExpanded/topicSecOpen 态 +
         // onListScroll/双向拖拽族/renderTreeEls（内含 renderNoteRow/renderFolderNode）归 usePanelTree；post-guard 求值经 R 入参注入）
-        const { visibleCount, setVisibleCount, onListScroll, renderTreeEls } = usePanelTree({ notes: notes, view: view, filters: filters, searchText: searchText, searchIds: searchIds, folders: folders, foldLogs: foldLogs, foldLogLoaded: foldLogLoaded })
+        const { visibleCount, setVisibleCount, onListScroll, renderTreeEls } = usePanelTree({ notes: notes, view: view, filters: filters, searchText: searchText, searchIds: searchIds, folders: folders })
         // 展开态同步到 ref（keydown 闭包读 ref 避免过期；已拆出 modal 的 open 镜像由各模块 setter 别名同步写入）
         // filtersRef 镜像 + 同步 effect 已随 panel/search.js 迁入（该模块顶层绑定 + hook 内同文）
-        // 工作记忆 v0 日志专入口：类型组「日志」勾选态变化时重拉列表（host 默认排除日志；includeLogs=true 才返回，避免日常视图混入）
-        // R-6 UI 接线：显式文件夹视图（view.type === 'folder'）同属召回口径——进文件夹视图带 includeLogs 静默重拉（夹内 log 同权展示），
-        // 切回全部/主题视图 w 翻 false 再重拉恢复隐身（不传 folder/includeLogs；[filters, view] 双源翻转，幂等比较不翻转零请求）
-        React.useEffect(() => {
-          const w = filters.kinds.indexOf('log') >= 0 || view.type === 'folder'
-          if (w !== wantLogsRef.current) { wantLogsRef.current = w; loadNotes(true) }
-        }, [filters, view])
+        // 日志同权（0.4.3 验收修复⑦，用户裁决推翻 R-6 UI 隐身）：kind=log 随默认列表直达（host 已收编），
+        // 原「勾选日志/文件夹视图 → includeLogs 重拉」翻转 effect 与 overlay 特化路径已拆除——展开日志夹与普通夹同一代码路径（零额外 RPC）
         // filterOpen/sortOpen 的 ref 镜像 effect 已随 popovers/filter-pop.js / sort-menu.js 迁入（各自 hook 内同文）
         // ctxMenuRef 同步 effect 已随 popovers/ctx-menu.js 迁入（该 hook 内同文）
         // folderMenu/renamingId/folderInputOpen/subFolderFor 的 ref 镜像 effect 已随 popovers/folder-menu.js 迁入（该 hook 内同文）
@@ -192,9 +190,12 @@
         usePanelKeyboard()
         // 标题栏/resize/分隔条拖拽族已随 panel/chrome.js 迁出（usePanelChrome hook 内同文）
         // silent=true 时不显 loading（后台静默刷新，避免闪烁）
-        // 工作记忆 v0：筛选中心类型组勾选「日志」时列表数据源带 kind=log（host 默认排除日志——默认隐身；勾选即专入口，includeLogs 召回）
-        const wantLogsRef = React.useRef(false)
-        async function loadNotes(silent) { if (!silent) setLoading(true); setError(''); let list = []; try { const res = await host.call('notes-list', wantLogsRef.current ? { includeLogs: true } : undefined); list = res.notes || []; setNotes(list) } catch (err) { setError(String(err.message || err)) } loadFolders(); ensureWikiIndex(list); if (!silent) setLoading(false); return list }
+        // 日志同权（0.4.3⑦）：列表恒为全量口径（日志随默认列表直达，不再按勾选/视图翻转参数）
+        // 0.4.3⑩（notes-043-archive-folder 第二轮裁决）：类型组恰选 1 个 kind 时传 {kind} 给 host——host 谓词 kind 真值短路放行 sys
+        // （⑨ 保留的显式 kind 入口），「机器」档（kind=sys）= 全库 sys 笔记（含「记忆档案」夹内档案），树在该档下正常展开档案子行；
+        // 不选/多选 kind 时无参调用，行为与 ⑨ 完全一致（缺省降噪）。口径同 panel/search.js sArgs（恰选 1 个可传 kind）。
+        // filters 经 filtersRef（search.js 镜像，每渲染同步）读取——noteRefreshListeners 挂载期注册的闭包也能拿到最新筛选（防过期）
+        async function loadNotes(silent) { if (!silent) setLoading(true); setError(''); let list = []; try { const F = filtersRef.current || filters; const kf = (F && F.kinds) || []; const res = await host.call('notes-list', kf.length === 1 ? { kind: kf[0] } : undefined); list = res.notes || []; setNotes(list) } catch (err) { setError(String(err.message || err)) } loadFolders(); ensureWikiIndex(list); if (!silent) setLoading(false); return list }
         // 文件夹清单加载已随 popovers/folder-menu.js 迁出（loadFolders 经解构接入；清洗陈旧展开 id 逻辑同文随迁）
         // ===== P2 笔记双链：解析 / 索引 / 跳转 函数族已随 panel/wiki.js 迁出（上方解构接入；内核 extractWikiTargets/wikiLinksTo 同一口径）=====
         // selectNote/doSave/doDelete 已随 panel/editor.js 迁出（经解构/kernel 转发别名接入；panelBridge 回填保持原名）
@@ -335,8 +336,8 @@
         panelBridge.jumpToWikiTarget = jumpToWikiTarget
         panelBridge.setEdBody = setEdBody   // dispatch 确认后回填正文（modals/dispatch.js 经此中转，禁横向引用）
         panelBridge.openDispatchEdit = openDispatchEdit   // 调度任务「编辑」回填派发弹窗（modals/inject-manager.js 经此中转，禁横向引用——序位 inject-manager 先于 dispatch）
+        panelBridge.openMountModal = openMountModal   // 预览目录行点击开挂载弹层（modals/inject-preview.js 经此中转，禁横向引用——序位 inject-preview 先于 inject-manager）
         // check 锚定 useState 声明而滞留本面板的字段：值/ setter 回填供 modal 模块函数读写（每渲染刷新，点击期口径与昔日闭包一致）
-        panelBridge.setInjectPreviewTab = setInjectPreviewTab
         panelBridge.setMaxDepth = setMaxDepth
         panelBridge.setSetMaxDepth = setSetMaxDepth
         panelBridge.setSnap = setSnap
@@ -351,13 +352,9 @@
         const localFiltered = q ? notes.filter(n => { const hay = ((n.title || '') + ' ' + (n.preview || '') + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ') + ' ' + folderName(n.folder)).toLowerCase(); return hay.indexOf(q) >= 0 }) : notes
         // 搜索结果取 host 全文 + 本地即时的并集，RPC 失败/延迟时本地结果保底
         let filtered = searchIds ? notes.filter(n => searchIds.indexOf(n.id) >= 0 || localFiltered.indexOf(n) >= 0) : localFiltered
-        // 视图求值（原型 matches）：view 单选（all/folder/topic）∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索
+        // 视图求值（原型 matches）：view 单选（all/topic）∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索
         if (view.type === 'topic') filtered = filtered.filter(n => (n.topic || '') === view.id)
-        // 文件夹视图 = 递归子树口径（notes-nested-folder-ui：点父文件夹视图含全部子孙文件夹内容，与 host notes-list folder 过滤同语义）
-        else if (view.type === 'folder') { const vsub = folderSubtreeIdsOf(view.id); filtered = filtered.filter(n => vsub[(n.folder || '')]) }
-        // 工作记忆 v0 隐身渲染守卫：类型组未勾「日志」时日志永不进日常视图（含搜索并集/清除筛选后的在途数据；专入口 = 勾选 kind=log）
-        // R-6 UI 接线：显式文件夹视图放行 log（显式导航 = 同权展示，隐身只管隐式表面）；切回默认视图守卫恢复拦截（含重拉在途数据）
-        filtered = filtered.filter(n => (n.kind || 'note') !== 'log' || filters.kinds.indexOf('log') >= 0 || view.type === 'folder')
+        // 日志同权（0.4.3⑦）：无隐身渲染守卫——日志与普通笔记同一过滤管线（类型组勾选「日志」= 只看日志，与普通 kind 过滤同语义）
         filtered = filtered.filter(n => matchFilters(n, filters))
         // 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0，如仅 topic 命中)，同级 updatedAt 降序；
         // 命中字段优先取 host notes-search 返回的 matches（全文口径），无则按本地字段估算（preview 仅前 200 字，正文命中可能低估）；无搜索词时退化为 host 序
@@ -432,7 +429,7 @@
           // 整理建议对话框已拆出（architecture-modular §6 步骤 D2：modals/suggest.js；state 走 store.modal.suggest）
           e(SuggestModal, { error: error }),
           // 注入预览对话框已拆出（architecture-modular §6 步骤 D2：modals/inject-preview.js；state 走 store.modal.injectPreview，sessList/sessPending 经 props 注入）
-          e(InjectPreviewModal, { error: error, sessList: sessList, sessPending: sessPending, injectPreviewTab: injectPreviewTab, setInjectPreviewTab: setInjectPreviewTab }),
+          e(InjectPreviewModal, { error: error, sessList: sessList, sessPending: sessPending }),
           // 注入管理面板已拆出（architecture-modular §6 步骤 D2：modals/inject-manager.js；state 走 store.modal.injMgr，搜索防抖 effect 挂 InjMgrModal）
           e(InjMgrModal, { error: error }),
           // 挂载弹层已随 inject-manager 迁入（0.4.3⑤ notes-043-index：modals/inject-manager.js 的 MountModal——资料开注入 → 手写 whenToUse 落索引行）

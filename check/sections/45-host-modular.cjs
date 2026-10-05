@@ -58,9 +58,9 @@ module.exports = {
 
   await t('命名域内容锚：inject.js=注入渲染+settings；memory.js=memory-guide+日志卫生+suggest；server.js=RPC 基础设施+notes-src；index.js=工具层+启动装配', () => {
     const inj = read('inject.js')
-    assert(inj.indexOf('function conventionText(') >= 0 && inj.indexOf('function catalogText(') >= 0, 'inject.js 含注入渲染双函数')
+    assert(inj.indexOf('function renderInjected(') >= 0 && inj.indexOf('function conventionText(') >= 0, 'inject.js 含注入渲染函数（renderInjected 合并目录段 + conventionText 薄壳）')
     assert(inj.indexOf("handle('notes-settings-set'") >= 0 && inj.indexOf("handle('notes-settings-get'") >= 0, 'inject.js 含 settings-get/set')
-    assert(inj.indexOf('systemPrompt.context(') >= 0 && inj.indexOf('order: 130') >= 0 && inj.indexOf('order: 131') >= 0, 'inject.js 含双注入注册（order 130/131）')
+    assert(inj.indexOf('systemPrompt.context(') >= 0 && inj.indexOf('order: 130') >= 0 && inj.indexOf('order: 131') < 0, 'inject.js 单一注入注册（order 130；0.4.3③ order 131 撤销）')
     const mem = read('memory.js')
     assert(mem.indexOf('MEMORY_GUIDE_BODY') >= 0 && mem.indexOf('function _memoryGuide(') >= 0, 'memory.js 含工作记忆引导')
     assert(mem.indexOf('function suggestLogHygiene(') >= 0 && mem.indexOf('function _suggest(') >= 0, 'memory.js 含日志卫生 + suggest')
@@ -105,10 +105,16 @@ module.exports = {
       ['rootnote.js', 'schedule.js', 'RootNote 托管节框架 → runLog 首消费者 _schedRunLogAppend（0.4.3 内核② notes-043-rootnote）'],
       ['injectindex.js', 'ledger.js', '注入索引 idxEnsure/idxLinesSync/INJECT_INDEX_S2 → 效用账本 §2 指标+档案回填（0.4.3⑥ notes-043-ledger）'],
       ['ledger.js', 'schedule.js', '_ledgerRefresh → schedule cron tick 顺带刷新（0.4.3⑥ notes-043-ledger）'],
-      ['rootnote.js', 'recall.js', 'RootNote 框架 → 召回遥测流水根笔记（0.4.3+ 卡⑫ notes-043-inject-receipt）'],
+      ['rootnote.js', 'recall.js', 'RootNote 框架 → 召回遥测（卡⑤：旧流水节迁移解析/镜像备注区口径）（0.4.3+ 卡⑫ notes-043-inject-receipt）'],
+      ['kernel/telemetry-store.js', 'recall.js', '遥测机器存储层 → 召回遥测五通道埋点消费（0.4.3 验收修复⑤ notes-043-metrics-storage）'],
+      ['kernel/telemetry-store.js', 'ledger.js', '遥测机器存储层 → 账本指标快照 _telemetrySetLedger（0.4.3 验收修复⑤ notes-043-metrics-storage）'],
+      ['kernel/telemetry-store.js', 'transfer.js', '遥测机器存储层 → 导出/备份连带 + 导入合并（0.4.3 验收修复⑤ notes-043-metrics-storage）'],
+      ['kernel/telemetry-store.js', 'kernel/store-cache.js', 'note-stats facet → bumpUseCount/_useFacetSync 视图供电（0.4.3 验收修复⑧ notes-043-stats-unify）'],
+      ['kernel/telemetry-store.js', 'notes.js', 'note-stats facet → _create 归档继承计数 seed（0.4.3 验收修复⑧ notes-043-stats-unify）'],
       ['recall.js', 'inject/img-path-hint.js', 'recall.js 序位钉住（紧随 ledger，共源登记）'],
       ['recall.js', 'dispatch.js', '_recallRaw mount 通道埋点 → _dispatch（0.4.3+ 卡⑫）'],
-      ['recall.js', 'inject.js', '_recallRaw inject/catalog 通道埋点 → conventionText/catalogText（0.4.3+ 卡⑫）'],
+      ['recall.js', 'inject.js', '_recallRaw inject/catalog 通道埋点 → renderInjected（0.4.3+ 卡⑫；0.4.3③ 合并段后同点双通道）'],
+      ['kernel/telemetry-store.js', 'inject.js', '遥测内存缓存 _telemetryCache.ledger → 注入价值信号行 _valueSignalLine（0.4.3 验收修复⑥ notes-043-metrics-present）'],
       ['recall.js', 'search.js', '_recallHit search 通道埋点 → notes-search（0.4.3+ 卡⑫）'],
       ['recall.js', 'index.js', '_recallHit note_get 取用埋点 + _recallFlushAgg 卸载 flush（0.4.3+ 卡⑫）'],
       ['folders.js', 'server.js', '_folders → notes-folders 注册'],

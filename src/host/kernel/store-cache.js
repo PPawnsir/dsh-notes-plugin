@@ -73,7 +73,8 @@
         schedule: parseSchedule(p.meta.schedule),
         mergedFrom: p.meta.mergedFrom || [],
         dispatches: parseDispatches(p.meta.dispatches),
-        // useCount：使用遥测（note_get 工具命中计数），缺省/非法值回退 0（存量零迁移）
+        // useCount：使用遥测（note_get 工具命中计数）——0.4.3 验收修复⑧起 front-matter 字段退役（buildFM 不再写入），
+        //   此处仅读存量旧值作 facet seed 依据（_useFacetSync max 合并）；缺省/非法值回退 0（存量零迁移）
         useCount: Math.max(0, parseInt(p.meta.useCount, 10) || 0),
         archivedAt: p.meta.archivedAt || '',
         deleted: p.meta.deleted === 'true',
@@ -88,6 +89,8 @@
       const note = noteFromParsed(id, parseFM(c))
       // purge 墓碑（0 字节占位）：ctx.fs 无删除契约，彻底删除只能清空——_list/_get/_update/_restore 视作不存在
       note.tombstoned = !c
+      // useCount facet 供电（0.4.3 验收修复⑧）：旧 front-matter 值 seed 并入 facet + facet 更大抬头视图（双向 max 合并幂等）
+      await _useFacetSync(note)
       cache.set(note.id, note)
       return note
     }
@@ -101,35 +104,32 @@
     // ==== use-telemetry BEGIN ====（本块 host-impl.js 与 packages/dsh-notes-plugin/index.mjs 双包逐字节一致，check.js 比对；改动必须双边同步）
     // 使用遥测（P2）：note_get 工具命中计数——度量哪些笔记真的被 agent 读过。
     // 口径：只计 note_get 工具命中（agent 引用语义）；client 面板打开笔记的 notes-get RPC 不计（人类浏览非引用）。
-    // 落盘频率控制：命中只改内存缓存对象（_list/slim 立即可见），60s 防抖批量落盘（避免高频写盘），插件卸载 flush。
-    // 代价兜底：进程退出时防抖窗口内未落盘的计数丢失（可接受；timer unref 不阻塞宿主退出）。
-    const USE_COUNT_FLUSH_MS = 60 * 1000
-    const useCountDirty = new Set()   // 待落盘笔记 id（重复命中幂等）
-    let useCountTimer = null
-    // 命中 +1：作用于缓存原件（_get 已保证入缓存）；返回新计数，缓存未命中/墓碑返回 null（调用方忽略）
+    // 0.4.3 验收修复⑧（notes-043-stats-unify）：useCount 收编 note-stats facet——telemetry.json facets.use {id:总计数} 为唯一事实源，
+    //   front-matter useCount 字段退役（buildFM 不再写入；存量旧值由 _useFacetSync 作 seed max 合并并入，字段随下次真实保存自然脱落）。
+    //   内存视图 n.useCount 保留且由 facet 供电——全部消费方（按引用排序/行尾角标/详情 chip/ledger useRank Top5/整理建议零引用保护/归档合计）读视图零改动。
+    // 落盘：命中只改内存视图 + facet 内存增量（_telemetryBumpUse），复用遥测 2s 防抖通道落 telemetry.json（无独立定时器），卸载经 _recallFlushAgg 同盘 flush；
+    //   note_get 热路径不再重写笔记 .md（写放大消除——旧遥测回写每次 flush 逐笔记 persistNote 全文重写，已随 flushUseCounts 一并拆除）。
+    // 代价兜底：进程退出时防抖窗口内未落盘的计数丢失（可接受，下界语义；遥测 timer unref 不阻塞宿主退出——语义同卡⑤）。
+    // 命中 +1：内存视图即时 +1（_list/slim/排序/角标立即可见）+ facet 总计数 +1（fire-and-forget 自含加载，静默降级不扩散）；
+    //   作用于缓存原件（_get 已保证入缓存）；返回新计数，缓存未命中/墓碑返回 null（调用方忽略）
     function bumpUseCount(id) {
       const n = cache.get(id)
       if (!n || n.tombstoned) return null
       n.useCount = Math.max(0, n.useCount || 0) + 1
-      useCountDirty.add(id)
-      if (!useCountTimer) {
-        useCountTimer = setTimeout(() => { useCountTimer = null; flushUseCounts() }, USE_COUNT_FLUSH_MS)
-        if (useCountTimer && typeof useCountTimer.unref === 'function') useCountTimer.unref()
-      }
+      _telemetryBumpUse(id)
       return n.useCount
     }
-    // 防抖批量落盘：逐条 persistNote（buildFM 恒写 useCount，updatedAt 不动——计数不算编辑）；
-    // { history:false }：遥测回写不算编辑，不产生历史快照（见 history-engine 块）；
-    // 墓碑/已删/缓存失效跳过（删除时已带最新计数落盘，跳过无数据损失；0 字节墓碑不可复活；已删笔记不会再被 note_get 命中）
-    async function flushUseCounts() {
-      if (useCountTimer) { clearTimeout(useCountTimer); useCountTimer = null }
-      const ids = Array.from(useCountDirty)
-      for (const id of ids) {
-        useCountDirty.delete(id)
-        const n = cache.get(id)
-        if (!n || n.tombstoned || n.deleted) continue
-        try { await persistNote(n, { history: false }) } catch (e) { console.error('notes: useCount flush failed', id, e) }
-      }
+    // facet ⇄ 视图双向同步（载入 readNoteFile / 创建 _create 显式继承 / 导入 cache 直建三入口共用）：
+    //   视图值（含旧 front-matter seed）max 合并入 facet；facet 更大 → 视图抬头（facet 是唯一事实源）。
+    //   自含加载（遥测故障空桶不抛——静默降级不阻塞主流程）；种子未抬升时零置脏零写（存量重读零放大）；返回合并后总计数
+    async function _useFacetSync(n) {
+      try {
+        if (!n || !n.id) return 0
+        await _telemetryLoad()
+        const fused = _telemetrySeedUse(n.id, Math.max(0, n.useCount || 0))
+        if (fused > (n.useCount || 0)) n.useCount = fused
+        return fused
+      } catch (e) { return Math.max(0, (n && n.useCount) || 0) }
     }
     // ==== use-telemetry END ====
 
@@ -142,7 +142,7 @@
         createdAt: n.createdAt, updatedAt: n.updatedAt,
         sessionId: n.sessionId, cwd: n.cwd, logDate: n.logDate || '', entities: n.entities || [], summarizedAt: n.summarizedAt || '', contractType: n.contractType || '', origin: n.origin || '', refNote: n.refNote || '', schedule: n.schedule || null, mergedFrom: n.mergedFrom || [],
         dispatches: n.dispatches || [],
-        useCount: Math.max(0, n.useCount || 0),
+        // useCount 不落盘（0.4.3 验收修复⑧字段退役）：统计归 telemetry.json facets.use 单一事实源，buildFM 无此行
         archivedAt: n.archivedAt || '', deleted: n.deleted ? 'true' : 'false'
       }
       return buildFM(meta) + (n.body || '')

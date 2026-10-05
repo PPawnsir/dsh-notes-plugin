@@ -1,5 +1,5 @@
     // ---- 设置持久化（SETTINGS_PATH）：内存缓存 + 启动加载；文件坏/不存在 → {}（容错）----
-    // 通用结构：设置项是 settingsCache 的顶层键（llm 选配 + catalogEnabled 目录索引总开关 + staleDays 时效标注 + injectBudgetChars 注入预算 + maxFolderDepth 文件夹嵌套深度上限），client 经 notes-settings-get/set 读写。
+    // 通用结构：设置项是 settingsCache 的顶层键（llm 选配 + catalogEnabled 目录索引总开关（缺省 = 关，显式 true 开启）+ staleDays 时效标注 + injectBudgetChars 注入预算 + maxFolderDepth 文件夹嵌套深度上限），client 经 notes-settings-get/set 读写。
     let settingsCache = {}
     let settingsLoadPromise = null
     function loadSettings() {
@@ -10,7 +10,7 @@
             const c = await fs.readText(p)
             const obj = JSON.parse(c)
             settingsCache = (obj && typeof obj === 'object' && !Array.isArray(obj)) ? obj : {}
-          } catch (e) { /* 文件不存在/损坏 → 空设置：默认行为（跟随会话 + 目录开）不变 */ }
+          } catch (e) { /* 文件不存在/损坏 → 空设置：默认行为（跟随会话 + 目录关）不变 */ }
           return settingsCache
         })()
       }
@@ -55,7 +55,7 @@
       return (typeof v === 'number' && isFinite(v) && v >= 0) ? Math.floor(v) : MAX_FOLDER_DEPTH_DEFAULT
     }
     let lastInjectChars = 0
-    // 注入预览统计（notes-inject-preview RPC 数据源）：conventionText/catalogText 每次同步渲染后更新；
+    // 注入预览统计（notes-inject-preview RPC 数据源）：renderInjected 每次同步渲染后更新（0.4.3③ 合并段）；
     // 两函数均为同步执行，RPC 紧接调用后读取，无竞态。预览渲染（sidOverride 传入）不更新 lastInjectChars——仪表只反映真实注入。
     const lastConvStats = { masked: 0, budgetTruncated: false }
     const lastCatStats = { masked: 0, stale: 0 }

@@ -42,8 +42,8 @@
         // JSON 单行存储同 dispatches 先例；普通笔记不落此行，存量零迁移）
         (m.schedule ? 'schedule: ' + escYaml(JSON.stringify(m.schedule)) + '\n' : '') +
         'dispatches: ' + escYaml(JSON.stringify(m.dispatches || [])) + '\n' +
-        // useCount 恒写（缺省 0）：使用遥测——note_get 工具命中计数（内存累积 + 60s 防抖批量落盘，见 use-telemetry 块）
-        'useCount: ' + escYaml(m.useCount || 0) + '\n' +
+        // useCount 字段退役（0.4.3 验收修复⑧ notes-043-stats-unify）：统计收编 telemetry.json facets.use 单一事实源，不再写此行——
+        //   新笔记无此字段；存量文件字段保留无害、下次真实保存自然脱落；parseFM 仍读旧值仅作 facet seed（_useFacetSync，兼容）
         'archivedAt: ' + escYaml(m.archivedAt || '') + '\n' +
         'deleted: ' + escYaml(m.deleted || 'false') + '\n' +
         // 闭合分隔符固定单换行收尾、不多写空行（notes-043-fm-newline）：与 parseFM「吃掉闭合 --- 后全部连续前导换行」

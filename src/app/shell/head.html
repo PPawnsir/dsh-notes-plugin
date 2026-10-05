@@ -21,14 +21,14 @@
     --nbg:#151517; --npanel:#232324; --nbg-raise:#2c2c2e; --nbg-hover:#ffffff14; --nbg-sel:rgba(122,170,255,.14);
     --ntx:#f9fafb; --nt2:#cfd3d6; --nt3:#adb2b8; --nbd:#ffffff1f; --nbd-soft:#ffffff29;
     --nacc:#7aaaff; --nacc-tx:#96bcfe; --nwarn:#e5b567; --ndanger:#e5734f;
-    --kind-note:#8f8fa3; --kind-decision:#e5b567; --kind-todo:#6c8cff; --kind-link:#56c8d8; --kind-quote:#b58fe5; --kind-log:#a89ff5;
+    --kind-note:#8f8fa3; --kind-decision:#e5b567; --kind-todo:#6c8cff; --kind-link:#56c8d8; --kind-quote:#b58fe5; --kind-log:#a89ff5; --kind-sys:#9aa0a6;
   }
   html[data-theme="light"]{
     /* DSH 0.1.7 亮色实机值：layer 系同为 #fff，容器底/抬升面按实机 color-mix（ntx 6%/4%）折算 */
     --nbg:#f1f1f1; --npanel:#ffffff; --nbg-raise:#f5f5f6; --nbg-hover:#2631480f; --nbg-sel:rgba(65,118,230,.14);
     --ntx:#0f1115; --nt2:#61666b; --nt3:#81858c; --nbd:#0000001a; --nbd-soft:#0000001f;
     --nacc:#4176e6; --nacc-tx:#3660b8; --nwarn:#b07f1e; --ndanger:#cf5b34;
-    --kind-note:#8f8f9c; --kind-decision:#b07f1e; --kind-todo:#4062e8; --kind-link:#1e9aab; --kind-quote:#8a5cd6; --kind-log:#6c63e0;
+    --kind-note:#8f8f9c; --kind-decision:#b07f1e; --kind-todo:#4062e8; --kind-link:#1e9aab; --kind-quote:#8a5cd6; --kind-log:#6c63e0; --kind-sys:#6e6e73;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:var(--nfont);background:var(--nbg);color:var(--ntx);height:100vh;overflow:hidden;font-size:13px;display:flex;flex-direction:column}
@@ -389,12 +389,12 @@
   /* ===== 注入预览 modal（设置卡片「注入预览」入口）：双 tab + 只读等宽文本 + 底部统计条（与原型 notes-ui-v2.html 同款） ===== */
   .modal.injprev{width:640px}
   .injprev-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-  .injprev-tabs{display:flex;gap:4px}
-  .injprev-tab{font:inherit;font-size:11.5px;padding:3px 14px;border-radius:20px;border:1px solid var(--nbd);background:transparent;color:var(--nt2);cursor:pointer}
-  .injprev-tab:hover{color:var(--ntx);background:var(--nbg-hover)}
-  .injprev-tab.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:500}
   .injprev-sess{margin-left:auto;width:auto;max-width:240px}
   .injprev-text{font-family:var(--nmono);font-size:11px;line-height:1.65;background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:10px 12px;max-height:48vh;min-height:120px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0;color:var(--nt2)}
+  .injprev-conv{margin:0 0 8px;font:inherit;white-space:pre-wrap;word-break:break-word;color:var(--nt2)}   /* 0.4.3 验收修复③（notes-043-dir-merge）：单段视图——约定段 pre + 目录段可点行同容器 */
+  .injprev-ln{min-height:1em}   /* 0.4.3 验收修复（notes-043-preview-when-edit）：目录段逐行渲染（可点行补充/编辑 whenToUse） */
+  .injprev-ln.hit{cursor:pointer}
+  .injprev-ln.hit:hover{color:var(--ntx);background:var(--nbg-hover);border-radius:4px}
   .injprev-stats{font-size:10.5px;color:var(--nt3);margin-top:10px;line-height:1.6}
   /* ===== 注入管理面板 modal（设置卡片「注入管理」入口；notes-inject-manager）：统计 chips（点击=过滤）+ 搜索 + 批量条 + 三态 segmented 行（与原型 notes-ui-v2.html 同款） ===== */
   /* 批量条/勾选复用 trash 系列（.trash-all/.selcnt/.trash-check/.trash-act） */
@@ -406,6 +406,10 @@
   .injmgr-chip.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:600}
   .injmgr-search{flex:1;min-width:0;font:inherit;font-size:11.5px;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:4px 9px;outline:0}
   .injmgr-search:focus{border-color:var(--nacc)}
+  /* 挂载区统计行（0.4.3 验收修复⑥ notes-043-metrics-present）：chips 行下紧凑信号行，点开展开全量分通道统计 */
+  .injmgr-mntstats-row{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--nt2);cursor:pointer;padding:2px 8px;border:1px solid var(--nbd-soft);border-radius:20px;background:var(--nbg-raise);margin:0 0 8px}
+  .injmgr-mntstats-row:hover{color:var(--ntx);border-color:var(--nacc)}
+  .injmgr-mntstats-full{margin:-4px 0 8px;padding:6px 9px;border:1px solid var(--nbd-soft);border-radius:var(--nr-md);font-size:11px;line-height:1.7;word-break:break-all;color:var(--nt2)}
   .injmgr-batch{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11.5px;color:var(--nt2)}
   .injmgr-list{border:1px solid var(--nbd-soft);border-radius:var(--nr-md);margin-bottom:10px;max-height:46vh;overflow-y:auto}
   .injmgr-row{display:flex;align-items:center;gap:7px;padding:6px 9px;font-size:12px;border-bottom:1px solid var(--nbd-soft)}
@@ -420,6 +424,9 @@
   .injmgr-opt.on{background:var(--nbg-sel);color:var(--nacc-tx);font-weight:600}
   .injmgr-opt.dis{opacity:.38;cursor:default}
   .injmgr-opt.dis:hover{background:transparent;color:var(--nt3)}
+  /* 0.4.3⑦ 注入硬关 UI 化：log 行不渲染勾选框/注入开关——占位槽保行对齐 + 静态「不参与注入」标注 */
+  .injmgr-checkslot{display:inline-block;width:13px;flex-shrink:0}
+  .injmgr-lognote{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nt3);flex-shrink:0;padding:2px 3px}
   /* ===== 挂载弹层 modal（0.4.3⑤ notes-043-index：资料开注入 → 手写 whenToUse 落注入索引 §1 行；mask/modal 复用框架类） ===== */
   .inj-mount-body{display:flex;flex-direction:column;gap:5px;margin:10px 0 4px}
   .inj-mount-label{font-size:11px;color:var(--nt2)}

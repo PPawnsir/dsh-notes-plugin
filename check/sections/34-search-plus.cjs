@@ -232,7 +232,7 @@ module.exports = {
       // 状态组/类型组 checkbox 由 FILTER_STATUS/FILTER_KINDS 驱动生成（data-ft/data-fk 为拼接属性，断言模型定义 + 拼接点）
       assert(s.indexOf("{ id: 'pinned', label: '置顶', icon: 'i-pin'") >= 0 && s.indexOf("{ id: 'injected', label: '已注入', icon: 'i-bolt'") >= 0 && s.indexOf("{ id: 'injectEver', label: '曾注入', icon: 'i-clock'") >= 0 && s.indexOf("{ id: 'sensitive', label: '敏感', icon: 'i-lock'") >= 0, label + ' 状态组四条件模型（多选）')
       assert(s.indexOf("data-ft=\"' + s.id + '\"") >= 0 && s.indexOf("data-fk=\"' + k + '\"") >= 0, label + ' 状态组/类型组 checkbox 接线（data-ft/data-fk）')
-      assert(s.indexOf("var FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log'];") >= 0, label + ' 类型组六种 kind（多选；+log 工作记忆 v0 专入口）')
+      assert(s.indexOf("var FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log', 'sys'];") >= 0, label + ' 类型组七种 kind（多选；+log 工作记忆 v0 专入口；+sys 0.4.3⑩「机器」档——面板翻账本入口）')
       assert(s.indexOf("if (s.id === 'injectEver' && !showEver) return") >= 0, label + ' 曾注入 feature-detect（slim 无 injectEver 字段不显示）')
       assert(s.indexOf('组内多选 = OR') >= 0 && s.indexOf('组内 OR · 与状态组 = AND') >= 0, label + ' 分组规则文案')
       assert(s.indexOf('id="popClear"') >= 0 && s.indexOf('id="popDone"') >= 0 && s.indexOf('命中 ') >= 0, label + ' popover 底部 清空/完成/命中数')

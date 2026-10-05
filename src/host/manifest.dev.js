@@ -1,7 +1,8 @@
 // host 模块清单（开发版）—— host.js 引导壳运行时拼接的唯一组装依据
 // 解析规则同 scripts/concat-client.cjs：逐行提取单引号字符串；注释中禁止出现单引号字符。
-// P2·3 kernel 抽出：kernel/ 六模块（format/front-matter/session-ctx 双包逐字节一致片，两清单同名引用同一物理文件；
-// settings-store/store-cache/persist 为双包变体，发布版侧以 .dist.js 后缀登记）。
+// P2·3 kernel 抽出：kernel/ 七模块（format/front-matter/session-ctx 双包逐字节一致片，两清单同名引用同一物理文件；
+// settings-store/telemetry-store/store-cache/persist 为双包变体，发布版侧以 .dist.js 后缀登记）。
+// 0.4.3 验收修复⑤：kernel/telemetry-store.js（遥测机器存储层）紧随 settings-store（同 JSON sidecar 先例），recall/ledger/transfer 运行时消费。
 // P2·4 RPC 核心域抽出：folders.js / notes.js / history-trash·trash.js / llm·organize.js。
 // P2·5 收口：whole.js 续切完毕——server（RPC 基础设施 handle/perf + 核心注册表 + notes-css/notes-src 源下发）/
 // dispatch（会话元数据 + 派发闭环）/ schedule（定时派发·执行层：声明校验 + 常驻 cron tick + 状态三层）/
@@ -15,6 +16,7 @@
 'kernel/front-matter.js'
 'kernel/session-ctx.js'
 'kernel/settings-store.js'
+'kernel/telemetry-store.js'
 'llm/usage-classify.js'
 'kernel/store-cache.js'
 'history-trash/engine.js'

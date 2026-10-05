@@ -47,8 +47,8 @@
         function jumpToWikiTarget(target) {
           const n = resolveWikiTarget(target)
           if (!n) { showToast(t('wiki.targetNotFound', { target: target })); return }
-          const vis = (view.type === 'all' || (view.type === 'folder' && (n.folder || '') === view.id) || (view.type === 'topic' && (n.topic || '') === view.id))
-            && matchFilters(n, filters)
+          const vis = (view.type === 'all' || (view.type === 'topic' && (n.topic || '') === view.id))
+            && matchFilters(n, filters)   /* 0.4.3⑦：文件夹视图分支随「文件视图」拆除移除（view 取值收窄 all | topic） */
           if (!vis) { setView({ type: 'all', id: '' }); setFilters(FILTERS0()) }
           selectNote(n)
         }

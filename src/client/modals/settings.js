@@ -47,7 +47,7 @@
         setSettingsData(res)
         const l = res.settings && res.settings.llm
         if (l && l.provider && l.model) { setSetLlmProvider(l.provider); setSetLlmModel(l.model) }
-        setSetCatalog(!res.settings || res.settings.catalogEnabled !== false)   // 目录注入总开关：缺省开
+        setSetCatalog(!!(res.settings && res.settings.catalogEnabled === true))   // 目录注入总开关：缺省关（显式 true 才开启）
         setSetStale(String(res.settings && typeof res.settings.staleDays === 'number' ? res.settings.staleDays : 90))   // 时效提醒阈值：缺省 90
         panelBridge.setSetMaxDepth(String(res.settings && typeof res.settings.maxFolderDepth === 'number' ? res.settings.maxFolderDepth : 3))   // 文件夹嵌套深度上限：缺省 3（0=不限）
         setSetBudget(String(res.settings && typeof res.settings.injectBudgetChars === 'number' ? res.settings.injectBudgetChars : 0))   // 注入预算：缺省 0=不限
@@ -58,7 +58,7 @@
         // dirty/还原基准（notes-settings-feedback）：打开时快照（UI 形态字符串口径，与控件受控值同构）+ 已落盘镜像初始化
         const snap0 = {
           llmP: (l && l.provider && l.model) ? l.provider : '', llmM: (l && l.provider && l.model) ? l.model : '',
-          catalog: !res.settings || res.settings.catalogEnabled !== false,
+          catalog: !!(res.settings && res.settings.catalogEnabled === true),
           stale: String(res.settings && typeof res.settings.staleDays === 'number' ? res.settings.staleDays : 90),
           maxDepth: String(res.settings && typeof res.settings.maxFolderDepth === 'number' ? res.settings.maxFolderDepth : 3),
           budget: String(res.settings && typeof res.settings.injectBudgetChars === 'number' ? res.settings.injectBudgetChars : 0),
@@ -114,7 +114,7 @@
         showToast(llm ? t('settings.savedLlm', { name: llm.provider + ' / ' + llm.model }) : t('settings.restoredFollow'))
       }).catch(err => setError(String(err.message || err)))
     }
-    // 目录注入总开关：勾选即保存（只传布尔 catalogEnabled；host 侧 null 才是恢复默认开，这里不用）
+    // 目录注入总开关：勾选即保存（只传布尔 catalogEnabled；host 侧 null 才是恢复缺省关，这里不用）
     function saveSettingsCatalog(enabled) {
       settingsSetQuiet({ catalogEnabled: enabled }).then(() => {
         showToast(enabled ? t('settings.catalogOn') : t('settings.catalogOff'))
@@ -343,7 +343,7 @@
               e('input', { className: 'dsh-notes-settings-input', placeholder: 'provider', value: setLlmProvider, onChange: (ev) => setSetLlmProvider(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
               e('input', { className: 'dsh-notes-settings-input', placeholder: 'model', value: setLlmModel, onChange: (ev) => setSetLlmModel(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
               (setLlmProvider || setLlmModel) ? e('button', { className: 'dsh-notes-settings-clear', onClick: () => { setSetLlmProvider(''); setSetLlmModel(''); saveSettingsLlm(null) } }, tt('settings.followSession')) : null)
-        // 目录注入总开关控件：checkbox 勾选即保存（catalogEnabled，缺省开）；label 挂 tooltip 说明注入形态
+        // 目录注入总开关控件：checkbox 勾选即保存（catalogEnabled，缺省关）；label 挂 tooltip 说明注入形态
         const catalogControl = e('label', { className: 'dsh-notes-settings-checkwrap dsh-nt', 'data-tooltip': tt('settings.catalogTip') },
           e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: setCatalog, onChange: (ev) => { const v = !!ev.target.checked; setSetCatalog(v); saveSettingsCatalog(v) } }),
           setCatalog ? tt('settings.enabled') : tt('settings.disabled'))

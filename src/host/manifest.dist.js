@@ -13,6 +13,7 @@
 'kernel/front-matter.js'
 'kernel/session-ctx.js'
 'kernel/settings-store.dist.js'
+'kernel/telemetry-store.dist.js'
 'llm/usage-classify.dist.js'
 'kernel/store-cache.dist.js'
 'history-trash/engine.dist.js'

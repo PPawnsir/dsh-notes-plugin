@@ -1,4 +1,4 @@
-﻿// 节 65. i18n 覆盖卡 D（notes-042-i18n-cov-d：注入管理 + 记忆引导双语化）
+// 节 65. i18n 覆盖卡 D（notes-042-i18n-cov-d：注入管理 + 记忆引导双语化）
 // 规格源：反馈条目 n-mut488gske5v 覆盖卡统一方法（免调研模板）——grep 表面 [一-鿿] → 抽串进 zh.js（key=inj.*/mem.*）
 //   → 内联改 t()/tt()（变量 {name} 插值禁拼接）→ en.js 直译 → 断言（t( 命中≥抽串、字典双向覆盖、产物英文态抽查）。
 // 表面：app modals/{inject-manager,memory-guide}.js（全局 t() 直读 NOTES_LANG）
@@ -30,18 +30,20 @@ module.exports = {
   const appSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
   const clientPkgSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
   const protoSrc = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
-  // 覆盖卡 D 抽串清单（79 条 = common.sched* 10（跨表面频率人话）+ inj.* 38 + mem.* 31；key=表面.语义）
+  // 覆盖卡 D 抽串清单（81 条 = common.sched* 10（跨表面频率人话）+ inj.* 40 + mem.* 31；key=表面.语义；
+  // 0.4.3⑦：inj.logSegTip/logRowTip → inj.logNoInject/logNoInjectTip（注入硬关 UI 化，log 行不再渲染开关）；
+  // 0.4.3 验收修复⑥：+inj.mntStats/mntStatsTip（注入管理挂载区统计行，notes-043-metrics-present））
   const KEYS = [
     'common.schedOnce', 'common.schedInvalid', 'common.schedDaily', 'common.schedWeekly', 'common.schedWeeklyDow',
     'common.dowNames', 'common.schedNDays', 'common.schedNHours', 'common.schedNMinutes', 'common.schedNMs',
     'inj.titleSub', 'inj.searchPlaceholder', 'inj.loadFailed', 'inj.chipAll', 'inj.chipConvention',
     'inj.chipReference', 'inj.chipOff', 'inj.noMatch', 'inj.emptyLib', 'inj.selectAll',
-    'inj.batchConvention', 'inj.batchReference', 'inj.batchOff', 'inj.executing', 'inj.logSegTip',
-    'inj.logRowTip', 'inj.sensTip', 'inj.sensBadge', 'inj.scopeGlobal', 'inj.scopeSessions',
+    'inj.batchConvention', 'inj.batchReference', 'inj.batchOff', 'inj.executing', 'inj.logNoInject',
+    'inj.logNoInjectTip', 'inj.sensTip', 'inj.sensBadge', 'inj.scopeGlobal', 'inj.scopeSessions',
     'inj.schedTitle', 'inj.schedTitleSub', 'inj.schedEmpty', 'inj.schedResumed', 'inj.schedPausedToast',
     'inj.schedDelConfirm', 'inj.schedDeleted', 'inj.forcedOff', 'inj.injectOffToast', 'inj.injectSetToast',
     'inj.setFailed', 'inj.batchLabelSet', 'inj.batchConfirm', 'inj.batchEffOff', 'inj.batchEffRef',
-    'inj.batchEffConv', 'inj.batchDone', 'inj.batchDoneFail',
+    'inj.batchEffConv', 'inj.batchDone', 'inj.batchDoneFail', 'inj.mntStats', 'inj.mntStatsTip',
     'mem.disabledToast', 'mem.notEnabled', 'mem.disableFailed', 'mem.enableTitle', 'mem.enableSub',
     'mem.enableHint', 'mem.scopeTitle', 'mem.scopeGlobal', 'mem.scopeWsPick', 'mem.scopeSessPick',
     'mem.scopeWsMulti', 'mem.scopeSessMulti', 'mem.scopeGlobalTip', 'mem.scopeWsTip', 'mem.scopeSessTip',
@@ -54,8 +56,8 @@ module.exports = {
   const zh = grab(zhSrc, 'I18N_ZH'), en = grab(enSrc, 'I18N_EN')
 
   // ===== ① 字典双向覆盖：79 条 common.sched/inj/mem key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
-  await t('覆盖D 字典双向覆盖：79 条 common.sched/inj/mem key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
-    assert.strictEqual(KEYS.length, 79, '抽串清单条数（实得 ' + KEYS.length + '）')
+  await t('覆盖D 字典双向覆盖：81 条 common.sched/inj/mem key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
+    assert.strictEqual(KEYS.length, 81, '抽串清单条数（实得 ' + KEYS.length + '）')
     for (const k of KEYS) {
       assert(typeof zh[k] === 'string' && zh[k], 'zh 缺 key/空值：' + k)
       assert(typeof en[k] === 'string' && en[k], 'en 缺 key/空值：' + k)
@@ -70,7 +72,7 @@ module.exports = {
   })
 
   // ===== ② t()/tt() 改写命中：六表面文件域内命中数阈值 + 逐文件关键锚点 =====
-  await t('t()/tt() 改写命中：六表面文件域内 t(/tt( 合计 ≥200（≥抽串数 79）+ 逐文件关键锚点', () => {
+  await t('t()/tt() 改写命中：六表面文件域内 t(/tt( 合计 ≥200（≥抽串数 81）+ 逐文件关键锚点', () => {
     const cnt = (s) => (s.match(/[^\w]t{1,2}\('(?:inj|mem|common|meta|tree|sel|settings)\./g) || []).length
     const per = [['inject-manager.js(app)', injAppSrc, 60], ['memory-guide.js(app)', memAppSrc, 28], ['inject-manager.js(client)', injCliSrc, 60], ['memory-guide.js(client)', memCliSrc, 24], ['helpers.js(app)', helpersSrc, 9], ['format.js(client)', formatSrc, 9]]
     let total = 0
@@ -104,7 +106,7 @@ module.exports = {
   })
 
   // ===== ③ 行为级：eval 字典 + app i18n 块——取值/插值/en 态逐条非裸 key =====
-  await t('行为级：覆盖D key 双语取值 + {name} 插值 + en 态 79 条逐条非裸 key', () => {
+  await t('行为级：覆盖D key 双语取值 + {name} 插值 + en 态 81 条逐条非裸 key', () => {
     const i18nBlock = helpersSrc.match(/\/\* ==== i18n-mech BEGIN ====[\s\S]*?\/\* ==== i18n-mech END ==== \*\//)[0]
     const mk = (stored) => new Function('localStorage', 'render', zhSrc + '\n' + enSrc + '\n' + i18nBlock + '\nreturn { t: t }')({ getItem: () => stored, setItem: () => {} }, () => {})
     const a = mk(null)

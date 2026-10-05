@@ -21,8 +21,7 @@
     }
     disposers.push(handle('notes-perf', async (args) => { if (args && args.perf) perfStats.client = args.perf; return { ok: true } }))
     // P1 回收站：args.includeDeleted=true 时含软删除笔记（缺省排除）；tag/kind/folder 过滤口径不变
-    // 工作记忆 v0：args.includeLogs=true 时含 kind=log 日志（缺省排除——默认隐身；筛选中心 kind=日志 专入口由 client 传此参数）；
-    // R-6：args.folder 显式给出（含 '' 未分类）时隐式含日志（_list effLogs 承接——显式文件夹导航放行，四个隐式表面隐身不变）
+    // 日志同权（0.4.3 验收修复⑦）：kind=log 默认包含（可见/可搜同权）；args.includeLogs 保留为兼容 no-op（_list 注释承接）
     disposers.push(handle('notes-list', async (args) => ({ notes: (await _list(args && args.tag, args && args.kind, args && args.folder, !!(args && args.includeDeleted), !!(args && args.includeLogs))).map(slim) })))
     // 虚拟文件夹清单/管理：无参=列表（含子树口径计数 + parent/depth 嵌套字段），args={op:'create'(name,parent?)|'rename'|'delete'(id,cascade?——缺省拒绝有子内容)|'reorder'(ids,parents? 拖父级改挂), ...}
     disposers.push(handle('notes-folders', async (args) => {
@@ -136,3 +135,51 @@
     disposers.push(handle('notes-ai-organize', async (args) => {
       try { return await _aiOrganize(args || {}) } catch (e) { return { error: String(e.message || e) } }
     }))
+
+    // ==== when-suggest BEGIN ====（0.4.3 验收修复 notes-043-preview-when-edit：server.js 与 server.dist.js 本块逐字节一致，check 节 73 看守）
+    // notes-when-suggest {id} → LLM 生成 whenToUse 单行草稿（挂载弹层预填数据源；仅用户主动触发——资料开注入/预览目录行点击，不批量后台跑）。
+    // 同构 llm/usage-classify.js 调用模式：resolveLlmSelection（settingsCache.llm provider+model 齐备优先，否则跟随会话 adm.currentSelection）；
+    //   prompt = 标题 + 正文前 1200 字摘要，要求随笔记语言输出一行 ≤40 字「何时查我」。
+    // 红线：无 LLM / 未配置 / 笔记缺失 / 异常 / 8s 超时 → 一律 { error }（client 静默回退预填标题，草稿失败绝不阻断挂载）；
+    //   草稿为低频用户主动触发，不进 llm-usage 计量（USAGE_FEATURES 三功能口径不动）。
+    const WHEN_SUGGEST_TIMEOUT_MS = 8000
+    disposers.push(handle('notes-when-suggest', async (args) => {
+      try {
+        if (!args || !args.id) return { error: 'notes-when-suggest 需要 id' }
+        if (!llm) return { error: 'llm 不可用' }
+        let n = null
+        try { n = await loadNote(String(args.id)) } catch (e) { return { error: 'notes-when-suggest: 笔记不存在' } }
+        if (!n || n.deleted || n.tombstoned) return { error: 'notes-when-suggest: 笔记不存在' }
+        await loadSettings()
+        const sel = resolveLlmSelection()
+        if (!sel || !sel.provider || !sel.model) return { error: 'llm 未配置' }
+        const excerpt = String(n.body || '').replace(/\s+/g, ' ').trim().slice(0, 1200)
+        const prompt = '笔记标题：' + String(n.title || '').replace(/[\r\n]+/g, ' ') + '\n\n笔记正文摘要：\n' + (excerpt || '（空）') + '\n\n请用笔记自身的语言，输出一行「何时查我」（whenToUse）：描述 Agent 在什么场景下应该查阅这条笔记。只输出这一行本身，不超过 40 字，不要解释、引号、结尾标点或换行。'
+        let timer = null
+        const timeout = new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error('when-suggest 超时（8s）')), WHEN_SUGGEST_TIMEOUT_MS); if (timer && typeof timer.unref === 'function') timer.unref() })
+        let text = ''
+        try {
+          await Promise.race([(async () => {
+            for await (const chunk of llm.stream({
+              provider: sel.provider,
+              model: sel.model,
+              messages: [{
+                id: 'when-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+                role: 'user',
+                content: [{ type: 'text', text: prompt }],
+                source: { kind: 'user' }
+              }],
+              system: '你是笔记挂载助手，为笔记生成一行极简的「何时查我」使用场景说明。',
+              temperature: 0
+            })) {
+              if (chunk && chunk.type === 'text-delta') text += chunk.text
+              if (chunk && chunk.type === 'finish') break
+            }
+          })(), timeout])
+        } finally { if (timer) clearTimeout(timer) }
+        const one = Array.from(String(text || '').split('\n')[0].trim().replace(/^["'「」『』\s]+|["'「」『』。；;，,\.\s]+$/g, '')).slice(0, 40).join('')
+        if (!one) return { error: 'llm 空输出' }
+        return { ok: true, id: String(args.id), suggestion: one }
+      } catch (e) { return { error: String(e.message || e) } }
+    }))
+    // ==== when-suggest END ====

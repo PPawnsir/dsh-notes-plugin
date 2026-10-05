@@ -9,7 +9,8 @@
     // dragNoteIdRef/dragFolderIdRef 的 React.useRef 声明原文被 check.js 锚定（21/41 节）——留 hook 内（useRef 不可模块顶层调用）
     function usePanelTree(args) {
         const notes = args.notes, view = args.view, filters = args.filters, searchText = args.searchText, searchIds = args.searchIds, folders = args.folders
-        const foldLogs = args.foldLogs || [], foldLogLoaded = args.foldLogLoaded || {}   // notes-041c 树日志懒加载 overlay（folder-menu.js 托管）
+        // 日志同权（0.4.3 验收修复⑦）：日志随 notes 主缓存直达——按夹日志懒加载 overlay 特化路径（独立 RPC + 合并）已拆除，
+        // 展开日志夹与普通夹同一代码路径（零额外请求，卡顿根因消除）；「文件视图」（文件夹视图）模式同卡整体拆除
         // i18n（notes-042-i18n-cov-a 覆盖卡A）：tt = useT()——订阅 langStore，切语言本 hook（随主面板）自渲染；树区文案全走 tt()
         const tt = useT()
         const dragNoteIdRef = React.useRef(null)   // 笔记拖拽状态：dragstart 记录 noteId（ref 防闭包过期），dragend 清空
@@ -120,8 +121,6 @@
               e('span', { className: 'dsh-notes-caret-spacer' }),
               e('span', { className: 'dsh-notes-kind-slot' }, e('span', { className: 'dsh-notes-kind-dot', style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' } })),
               e('span', { className: 'dsh-notes-note-ti' }, n.status === 'pinned' ? I('pin', 10, 'dsh-notes-note-pin') : null, highlight(n.title || tt('tree.untitled'), q)),
-              // 日志隐身标记（notes-041c-tree-log-children）：树内定向召回的 kind=log 行尾 log 文本徽章（懒加载 overlay 专属视觉；面板 emoji 红线——不用表情字符）
-              n.kind === 'log' ? e('span', { className: 'dsh-notes-logmark dsh-nt', 'data-tooltip': tt('tree.logTip'), style: { fontSize: 9, marginLeft: 2, opacity: 0.6 } }, 'log') : null,
               n.inject === true ? e('span', { className: 'dsh-notes-note-inj dsh-nt', 'data-tooltip': tt('tree.injectTip', { role: tt(n.injectRole === 'reference' ? 'tree.roleReference' : 'tree.roleConvention') }) + ' · ' + tt('tree.injectScope', { scope: injectScopeLabel(n.injectTo) }) }, I('bolt', 10)) : null,
               // 曾注入徽章（injectEver 粘性标记：历史上开启过注入、现已关闭；已注入时由 bolt 徽章表达，不重复显示；不满足不渲染）
               n.inject !== true && n.injectEver === true ? e('span', { className: 'dsh-notes-note-injevr dsh-nt', 'data-tooltip': tt('tree.injectEverTip') }, I('clock', 9)) : null,
@@ -134,7 +133,7 @@
           // ===== 侧栏树（原型 renderTree 翻译）：视图头 → 置顶组 → 文件夹组（nested 子笔记）→ 未入夹根级平铺（drop 移出落点）→ 主题全局过滤 =====
           const treeIds = []
           const treeEls = []
-          const viewTitle = view.type === 'topic' ? tt('tree.viewTopic', { id: view.id }) : view.type === 'folder' ? tt('tree.viewFolder', { name: folderName(view.id) }) : tt('tree.viewAll')
+          const viewTitle = view.type === 'topic' ? tt('tree.viewTopic', { id: view.id }) : tt('tree.viewAll')
           treeEls.push(e('div', { key: 'sec-view', className: 'dsh-notes-sec-h' },
             I('filter', 11),
             e('span', { className: 'dsh-notes-sec-h-t' }, viewTitle),
@@ -156,9 +155,9 @@
               if (pinRows.length) treeEls.push(e('div', { key: 'pinned-kids', className: 'dsh-notes-nested' }, pinRows))
             }
           }
-          // 文件夹组：行 = caret + folder 图标 + 名称 + 计数 + 行尾过滤图标；行主体单击 = 纯展开/折叠
-          // （经典树语义唯一职责——notes-041b 用户裁决去重；caret 与行主体同一 toggle 语义，stopPropagation 防双触发）；
-          // 行尾过滤图标 = 进入/退出文件夹视图（唯一进视图入口，不抢占单击）+ 右键菜单项；右键管理
+          // 文件夹组：行 = caret + folder 图标 + 名称 + 计数；行主体单击 = 纯展开/折叠
+          // （经典树语义唯一职责——notes-041b 用户裁决去重；caret 与行主体同一 toggle 语义，stopPropagation 防双触发）；右键管理
+          // （0.4.3 验收修复⑦：「文件视图」模式拆除——行尾漏斗进视图图标已移除，树展开即文件夹浏览）
           treeEls.push(e('div', { key: 'sec-folders', className: 'dsh-notes-sec-h' },
             I('folder', 11),
             e('span', { className: 'dsh-notes-sec-h-t' }, tt('tree.folders')),
@@ -179,12 +178,11 @@
                   e('span', { className: 'dsh-notes-caret' }, I('chev', 10)),
                   e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
                   e('input', { className: 'dsh-notes-folder-rename', value: renameText, autoFocus: true, onChange: (ev) => setRenameText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doRenameFolder() } else if (ev.key === 'Escape') { ev.preventDefault(); setRenamingId(null) } }, onBlur: () => setRenamingId(null) }))
-              : e('div', { key: 'folder-' + f.id, className: 'dsh-notes-folder-row' + (view.type === 'folder' && view.id === f.id ? ' on' : ''), onClick: () => { toggleFolder(f.id) }, onContextMenu: (ev) => openFolderMenu(ev, f), draggable: true, onDragStart: (ev) => onFolderDragStart(ev, f), onDragEnd: (ev) => onFolderDragEnd(ev), onDragOver: (ev) => onFolderDragOver(ev, f), onDragLeave: onFolderDragLeave, onDrop: (ev) => onFolderDrop(ev, f) },
+              : e('div', { key: 'folder-' + f.id, className: 'dsh-notes-folder-row', onClick: () => { toggleFolder(f.id) }, onContextMenu: (ev) => openFolderMenu(ev, f), draggable: true, onDragStart: (ev) => onFolderDragStart(ev, f), onDragEnd: (ev) => onFolderDragEnd(ev), onDragOver: (ev) => onFolderDragOver(ev, f), onDragLeave: onFolderDragLeave, onDrop: (ev) => onFolderDrop(ev, f) },
                   e('span', { className: 'dsh-notes-caret' + (fOpen ? ' open' : '') + ' dsh-nt', 'data-tooltip': tt('tree.toggleTip'), onClick: (ev) => { ev.stopPropagation(); toggleFolder(f.id) } }, I('chev', 10)),
                   e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
                   e('span', { className: 'dsh-notes-row-nm' }, f.name),
-                  e('span', { className: 'dsh-notes-row-n' }, cnt),
-                  e('span', { className: 'dsh-notes-row-vfilter dsh-nt' + (view.type === 'folder' && view.id === f.id ? ' on' : ''), 'data-tooltip': tt('tree.folderViewTip'), onClick: (ev) => { ev.stopPropagation(); setView(view.type === 'folder' && view.id === f.id ? { type: 'all', id: '' } : { type: 'folder', id: f.id }) } }, I('filter', 11))))
+                  e('span', { className: 'dsh-notes-row-n' }, cnt)))
             if (!fOpen) return
             const childEls = []
             // 「新建子文件夹」内联输入行（右键菜单打开；渲染在本夹子内容容器首位，Enter 提交 / Esc 或空串失焦取消）
@@ -196,12 +194,6 @@
             }
             for (const cf of childFoldersOf(f.id)) renderFolderNode(cf, childEls)
             kids.forEach(n => { treeIds.push(n.id); childEls.push(renderNoteRow(n, true)) })
-            // 日志 overlay 并入（notes-041c-tree-log-children）：夹已展开且定向拉过 → 本夹直挂 log 子条目追加到尾部（id 去重防文件夹视图双显）
-            if (foldLogLoaded[f.id] && foldLogs.length) {
-              const have = {}
-              paged.forEach(n => { have[n.id] = true })
-              foldLogs.filter(n => (n.folder || '') === f.id && !have[n.id]).forEach(n => { treeIds.push(n.id); childEls.push(renderNoteRow(n, true)) })
-            }
             if (childEls.length) sink.push(e('div', { key: 'kids-' + f.id, className: 'dsh-notes-nested' }, childEls))
           }
           for (const f of rootFolders()) renderFolderNode(f, treeEls)

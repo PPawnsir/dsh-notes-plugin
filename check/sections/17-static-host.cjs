@@ -55,7 +55,7 @@ module.exports = {
     assert(Array.isArray(modIndex.inject) && modIndex.inject.indexOf('fs') >= 0 && modIndex.inject.indexOf('sandboxPolicy') >= 0, 'inject 含 fs/sandboxPolicy')
     assert(typeof modIndex.apply === 'function', 'apply 导出')
   })
-  await t('harness 缺失时兜底：3 条 exact 路由（RPC + 全窗口页面 + 资产）+ ctx.tools 3 工具 + 约定注入 order130 + 目录注入 order131', () => {
+  await t('harness 缺失时兜底：3 条 exact 路由（RPC + 全窗口页面 + 资产）+ ctx.tools 3 工具 + 约定注入 order130（单一 context：目录段并入）', () => {
     modIndex.apply(ctx2)
     assert.strictEqual(routes2.length, 3, '应注册 3 条路由（/dsh-notes RPC + /dsh-notes-app 页面 + /dsh-notes/asset 资产），实得 ' + routes2.length)
     assert.strictEqual(routes2[0].kind, 'exact', "路由 kind='exact'")
@@ -68,10 +68,9 @@ module.exports = {
     assert.strictEqual(routes2[2].path, '/dsh-notes/asset', "资产路由 path='/dsh-notes/asset'")
     assert.strictEqual(typeof routes2[2].handler, 'function', '资产 handler 是函数')
     assert.deepStrictEqual(tools2.map(x => x.name).sort(), ['note_get', 'note_manage', 'note_search'], '注册 3 个工具')
-    assert.strictEqual(contexts2.length, 2, '注册 2 个 systemPrompt context（约定 + 目录）')
+    assert.strictEqual(contexts2.length, 1, '注册 1 个 systemPrompt context（0.4.3③：目录段并入约定注入，order 131 撤销）')
     assert.strictEqual(contexts2[0].order, 130, '约定注入 order=130')
-    assert.strictEqual(contexts2[1].name, 'notes:catalog', '目录注入 context 名')
-    assert.strictEqual(contexts2[1].order, 131, '目录注入 order=131（紧邻约定注入之后）')
+    assert.strictEqual(contexts2[0].name, 'notes:workspace-conventions', '单一 context 名')
   })
   // 走真实 HTTP handler 形态调用 RPC（等价 client 侧 fetch POST /dsh-notes）
   function rpc2(method, args) {
@@ -193,9 +192,10 @@ module.exports = {
     const onDisk = store2.get(path.join(NOTES_ROOT_STATIC, c.body.id + '.md'))
     assert(onDisk && onDisk.indexOf('\ninjectRole: reference\n') >= 0, '静态包磁盘 front-matter 写 injectRole: reference')
     const conv = await rpc2('notes-conventions', {})
-    const iRef = conv.body.text.indexOf('参考资料（与当前任务相关时按需取用）：')
-    assert(conv.body.text.indexOf('用户约定（须遵守）：') >= 0 && iRef >= 0, '双桶引导词并列')
-    assert(conv.body.text.indexOf('静态包资料') > iRef, 'reference 笔记列在资料桶下')
+    // 0.4.3③：资料桶并入目录段——inject=true 的 reference 笔记自动落挂载行（增强态排前）
+    const iRef = conv.body.text.indexOf('本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：')
+    assert(conv.body.text.indexOf('用户约定（须遵守）：') >= 0 && iRef >= 0, '约定桶 + 目录段引导词并列')
+    assert(conv.body.text.indexOf('- [[' + c.body.id + ']] 何时查我：静态包资料') > iRef, 'reference 笔记以挂载行形态列在目录段（排前；0.4.3④ 行格式「何时查我：」前缀归一）')
     const u = await rpc2('notes-update', { id: c.body.id, injectRole: 'convention' })
     assert(!u.body.error, 'notes-update 透传 injectRole')
     const g2 = await rpc2('notes-get', { id: c.body.id })
@@ -203,14 +203,20 @@ module.exports = {
     const onDisk2 = store2.get(path.join(NOTES_ROOT_STATIC, c.body.id + '.md'))
     assert(onDisk2.indexOf('\ninjectRole: convention\n') >= 0, '静态包 update 后磁盘 front-matter 同步')
   })
-  await t('notes:catalog 目录注入行为（静态包）：普通笔记进目录、约定去重、标题行+轻推行', () => {
-    const cat = contexts2.find(x => x.name === 'notes:catalog')
-    assert(cat && typeof cat.text === 'function', 'notes:catalog context 已注册且 text 为函数')
-    const txt = cat.text()
-    assert(txt.indexOf('本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：') === 0, '目录标题行开头（实得：' + txt.slice(0, 80) + '）')
+  await t('目录段行为（静态包，并入 order 130）：缺省关普通行不进段 → 显式开启后普通笔记进段、约定去重、标题行+轻推行', async () => {
+    const cat = contexts2.find(x => x.name === 'notes:workspace-conventions')
+    assert(cat && typeof cat.text === 'function', '单一注入 context 已注册且 text 为函数')
+    const dirOf = (s) => { const i = String(s || '').indexOf('本地笔记库目录（'); return i < 0 ? '' : String(s).slice(i) }
+    // 0.4.3 验收修复：catalogEnabled 缺省关——普通行不进段（「静态包资料」上节已改约定桶摘行，此刻无挂载行 → 段整段空）
+    const off0 = dirOf(cat.text())
+    assert(off0.indexOf('静态包笔记 (笔记') < 0, '缺省关：无 override 普通行不进目录段（实得：' + off0.slice(0, 100) + '）')
+    const en = await rpc2('notes-settings-set', { catalogEnabled: true })
+    assert(en.body && en.body.ok === true, '显式开启成功（实得 ' + JSON.stringify(en.body) + '）')
+    const txt = dirOf(cat.text())
+    assert(txt.indexOf('本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：') === 0, '目录段标题行开头（实得：' + txt.slice(0, 80) + '）')
     assert(txt.indexOf('- [' + cr2.body.id + '] 静态包笔记 (笔记, 运维)') >= 0, '一行一条格式：- [id] 标题 (kind中文, topic)（实得：' + txt + '）')
-    assert(txt.indexOf('迁移前旧笔记') < 0, 'inject=true 且本会话命中的约定不进目录（order 130 已注入全文，目录去重）')
-    assert(txt.indexOf('规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手') >= 0, '末尾轻推行')
+    assert(txt.indexOf('迁移前旧笔记') < 0, 'inject=true 且本会话命中的约定不进目录段（全文已在约定桶，目录去重）')
+    assert(txt.indexOf('规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手') >= 0, '段尾轻推行')
   })
   await t('notes-sessions / notes-active-sessions / notes-workspaces 可用', async () => {
     const s1 = await rpc2('notes-sessions', {})

@@ -23,7 +23,8 @@ module.exports = {
         get: (name) => ({ agents: agentsMock, systemPrompt: { context: () => () => {} } })[name],
         effect: () => {},
       })
-      assert.strictEqual(Object.keys(handlers7).length, 47, '静态包注册 47 个 RPC（46 + notes-ping；46 含工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats），实得 ' + Object.keys(handlers7).length)
+      assert.strictEqual(Object.keys(handlers7).length, 48, '静态包注册 48 个 RPC（47 + notes-ping；47 含工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest），实得 ' + Object.keys(handlers7).length)
+      assert(typeof handlers7['notes-when-suggest'] === 'function', '静态包 notes-when-suggest handler 存在（0.4.3 验收修复 notes-043-preview-when-edit）')
       assert(typeof handlers7['notes-recall-stats'] === 'function', '静态包 notes-recall-stats handler 存在（0.4.3+ 卡⑫ 统一召回遥测，notes-043-inject-receipt）')
       assert(typeof handlers7['notes-ledger-refresh'] === 'function', '静态包 notes-ledger-refresh handler 存在（0.4.3⑥ 效用账本，notes-043-ledger）')
       assert(typeof handlers7['notes-graph'] === 'function', '静态包 notes-graph handler 存在（0.4.3 内核① 图查询，notes-043-graph）')
@@ -74,6 +75,10 @@ module.exports = {
       const ex2 = await handlers7['notes-export']({ dir: 'D:\\exp-st2' })
       assert(!ex2.error && ex2.assets === 1, '静态包导出连带 1 个资产（实得 ' + JSON.stringify(ex2) + '）')
       assert.strictEqual(store7.get(path.join(ex2.target, 'assets', up.name)), pngB64_7, '快照资产逐字节一致')
+      // 0.4.3 验收修复⑤：静态包导出连带遥测 sidecar（上行 notes-get 已产生 get 事件；export 内 _telemetryFlushNow 落账后复制）
+      assert(ex2.telemetry === true, '静态包导出连带 telemetry.json（telemetry=true；实得 ' + JSON.stringify(ex2).slice(0, 160) + '）')
+      const telemSnap = JSON.parse(store7.get(path.join(ex2.target, 'telemetry.json')))
+      assert(telemSnap.version === 1 && telemSnap.byDay && telemSnap.byDay.get, '静态包遥测快照结构 version/byDay.get 齐备')
       store7.set(path.join(ex2.target, 'assets', '20260101-000000-stextra.png'), 'QUJD')
       const im3 = await handlers7['notes-import']({ dir: ex2.target })
       assert(!im3.error && im3.assetsMerged === 1, '静态包导入合并新资产、同名跳过（实得 ' + JSON.stringify(im3) + '）')

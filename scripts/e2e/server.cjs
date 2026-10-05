@@ -6,7 +6,7 @@
  * 其余返回 {ok:true}。数据存内存（种子 2 条笔记 + 1 个「工作日志」夹 + 1 条日志 + 1 个活跃会话），
  * 进程退出即弃——e2e 天然隔离、可重复。
  * 0.4.3② e2e 卡（notes-043-e2e-cases）扩展：folders 状态化 CRUD、软删/恢复/彻底删除、
- * dispatch-schedule 建块链路、notes-export 冒烟、kind=log 默认隐身口径（includeLogs 才可见）。 */
+ * dispatch-schedule 建块链路、notes-export 冒烟、kind=log 同权口径（0.4.3⑦：默认列表/搜索即含日志）。 */
 const http = require('http')
 const fs = require('fs')
 const path = require('path')
@@ -41,7 +41,7 @@ function createMockState() {
   const notes = [
     seed('e2e 种子笔记 A', '种子正文 A（e2e mock 数据，仅内存）', 'e2e'),
     seed('e2e 种子笔记 B', '种子正文 B（e2e mock 数据，仅内存）', 'e2e'),
-    /* kind=log 种子（挂在「工作日志」夹）：默认列表/搜索隐身，展开日志夹时 includeLogs 定向召回（notes-041c 口径） */
+    /* kind=log 种子（挂在「工作日志」夹）：0.4.3⑦ 同权——默认列表/搜索即含（原隐身/includeLogs 定向召回口径已废） */
     seed('e2e 日志条目 · 沉淀样板', '## 做了什么\n\n种子日志正文', '', { kind: 'log', folder: 'f-log-e2e' }),
   ]
   const folders = [
@@ -71,8 +71,13 @@ function handleRpc(state, method, args) {
     case 'notes-list': {
       let list = notes.slice()
       if (args && args.includeDeleted !== true) list = list.filter(n => !n.deleted)
-      /* kind=log 隐身口径：默认列表不含日志，includeLogs 才返回（树懒加载 overlay 数据源） */
-      if (!(args && args.includeLogs)) list = list.filter(n => (n.kind || 'note') !== 'log')
+      /* kind=log 同权（0.4.3⑦）：默认列表即含日志（includeLogs 参数兼容 no-op） */
+      /* 0.4.3⑨/⑩ sys 口径与 host _list 对齐：默认平铺排除 kind=sys；显式 kind/tag/具体文件夹入口放行（kind 真值短路 = 面板「机器」档通道） */
+      const explicitEntry = !!(args && (args.kind || args.tag || (args.folder !== undefined && args.folder !== '')))
+      if (!explicitEntry) list = list.filter(n => (n.kind || 'note') !== 'sys')
+      if (args && args.kind) list = list.filter(n => (n.kind || 'note') === args.kind)
+      if (args && args.tag) list = list.filter(n => (n.tags || []).indexOf(args.tag) >= 0)
+      if (args && args.folder !== undefined) list = args.folder === '' ? list.filter(n => !(n.folder || '')) : list.filter(n => (n.folder || '') === args.folder)
       list.sort((a, b) => (b.pinned - a.pinned) || String(b.updatedAt).localeCompare(String(a.updatedAt)))
       return { notes: list.map(slimNote) }
     }
@@ -110,7 +115,7 @@ function handleRpc(state, method, args) {
     case 'notes-search': {
       const q = String((args && args.query != null ? args.query : (args && args.q) || '')).toLowerCase()
       return {
-        notes: notes.filter(n => !n.deleted && (n.kind || 'note') !== 'log' && (n.title + (n.body || '')).toLowerCase().indexOf(q) >= 0)
+        notes: notes.filter(n => !n.deleted && (n.title + (n.body || '')).toLowerCase().indexOf(q) >= 0)
           .map(n => Object.assign(slimNote(n), { matches: [n.title.toLowerCase().indexOf(q) >= 0 ? 'title' : 'body'] })),
       }
     }
@@ -162,7 +167,25 @@ function handleRpc(state, method, args) {
         ;(a.parents || []).forEach((p, i) => { const f = state.folders[i]; if (f) f.parent = p || '' })
         return { ok: true }
       }
-      return { folders: state.folders.slice() }
+      /* 0.4.3⑩ 计数口径与 host 对齐（真实计数替代静态 0）：文件夹 count = 递归子树内全部非删除笔记（含 sys，与定向视图一致）；
+         unfiled 与⑨「未分类」平铺同族——sys 不计入 */
+      const direct = {}
+      let unfiled = 0
+      for (const n of notes) {
+        if (n.deleted) continue
+        const f = n.folder || ''
+        if (f && state.folders.some(x => x.id === f)) direct[f] = (direct[f] || 0) + 1
+        else if ((n.kind || 'note') !== 'sys') unfiled++
+      }
+      return {
+        folders: state.folders.slice().sort((x, y) => x.order - y.order).map(f => {
+          const sub = folderSubtreeIds(state, f.id)
+          let count = 0
+          for (const sid in sub) count += direct[sid] || 0
+          return Object.assign({}, f, { count })
+        }),
+        unfiled,
+      }
     }
     case 'notes-settings-get': return { settings: state.settings, modelsDir: '' }
     case 'notes-settings-set': { Object.assign(state.settings, (args && args.settings) || {}); return { ok: true } }

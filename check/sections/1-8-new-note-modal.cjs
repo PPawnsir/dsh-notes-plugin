@@ -34,7 +34,7 @@ module.exports = {
   await t('创建流程：notes-create 输标题建笔记 → 刷新 → 选中新笔记 → 聚焦正文', () => {
     assert(clientSrc.indexOf("const payload = { title: title, body: KIND_TEMPLATES[newNoteKind] || '', kind: newNoteKind }") >= 0, 'notes-create payload 传 title/kind=newNoteKind/body=类型模板骨架（二期 kind 骨架；note=空）')
     assert(/host\.call\('notes-create', payload\)/.test(clientSrc), 'notes-create 走 payload（v2 视图落位）')
-    assert(clientSrc.indexOf("view.type === 'folder' ? view.id :") >= 0 && clientSrc.indexOf("payload.folder = createFolder") >= 0, '文件夹视图落当前文件夹')
+    assert(clientSrc.indexOf("const createFolder = (selNote && selNote.folder) || ''") >= 0 && clientSrc.indexOf("payload.folder = createFolder") >= 0, '落选中笔记所在文件夹/未分类（0.4.3⑦：文件夹视图落位分支随「文件视图」拆除移除）')
     assert(clientSrc.indexOf("if (view.type === 'topic' && view.id) payload.topic = view.id") >= 0, '主题视图带当前主题')
     assert(/showToast\(t\('newnote\.created'\)\)/.test(clientSrc), '创建成功 toast 走 t() newnote.created（i18n 覆盖卡E）')
     const m = clientSrc.match(/async function doCreateNote\(\) \{[\s\S]*?\n        \}/)

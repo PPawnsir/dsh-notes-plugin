@@ -16,7 +16,9 @@ module.exports = {
   // 索引托管行格式（与 injectindex.js INJECT_INDEX_TPL.lineRe 消费口径一致）：`- [[id]] when`——
   // 识别不出该形态的行 rootNoteSplit 归入备注区（others）、idxLinesSync 静默忽略，故管线不会报错——lint 是唯一兜底。
   const IDX_LINE_RE = /^-\s\[\[[^\[\]\r\n]+\]\]\s\S/
-  const HEAD1 = '## §1 挂载清单', HEAD2 = '## §2 召回指标'
+  // 0.4.3 验收修复④：v2 预设不再含「## §2 召回指标」锚（指标迁出走卡⑤）——§1 行区 = HEAD1 之后到下一「## 」节标题
+  //   （存量带 §2 索引同口径命中旧锚）或 EOF，两种形态通用
+  const HEAD1 = '## §1 挂载清单'
   async function idxBody() {
     const ml = await handlers['notes-mount-list']({})
     assert(ml && ml.indexNoteId, '索引笔记 id 可得（前置：节 73 已建/自愈）')
@@ -24,11 +26,13 @@ module.exports = {
     assert(g && g.note && !g.error, '索引笔记正文可达')
     return { indexNoteId: ml.indexNoteId, body: g.note.body }
   }
-  // §1 行区行清单（锚点节之间非空行；不含 §2 与备注区以外内容——备注区行也计入 lint：格式违规行落备注区同样要被看见）
+  // §1 行区行清单（HEAD1 至下一「## 」节标题或 EOF 之间非空行——备注区行也计入 lint：格式违规行落备注区同样要被看见）
   function idxSectionLines(body) {
     const lines = body.split('\n')
-    const i1 = lines.indexOf(HEAD1), i2 = lines.indexOf(HEAD2)
-    if (i1 < 0 || i2 < 0 || i2 <= i1) return []
+    const i1 = lines.indexOf(HEAD1)
+    if (i1 < 0) return []
+    let i2 = lines.length
+    for (let i = i1 + 1; i < lines.length; i++) { if (/^##\s/.test(lines[i].trim())) { i2 = i; break } }
     return lines.slice(i1 + 1, i2).filter(l => l.trim() !== '')
   }
   function idxLint(body) {
@@ -141,7 +145,8 @@ module.exports = {
     for (const a of ['记忆治理三层', 'inject', '任务挂载', '索引目录', '强保证', '中保证', '弱保证']) assert(ROOT_ZH.indexOf(a) >= 0, 'zh 记忆治理三层缺锚点：' + a)
   })
   await t('总纲红线条款在 README 有对应句（四条红线逐条落字）+ README.en 哲学节镜像（英文版同锚）', () => {
-    for (const a of ['约定桶全文注入不动', '资料默认不注入', '档案', '指标', '永不注入', '默认隐身']) assert(ROOT_ZH.indexOf(a) >= 0, 'zh 红线对应句缺锚点：' + a)
+    // 0.4.3⑦：第四条红线由「日志默认隐身」改为「日志同权 + 注入硬关」（R-6 UI 隐身推翻，锚点同步演进）
+    for (const a of ['约定桶全文注入不动', '资料默认不注入', '档案', '指标', '永不注入', '注入硬关']) assert(ROOT_ZH.indexOf(a) >= 0, 'zh 红线对应句缺锚点：' + a)
     for (const a of ['## Design Philosophy: The Note Network', 'What are its nodes', 'What are its edges', 'Wiki link', 'Soft link', 'Index mount', 'Dispatch mount', 'Root-index pattern', 'Memory governance tiers', 'strong guarantee', 'medium guarantee', 'weak guarantee']) assert(ROOT_EN.indexOf(a) >= 0, 'en 哲学节缺锚点：' + a)
     for (const e of ['| Wiki link |', '| Soft link |', '| Index mount |', '| Dispatch mount |']) assert(ROOT_EN.indexOf(e) >= 0, 'en 四类边表缺行：' + e)
     for (const a of ['execution log', 'memory archive', 'recall metrics', 'injection index']) assert(ROOT_EN.indexOf(a) >= 0, 'en 根索引四实例缺锚点：' + a)

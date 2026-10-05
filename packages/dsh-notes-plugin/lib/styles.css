@@ -34,6 +34,7 @@
   --nkind-link:#5e5ce6;
   --nkind-quote:#98989d;
   --nkind-log:#7d7aff;                              /* 工作记忆 v0：日志 kind 色点（低调紫，与 link 区分） */
+  --nkind-sys:#6e6e73;                              /* 0.4.3⑩：机器 kind 色点（深灰，与 note 浅灰区分；筛选中心「机器」档/树内 sys 行用） */
   /* 尺寸 */
   --nr-sm:6px; --nr-md:8px; --nr-lg:12px;
   /* 字体 */
@@ -243,7 +244,7 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
    图标槽 16px 定宽（文件夹=folder 图标 / 笔记=kind 色点，槽内居中）——同级行标题文字起点 x 一致，层级靠缩进+图标表达 */
 .dsh-notes-caret-spacer{width:11px;flex-shrink:0}
 .dsh-notes-kind-slot{width:16px;flex-shrink:0;display:grid;place-items:center}
-/* 文件夹行（原型 .row.head：点击主体=原地展开/折叠，行尾过滤图标=进入文件夹视图；也是 drop 目标）
+/* 文件夹行（原型 .row.head：点击主体=原地展开/折叠，纯树语义；也是 drop 目标）
    notes-tree-typography：同级字体统一 13px/常规/主色（--ntx，与笔记行一致；hover/激活态样式保留），层级靠缩进+图标表达 */
 .dsh-notes-folder-row{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:var(--nr-sm);color:var(--ntx);cursor:default;user-select:none;font-size:13px;font-family:var(--nfont)}
 .dsh-notes-folder-row:hover{background:var(--nbg-hover);color:var(--ntx)}
@@ -468,12 +469,12 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 /* ===== 注入预览 modal（设置卡片「注入预览」入口）：双 tab + 只读等宽文本 + 底部统计条 ===== */
 .dsh-notes-injprev-modal{width:560px}   /* 注入全文预览需要更宽，覆盖 settings-modal 的 400px */
 .dsh-notes-injprev-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-.dsh-notes-injprev-tabs{display:flex;gap:4px}
-.dsh-notes-injprev-tab{font-family:var(--nfont);font-size:11.5px;padding:3px 14px;border-radius:20px;border:1px solid var(--nbd);background:transparent;color:var(--nt2);cursor:pointer;transition:all .15s}
-.dsh-notes-injprev-tab:hover{color:var(--ntx);background:var(--nbg-hover)}
-.dsh-notes-injprev-tab.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:500}
 .dsh-notes-injprev-sess{margin-left:auto;width:auto;max-width:230px;flex-shrink:1;min-width:0}
 .dsh-notes-injprev-text{font-family:var(--nmono);font-size:11px;line-height:1.65;background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:8px;padding:10px 12px;max-height:46vh;min-height:120px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0;color:var(--nt2);box-sizing:border-box}
+.dsh-notes-injprev-conv{margin:0 0 8px;font:inherit;white-space:pre-wrap;word-break:break-word;color:var(--nt2)}   /* 0.4.3 验收修复③（notes-043-dir-merge）：单段视图——约定段 pre + 目录段可点行同容器 */
+.dsh-notes-injprev-ln{min-height:1em}   /* 0.4.3 验收修复（notes-043-preview-when-edit）：目录段逐行渲染（可点行补充/编辑 whenToUse） */
+.dsh-notes-injprev-hit{cursor:pointer}
+.dsh-notes-injprev-hit:hover{color:var(--ntx);background:var(--nbg-hover);border-radius:4px}
 .dsh-notes-injprev-stats{font-size:10.5px;color:var(--nt3);margin-top:10px;line-height:1.6}
 
 /* ===== 注入管理面板 modal（设置卡片「注入管理」入口；notes-inject-manager）：统计 chips（点击=过滤）+ 搜索 + 批量条 + 三态 segmented 行 ===== */
@@ -487,6 +488,11 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-injmgr-search{flex:1;min-width:0;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:7px;color:var(--ntx);font-size:11.5px;padding:4px 9px;font-family:var(--nfont);outline:none}
 .dsh-notes-injmgr-search:focus{border-color:var(--nacc)}
 .dsh-notes-injmgr-search::placeholder{color:var(--nt3)}
+/* 挂载区统计行（0.4.3 验收修复⑥ notes-043-metrics-present）：chips 行下紧凑信号行，点开展开全量分通道统计 */
+.dsh-notes-injmgr-mntstats{margin:-2px 0 8px;font-size:11px;color:var(--nt2)}
+.dsh-notes-injmgr-mntstats-row{display:inline-flex;align-items:center;gap:4px;cursor:pointer;padding:2px 8px;border:1px solid var(--nbd-soft);border-radius:20px;background:var(--nbg-raise)}
+.dsh-notes-injmgr-mntstats-row:hover{color:var(--ntx);border-color:var(--nacc)}
+.dsh-notes-injmgr-mntstats-full{margin-top:4px;padding:6px 9px;border:1px solid var(--nbd-soft);border-radius:8px;line-height:1.7;word-break:break-all;color:var(--nt2)}
 .dsh-notes-injmgr-batch{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11.5px;color:var(--nt2)}
 .dsh-notes-injmgr-list{border:1px solid var(--nbd-soft);border-radius:8px;margin-bottom:10px;max-height:44vh;overflow-y:auto}
 .dsh-notes-injmgr-row{display:flex;align-items:center;gap:7px;padding:6px 9px;font-size:12px;border-bottom:1px solid var(--nbd-soft)}
@@ -501,6 +507,9 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-injmgr-opt.on{background:var(--nbg-sel);color:var(--nacc-tx);font-weight:600}
 .dsh-notes-injmgr-opt.dis{opacity:.38;cursor:not-allowed}
 .dsh-notes-injmgr-opt.dis:hover{background:transparent;color:var(--nt3)}
+/* 0.4.3⑦ 注入硬关 UI 化：log 行不渲染勾选框/注入开关——占位槽保行对齐 + 静态「不参与注入」标注 */
+.dsh-notes-injmgr-checkslot{display:inline-block;width:13px;flex-shrink:0}
+.dsh-notes-injmgr-lognote{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nt3);flex-shrink:0;padding:2px 3px}
 
 /* ===== 挂载弹层 modal（0.4.3⑤ notes-043-index：资料开注入 → 手写 whenToUse 落注入索引 §1 行；mask/modal 复用设置卡片类） ===== */
 .dsh-notes-inj-mount-body{display:flex;flex-direction:column;gap:5px;margin:10px 0 4px}

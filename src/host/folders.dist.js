@@ -96,6 +96,9 @@
     // notes-folders RPC 核心：无参/op 缺省 = list（按 order 排序，含各文件夹计数 + unfiled 未分类计数 + parent/depth 嵌套字段供 UI 递归渲染）；
     // op = create(name,parent?)/rename/delete(id,cascade?)/reorder(ids,parents?)。
     // 计数口径：deleted 笔记由 _list 排除不计；folder 指向清单外 id 的笔记计入 unfiled；count 为**递归子树口径**（含全部子孙文件夹内笔记）。
+    // 0.4.3⑩（notes-043-archive-folder 第二轮裁决）：计数取 includeSys 机器全量视图——文件夹徽标 = 夹内全部笔记数
+    //   （与 folder 定向视图（⑨ 保留通道，含 sys）逐字一致，消除「count=0 但夹内有 sys 档案」的死节点观感；通用计数语义修正，非文件夹特判）；
+    //   unfiled 计数与⑨「未分类」平铺同族口径守恒——kind=sys 仍不计入（未分类列表不含 sys，计数不得虚高）。
     // 嵌套约束：create/reorder 拖父级时经 checkFolderAttach 校验（深度上限 maxFolderDepth 缺省 3 / 0 不限 + cycle 拒绝）。
     // delete 语义（级联必须显式传参）：缺省拒绝有子内容（子孙文件夹/子树笔记）的删除（needCascade 提示）；
     // cascade:true = 整棵子树文件夹删除（结构不可恢复）+ 其下全部笔记逐条软删（_delete 同通道，回收站可恢复；恢复后原文件夹已不存在 → effectiveFolder 兜底未分类）。
@@ -104,14 +107,17 @@
       const op = a.op || 'list'
       if (op === 'list') {
         const folders = await loadFolders()
-        const all = await _list()
+        // ==== folders-count-sys BEGIN ====（0.4.3⑩ 第二轮裁决③：计数口径 includeSys——文件夹徽标=夹内全部笔记（与 folder 定向视图
+        //   含 sys 逐字一致，消除 count=0 死节点）；unfiled 与⑨「未分类」平铺同族排除 sys。folders.js 与 folders.dist.js 双变体逐字节同步，check 节 21 看守）
+        const all = await _list(undefined, undefined, undefined, undefined, undefined, true)   // ⑩ includeSys 机器全量口径：文件夹计数含 sys（与定向视图一致）
         const direct = {}
         let unfiled = 0
         for (const n of all) {
           const f = effectiveFolder(n, folders)
-          if (!f) unfiled++
+          if (!f) { if ((n.kind || 'note') !== 'sys') unfiled++ }   // unfiled 与⑨「未分类」平铺同族：sys 不计
           else direct[f] = (direct[f] || 0) + 1
         }
+        // ==== folders-count-sys END ====
         const list = folders.slice().sort((x, y) => x.order - y.order)
           .map(f => {
             // 子树口径计数：文件夹 count = 整棵子树（含自身 + 全部子孙文件夹）内笔记总数

@@ -1,6 +1,6 @@
 /* ================= 常量与状态 ================= */
-var KIND = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' };
-var KCOLOR = { note: 'var(--kind-note)', decision: 'var(--kind-decision)', todo: 'var(--kind-todo)', link: 'var(--kind-link)', quote: 'var(--kind-quote)', log: 'var(--kind-log)' };
+var KIND = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '机器' };   /* 0.4.3⑩ +sys「机器」（筛选中心「机器」档标签/持久化校验用；编辑器 kind 下拉不收 sys——机器托管 kind 人工不转，见 editor-meta.js） */
+var KCOLOR = { note: 'var(--kind-note)', decision: 'var(--kind-decision)', todo: 'var(--kind-todo)', link: 'var(--kind-link)', quote: 'var(--kind-quote)', log: 'var(--kind-log)', sys: 'var(--kind-sys)' };
 /* 二期：kind 模板骨架（新建预填）——与 host-impl.js / index.mjs / client-impl.js / 原型同一份（check.js 断言一致）；
    note 为自由格式（空骨架）；机器/运维信息类由 ✨整理按内容套用机器模板（建时无法预判内容，不进 KIND_TEMPLATES） */
 var KIND_TEMPLATES = {
@@ -15,8 +15,8 @@ var KIND_TEMPLATES = {
 var STATUS_LABEL = { active: '进行中', pinned: '置顶', resolved: '已解决', superseded: '已取代' };
 var notes = [];              // slim 列表缓存（常驻内存；写操作后静默回填）
 var folders = [];            // 虚拟文件夹清单 [{id,name,order,count}]
-var view = { type: 'all', id: '' };   // all | folder | topic
-/* ===== 筛选中心状态（design/notes-filter-center.html 落地）：组内 OR / 跨组 AND；与文件夹/主题视图/搜索 AND 叠加；localStorage 持久化 ===== */
+var view = { type: 'all', id: '' };   // all | topic（0.4.3⑦：「文件视图」（文件夹视图）模式整体拆除）
+/* ===== 筛选中心状态（design/notes-filter-center.html 落地）：组内 OR / 跨组 AND；与主题视图/搜索 AND 叠加；localStorage 持久化 ===== */
 var _fs = loadFilters();               // 持久化恢复（dsh-notes-app-filters）
 var filters = _fs.filters;             // {pinned, injected, injectEver, sensitive, kinds[]}（injectEver 由 notes-inject-filter 提供，feature-detect）
 var sortBy = _fs.sortBy;               // time=按更新（缺省，与 host _list 一致）| use=按被引用次数降序 | rel=相关度（搜索时：标题>标签>正文，同级 updatedAt 降序）
@@ -29,7 +29,7 @@ var FILTER_STATUS = [
   { id: 'injectEver', label: '曾注入', icon: 'i-clock', pred: function (n) { return n.injectEver === true } },   /* 含已注入；字段由 notes-inject-filter 提供 */
   { id: 'sensitive', label: '敏感', icon: 'i-lock', pred: function (n) { return n.sensitive === true } }
 ];
-var FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log'];   /* 工作记忆 v0：类型组 + log（日志默认隐身——勾选「日志」即专入口，host 端 includeLogs 召回） */
+var FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log', 'sys'];   /* 类型组含 log（0.4.3⑦ 日志同权：勾选「日志」= 只看日志，与普通 kind 过滤同语义，不再是隐身专入口）+ sys（0.4.3⑩「机器」档：勾选=全库 sys 机器笔记（含「记忆档案」夹内档案）经 host kind 通道直达，面板翻账本入口） */
 var FILTER_SORTS = [
   { id: 'time', label: '时间', desc: '置顶优先 · 更新降序（默认）' },
   { id: 'use', label: '引用', desc: '被引用次数降序' },

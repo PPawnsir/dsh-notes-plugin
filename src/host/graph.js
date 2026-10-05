@@ -112,9 +112,10 @@
       }
       return out
     }
-    // 全量重建（复用 _list：含 kind=log——日志正文双链覆盖「相关笔记」节；排除软删）
+    // 全量重建（复用 _list：含 kind=log——日志正文双链覆盖「相关笔记」节；排除软删；includeSys=true 机器全量视图——
+    //   索引挂载边/记忆档案双链/runLog softref 的解析目标均为 kind=sys，0.4.3⑨ 缺省降噪只作用于平铺视图，图内核必须全量否则会造死链假象）
     async function _graphRebuild() {
-      const all = await _list(undefined, undefined, undefined, false, true)
+      const all = await _list(undefined, undefined, undefined, false, true, true)
       const nodes = {}
       for (const n of all) nodes[n.id] = { title: n.title || '', dead: false }
       graphState.nodes = nodes

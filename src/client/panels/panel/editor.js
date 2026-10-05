@@ -572,9 +572,9 @@
           const editorEl = curNote ? e('section', { className: 'dsh-notes-ed' },
           e('div', { className: 'dsh-notes-ed-h' },
             e('div', { className: 'dsh-notes-ed-crumb' },
-              // 面包屑文件夹段（notes-nested-folder-ui）：单文件夹名升级为「父/子/孙」路径，每段可点击 = 切到该文件夹视图
+              // 面包屑文件夹段（notes-nested-folder-ui）：「父/子/孙」路径；0.4.3⑦ 文件视图拆除后点击 = 树内展开该文件夹（含祖先链），不切视图
               curNote.folder ? folderPathOf(curNote.folder).map(pf => e(React.Fragment, { key: 'crumbf-' + pf.id },
-                e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': tt('meta.crumbFolderTip', { name: pf.name }), onClick: () => { expandFolder(pf.id); setView({ type: 'folder', id: pf.id }) } }, pf.name),
+                e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': tt('meta.crumbFolderExpandTip', { name: pf.name }), onClick: () => { folderPathOf(pf.id).forEach(af => expandFolder(af.id)) } }, pf.name),
                 e('span', { className: 'dsh-notes-crumb-sep' }, '/'))) : null,
               e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': tt('meta.crumbTopicViewTip'), onClick: jumpToTopicFilter }, curTopicName || tt('meta.uncategorized')),
               e('span', { className: 'dsh-notes-crumb-sep' }, '/'),
@@ -589,7 +589,9 @@
                   e('option', { value: 'todo' }, tt('meta.kindTodo')),
                   e('option', { value: 'link' }, tt('meta.kindLink')),
                   e('option', { value: 'quote' }, tt('meta.kindQuote')),
-                  e('option', { value: 'log' }, tt('meta.kindLog')))),
+                  e('option', { value: 'log' }, tt('meta.kindLog')),
+                  /* 0.4.3⑩：sys 为机器托管 kind——仅当前笔记已是 sys 时渲染该选项（显示保真，防受控 select 回退首项误导），人工不可转入 */
+                  edKind === 'sys' ? e('option', { value: 'sys' }, tt('meta.kindSys')) : null)),
               e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.topicTipClient') },
                 I('topic', 11),
                 e('input', { className: 'dsh-notes-meta-topic-input', placeholder: tt('meta.topicPlaceholder'), value: edTopic, onChange: (ev) => { setEdTopic(ev.target.value); triggerAutoSave() } }),
@@ -601,7 +603,10 @@
               curDispatches.length ? e('span', { className: 'dsh-notes-meta-chip dsh-notes-dispatch-badge ' + (dispatchOpenCount ? 'pending' : 'done'), onClick: () => setDispatchHistoryOpen(true), 'data-tooltip': dispatchOpenCount ? tt('meta.dispPendingTip', { open: dispatchOpenCount, total: curDispatches.length }) : tt('meta.dispDoneTip', { total: curDispatches.length }) },
                 I(dispatchOpenCount ? 'play' : 'check', 11),
                 dispatchOpenCount ? ' ' + tt('meta.dispPending', { open: dispatchOpenCount, total: curDispatches.length }) : ' ' + tt('meta.dispDone')) : null,
-              e('span', { className: 'dsh-notes-meta-chip dsh-notes-role-seg' },
+              // 注入三态开关（0.4.3⑦ 注入硬关 UI 化）：kind=log 不渲染开关——UI 层不提供日志注入选项（host injectForcedOff 硬闸双保险保留）
+              edKind === 'log'
+                ? e('span', { className: 'dsh-notes-meta-chip dsh-nt', 'data-tooltip': tt('meta.logNoInjectTip') }, I('bolt', 11), tt('meta.logNoInject'))
+                : e('span', { className: 'dsh-notes-meta-chip dsh-notes-role-seg' },
                 I('bolt', 11),
                 e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'off' ? ' on' : ''), onClick: () => setRoleSeg('off'), 'data-tooltip': tt('meta.roleOffTip') }, tt('meta.roleOff')),
                 e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'convention' ? ' on' : ''), onClick: () => setRoleSeg('convention'), 'data-tooltip': tt('meta.roleConventionTip') }, tt('tree.roleConvention')),

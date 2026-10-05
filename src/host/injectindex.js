@@ -3,26 +3,35 @@
     //   ①升级首启自动建「注入索引（自动）」根笔记（RootNote 框架创建；settings 记 indexNoteId 软链；自身不注入 inject=false；
     //     创建窗口经 rootNoteCreateLock 创建级锁串行化，并发首建竞态消除——0.4.3+ notes-043-ensure-lock）；
     //   ②§1 挂载清单：行格式 `- [[n-xxx]] 何时查我：…`（幂等键 = 笔记 id，同笔记唯一行，重挂载 = 换文案）；
-    //     §2 召回指标节占位（卡 6 填充，本卡只保逐字节保留——rootNoteSplit others 区天然不碰）；
+    //     前缀「何时查我：」机器加（lineOf 写入），when 存纯文案；解析剥离可选前缀——存量无前缀行零迁移照常工作
+    //     （0.4.3 验收修复④ notes-043-index-preset-v2 行格式归一）；
     //   ③管线切换（inject.js 消费）：reference 桶 = §1 逐行（每行 whenToUse + [[链接]]，agent 按需 note_get 拉正文）；
     //     旧「资料全文注入」通道下线；无索引/索引无行 → 回退空 reference 桶；约定桶全文注入不动（用户裁决红线）；
     //   ④联动：资料（reference）开注入 → 自动落缺省行（whenToUse=标题，弹层确认后 notes-mount 换文案）；
     //     关注入/改约定桶 → 摘行；删笔记（软删/彻底删）→ 清行（图内核死链联动上游——行摘了死链自然不出现）。
     //   ⑤索引笔记编辑器可见可手工整理（recall=false 不进目录注入，但列表/编辑器可见）；机器只行级操作（RootNote 节外零触碰）。
+    // 预设 v2（0.4.3 验收修复④ notes-043-index-preset-v2）：INJECT_INDEX_BODY = 说明块（人读契约：机器托管/行格式/可编辑边界）
+    //   + §1 挂载清单单节——§2 召回指标不再入预设（指标迁机器存储层+呈现层，走 notes-043-metrics-storage/-present；
+    //   旧索引存量 §2 的摘除由迁移卡⑤统一处理，本卡不碰存量正文）。
     // 依赖序位：rootnote.js（框架）之后、inject.js（管线消费）之前；_update/_delete/_purge/_create 包装序位在 graph.js 之后（RPC 域包装保留；
     //   graph 增量维护 0.4.3+ 已迁 onNoteChanged 事件总线，notes-043-event-bus——本模块包装与之不再叠加）。
     const INJECT_INDEX_TITLE = '注入索引（自动）'
     const INJECT_INDEX_HEAD = '## §1 挂载清单'
+    // 说明块（预设首行，RootNote pre 区逐字节保留）：机器托管声明 + §1 行格式契约 + 可编辑边界（冒号后文案可改，行首结构保持）
+    const INJECT_INDEX_GUIDE = '机器托管笔记（请勿删除）：§1 每行 = 一条注入载荷（agent 系统提示会看到此行），格式：- [[笔记id]] 何时查我：<一句话说明何时该读这篇>；可直接编辑冒号后的文案，请保持行首 `- [[id]]` 结构。\n\n'
+    // 存量兼容：§2 锚常量保留给 ledger.js 存量摘除通道消费（_ledgerStripS2FromBody，0.4.3 验收修复⑤ notes-043-metrics-storage）——
+    //   新预设已不再含此节（上方 v2 注）；指标落 telemetry.json + notes-recall-stats RPC ledger 键（卡⑤），索引笔记回归纯挂载清单
     const INJECT_INDEX_S2 = '## §2 召回指标'
-    const INJECT_INDEX_BODY = INJECT_INDEX_HEAD + '\n\n' + INJECT_INDEX_S2 + '\n'
+    const INJECT_INDEX_BODY = INJECT_INDEX_GUIDE + INJECT_INDEX_HEAD + '\n'
+    const INJECT_INDEX_WHEN_PREFIX = '何时查我：'
     const INJECT_INDEX_MAX = 200
-    // RootNote 模板：newestFirst=false 挂载序稳定（追加节尾）；§2 指标节（非条目行）进 others 区逐字节保留
+    // RootNote 模板：newestFirst=false 挂载序稳定（追加节尾）；说明块/存量 §2 指标节（非条目行）进 others 区逐字节保留
     const INJECT_INDEX_TPL = rootNoteTpl({
       head: INJECT_INDEX_HEAD,
       lineRe: /^\s*-\s\[\[[^\[\]\r\n]+\]\]/,
       keyOfLine: function (l) { const m = String(l).match(/\[\[([^\[\]\r\n]+)\]\]/); return m ? m[1] : l },
       keyOfEntry: function (d) { return d.id },
-      lineOf: function (d) { return '- [[' + d.id + ']] ' + String(d.when == null ? '' : d.when).replace(/[\r\n]+/g, ' ').trim() },
+      lineOf: function (d) { return '- [[' + d.id + ']] ' + INJECT_INDEX_WHEN_PREFIX + String(d.when == null ? '' : d.when).replace(/[\r\n]+/g, ' ').trim() },
       max: INJECT_INDEX_MAX,
       newestFirst: false
     })
@@ -39,14 +48,19 @@
       } catch (e) {}
       return null
     }
-    // §1 挂载行解析（同步）：[{ id, when, raw }]——行首 `- [[target]] 文案`；无索引 → []（管线回退空 reference 桶）
+    // §1 挂载行解析（同步）：[{ id, when, raw }]——行首 `- [[target]] 何时查我：文案`；无索引 → []（管线回退空 reference 桶）。
+    //   行格式归一（0.4.3 验收修复④ notes-043-index-preset-v2）：when = 纯文案——剥离可选「何时查我：」机器前缀，
+    //   存量无前缀行零迁移照常解析；raw = 行原样（管线注入用，自带前缀形态）；返回结构 {id,when,raw} 不变（红线）
     function idxLinesSync() {
       const rl = idxNoteSync()
       if (!rl) return []
       const out = []
       for (const l of String(rl.body || '').split('\n')) {
         const m = l.match(/^\s*-\s\[\[([^\[\]\r\n]+)\]\]\s*(.*)$/)
-        if (m) out.push({ id: m[1], when: m[2] || '', raw: l.trim() })
+        if (!m) continue
+        let when = m[2] || ''
+        if (when.indexOf(INJECT_INDEX_WHEN_PREFIX) === 0) when = when.slice(INJECT_INDEX_WHEN_PREFIX.length)
+        out.push({ id: m[1], when: when, raw: l.trim() })
       }
       return out
     }

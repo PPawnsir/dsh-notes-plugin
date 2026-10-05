@@ -8,13 +8,14 @@ module.exports = {
   const { clientPkgSrc } = S
   // ===== 22.6 笔记目录注入 client UI 开关（设置卡片 catalogEnabled 总开关 + 详情区逐条 recall 开关） =====
   section('22.6 笔记目录注入 client UI 开关（catalogEnabled 总开关 + recall 逐条）')
-  await t('设置卡片含「笔记目录注入」总开关行（settingsRows 加行，勾选即保存）', () => {
-    assert(/key: 'catalog', label: tt\('settings\.catalog'\)/.test(clientSrc), 'settingsRows 含「笔记目录注入」行（覆盖卡 C 起 label 走 tt() 字典）')
+  await t('设置卡片含「目录段补充未挂载条目（缺省关）」总开关行（settingsRows 加行，勾选即保存）', () => {
+    assert(/key: 'catalog', label: tt\('settings\.catalog'\)/.test(clientSrc), 'settingsRows 含目录段补充行（覆盖卡 C 起 label 走 tt() 字典）')
     assert(clientSrc.indexOf('catalogEnabled') >= 0, 'client-impl 含 catalogEnabled 字段')
     assert(/function saveSettingsCatalog\(/.test(clientSrc), 'saveSettingsCatalog 保存函数存在')
     assert(/function saveSettingsCatalog\([\s\S]*?settingsSetQuiet\(\{ catalogEnabled: enabled \}\)/.test(clientSrc), '总开关走 settings-set 通道传 catalogEnabled 布尔（settingsSetQuiet 低层通道）')
-    assert(clientSrc.indexOf('向 Agent 系统提示注入笔记目录（一行一条），供其规划时参考并按需 note_get 取全文') >= 0, '总开关 tooltip/sub 说明文案')
-    assert(/setSetCatalog\(!res\.settings \|\| res\.settings\.catalogEnabled !== false\)/.test(clientSrc), 'openSettings 回读 catalogEnabled（缺省开）')
+    assert(clientSrc.indexOf('目录段补充未挂载条目（缺省关）') >= 0, '总开关文案 =「目录段补充未挂载条目（缺省关）」（0.4.3③ 合并段口径）')
+    assert(clientSrc.indexOf('开启后，注入的笔记目录段在挂载行之后补充未挂载的普通条目（一行一条），供 Agent 规划时参考并按需 note_get 取全文；缺省关闭，显式开启后生效') >= 0, '总开关 tooltip/sub 说明文案（缺省关口径）')
+    assert(/setSetCatalog\(!!\(res\.settings && res\.settings\.catalogEnabled === true\)\)/.test(clientSrc), 'openSettings 回读 catalogEnabled（缺省关，显式 true 才开启）')
   })
   await t('编辑器逐条「目录可见」开关（v2 meta chip tgl，edRecall 链路照抄编辑字段模式）', () => {
     assert(/const \[edRecall, setEdRecall\] = React\.useState\(true\)/.test(clientSrc), 'edRecall state 缺省 true（进目录）')
@@ -36,7 +37,7 @@ module.exports = {
     assert(css.indexOf('.dsh-notes-settings-checkwrap{') >= 0 && css.indexOf('.dsh-notes-settings-check{') >= 0, 'styles.css 缺 settings-check 系列样式')
   })
   await t('发布包 client.js 同步目录开关链路（需先跑 scripts/build-dist.cjs）', () => {
-    assert(clientPkgSrc.indexOf('笔记目录注入') >= 0 && clientPkgSrc.indexOf('目录可见') >= 0, '发布包含总开关行 + 逐条开关文案')
+    assert(clientPkgSrc.indexOf('目录段补充未挂载条目（缺省关）') >= 0 && clientPkgSrc.indexOf('目录可见') >= 0, '发布包含总开关行（0.4.3③ 新文案）+ 逐条开关文案')
     assert(clientPkgSrc.indexOf('catalogEnabled') >= 0 && /recall: edRecallRef\.current/.test(clientPkgSrc), '发布包含 catalogEnabled + recall 链路')
     assert(clientPkgSrc.indexOf('saveSettingsCatalog') >= 0 && clientPkgSrc.indexOf('toggleRecall') >= 0, '发布包含两个开关函数')
   })

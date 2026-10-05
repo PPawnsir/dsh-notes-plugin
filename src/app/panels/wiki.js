@@ -33,9 +33,9 @@ function hasWikiLinks(n) { var c = wikiBodies[n.id]; return extractWikiTargets(c
 function jumpToWikiTarget(target) {
   var n = resolveWikiTarget(target);
   if (!n) { toast(t('wiki.targetNotFound', { target: target })); return; }
-  var vis = (view.type === 'all' || (view.type === 'folder' && (n.folder || '') === view.id) || (view.type === 'topic' && (n.topic || '') === view.id))
+  var vis = (view.type === 'all' || (view.type === 'topic' && (n.topic || '') === view.id))
     && matchFilters(n, filters);
-  if (!vis) { view = { type: 'all', id: '' }; clearFilters(); maybeReloadForLogs(); }
+  if (!vis) { view = { type: 'all', id: '' }; clearFilters(); }   /* 0.4.3⑦：文件视图分支 + maybeReloadForLogs 调用随拆除移除 */
   selectNote(n.id);
 }
 /* 反向链接面板：全库正文含 [[当前id]]/[[当前标题]] 的其他笔记（点击跳转；索引未热提示「索引中…」） */

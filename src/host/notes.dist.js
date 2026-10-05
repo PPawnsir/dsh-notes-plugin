@@ -147,6 +147,8 @@
         body: body || ''
       }
       await persistNote(note)
+      // useCount facet 供电（0.4.3 验收修复⑧）：归档合并等显式继承计数（ex.useCount>0）并入 facet（max 合并幂等；front-matter 已退役不写）
+      if (note.useCount > 0) await _useFacetSync(note)
       const r = { id, topic: note.topic, title: note.title, kind: note.kind, status: note.status }
       if (injectForcedOff) r.injectForcedOff = true   // 日志隐身硬闸命中告知（调用方可提示用户/agent）
       // 敏感模式自动识别建议：命中不强制落 sensitive（create 是显式动作，由调用方/用户决策），仅回传建议标记
@@ -155,15 +157,17 @@
     }
 
     // includeDeleted（P1 回收站）：缺省排除软删除；传 true 时 deleted 笔记一并返回（回收站列表数据源，slim 携带 deleted 标记）
-    // includeLogs（工作记忆 v0 默认隐身）：缺省排除 kind=log；显式 kind=log 过滤 / includeLogs:true / 回收站（includeDeleted）路径才返回日志
-    // （治理与数据完整性路径——整理建议/归档/导入导出/备份——由调用方显式传 includeLogs:true 包含日志）
-    // R-6（裁决方向 A）：folder 显式给出（含 '' 未分类）= 显式文件夹导航，隐式召回 kind=log（等价 includeLogs:true）；
-    // 隐身语义收窄为四个隐式表面——默认列表/默认检索/目录索引/注入（均不传 folder）——原样保持
-    async function _list(tag, kind, folder, includeDeleted, includeLogs) {
+    // 日志同权（0.4.3 验收修复⑦，用户裁决推翻 R-6 UI 隐身）：kind=log 与普通笔记同权——默认列表/默认检索均包含（可见/可搜/可编辑）；
+    // includeLogs 第 5 参保留向后兼容（旧调用方传 true 语义不变——已恒为包含；显式 kind=log 过滤照常只看日志）；
+    // 唯一保留的边界：注入硬禁（inject 强制 false，_create/_update 闸门 + injectForcedOff 告知）+ 目录 recall 缺省 false（显式 true 豁免进目录，inject.js 目录段承接）
+    // sys 缺省降噪（0.4.3 验收修复⑨，用户反馈：记忆档案 12 篇挤爆默认列表）：kind=sys 机器托管笔记（注入索引/记忆档案/执行记录/遥测镜像）
+    //   只在「全部」/「未分类」平铺视图排除（folder 缺省或 ''——未分类与全部同族守恒口径：不过滤 = 各文件夹 + 未分类之和）——
+    //   显式入口照常显示零变化：kind 过滤 / tag 过滤 / 具体文件夹（非空 id）定向导航；日志同权语义不受影响（⑦ 红线）；
+    // includeSys 第 6 参 = 机器全量视图内部通道（graph 全量重建/导出全部等需要 sys 在内的消费者显式传 true；视图/RPC 调用方不传）
+    async function _list(tag, kind, folder, includeDeleted, includeLogs, includeSys) {
       try {
         // 首次启动的一次性迁移（开发版 notes → ~/.dsh/notes）可能与首个 RPC 竞态，这里等一下
         try { await migrationDone } catch (e) {}
-        const effLogs = includeLogs || folder !== undefined   // R-6：显式 folder 过滤隐式含 log（隐身只作用于不传 folder 的隐式表面）
         const dirTarget = await fs.resolve(NOTES_DIR)
         const info = await fs.stat(dirTarget)
         if (!info) return []
@@ -180,9 +184,9 @@
             const note = await loadNote(id)
             if (note.tombstoned) continue   // purge 墓碑（0 字节占位）：任何列表口径都不算存在
             if (note.deleted && !includeDeleted) continue
-            if (note.kind === 'log' && !effLogs && !includeDeleted && !kind) continue   // 日志默认隐身（显式 kind=log / R-6 显式 folder 过滤已放行）
             if (tag && (note.tags || []).indexOf(tag) < 0) continue
             if (kind && note.kind !== kind) continue
+            if (includeSys !== true && !kind && !tag && (folder === undefined || folder === '') && note.kind === 'sys') continue   // sys 缺省降噪（0.4.3⑨）：「全部」/「未分类」平铺视图排除；显式 kind/tag/具体文件夹入口与机器全量视图（includeSys）照常放行
             if (folder !== undefined) {
               const ef = effectiveFolder(note, folders)
               if (folder === '') { if (ef !== '') continue }
@@ -195,7 +199,7 @@
         // writeText 落盘成功、按路径 readText 正常、唯独 listDir 停滞）——cache 是 create/update/delete 的第一写入点天然最新，
         // 这里把 cache 中不在本次目录列表里的非墓碑条目并集补入，不依赖上游修复。
         // 红线索：①幂等——正常时目录条目经 loadNote 命中同一 cache 对象，按 id 去重零重复行；
-        // ②补入条目与目录条目走**完全相同**的过滤管线（deleted/log 隐身/tag/kind/folder 全照原口径逐条复评），不开特例后门；
+        // ②补入条目与目录条目走**完全相同**的过滤管线（deleted/tag/kind/folder + sys 缺省降噪谓词全照原口径逐条复评），不开特例后门；
         // ③墓碑排除——purge 后条目被逐出 cache（或读入时标 tombstoned）不补入，回收站（includeDeleted）口径同样不出现。
         // 本块 host-impl.js 与 packages/dsh-notes-plugin/index.mjs 双包逐字节一致，check.js 比对；改动必须双边同步）
         const listedIds = new Set()
@@ -204,9 +208,9 @@
           if (listedIds.has(cn.id)) continue   // 幂等去重：listDir 已见（loadNote 命中同一 cache 对象）
           if (cn.tombstoned) continue          // purge 墓碑（0 字节占位）：任何列表口径都不算存在
           if (cn.deleted && !includeDeleted) continue
-          if (cn.kind === 'log' && !effLogs && !includeDeleted && !kind) continue   // 日志默认隐身（显式 kind=log / R-6 显式 folder 过滤已放行）
           if (tag && (cn.tags || []).indexOf(tag) < 0) continue
           if (kind && cn.kind !== kind) continue
+          if (includeSys !== true && !kind && !tag && (folder === undefined || folder === '') && cn.kind === 'sys') continue   // sys 缺省降噪谓词与主循环同口径（0.4.3⑨：补入条目零特例后门；「全部」/「未分类」平铺视图排除）
           if (folder !== undefined) {
             const ef = effectiveFolder(cn, folders)
             if (folder === '') { if (ef !== '') continue }
@@ -259,6 +263,10 @@
         if (effKind === 'log' && inject === true) { note.inject = false; injectForcedOff = true }
         else { note.inject = inject === true; if (inject === true) note.injectEver = true }
       }
+      // 0.4.3⑦ 第三轮补闸（notes-043 验收驳回修复）：effKind==='log' 时无条件 inject=false——强制纠正移出 inject 显式传值包裹，
+      // kind-only 更新路径（update({kind:'log'}) 不传 inject）存量 inject=true 同样过闸纠正并回执 injectForcedOff:true；
+      // 零放松语义：kind 改回非 log 不自动恢复 inject（保持 false，恢复须显式 inject:true 走普通路径）。
+      if (effKind === 'log' && note.inject !== false) { note.inject = false; injectForcedOff = true }
       if (injectTo !== undefined) {
         // injectTo 写入归一 + 非法显式拒绝（injectto-norm-guard）：非法值整体拒绝，本条更新不落盘（错得安全）
         const ng = await _normInjectTo(injectTo)

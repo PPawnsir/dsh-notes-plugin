@@ -1,16 +1,18 @@
-// 节 39. 工作记忆 v0 Phase 1（kind=log + 默认隐身 + 启用流程 + 日志卫生）
+// 节 39. 工作记忆 v0 Phase 1（kind=log + 日志同权 + 启用流程 + 日志卫生）
 // 拆分自 check.js 单文件（notes-check-split）：节体逐字节保留，仅首尾为机械接线（H=helpers 设施，S=跨节共享状态）。
+// 0.4.3 验收修复⑦（notes-043-log-firstclass，2026-10-05 用户裁决推翻 R-6 UI 隐身）：日志四可一不可——
+// 可见（默认列表）/可搜索（默认检索）/可编辑/可进目录（显式 recall=true）；注入 ✗ 硬关（injectForcedOff 机制 + UI 不提供开关）。
 module.exports = {
   id: "39",
-  title: "39. 工作记忆 v0 Phase 1（kind=log + 默认隐身 + 启用流程 + 日志卫生）",
+  title: "39. 工作记忆 v0 Phase 1（kind=log + 日志同权（0.4.3⑦）+ 启用流程 + 日志卫生）",
   async run(H, S) {
   const { t, section, assert, fsNative, path, osNative, DIR, SRC_HOST, SRC_CLIENT, SRC_STYLES, INDEX_PATH, bootHostSrc, bootClientSrc, hostSrc, clientSrc, indexSrc, pathToFileURL, io } = H
   const { NOTES_DIR, NOTES_ROOT_STATIC, admMock, agentsMock, appSrc, clientPkgSrc, findTool, g, llmMock, mkFsMockImp, plugin, protoV2Src, r1, r2, sessionPersistenceMock, sessionQueryMock, sessionTitleMock, sugNS, workspaceRegistryMock } = S
-  // ===== 39. 工作记忆 v0 Phase 1（kind=log 沉淀链路 + 默认隐身 + 启用流程 + 日志卫生提名 + 四端同步）=====
-  // 规格 = design/agent-memory-v0.md：① kind=log 模板/枚举/永不被清理提名 ② 默认隐身（inject 硬 false / recall 缺省 false / 列表与默认搜索排除）
+  // ===== 39. 工作记忆 v0 Phase 1（kind=log 沉淀链路 + 日志同权（0.4.3⑦）+ 启用流程 + 日志卫生提名 + 四端同步）=====
+  // 规格 = design/agent-memory-v0.md + 0.4.3⑦ 修订：① kind=log 模板/枚举/永不被清理提名 ② 同权（列表/搜索/编辑同权）+ 注入硬禁 + recall 缺省 false（目录缺省不含）
   // ③ 启用流程（notes-memory-guide，r3 车道模型：check 同类唯一性（零写入）/ enable 无确认闸门直建预填约定 contractType=memory-guide + 作用域 / disable 关 inject / status 单一事实源 / kind=log origin 自动溯源）
   // ④ 日志卫生提名（suggest 第四类 logHygieneCandidates：周聚合 >7 天 / 月聚合 >90 天，只提名不执行，v0 仅展示明细）
-  section('39. 工作记忆 v0 Phase 1（kind=log + 默认隐身 + 启用流程 + 日志卫生）')
+  section('39. 工作记忆 v0 Phase 1（kind=log + 日志同权（0.4.3⑦）+ 启用流程 + 日志卫生）')
 
   // ---- 39.1 host 双侧静态契约（host-impl.js ⇄ index.mjs 双包同步）----
   await t('host 双侧：kind=log 枚举三处 + KIND_TEMPLATES.log 四节模板（§4.2）', () => {
@@ -48,20 +50,21 @@ module.exports = {
       assert(s.indexOf('inject: isLog ? false : ex.inject === true,') >= 0, label + ' _create inject 硬 false（显式 true 也纠正）')
       assert(s.indexOf('recall: (isLog || isSys) ? (ex.recall === true) : (ex.recall !== false),') >= 0, label + ' _create recall 缺省 false（显式 true 豁免保留；0.4.3⑥ +isSys 同口径）')
       assert(s.indexOf("if (effKind === 'log' && inject === true) { note.inject = false; injectForcedOff = true }") >= 0, label + ' _update inject 硬闸纠正')
+      assert(s.indexOf("if (effKind === 'log' && note.inject !== false) { note.inject = false; injectForcedOff = true }") >= 0, label + ' _update kind-only 补闸（0.4.3⑦ 第三轮：强制纠正移出 inject 显式传值包裹，不传 inject 仅改 kind 同样过闸；双变体同构锚）')
       assert(s.indexOf('if (injectForcedOff) r.injectForcedOff = true') >= 0, label + ' 响应 injectForcedOff 告知（create/update 同款）')
       assert(s.indexOf("(p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true") >= 0, label + ' noteFromParsed：存量/外部直写 log/sys 缺省 recall=false')
     }
   })
-  await t('host 双侧：_list/_search 默认排除 kind=log（显式 kind=log / includeLogs / 回收站 / R-6 显式 folder 召回）+ 目录尾部日志计数提示行', () => {
+  await t('host 双侧：_list/_search 日志同权（默认列表/检索含 kind=log）+ 目录缺省不含（recall 显式豁免）+ 目录尾部日志计数提示行', () => {
     for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
       const s = pair[1], label = pair[0]
-      assert(s.indexOf('async function _list(tag, kind, folder, includeDeleted, includeLogs)') >= 0, label + ' _list 五参（+includeLogs）')
-      assert(s.indexOf('const effLogs = includeLogs || folder !== undefined') >= 0, label + ' R-6：显式 folder 过滤隐式含 log（effLogs 承接，裁决方向 A）')
-      assert(s.indexOf("if (note.kind === 'log' && !effLogs && !includeDeleted && !kind) continue") >= 0, label + ' _list 默认排除 log（显式 kind/回收站/includeLogs/R-6 folder 召回）')
-      assert(s.indexOf("if (cn.kind === 'log' && !effLogs && !includeDeleted && !kind) continue") >= 0, label + ' 并集补入条目同款 effLogs 口径（同一过滤管线，list-union-defense）')
-      assert(s.indexOf("!!(kind === 'log' || (filters && filters.includeLogs))") >= 0, label + ' _search 同款默认排除（folder 由 _list effLogs 隐式承接）')
-      assert(s.indexOf(' 条工作日志（kind=log，默认隐身不进目录），用 note_search 传 kind=log 检索') >= 0, label + ' 目录尾部日志计数提示行（有日志恒出现，只出计数不出标题）')
-      assert(s.indexOf('if (pool.length === 0 && logCount === 0) return') >= 0, label + ' 目录空态判定连带日志计数')
+      assert(s.indexOf('async function _list(tag, kind, folder, includeDeleted, includeLogs, includeSys)') >= 0, label + ' _list 六参签名（includeLogs 第 5 参向后兼容 no-op；includeSys 第 6 参机器全量视图 0.4.3⑨）')
+      assert(s.indexOf('const effLogs =') < 0, label + ' 0.4.3⑦：effLogs/R-6 隐式召回机制已拆（日志同权，默认即含）')
+      assert(s.indexOf("if (note.kind === 'log' && !effLogs") < 0 && s.indexOf("if (cn.kind === 'log' && !effLogs") < 0, label + ' _list 默认排除 log 行已移除（目录主循环 + 并集防御双处）')
+      assert(s.indexOf('_list(tag, kind, folder, undefined, true)') >= 0, label + ' _search 默认含 log（同权）+ tag/kind 透传 _list 同一过滤管线（0.4.3⑨ sys 缺省降噪：显式 kind/tag 入口语义不变）')
+      assert(s.indexOf(' 条工作日志（kind=log，目录缺省不含），note_search 可检索') >= 0, label + ' 目录尾部日志计数提示行（有日志恒出现，只出计数不出标题）')
+      assert(s.indexOf("(n.kind || 'note') === 'log' && n.recall !== true) { logCount++; continue }") >= 0, label + ' 目录缺省不含日志 + 显式 recall=true 豁免进目录（可进目录·显式）')
+      assert(s.indexOf("catLines.length === 0 && logCount === 0") >= 0, label + ' 目录段空态判定连带日志计数（0.4.3③ 合并段空判）')
     }
   })
   await t('host 双侧：notes-memory-guide RPC + 引导模板 §5.2 要点 + r3 车道模型（契约分型 + 无重叠检测 + origin 打标）+ 日志永不被清理提名', () => {
@@ -163,22 +166,22 @@ module.exports = {
     const g2 = await handlersM['notes-get']({ id: c.id })
     assert.strictEqual(g2.note.summarizedAt, '2026-10-02T13:00:00.000Z', 'summarizedAt 解析往返')
   })
-  await t('隐身口径：默认列表/默认搜索排除 kind=log；显式 kind=log 或 includeLogs:true 召回；回收站路径含日志', async () => {
+  await t('同权口径：默认列表/默认搜索含 kind=log（0.4.3⑦ 日志同权）；显式 kind=log 只看日志；回收站路径含日志', async () => {
     const def = await handlersM['notes-list']({})
-    assert(def.notes.every(n => n.kind !== 'log'), '默认列表零日志（实得含 log：' + def.notes.filter(n => n.kind === 'log').length + '）')
+    assert(def.notes.some(n => n.kind === 'log'), '默认列表含日志（同权；实得 log 数 ' + def.notes.filter(n => n.kind === 'log').length + '）')
     assert(def.notes.some(n => n.title === '普通笔记M'), '默认列表含普通笔记')
     const only = await handlersM['notes-list']({ kind: 'log' })
-    assert(only.notes.length >= 2 && only.notes.every(n => n.kind === 'log'), '显式 kind=log 过滤召回（实得 ' + only.notes.length + '）')
+    assert(only.notes.length >= 2 && only.notes.every(n => n.kind === 'log'), '显式 kind=log 过滤只看日志（实得 ' + only.notes.length + '）')
     const inc = await handlersM['notes-list']({ includeLogs: true })
-    assert(inc.notes.some(n => n.kind === 'log') && inc.notes.some(n => n.kind === 'note'), 'includeLogs:true 混合召回')
+    assert(inc.notes.some(n => n.kind === 'log') && inc.notes.some(n => n.kind === 'note'), 'includeLogs:true 混合召回（兼容 no-op，与默认口径一致）')
     const s0 = await handlersM['notes-search']({ query: '工作日志' })
-    assert(s0.notes.every(n => n.kind !== 'log'), '默认搜索排除日志')
+    assert(s0.notes.some(n => n.kind === 'log'), '默认搜索含日志（同权，无需 includeLogs/kind）')
     const s1 = await handlersM['notes-search']({ query: '工作日志', kind: 'log' })
-    assert(s1.notes.length >= 1 && s1.notes.every(n => n.kind === 'log'), 'kind=log 搜索召回')
+    assert(s1.notes.length >= 1 && s1.notes.every(n => n.kind === 'log'), 'kind=log 搜索只看日志')
     const s2 = await handlersM['notes-search']({ query: '工作日志', includeLogs: true })
-    assert(s2.notes.some(n => n.kind === 'log'), 'includeLogs:true 搜索召回')
+    assert(s2.notes.some(n => n.kind === 'log'), 'includeLogs:true 搜索召回（兼容 no-op）')
     const tr = await handlersM['notes-list']({ includeDeleted: true })
-    assert(tr.notes.some(n => n.kind === 'log'), '回收站（includeDeleted）路径显式包含日志（隐身不适用治理面）')
+    assert(tr.notes.some(n => n.kind === 'log'), '回收站（includeDeleted）路径显式包含日志（治理面口径不变）')
   })
   await t('update 硬闸：kind=log 显式 inject:true 被纠正（injectForcedOff + injectEver 不拉起）；改 kind=note 后恢复普通语义', async () => {
     const lg = await handlersM['notes-create']({ title: '改注入演示', body: 'x', kind: 'log' })   // r3 车道模型已删跨车道重叠检测，标题关键词不再敏感
@@ -193,45 +196,67 @@ module.exports = {
     const g3 = await handlersM['notes-get']({ id: lg.id })
     assert(g3.note.inject === true && g3.note.injectEver === true, '普通语义恢复（injectEver 粘性照常）')
   })
-  await t('目录注入尾部日志计数提示行（order 131，有日志恒出现；只出计数不出标题）', async () => {
-    const cat = contextsM.find(c => c.order === 131)
-    assert(cat && typeof cat.text === 'function', 'notes:catalog order 131 已注册')
+  await t('目录段尾部日志计数提示行（并入 order 130，有日志恒出现；只出计数不出标题）+ recall=true 日志进目录（0.4.3⑦ 显式豁免）', async () => {
+    await handlersM['notes-settings-set']({ catalogEnabled: true })   // 0.4.3：目录缺省关，日志计数提示行断言前显式开启
+    const cat = contextsM.find(c => c.name === 'notes:workspace-conventions')
+    assert(cat && typeof cat.text === 'function', '单一注入 context 已注册（0.4.3③ 目录段并入 order 130，order 131 撤销）')
     const txt = cat.text()
-    const m = txt.match(/另有 (\d+) 条工作日志（kind=log，默认隐身不进目录），用 note_search 传 kind=log 检索/)
-    // 此刻实例内恰 2 条 log：「工作日志 · 测试」（recall=false）+「日志-目录豁免」（recall=true 豁免，同时以条目进目录）；「改注入演示」已转 kind=note
-    assert(m && +m[1] === 2, '目录尾部日志计数提示行（实得计数 ' + (m && m[1]) + '）')
+    const m = txt.match(/另有 (\d+) 条工作日志（kind=log，目录缺省不含），note_search 可检索/)
+    // 此刻实例内 2 条 log：「工作日志 · 测试」（recall=false → 只计计数行）；「日志-目录豁免」（recall=true → 0.4.3⑦ 显式豁免，以普通条目进目录不计数）；「改注入演示」已转 kind=note
+    assert(m && +m[1] === 1, '目录段尾部日志计数提示行（recall=false 计数=1；实得计数 ' + (m && m[1]) + '）')
     assert(txt.indexOf('工作日志 · 测试') < 0, '提示行不含日志标题（天然无泄露面）')
+    assert(txt.indexOf('日志-目录豁免') >= 0, 'recall=true 日志以普通条目进目录（可进目录·显式豁免落地）')
+  })
+  await t('update 硬闸补漏（0.4.3⑦ 第三轮驳回修复）：kind-only 更新（不传 inject）存量 inject=true 强制纠正 + 注入预览不含正文', async () => {
+    // verifier 实证缺口（gate-probe E/F）：notes-create({inject:true}) → notes-update({id,kind:'log'}) 旧码落盘 inject=true 且正文进注入文本
+    const marker = 'KINDONLY_GATE_MARKER_043'
+    const nm = await handlersM['notes-create']({ title: '补闸演示043', body: marker, inject: true })
+    const g0 = await handlersM['notes-get']({ id: nm.id })
+    assert(g0.note.kind === 'note' && g0.note.inject === true, '前置：普通笔记 inject=true 落库')
+    const pv0 = await handlersM['notes-inject-preview']({})
+    assert(pv0.conventions.indexOf(marker) >= 0, '前置：正文在注入预览 conventions 内（缺口复现基线）')
+    const u = await handlersM['notes-update']({ id: nm.id, kind: 'log' })   // kind-only：不传 inject
+    assert(u.injectForcedOff === true, 'kind-only 更新过闸并回执 injectForcedOff:true（实得 ' + JSON.stringify(u) + '）')
+    const g1 = await handlersM['notes-get']({ id: nm.id })
+    assert(g1.note.kind === 'log' && g1.note.inject === false, '落盘 inject===false（kind=log 注入硬禁）')
+    assert(storeM.get(NOTES_DIR + '\\' + nm.id + '.md').indexOf('inject: false') >= 0, 'front-matter inject:false 落盘')
+    const pv1 = await handlersM['notes-inject-preview']({})
+    assert(pv1.conventions.indexOf(marker) < 0, 'notes-inject-preview 不含该正文（注入硬禁生效）')
+    // 零放松语义：kind 改回 note 不自动恢复 inject（保持 false，恢复须显式 inject:true）
+    await handlersM['notes-update']({ id: nm.id, kind: 'note' })
+    const g2 = await handlersM['notes-get']({ id: nm.id })
+    assert(g2.note.inject === false, 'kind 改回 note 不自动恢复 inject（零放松语义不变）')
   })
 
-  // ---- 39.2b R-6（裁决方向 A）：folder 过滤隐式含 log——显式文件夹导航放行；四个隐式表面（默认列表/默认检索/目录索引/注入）隐身原样 ----
-  // 放在目录计数断言之后：本断言新增 3 条 log 进 storeM，前置的「目录尾部日志计数 ===2」已执行完毕，零污染
-  await t('R-6：folder 过滤隐式含 log（notes-list / folder=\'\' 未分类 / notes-search / note_manage 工具域）+ 隐式表面隐身原样', async () => {
+  // ---- 39.2b 日志同权（0.4.3⑦，用户裁决推翻 R-6 UI 隐身）：folder 过滤/默认列表/默认检索/工具域全部含 log ----
+  // 放在目录计数断言之后：本断言新增 3 条 log 进 storeM，前置的「目录尾部日志计数 ===1」已执行完毕，零污染
+  await t('日志同权：folder 过滤/默认列表/默认搜索/note_manage 工具域均含 log（R-6 隐身推翻，0.4.3⑦）', async () => {
     const fR6 = (await handlersM['notes-folders']({ op: 'create', name: 'R6日志夹' })).folder
     const lgIn = await handlersM['notes-create']({ title: '夹内日志R6', body: 'x', kind: 'log', folder: fR6.id })
     const ntIn = await handlersM['notes-create']({ title: '夹内笔记R6', body: 'x', folder: fR6.id })
     const lgOut = await handlersM['notes-create']({ title: '夹外日志R6', body: 'x', kind: 'log' })
-    // ① notes-list 带 folder：隐式含 log（等价 includeLogs），夹外日志不混入
+    // ① notes-list 带 folder：含夹内日志 + 普通笔记，夹外日志不混入（folder 过滤语义不变）
     const inF = await handlersM['notes-list']({ folder: fR6.id })
     assert(inF.notes.some(n => n.id === lgIn.id) && inF.notes.some(n => n.id === ntIn.id), 'notes-list folder=id 含夹内日志 + 普通笔记（实得 ' + inF.notes.length + '）')
     assert(!inF.notes.some(n => n.id === lgOut.id), '夹外日志不混入')
-    // ② folder='' 未分类显式导航：含未分类日志，不含夹内日志
+    // ② folder='' 未分类：含未分类日志，不含夹内日志（口径不变）
     const un = await handlersM['notes-list']({ folder: '' })
-    assert(un.notes.some(n => n.id === lgOut.id) && !un.notes.some(n => n.id === lgIn.id), 'notes-list folder=\'\' 未分类视图含未分类日志')
-    // ③ 隐式表面原样：默认列表（无 folder）仍零日志
+    assert(un.notes.some(n => n.id === lgOut.id) && !un.notes.some(n => n.id === lgIn.id), 'notes-list folder=\'\' 未分类含未分类日志')
+    // ③ 默认列表（无 folder）同权含日志（R-6 隐式表面隐身已推翻）
     const def = await handlersM['notes-list']({})
-    assert(def.notes.every(n => n.kind !== 'log'), '默认列表（无 folder）仍零日志（隐式表面不变）')
-    // ④ notes-search：显式 folder 检索放行日志；默认检索（无 folder）仍排除
+    assert(def.notes.some(n => n.kind === 'log') && def.notes.some(n => n.id === lgIn.id) && def.notes.some(n => n.id === lgOut.id), '默认列表含全部日志（同权）')
+    // ④ notes-search：folder 检索与默认检索（无 folder）均含日志（同权）
     const sF = await handlersM['notes-search']({ query: 'R6', folder: fR6.id })
     assert(sF.notes.some(n => n.id === lgIn.id), 'notes-search 带 folder 含夹内日志')
     const sD = await handlersM['notes-search']({ query: 'R6' })
-    assert(sD.notes.every(n => n.kind !== 'log'), '默认检索（无 folder）仍排除日志')
-    // ⑤ note_manage 工具域同口径（folder 名称/'' 经 resolveFolderRef → _list effLogs）
+    assert(sD.notes.some(n => n.id === lgIn.id) && sD.notes.some(n => n.id === lgOut.id), '默认检索（无 folder）同权含日志')
+    // ⑤ note_manage 工具域同口径
     const nm = toolsM.find(td => td.name === 'note_manage')
     assert(nm, 'note_manage 工具已注册（toolsM 捕获）')
     const l1 = await nm.execute({ action: 'list', folder: 'R6日志夹' })
     assert(l1.notes && l1.notes.some(n => n.id === lgIn.id) && l1.notes.some(n => n.kind === 'log'), 'note_manage list folder=名称 含日志')
     const l2 = await nm.execute({ action: 'list' })
-    assert(l2.notes.every(n => n.kind !== 'log'), 'note_manage 默认 list 仍零日志')
+    assert(l2.notes.some(n => n.kind === 'log'), 'note_manage 默认 list 同权含日志')
     const l3 = await nm.execute({ action: 'list', folder: '' })
     assert(l3.notes.some(n => n.id === lgOut.id), 'note_manage list folder=\'\' 含未分类日志')
   })
@@ -421,7 +446,7 @@ module.exports = {
       assert(g.note.inject === false && g.note.recall === false && /^\d{4}-\d{2}-\d{2}$/.test(g.note.logDate || ''), '静态包 recall 缺省 false + logDate 缺省今天')
       assert((g.note.origin || '') === '', '启用前创建的日志无 origin（打标闸口随激活态）')
       const def = await handlersM2['notes-list']({})
-      assert(def.notes.every(n => n.kind !== 'log'), '静态包默认列表排除日志')
+      assert(def.notes.some(n => n.kind === 'log') && def.notes.some(n => n.id === lg.id), '静态包默认列表同权含日志（0.4.3⑦）')
       const en = await handlersM2['notes-memory-guide']({ op: 'enable', scope: [] })
       assert(en.ok === true && en.id && !en.already && en.needConfirm === undefined, '静态包启用流程（r3 车道模型：无确认闸门幂等直建）')
       const gg = await handlersM2['notes-get']({ id: en.id })
@@ -433,16 +458,16 @@ module.exports = {
       assert(gl2.note.origin === 'memory-guide', '静态包 origin 自动打标（引导激活 + 全局作用域命中）')
       const sg = await handlersM2['notes-suggest']({})
       assert(sg.logHygieneCandidates && Array.isArray(sg.logHygieneCandidates.weekly) && Array.isArray(sg.logHygieneCandidates.monthly), '静态包 suggest 第四段结构')
-      // R-6 静态包（index.mjs）：folder 过滤隐式含 log，与开发版同口径（双包一致）
+      // 同权静态包（index.mjs）：folder 过滤与默认列表均含 log，与开发版同口径（双包一致；0.4.3⑦ R-6 隐身推翻）
       const fR62 = (await handlersM2['notes-folders']({ op: 'create', name: '静态R6夹' })).folder
       const lgF2 = await handlersM2['notes-create']({ title: '静态夹内日志R6', body: 'x', kind: 'log', folder: fR62.id })
       const inF2 = await handlersM2['notes-list']({ folder: fR62.id })
       assert(inF2.notes.some(n => n.id === lgF2.id), '静态包 notes-list folder=id 含夹内日志')
       assert(!inF2.notes.some(n => n.id === lg.id), '静态包夹外日志不混入')
       const defL2 = await handlersM2['notes-list']({})
-      assert(defL2.notes.every(n => n.kind !== 'log'), '静态包默认列表仍排除日志（隐式表面不变）')
+      assert(defL2.notes.some(n => n.kind === 'log') && defL2.notes.some(n => n.id === lg.id), '静态包默认列表同权含日志')
       const un2 = await handlersM2['notes-list']({ folder: '' })
-      assert(un2.notes.some(n => n.id === lg.id) && !un2.notes.some(n => n.id === lgF2.id), '静态包 folder=\'\' 未分类视图含未分类日志、不含夹内日志')
+      assert(un2.notes.some(n => n.id === lg.id) && !un2.notes.some(n => n.id === lgF2.id), '静态包 folder=\'\' 未分类含未分类日志、不含夹内日志')
       // R-3 静态包双包一致：停用→再启用复活同一条引导（revived:true，不建第二条）
       const dR3 = await handlersM2['notes-memory-guide']({ op: 'disable' })
       assert(dR3.ok === true && dR3.disabled === true && dR3.id === en.id, '静态包停用当前引导')
@@ -456,50 +481,51 @@ module.exports = {
   })
 
   // ---- 39.6 四端同步（client-impl / 发布包 lib/client.js / app.html / 原型 notes-ui-v2.html + styles.css）----
-  await t('四端 kind=log：KIND 标签/模板/筛选类型组/色板变量/专入口接线同步（client + 发布包 + app.html + 原型 + styles）', () => {
+  await t('四端 kind=log：KIND 标签/模板/筛选类型组/色板变量/同权接线同步（client + 发布包 + app.html + 原型 + styles）', () => {
     for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
       const s = pair[1], label = pair[0]
       assert(s.indexOf("log: '日志'") >= 0, label + ' KIND_LABELS 含日志')
       assert(s.indexOf("'## 做了什么\\n\\n（本会话完成的任务/阶段，一句话一条）") >= 0, label + ' KIND_TEMPLATES.log 与 host 同份')
-      assert(s.indexOf("const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log']") >= 0, label + ' 筛选中心类型组含 log（kind=日志 即专入口）')
+      assert(s.indexOf("const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log', 'sys']") >= 0, label + ' 筛选中心类型组含 log + sys（0.4.3⑦ 同权 / 0.4.3⑩「机器」档=面板翻账本入口）')
       assert(s.indexOf("e('option', { value: 'log' }, tt('meta.kindLog'))") >= 0, label + ' 编辑器 kind 下拉含日志（i18n 覆盖卡B 起走 tt() 字典）')
       assert(s.indexOf("['note', 'decision', 'todo', 'link', 'quote', 'log'].map(k => e('option'") >= 0, label + ' 新建 modal 类型含日志（预填 log 模板骨架）')
-      assert(s.indexOf("notes-list', wantLogsRef.current ? { includeLogs: true } : undefined") >= 0, label + ' loadNotes 日志专入口 includeLogs 接线（host 默认排除）')
-      assert(s.indexOf("(n.kind || 'note') !== 'log' || filters.kinds.indexOf('log') >= 0") >= 0, label + ' 隐身渲染守卫（未勾日志不进日常视图）')
+      assert(s.indexOf("'notes-list', kf.length === 1 ? { kind: kf[0] } : undefined") >= 0 && s.indexOf('wantLogsRef') < 0, label + ' loadNotes 日志同权（无 includeLogs 翻转接线）+ ⑩ 恰选单 kind 传 {kind} 给 host（「机器」档=sys 全库；host.call/rpc 转换两态共锚）')
+      assert(s.indexOf("(n.kind || 'note') !== 'log'") < 0, label + ' 隐身渲染守卫已移除（日志同权进日常视图）')
     }
     for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
       const s = pair[1], label = pair[0]
       assert(s.indexOf("log: '日志'") >= 0, label + ' KIND 含日志')
       assert(s.indexOf("'## 做了什么\\n\\n（本会话完成的任务/阶段，一句话一条）") >= 0, label + ' KIND_TEMPLATES.log 与 host 同份')
-      assert(s.indexOf("var FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log'];") >= 0, label + ' 筛选类型组含 log')
+      assert(s.indexOf("var FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log', 'sys'];") >= 0, label + ' 筛选类型组含 log + sys（0.4.3⑦/⑩）')
       assert(s.indexOf("log: 'var(--kind-log)'") >= 0, label + ' KCOLOR 含 log')
       assert(s.indexOf('--kind-log:') >= 0, label + ' 色板 --kind-log 变量（双主题）')
-      assert(s.indexOf("rpc('notes-list', wantLogs ? { includeLogs: true } : undefined)") >= 0, label + ' loadNotes includeLogs 接线')
-      assert(s.indexOf("(n.kind || 'note') === 'log' && filters.kinds.indexOf('log') < 0") >= 0, label + ' 隐身渲染守卫')
-      assert(s.indexOf('function maybeReloadForLogs()') >= 0, label + ' 勾选「日志」自动重拉列表')
+      assert(s.indexOf("function listFetchSig()") >= 0 && s.indexOf("rpc('notes-list', ") >= 0 && s.indexOf('wantLogs') < 0, label + ' loadNotes 日志同权 + ⑩ 恰选单 kind 传 {kind} 给 host（listFetchSig 口径，「机器」档=sys 全库）')
+      assert(s.indexOf("(n.kind || 'note') === 'log' && filters.kinds.indexOf('log') < 0") < 0, label + ' 隐身渲染守卫已移除')
+      assert(s.indexOf('function maybeReloadForLogs()') < 0, label + ' 勾选「日志」自动重拉机制已拆（不再需要）')
     }
     const cssDev2 = fsNative.readFileSync(SRC_STYLES, 'utf8')
     const cssPkg2 = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
     assert(cssDev2.indexOf('--nkind-log:') >= 0 && cssPkg2.indexOf('--nkind-log:') >= 0, 'styles.css 双端 --nkind-log 日志色点（需跑 scripts/build-dist.cjs）')
   })
-  // ---- 39.6b R-6 UI 接线（notes-034-r6-ui）：文件夹视图数据源带 log + 渲染守卫放行 + 切回默认恢复隐身；只放开显式 folder 视图路径，默认视图隐身零变化 ----
-  await t('R-6 UI 接线（四端）：文件夹视图数据源含 log（view=folder 触发 includeLogs 重拉）+ 渲染守卫放行 + 切回默认恢复隐身', () => {
+  // ---- 39.6b 日志同权接线 + 文件视图拆除（0.4.3⑦ notes-043-log-firstclass，用户裁决推翻 R-6 UI 隐身）----
+  // 前身 = notes-034-r6-ui「文件夹视图数据源带 log + 渲染守卫放行」；现裁决：日志并入主缓存全管线同权，R-6 特化接线与「文件视图」模式整体拆除
+  await t('日志同权接线（四端）：默认列表恒含 log（无 includeLogs 翻转机制/渲染守卫）+「文件视图」入口/求值拆除', () => {
     for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
       const s = pair[1], label = pair[0]
-      assert(s.indexOf("const w = filters.kinds.indexOf('log') >= 0 || view.type === 'folder'") >= 0, label + ' 数据源口径：勾选「日志」 || 显式文件夹视图')
-      assert(s.indexOf('}, [filters, view])') >= 0, label + ' 重拉 effect 依赖 [filters, view]（view 翻转即静默重拉，切回默认不带 folder/includeLogs 恢复隐身）')
-      assert(s.indexOf("(n.kind || 'note') !== 'log' || filters.kinds.indexOf('log') >= 0 || view.type === 'folder'") >= 0, label + ' 渲染守卫放行：文件夹视图内 log 同权展示')
-      assert(s.indexOf("'notes-list', { includeLogs: true }") >= 0, label + ' 回收站/注入管理既有 includeLogs 直调不受影响（共存 sanity）')
+      assert(s.indexOf("filters.kinds.indexOf('log') >= 0 || view.type === 'folder'") < 0, label + ' 数据源口径翻转机制已拆（不再按勾选/文件夹视图重拉）')
+      assert(s.indexOf('}, [filters, view])') < 0, label + ' [filters, view] 重拉 effect 已移除')
+      assert(s.indexOf("view.type === 'folder'") < 0, label + ' 文件夹视图求值分支已拆除（「文件视图」模式移除）')
+      assert(s.indexOf("'notes-list', { includeLogs: true }") >= 0, label + ' 回收站/注入管理既有 includeLogs 直调不受影响（共存 sanity；host 端已成兼容 no-op）')
     }
     for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
       const s = pair[1], label = pair[0]
-      assert(s.indexOf("function wantLogsNow() { return filters.kinds.indexOf('log') >= 0 || view.type === 'folder' }") >= 0, label + ' 数据源口径（wantLogsNow）：勾选「日志」 || 显式文件夹视图')
-      assert(s.indexOf('wantLogs = wantLogsNow();') >= 0, label + ' loadNotes 首行自同步口径（建/删文件夹直调路径不依赖 render 翻转检测）')
-      assert(s.indexOf('function render() { maybeReloadForLogs(); renderTree();') >= 0, label + ' render 汇聚 view 变更点 → 翻转静默重拉（切回默认不传 folder/includeLogs 恢复隐身）')
-      assert(s.indexOf("(n.kind || 'note') === 'log' && filters.kinds.indexOf('log') < 0 && view.type !== 'folder'") >= 0, label + ' 渲染守卫放行：文件夹视图内 log 同权展示')
+      assert(s.indexOf('function wantLogsNow()') < 0, label + ' 数据源口径机制（wantLogsNow）已拆')
+      assert(s.indexOf('wantLogs = wantLogsNow();') < 0, label + ' loadNotes 首行自同步口径已移除（恒全量）')
+      assert(s.indexOf('function render() { maybeReloadForLogs(); renderTree();') < 0, label + ' render 翻转检测已移除（纯渲染汇聚）')
+      assert(s.indexOf("view.type === 'folder'") < 0 && s.indexOf("view = { type: 'folder'") < 0, label + ' 文件夹视图求值/入口全拆（「文件视图」模式移除）')
     }
-    // 原型 mock 演示数据：n84 日志挂 f2（DSH 插件开发）——打开原型进 f2 文件夹视图即可见日志条目，切回全部视图消失（交互预期先行验证）
-    assert(protoV2Src.indexOf("id: 'n84', title: '工作日志 · deepseek-work · 2026-09-16', kind: 'log', topic: '工作日志', folder: 'f2'") >= 0, '原型 mock 含夹内日志演示（n84 → f2，文件夹视图放行可见）')
+    // 原型 mock 演示数据：n84 日志挂 f2（DSH 插件开发）——日志同权后默认列表/展开 f2 即见（零特化路径）
+    assert(protoV2Src.indexOf("id: 'n84', title: '工作日志 · deepseek-work · 2026-09-16', kind: 'log', topic: '工作日志', folder: 'f2'") >= 0, '原型 mock 含夹内日志演示（n84 → f2，同权默认可见）')
   })
   await t('设置卡片「工作记忆」区 + 启用对话框（状态行/作用域/车道说明/停用，r3 无重叠确认）四端同步', () => {
     for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
@@ -565,13 +591,13 @@ module.exports = {
     assert(protoV2Src.indexOf("kind: 'log'") >= 0 && protoV2Src.indexOf('logDate') >= 0, '原型 mock 日志演示数据（kind=log + logDate）')
     assert(protoV2Src.indexOf('sgIsoWeek') >= 0, '原型 mock 日志卫生 ISO 周归组')
   })
-  await t('工具 schema：note_search/note_manage kind 枚举含 log + 隐身口径描述 + includeLogs 参数', () => {
+  await t('工具 schema：note_search/note_manage kind 枚举含 log + 同权口径描述（0.4.3⑦）+ includeLogs 兼容参数', () => {
     const ns = findTool('note_search'), nm = findTool('note_manage')
     assert(ns.parameters.properties.kind.enum.indexOf('log') >= 0, 'note_search kind enum 含 log')
     assert(nm.parameters.properties.kind.enum.indexOf('log') >= 0, 'note_manage kind enum 含 log')
-    assert(ns.parameters.properties.includeLogs && nm.parameters.properties.includeLogs, '两工具 includeLogs 参数（显式召回日志）')
-    assert(ns.description.indexOf('kind=log') >= 0 && ns.description.indexOf('EXCLUDE') >= 0, 'note_search 描述同步默认排除日志')
-    assert(nm.description.indexOf('kind=log') >= 0 && nm.description.indexOf('工作日志') >= 0 && nm.description.indexOf('stealth') >= 0, 'note_manage 描述同步 log 隐身口径（inject 硬关/recall 缺省 false）')
+    assert(ns.parameters.properties.includeLogs && nm.parameters.properties.includeLogs, '两工具 includeLogs 参数保留（向后兼容 no-op）')
+    assert(ns.description.indexOf('kind=log') >= 0 && ns.description.indexOf('INCLUDE') >= 0, 'note_search 描述同步日志同权（默认结果含日志）')
+    assert(nm.description.indexOf('kind=log') >= 0 && nm.description.indexOf('工作日志') >= 0 && nm.description.indexOf('first-class') >= 0, 'note_manage 描述同步 log 同权口径（inject 硬关/recall 缺省 false 目录不含）')
     assert(nm.parameters.properties.logDate, 'note_manage create 支持 logDate（高级回填；缺省今天）')
   })
   }

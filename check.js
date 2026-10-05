@@ -21,7 +21,7 @@ const CORE = new Set([
   'token 语义映射 bg-layer 系 + 鲜蓝强调（开发版/发布包/原型/app.html 四处同步）',
   'T1.1 工具瘦身 9→3',
   'index.mjs 是 ESM（export name/inject/apply，无 bootstrap return）',
-  'index.mjs 保留 46 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats',
+  'index.mjs 保留 47 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest',
   '两栏布局骨架（侧栏 + 编辑器通栏）',
   'note_search 已注册',
   'note_get 已注册',
@@ -43,7 +43,7 @@ const CORE = new Set([
   'preview：速记按 sessionId 分组（≥2），手动/单条/已删不进组，dry-run 零写入',
   '无 groups 归档：只合速记组 + 默认标题 + .bak 备份 + undo 事务落盘',
   'undo 往返：成员批量还原 + 归档笔记软删 + undo 清空；二次 undo → undone=0',
-  'host-impl 应用成功（46 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats）',
+  'host-impl 应用成功（47 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest）',
   'manage.create 返回 id',
   'manage.archive 显式 groups 合并手动组（白名单 + title 覆盖）',
   'kind 默认 note（向后兼容）',
@@ -57,7 +57,7 @@ const CORE = new Set([
   '事件回执：agent/status idle → 该会话未闭环派发 dispatchStatus=done（receipt=idle）',
   'notes-quick-instruct LLM 解析失败回退等价 notes-quick',
   'index.mjs 可被 ESM import（语法 + 顶层无副作用）',
-  'harness 缺失时兜底：3 条 exact 路由（RPC + 全窗口页面 + 资产）+ ctx.tools 3 工具 + 约定注入 order130 + 目录注入 order131',
+  'harness 缺失时兜底：3 条 exact 路由（RPC + 全窗口页面 + 资产）+ ctx.tools 3 工具 + 约定注入 order130（单一 context：目录段并入）',
   'GET /dsh-notes/asset 防穿越/形态/白名单/404',
   'RPC 200 + 首次启动迁移开发版笔记到 ~/.dsh/notes',
   'notes-create 走静态包 RPC',
@@ -81,8 +81,8 @@ const CORE = new Set([
   'conventionText 对 sensitive=true 笔记正文按行打码 + 尾部计数行',
   'notes-quick 命中敏感模式：直接落 sensitive=true + 返回 sensitiveSuggested（磁盘原文不动）',
   'injectBudgetChars 预算截断：资料桶从最旧整条省略 + 提示行；约定桶永不截断；lastInjectChars 随渲染更新',
-  'note_get 命中计数：内存即时 +1（响应即见），60s 防抖期内零写盘；notes-get RPC 不计数',
-  'notes-inject-preview 返回结构：conventions/catalog 字符串 + stats 六字段数值正确',
+  'note_get 命中计数：内存即时 +1（响应即见），防抖期内零写盘；notes-get RPC 不计数',
+  'notes-inject-preview 返回结构：conventions/directory 字符串 + catalog 兼容别名 + stats 字符数值正确',
   'workspace 视角：该工作区全部会话注入并集 + 未知工作区退化全局 + sessionId 互斥优先',
   'notes-suggest 三段返回 + 遥测/时效闭环 + 零写入（开发版独立实例）',
   '组合过滤：sensitive / inject / kind 三态组合',
@@ -118,18 +118,18 @@ const CORE = new Set([
   // 42. 列表韧性（notes-list-union-defense：listDir 快照停滞窗口内 cache 并集补入）
   'list-union-defense 标记块双包逐字节一致（host-impl / index.mjs）',
   '并集补入：listDir 停滞窗口内新建笔记立即可见；watcher 恢复后幂等零重复',
-  '并集条目同一过滤管线：deleted/log 隐身/tag/kind/folder 与目录条目零差异',
+  '并集条目同一过滤管线：deleted/tag/kind/folder 与目录条目零差异（0.4.3⑦ log 同权）',
   '并集墓碑排除：purge 后缺省/回收站口径均不出现（含缓存墓碑条目）',
   '静态包并集防御：停滞窗口新建笔记可见 + watcher 恢复幂等（index.mjs 行为）',
   // 43. 注入管理面板（notes-inject-manager：设置卡入口 + 全库总览 + 单行直改/多选批量 + log/sensitive 护栏，三端同步零新 RPC）
   '注入管理面板（client）：设置行入口 + 总览 modal 结构 + 三态直改 payload + 批量通道 + log/sensitive 护栏（开发版 + 发布包）',
   '注入管理样式双端：styles.css ⇄ 发布包 lib/styles.css',
-  'app.html + 原型注入管理同款：设置行入口 + 三态直改/批量 payload + log 禁用护栏 + 统计 chips（双端 UI 标记一致）',
+  'app.html + 原型注入管理同款：设置行入口 + 三态直改/批量 payload + log 注入硬关（不渲染开关）+ 统计 chips（双端 UI 标记一致）',
   // 44. 设置卡交互反馈（notes-settings-feedback：✕ 常驻关闭 + dirty 保存/还原 + 关闭兜底 flush，三端同步）
   '设置卡交互反馈（client）：✕ 常驻关闭 + dirty 状态机 + 保存/还原 + 兜底 flush（开发版 + 发布包）',
   'app.html + 原型设置卡反馈同款：✕ + dirty 保存/还原 + 关闭兜底 flush + Esc 同口径（双端 UI 标记一致）',
-  // 39.6b R-6 UI 接线（notes-034-r6-ui：文件夹视图显示日志——数据源口径 + 渲染守卫放行 + 切回恢复隐身，四端）
-  'R-6 UI 接线（四端）：文件夹视图数据源含 log（view=folder 触发 includeLogs 重拉）+ 渲染守卫放行 + 切回默认恢复隐身',
+  // 39.6b 日志同权接线（0.4.3⑦ notes-043-log-firstclass：R-6 UI 隐身推翻——日志并入主缓存全管线同权，文件视图拆除，四端）
+  '日志同权接线（四端）：默认列表恒含 log（无 includeLogs 翻转机制/渲染守卫）+「文件视图」入口/求值拆除',
   // 50. 定时派发·设置交互 UI（notes-034-sched-ui：派发弹窗调度区 + 注入管理调度任务区，四端 + 原型 mock 行为）
   '调度 helper 四端同口径：schedEveryMs/schedFreqLabel/schedNextMs/isoToLocalInput 行为 + app⇄原型逐字节一致',
   '派发弹窗调度区（app.html + 原型）：立即/定时单选 + 频率四模式 + 内联校验 + 创建/编辑双通道 + 手动派发零改动',
@@ -152,9 +152,9 @@ const CORE = new Set([
   // 59. 定时派发·执行记录独立笔记（notes-041-sched-runlog：schedule.runLog 软链 + 约定正文零改动红线）
   'runLog 懒创建 + 软链回写 + 约定正文零改动红线（idle 回执 → 执行记录独立笔记）',
   'runLog 写入闸门：存在笔记 id 放行 / 幽灵 id 与非串拒绝 / 缺省延续 / 空串解除',
-  // 74. 效用账本（notes-043-ledger：§2 指标快照 + 记忆档案懒创建回填，无 LLM）
-  'fixture 全链路：挂载 2 条 + 近 7 天/超窗日志各 1 → refresh → §2 数值正确 + 档案懒创建恰 1 个（refNote 软链 + 红线）',
-  '幂等重放：二次 refresh → archivesCreated=0 + 引用记录仍 1 行 + §2 快照行唯一',
+  // 74. 效用账本（notes-043-ledger：指标快照 + 记忆档案懒创建回填，无 LLM；卡⑤ notes-043-metrics-storage：指标落 telemetry.json + 存量 §2 摘除）
+  'fixture 全链路：挂载 2 条 + 近 7 天/超窗日志各 1 → refresh → 指标落 telemetry.json + 存量 §2 摘除 + 档案懒创建恰 1 个（refNote 软链 + 红线）',
+  '幂等重放：二次 refresh → archivesCreated=0 + 引用记录仍 1 行 + §2 摘除幂等零改动',
   // 68. i18n 守卫（notes-042-i18n-lint：常驻 lint——字典↔代码双向覆盖为守卫核心，常驻 --core 防字典/代码漂移）
   'i18n 守卫② 字典↔代码双向覆盖：字典 key 全被引用 + 代码 key 形字面量全命中字典（白名单逐条锚定）',
   // 75. 守卫扩展 + README 哲学节（notes-043-guard：索引 lint / 死链查图 / 四文件同步——常驻 --core 防索引与 README 漂移）
@@ -337,8 +337,9 @@ async function main() {
       if (p.files.length > 15) console.log('      …其余 ' + (p.files.length - 15) + ' 篇')
     }
   }
-  // 非零退出码仅在 host 运行时不可用时（即 [boot] 之前的错误）；当前 T1.1 等特性未实现属于"测试预期失败"，不阻塞 CI
-  process.exit(state.failed > 0 ? 0 : 0)
+  // 退出码语义（0.4.3 收口修复）：failed>0 → exit 1（CI/worker 自测门禁可信）；「待补」占位清单等提示项不计失败（上方已分流）。
+  // 修复前恒 0（`failed > 0 ? 0 : 0`）——多轮 verifier 均以 passed/failed 计数人肉判读，exit 码不可作判据；本行修复后 exit 码恢复门禁语义。
+  process.exit(state.failed > 0 ? 1 : 0)
 }
 
 main().catch(e => { console.error('TEST FAILED:', e); process.exit(1) })

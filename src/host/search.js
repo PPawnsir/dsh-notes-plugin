@@ -21,9 +21,10 @@
     // ==== search-helpers END ====
 
     async function _search(query, tag, topic, kind, folder, filters) {
-      // 工作记忆 v0 默认隐身：默认搜索（无 folder）排除 kind=log；显式 kind=log / filters.includeLogs:true 召回；
-      // R-6：显式 folder 过滤由 _list 内 effLogs 隐式召回（显式文件夹导航放行）
-      const all = await _list(undefined, undefined, folder, undefined, !!(kind === 'log' || (filters && filters.includeLogs)))
+      // 日志同权（0.4.3 验收修复⑦）：默认搜索含 kind=log（可见/可搜）；filters.includeLogs 参数保留向后兼容（已恒为包含）
+      // sys 缺省降噪（0.4.3 验收修复⑨）：tag/kind 透传 _list 同一条过滤管线——缺省检索（无 tag/kind、folder 缺省或未分类）排除 kind=sys 机器笔记
+      //   （记忆档案/注入索引/runLog/遥测镜像）；显式 kind='sys'/tag/具体文件夹检索 = 显式入口照常命中（降噪谓词仅在平铺口径生效）
+      const all = await _list(tag, kind, folder, undefined, true)
       const q = query ? String(query).toLowerCase() : ''
       return all.filter(n => {
         if (tag && (n.tags || []).indexOf(tag) < 0) return false
@@ -42,7 +43,7 @@
 
     // notes-search 扩展（向后兼容）：新增 sensitive/inject 组合过滤参数（true=仅命中 / false=仅排除 / 缺省=不过滤，供筛选面板消费）；
     // 带 query 时每条 slim 结果附 matches 命中字段数组（title/tags/body，供前端高亮与「相关度」排序；旧调用方不读该字段不受影响）
-    // 工作记忆 v0：args.includeLogs=true 或 kind='log' 时搜索含日志（缺省排除——默认隐身口径与 _list 一致）
+    // 日志同权（0.4.3 验收修复⑦）：搜索默认含日志（args.includeLogs 保留为兼容 no-op）
     disposers.push(handle('notes-search', async (args) => {
       try {
         const a = args || {}

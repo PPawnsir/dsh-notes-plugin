@@ -29,7 +29,8 @@ module.exports = {
     assert(clientSrc.indexOf("kids.forEach(n => { treeIds.push(n.id); childEls.push(renderNoteRow(n, true)) })") >= 0, '键盘导航 treeIds 按递归渲染顺序推入（= depth-first）')
     // ② 子树口径：视图过滤 / 自动展开 / 计数（host f.count 已递归，过滤激活时切子树命中数）
     assert(clientSrc.indexOf('const subHits = filtersActive ? filtered.filter(n => sub[(n.folder || \'\')]).length : 0') >= 0, 'client-impl 子树命中统计（过滤激活时）')
-    assert(clientSrc.indexOf("const sub = folderSubtreeIdsOf(f.id)") >= 0 && clientSrc.indexOf('const vsub = folderSubtreeIdsOf(view.id)') >= 0, 'client-impl 渲染与视图过滤共用子树 helper')
+    assert(clientSrc.indexOf("const sub = folderSubtreeIdsOf(f.id)") >= 0, 'client-impl 渲染子树 helper（子树命中统计）')
+    assert(clientSrc.indexOf('folderSubtreeIdsOf(view.id)') < 0, '0.4.3⑦：视图过滤的文件夹视图分支已拆除（子树 helper 不再服务视图过滤）')
     // ③ 发布包 lib/client.js 同步（需先跑 scripts/build-dist.cjs）
     for (const k of ['function renderFolderNode(f, sink)', 'folderSubtreeIdsOf', 'childFoldersOf', 'rootFolders()', 'folderPathOf', "for (const f of rootFolders()) renderFolderNode(f, treeEls)"]) {
       assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺「' + k + '」（需先跑 scripts/build-dist.cjs）')
@@ -48,7 +49,7 @@ module.exports = {
       assert(/function folderNodeHtml\(f, vis, filtering\)/.test(s), label + ' 递归渲染器 folderNodeHtml 存在')
       assert(s.indexOf('rootFolders().forEach(function (f) { h += folderNodeHtml(f, vis, filtering) })') >= 0, label + ' 根级清单驱动递归渲染')
       assert(s.indexOf('subFolders.forEach(function (cf) { h += folderNodeHtml(cf, vis, filtering) })') >= 0, label + ' 子文件夹递归（depth-first：子文件夹先于直挂笔记）')
-      assert(s.indexOf("else if (view.type === 'folder') { if (!folderSubtree(view.id)[n.folder || '']) return false }") >= 0, label + ' 文件夹视图过滤 = 递归子树口径')
+      assert(s.indexOf("view.type === 'folder'") < 0, label + ' 0.4.3⑦：文件夹视图过滤分支已拆除（树展开即文件夹浏览）')
       assert(s.indexOf('var subHits = filtering ? vis.filter(function (n) { return sub[n.folder || \'\'] }).length : 0;') >= 0, label + ' 子树命中统计（过滤激活时）')
       assert(s.indexOf('data-drop="1" draggable="true"') >= 0, label + ' 文件夹行 draggable（拖拽换父）')
       assert(/\.nested \.row\.head\{[^}]*font-size:12\.5px/.test(s), label + ' 嵌套子文件夹行 12.5px 小字（.nested .row.head）')
@@ -91,7 +92,7 @@ module.exports = {
     for (const pair of [['app.html', appSrcN], ['原型 notes-ui-v2.html', protoSrcN]]) {
       const s = pair[1], label = pair[0]
       assert(s.indexOf('data-a="sub"') >= 0 && s.indexOf('新建子文件夹') >= 0, label + ' 右键菜单「新建子文件夹」')
-      assert(s.indexOf("else if (a === 'sub') doCreateFolder(f.id);") >= 0 && s.indexOf('function doCreateFolder(parentId)') >= 0, label + ' doCreateFolder(parentId) 嵌套新建')
+      assert(s.indexOf("if (a === 'sub') doCreateFolder(f.id);") >= 0 && s.indexOf('function doCreateFolder(parentId)') >= 0, label + ' doCreateFolder(parentId) 嵌套新建（0.4.3⑦：view 菜单动作随文件视图拆除移除，sub 升为首项）')
       assert(s.indexOf("{ op: 'create', name: name.trim(), parent: parentId || '' }") >= 0, label + ' create 携带 parent')
       assert(/var dragId = null, dragFolderId = null/.test(s), label + ' dragFolderId 拖拽源状态')
       assert(/function reparentFolder\(fid, parentId\)/.test(s) && s.indexOf('var parents = {}; parents[fid] = parentId || \'\';') >= 0, label + ' reparentFolder（reorder parents 改挂）')
@@ -119,11 +120,12 @@ module.exports = {
     assert(clientSrc.indexOf("t('fld.delConfirmCascade', { name: f.name, childN: childN, noteN: noteN })") >= 0 && clientSrc.indexOf("t('fld.delConfirmEmpty', { name: f.name })") >= 0, 'client-impl 级联删除 confirm 文案（子树统计 + 不可恢复明示；覆盖卡F 起走 t()）')
     assert(clientSrc.indexOf('const childN = folders.filter(x => x.id !== f.id && sub[x.id]).length') >= 0 && clientSrc.indexOf("const noteN = notes.filter(n => sub[(n.folder || '')]).length") >= 0, 'client-impl 子树统计本地预估（folders/notes 清单）')
     assert(clientSrc.indexOf("{ op: 'delete', id: f.id, cascade: true }") >= 0, 'client-impl 删除带 cascade:true（confirm 后整棵删除）')
-    assert(clientSrc.indexOf("if (view.type === 'folder' && sub[view.id]) setView({ type: 'all', id: '' })") >= 0, 'client-impl 视图落在被删子树内 → 回全部视图')
+    assert(clientSrc.indexOf("if (view.type === 'folder' && sub[view.id])") < 0, 'client-impl 删除后视图回退逻辑随文件视图拆除移除（view 取值收窄 all | topic，无悬空 folder 视图可回退）')
     assert(clientSrc.indexOf('移回未分类') < 0, 'client-impl 旧「移回未分类」删除文案已移除（cascade 语义 = 笔记进回收站）')
-    // ② client-impl 面包屑：单文件夹名升级为「父/子/孙」路径，每段可点击 = 切到该文件夹视图
+    // ② client-impl 面包屑：「父/子/孙」路径；0.4.3⑦ 文件视图拆除后段点击 = 树内展开（含祖先链），不切视图
     assert(clientSrc.indexOf('folderPathOf(curNote.folder).map(pf =>') >= 0, 'client-impl 面包屑文件夹路径段（folderPathOf）')
-    assert(clientSrc.indexOf("tt('meta.crumbFolderTip', { name: pf.name })") >= 0 && clientSrc.indexOf("setView({ type: 'folder', id: pf.id })") >= 0, 'client-impl 面包屑每段可点击切文件夹视图（tooltip i18n 覆盖卡B 起走 tt() 字典）')
+    assert(clientSrc.indexOf("tt('meta.crumbFolderExpandTip', { name: pf.name })") >= 0 && clientSrc.indexOf('folderPathOf(pf.id).forEach(af => expandFolder(af.id))') >= 0, 'client-impl 面包屑段点击 = 树内展开文件夹链（tooltip i18n 覆盖卡B 起走 tt() 字典）')
+    assert(clientSrc.indexOf("setView({ type: 'folder'") < 0, 'client-impl 面包屑切文件夹视图链路已移除')
     // ③ client-impl 设置卡片 maxFolderDepth 数值行（同 staleDays 输入交互：失焦/Enter 即保存）
     assert(/const \[setMaxDepth, setSetMaxDepth\] = React\.useState\('3'\)/.test(clientSrc), 'setMaxDepth state（缺省 3）')
     assert(/function saveSettingsMaxDepth\(\)/.test(clientSrc) && clientSrc.indexOf('settingsSetQuiet({ maxFolderDepth: v })') >= 0, 'saveSettingsMaxDepth 保存链路（settingsSetQuiet 低层通道）')
@@ -140,7 +142,7 @@ module.exports = {
       assert(s.indexOf("rpc('notes-folders', { op: 'delete', id: f.id, cascade: true })") >= 0, label + ' 删除带 cascade:true')
       assert(s.indexOf('移回未分类') < 0, label + ' 旧「移回未分类」删除文案已移除')
       assert(s.indexOf('folderPath(n.folder).forEach') >= 0 && s.indexOf('class="lnk crumb-f"') >= 0, label + ' 面包屑文件夹路径段（可点击）')
-      assert(s.indexOf("view = { type: 'folder', id: fid }; foldOpen[fid] = true; saveFoldOpen(); render()") >= 0, label + ' 面包屑段点击切文件夹视图')
+      assert(s.indexOf("folderPath(fid).forEach(function (af) { foldOpen[af.id] = true }); saveFoldOpen(); render()") >= 0, label + ' 面包屑段点击 = 树内展开文件夹链（0.4.3⑦ 文件视图拆除后不切视图）')
       assert(s.indexOf('id="setMaxDepth"') >= 0 && s.indexOf('文件夹嵌套深度') >= 0, label + ' 设置卡片「文件夹嵌套深度」行')
       assert(s.indexOf('saveSettings({ maxFolderDepth: parseInt(v, 10) }') >= 0, label + ' maxFolderDepth 保存链路')
       assert(s.indexOf('已保存：文件夹最多嵌套 ') >= 0, label + ' 保存 toast 文案')

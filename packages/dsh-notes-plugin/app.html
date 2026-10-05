@@ -21,14 +21,14 @@
     --nbg:#151517; --npanel:#232324; --nbg-raise:#2c2c2e; --nbg-hover:#ffffff14; --nbg-sel:rgba(122,170,255,.14);
     --ntx:#f9fafb; --nt2:#cfd3d6; --nt3:#adb2b8; --nbd:#ffffff1f; --nbd-soft:#ffffff29;
     --nacc:#7aaaff; --nacc-tx:#96bcfe; --nwarn:#e5b567; --ndanger:#e5734f;
-    --kind-note:#8f8fa3; --kind-decision:#e5b567; --kind-todo:#6c8cff; --kind-link:#56c8d8; --kind-quote:#b58fe5; --kind-log:#a89ff5;
+    --kind-note:#8f8fa3; --kind-decision:#e5b567; --kind-todo:#6c8cff; --kind-link:#56c8d8; --kind-quote:#b58fe5; --kind-log:#a89ff5; --kind-sys:#9aa0a6;
   }
   html[data-theme="light"]{
     /* DSH 0.1.7 亮色实机值：layer 系同为 #fff，容器底/抬升面按实机 color-mix（ntx 6%/4%）折算 */
     --nbg:#f1f1f1; --npanel:#ffffff; --nbg-raise:#f5f5f6; --nbg-hover:#2631480f; --nbg-sel:rgba(65,118,230,.14);
     --ntx:#0f1115; --nt2:#61666b; --nt3:#81858c; --nbd:#0000001a; --nbd-soft:#0000001f;
     --nacc:#4176e6; --nacc-tx:#3660b8; --nwarn:#b07f1e; --ndanger:#cf5b34;
-    --kind-note:#8f8f9c; --kind-decision:#b07f1e; --kind-todo:#4062e8; --kind-link:#1e9aab; --kind-quote:#8a5cd6; --kind-log:#6c63e0;
+    --kind-note:#8f8f9c; --kind-decision:#b07f1e; --kind-todo:#4062e8; --kind-link:#1e9aab; --kind-quote:#8a5cd6; --kind-log:#6c63e0; --kind-sys:#6e6e73;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:var(--nfont);background:var(--nbg);color:var(--ntx);height:100vh;overflow:hidden;font-size:13px;display:flex;flex-direction:column}
@@ -389,12 +389,12 @@
   /* ===== 注入预览 modal（设置卡片「注入预览」入口）：双 tab + 只读等宽文本 + 底部统计条（与原型 notes-ui-v2.html 同款） ===== */
   .modal.injprev{width:640px}
   .injprev-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-  .injprev-tabs{display:flex;gap:4px}
-  .injprev-tab{font:inherit;font-size:11.5px;padding:3px 14px;border-radius:20px;border:1px solid var(--nbd);background:transparent;color:var(--nt2);cursor:pointer}
-  .injprev-tab:hover{color:var(--ntx);background:var(--nbg-hover)}
-  .injprev-tab.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:500}
   .injprev-sess{margin-left:auto;width:auto;max-width:240px}
   .injprev-text{font-family:var(--nmono);font-size:11px;line-height:1.65;background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:10px 12px;max-height:48vh;min-height:120px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0;color:var(--nt2)}
+  .injprev-conv{margin:0 0 8px;font:inherit;white-space:pre-wrap;word-break:break-word;color:var(--nt2)}   /* 0.4.3 验收修复③（notes-043-dir-merge）：单段视图——约定段 pre + 目录段可点行同容器 */
+  .injprev-ln{min-height:1em}   /* 0.4.3 验收修复（notes-043-preview-when-edit）：目录段逐行渲染（可点行补充/编辑 whenToUse） */
+  .injprev-ln.hit{cursor:pointer}
+  .injprev-ln.hit:hover{color:var(--ntx);background:var(--nbg-hover);border-radius:4px}
   .injprev-stats{font-size:10.5px;color:var(--nt3);margin-top:10px;line-height:1.6}
   /* ===== 注入管理面板 modal（设置卡片「注入管理」入口；notes-inject-manager）：统计 chips（点击=过滤）+ 搜索 + 批量条 + 三态 segmented 行（与原型 notes-ui-v2.html 同款） ===== */
   /* 批量条/勾选复用 trash 系列（.trash-all/.selcnt/.trash-check/.trash-act） */
@@ -406,6 +406,10 @@
   .injmgr-chip.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:600}
   .injmgr-search{flex:1;min-width:0;font:inherit;font-size:11.5px;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:4px 9px;outline:0}
   .injmgr-search:focus{border-color:var(--nacc)}
+  /* 挂载区统计行（0.4.3 验收修复⑥ notes-043-metrics-present）：chips 行下紧凑信号行，点开展开全量分通道统计 */
+  .injmgr-mntstats-row{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--nt2);cursor:pointer;padding:2px 8px;border:1px solid var(--nbd-soft);border-radius:20px;background:var(--nbg-raise);margin:0 0 8px}
+  .injmgr-mntstats-row:hover{color:var(--ntx);border-color:var(--nacc)}
+  .injmgr-mntstats-full{margin:-4px 0 8px;padding:6px 9px;border:1px solid var(--nbd-soft);border-radius:var(--nr-md);font-size:11px;line-height:1.7;word-break:break-all;color:var(--nt2)}
   .injmgr-batch{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11.5px;color:var(--nt2)}
   .injmgr-list{border:1px solid var(--nbd-soft);border-radius:var(--nr-md);margin-bottom:10px;max-height:46vh;overflow-y:auto}
   .injmgr-row{display:flex;align-items:center;gap:7px;padding:6px 9px;font-size:12px;border-bottom:1px solid var(--nbd-soft)}
@@ -420,6 +424,9 @@
   .injmgr-opt.on{background:var(--nbg-sel);color:var(--nacc-tx);font-weight:600}
   .injmgr-opt.dis{opacity:.38;cursor:default}
   .injmgr-opt.dis:hover{background:transparent;color:var(--nt3)}
+  /* 0.4.3⑦ 注入硬关 UI 化：log 行不渲染勾选框/注入开关——占位槽保行对齐 + 静态「不参与注入」标注 */
+  .injmgr-checkslot{display:inline-block;width:13px;flex-shrink:0}
+  .injmgr-lognote{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nt3);flex-shrink:0;padding:2px 3px}
   /* ===== 挂载弹层 modal（0.4.3⑤ notes-043-index：资料开注入 → 手写 whenToUse 落注入索引 §1 行；mask/modal 复用框架类） ===== */
   .inj-mount-body{display:flex;flex-direction:column;gap:5px;margin:10px 0 4px}
   .inj-mount-label{font-size:11px;color:var(--nt2)}
@@ -624,7 +631,7 @@
     <div style="font-size:11px">点侧栏顶部 + 新建笔记（先开草稿，输入内容才落库）；正文划选文字可弹出快速记录卡片</div>
   </section>
 </div>
-<div class="hintbar"><span id="hintSelect">🖱 在右侧正文<b>划选文字松手</b> → 弹出快速记录卡片</span><span id="hintDrag">拖笔记 → 文件夹移入 / 拖到根级笔记区移出</span><span id="hintFolder">点击展开/折叠 · 行尾漏斗进文件夹视图 · 右键管理</span><span id="hintKeys">Ctrl K 搜索 · Alt N 新建 · j/k 移动 · Enter 打开 · Esc 关闭浮层 · ? 快捷键</span></div>
+<div class="hintbar"><span id="hintSelect">🖱 在右侧正文<b>划选文字松手</b> → 弹出快速记录卡片</span><span id="hintDrag">拖笔记 → 文件夹移入 / 拖到根级笔记区移出</span><span id="hintFolder">点击展开/折叠 · 右键管理</span><span id="hintKeys">Ctrl K 搜索 · Alt N 新建 · j/k 移动 · Enter 打开 · Esc 关闭浮层 · ? 快捷键</span></div>
 <div id="capHost"></div>
 <div id="modalHost"></div>
 <div id="ctxHost"></div>
@@ -642,8 +649,8 @@ function rpc(method, args) {
 }
 
 /* ================= 常量与状态 ================= */
-var KIND = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' };
-var KCOLOR = { note: 'var(--kind-note)', decision: 'var(--kind-decision)', todo: 'var(--kind-todo)', link: 'var(--kind-link)', quote: 'var(--kind-quote)', log: 'var(--kind-log)' };
+var KIND = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '机器' };   /* 0.4.3⑩ +sys「机器」（筛选中心「机器」档标签/持久化校验用；编辑器 kind 下拉不收 sys——机器托管 kind 人工不转，见 editor-meta.js） */
+var KCOLOR = { note: 'var(--kind-note)', decision: 'var(--kind-decision)', todo: 'var(--kind-todo)', link: 'var(--kind-link)', quote: 'var(--kind-quote)', log: 'var(--kind-log)', sys: 'var(--kind-sys)' };
 /* 二期：kind 模板骨架（新建预填）——与 host-impl.js / index.mjs / client-impl.js / 原型同一份（check.js 断言一致）；
    note 为自由格式（空骨架）；机器/运维信息类由 ✨整理按内容套用机器模板（建时无法预判内容，不进 KIND_TEMPLATES） */
 var KIND_TEMPLATES = {
@@ -658,8 +665,8 @@ var KIND_TEMPLATES = {
 var STATUS_LABEL = { active: '进行中', pinned: '置顶', resolved: '已解决', superseded: '已取代' };
 var notes = [];              // slim 列表缓存（常驻内存；写操作后静默回填）
 var folders = [];            // 虚拟文件夹清单 [{id,name,order,count}]
-var view = { type: 'all', id: '' };   // all | folder | topic
-/* ===== 筛选中心状态（design/notes-filter-center.html 落地）：组内 OR / 跨组 AND；与文件夹/主题视图/搜索 AND 叠加；localStorage 持久化 ===== */
+var view = { type: 'all', id: '' };   // all | topic（0.4.3⑦：「文件视图」（文件夹视图）模式整体拆除）
+/* ===== 筛选中心状态（design/notes-filter-center.html 落地）：组内 OR / 跨组 AND；与主题视图/搜索 AND 叠加；localStorage 持久化 ===== */
 var _fs = loadFilters();               // 持久化恢复（dsh-notes-app-filters）
 var filters = _fs.filters;             // {pinned, injected, injectEver, sensitive, kinds[]}（injectEver 由 notes-inject-filter 提供，feature-detect）
 var sortBy = _fs.sortBy;               // time=按更新（缺省，与 host _list 一致）| use=按被引用次数降序 | rel=相关度（搜索时：标题>标签>正文，同级 updatedAt 降序）
@@ -672,7 +679,7 @@ var FILTER_STATUS = [
   { id: 'injectEver', label: '曾注入', icon: 'i-clock', pred: function (n) { return n.injectEver === true } },   /* 含已注入；字段由 notes-inject-filter 提供 */
   { id: 'sensitive', label: '敏感', icon: 'i-lock', pred: function (n) { return n.sensitive === true } }
 ];
-var FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log'];   /* 工作记忆 v0：类型组 + log（日志默认隐身——勾选「日志」即专入口，host 端 includeLogs 召回） */
+var FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log', 'sys'];   /* 类型组含 log（0.4.3⑦ 日志同权：勾选「日志」= 只看日志，与普通 kind 过滤同语义，不再是隐身专入口）+ sys（0.4.3⑩「机器」档：勾选=全库 sys 机器笔记（含「记忆档案」夹内档案）经 host kind 通道直达，面板翻账本入口） */
 var FILTER_SORTS = [
   { id: 'time', label: '时间', desc: '置顶优先 · 更新降序（默认）' },
   { id: 'use', label: '引用', desc: '被引用次数降序' },
@@ -1085,11 +1092,8 @@ var I18N_ZH = {
   'tree.useCountTip': '被 Agent 引用（note_get 命中）{n} 次',
   'tree.wikiTip': '含双链 [[…]]（详情富文本中可点击跳转）',
   'tree.toggleTip': '展开/折叠',
-  'tree.logTip': '工作日志（隐身条目，展开日志夹时定向召回）',
-  'tree.folderViewTip': '文件夹视图（含子孙文件夹）',
   'tree.countN': '{n} 条',
   'tree.viewTopic': '主题 · {id}',
-  'tree.viewFolder': '文件夹 · {name}',
   'tree.viewAll': '全部笔记',
   'tree.crossFolderCount': '（跨文件夹 {n} 条）',
   'tree.clearViewTip': '清除视图过滤',
@@ -1118,7 +1122,7 @@ var I18N_ZH = {
   'sel.merge': '合并',
   'hint.select': '🖱 在右侧正文<b>划选文字松手</b> → 弹出快速记录卡片',
   'hint.drag': '拖笔记 → 文件夹移入 / 拖到根级笔记区移出',
-  'hint.folder': '点击展开/折叠 · 行尾漏斗进文件夹视图 · 右键管理',
+  'hint.folder': '点击展开/折叠 · 右键管理',
   'hint.keys': 'Ctrl K 搜索 · Alt N 新建 · j/k 移动 · Enter 打开 · Esc 关闭浮层 · ? 快捷键',
   'chrome.dragMove': '拖拽移动窗口',
   'chrome.entryModeTip': '切换入口模式：会话头部 / 悬浮气泡',
@@ -1178,7 +1182,7 @@ var I18N_ZH = {
   'editor.backlinksWarming': '（索引中…）',
   'editor.backlinkJumpTip': '跳转到「{name}」',
   'editor.backlinksEmpty': '暂无其他笔记用 [[…]] 链接到这里',
-  'meta.crumbFolderTip': '切换到文件夹视图：{name}',
+  'meta.crumbFolderExpandTip': '在目录树中展开：{name}',
   'meta.crumbTopicTip': '按主题全局过滤（跨文件夹）',
   'meta.crumbTopicViewTip': '查看同主题全部笔记',
   'meta.uncategorized': '未分类',
@@ -1193,6 +1197,7 @@ var I18N_ZH = {
   'meta.kindLink': '链接',
   'meta.kindQuote': '引用',
   'meta.kindLog': '日志',
+  'meta.kindSys': '机器',
   'meta.statusTip': '状态',
   'meta.topicTip': '主题（host LLM 可异步回填；改后自动保存）',
   'meta.topicTipClient': '主题（可直接编辑；点右侧按钮按主题全局过滤）',
@@ -1210,6 +1215,8 @@ var I18N_ZH = {
   'meta.dispDone': '派发已回执',
   'meta.roleOffTip': '不注入系统提示',
   'meta.roleOff': '关闭',
+  'meta.logNoInject': '日志不参与注入',
+  'meta.logNoInjectTip': '工作日志注入硬禁：host 强制 inject=false（injectForcedOff 硬闸）；日志同权——可见/可搜索/可编辑，进目录用下方「目录」开关显式开启',
   'meta.roleConventionTip': '须遵守的行为规则',
   'meta.roleReferenceTip': '事实性补充信息，Agent 按需取用',
   'meta.scopeTip': '选择注入范围（可多选）',
@@ -1323,8 +1330,8 @@ var I18N_ZH = {
   'settings.usageBudget': '用量预算提醒',
   'settings.usageBudgetTip': '本月 token 消耗超过该值时提醒（仅 toast 提示，不阻断调用）；0 = 关闭',
   'settings.usageBudgetTipT': '本月 LLM token 消耗超过该值时 toast 提醒（仅提醒，不阻断调用）；0 = 关闭',
-  'settings.catalog': '笔记目录注入',
-  'settings.catalogTip': '向 Agent 系统提示注入笔记目录（一行一条），供其规划时参考并按需 note_get 取全文',
+  'settings.catalog': '目录段补充未挂载条目（缺省关）',
+  'settings.catalogTip': '开启后，注入的笔记目录段在挂载行之后补充未挂载的普通条目（一行一条），供 Agent 规划时参考并按需 note_get 取全文；缺省关闭，显式开启后生效',
   'settings.enabled': '已开启',
   'settings.disabled': '已关闭',
   'settings.stale': '时效衰减提醒',
@@ -1344,8 +1351,8 @@ var I18N_ZH = {
   'settings.injPreviewTipT': '预览 Agent 系统提示中实际注入的笔记文本（约定桶 + 目录桶），含敏感打码 / 时效标注 / 预算截断效果；可按会话过滤',
   'settings.previewBtn': '预览…',
   'settings.injManager': '注入管理',
-  'settings.injManagerTip': '全库注入总览：逐篇三态直改（关闭/约定/资料）+ 多选批量 + 三态过滤/搜索；日志隐身硬禁，敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）',
-  'settings.injManagerTipT': '打开注入管理面板：总览全部笔记的注入三态（约定/资料/关闭），单行直改或多选批量调整；顶部统计 chips 点击即过滤；日志隐身硬禁，敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）',
+  'settings.injManagerTip': '全库注入总览：逐篇三态直改（关闭/约定/资料）+ 多选批量 + 三态过滤/搜索；日志不参与注入（硬关，不提供开关），敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）',
+  'settings.injManagerTipT': '打开注入管理面板：总览全部笔记的注入三态（约定/资料/关闭），单行直改或多选批量调整；顶部统计 chips 点击即过滤；日志不参与注入（硬关，不提供开关），敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）',
   'settings.manageBtn': '管理…',
   'settings.data': '数据',
   'settings.dataTip': '全库目录快照导出 / 从快照目录导入（只增改不删，导入前自动全量备份）/ 回收站兜底（恢复或彻底删除）',
@@ -1366,7 +1373,7 @@ var I18N_ZH = {
   'settings.suggestTipT': '整理建议：速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）',
   'settings.openBtn': '打开',
   'settings.memory': '工作记忆',
-  'settings.memoryTip': '会话工作结论沉淀为工作日志（kind=log，默认隐身：不进系统提示/目录/默认列表与搜索，筛选中心类型「日志」为专入口）；启用 = 创建一条预填约定笔记（可见/可改/可停用）',
+  'settings.memoryTip': '会话工作结论沉淀为工作日志（kind=log，与普通笔记同权：可见/可搜索/可编辑；注入硬禁，目录缺省不含）；启用 = 创建一条预填约定笔记（可见/可改/可停用）',
   'settings.memProbing': '探测中…',
   'settings.memEnabled': '已启用',
   'settings.memView': '查看约定',
@@ -1375,7 +1382,7 @@ var I18N_ZH = {
   'settings.memDisableTip': '停用 = 关闭引导约定笔记的注入（笔记保留可再启用）',
   'settings.memPending': '处理中…',
   'settings.memEnable': '启用沉淀引导…',
-  'settings.memEnableTip': '创建一条预填约定笔记（inject=true，contractType: memory-guide），引导 Agent 在任务收尾时把会话结论写为工作日志（kind=log，默认隐身）——与既有约定并行不冲突',
+  'settings.memEnableTip': '创建一条预填约定笔记（inject=true，contractType: memory-guide），引导 Agent 在任务收尾时把会话结论写为工作日志（kind=log，同权可见/可搜，注入硬禁）——与既有约定并行不冲突',
   'settings.logWeek': '日志周聚合窗口',
   'settings.logWeekTip': '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行；缺省 7 天）',
   'settings.logWeekTipT': '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行）',
@@ -1392,8 +1399,8 @@ var I18N_ZH = {
   'settings.savedLlm': '已保存：笔记 LLM = {name}',
   'settings.restoredFollow': '已恢复跟随当前会话（默认）',
   'settings.llmRequired': 'provider 与 model 均需填写',
-  'settings.catalogOn': '已开启笔记目录注入',
-  'settings.catalogOff': '已关闭笔记目录注入',
+  'settings.catalogOn': '已开启目录段补充未挂载条目',
+  'settings.catalogOff': '已关闭目录段补充未挂载条目',
   'settings.staleInvalid': '时效提醒阈值需为非负整数（0 = 关闭）',
   'settings.staleOff': '已关闭时效衰减提醒',
   'settings.savedStale': '已保存：超过 {v} 天未更新的资料将在目录标注 ⚠',
@@ -1433,7 +1440,7 @@ var I18N_ZH = {
   'common.schedNHours': '每 {n} 小时',
   'common.schedNMinutes': '每 {n} 分钟',
   'common.schedNMs': '每 {n}ms',
-  'inj.titleSub': '全库注入总览 · 单行直改 / 多选批量 · 日志隐身硬禁 · 调度任务区（定时派发）',
+  'inj.titleSub': '全库注入总览 · 单行直改 / 多选批量 · 日志不参与注入 · 调度任务区（定时派发）',
   'inj.searchPlaceholder': '搜索标题 / 主题 / 标签…',
   'inj.loadFailed': '加载失败：{msg}',
   'inj.chipAll': '全部 {n}',
@@ -1447,8 +1454,8 @@ var I18N_ZH = {
   'inj.batchReference': '设为资料',
   'inj.batchOff': '关闭注入',
   'inj.executing': '执行中…',
-  'inj.logSegTip': '日志默认隐身：inject 强制关闭（kind=log 硬禁）',
-  'inj.logRowTip': '日志默认隐身：inject 强制关闭，不参与注入批量操作',
+  'inj.logNoInject': '日志不参与注入',
+  'inj.logNoInjectTip': '工作日志注入硬禁：host 强制 inject=false（injectForcedOff 硬闸）；日志同权——可见/可搜索/可编辑，进目录需显式开启「目录」',
   'inj.sensTip': '敏感笔记：注入时自动脱敏（正文按行打码，键保留值遮蔽）',
   'inj.sensBadge': '注入时自动脱敏',
   'inj.scopeGlobal': '全局',
@@ -1460,7 +1467,7 @@ var I18N_ZH = {
   'inj.schedPausedToast': '已暂停定时：{title}',
   'inj.schedDelConfirm': '删除定时任务「{title}」？\n约定笔记移入回收站（可恢复），调度即刻停止。',
   'inj.schedDeleted': '已删除定时任务：{title}（回收站可恢复）',
-  'inj.forcedOff': '「{title}」日志默认隐身：inject 已强制关闭',
+  'inj.forcedOff': '「{title}」日志不参与注入：inject 已强制关闭',
   'inj.injectOffToast': '已关闭注入：{title}',
   'inj.injectSetToast': '已设为{role}：{title}',
   'inj.setFailed': '设置失败：{msg}',
@@ -1480,12 +1487,19 @@ var I18N_ZH = {
   'inj.mountSkip': '跳过',
   'inj.mountSaved': '已挂载索引：{title}',
   'inj.mountFailed': '挂载失败：{msg}',
+  // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
+  'inj.mountEdit': '编辑挂载',
+  'inj.mountAdd': '补充 whenToUse 并挂载',
+  'inj.mountGen': '正在生成 whenToUse…',
+  // 0.4.3 验收修复⑥（notes-043-metrics-present）：注入管理面板挂载区统计行（notes-recall-stats 账本快照，点开看全量）
+  'inj.mntStats': '挂载 {m}｜本周引用 Top：{top}｜零引用 {z}',
+  'inj.mntStatsTip': '召回价值信号（数据源 notes-recall-stats · 账本快照）· 点开看全量分通道统计',
   'mem.disabledToast': '已停用沉淀引导（约定笔记保留，inject 已关闭）',
   'mem.notEnabled': '当前未启用沉淀引导',
   'mem.disableFailed': '停用失败：{msg}',
   'mem.enableTitle': '启用沉淀引导',
   'mem.enableSub': '工作记忆 v0 · 约定笔记方案',
-  'mem.enableHint': '将创建一条预填约定笔记「约定：工作日志沉淀（工作记忆 v0）」（inject=true，contractType: memory-guide），引导 Agent 在任务收尾/你示意时把会话结论写为工作日志（kind=log）。工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看），记忆管 Agent 自己沉淀什么（自用召回），两者可同时对同一事件生效，产物重复是设计意图而非冲突。日志默认隐身：不进系统提示、不进目录、不出现在默认列表与默认搜索；筛选中心类型「日志」为专入口。该约定可见/可改/可停用/可删除；停用后再启用复用同一约定笔记（重新打开注入，不新建第二条）。',
+  'mem.enableHint': '将创建一条预填约定笔记「约定：工作日志沉淀（工作记忆 v0）」（inject=true，contractType: memory-guide），引导 Agent 在任务收尾/你示意时把会话结论写为工作日志（kind=log）。工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看），记忆管 Agent 自己沉淀什么（自用召回），两者可同时对同一事件生效，产物重复是设计意图而非冲突。日志与普通笔记同权：可见、可搜索、可编辑；注入硬禁（不提供注入开关），目录缺省不含（详情「目录」开关可显式开启）。该约定可见/可改/可停用/可删除；停用后再启用复用同一约定笔记（重新打开注入，不新建第二条）。',
   'mem.scopeTitle': '注入范围（作用域）',
   'mem.scopeGlobal': '所有会话（缺省）',
   'mem.scopeWsPick': '指定工作区（多选，下方勾选）',
@@ -1720,7 +1734,6 @@ var I18N_ZH = {
   'fld.movedInto': '已移入「{name}」',
   'fld.movedRoot': '已移回根级',
   'fld.moveFailed': '移动失败：{msg}',
-  'fld.menuView': '进入文件夹视图',
   'fld.menuUp': '上移',
   'fld.menuDown': '下移',
   'fld.menuRoot': '移回根级',
@@ -1834,11 +1847,8 @@ var I18N_EN = {
   'tree.useCountTip': 'Referenced by Agent (note_get hit) {n} times',
   'tree.wikiTip': 'Has [[…]] wiki links (clickable in the detail rich text)',
   'tree.toggleTip': 'Expand/collapse',
-  'tree.logTip': 'Work log (stealth entry, recalled on demand when expanding its folder)',
-  'tree.folderViewTip': 'Folder view (including descendant folders)',
   'tree.countN': '{n}',
   'tree.viewTopic': 'Topic · {id}',
-  'tree.viewFolder': 'Folder · {name}',
   'tree.viewAll': 'All notes',
   'tree.crossFolderCount': '({n} across folders)',
   'tree.clearViewTip': 'Clear view filter',
@@ -1867,7 +1877,7 @@ var I18N_EN = {
   'sel.merge': 'Merge',
   'hint.select': '🖱 <b>Select text and release</b> in the editor on the right → pop up the quick-capture card',
   'hint.drag': 'Drag a note → onto a folder to move in / onto the root note area to move out',
-  'hint.folder': 'Click to expand/collapse · row-end funnel enters folder view · right-click to manage',
+  'hint.folder': 'Click to expand/collapse · right-click to manage',
   'hint.keys': 'Ctrl K search · Alt N new · j/k move · Enter open · Esc close overlays · ? shortcuts',
   'chrome.dragMove': 'Drag to move the window',
   'chrome.entryModeTip': 'Switch entry mode: session header / floating bubble',
@@ -1927,7 +1937,7 @@ var I18N_EN = {
   'editor.backlinksWarming': ' (indexing…)',
   'editor.backlinkJumpTip': 'Jump to "{name}"',
   'editor.backlinksEmpty': 'No other notes link here with [[…]] yet',
-  'meta.crumbFolderTip': 'Switch to folder view: {name}',
+  'meta.crumbFolderExpandTip': 'Expand in tree: {name}',
   'meta.crumbTopicTip': 'Filter globally by topic (across folders)',
   'meta.crumbTopicViewTip': 'View all notes with this topic',
   'meta.uncategorized': 'Uncategorized',
@@ -1942,6 +1952,7 @@ var I18N_EN = {
   'meta.kindLink': 'Link',
   'meta.kindQuote': 'Quote',
   'meta.kindLog': 'Log',
+  'meta.kindSys': 'Machine',
   'meta.statusTip': 'Status',
   'meta.topicTip': 'Topic (the host LLM may backfill it asynchronously; autosaved on change)',
   'meta.topicTipClient': 'Topic (edit directly; use the button on the right to filter globally by topic)',
@@ -1959,6 +1970,8 @@ var I18N_EN = {
   'meta.dispDone': 'All received',
   'meta.roleOffTip': 'Do not inject into the system prompt',
   'meta.roleOff': 'Off',
+  'meta.logNoInject': 'No injection (log)',
+  'meta.logNoInjectTip': 'Work logs are hard-gated out of injection (host forces inject=false); logs are first-class — visible/searchable/editable; catalog inclusion via the "Catalog" toggle below',
   'meta.roleConventionTip': 'Behavioral rules the Agent must follow',
   'meta.roleReferenceTip': 'Factual reference the Agent consults as needed',
   'meta.scopeTip': 'Choose the injection scope (multi-select)',
@@ -2072,8 +2085,8 @@ var I18N_EN = {
   'settings.usageBudget': 'Usage budget reminder',
   'settings.usageBudgetTip': 'Remind when token usage this month exceeds this value (toast only, calls not blocked); 0 = off',
   'settings.usageBudgetTipT': 'Toast when LLM token usage this month exceeds this value (reminder only, calls not blocked); 0 = off',
-  'settings.catalog': 'Note catalog injection',
-  'settings.catalogTip': 'Inject the note catalog (one line per note) into the Agent system prompt for planning; the Agent calls note_get for full text on demand',
+  'settings.catalog': 'Directory supplements unmounted entries (off by default)',
+  'settings.catalogTip': 'When on, the injected note directory section appends unmounted entries (one line per note) after the mounted lines, so the Agent can plan with awareness and calls note_get for full text on demand; off by default — takes effect only when explicitly enabled',
   'settings.enabled': 'Enabled',
   'settings.disabled': 'Disabled',
   'settings.stale': 'Staleness reminder',
@@ -2093,8 +2106,8 @@ var I18N_EN = {
   'settings.injPreviewTipT': 'Preview the note text actually injected into the Agent system prompt (convention bucket + catalog bucket), with sensitive masking / stale marks / budget truncation; filterable by session',
   'settings.previewBtn': 'Preview…',
   'settings.injManager': 'Injection manager',
-  'settings.injManagerTip': 'Library-wide injection overview: per-note three-state editing (off/convention/reference) + multi-select batch + three-state filter/search; logs are hard-hidden, sensitive notes auto-masked; includes the schedules area (scheduled-dispatch overview / edit backfill / pause / delete)',
-  'settings.injManagerTipT': 'Open the injection manager: overview of the injection three-state (convention/reference/off) for all notes; edit inline or batch-adjust with multi-select; top stat chips filter on click; logs are hard-hidden, sensitive notes auto-masked; includes the schedules area (scheduled-dispatch overview / edit backfill / pause / delete)',
+  'settings.injManagerTip': 'Library-wide injection overview: per-note three-state editing (off/convention/reference) + multi-select batch + three-state filter/search; logs do not participate in injection (hard gate, no switch offered), sensitive notes auto-masked; includes the schedules area (scheduled-dispatch overview / edit backfill / pause / delete)',
+  'settings.injManagerTipT': 'Open the injection manager: overview of the injection three-state (convention/reference/off) for all notes; edit inline or batch-adjust with multi-select; top stat chips filter on click; logs do not participate in injection (hard gate, no switch offered), sensitive notes auto-masked; includes the schedules area (scheduled-dispatch overview / edit backfill / pause / delete)',
   'settings.manageBtn': 'Manage…',
   'settings.data': 'Data',
   'settings.dataTip': 'Full-library catalog snapshot export / import from a snapshot directory (adds and updates only, never deletes; full backup before import) / trash as the fallback (restore or purge)',
@@ -2115,7 +2128,7 @@ var I18N_EN = {
   'settings.suggestTipT': 'Organize suggestions: quick-note group archiving / stale unreferenced cleanup / orphan note candidates (nominates only, never auto-executes)',
   'settings.openBtn': 'Open',
   'settings.memory': 'Agent memory',
-  'settings.memoryTip': 'Session work conclusions settle into work logs (kind=log, stealth by default: excluded from the system prompt/catalog/default lists and search; the filter-center type "Log" is the dedicated entry); enabling = create one prefilled convention note (visible/editable/disable-able)',
+  'settings.memoryTip': 'Session work conclusions settle into work logs (kind=log, first-class like any note: visible/searchable/editable; injection hard-disabled, excluded from the catalog by default); enabling = create one prefilled convention note (visible/editable/disable-able)',
   'settings.memProbing': 'Probing…',
   'settings.memEnabled': 'Enabled',
   'settings.memView': 'View convention',
@@ -2124,7 +2137,7 @@ var I18N_EN = {
   'settings.memDisableTip': 'Disable = turn off injection of the guide convention note (the note is kept and can be re-enabled)',
   'settings.memPending': 'Processing…',
   'settings.memEnable': 'Enable settling guide…',
-  'settings.memEnableTip': 'Create a prefilled convention note (inject=true, contractType: memory-guide) that guides the Agent to write session conclusions as work logs (kind=log, stealth by default) at task wrap-up — coexists with existing conventions without conflict',
+  'settings.memEnableTip': 'Create a prefilled convention note (inject=true, contractType: memory-guide) that guides the Agent to write session conclusions as work logs (kind=log, first-class visible/searchable, injection hard-disabled) at task wrap-up — coexists with existing conventions without conflict',
   'settings.logWeek': 'Log weekly rollup window',
   'settings.logWeekTip': 'Work logs older than N days are nominated for rollup by workspace×week in organize suggestions (nominates only; default 7 days)',
   'settings.logWeekTipT': 'Work logs older than N days are nominated for rollup by workspace×week in organize suggestions (nominates only)',
@@ -2141,8 +2154,8 @@ var I18N_EN = {
   'settings.savedLlm': 'Saved: notes LLM = {name}',
   'settings.restoredFollow': 'Restored to following the current session (default)',
   'settings.llmRequired': 'Both provider and model are required',
-  'settings.catalogOn': 'Note catalog injection enabled',
-  'settings.catalogOff': 'Note catalog injection disabled',
+  'settings.catalogOn': 'Directory supplement of unmounted entries enabled',
+  'settings.catalogOff': 'Directory supplement of unmounted entries disabled',
   'settings.staleInvalid': 'The staleness threshold must be a non-negative integer (0 = off)',
   'settings.staleOff': 'Staleness reminder disabled',
   'settings.savedStale': 'Saved: references not updated for over {v} days will be marked ⚠ in the catalog',
@@ -2183,7 +2196,7 @@ var I18N_EN = {
   'common.schedNHours': 'Every {n} hours',
   'common.schedNMinutes': 'Every {n} minutes',
   'common.schedNMs': 'Every {n}ms',
-  'inj.titleSub': 'Library-wide injection overview · inline editing / multi-select batch · logs hard-hidden · schedules area (scheduled dispatch)',
+  'inj.titleSub': 'Library-wide injection overview · inline editing / multi-select batch · logs do not participate in injection · schedules area (scheduled dispatch)',
   'inj.searchPlaceholder': 'Search title / topic / tags…',
   'inj.loadFailed': 'Load failed: {msg}',
   'inj.chipAll': 'All {n}',
@@ -2197,8 +2210,8 @@ var I18N_EN = {
   'inj.batchReference': 'Set as reference',
   'inj.batchOff': 'Disable injection',
   'inj.executing': 'Running…',
-  'inj.logSegTip': 'Logs are stealth by default: inject is force-disabled (hard gate for kind=log)',
-  'inj.logRowTip': 'Logs are stealth by default: inject is force-disabled and excluded from batch injection operations',
+  'inj.logNoInject': 'No injection (log)',
+  'inj.logNoInjectTip': 'Work logs are hard-gated out of injection (host forces inject=false); logs are first-class — visible/searchable/editable; catalog inclusion via the explicit "Catalog" toggle',
   'inj.sensTip': 'Sensitive note: auto-masked when injected (body masked line by line; keys kept, values hidden)',
   'inj.sensBadge': 'Auto-masked on injection',
   'inj.scopeGlobal': 'Global',
@@ -2210,7 +2223,7 @@ var I18N_EN = {
   'inj.schedPausedToast': 'Schedule paused: {title}',
   'inj.schedDelConfirm': 'Delete the scheduled task "{title}"?\nThe convention note moves to the trash (restorable) and the schedule stops immediately.',
   'inj.schedDeleted': 'Scheduled task deleted: {title} (restorable from trash)',
-  'inj.forcedOff': '"{title}" is a stealth-by-default log: inject was force-disabled',
+  'inj.forcedOff': '"{title}" is a work log (no injection): inject was force-disabled',
   'inj.injectOffToast': 'Injection disabled: {title}',
   'inj.injectSetToast': 'Set as {role}: {title}',
   'inj.setFailed': 'Update failed: {msg}',
@@ -2230,12 +2243,19 @@ var I18N_EN = {
   'inj.mountSkip': 'Skip',
   'inj.mountSaved': 'Mounted to index: {title}',
   'inj.mountFailed': 'Mount failed: {msg}',
+  // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
+  'inj.mountEdit': 'Edit mount',
+  'inj.mountAdd': 'Add whenToUse & mount',
+  'inj.mountGen': 'Generating whenToUse…',
+  // 0.4.3 验收修复⑥（notes-043-metrics-present）：注入管理面板挂载区统计行（notes-recall-stats 账本快照，点开看全量）
+  'inj.mntStats': 'Mounted {m}｜Week Top: {top}｜Zero-ref {z}',
+  'inj.mntStatsTip': 'Recall value signal (source: notes-recall-stats · ledger snapshot) · click for full channel stats',
   'mem.disabledToast': 'Settling guide disabled (the convention note is kept; inject turned off)',
   'mem.notEnabled': 'The settling guide is not enabled',
   'mem.disableFailed': 'Failed to disable: {msg}',
   'mem.enableTitle': 'Enable settling guide',
   'mem.enableSub': 'Agent memory v0 · convention-note approach',
-  'mem.enableHint': 'This creates a prefilled convention note "约定：工作日志沉淀（工作记忆 v0）" (inject=true, contractType: memory-guide), guiding the Agent to write session conclusions as work logs (kind=log) at task wrap-up or when you ask. Agent memory is a parallel lane independent of note conventions — conventions govern how you record (for humans), memory governs what the Agent settles itself (for its own recall); both may apply to the same event, and duplicate output is by design, not a conflict. Logs are stealth by default: excluded from the system prompt, the catalog, and default lists/search; the filter-center type "Log" is the dedicated entry. This convention is visible/editable/disable-able/deletable; re-enabling after disabling reuses the same convention note (injection is turned back on; no second note is created).',
+  'mem.enableHint': 'This creates a prefilled convention note "约定：工作日志沉淀（工作记忆 v0）" (inject=true, contractType: memory-guide), guiding the Agent to write session conclusions as work logs (kind=log) at task wrap-up or when you ask. Agent memory is a parallel lane independent of note conventions — conventions govern how you record (for humans), memory governs what the Agent settles itself (for its own recall); both may apply to the same event, and duplicate output is by design, not a conflict. Logs are first-class like any note: visible, searchable, editable; injection is hard-disabled (no inject switch offered) and the catalog excludes them by default (explicit "Catalog" toggle admits). This convention is visible/editable/disable-able/deletable; re-enabling after disabling reuses the same convention note (injection is turned back on; no second note is created).',
   'mem.scopeTitle': 'Injection scope',
   'mem.scopeGlobal': 'All sessions (default)',
   'mem.scopeWsPick': 'Specific workspaces (multi-select below)',
@@ -2469,7 +2489,6 @@ var I18N_EN = {
   'fld.movedInto': 'Moved into "{name}"',
   'fld.movedRoot': 'Moved back to the root level',
   'fld.moveFailed': 'Move failed: {msg}',
-  'fld.menuView': 'Enter folder view',
   'fld.menuUp': 'Move up',
   'fld.menuDown': 'Move down',
   'fld.menuRoot': 'Move to root',
@@ -2662,20 +2681,20 @@ function setLang(l) {
 /* ==== i18n-mech END ==== */
 
 /* ================= 数据加载（list 常驻缓存 + 写后回填） ================= */
-/* 工作记忆 v0：筛选中心类型组勾选「日志」时列表数据源带 kind=log（host 默认排除日志——默认隐身；勾选即专入口，includeLogs 召回） */
-/* R-6 UI 接线：数据源口径 = 勾选「日志」 || 显式文件夹视图（view.type === 'folder'——显式文件夹导航放行，夹内 log 与普通笔记同权展示）；
-   切回默认视图口径翻 false → 静默重拉恢复隐身（不传 folder/includeLogs）。
-   loadNotes 首行自同步口径：建/删文件夹等「view 先变后直调 loadNotes」路径不依赖 render 翻转检测也能带对参数 */
-var wantLogs = false;
-function wantLogsNow() { return filters.kinds.indexOf('log') >= 0 || view.type === 'folder' }
-function maybeReloadForLogs() {
-  var w = wantLogsNow();
-  if (w !== wantLogs) { wantLogs = w; loadNotes(true) }
-}
+/* 日志同权（0.4.3 验收修复⑦，用户裁决推翻 R-6 UI 隐身）：kind=log 随默认列表直达（host 已收编）——
+   原日志口径开关/翻转检测/文件夹视图 includeLogs 重拉机制整体拆除；展开日志夹与普通夹同一代码路径（零额外 RPC，卡顿根因消除）。
+   「文件视图」（文件夹视图）模式同卡整体拆除：view 取值收窄为 all | topic */
+/* 0.4.3⑩（notes-043-archive-folder 第二轮裁决）：列表取数从「恒无参 + 客户端谓词过滤」改为「类型组恰选 1 个 kind 时传 {kind} 给 host」——
+   host _list 谓词 kind 真值短路放行 sys（⑨ 保留的显式 kind 入口），「机器」档（kind=sys）= 全库 sys 笔记（含「记忆档案」夹内档案），
+   树在该档下正常展开档案子行；不选/多选 kind 时无参调用，行为与 ⑨ 完全一致（缺省降噪：sys 不入默认列表）。
+   口径同 search.js sArgs（类型组恰选 1 个时可传 kind；多选 OR host 单 kind 参数无法表达，由本地 matchFilters 兜底）。 */
 /* 返回 Promise<boolean>：true=列表链路成功；false=失败（res.error 显式抛错进 catch——rpc 层不 reject 业务错误，刷新按钮据返回值决定是否弹「已刷新」，修假阳性） */
+/* ⑩ 取数口径签名（恰选 1 个 kind = 该 kind，否则 '' = 无参缺省）：filter-pop 勾选/移除/清空据签名变化决定是否静默重拉 */
+function listFetchSig() { return filters.kinds.length === 1 ? filters.kinds[0] : '' }
 function loadNotes(silent) {
-  wantLogs = wantLogsNow();
-  return rpc('notes-list', wantLogs ? { includeLogs: true } : undefined).then(function (res) {
+  var sig = listFetchSig();
+  var listArgs = sig ? { kind: sig } : undefined;   /* ⑩ 恰选 1 个 kind → host kind 通道（「机器」档取 sys 全库） */
+  return rpc('notes-list', listArgs).then(function (res) {
     if (res && res.error) throw new Error(res.error);
     if (res && res.notes) notes = res.notes;
     return loadFolders();
@@ -2717,9 +2736,9 @@ function hasWikiLinks(n) { var c = wikiBodies[n.id]; return extractWikiTargets(c
 function jumpToWikiTarget(target) {
   var n = resolveWikiTarget(target);
   if (!n) { toast(t('wiki.targetNotFound', { target: target })); return; }
-  var vis = (view.type === 'all' || (view.type === 'folder' && (n.folder || '') === view.id) || (view.type === 'topic' && (n.topic || '') === view.id))
+  var vis = (view.type === 'all' || (view.type === 'topic' && (n.topic || '') === view.id))
     && matchFilters(n, filters);
-  if (!vis) { view = { type: 'all', id: '' }; clearFilters(); maybeReloadForLogs(); }
+  if (!vis) { view = { type: 'all', id: '' }; clearFilters(); }   /* 0.4.3⑦：文件视图分支 + maybeReloadForLogs 调用随拆除移除 */
   selectNote(n.id);
 }
 /* 反向链接面板：全库正文含 [[当前id]]/[[当前标题]] 的其他笔记（点击跳转；索引未热提示「索引中…」） */
@@ -2770,14 +2789,11 @@ function pullSessions() {
   }).catch(function (e) { toast(t('mem.sessLoadFailed', { msg: e && e.message || e })) })   /* 失败非阻断：浮层保持旧值但用户可见；重试定时器仅在成功链路上挂，catch 不构成轮询刷 toast（i18n 覆盖卡F：复用 D 卡 mem.sessLoadFailed） */
 }
 
-/* ================= 视图求值：文件夹 ∩ 主题 ∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索 ================= */
+/* ================= 视图求值：主题 ∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索 ================= */
+/* 0.4.3⑦：「文件视图」（文件夹视图）模式整体拆除——view 取值收窄为 all | topic（树展开即文件夹浏览） */
 function matches(n) {
   if (view.type === 'topic') { if ((n.topic || '') !== view.id) return false }
-  /* 文件夹视图 = 递归子树口径（notes-nested-folder-ui：点父文件夹视图含全部子孙文件夹内容，与 host notes-list folder 过滤同语义） */
-  else if (view.type === 'folder') { if (!folderSubtree(view.id)[n.folder || '']) return false }
-  /* 工作记忆 v0 隐身渲染守卫：类型组未勾「日志」时日志永不进日常视图（含清除筛选后的在途数据；专入口 = 勾选 kind=log）；
-     R-6 UI 接线：显式文件夹视图放行 log（同权展示）；切回全部/主题视图恢复拦截（含重拉在途数据） */
-  if ((n.kind || 'note') === 'log' && filters.kinds.indexOf('log') < 0 && view.type !== 'folder') return false;
+  /* 日志同权（0.4.3⑦）：无隐身渲染守卫——日志与普通笔记同一过滤管线（类型组勾选「日志」= 只看日志，matchFilters 同语义） */
   if (!matchFilters(n, filters)) return false;
   if (searchText) {
     var q = searchText.toLowerCase();
@@ -2855,22 +2871,10 @@ function renderSortMenu() {
 function reSearch() { if (searchText.trim()) { clearTimeout(searchTimer); searchTimer = setTimeout(doSearch, 250) } }
 
 /* ================= 侧栏树 ================= */
-/* 树展开「含日志的文件夹」懒加载日志子条目（notes-041c-tree-log-children）：
-   R-6 豁免面 = 「用户主动展开日志夹」这一动作——定向 includeLogs 重拉，日志条目以 overlay 形式并入树子节点
-   （不并入 notes 主缓存：默认列表/搜索/目录的隐身口径不变）；foldLogLoaded 会话级按夹去重——折叠再展开不重复拉取 */
-var logOverlay = [];      /* 定向 includeLogs 拉取的 kind=log overlay（仅树渲染消费） */
-var foldLogLoaded = {};   /* fid → true：该夹展开动作已触发过定向拉取（会话级，不持久化） */
-function ensureFoldLogs(fid) {
-  if (foldLogLoaded[fid]) return;
-  foldLogLoaded[fid] = true;
-  /* 列表已是 includeLogs 口径（筛选「日志」勾选 / 文件夹视图）：日志在 notes 里随 vis 正常渲染，零请求 */
-  if (notes.some(function (n) { return (n.kind || 'note') === 'log' })) return;
-  rpc('notes-list', { includeLogs: true }).then(function (res) {
-    if (!res || res.error || !res.notes) return;
-    logOverlay = res.notes.filter(function (n) { return (n.kind || 'note') === 'log' });
-    renderTree();
-  }).catch(function (e) {});
-}
+/* 日志同权（0.4.3 验收修复⑦，用户裁决推翻 R-6 UI 隐身）：日志随 notes 主缓存直达——
+   原「展开日志夹 → 定向 includeLogs 重拉 → overlay 并入」特化路径（overlay 缓存/按夹加载标记/定向重拉函数三件套）整体拆除，
+   展开日志夹与普通夹同一代码路径（零额外 RPC + 零二次渲染，展开卡顿根因消除）；
+   「文件视图」（文件夹视图）模式同卡整体拆除：行尾漏斗入口/求值分支/样式移除，树展开即文件夹浏览 */
 function noteRow(n, inFolderCtx) {
   var tail = '';
   if (view.type === 'topic' && n.folder) tail += '<span class="fbadge">' + icon('i-folder', 9) + esc(fname(n.folder)) + '</span>';
@@ -2882,8 +2886,6 @@ function noteRow(n, inFolderCtx) {
     /* 行首槽位对齐：caret 槽同宽占位 + 图标槽（kind 色点居中），与文件夹行标题起点一致 */
     + '<span class="caret-spacer"></span><span class="kind-slot"><span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span></span>'
     + '<span class="ti">' + (isPinned(n) ? '<svg class="ic pin"><use href="#i-pin"/></svg> ' : '') + hl(n.title || t('tree.untitled'), searchText) + '</span>'
-    /* 日志隐身标记（notes-041c-tree-log-children）：树内定向召回的 kind=log 行尾 log 文本徽章（懒加载 overlay 专属视觉；面板 emoji 红线——不用表情字符） */
-    + (n.kind === 'log' ? '<span class="logmark" style="font-size:9px;margin-left:2px;opacity:.6" title="' + esc(t('tree.logTip')) + '">log</span>' : '')
     + (n.inject ? '<span style="color:var(--nacc);display:flex" title="' + esc(t('tree.injectTip', { role: t(n.injectRole === 'reference' ? 'tree.roleReference' : 'tree.roleConvention') })) + '">' + icon('i-bolt', 10) + '</span>' : '')
     /* 曾注入徽章（injectEver 粘性标记：历史上开启过注入、现已关闭；已注入由 bolt 表达不重复显示；不满足不渲染） */
     + (!n.inject && n.injectEver === true ? '<span class="injevr" title="' + t('tree.injectEverTip') + '">' + icon('i-clock', 9) + '</span>' : '')
@@ -2902,19 +2904,12 @@ function folderNodeHtml(f, vis, filtering) {
   var kids = vis.filter(function (n) { return (n.folder || '') === f.id });
   var subHits = filtering ? vis.filter(function (n) { return sub[n.folder || ''] }).length : 0;
   var open = (foldOpen[f.id] !== false) || (filtering && subHits > 0);
-  /* 日志 overlay 并入（notes-041c-tree-log-children）：夹已展开且定向拉过 → 本夹直挂 log 子条目追加到 kids 尾部（id 去重防文件夹视图双显） */
-  if (open && foldLogLoaded[f.id] && logOverlay.length) {
-    var _have = {};
-    kids.forEach(function (n) { _have[n.id] = 1 });
-    logOverlay.forEach(function (n) { if ((n.folder || '') === f.id && !_have[n.id]) kids.push(n) });
-  }
   /* 行点击（含名称/图标/caret）= 纯展开/折叠（经典树语义，唯一职责——notes-041b 用户裁决去重）；
-     行尾 vfilter 图标=进入/退出文件夹视图（唯一进视图入口，不抢占单击） */
-  h += '<div class="row head' + (view.type === 'folder' && view.id === f.id ? ' on' : '') + '" data-fold="' + f.id + '" data-drop="1" draggable="true">'
+     0.4.3⑦：「文件视图」模式拆除——行尾 vfilter 漏斗进视图图标已移除，树展开即文件夹浏览 */
+  h += '<div class="row head" data-fold="' + f.id + '" data-drop="1" draggable="true">'
     + '<span class="caret' + (open ? ' open' : '') + '" title="' + t('tree.toggleTip') + '">' + icon('i-chev') + '</span>'
     + '<span class="ic-slot">' + icon('i-folder', 13) + '</span>'
-    + '<span class="nm">' + esc(f.name) + '</span><span class="n">' + (filtering ? subHits : (f.count != null ? f.count : kids.length)) + '</span>'
-    + '<span class="vfilter' + (view.type === 'folder' && view.id === f.id ? ' on' : '') + '" title="' + t('tree.folderViewTip') + '">' + icon('i-filter', 11) + '</span></div>';
+    + '<span class="nm">' + esc(f.name) + '</span><span class="n">' + (filtering ? subHits : (f.count != null ? f.count : kids.length)) + '</span></div>';
   if (!open) return h;
   var subFolders = folderKids(f.id);
   if (!subFolders.length && !kids.length) return h;
@@ -2935,7 +2930,7 @@ function renderTree() {
   /* 过滤激活（视图/筛选中心/搜索任一）：含命中的文件夹/主题强制展开（纯渲染态，不写回 foldOpen/topicOpen——清除过滤即恢复手动折叠态），分组计数切换为命中数 */
   var filtering = view.type !== 'all' || !!searchText || filtersActiveCount() > 0;
   var h = '';
-  var vt = view.type === 'topic' ? t('tree.viewTopic', { id: view.id }) : view.type === 'folder' ? t('tree.viewFolder', { name: fname(view.id) }) : t('tree.viewAll');
+  var vt = view.type === 'topic' ? t('tree.viewTopic', { id: view.id }) : t('tree.viewAll');
   h += '<div class="sec-h">' + icon('i-filter', 11) + esc(vt) + (view.type === 'topic' ? ' <span style="letter-spacing:0;text-transform:none;font-weight:500">' + esc(t('tree.crossFolderCount', { n: vis.length })) + '</span>' : '') + (view.type !== 'all' ? '<span class="add" id="viewClear" title="' + t('tree.clearViewTip') + '">✕</span>' : '') + '</div>';
   /* 置顶聚合组（筛选中心「置顶」条件激活时不再重复展示） */
   if (!filters.pinned) {
@@ -3011,14 +3006,13 @@ function renderSelBar() {
 $('tree').addEventListener('click', function (ev) {
   var vf = ev.target.closest('.vfilter');
   var frow = ev.target.closest('[data-fold]');
-  /* 文件夹行：行尾过滤图标=进入/退出文件夹视图（唯一进视图入口，切换保留）；
-     行主体单击（含名称/图标/caret）= 纯展开/折叠（经典树语义唯一职责——notes-041b 用户裁决去重；
-     caret 与行主体同一 toggle 路径，消除旧「两步进视图」竞态导致的 caret 展开失灵） */
-  if (vf && frow) { var fid = frow.dataset.fold; view = view.type === 'folder' && view.id === fid ? { type: 'all', id: '' } : { type: 'folder', id: fid }; foldOpen[fid] = true; saveFoldOpen(); render(); return }
+  /* 文件夹行：行主体单击（含名称/图标/caret）= 纯展开/折叠（经典树语义唯一职责——notes-041b 用户裁决去重，
+     caret 与行主体同一 toggle 路径，消除旧「两步进视图」竞态导致的 caret 展开失灵）；
+     0.4.3⑦：「文件视图」模式拆除——vfilter 漏斗进视图分支已移除（主题行 vfilter 主题视图不受影响，在下方 data-topic 分支）；
+     日志同权：纯折叠态翻转，零副作用（原日志定向重拉随 overlay 拆除移除） */
   if (frow) {
     var fid2 = frow.dataset.fold;
-    var opening = foldOpen[fid2] === false;   /* 展开动作（notes-041c）：仅此动作触发日志懒加载（R-6 定向豁免），折叠不动作 */
-    foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); if (opening) ensureFoldLogs(fid2); renderTree(); return
+    foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); renderTree(); return
   }
   /* 主题过滤区分组头：点击=整区展开/收起（topicSecOpen；列表内主题行原地展开行为不变） */
   var tsec = ev.target.closest('[data-tsec]');
@@ -3129,7 +3123,7 @@ function doCreateFolder(parentId) {
       rpc('notes-folders', { op: 'create', name: name.trim(), parent: parentId || '' }).then(function (res) {
         if (res && res.error) { toast(String(res.error).replace(/^notes-folders\.\w+\s*/, '')); return }
         toast(t('fld.created', { name: name.trim() }));
-        if (res && res.folder && res.folder.id) { if (parentId) { foldOpen[parentId] = true } foldOpen[res.folder.id] = true; saveFoldOpen(); view = { type: 'folder', id: res.folder.id } }
+        if (res && res.folder && res.folder.id) { if (parentId) { foldOpen[parentId] = true } foldOpen[res.folder.id] = true; saveFoldOpen() }   /* 0.4.3⑦：文件视图拆除——建成即展开（不再进文件夹视图） */
         loadNotes(true);
       }).catch(function (e) { toast(t('fld.createFailed', { msg: e && e.message || e })) });
     }
@@ -3164,8 +3158,6 @@ function doDeleteFolder(f) {
   if (!confirm(msg)) return;
   rpc('notes-folders', { op: 'delete', id: f.id, cascade: true }).then(function (res) {
     if (res && res.error) { toast(res.error); return }
-    /* 当前文件夹视图落在被删子树内 → 回全部视图（视图 id 悬空会显示空名单） */
-    if (view.type === 'folder' && sub[view.id]) view = { type: 'all', id: '' };
     toast(t('fld.deleted', { name: f.name }) + ((childN || noteN) ? t('fld.deletedDetail', { childN: childN, noteN: noteN }) : ''));
     loadNotes(true);
   }).catch(function (e) { toast(t('fld.deleteFailed', { msg: e && e.message || e })) });
@@ -3202,13 +3194,13 @@ function reparentFolder(fid, parentId) {
     loadNotes(true);
   }).catch(function (e) { toast(t('fld.moveFailed', { msg: e && e.message || e })) });
 }
-/* 文件夹右键菜单（嵌套：新建子文件夹 / 移回根级（有父级时）） */
+/* 文件夹右键菜单（嵌套：新建子文件夹 / 移回根级（有父级时））；
+   0.4.3⑦：文件夹右键「进视图」菜单项随文件视图模式拆除移除（树展开即文件夹浏览） */
 function openFolderMenu(x, y, fid) {
   var f = folders.find(function (z) { return z.id === fid });
   if (!f) return;
   var host = $('ctxHost');
   host.innerHTML = '<div class="ctxmenu" id="ctxMenu">'
-    + '<div class="mi" data-a="view">' + icon('i-filter') + t('fld.menuView') + '</div>'
     + '<div class="mi" data-a="sub">' + icon('i-plus') + t('fld.titleNewSub') + '</div>'
     + '<div class="mi" data-a="rename">' + icon('i-note') + t('fld.okRename') + '</div>'
     + '<div class="mi" data-a="up">' + icon('i-up') + t('fld.menuUp') + '</div>'
@@ -3222,8 +3214,7 @@ function openFolderMenu(x, y, fid) {
     var mi = ev.target.closest('.mi'); if (!mi) return;
     closeCtx();
     var a = mi.dataset.a;
-    if (a === 'view') { view = { type: 'folder', id: f.id }; foldOpen[f.id] = true; saveFoldOpen(); render(); }
-    else if (a === 'sub') doCreateFolder(f.id);
+    if (a === 'sub') doCreateFolder(f.id);
     else if (a === 'rename') doRenameFolder(f);
     else if (a === 'up') doReorderFolder(f, -1);
     else if (a === 'down') doReorderFolder(f, 1);
@@ -3768,14 +3759,14 @@ function undoAiOrganize() {
 }
 function renderCrumb() {
   var n = edNote; if (!n) return;
-  /* 面包屑文件夹段（notes-nested-folder-ui）：单文件夹名升级为「父/子/孙」路径，每段可点击 = 切到该文件夹视图 */
+  /* 面包屑文件夹段（notes-nested-folder-ui）：「父/子/孙」路径；0.4.3⑦ 文件视图拆除后点击 = 树内展开该文件夹（含祖先链），不切视图 */
   var fhtml = '';
-  if (n.folder) folderPath(n.folder).forEach(function (pf) { fhtml += '<span class="lnk crumb-f" data-fid="' + pf.id + '" title="' + t('meta.crumbFolderTip', { name: esc(pf.name) }) + '">' + esc(pf.name) + '</span><span class="sep">/</span>' });
+  if (n.folder) folderPath(n.folder).forEach(function (pf) { fhtml += '<span class="lnk crumb-f" data-fid="' + pf.id + '" title="' + t('meta.crumbFolderExpandTip', { name: esc(pf.name) }) + '">' + esc(pf.name) + '</span><span class="sep">/</span>' });
   $('edCrumb').innerHTML = fhtml
     + '<span class="lnk" id="crumbTopic" title="' + t('meta.crumbTopicTip') + '">' + esc(n.topic || t('meta.uncategorized')) + '</span><span class="sep">/</span><span>' + esc(n.id || t('meta.unsavedDraft')) + '</span>';
   $('crumbTopic').onclick = function () { view = { type: 'topic', id: n.topic || '未分类' }; render(); toast(t('meta.filteredByTopic', { name: n.topic || t('meta.uncategorized') })) };
   $('edCrumb').querySelectorAll('.crumb-f').forEach(function (el) {
-    el.onclick = function () { var fid = el.getAttribute('data-fid'); view = { type: 'folder', id: fid }; foldOpen[fid] = true; saveFoldOpen(); render() };
+    el.onclick = function () { var fid = el.getAttribute('data-fid'); folderPath(fid).forEach(function (af) { foldOpen[af.id] = true }); saveFoldOpen(); render() };
   });
 }
 function renderMeta() {
@@ -3789,7 +3780,7 @@ function renderMeta() {
   var role = n.inject ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off';
   $('edMeta').innerHTML =
     '<span class="meta-chip" title="' + t('meta.kindTip') + '"><span class="dot" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span><select id="kindSel">'
-    + Object.keys(KIND).map(function (k) { return '<option value="' + k + '"' + (k === (n.kind || 'note') ? ' selected' : '') + '>' + kindLabel(k) + '</option>' }).join('') + '</select></span>'   /* i18n 覆盖卡F（B 卡交接②）：kind 下拉选项经 kindLabel() 条件映射走 t()（KIND 字面量仅作锚） */
+    + Object.keys(KIND).filter(function (k) { return k !== 'sys' || k === (n.kind || 'note') }).map(function (k) { return '<option value="' + k + '"' + (k === (n.kind || 'note') ? ' selected' : '') + '>' + kindLabel(k) + '</option>' }).join('') + '</select></span>'   /* i18n 覆盖卡F（B 卡交接②）：kind 下拉选项经 kindLabel() 条件映射走 t()（KIND 字面量仅作锚）；0.4.3⑩：sys 为机器托管 kind——仅当前笔记已是 sys 时渲染该选项（显示保真），人工不可转入 */
     + '<span class="meta-chip" title="' + t('meta.statusTip') + '"><select id="statusSel">'
     + ['active', 'resolved', 'superseded'].map(function (s) { return '<option value="' + s + '"' + (s === (isPinned(n) ? 'active' : n.status || 'active') ? ' selected' : '') + '>' + statusLabel(s) + '</option>' }).join('') + '</select></span>'   /* i18n 覆盖卡F（B 卡交接②）：status 下拉选项经 statusLabel() 条件映射走 t()（meta.status* 本卡建） */
     + '<span class="meta-chip" title="' + t('meta.topicTip') + '">' + icon('i-topic') + '<input id="mTopicInput" size="8" placeholder="' + t('meta.topicPlaceholder') + '" value="' + esc(n.topic === '分类中' ? '' : (n.topic || '')) + '"></span>'
@@ -3799,10 +3790,13 @@ function renderMeta() {
     + ((n.useCount || 0) > 0 ? '<span class="meta-chip" title="' + t('meta.useCountTip') + '">' + icon('i-quote') + t('meta.useCount', { n: n.useCount }) + '</span>' : '')
     /* P3 派发闭环徽章：有派发记录时聚合显示（pending=有待回执 / done=全部已回执），点击展开派发历史 */
     + (function () { var ds = n.dispatches || []; if (!ds.length) return ''; var openN = ds.filter(function (d) { return !isDispDone(d) }).length; return '<span class="meta-chip disp-badge ' + (openN ? 'pending' : 'done') + '" id="mDispBadge" title="' + (openN ? t('meta.dispPendingTip', { open: openN, total: ds.length }) : t('meta.dispDoneTip', { total: ds.length })) + '">' + icon(openN ? 'i-play' : 'i-check') + esc(openN ? t('meta.dispPending', { open: openN, total: ds.length }) : t('meta.dispDone')) + '</span>' })()
-    + '<span class="meta-chip role-seg" id="mRole">' + icon('i-bolt')
-    + '<span class="seg' + (role === 'off' ? ' on' : '') + '" data-role="off" title="' + t('meta.roleOffTip') + '">' + t('meta.roleOff') + '</span>'
-    + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="' + t('meta.roleConventionTip') + '">' + t('tree.roleConvention') + '</span>'
-    + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="' + t('meta.roleReferenceTip') + '">' + t('tree.roleReference') + '</span></span>'
+    /* 注入三态（0.4.3⑦ 注入硬关 UI 化）：kind=log 不渲染开关——UI 层不提供日志注入选项（host injectForcedOff 硬闸双保险保留） */
+    + ((n.kind || 'note') === 'log'
+      ? '<span class="meta-chip" title="' + t('meta.logNoInjectTip') + '">' + icon('i-bolt') + t('meta.logNoInject') + '</span>'
+      : '<span class="meta-chip role-seg" id="mRole">' + icon('i-bolt')
+      + '<span class="seg' + (role === 'off' ? ' on' : '') + '" data-role="off" title="' + t('meta.roleOffTip') + '">' + t('meta.roleOff') + '</span>'
+      + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="' + t('meta.roleConventionTip') + '">' + t('tree.roleConvention') + '</span>'
+      + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="' + t('meta.roleReferenceTip') + '">' + t('tree.roleReference') + '</span></span>')
     + (role !== 'off' ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="' + t('meta.scopeTip') + '">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
     + '<span class="meta-chip tgl' + (n.recall !== false ? ' on' : '') + '" id="mRecall" title="' + t('meta.recallTip') + '">' + icon('i-eye') + t('meta.recall') + '</span>'
     + '<span class="meta-chip tgl' + (n.sensitive === true ? ' on' : '') + '" id="mSens" title="' + t('meta.sensTip') + '">' + icon('i-lock') + t('meta.sens') + '</span>'
@@ -3831,7 +3825,8 @@ function renderMeta() {
   $('statusSel').onchange = function () { edNote.status = this.value; triggerSave(); renderMeta(); renderTree() };
   $('mTopicInput').oninput = function () { edNote.topic = this.value; triggerSave() };
   $('mTagsInput').oninput = function () { edNote._tagsStr = this.value; triggerSave() };
-  $('mRole').querySelectorAll('.seg').forEach(function (seg) {
+  var mRoleEl = $('mRole');   /* kind=log 时注入开关不渲染（0.4.3⑦ 硬关 UI 化）——守卫防空指针 */
+  if (mRoleEl) mRoleEl.querySelectorAll('.seg').forEach(function (seg) {
     seg.onclick = function () {
       var r = seg.getAttribute('data-role');
       if (r === role) return;
@@ -4072,9 +4067,9 @@ function doNewNote() {
   if (draftNote) { var t0 = $('edTitle'); if (t0) t0.focus(); return }
   /* 从在编辑笔记切到草稿前，先把富文本在途编辑序列化落回并保存（与 selectNote 同款：防 900ms debounce 打到草稿上） */
   if (edMode === 'rich' && richDirty && edNote) { syncFromRich('新建切换'); doSave(); }
-  var seedFolder = view.type === 'folder' ? view.id : '';
+  var seedFolder = '';   /* 0.4.3⑦：文件视图拆除——原「文件夹视图落当前文件夹」种子随之移除（落未分类/编辑期再归类） */
   var seedTopic = view.type === 'topic' ? view.id : '';
-  var kind0 = filters.kinds.length === 1 ? filters.kinds[0] : 'note';
+  var kind0 = filters.kinds.length === 1 && filters.kinds[0] !== 'sys' ? filters.kinds[0] : 'note';   /* 0.4.3⑩：「机器」档（sys）下新建回退 note——sys 为机器托管 kind，人工新建不预填 */
   /* 二期 kind 模板骨架：筛选中心类型组恰选 1 个时按该 kind 预填（note=空自由格式）——预填不算「有效编辑」，零输入放弃仍不落库 */
   draftNote = {
     id: '', title: '', body: KIND_TEMPLATES[kind0] || '', kind: kind0, status: 'active',
@@ -4565,7 +4560,7 @@ function openSettings() {
     var settings = res.settings || {};
     var models = res.models || [];
     var l = settings.llm || null;
-    var catalogOn = settings.catalogEnabled !== false;
+    var catalogOn = settings.catalogEnabled === true;   /* 0.4.3 验收修复：目录注入缺省关（显式 true 才开启） */
     /* P1 注入增强：时效衰减提醒阈值（天，缺省 90，0=关闭）+ 注入体积预算（约/字符数，缺省 0=不限）+ 仪表（lastInjectChars） */
     var staleDays = typeof settings.staleDays === 'number' ? settings.staleDays : 90;
     /* 文件夹嵌套深度上限（maxFolderDepth，层；根级=第 1 层，缺省 3，0=不限） */
@@ -4961,26 +4956,25 @@ function doMemEnable() {
   }).catch(function (e) { if (memEnableState) { modalErr(t('mem.enableFailed', { msg: e && e.message || e })); memEnableState.pending = false; $('memOk').disabled = false } });
 }
 /* ================= 注入预览（设置卡片「注入预览」入口）：notes-inject-preview 纯复用 host 注入渲染 =================
-   双 tab（约定/目录）+ 三档视角下拉（全局 / 工作区并集 / 单会话；notes-sessions 数据源）+ 底部统计条（总字符/打码/时效标注/预算截断）；
-   文本区只读等宽展示（textContent 赋值，无注入面）。
-   视角值编码：'' = 全局；'ws:<工作区标题>' = 工作区并集视角（RPC workspace 参数）；其余 = 会话短 id（sessionId 参数）。 */
-var injectPreviewState = { tab: 'conv', sid: '', data: null };
+   单段视图（约定段 pre + 目录段可点行）+ 三档视角下拉（全局 / 工作区并集 / 单会话；notes-sessions 数据源）+ 底部统计条（总字符/打码/时效标注/预算截断）；
+   文本区只读（textContent 赋值，无注入面）。
+   视角值编码：'' = 全局；'ws:<工作区标题>' = 工作区并集视角（RPC workspace 参数）；其余 = 会话短 id（sessionId 参数）。
+   0.4.3 验收修复③（notes-043-dir-merge）：目录与资料桶合并为单一目录段——挂载行（- [[id]]，增强态）与普通行（- [id]）同段渲染、
+   点击均可开挂载弹层（modal 不叠 modal——先关预览再开）：已挂载 = 编辑模式（notes-mount-list 预填现有文案）；未挂载 = LLM 草稿模式。 */
+var injectPreviewState = { sid: '', data: null };
 function openInjectPreview() {
-  injectPreviewState = { tab: 'conv', sid: '', data: null };
+  injectPreviewState = { sid: '', data: null };
   openModal(
     '<div class="modal-t">' + icon('i-eye', 13) + ' 注入预览<span class="sub">Agent 实际收到的注入文本 · 只读</span></div>'
-    + '<div class="injprev-bar"><div class="injprev-tabs">'
-    + '<button class="injprev-tab on" id="injprevTabConv">约定</button><button class="injprev-tab" id="injprevTabCat">目录</button></div>'
+    + '<div class="injprev-bar">'
     + '<select class="minput injprev-sess" id="injprevSess" title="预览视角三档：全局 = 所有会话共享（injectTo=[]）；工作区 = 该工作区全部会话的注入并集；会话 = 单会话 injectTo 命中口径"><option value="">全局</option></select></div>'
-    + '<pre class="injprev-text" id="injprevText">加载中…</pre>'
+    + '<div class="injprev-text" id="injprevText">加载中…</div>'
     + '<div class="injprev-stats" id="injprevStats"></div>'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
     + '<div class="modal-acts"><button class="mbtn" id="injprevClose">关闭</button></div>'
   );
   $('modal').classList.add('injprev');
   $('injprevClose').onclick = closeModal;
-  $('injprevTabConv').onclick = function () { injectPreviewState.tab = 'conv'; renderInjectPreview() };
-  $('injprevTabCat').onclick = function () { injectPreviewState.tab = 'cat'; renderInjectPreview() };
   $('injprevSess').onchange = function () { injectPreviewState.sid = this.value; injectPreviewState.data = null; renderInjectPreview(); loadInjectPreview() };
   /* 视角下拉数据源：notes-sessions（与注入范围浮层同源）；三档 = 全局 / 工作区 optgroup（值 ws:<标题>）/ 会话 optgroup（短 id） */
   rpc('notes-sessions', {}).then(function (res) {
@@ -5006,21 +5000,50 @@ function loadInjectPreview() {
 }
 function renderInjectPreview() {
   var st = injectPreviewState, d = st.data;
-  var tc = $('injprevTabConv'), tk = $('injprevTabCat');
-  if (tc) tc.className = 'injprev-tab' + (st.tab === 'conv' ? ' on' : '');
-  if (tk) tk.className = 'injprev-tab' + (st.tab === 'cat' ? ' on' : '');
   var tx = $('injprevText');
   if (tx) {
-    var body = d ? (st.tab === 'cat' ? (d.catalog || '') : (d.conventions || '')) : '加载中…';
-    tx.textContent = body || (st.tab === 'cat' ? '（无目录内容）' : '（无约定内容）');
+    tx.textContent = '';
+    if (!d) { tx.textContent = '加载中…' }
+    else {
+      if (d.conventions) { var pre = document.createElement('pre'); pre.className = 'injprev-conv'; pre.textContent = d.conventions; tx.appendChild(pre) }
+      renderInjPrevDirectory(tx, d.directory || '');   /* 目录段：挂载行与普通行同段可点（补充/编辑 whenToUse） */
+    }
   }
   var s = d && d.stats, se = $('injprevStats');
-  if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.catalogChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') : '';
+  if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.directoryChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') : '';
+}
+/* 目录段文本逐行渲染：挂载行 `- [[n-xxx]]` 与普通行 `- [n-xxx]` 均可点（🔒 行 id 在方括号内不受打码影响），
+   其余行（标题/轻推/计数提示/挂载引导）纯文本；行内容一律 textContent 赋值（无注入面） */
+function renderInjPrevDirectory(tx, text) {
+  if (!String(text || '').replace(/\s+/g, '')) {
+    var em = document.createElement('div');
+    em.className = 'injprev-ln'; em.textContent = '（无目录内容）'; tx.appendChild(em); return;
+  }
+  String(text).split('\n').forEach(function (ln) {
+    var div = document.createElement('div');
+    var m = ln.match(/^- \[\[?(n-[A-Za-z0-9]+)\]\]?/);
+    div.className = 'injprev-ln' + (m ? ' hit' : '');
+    if (m) { div.title = t('inj.mountAdd'); div.onclick = function () { openMountFromPreview(m[1]) } }
+    div.textContent = ln || ' ';
+    tx.appendChild(div);
+  });
+}
+/* 目录行点击 → 挂载弹层：已挂载 = 编辑模式（notes-mount-list 预填现有文案）；未挂载 = LLM 草稿模式（预填由弹层自理） */
+function openMountFromPreview(id) {
+  if (!id) return;
+  injectPreviewState = { sid: '', data: null };
+  closeModal();   /* modal 不叠 modal：先关预览再开挂载弹层（注入管理→挂载弹层同款） */
+  Promise.all([rpc('notes-get', { id: id }), rpc('notes-mount-list', {})]).then(function (rs) {
+    var g = rs[0], ml = rs[1];
+    if (!g || g.error || !g.note) { toast(t('inj.mountFailed', { msg: (g && g.error) || 'not found' })); return }
+    var line = ((ml && ml.lines) || []).filter(function (l) { return l.id === id })[0];
+    openMountModal({ id: id, title: g.note.title || id, existing: line ? line.when : undefined });
+  }).catch(function (e) { toast(t('inj.mountFailed', { msg: e && e.message || e })) });
 }
 /* ================= 注入管理面板（设置卡片「注入管理」入口；notes-inject-manager）=================
-   数据源：notes-list {includeLogs:true} slim（inject/injectRole/injectEver/sensitive/kind/injectTo 齐备，零新 RPC；含日志——日志行禁用态展示）；
+   数据源：notes-list {includeLogs:true} slim（inject/injectRole/injectEver/sensitive/kind/injectTo 齐备，零新 RPC；含日志——日志行静态标注「不参与注入」）；
    三态语义与详情区三态分段控件完全一致：off→notes-update {inject:false}；约定/资料→{inject:true, injectRole}（payload 禁 undefined）；
-   护栏：kind=log 注入硬禁（勾选/档位禁用 + title 提示；host 侧同口径强制 inject=false 并回 injectForcedOff）；
+   护栏：kind=log 注入硬关 UI 化（0.4.3⑦ 用户裁决——行内不渲染注入开关/勾选（UI 层不提供），host injectForcedOff 硬闸双保险保留）；
          sensitive 允许注入但行内提示「注入时自动脱敏」；排序：注入中在前（约定 > 资料），组内 updatedAt 降序；
    顶部统计 chips（约定 N / 资料 M / 未注入 K，点击=过滤）；搜索 250ms 防抖（与列表搜索同口径，本地过滤）。 */
 var injMgrState = null;   /* { list:null=加载中, filter:'all', search:'', q:'', sel:{}, pending:false } */
@@ -5032,12 +5055,13 @@ function injMgrScopeLabel(injectTo) { var arr = (injectTo || []).filter(function
 function openInjectManager(from) {
   /* 单层返回栈（notes-041-settings-back）：from='settings'（设置卡「管理…」入口）时存档来源 + 当前 .modal 滚动位置，关闭后自动回设置卡 */
   var backScroll = from === 'settings' && $('modal') ? $('modal').scrollTop : 0;
-  injMgrState = { list: null, filter: 'all', search: '', q: '', sel: {}, pending: false };
+  injMgrState = { list: null, filter: 'all', search: '', q: '', sel: {}, pending: false, rstats: null, rstatsOpen: false };
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + t('settings.injManager') + '<span class="sub">' + t('inj.titleSub') + '</span></div>'
     + '<div class="injmgr-bar"><div class="injmgr-chips" id="injMgrChips"></div>'
     + '<input class="injmgr-search" id="injMgrSearch" placeholder="' + t('inj.searchPlaceholder') + '"></div>'
     + '<div id="injSchedHost"></div>'
+    + '<div id="injMntStats"></div>'
     + '<div id="injMgrBody"><div class="modal-hint">' + t('common.loading') + '</div></div>'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
     + '<div class="modal-acts"><button class="mbtn" id="injMgrClose">' + t('common.close') + '</button></div>'
@@ -5061,6 +5085,45 @@ function loadInjectManager() {
     injMgrState.list = (res && res.notes) || [];
     renderInjectManager();
   }).catch(function (e) { if (injMgrState) { injMgrState.list = []; renderInjectManager(); modalErr(t('inj.loadFailed', { msg: e && e.message || e })) } });
+  /* 挂载区统计行数据源（0.4.3 验收修复⑥ notes-043-metrics-present）：notes-recall-stats 只读 RPC（账本快照 ledger 键 + 五通道分列），
+     零新通道；静默降级——RPC 失败/无快照（新装库 cron 未跑）→ rstats 保持 null，统计行整区省略不占位 */
+  rpc('notes-recall-stats', {}).then(function (res) {
+    if (!injMgrState) return;
+    if (res && !res.error && res.ok) { injMgrState.rstats = res; renderInjMntStats() }
+  }).catch(function () { if (injMgrState) { injMgrState.rstats = null; renderInjMntStats() } });   /* 失败清陈旧统计行（刷新场景），遥测静默降级不打扰 */
+}
+/* 分通道召回率行（挂载区统计点开全量，卡⑥）：交付通道 `ch used/delivered·pct%`（无交付 → `ch —`）+ get 取用计数——
+   机器通道名原文输出（遥测通道是机器标识符，不进 i18n；口径同 host _recallFmtChannels） */
+function injMgrChanLine(channels) {
+  var parts = [];
+  ['inject', 'mount', 'search', 'catalog'].forEach(function (c) {
+    var st = channels && channels[c];
+    if (!st || !st.delivered) { parts.push(c + ' —'); return }
+    parts.push(c + ' ' + st.used + '/' + st.delivered + '·' + Math.round((st.rate || 0) * 100) + '%');
+  });
+  var g = channels && channels.get;
+  parts.push('get ×' + (g ? g.uses : 0));
+  return parts.join(' ｜ ');
+}
+/* 挂载区统计行渲染（卡⑥）：账本快照紧凑行（挂载 N｜本周引用 Top3｜零引用 M）+ 点开才见全量（分通道召回率 + 快照明细）；
+   无快照 → 整区省略（静默降级；用途分级红线：本行仅呈现，清理裁决走 notes-recall-stats 全量/人工） */
+function renderInjMntStats() {
+  var host = $('injMntStats'); if (!host || !injMgrState) return;
+  var st = injMgrState.rstats;
+  if (!st || !st.ledger) { host.innerHTML = ''; return }
+  var lg = st.ledger;
+  var top3 = (lg.top || []).slice(0, 3).map(function (it) { return it.id + '×' + it.count }).join('、') || '—';
+  var h = '<div class="injmgr-mntstats-row" id="injMntStatsRow" title="' + esc(t('inj.mntStatsTip')) + '">'
+    + icon('i-eye', 11) + ' ' + esc(t('inj.mntStats', { m: lg.mountTotal || 0, top: top3, z: lg.zeroRefCount || 0 })) + '</div>';
+  if (injMgrState.rstatsOpen) {
+    h += '<div class="injmgr-mntstats-full">'
+      + '<div>' + esc(injMgrChanLine(st.channels)) + '</div>'
+      + '<div>Top5: ' + esc((lg.top || []).map(function (it) { return it.id + '×' + it.count }).join('、') || '—')
+      + ' · zero: ' + esc((lg.zeroRef || []).join('、') || '—')
+      + ' · @ ' + esc(fmtDT(lg.at)) + (st.noteId ? ' · mirror: ' + esc(st.noteId) : '') + '</div></div>';
+  }
+  host.innerHTML = h;
+  $('injMntStatsRow').onclick = function () { if (injMgrState) { injMgrState.rstatsOpen = !injMgrState.rstatsOpen; renderInjMntStats() } };
 }
 /* 当前过滤视图（排序：注入中在前（约定 > 资料 > 未注入），组内 updatedAt 降序；三态过滤 + 搜索词本地过滤） */
 function injMgrShownList() {
@@ -5083,6 +5146,7 @@ function renderInjectManager() {
   }).join('');
   chips.querySelectorAll('.injmgr-chip').forEach(function (el) { el.onclick = function () { st.filter = el.getAttribute('data-f'); renderInjectManager() } });
   renderInjSched();   /* 调度任务区（notes-034-sched-ui）：与注入总览同面板同数据源 */
+  renderInjMntStats();   /* 挂载区统计行（0.4.3 验收修复⑥）：notes-recall-stats 账本快照，无快照整区省略 */
   if (!st.list) return;
   var shown = injMgrShownList();
   if (!shown.length) { body.innerHTML = '<div class="modal-hint">' + (list.length ? t('inj.noMatch') : t('inj.emptyLib')) + '</div>'; return }
@@ -5098,19 +5162,23 @@ function renderInjectManager() {
     + '<div class="injmgr-list">'
     + shown.map(function (n) {
         var role = injMgrRole(n), isLog = (n.kind || 'note') === 'log';
-        /* 行内三态 segmented（语义与详情区三态分段控件完全一致）；log 行约定/资料档禁用（隐身硬禁 + title 提示） */
+        /* 行内三态 segmented（语义与详情区三态分段控件完全一致）；
+           注入硬关 UI 化（0.4.3⑦）：log 行不渲染勾选框与注入开关——静态标注「日志不参与注入」（UI 层不提供，非后台纠正；host 硬闸双保险保留） */
         var seg = function (r, label, tip) {
-          var dis = isLog && r !== 'off';
-          return '<span class="injmgr-opt' + (role === r ? ' on' : '') + (dis ? ' dis' : '') + '" data-role="' + r + '" data-id="' + esc(n.id) + '" title="' + (dis ? t('inj.logSegTip') : tip) + '">' + label + '</span>'
+          return '<span class="injmgr-opt' + (role === r ? ' on' : '') + '" data-role="' + r + '" data-id="' + esc(n.id) + '" title="' + tip + '">' + label + '</span>'
         };
         return '<div class="injmgr-row">'
-          + '<span' + (isLog ? ' title="' + t('inj.logRowTip') + '"' : '') + '><input type="checkbox" class="trash-check injmgr-check" data-id="' + esc(n.id) + '"' + (st.sel[n.id] ? ' checked' : '') + (isLog || st.pending ? ' disabled' : '') + '></span>'
+          + (isLog
+            ? '<span class="injmgr-checkslot" title="' + t('inj.logNoInjectTip') + '"></span>'
+            : '<span><input type="checkbox" class="trash-check injmgr-check" data-id="' + esc(n.id) + '"' + (st.sel[n.id] ? ' checked' : '') + (st.pending ? ' disabled' : '') + '></span>')
           + '<span class="dot" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>'
           + '<span class="injmgr-ti" title="' + esc(n.title || t('tree.untitled')) + '">' + esc(n.title || t('tree.untitled')) + '</span>'
           + (n.sensitive === true ? '<span class="injmgr-sens" title="' + t('inj.sensTip') + '">' + icon('i-lock', 9) + t('inj.sensBadge') + '</span>' : '')
           + (n.injectEver === true && !n.inject ? '<span class="injmgr-ever" title="' + t('meta.injectEverTip') + '">' + icon('i-clock', 9) + t('meta.injectEver') + '</span>' : '')
           + '<span class="injmgr-scope">' + esc(injMgrScopeLabel(n.injectTo)) + '</span>'
-          + '<span class="injmgr-seg">' + icon('i-bolt', 10) + seg('off', t('meta.roleOff'), t('meta.roleOffTip')) + seg('convention', t('tree.roleConvention'), t('meta.roleConventionTip')) + seg('reference', t('tree.roleReference'), t('meta.roleReferenceTip')) + '</span>'
+          + (isLog
+            ? '<span class="injmgr-lognote" title="' + t('inj.logNoInjectTip') + '">' + icon('i-bolt', 10) + t('inj.logNoInject') + '</span>'
+            : '<span class="injmgr-seg">' + icon('i-bolt', 10) + seg('off', t('meta.roleOff'), t('meta.roleOffTip')) + seg('convention', t('tree.roleConvention'), t('meta.roleConventionTip')) + seg('reference', t('tree.roleReference'), t('meta.roleReferenceTip')) + '</span>')
           + '</div>'
       }).join('') + '</div>';
   $('injMgrAll').onchange = toggleInjMgrAll;
@@ -5237,25 +5305,47 @@ function toggleInjMgrAll() {
   if (!all) selectable.forEach(function (n) { injMgrState.sel[n.id] = true });
   renderInjectManager();
 }
-/* ===== 挂载弹层（0.4.3⑤ notes-043-index）：给资料开注入 → 手写 whenToUse（textarea 预填标题）→ 确认落注入索引 §1 行 =====
-   host 侧开注入已自动落缺省行（whenToUse=标题），本弹层 = 换文案通道：跳过 = 保留缺省行；modal 不叠 modal（先关注入管理面板，清返回栈） */
+/* ===== 挂载弹层（0.4.3⑤ notes-043-index；0.4.3 验收修复 notes-043-preview-when-edit：LLM 草稿预填 + 编辑模式）=====
+   两种模式：未挂载 = LLM 草稿模式（打开即「生成中…」占位 → notes-when-suggest 成功填草稿，失败/8s 超时静默回退预填标题；
+     用户始终可编辑——touched 后到达的草稿不覆盖）；已挂载（预览目录行点击带 existing）= 编辑模式（预填现有文案，不调 LLM）。
+   确认统一 notes-mount（幂等换文案）；跳过 = 保留现状行；modal 不叠 modal（调用方先关来源 modal，清返回栈） */
 var mountState = null;
 function openMountModal(n) {
   if (!n) return;
   injMgrState = null; modalBackTo = null;
-  mountState = { id: n.id, title: n.title || n.id, when: n.title || '', pending: false };
+  var edit = typeof n.existing === 'string';   /* 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM） */
+  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false };
   openModal(
-    '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + t('inj.mountTitle') + '<span class="sub">' + t('inj.mountSub') + '</span></div>'
+    '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + (edit ? t('inj.mountEdit') : t('inj.mountTitle')) + '<span class="sub">' + t('inj.mountSub') + '</span></div>'
     + '<div class="inj-mount-body"><label class="inj-mount-label">' + t('inj.mountLabel') + '</label>'
-    + '<textarea class="inj-mount-when" id="injMountWhen" rows="3" placeholder="' + esc(t('inj.mountPlaceholder')) + '">' + esc(mountState.when) + '</textarea></div>'
+    + '<textarea class="inj-mount-when" id="injMountWhen" rows="3" placeholder="' + esc(edit ? t('inj.mountPlaceholder') : t('inj.mountGen')) + '">' + esc(mountState.when) + '</textarea></div>'
     + '<div class="modal-acts"><button class="mbtn" id="injMountSkip">' + t('inj.mountSkip') + '</button>'
     + '<button class="mbtn primary" id="injMountSave">' + t('inj.mountSave') + '</button></div>'
   );
+  $('injMountWhen').oninput = function () { if (mountState) mountState.touched = true };
+  if (!edit) {
+    /* LLM 草稿预填：成功填草稿；失败/超时回退预填标题（现状行为）；弹层已关/换目标则丢弃迟到响应；用户已动手不覆盖 */
+    rpc('notes-when-suggest', { id: n.id }).then(function (res) {
+      if (!mountState || mountState.id !== n.id) return;
+      mountState.generating = false;
+      var draft = res && !res.error && typeof res.suggestion === 'string' && res.suggestion ? res.suggestion : mountState.title;
+      var ta = $('injMountWhen');
+      if (!mountState.touched) { mountState.when = draft; if (ta) ta.value = draft }
+      if (ta) ta.placeholder = t('inj.mountPlaceholder');
+    }, function () {
+      if (!mountState || mountState.id !== n.id) return;
+      mountState.generating = false;
+      var ta = $('injMountWhen');
+      if (!mountState.touched) { mountState.when = mountState.title; if (ta) ta.value = mountState.title }
+      if (ta) ta.placeholder = t('inj.mountPlaceholder');
+    });
+  }
   $('injMountSkip').onclick = function () { mountState = null; closeModal() };
   $('injMountSave').onclick = function () {
     if (!mountState || mountState.pending) return;
     mountState.pending = true; mountState.when = $('injMountWhen').value;
-    rpc('notes-mount', { id: mountState.id, whenToUse: mountState.when }).then(function (res) {
+    /* 空值兜底（0.4.3⑦ 顺带微修）：「正在生成…」窗口内点确认时 when 可能仍为空串——落空回退标题，whenToUse 行不落空 */
+    rpc('notes-mount', { id: mountState.id, whenToUse: mountState.when || mountState.title }).then(function (res) {
       var done = mountState; mountState = null;
       if (res && res.error) { toast(t('inj.mountFailed', { msg: res.error })) }
       else { toast(t('inj.mountSaved', { title: done.title })); closeModal() }
@@ -5265,7 +5355,7 @@ function openMountModal(n) {
 /* 单行直改：点 segmented 档位即切换（同详情区通道 notes-update {inject, injectRole}），toast 反馈 */
 function doInjMgrSet(n, role) {
   if (!n || !injMgrState || injMgrState.pending) return;
-  if ((n.kind || 'note') === 'log' && role !== 'off') return;   /* 日志隐身硬禁（按钮已禁用，双保险） */
+  if ((n.kind || 'note') === 'log' && role !== 'off') return;   /* 日志注入硬关（UI 已不渲染开关，函数拦截为双保险） */
   if (injMgrRole(n) === role) return;
   var upd = { id: n.id, inject: role !== 'off' };
   if (upd.inject) upd.injectRole = role;   /* 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘） */
@@ -5997,21 +6087,25 @@ $('btnSort').addEventListener('click', function (ev) { ev.stopPropagation(); sor
 /* popover：勾选即时生效（组内 OR / 跨组 AND；条件变化持久化 + 有搜索词时重搜） */
 $('fpop').addEventListener('change', function (ev) {
   var cb = ev.target; if (!cb.matches || !cb.matches('input[type=checkbox]')) return;
+  var sigBefore = listFetchSig();   /* ⑩ 取数口径签名（恰选 1 个 kind）：勾选变化影响 host 取数时静默重拉 */
   if (cb.dataset.ft) filters[cb.dataset.ft] = cb.checked;
   else if (cb.dataset.fk) { var i = filters.kinds.indexOf(cb.dataset.fk); if (cb.checked && i < 0) filters.kinds.push(cb.dataset.fk); if (!cb.checked && i >= 0) filters.kinds.splice(i, 1) }
-  saveFilters(); maybeReloadForLogs(); render(); reSearch();
+  saveFilters(); render(); reSearch();   /* 0.4.3⑦：日志同权——勾选「日志」不再触发 includeLogs 重拉（maybeReloadForLogs 已拆） */
+  if (listFetchSig() !== sigBefore) loadNotes(true);   /* ⑩「机器」档等单 kind 口径切换 → host kind 通道重取（sys 全库 ↔ 缺省降噪） */
 });
 $('fpop').addEventListener('click', function (ev) {
-  if (ev.target.closest('#popClear')) { clearFilters(); maybeReloadForLogs(); render(); renderFilterBar(); reSearch(); toast(t('filter.clearedToast')) }
+  if (ev.target.closest('#popClear')) { var sigBefore = listFetchSig(); clearFilters(); render(); renderFilterBar(); reSearch(); if (listFetchSig() !== sigBefore) loadNotes(true); toast(t('filter.clearedToast')) }
   else if (ev.target.closest('#popDone')) { filterOpen = false; renderFilterBar() }
 });
 /* 激活条件 chip：× 单条移除（与 popover 勾选双向同步） */
 $('fchips').addEventListener('click', function (ev) {
   var x = ev.target.closest('.x'); if (!x) return;
   var c = x.parentElement;
+  var sigBefore = listFetchSig();   /* ⑩ 同上：chip 移除单 kind 口径变化 → 静默重拉 */
   if (c.dataset.ft) filters[c.dataset.ft] = false;
   else if (c.dataset.fk) { var i = filters.kinds.indexOf(c.dataset.fk); if (i >= 0) filters.kinds.splice(i, 1) }
-  saveFilters(); maybeReloadForLogs(); render(); reSearch();
+  saveFilters(); render(); reSearch();
+  if (listFetchSig() !== sigBefore) loadNotes(true);
 });
 /* 排序菜单：单选，选择即关闭（与筛选条件正交，互不重置） */
 $('fsortMenu').addEventListener('click', function (ev) {
@@ -6120,9 +6214,8 @@ document.addEventListener('selectionchange', function () {
   var sel = window.getSelection();
   if (sel && sel.rangeCount && rich.contains(sel.anchorNode)) { keepSel(); updateToolbarState(); }
 });
-/* R-6 UI 接线：render 汇聚全部 view 变更点（树行尾过滤钮/文件夹右键菜单/面包屑/主题行/视图清除），统一先做日志口径翻转检测——
-   进文件夹视图静默重拉（数据源含 log），切回默认视图再翻回（恢复隐身）；幂等比较，非翻转零请求零副作用 */
-function render() { maybeReloadForLogs(); renderTree(); if (edNote) renderMeta() }
+/* 0.4.3⑦：日志同权 + 文件视图拆除——render 不再做日志口径翻转检测（maybeReloadForLogs 已随 data.js 一并拆除），纯渲染汇聚 */
+function render() { renderTree(); if (edNote) renderMeta() }
 loadNotes();
 </script>
 </body>

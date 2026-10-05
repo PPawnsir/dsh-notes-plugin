@@ -23,18 +23,18 @@
     // RPC 层保持 handler 不变（client panel 仍在用）；工具只面向 Agent，瘦身 schema。
     regTool({
       name: 'note_search',
-      description: 'Search local notes by free-text query (matches title/body/topic/tags), with optional tag, topic, kind, folder, sensitive, and inject filters. When a query is given, each result carries a matches array telling which fields matched (title/tags/body — relevance: title > tags > body). Returns slim notes (no body) for fast triage — call note_get for the full body of a specific id. Default results EXCLUDE work logs (kind=log, stealth by design) — pass kind=log or includeLogs:true to recall them; an explicit folder filter also recalls them (R-6: stealth covers only implicit surfaces — default list / default search / catalog / injection). Tip: when planning a task, picking an approach, or making decisions, consider searching this notes library first for related decisions, todos, and context recorded in earlier sessions — it may already contain the conclusions you need.',
+      description: 'Search local notes by free-text query (matches title/body/topic/tags), with optional tag, topic, kind, folder, sensitive, and inject filters. When a query is given, each result carries a matches array telling which fields matched (title/tags/body — relevance: title > tags > body). Returns slim notes (no body) for fast triage — call note_get for the full body of a specific id. Work logs (kind=log) are first-class: default results INCLUDE them (visible/searchable/editable like any note) — pass kind=log to see only work logs; only injection is hard-disabled for logs and catalog inclusion stays explicit (recall:true). Machine-managed sys notes (kind=sys: inject index, memory archives「记忆档案」, schedule execution logs, telemetry mirror) are excluded from default unfiltered results — pass kind=sys (or a tag/folder filter) to see them. Tip: when planning a task, picking an approach, or making decisions, consider searching this notes library first for related decisions, todos, and context recorded in earlier sessions — it may already contain the conclusions you need.',
       parameters: {
         type: 'object',
         properties: {
           query: { type: 'string', description: 'Free-text query against title, body, topic, and tags. Omit to list all (optionally filtered by tag/topic/kind/folder/sensitive/inject).' },
           tag: { type: 'string', description: 'Optional tag filter (exact match)' },
           topic: { type: 'string', description: 'Optional topic filter (exact match)' },
-          kind: { type: 'string', enum: KINDS, description: 'Optional kind filter: note/decision/todo/link/quote/log. Pass log to recall work logs (excluded by default).' },
+          kind: { type: 'string', enum: KINDS, description: 'Optional kind filter: note/decision/todo/link/quote/log/sys. Pass log to see only work logs; pass sys to see machine-managed notes (excluded from default unfiltered results).' },
           folder: { type: 'string', description: 'Optional folder filter: folder id or exact folder name; empty string = unfiled notes (未分类). Non-empty filter is a recursive subtree match — it returns notes in that folder AND all its descendant folders (folders nest via parent; maxFolderDepth setting, default 3).' },
           sensitive: { type: 'boolean', description: 'Optional sensitive filter: true = only sensitive (masked) notes, false = exclude sensitive notes. Omit = no filter.' },
           inject: { type: 'boolean', description: 'Optional inject filter: true = only notes injected into the system prompt, false = exclude injected notes. Omit = no filter.' },
-          includeLogs: { type: 'boolean', description: 'Include work logs (kind=log) in results; default false (logs are stealth). kind=log implies inclusion; so does an explicit folder filter (R-6).' },
+          includeLogs: { type: 'boolean', description: 'Backward-compatible no-op: work logs (kind=log) are first-class and always included since 0.4.3; the parameter is still accepted but no longer changes results.' },
           limit: { type: 'number', description: 'Optional max results (default 50)' }
         }
       },
@@ -67,10 +67,11 @@
       async execute(args) {
         try {
           const n = await _get(args.id)
-          // 使用遥测（P2）：命中计数 +1（内存即时生效，60s 防抖批量落盘，见 use-telemetry 块）
+          // 使用遥测（P2 → 0.4.3 验收修复⑧收编 facet）：命中计数 +1（内存视图即时生效；facet 复用遥测 2s 防抖落 telemetry.json，
+          //   不再重写笔记 .md——热路径写放大消除，见 use-telemetry 块）
           const uc = bumpUseCount(n.id)
           // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：note_get 工具取用信号（与 notes-get RPC 同通道日聚合）；
-          // 序位钉住：必须在 bumpUseCount 之后（useCount 60s 防抖定时器先于本 3s 聚合防抖调度——节 30 假定时器捕获序断言看守）
+          //   卡⑧起与 bumpUseCount 共用遥测 2s 防抖单定时器（facets.use 总计 + byDay.get 日明细分记账，同盘同 flush）
           _recallHit('get', [n.id])
           if (uc !== null) n.useCount = uc
           return { note: n }
@@ -82,14 +83,14 @@
     regTool({
       name: 'note_manage',
       description: 'Single tool for create/list/update/delete/restore/archive. Pick an action and supply its required fields. The Agent should prefer this for any non-search CRUD: one tool means one decision point and one schema to learn.\n\n' +
-        'Fields kind (what it is) and status (its lifecycle) are orthogonal: kind ∈ note/decision/todo/link/quote/log (default note); status ∈ active/pinned/resolved/superseded (default active). kind=log is a work log (工作日志): stealth by design — inject is force-disabled (hard gate, true is corrected with injectForcedOff in the response), recall defaults false, and logs are excluded from default list/search (pass kind=log or includeLogs:true to recall); put work logs in folder「工作日志」.\n' +
+        'Fields kind (what it is) and status (its lifecycle) are orthogonal: kind ∈ note/decision/todo/link/quote/log (default note); status ∈ active/pinned/resolved/superseded (default active). kind=log is a work log (工作日志): first-class in list/search/edit (visible by default) — inject is force-disabled (hard gate, true is corrected with injectForcedOff in the response) and recall defaults false (catalog exclusion; explicit recall:true admits a log to the catalog); put work logs in folder「工作日志」.\n' +
         'inject (boolean) controls whether the note is injected into the system prompt as context — an explicit field, NOT a tag. injectRole ("convention"|"reference", default "convention") picks the injection bucket: convention = user rules to follow; reference = background facts to consult only when relevant to the current task. Rule of thumb — infer from kind: decision/todo → convention, note/link/quote → reference. injectTo (string[]) is the injection scope, a multi-select list: [] or omitted=all sessions (default), or session short-ids like ["99f2b674","7f8b49e6"] to restrict the scope.\n\n' +
         'recall (boolean) controls whether the note appears in the notes catalog — a one-line-per-note index injected into the system prompt (right after conventions) so you know what the library holds without searching; default true. Set false to hide a note from the catalog (it stays searchable via note_search). Orthogonal to inject; notes with status resolved/superseded never appear in the catalog.\n\n' +
         'sensitive (boolean) marks the note as containing secrets (passwords/tokens/keys); default false. When true, injected text (conventions/catalog) masks secret-looking lines — keys and structure are kept, only values are hidden as ******（敏感，note_get <id> 获取）— so agents must call note_get for the original. Create/quick responses may return sensitiveSuggested: true when the body matches secret patterns; quick-capture notes are auto-flagged sensitive instead.\n\n' +
         'folder (string) assigns a note to a virtual folder: pass a folder id or an exact folder name — a name is normalized to its folder id on write, and an unknown id/name is rejected with an error (never silently filed as unfiled); "" or omitted = unfiled (未分类). Folders (name/order/parent) are managed via the notes-folders RPC (list/create/rename/delete/reorder): folders NEST via a parent field (maxFolderDepth setting caps the depth, default 3, 0 = unlimited), any folder filter is a recursive subtree match (a folder includes notes in all its descendant folders), and deleting a folder that still has child folders or notes requires explicit cascade:true — the folder structure is removed for good while its notes are soft-deleted into the trash and can be restored (restored notes fall back to unfiled when their folder is gone).\n\n' +
         'Actions:\n' +
         '- create: { title, body, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, folder?, sessionId?, cwd?, workspace?, logDate? }\n' +
-        '- list: { tag?, topic?, kind?, folder?, includeLogs? } (no id/title/body needed; default excludes kind=log work logs — pass kind=log or includeLogs:true; an explicit folder filter implies inclusion — R-6)\n' +
+        '- list: { tag?, topic?, kind?, folder?, includeLogs? } (no id/title/body needed; work logs kind=log are first-class and included by default — includeLogs is a kept no-op for backward compatibility; machine notes kind=sys are excluded from the default unfiltered list — pass kind:\'sys\', tag, or folder to see them)\n' +
         '- update: { id, title?, body?, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, confirmClearBody? } (setting body to "" while the stored body is non-empty is REJECTED unless confirmClearBody:true — R-1 data-loss guard against silent empty-body overwrite; setting status to "resolved" auto-closes the dispatch loop: all open entries in the note\'s dispatches are marked dispatchStatus=done with doneAt — use this to report completion of a dispatched todo)\n' +
         '- move: { id, folder } (move note into a virtual folder — folders nest, so any folder id at any depth is valid; folder = folder id or exact folder name, "" = move out to unfiled)\n' +
         '- delete: { id } (soft delete; restorable via restore)\n' +
@@ -108,7 +109,7 @@
           confirmClearBody: { type: 'boolean', description: 'Explicit confirmation (update only): required when setting body to "" while the stored body is non-empty — R-1 data-loss guard rejects silent empty-body overwrite without it.' },
           topic: { type: 'string', description: 'Topic (create/update; defaults to 未分类)' },
           tags: { type: 'array', items: { type: 'string' }, description: 'Tags (create/update)' },
-          kind: { type: 'string', enum: KINDS, description: 'Kind (create/update): note/decision/todo/link/quote/log; default note. log = work log (隐身：inject 强制关闭，recall 缺省 false，默认列表/搜索不含)' },
+          kind: { type: 'string', enum: KINDS, description: 'Kind (create/update): note/decision/todo/link/quote/log/sys; default note. log = work log（同权：默认列表/搜索可见可编辑；inject 强制关闭，recall 缺省 false 目录缺省不含）; sys = 机器托管笔记（缺省列表/检索降噪排除，显式 kind=sys/tag/folder 过滤可见——一般由系统内部创建，手写请改用其他 kind）' },
           status: { type: 'string', enum: STATUSES, description: 'Status (create/update): active/pinned/resolved/superseded; default active' },
           inject: { type: 'boolean', description: 'Inject into system prompt as context (create/update); default false. Setting inject=true permanently marks injectEver=true (sticky "ever injected" flag — later turning inject off never unsets it; injectEver is read-only and appears in list/get output).' },
           injectRole: { type: 'string', enum: ['convention', 'reference'], description: 'Injection role: convention=rules to follow | reference=background facts to consult as needed; default convention' },
@@ -127,7 +128,7 @@
           instruction: { type: 'string', description: 'Dispatch: your concrete instruction appended to the todo context (dispatch, optional)' },
           // list 字段
           tag: { type: 'string', description: 'Tag filter (list only)' },
-          includeLogs: { type: 'boolean', description: 'Include work logs kind=log in list results (list only); default false. kind=log implies inclusion; an explicit folder filter implies inclusion too (R-6).' },
+          includeLogs: { type: 'boolean', description: 'Backward-compatible no-op (list only): work logs kind=log are first-class and included by default since 0.4.3.' },
           // 高级（通常自动填充）
           sessionId: { type: 'string', description: 'Session id (advanced; usually auto-filled)' },
           cwd: { type: 'string', description: 'Working dir (advanced; usually auto-filled)' },
@@ -161,7 +162,7 @@
             // 敏感模式自动识别建议透传（create 不强制落 sensitive，由调用方决策）
             if (r.sensitiveSuggested) { out.sensitiveSuggested = true; out.message += '（检测到疑似敏感信息，建议 sensitive: true 开启注入脱敏）' }
             // 日志隐身硬闸命中告知（kind=log 强制 inject=false、recall 缺省 false）
-            if (r.injectForcedOff) { out.injectForcedOff = true; out.message += '（kind=log 日志默认隐身：inject 已强制关闭，日志不进系统提示/目录/默认列表与搜索）' }
+            if (r.injectForcedOff) { out.injectForcedOff = true; out.message += '（kind=log 工作日志不参与注入：inject 已强制关闭——日志同权可见/可搜/可编辑，目录需显式 recall:true）' }
             return out
           }
           if (action === 'list') {
@@ -191,7 +192,7 @@
             const r = await _update(args.id, args.title, args.body, args.tags, args.topic, args.kind, args.status, args.inject, args.injectTo, undefined, args.recall, args.injectRole, args.sensitive, { confirmClearBody: args.confirmClearBody === true, contractType: args.contractType, schedule: args.schedule })
             // P3 派发闭环：resolved 联动回执了派发时在消息里明示（agent 可感知闭环已发生）
             // 工作记忆 v0：kind=log 隐身硬闸命中时告知（inject 被强制关闭）
-            return { action: 'update', id: args.id, kind: r.kind, status: r.status, dispatchClosed: r.dispatchClosed || 0, injectForcedOff: r.injectForcedOff === true, message: 'Note updated' + (r.dispatchClosed ? '；已自动回执 ' + r.dispatchClosed + ' 条派发（dispatchStatus→done）' : '') + (r.injectForcedOff ? '（kind=log 日志默认隐身：inject 已强制关闭）' : '') }
+            return { action: 'update', id: args.id, kind: r.kind, status: r.status, dispatchClosed: r.dispatchClosed || 0, injectForcedOff: r.injectForcedOff === true, message: 'Note updated' + (r.dispatchClosed ? '；已自动回执 ' + r.dispatchClosed + ' 条派发（dispatchStatus→done）' : '') + (r.injectForcedOff ? '（kind=log 工作日志不参与注入：inject 已强制关闭）' : '') }
           }
           if (action === 'delete') {
             if (!args.id) return { error: 'note_manage.delete 需要 id' }
@@ -318,6 +319,9 @@
     // 启动时按来源会话推导补填一次（只补空值）。注意：不用 _list()（它 await migrationDone，会与本补全死锁），
     // 直接走底层遍历；也不挂进 migrationDone 链——_list 只需等 legacy 迁移，补全异步自跑即可。
     const legacyDone = migrationDone
+    // 0.4.3 验收修复⑤（notes-043-metrics-storage）：遥测一次性迁移 + 存量索引 §2 摘除挂在 legacy 迁移之后
+    //   （旧「召回遥测（自动）」笔记可能随开发版目录迁移而来——等迁移落定再解析回填 telemetry.json，幂等，内部全吞异常）
+    ;(async function () { try { await legacyDone } catch (e) {} try { await _recallMaybeMigrate() } catch (e) {} try { await _ledgerStripS2() } catch (e) {} })()
     async function fixLegacyWorkspaces() {
       try { await legacyDone } catch (e) {}
       try {
@@ -347,9 +351,10 @@
 
     ctx.effect(() => () => {
       for (const d of disposers) { try { d() } catch (e) {} }
-      flushUseCounts()   // 卸载 flush：防抖窗口内未落盘的 useCount 立即写盘（fire-and-forget，不阻塞卸载）
       flushUsage()       // 卸载 flush：usage.json 防抖窗口内未落盘的 token 计数立即写盘（同上 fire-and-forget）
-      _recallFlushAgg()  // 卸载 flush：召回遥测防抖窗口内 pending 日聚合并入落盘（0.4.3+ 卡⑫；同上 fire-and-forget）
+      // 卸载 flush：召回遥测 + useCount facet（0.4.3 验收修复⑧收编，facets.use 唯一事实源）防抖窗口内内存增量同盘落 telemetry.json
+      //   （0.4.3+ 卡⑫ → 卡⑤机器存储层；旧 flushUseCounts 逐笔记 persistNote 重写 .md 通道已拆除；同上 fire-and-forget）
+      _recallFlushAgg()
     })
     // 发布版不再写 .last-host-load 开发心跳（静态包 import 即就绪，无需引导壳自检）
     console.log('notes plugin: host ready (static pkg), notes dir =', NOTES_ROOT, ', llm =', !!llm, ', adm =', !!adm, ', rpc =', RPC_PATH, ', app =', APP_PAGE_ROUTE, ', asset =', ASSET_ROUTE)

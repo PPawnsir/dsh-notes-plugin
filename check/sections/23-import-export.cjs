@@ -74,8 +74,9 @@ module.exports = {
     effect: () => {},
   }
   new Function('harness', 'pluginDir', hostSrc)(harnessMock6, DIR).apply(ctx6)
-  await t('开发版注册 46 个 RPC（含 notes-export / notes-export-single / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge + P3 单文件导出 + notes-inject-preview 注入预览 + notes-suggest 整理建议 + notes-usage-get 用量统计 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats）', () => {
-    assert.strictEqual(Object.keys(handlers6).length, 46, '实得 ' + Object.keys(handlers6).length)
+  await t('开发版注册 47 个 RPC（含 notes-export / notes-export-single / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge + P3 单文件导出 + notes-inject-preview 注入预览 + notes-suggest 整理建议 + notes-usage-get 用量统计 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest）', () => {
+    assert.strictEqual(Object.keys(handlers6).length, 47, '实得 ' + Object.keys(handlers6).length)
+    assert(typeof handlers6['notes-when-suggest'] === 'function', 'notes-when-suggest handler 存在（0.4.3 验收修复 notes-043-preview-when-edit）')
     assert(typeof handlers6['notes-recall-stats'] === 'function', 'notes-recall-stats handler 存在（0.4.3+ 卡⑫ 统一召回遥测，notes-043-inject-receipt）')
     assert(typeof handlers6['notes-ledger-refresh'] === 'function', 'notes-ledger-refresh handler 存在（0.4.3⑥ 效用账本，notes-043-ledger）')
     assert(typeof handlers6['notes-graph'] === 'function', 'notes-graph handler 存在（0.4.3 内核① 图查询，notes-043-graph）')
@@ -271,6 +272,46 @@ module.exports = {
     // 备份连带：导入前的库内 assets（3 个）进入 notes-backup-<ts>\assets\
     const bakAssets = Array.from(store6.keys()).filter(k => k.indexOf(r.backupDir + '\\assets\\') === 0)
     assert.strictEqual(bakAssets.length, 3, '备份含库内 3 个资产（实得 ' + bakAssets.length + '）')
+  })
+
+  // --- 0.4.3 验收修复⑤（notes-043-metrics-storage）：遥测 sidecar telemetry.json 导出/备份/导入合并 ---
+  await t('遥测 sidecar：导出/备份连带 telemetry.json + 导入计数并入冲突取大 + 二次导入幂等零变化', async () => {
+    await handlers6['notes-recall-stats']({})   // 读前落账：防抖窗口内内存增量 flush 到盘（本节前 notes-get 已有 get 事件）
+    const localRaw = store6.get(NOTES_DIR + '\\telemetry.json')
+    assert(localRaw, '前置：本地 telemetry.json 已存在（get 事件落账）')
+    const local = JSON.parse(localRaw)
+    assert(local.version === 1 && local.receipts && local.byDay, '本地遥测结构 {version,receipts,byDay} 齐备')
+    // ⑧导出连带：快照含 telemetry.json 且逐字节一致 + 返回 telemetry=true
+    const ex = await handlers6['notes-export']({ dir: 'D:\\exp-telem' })
+    assert(!ex.error && ex.telemetry === true, '导出返回 telemetry=true（实得 ' + JSON.stringify(ex).slice(0, 160) + '）')
+    assert.strictEqual(store6.get(ex.target + '\\telemetry.json'), store6.get(NOTES_DIR + '\\telemetry.json'), '快照 telemetry.json 与库内逐字节一致')
+    // 冲突取大：快照内某 get 日桶计数调到本地 +5（导入数据并入，同键取大）
+    const snap = JSON.parse(store6.get(ex.target + '\\telemetry.json'))
+    const dayKey = Object.keys(snap.byDay.get || {})[0]
+    assert(dayKey, '前置：快照含 get 日聚合桶')
+    const idKey = Object.keys(snap.byDay.get[dayKey])[0]
+    const baseCnt = local.byDay.get[dayKey][idKey]
+    snap.byDay.get[dayKey][idKey] = baseCnt + 5
+    snap.receipts.mount.push({ ts: '2026-10-01T00:00:00.000Z', ids: ['n-ext-telemetry'], session: 'ext' })   // 外部新回执（并集并入）
+    // 卡⑧（notes-043-stats-unify）：facets.use 导入并入 fixture——外部库带入更高总计数（同键取大）
+    if (!snap.facets || typeof snap.facets !== 'object') snap.facets = {}
+    if (!snap.facets.use || typeof snap.facets.use !== 'object') snap.facets.use = {}
+    snap.facets.use[idKey] = baseCnt + 9
+    store6.set(ex.target + '\\telemetry.json', JSON.stringify(snap))
+    const im = await handlers6['notes-import']({ dir: ex.target })
+    assert(!im.error && im.telemetryMerged === true, '导入合并遥测（telemetryMerged=true；实得 ' + JSON.stringify(im).slice(0, 160) + '）')
+    assert(store6.has(im.backupDir + '\\telemetry.json'), '⑧导入前全量备份连带 telemetry.json')
+    const merged = JSON.parse(store6.get(NOTES_DIR + '\\telemetry.json'))
+    assert.strictEqual(merged.byDay.get[dayKey][idKey], baseCnt + 5, '计数并入冲突取大（本地 ' + baseCnt + ' vs 导入 ' + (baseCnt + 5) + ' → 取大）')
+    assert(merged.receipts.mount.some(r => (r.ids || []).indexOf('n-ext-telemetry') >= 0), '外部回执并集并入（receipts 签名去重）')
+    assert(merged.facets && merged.facets.use && merged.facets.use[idKey] === baseCnt + 9, '⑧facets.use 并入同键取大（useCount facet 换机器不丢；实得 ' + JSON.stringify((merged.facets || {}).use) + '）')
+    // 幂等：同一快照二次导入零变化（并集/取大均幂等）
+    const im2 = await handlers6['notes-import']({ dir: ex.target })
+    assert(!im2.error && im2.telemetryMerged === false, '⑧二次导入幂等零变化（telemetryMerged=false）')
+    const again = JSON.parse(store6.get(NOTES_DIR + '\\telemetry.json'))
+    assert.strictEqual(again.byDay.get[dayKey][idKey], baseCnt + 5, '二次导入计数不变（不双计）')
+    assert.strictEqual(again.receipts.mount.filter(r => (r.ids || []).indexOf('n-ext-telemetry') >= 0).length, 1, '外部回执不重复并入')
+    assert.strictEqual(again.facets.use[idKey], baseCnt + 9, '⑧二次导入 facets.use 不变（取大幂等不双计）')
   })
 
   // --- 旧结构零回归（无 assets/ 的旧库 + 无 assets 的旧导出，全新实例） ---

@@ -7,9 +7,8 @@ module.exports = {
     try {
       await H.step(page, '08-drag-to-folder', async () => {
         await H.createFolderViaUI(page, 'e2e拖拽夹')
-        /* 建夹后自动切到该夹视图（仅见夹内笔记）——清视图回「全部」再做根级拖拽 */
-        await page.click('#viewClear')
-        await H.waitFor(page, '回到全部视图（根级笔记行可见）', async p =>
+        /* 0.4.3⑦ 文件视图拆除：建夹不再切入夹视图（view 恒为 all，#viewClear 链路随模式移除），根级笔记天然可见——直接等种子笔记行出现即可 */
+        await H.waitFor(page, '全部视图下根级笔记行可见（文件视图已拆，无需清视图）', async p =>
           p.evaluate(() => document.querySelector('#tree').textContent.indexOf('e2e 种子笔记 A') >= 0))
         const src = page.locator('#tree .note-row', { hasText: 'e2e 种子笔记 A' }).first()
         const dst = page.locator('#tree .row.head[data-fold]', { hasText: 'e2e拖拽夹' }).first()

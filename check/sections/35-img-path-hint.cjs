@@ -61,16 +61,14 @@ module.exports = {
   }
   new Function('harness', 'pluginDir', hostSrc)(harnessMock35, DIR).apply(ctx35)
   const convCtx35 = contexts35.find(x => x.name === 'notes:workspace-conventions')
-  const catCtx35 = contexts35.find(x => x.name === 'notes:catalog')
+  const catCtx35 = convCtx35   // 0.4.3③：目录段并入单一 context（catalogEnabled 开时普通行同段渲染）
   const hintCount = (s) => (s.match(/图片位于笔记库目录 /g) || []).length
 
-  await t('对照：注入笔记正文无图 → 约定注入/目录注入均无提示行', async () => {
+  await t('对照：注入笔记正文无图 → 注入文本无提示行', async () => {
     await handlers35['notes-create']({ title: '无图约定', body: '纯文本约定内容', inject: true, topic: '约定' })
     const conv = convCtx35.text()
     assert(conv.indexOf('无图约定') >= 0, '约定注入正常')
-    assert.strictEqual(hintCount(conv), 0, '无图时约定注入不追加提示行')
-    const cat = catCtx35.text()
-    assert.strictEqual(hintCount(cat), 0, '无图时目录注入不追加提示行')
+    assert.strictEqual(hintCount(conv), 0, '无图时注入不追加提示行（0.4.3③ 合并段后单一文本）')
   })
   await t('注入含图笔记 → 约定注入尾部追加提示行（恰好一次 + 绝对真实 NOTES_DIR 路径）', async () => {
     await handlers35['notes-create']({ title: '含图约定', body: '部署截图 ![部署](assets/20260101-000000-deploy.png) 如上', inject: true, topic: '约定' })
@@ -79,12 +77,14 @@ module.exports = {
     assert(conv.indexOf(imgNS.assetsHintLine(NOTES_DIR)) >= 0, '提示行含绝对真实 NOTES_DIR 路径：' + NOTES_DIR + '/assets/')
     assert(conv.indexOf('部署截图') >= 0, '原注入内容不受影响')
   })
-  await t('目录条目正文含图 → 目录注入尾部追加提示行', async () => {
+  await t('目录段普通行条目正文含图 → 注入尾部追加提示行（合并段全量恰一次）', async () => {
+    await handlers35['notes-settings-set']({ catalogEnabled: true })   // 0.4.3：目录缺省关，含图目录断言前显式开启
     await handlers35['notes-create']({ title: '含图目录笔记', body: '看图 ![x](assets/dir-img.png)' })
     const cat = catCtx35.text()
-    assert(cat.indexOf('含图目录笔记') >= 0, '目录含该条目')
-    assert.strictEqual(hintCount(cat), 1, '目录注入追加一次提示行')
-    assert(cat.indexOf(imgNS.assetsHintLine(NOTES_DIR)) >= 0, '目录提示行含绝对 NOTES_DIR 路径')
+    assert(cat.indexOf('含图目录笔记') >= 0, '目录段含该条目')
+    // 合并段口径：约定桶（含图约定）与目录段（含图目录笔记）均有图 → 全量只追加一次提示行
+    assert.strictEqual(hintCount(cat), 1, '合并段注入追加一次提示行（约定+目录双来源去重）')
+    assert(cat.indexOf(imgNS.assetsHintLine(NOTES_DIR)) >= 0, '提示行含绝对 NOTES_DIR 路径')
   })
   await t('派发消息：待办正文含图 → 尾部追加提示行（绝对 NOTES_DIR）；无图对照不追加', async () => {
     const c1 = await handlers35['notes-create']({ title: '含图待办', body: '改这个弹窗 ![弹窗](assets/pop.png)', kind: 'todo' })

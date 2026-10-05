@@ -52,7 +52,7 @@ module.exports = {
     assert(clientSrc.indexOf("I('gear', 12)") >= 0, '设置按钮 gear SVG 图标')
   })
   await t('筛选中心控制行（筛选按钮(N) + 激活 chips + 独立排序控件；popover 分组面板）', () => {
-    assert(clientSrc.indexOf("const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log']") >= 0, '类型组六种 kind（多选；+log 工作记忆 v0 专入口）')
+    assert(clientSrc.indexOf("const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log', 'sys']") >= 0, '类型组七种 kind（多选；+log 工作记忆 v0 专入口；+sys 0.4.3⑩「机器」档——面板翻账本入口）')
     assert(clientSrc.indexOf('dsh-notes-filterbar') >= 0 && clientSrc.indexOf('dsh-notes-fpop') >= 0, '筛选中心容器（filterbar + popover）')
     assert(clientSrc.indexOf('dsh-notes-fchip') >= 0 && clientSrc.indexOf('dsh-notes-fchip-x') >= 0, '激活条件 chip + × 移除')
     assert(clientSrc.indexOf('dsh-notes-fsort-menu') >= 0 && clientSrc.indexOf('dsh-notes-fsort-item') >= 0, '独立排序控件菜单')
@@ -64,7 +64,8 @@ module.exports = {
   })
   await t('树结构：视图头 + 置顶组 + 文件夹组 + 未入夹根级直显区 + 主题全局过滤区', () => {
     assert(clientSrc.indexOf('dsh-notes-sec-h') >= 0, 'sec-h 分组头')
-    assert(clientSrc.indexOf('全部笔记') >= 0 && clientSrc.indexOf("tt('tree.viewTopic', { id: view.id })") >= 0 && clientSrc.indexOf("tt('tree.viewFolder', { name: folderName(view.id) })") >= 0 && clientSrc.indexOf("tt('tree.viewAll')") >= 0, '视图头文案（全部/主题/文件夹；i18n 覆盖卡A 起走 t() 字典，中文原文在 zh.js）')
+    assert(clientSrc.indexOf('全部笔记') >= 0 && clientSrc.indexOf("tt('tree.viewTopic', { id: view.id })") >= 0 && clientSrc.indexOf("tt('tree.viewAll')") >= 0, '视图头文案（全部/主题；i18n 覆盖卡A 起走 t() 字典，中文原文在 zh.js）')
+    assert(clientSrc.indexOf('tree.viewFolder') < 0, '0.4.3⑦：文件夹视图头文案随「文件视图」拆除移除')
     assert(clientSrc.indexOf('（跨文件夹 ') >= 0, '主题视图头含「跨文件夹 N 条」')
     assert(clientSrc.indexOf('PINNED_KEY') >= 0 && clientSrc.indexOf("'置顶'") >= 0, '置顶折叠组（PINNED_KEY 持久化）')
     assert(clientSrc.indexOf('dsh-notes-nested') >= 0, 'nested 子笔记容器')
@@ -74,9 +75,9 @@ module.exports = {
     assert(clientSrc.indexOf('dsh-notes-topic-row') >= 0, '主题过滤行')
   })
   await t('视图求值：view 单选 ∩ 筛选中心（组内 OR / 跨组 AND）∩ 搜索', () => {
-    assert(/const \[view, setView\] = React\.useState\(\{ type: 'all', id: '' \}\)/.test(clientSrc), 'view state（all/folder/topic 单选）')
+    assert(/const \[view, setView\] = React\.useState\(\{ type: 'all', id: '' \}\)/.test(clientSrc), 'view state（all/topic 单选；0.4.3⑦ 文件夹视图拆除）')
     assert(clientSrc.indexOf("if (view.type === 'topic') filtered = filtered.filter(n => (n.topic || '') === view.id)") >= 0, '主题视图过滤')
-    assert(clientSrc.indexOf("else if (view.type === 'folder') { const vsub = folderSubtreeIdsOf(view.id); filtered = filtered.filter(n => vsub[(n.folder || '')]) }") >= 0, '文件夹视图过滤（递归子树口径，notes-nested-folder-ui）')
+    assert(clientSrc.indexOf("view.type === 'folder'") < 0, '0.4.3⑦：文件夹视图过滤分支已拆除（树展开即文件夹浏览）')
     assert(clientSrc.indexOf('filtered = filtered.filter(n => matchFilters(n, filters))') >= 0, '筛选中心谓词接入求值管线')
     assert(/const \[filters, setFilters\] = React\.useState/.test(clientSrc), 'filters 状态（{pinned, injected, injectEver, sensitive, kinds[]}）')
   })

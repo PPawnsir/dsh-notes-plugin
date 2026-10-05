@@ -10,7 +10,8 @@ module.exports = {
   // 契约：数据源 notes-list {includeLogs:true} slim（inject/injectRole/injectEver/sensitive/kind/injectTo 齐备，零新 RPC）；
   // 三态语义与详情区 ⚡ 分段控件完全一致（off→{inject:false}；约定/资料→{inject:true, injectRole}，payload 禁 undefined）；
   // 单行直改 + 多选批量（confirm 条数，逐条 notes-update，失败计数不中断）；三态过滤 chips（点击=统计过滤）+ 搜索 250ms 防抖；
-  // 护栏：kind=log 注入硬禁（勾选/档位禁用 + tooltip），sensitive 允许但行内提示「注入时自动脱敏」；
+  // 护栏：kind=log 注入硬关 UI 化（0.4.3⑦——行内不渲染勾选/开关，静态标注「日志不参与注入」；doInjMgrSet 拦截 + host injectForcedOff 双保险），
+  // sensitive 允许但行内提示「注入时自动脱敏」；
   // 排序：注入中在前（约定 > 资料），组内 updatedAt 降序；统计行：约定 N / 资料 M / 未注入 K。
   section('43. 注入管理面板（设置卡入口 + 总览/直改/批量/过滤/护栏，三端同步零新 RPC）')
 
@@ -28,10 +29,11 @@ module.exports = {
     assert(clientSrc.indexOf('async function doInjMgrSet(n, role)') >= 0, 'doInjMgrSet 单行直改存在')
     assert(clientSrc.indexOf("const upd = { id: n.id, inject: role !== 'off' }") >= 0, '直改 payload：inject 三态映射')
     assert(clientSrc.indexOf('if (upd.inject) upd.injectRole = role') >= 0, '非 off 才带 injectRole（payload 禁 undefined）')
-    // ④ log 隐身硬禁护栏（函数双保险 + 行档位/勾选禁用 + tooltip）+ sensitive 行内提示
-    assert(clientSrc.indexOf("if ((n.kind || 'note') === 'log' && role !== 'off') return") >= 0, 'log 隐身硬禁双保险（doInjMgrSet 拦截）')
-    assert(clientSrc.indexOf("const dis = (n.kind || 'note') === 'log' && r !== 'off'") >= 0 && clientSrc.indexOf("日志默认隐身：inject 强制关闭（kind=log 硬禁）") >= 0, 'log 行约定/资料档禁用 + tooltip')
-    assert(clientSrc.indexOf('disabled: isLog || injMgrPending') >= 0 && clientSrc.indexOf('不参与注入批量操作') >= 0, 'log 行勾选禁用 + tooltip')
+    // ④ log 注入硬关 UI 化（0.4.3⑦ 用户裁决：UI 层不提供日志注入开关——行内不渲染勾选框/三态开关，静态标注；函数拦截 + host injectForcedOff 硬闸双保险）+ sensitive 行内提示
+    assert(clientSrc.indexOf("if ((n.kind || 'note') === 'log' && role !== 'off') return") >= 0, 'log 注入硬关双保险（doInjMgrSet 拦截保留）')
+    assert(clientSrc.indexOf("const dis = (n.kind || 'note') === 'log'") < 0 && clientSrc.indexOf('disabled: isLog') < 0, 'log 行禁用态开关已移除（不再是 disabled 渲染——UI 层不提供）')
+    assert(clientSrc.indexOf("e('span', { className: 'dsh-notes-injmgr-lognote dsh-nt', 'data-tooltip': tt('inj.logNoInjectTip') }, I('bolt', 10), tt('inj.logNoInject'))") >= 0, 'log 行静态标注「日志不参与注入」（i18n 覆盖卡D 起走 tt() 字典）')
+    assert(clientSrc.indexOf("'dsh-notes-injmgr-checkslot dsh-nt'") >= 0, 'log 行勾选框不渲染（占位槽保行对齐）')
     assert(clientSrc.indexOf('注入时自动脱敏') >= 0 && clientSrc.indexOf('dsh-notes-injmgr-sens') >= 0, 'sensitive 行内提示「注入时自动脱敏」')
     // ⑤ 曾注入徽章（injectEver 粘性，当前已注入不重复显示）+ 作用域摘要（全局显示「全局」）
     assert(clientSrc.indexOf("n.injectEver === true && !n.inject ? e('span', { className: 'dsh-notes-injmgr-ever dsh-nt'") >= 0, '曾注入徽章（injectEver 且当前未注入才显示）')
@@ -68,7 +70,7 @@ module.exports = {
   })
 
   // ---- 43.2 app.html / 原型 notes-ui-v2.html 同步（UI 唯一规格来源约束）----
-  await t('app.html + 原型注入管理同款：设置行入口 + 三态直改/批量 payload + log 禁用护栏 + 统计 chips（双端 UI 标记一致）', () => {
+  await t('app.html + 原型注入管理同款：设置行入口 + 三态直改/批量 payload + log 注入硬关（不渲染开关）+ 统计 chips（双端 UI 标记一致）', () => {
     for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
       const s = pair[1], label = pair[0]
       assert(s.indexOf('id="setInjectManager"') >= 0, label + ' 设置卡片「注入管理」入口')
@@ -76,13 +78,15 @@ module.exports = {
       assert(s.indexOf('function openInjectManager(from)') >= 0 && s.indexOf('function loadInjectManager()') >= 0 && s.indexOf('function renderInjectManager()') >= 0, label + ' 管理三函数')
       assert(s.indexOf("rpc('notes-list', { includeLogs: true })") >= 0, label + ' 数据源 notes-list includeLogs（零新 RPC）')
       assert(s.indexOf("function injMgrRole(n) { return n.inject === true ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off' }") >= 0, label + ' 三态判定与详情区同口径')
-      // 单行直改 payload + log 隐身硬禁护栏（函数双保险 + 行档位/勾选禁用）
+      // 单行直改 payload + log 注入硬关 UI 化（0.4.3⑦：行内不渲染勾选框/三态开关 + 静态标注；函数拦截 + host 硬闸双保险）
       assert(s.indexOf('function doInjMgrSet(n, role)') >= 0, label + ' doInjMgrSet 单行直改存在')
       assert(s.indexOf("var upd = { id: n.id, inject: role !== 'off' };") >= 0, label + ' 直改 payload：inject 三态映射')
       assert(s.indexOf('if (upd.inject) upd.injectRole = role;') >= 0, label + ' 非 off 才带 injectRole（payload 禁 undefined）')
-      assert(s.indexOf("if ((n.kind || 'note') === 'log' && role !== 'off') return;") >= 0, label + ' log 隐身硬禁双保险（doInjMgrSet 拦截）')
-      assert(s.indexOf('日志默认隐身：inject 强制关闭（kind=log 硬禁）') >= 0 && s.indexOf("var dis = isLog && r !== 'off';") >= 0, label + ' log 行约定/资料档禁用 + title 提示')
-      assert(s.indexOf('不参与注入批量操作') >= 0, label + ' log 行勾选禁用 + title 提示')
+      assert(s.indexOf("if ((n.kind || 'note') === 'log' && role !== 'off') return;") >= 0, label + ' log 注入硬关双保险（doInjMgrSet 拦截保留）')
+      assert(s.indexOf("var dis = isLog && r !== 'off'") < 0, label + ' log 行禁用态开关已移除（UI 层不提供，非 disabled）')
+      assert(s.indexOf('injmgr-lognote') >= 0 && s.indexOf('日志不参与注入') >= 0, label + ' log 行静态标注「日志不参与注入」')
+      assert(s.indexOf('injmgr-checkslot') >= 0, label + ' log 行勾选框不渲染（占位槽保行对齐）')
+      assert(s.indexOf('日志不参与注入：inject 已强制关闭') >= 0, label + ' injectForcedOff toast 文案同步（硬关口径）')
       assert(s.indexOf('注入时自动脱敏') >= 0 && s.indexOf('injmgr-sens') >= 0, label + ' sensitive 行内提示「注入时自动脱敏」')
       // 统计 chips（点击=过滤）+ 排序 + 搜索防抖 + 批量 confirm 条数 + 逐条失败计数不中断
       /* i18n 覆盖卡D：app 端 chips/批量 confirm 文案走 t() 字典（复用 inj.* key），原型不双语红线保留中文原文（同 52 节分侧口径） */

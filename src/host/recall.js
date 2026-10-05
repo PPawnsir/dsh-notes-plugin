@@ -1,57 +1,45 @@
-    // ==== recall-telemetry BEGIN ====（0.4.3+ 卡⑫：统一召回遥测——五通道 × 交付/使用事件流水 + 分通道召回率查询面，notes-043-inject-receipt）
-    // 覆盖矩阵（五通道，主窗口裁决 n-muufiroz67it 卡⑫ 修订版）：
+    // ==== recall-telemetry BEGIN ====（0.4.3+ 卡⑫ 统一召回遥测 → 0.4.3 验收修复⑤迁机器存储层，notes-043-metrics-storage）
+    // 覆盖矩阵（五通道，主窗口裁决 n-muufiroz67it 卡⑫ 修订版——卡⑤不改埋点点位与口径）：
     //   inject  装配（强）：conventionText 真实注入路径（预览 sidOverride 不计）实际渲染的约定 id 集 + 资料桶存活索引行 id 集；
-    //   mount   任务挂载（中）：_dispatch 派发成功 = 笔记作为待办上下文挂载进目标任务会话
-    //     （看板 contextFiles/contextNotes 属宿主域 task_create 通道，不在本插件观察面——本通道即笔记侧唯一可观测的挂载点，口径注明）；
+    //   mount   任务挂载（中）：_dispatch 派发成功 = 笔记作为待办上下文挂载进目标任务会话；
     //   search  自由检索（弱）：notes-search RPC 与 note_search 工具各自实际返回的 id 集（两处埋点同源口径）；
     //   get     按需取（使用信号）：note_get 工具 + notes-get RPC 成功返回（取用 = 五通道统一的「使用」事件源）；
-    //   catalog 目录（弱）：catalogText 真实渲染路径实际出清单的 id 集（可枚举，预览不计）。
-    // 分仓策略（低频明细 + 高频日聚合）：
-    //   · 低频通道（inject/mount/catalog）记原始回执行：- {"ts","channel","ids":[],"session"?}——
-    //     签名去重（同通道同会话同 id 集连续重复装配只记一行，防每轮系统提示拼装写盘风暴；id 集按集合序判等——排序 join，换序不重复记；id 集/会话变化即新签名立即记）；
-    //   · 高频通道（search/get）记日聚合行：- {"day","channel","id","count"}，行级 upsert 幂等（同日同通道同 id = count 累加，不爆行）——
-    //     keyOfLine 取 day|channel|id 复合键，RootNote render 合并序新行在前、同键新行胜出 = 天然 upsert；
-    //     内存 pending 累积 + 3s 防抖批量落盘（整批一次读-改-写）+ 卸载 flush（index.js effect 挂载点）。
-    // 托管根笔记：「召回遥测（自动）」kind=sys + recall=false + inject=false（永不进目录注入），
-    //   永不建议器提名（kind=sys 豁免面既有收口，memory.js 双重保险）；inject 红线锁（人为开注入 → 落盘时强制纠正，防套娃注入）；
-    //   settings.recallNoteId 软链指针（与 indexNoteId 同模式）；机器产物零历史快照（{ history:false }）；容量红线 max 400 裁尾（保最新裁最旧）；
-    //   首事件懒建：建帐与首批行一次 _create 落盘（不空建）；落盘不动 updatedAt（遥测计数不算编辑——useCount 落盘同哲学，防列表排序抖动）。
-    // 红线：埋点零阻塞——全部 fire-and-forget + 静默降级（落盘失败吞异常，不扩散主流程）；写路径经 _recallChain 单链串行（读-改-写不交错）；
-    //   查询语义零变化——只加遥测，不改任何既有返回结构（notes-recall-stats 为新增只读 RPC；读前落账 flush 保证自洽读）。
-    // 依赖序位：rootnote.js（框架）+ injectindex.js/ledger.js（sys 根笔记先例）之后、inject/img-path-hint.js 之前；
-    //   消费方 server/dispatch/inject/search/index 全部运行时引用（函数声明提升，RPC 调用期引用——节 45 方向断言看守）。
+    //   catalog 目录（弱）：renderInjected 真实渲染路径实际出清单的目录段普通行 id 集（预览不计）。
+    // 存储（卡⑤）：全部事件落 kernel/telemetry-store.js（notes/telemetry.json）——四纪律/单写者/先渲染后记账/单调性见该模块头注：
+    //   · 低频通道（inject/mount/catalog）记 receipts 原始回执 {ts,ids[],session?}——签名去重（同通道同会话同 id 集连续重复装配只记一行，
+    //     防每轮系统提示拼装写盘风暴；id 集按集合序判等——排序 join，换序不重复记；id 集/会话变化即新签名立即记）；
+    //   · 高频通道（search/get）记 byDay 日聚合 {channel→day→id→count}——内存增量单调只增（同日同键累加）；
+    //   · 内存权威 + 2s 防抖原子落盘 + 卸载 flush（index.js effect 挂载点）；崩溃丢 ≤2s 内存增量（下界语义）。
+    // 遥测笔记降级（卡⑤）：存量「召回遥测（自动）」根笔记一次性迁移——首个 flush 前解析旧流水行回填 JSON（幂等：
+    //   meta.migratedAt 持久化标记 + 镜像正文零 `- {` 机器行双保险，重放/崩溃重跑不双计；解析失败空桶起步——遥测允许重来）；
+    //   迁移后笔记降级人读镜像（## 遥测摘要（人读镜像）：日评估 cron 通道——_ledgerRefresh 顺带刷一次可读摘要，热路径零笔记写入；
+    //   镜像仍 kind=sys + recall=false + inject 红线锁）；新装库无旧笔记 → 永不建镜像（遥测零笔记足迹）。
+    // 红线：埋点零阻塞——全部 fire-and-forget + 静默降级（落盘失败吞异常，不扩散主流程）；
+    //   notes-recall-stats 返回结构不变（ok/noteId/sinceDays/fromDay/events/channels 五通道字段零改动；ledger 为卡⑤新增键，消费方零改动）；
+    //   注入管线不读本存储（卡⑥才接）。
+    // 依赖序位：kernel/telemetry-store.js（存储层）+ rootnote.js（迁移解析旧流水节）+ injectindex.js/ledger.js（sys 根笔记先例 + ledgerTs 镜像时间戳）之后、
+    //   inject/img-path-hint.js 之前；消费方 server/dispatch/inject/search/index 全部运行时引用（函数声明提升，RPC 调用期引用——节 45 方向断言看守）。
     const RECALL_TITLE = '召回遥测（自动）'
-    const RECALL_HEAD = '## 事件流水（自动）'
-    const RECALL_MAX = 400                  // 容量裁尾红线（合并序保最新裁最旧）
-    const RECALL_AGG_DEBOUNCE_MS = 3000     // 高频通道日聚合防抖（整批一次落盘；卸载 flush 兜底）
+    const RECALL_HEAD = '## 事件流水（自动）'                  // 旧版流水节锚（一次性迁移解析用；写路径已退役）
+    const RECALL_MIRROR_HEAD = '## 遥测摘要（人读镜像）'        // 降级后人读镜像锚（卡⑤：机器存储在 telemetry.json，本页仅人读）
+    const RECALL_MIRROR_REMARKS = '## 手写备注（机器不改）'     // 镜像内手写备注保留节（迁移时旧流水节备注区迁入，刷新逐字节保留）
+    const RECALL_MIRROR_MIN_MS = 30 * 60 * 1000              // 镜像刷写节流（内容未变且 30min 内 → 零写入）
     const RECALL_CHANNELS = ['inject', 'mount', 'search', 'get', 'catalog']
-    // 行解析：`- {json}`；非法行 → null（手写备注行落 RootNote 备注区，节外零触碰保护，lint 不管）
+    // 旧流水节模板（迁移解析专用）：行识别 `- {json}`；RootNote split 拆 pre/entries/others（手写备注行落 others 区，迁镜像时保留）
+    const RECALL_TPL = rootNoteTpl({ head: RECALL_HEAD, lineRe: /^\s*-\s\{/ })
+    // 行解析：`- {json}`；非法行 → null
     function _recallParseLine(l) {
       const m = String(l).match(/^\s*-\s(\{.*\})\s*$/)
       if (!m) return null
       try { const o = JSON.parse(m[1]); return o && typeof o === 'object' ? o : null } catch (e) { return null }
     }
-    // 行幂等键：日聚合行（day+channel+id 齐备）→ 复合键（upsert 语义：同键新行替换旧行）；原始回执行 → 整行（ts 唯一，重放/双触发去重）
-    function _recallKeyOfLine(l) {
-      const o = _recallParseLine(l)
-      if (o && o.day && o.channel && o.id) return o.day + '|' + o.channel + '|' + o.id
-      return l
-    }
-    const RECALL_TPL = rootNoteTpl({
-      head: RECALL_HEAD,
-      lineRe: /^\s*-\s\{/,
-      max: RECALL_MAX,
-      newestFirst: true,
-      keyOfLine: _recallKeyOfLine,
-      lineOf: function (d) { return '- ' + JSON.stringify(d) }
-    })
-    // 本地日键（YYYY-MM-DD，日聚合行粒度；本地墙钟语义与 ledger 日志归键同口径）
+    // 本地日键（YYYY-MM-DD，日聚合粒度；本地墙钟语义与 ledger 日志归键同口径）
     function _recallDay(ms) {
       const d = ms === undefined ? new Date() : new Date(ms)
       const p = function (n) { return (n < 10 ? '0' : '') + n }
       return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
     }
-    // 遥测根笔记解析（同步，stats 读路径用）：settings.recallNoteId 指针优先，丢了按 kind=sys + 标题在 cache 自愈找回，再退按标题（存量旧笔记）
+    // 遥测笔记解析（同步）：settings.recallNoteId 指针优先，丢了按 kind=sys + 标题在 cache 自愈找回，再退按标题（存量旧笔记）
     function _recallNoteSync() {
       try {
         if (settingsCache && settingsCache.recallNoteId) {
@@ -63,8 +51,7 @@
       } catch (e) {}
       return null
     }
-    // 解析（异步，落盘路径用）：同步口径之上补指针读盘兜底——重启/重载后冷缓存 cache.get 未命中时经 loadNote 读盘自愈，
-    //   不重复建帐（同一 settings.json 指针跨 apply 生命周期稳定；loadNote 命中即回缓存）
+    // 解析（异步，迁移/镜像路径用）：同步口径之上补指针读盘兜底——冷缓存 cache.get 未命中时经 loadNote 读盘自愈（命中即回缓存）
     async function _recallResolve() {
       const hit = _recallNoteSync()
       if (hit) return hit
@@ -76,57 +63,44 @@
       } catch (e) {}
       return null
     }
-    // 写路径单链串行化：全部落盘（原始行 + 聚合批量 upsert）经同一 promise 链排队，读-改-写不交错；失败吞（遥测永不阻塞主流程）
-    let _recallChain = Promise.resolve()
-    function _recallEnqueue(work) {
-      _recallChain = _recallChain.then(work).catch(function () {})
-      return _recallChain
+    // 一次性迁移（promise 收口，并发/重入安全）：首个 flush 前解析旧「召回遥测（自动）」笔记流水行回填 telemetry.json——
+    //   原始回执行倒序遍历（旧→新入队，裁尾保最新 200）+ 日聚合行计数累加；meta.migratedAt 持久化标记（跨重启幂等，重放不双计）。
+    //   崩溃顺序红线：先 flushNow 落 JSON 再改写镜像（崩溃重放解析同源旧行 = 同结果重建，不双计）。
+    //   找不到旧笔记：冷缓存（cache 空）重置 promise 允许下个事件重试；暖缓存确认无旧笔记 → 本 apply 生命周期封口（新装库常态零开销）。
+    //   迁移失败静默（遥测允许重来，空桶起步）；settings.recallNoteId 指针只读消费（卡⑤起不再回写——镜像不再懒建，指针无新建需求）。
+    let _recallMigratePromise = null
+    function _recallMaybeMigrate() {
+      if (_recallMigratePromise) return _recallMigratePromise
+      _recallMigratePromise = (async () => {
+        try {
+          await _telemetryLoad()
+          const t = _telemetryCache
+          if (!t) return
+          if (t.meta && t.meta.migratedAt) return              // 已迁移（标记持久化在 JSON，跨重启幂等）
+          await loadSettings()
+          const rl = await _recallResolve()
+          if (!rl) {
+            if (cache.size === 0) _recallMigratePromise = null   // 冷缓存：重置允许重试（暖缓存后标题扫描才可靠）
+            return
+          }
+          const sec = rootNoteSplit(String(rl.body || ''), RECALL_TPL)
+          for (const l of sec.entries.slice().reverse()) {       // 旧文件合并序新行在前 → 倒序遍历 = 旧→新入队（裁尾保最新）
+            const o = _recallParseLine(l)
+            if (!o || RECALL_CHANNELS.indexOf(o.channel) < 0) continue
+            if (o.ts && Array.isArray(o.ids)) _telemetryAddReceipt(o.channel, o)
+            else if (o.day && o.id) _telemetryBumpDay(o.channel, String(o.day), String(o.id), Math.max(0, Math.floor(o.count || 0)))
+          }
+          t.meta.migratedAt = new Date().toISOString()
+          t.meta.migratedFrom = rl.id
+          await _telemetryFlushNow()                             // JSON 先落盘（崩溃顺序红线）
+          await _recallMirrorWrite(rl, 'migrate', sec.others)    // 笔记降级人读镜像（旧流水节手写备注迁入保留节）
+        } catch (e) { /* 迁移失败静默：遥测允许重来（空桶起步），本 apply 生命周期封口不重试 */ }
+      })()
+      return _recallMigratePromise
     }
-    // 落盘单点（仅链内调用）：RootNote render 合并（聚合行同键新行胜出 = upsert；原始行整行去重 = 重放防御）+ persistNote { history:false }。
-    //   落盘不动 updatedAt（遥测计数不算编辑，useCount 同哲学——防列表排序抖动）；根笔记缺失时带首批行内联懒建（建帐 + 首写一次落盘，不空建）；
-    //   存量根笔记：sys kind 迁移 + inject 红线锁（一次性元数据纠正，允许 bump updatedAt）+ 指针回写。
-    async function _recallPersistRows(newLines) {
-      if (!newLines || !newLines.length) return
-      await loadSettings()
-      let rl = await _recallResolve()
-      if (!rl) {
-        const cr = await _create(RECALL_TITLE, RECALL_HEAD + '\n\n' + newLines.join('\n') + '\n', ['自动'], '召回遥测', { kind: 'sys', inject: false, recall: false })
-        if (!cr || !cr.id) return
-        settingsCache.recallNoteId = cr.id
-        await saveSettings()
-        return
-      }
-      await rootNoteEnsureSysKind(rl)
-      if (rl.inject === true) {   // 永不 inject 红线锁（与记忆档案同 pattern，防套娃注入）
-        rl.inject = false
-        rl.updatedAt = new Date().toISOString()
-        await persistNote(rl, { history: false })
-      }
-      if (settingsCache.recallNoteId !== rl.id) { settingsCache.recallNoteId = rl.id; await saveSettings() }
-      // 聚合行 upsert：pending 增量累加进既有同键行计数（读-改-写在 _recallChain 内串行，不交错）
-      const body = String(rl.body || '')
-      const sec = rootNoteSplit(body, RECALL_TPL)
-      const existing = {}
-      for (const l of sec.entries) {
-        const o = _recallParseLine(l)
-        if (o && o.day && o.channel && o.id) existing[o.day + '|' + o.channel + '|' + o.id] = o.count || 0
-      }
-      const merged = newLines.map(function (l) {
-        const o = _recallParseLine(l)
-        if (o && o.day && o.channel && o.id) {
-          const k = o.day + '|' + o.channel + '|' + o.id
-          const cnt = (existing[k] || 0) + (o.count || 0)
-          existing[k] = 0   // 同批同键不重复累加（pending 键唯一，防御性兜底）
-          return RECALL_TPL.lineOf({ day: o.day, channel: o.channel, id: o.id, count: cnt })
-        }
-        return l
-      })
-      rl.body = rootNoteRender(body, RECALL_TPL, merged)
-      await persistNote(rl, { history: false })   // 不动 rl.updatedAt：机器遥测落盘不算编辑
-    }
-    // 低频通道原始回执行（inject/mount/catalog）：签名去重——同通道同会话同 id 集连续装配只记一行；
+    // 低频通道原始回执（inject/mount/catalog）：签名去重——同通道同会话同 id 集连续装配只记一行；
     //   签名按集合序（排序后 join）：同 id 集仅渲染顺序抖动（cache 迭代序/updatedAt 并列）不视为新交付——
-    //   Verifier 驳回②修复：有序 join 会把同集合换序记成第二条交付行（遥测交付量虚增 + --only=78 断言脆）；
+    //   Verifier 驳回②修复：有序 join 会把同集合换序记成第二条交付行（遥测交付量虚增 + 断言脆）；
     //   id 集或会话变化即新签名立即记（装配类防每轮系统提示拼装写盘风暴；mount 换会话重派仍计独立交付）
     const _recallLastSig = {}
     function _recallRaw(channel, ids, session) {
@@ -137,79 +111,111 @@
         const sig = (session || '') + '|' + list.slice().sort().join(',')
         if (_recallLastSig[channel] === sig) return
         _recallLastSig[channel] = sig
-        const row = { ts: new Date().toISOString(), channel: channel, ids: list }
+        const row = { ts: new Date().toISOString(), ids: list }
         if (session) row.session = String(session)
-        const line = RECALL_TPL.lineOf(row)
-        _recallEnqueue(function () { return _recallPersistRows([line]) })
+        _recallMaybeMigrate().then(function () { _telemetryAddReceipt(channel, row) }).catch(function () {})
       } catch (e) {}
     }
-    // 高频通道日聚合（search/get）：内存 pending 累积 + 防抖批量落盘（整批一次读-改-写）；防抖定时器在 flush 时清除（卸载 flush 不二次触发）
-    const _recallPending = {}
-    let _recallAggTimer = null
+    // 高频通道日聚合（search/get）：内存增量（同日同键累加不爆行）→ 存储层 2s 防抖落盘（卸载 flush 兜底）
     function _recallHit(channel, ids) {
       try {
         const day = _recallDay()
-        let n = 0
-        for (const id0 of ids || []) {
-          const id = String(id0 || '')
-          if (!id) continue
-          const k = day + '|' + channel + '|' + id
-          const cur = _recallPending[k] || { day: day, channel: channel, id: id, count: 0 }
-          cur.count++
-          _recallPending[k] = cur
-          n++
-        }
-        if (!n || _recallAggTimer) return
-        _recallAggTimer = setTimeout(function () { _recallAggTimer = null; _recallFlushAgg() }, RECALL_AGG_DEBOUNCE_MS)
-        if (_recallAggTimer && typeof _recallAggTimer.unref === 'function') _recallAggTimer.unref()
+        const list = []
+        for (const id0 of ids || []) { const s = String(id0 || ''); if (s && list.indexOf(s) < 0) list.push(s) }
+        if (!list.length) return
+        _recallMaybeMigrate().then(function () { for (const id of list) _telemetryBumpDay(channel, day, id, 1) }).catch(function () {})
       } catch (e) {}
     }
-    // 聚合批量落盘（幂等 upsert）：清防抖定时器（手动/卸载 flush 不二次触发）→ pending 快照即清 → 链内累加合并单次 persist；
-    //   落盘失败丢本批（遥测静默降级语义，不 retry 不阻塞）
+    // flush 关口（stats 读前落账 + 卸载 flush 共用签名）：加载 → 一次性迁移（首个 flush 前回填）→ 存储层落盘
     async function _recallFlushAgg() {
-      try { if (_recallAggTimer) { clearTimeout(_recallAggTimer); _recallAggTimer = null } } catch (e) {}
-      let batch
-      try {
-        const keys = Object.keys(_recallPending)
-        if (!keys.length) return
-        batch = keys.map(function (k) { return RECALL_TPL.lineOf(_recallPending[k]) })
-        for (const k of keys) delete _recallPending[k]
-      } catch (e) { return }
-      await _recallEnqueue(function () { return _recallPersistRows(batch) })
+      await _recallMaybeMigrate()
+      await _telemetryFlushNow()
     }
-    // 查询面统计：窗口内五通道分列
-    //   交付通道（inject/mount/search/catalog）：delivered=交付的去重笔记数，deliveries=交付事件计数（原始行 ids 计数累加/聚合行 count 累加），
+    // ---- 人读镜像（卡⑤降级：遥测笔记仅人读视图，机器存储在 telemetry.json）----
+    // 镜像手写备注提取：现行镜像的保留节内容逐字节取；迁移前的旧格式正文回退 RootNote 备注区口径
+    function _recallMirrorOthers(body) {
+      const lines = String(body || '').split('\n')
+      let idx = -1
+      for (let i = 0; i < lines.length; i++) { if (lines[i].trim() === RECALL_MIRROR_REMARKS) { idx = i; break } }
+      if (idx >= 0) return lines.slice(idx + 1).filter(function (l) { return l.trim() !== '' })
+      return rootNoteSplit(body, RECALL_TPL).others
+    }
+    // 内容门比较口径：剥「- 更新于：」行（时间戳行不参与等同判定——内容未变且节流窗口内零写入）
+    function _recallMirrorSansTs(b) {
+      return String(b || '').split('\n').filter(function (l) { return l.indexOf('- 更新于：') !== 0 }).join('\n')
+    }
+    let _recallMirrorLastMs = 0
+    // 镜像全量重写（冷路径唯一写笔记点：一次性迁移 + 账本刷新顺带；热路径永不调用——节 78「热路径零笔记写入」看守）。
+    //   镜像仍机器托管：kind=sys 归位（存量迁移）+ inject 红线锁（人为开注入 → 随镜像重写强制纠正回 false，防套娃注入）；
+    //   落盘不动 updatedAt（机器镜像刷新不算编辑——遥测计数同哲学，防列表排序抖动）；{ history:false } 机器产物零历史快照。
+    async function _recallMirrorWrite(rl, trigger, othersLines) {
+      const st = _recallComputeStats(7)
+      const lines = [
+        '> 机器遥测存储已迁至 notes/telemetry.json（0.4.3 验收修复⑤：单写者 = host 进程，热路径零写入；本页仅人读镜像，机器查询走 notes-recall-stats RPC）。',
+        '',
+        '- 更新于：' + ledgerTs(new Date().toISOString()) + '（' + (trigger || 'cron') + '）',
+        '- 近 7 天遥测事件：' + st.events,
+        '- 分通道召回率（交付→取用口径）：' + _recallFmtChannels(st.channels)
+      ]
+      if (st.ledger) lines.push('- 账本快照（近 7 天日志双链口径）：挂载总数 ' + (st.ledger.mountTotal || 0) + ' · 本周引用 ' + (st.ledger.weekRefs || 0) + ' 次 · 零引用候选 ' + (st.ledger.zeroRefCount || 0) + ' 条 · 快照于 ' + ledgerTs(st.ledger.at))
+      const others = (othersLines || []).filter(function (l) { return typeof l === 'string' && l.trim() !== '' })
+      let body = RECALL_MIRROR_HEAD + '\n\n' + lines.join('\n') + '\n'
+      if (others.length) body += '\n' + RECALL_MIRROR_REMARKS + '\n\n' + others.join('\n') + '\n'
+      const nowMs = Date.now()
+      if (_recallMirrorSansTs(rl.body) === _recallMirrorSansTs(body) && nowMs - _recallMirrorLastMs < RECALL_MIRROR_MIN_MS) return false
+      rl.body = body
+      if (rl.inject === true) rl.inject = false   // 永不 inject 红线锁（随镜像重写强制纠正，不单独起写）
+      await persistNote(rl, { history: false })   // 不动 rl.updatedAt：机器镜像刷新不算编辑
+      _recallMirrorLastMs = nowMs
+      return true
+    }
+    // 镜像刷新（_ledgerRefresh 顺带 = 日评估 cron 通道）：无镜像笔记 → 跳过（新装库零笔记足迹，永不懒建）；异常全吞不扩散账本主链路
+    async function _recallMirrorRefresh(trigger) {
+      try {
+        await _recallMaybeMigrate()              // 未迁移先迁移（迁移自身已写镜像则此处内容门零改动跳过）
+        const rl = await _recallResolve()
+        if (!rl) return false
+        await rootNoteEnsureSysKind(rl)
+        return await _recallMirrorWrite(rl, trigger || 'cron', _recallMirrorOthers(rl.body))
+      } catch (e) { return false }
+    }
+    // ---- 查询面（统计纯函数现算，不落盘——纪律②）----
+    // 窗口内五通道分列（内存权威现算；telemetry.json 未加载/不存在 → 全零结构，静默降级）：
+    //   交付通道（inject/mount/search/catalog）：delivered=交付的去重笔记数，deliveries=交付事件计数（原始回执 ids 计数累加/日聚合 count 累加），
     //     used=交付且窗口内被 get 实际取用的去重数，uses=那些笔记的取用总次数，rate=used/delivered（无交付 → null）；
     //   get 通道（纯使用信号，无交付侧）：delivered=0/rate=null，used=取用去重笔记数，uses=取用总次数。
-    // 读前落账：防抖 pending 与在途原始行先 flush 再统计（自洽读）；根笔记不存在 → 全零结构（静默降级）。
-    async function _recallStats(opts) {
-      const sinceDays = Math.max(1, Math.floor((opts && opts.sinceDays) || 7))
-      await _recallFlushAgg()
-      await _recallChain.catch(function () {})
-      const fromDay = _recallDay(Date.now() - (sinceDays - 1) * 86400000)   // 日聚合行窗口下沿（含当日共 sinceDays 天，日粒度字符串比较）
-      const fromMs = Date.now() - sinceDays * 86400000                      // 原始回执行 ts 窗口下沿
+    //   ledger 键（卡⑤新增）：账本刷新写入的指标快照（挂载总数/本周引用 Top5/零引用候选/任务挂载排行），无刷新记录 → null。
+    function _recallComputeStats(sinceDays) {
+      const fromDay = _recallDay(Date.now() - (sinceDays - 1) * 86400000)   // 日聚合窗口下沿（含当日共 sinceDays 天，日粒度字符串比较）
+      const fromMs = Date.now() - sinceDays * 86400000                      // 原始回执 ts 窗口下沿
       const channels = {}
       for (const c of RECALL_CHANNELS) channels[c] = { deliveredIds: {}, deliveries: 0 }
       const getIds = {}
       const getCount = {}
       let events = 0
-      const rl = _recallNoteSync()
-      if (rl) {
-        const sec = rootNoteSplit(String(rl.body || ''), RECALL_TPL)
-        for (const l of sec.entries) {
-          const o = _recallParseLine(l)
-          if (!o || RECALL_CHANNELS.indexOf(o.channel) < 0) continue
-          if (o.day && o.id) {   // 日聚合行（search/get）
-            if (String(o.day) < fromDay) continue
-            const cnt = o.count || 0
-            events += cnt
-            if (o.channel === 'get') { getIds[o.id] = true; getCount[o.id] = (getCount[o.id] || 0) + cnt }
-            else { channels[o.channel].deliveredIds[o.id] = true; channels[o.channel].deliveries += cnt }
-          } else if (o.ts && o.ids) {   // 原始回执行（inject/mount/catalog）
-            const ms = Date.parse(o.ts)
+      const t = _telemetryCache
+      if (t) {
+        for (const ch of ['inject', 'mount', 'catalog']) {                  // 原始回执（低频通道）
+          const arr = (t.receipts && t.receipts[ch]) || []
+          for (const r of arr) {
+            const ms = Date.parse(r.ts)
             if (!isFinite(ms) || ms < fromMs) continue
-            events += o.ids.length
-            for (const id0 of o.ids) { const id = String(id0); channels[o.channel].deliveredIds[id] = true; channels[o.channel].deliveries++ }
+            const ids = Array.isArray(r.ids) ? r.ids : []
+            events += ids.length
+            for (const id0 of ids) { const id = String(id0); channels[ch].deliveredIds[id] = true; channels[ch].deliveries++ }
+          }
+        }
+        for (const ch of ['search', 'get']) {                               // 日聚合（高频通道）
+          const days = (t.byDay && t.byDay[ch]) || {}
+          for (const d of Object.keys(days)) {
+            if (d < fromDay) continue
+            const bucket = days[d]
+            for (const id of Object.keys(bucket)) {
+              const cnt = bucket[id] || 0
+              events += cnt
+              if (ch === 'get') { getIds[id] = true; getCount[id] = (getCount[id] || 0) + cnt }
+              else { channels[ch].deliveredIds[id] = true; channels[ch].deliveries += cnt }
+            }
           }
         }
       }
@@ -228,9 +234,16 @@
         for (const id of ids) { if (getIds[id]) { used++; uses += getCount[id] || 0 } }
         out[c] = { delivered: ids.length, deliveries: st.deliveries, used: used, uses: uses, rate: ids.length ? Math.round(used / ids.length * 1000) / 1000 : null }
       }
-      return { ok: true, noteId: rl ? rl.id : null, sinceDays: sinceDays, fromDay: fromDay, events: events, channels: out }
+      const rl = _recallNoteSync()
+      return { noteId: rl ? rl.id : null, sinceDays: sinceDays, fromDay: fromDay, events: events, channels: out, ledger: (t && t.ledger) || null }
     }
-    // §2 旁挂行格式化（账本 _ledgerRefresh 消费）：交付通道 `ch used/delivered·pct%`（无交付 → `ch 无交付`）+ get 取用计数
+    // 查询面入口（RPC + 镜像摘要共用）：读前落账（防抖 pending 与在途回执先 flush 再统计——自洽读）
+    async function _recallStats(opts) {
+      const sinceDays = Math.max(1, Math.floor((opts && opts.sinceDays) || 7))
+      await _recallFlushAgg()
+      return Object.assign({ ok: true }, _recallComputeStats(sinceDays))
+    }
+    // 分通道行格式化（镜像摘要/面板共用）：交付通道 `ch used/delivered·pct%`（无交付 → `ch 无交付`）+ get 取用计数
     function _recallFmtChannels(channels) {
       const parts = []
       for (const c of ['inject', 'mount', 'search', 'catalog']) {
@@ -242,7 +255,8 @@
       parts.push('get 取用 ' + (g ? g.used : 0) + ' 条/' + (g ? g.uses : 0) + ' 次')
       return parts.join('、')
     }
-    // 手动查询 RPC：notes-recall-stats {sinceDays?}（缺省 7 天；只读——除读前落账 flush 防抖 pending 外零副作用）
+    // 手动查询 RPC：notes-recall-stats {sinceDays?}（缺省 7 天；只读——除读前落账 flush 防抖 pending 外零副作用；
+    //   返回结构不变 + 卡⑤新增 ledger 键：「召回指标」汇总输出本 RPC（面板数据源），索引笔记 §2 通道已退役摘除）
     disposers.push(handle('notes-recall-stats', async (args) => {
       try { return await _recallStats({ sinceDays: args && args.sinceDays }) }
       catch (e) { return { error: String(e.message || e) } }

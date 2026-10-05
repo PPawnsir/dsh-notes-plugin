@@ -27,7 +27,8 @@
       const newNoteKind = props.newNoteKind
       const setNewNoteKind = props.setNewNoteKind
       // 创建流程：notes-create → 静默刷新列表 → 选中新笔记 → 聚焦正文 textarea → toast
-      // 落位规则（原型 btnNew）：文件夹视图落当前文件夹；主题视图带当前主题；否则落选中笔记所在文件夹/未分类
+      // 落位规则（原型 btnNew）：主题视图带当前主题；否则落选中笔记所在文件夹/未分类
+      // （0.4.3 验收修复⑦：「文件视图」（文件夹视图）模式已拆除，原「文件夹视图落当前文件夹」分支随之移除）
       // 面板能力（选中/闪现高亮/聚焦正文/切源码态/刷新列表）经 panelBridge 中转（禁横向引用）
       async function doCreateNote() {
         const title = newNoteTitle.trim()
@@ -35,7 +36,7 @@
         setNewNotePending(true); setError('')
         try {
           const selNote = notes.find(n => n.id === selected)
-          const createFolder = view.type === 'folder' ? view.id : ((selNote && selNote.folder) || '')
+          const createFolder = (selNote && selNote.folder) || ''
           // 二期 kind 模板骨架：按所选类型预填（note=空自由格式；机器信息类由 ✨整理按内容适配，建时不预判）
           const payload = { title: title, body: KIND_TEMPLATES[newNoteKind] || '', kind: newNoteKind }
           if (createFolder) payload.folder = createFolder

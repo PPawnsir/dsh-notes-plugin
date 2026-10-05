@@ -1,7 +1,7 @@
 /* ================= 注入管理面板（设置卡片「注入管理」入口；notes-inject-manager）=================
-   数据源：notes-list {includeLogs:true} slim（inject/injectRole/injectEver/sensitive/kind/injectTo 齐备，零新 RPC；含日志——日志行禁用态展示）；
+   数据源：notes-list {includeLogs:true} slim（inject/injectRole/injectEver/sensitive/kind/injectTo 齐备，零新 RPC；含日志——日志行静态标注「不参与注入」）；
    三态语义与详情区三态分段控件完全一致：off→notes-update {inject:false}；约定/资料→{inject:true, injectRole}（payload 禁 undefined）；
-   护栏：kind=log 注入硬禁（勾选/档位禁用 + title 提示；host 侧同口径强制 inject=false 并回 injectForcedOff）；
+   护栏：kind=log 注入硬关 UI 化（0.4.3⑦ 用户裁决——行内不渲染注入开关/勾选（UI 层不提供），host injectForcedOff 硬闸双保险保留）；
          sensitive 允许注入但行内提示「注入时自动脱敏」；排序：注入中在前（约定 > 资料），组内 updatedAt 降序；
    顶部统计 chips（约定 N / 资料 M / 未注入 K，点击=过滤）；搜索 250ms 防抖（与列表搜索同口径，本地过滤）。 */
 var injMgrState = null;   /* { list:null=加载中, filter:'all', search:'', q:'', sel:{}, pending:false } */
@@ -13,12 +13,13 @@ function injMgrScopeLabel(injectTo) { var arr = (injectTo || []).filter(function
 function openInjectManager(from) {
   /* 单层返回栈（notes-041-settings-back）：from='settings'（设置卡「管理…」入口）时存档来源 + 当前 .modal 滚动位置，关闭后自动回设置卡 */
   var backScroll = from === 'settings' && $('modal') ? $('modal').scrollTop : 0;
-  injMgrState = { list: null, filter: 'all', search: '', q: '', sel: {}, pending: false };
+  injMgrState = { list: null, filter: 'all', search: '', q: '', sel: {}, pending: false, rstats: null, rstatsOpen: false };
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + t('settings.injManager') + '<span class="sub">' + t('inj.titleSub') + '</span></div>'
     + '<div class="injmgr-bar"><div class="injmgr-chips" id="injMgrChips"></div>'
     + '<input class="injmgr-search" id="injMgrSearch" placeholder="' + t('inj.searchPlaceholder') + '"></div>'
     + '<div id="injSchedHost"></div>'
+    + '<div id="injMntStats"></div>'
     + '<div id="injMgrBody"><div class="modal-hint">' + t('common.loading') + '</div></div>'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
     + '<div class="modal-acts"><button class="mbtn" id="injMgrClose">' + t('common.close') + '</button></div>'
@@ -42,6 +43,45 @@ function loadInjectManager() {
     injMgrState.list = (res && res.notes) || [];
     renderInjectManager();
   }).catch(function (e) { if (injMgrState) { injMgrState.list = []; renderInjectManager(); modalErr(t('inj.loadFailed', { msg: e && e.message || e })) } });
+  /* 挂载区统计行数据源（0.4.3 验收修复⑥ notes-043-metrics-present）：notes-recall-stats 只读 RPC（账本快照 ledger 键 + 五通道分列），
+     零新通道；静默降级——RPC 失败/无快照（新装库 cron 未跑）→ rstats 保持 null，统计行整区省略不占位 */
+  rpc('notes-recall-stats', {}).then(function (res) {
+    if (!injMgrState) return;
+    if (res && !res.error && res.ok) { injMgrState.rstats = res; renderInjMntStats() }
+  }).catch(function () { if (injMgrState) { injMgrState.rstats = null; renderInjMntStats() } });   /* 失败清陈旧统计行（刷新场景），遥测静默降级不打扰 */
+}
+/* 分通道召回率行（挂载区统计点开全量，卡⑥）：交付通道 `ch used/delivered·pct%`（无交付 → `ch —`）+ get 取用计数——
+   机器通道名原文输出（遥测通道是机器标识符，不进 i18n；口径同 host _recallFmtChannels） */
+function injMgrChanLine(channels) {
+  var parts = [];
+  ['inject', 'mount', 'search', 'catalog'].forEach(function (c) {
+    var st = channels && channels[c];
+    if (!st || !st.delivered) { parts.push(c + ' —'); return }
+    parts.push(c + ' ' + st.used + '/' + st.delivered + '·' + Math.round((st.rate || 0) * 100) + '%');
+  });
+  var g = channels && channels.get;
+  parts.push('get ×' + (g ? g.uses : 0));
+  return parts.join(' ｜ ');
+}
+/* 挂载区统计行渲染（卡⑥）：账本快照紧凑行（挂载 N｜本周引用 Top3｜零引用 M）+ 点开才见全量（分通道召回率 + 快照明细）；
+   无快照 → 整区省略（静默降级；用途分级红线：本行仅呈现，清理裁决走 notes-recall-stats 全量/人工） */
+function renderInjMntStats() {
+  var host = $('injMntStats'); if (!host || !injMgrState) return;
+  var st = injMgrState.rstats;
+  if (!st || !st.ledger) { host.innerHTML = ''; return }
+  var lg = st.ledger;
+  var top3 = (lg.top || []).slice(0, 3).map(function (it) { return it.id + '×' + it.count }).join('、') || '—';
+  var h = '<div class="injmgr-mntstats-row" id="injMntStatsRow" title="' + esc(t('inj.mntStatsTip')) + '">'
+    + icon('i-eye', 11) + ' ' + esc(t('inj.mntStats', { m: lg.mountTotal || 0, top: top3, z: lg.zeroRefCount || 0 })) + '</div>';
+  if (injMgrState.rstatsOpen) {
+    h += '<div class="injmgr-mntstats-full">'
+      + '<div>' + esc(injMgrChanLine(st.channels)) + '</div>'
+      + '<div>Top5: ' + esc((lg.top || []).map(function (it) { return it.id + '×' + it.count }).join('、') || '—')
+      + ' · zero: ' + esc((lg.zeroRef || []).join('、') || '—')
+      + ' · @ ' + esc(fmtDT(lg.at)) + (st.noteId ? ' · mirror: ' + esc(st.noteId) : '') + '</div></div>';
+  }
+  host.innerHTML = h;
+  $('injMntStatsRow').onclick = function () { if (injMgrState) { injMgrState.rstatsOpen = !injMgrState.rstatsOpen; renderInjMntStats() } };
 }
 /* 当前过滤视图（排序：注入中在前（约定 > 资料 > 未注入），组内 updatedAt 降序；三态过滤 + 搜索词本地过滤） */
 function injMgrShownList() {
@@ -64,6 +104,7 @@ function renderInjectManager() {
   }).join('');
   chips.querySelectorAll('.injmgr-chip').forEach(function (el) { el.onclick = function () { st.filter = el.getAttribute('data-f'); renderInjectManager() } });
   renderInjSched();   /* 调度任务区（notes-034-sched-ui）：与注入总览同面板同数据源 */
+  renderInjMntStats();   /* 挂载区统计行（0.4.3 验收修复⑥）：notes-recall-stats 账本快照，无快照整区省略 */
   if (!st.list) return;
   var shown = injMgrShownList();
   if (!shown.length) { body.innerHTML = '<div class="modal-hint">' + (list.length ? t('inj.noMatch') : t('inj.emptyLib')) + '</div>'; return }
@@ -79,19 +120,23 @@ function renderInjectManager() {
     + '<div class="injmgr-list">'
     + shown.map(function (n) {
         var role = injMgrRole(n), isLog = (n.kind || 'note') === 'log';
-        /* 行内三态 segmented（语义与详情区三态分段控件完全一致）；log 行约定/资料档禁用（隐身硬禁 + title 提示） */
+        /* 行内三态 segmented（语义与详情区三态分段控件完全一致）；
+           注入硬关 UI 化（0.4.3⑦）：log 行不渲染勾选框与注入开关——静态标注「日志不参与注入」（UI 层不提供，非后台纠正；host 硬闸双保险保留） */
         var seg = function (r, label, tip) {
-          var dis = isLog && r !== 'off';
-          return '<span class="injmgr-opt' + (role === r ? ' on' : '') + (dis ? ' dis' : '') + '" data-role="' + r + '" data-id="' + esc(n.id) + '" title="' + (dis ? t('inj.logSegTip') : tip) + '">' + label + '</span>'
+          return '<span class="injmgr-opt' + (role === r ? ' on' : '') + '" data-role="' + r + '" data-id="' + esc(n.id) + '" title="' + tip + '">' + label + '</span>'
         };
         return '<div class="injmgr-row">'
-          + '<span' + (isLog ? ' title="' + t('inj.logRowTip') + '"' : '') + '><input type="checkbox" class="trash-check injmgr-check" data-id="' + esc(n.id) + '"' + (st.sel[n.id] ? ' checked' : '') + (isLog || st.pending ? ' disabled' : '') + '></span>'
+          + (isLog
+            ? '<span class="injmgr-checkslot" title="' + t('inj.logNoInjectTip') + '"></span>'
+            : '<span><input type="checkbox" class="trash-check injmgr-check" data-id="' + esc(n.id) + '"' + (st.sel[n.id] ? ' checked' : '') + (st.pending ? ' disabled' : '') + '></span>')
           + '<span class="dot" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>'
           + '<span class="injmgr-ti" title="' + esc(n.title || t('tree.untitled')) + '">' + esc(n.title || t('tree.untitled')) + '</span>'
           + (n.sensitive === true ? '<span class="injmgr-sens" title="' + t('inj.sensTip') + '">' + icon('i-lock', 9) + t('inj.sensBadge') + '</span>' : '')
           + (n.injectEver === true && !n.inject ? '<span class="injmgr-ever" title="' + t('meta.injectEverTip') + '">' + icon('i-clock', 9) + t('meta.injectEver') + '</span>' : '')
           + '<span class="injmgr-scope">' + esc(injMgrScopeLabel(n.injectTo)) + '</span>'
-          + '<span class="injmgr-seg">' + icon('i-bolt', 10) + seg('off', t('meta.roleOff'), t('meta.roleOffTip')) + seg('convention', t('tree.roleConvention'), t('meta.roleConventionTip')) + seg('reference', t('tree.roleReference'), t('meta.roleReferenceTip')) + '</span>'
+          + (isLog
+            ? '<span class="injmgr-lognote" title="' + t('inj.logNoInjectTip') + '">' + icon('i-bolt', 10) + t('inj.logNoInject') + '</span>'
+            : '<span class="injmgr-seg">' + icon('i-bolt', 10) + seg('off', t('meta.roleOff'), t('meta.roleOffTip')) + seg('convention', t('tree.roleConvention'), t('meta.roleConventionTip')) + seg('reference', t('tree.roleReference'), t('meta.roleReferenceTip')) + '</span>')
           + '</div>'
       }).join('') + '</div>';
   $('injMgrAll').onchange = toggleInjMgrAll;
@@ -218,25 +263,47 @@ function toggleInjMgrAll() {
   if (!all) selectable.forEach(function (n) { injMgrState.sel[n.id] = true });
   renderInjectManager();
 }
-/* ===== 挂载弹层（0.4.3⑤ notes-043-index）：给资料开注入 → 手写 whenToUse（textarea 预填标题）→ 确认落注入索引 §1 行 =====
-   host 侧开注入已自动落缺省行（whenToUse=标题），本弹层 = 换文案通道：跳过 = 保留缺省行；modal 不叠 modal（先关注入管理面板，清返回栈） */
+/* ===== 挂载弹层（0.4.3⑤ notes-043-index；0.4.3 验收修复 notes-043-preview-when-edit：LLM 草稿预填 + 编辑模式）=====
+   两种模式：未挂载 = LLM 草稿模式（打开即「生成中…」占位 → notes-when-suggest 成功填草稿，失败/8s 超时静默回退预填标题；
+     用户始终可编辑——touched 后到达的草稿不覆盖）；已挂载（预览目录行点击带 existing）= 编辑模式（预填现有文案，不调 LLM）。
+   确认统一 notes-mount（幂等换文案）；跳过 = 保留现状行；modal 不叠 modal（调用方先关来源 modal，清返回栈） */
 var mountState = null;
 function openMountModal(n) {
   if (!n) return;
   injMgrState = null; modalBackTo = null;
-  mountState = { id: n.id, title: n.title || n.id, when: n.title || '', pending: false };
+  var edit = typeof n.existing === 'string';   /* 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM） */
+  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false };
   openModal(
-    '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + t('inj.mountTitle') + '<span class="sub">' + t('inj.mountSub') + '</span></div>'
+    '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + (edit ? t('inj.mountEdit') : t('inj.mountTitle')) + '<span class="sub">' + t('inj.mountSub') + '</span></div>'
     + '<div class="inj-mount-body"><label class="inj-mount-label">' + t('inj.mountLabel') + '</label>'
-    + '<textarea class="inj-mount-when" id="injMountWhen" rows="3" placeholder="' + esc(t('inj.mountPlaceholder')) + '">' + esc(mountState.when) + '</textarea></div>'
+    + '<textarea class="inj-mount-when" id="injMountWhen" rows="3" placeholder="' + esc(edit ? t('inj.mountPlaceholder') : t('inj.mountGen')) + '">' + esc(mountState.when) + '</textarea></div>'
     + '<div class="modal-acts"><button class="mbtn" id="injMountSkip">' + t('inj.mountSkip') + '</button>'
     + '<button class="mbtn primary" id="injMountSave">' + t('inj.mountSave') + '</button></div>'
   );
+  $('injMountWhen').oninput = function () { if (mountState) mountState.touched = true };
+  if (!edit) {
+    /* LLM 草稿预填：成功填草稿；失败/超时回退预填标题（现状行为）；弹层已关/换目标则丢弃迟到响应；用户已动手不覆盖 */
+    rpc('notes-when-suggest', { id: n.id }).then(function (res) {
+      if (!mountState || mountState.id !== n.id) return;
+      mountState.generating = false;
+      var draft = res && !res.error && typeof res.suggestion === 'string' && res.suggestion ? res.suggestion : mountState.title;
+      var ta = $('injMountWhen');
+      if (!mountState.touched) { mountState.when = draft; if (ta) ta.value = draft }
+      if (ta) ta.placeholder = t('inj.mountPlaceholder');
+    }, function () {
+      if (!mountState || mountState.id !== n.id) return;
+      mountState.generating = false;
+      var ta = $('injMountWhen');
+      if (!mountState.touched) { mountState.when = mountState.title; if (ta) ta.value = mountState.title }
+      if (ta) ta.placeholder = t('inj.mountPlaceholder');
+    });
+  }
   $('injMountSkip').onclick = function () { mountState = null; closeModal() };
   $('injMountSave').onclick = function () {
     if (!mountState || mountState.pending) return;
     mountState.pending = true; mountState.when = $('injMountWhen').value;
-    rpc('notes-mount', { id: mountState.id, whenToUse: mountState.when }).then(function (res) {
+    /* 空值兜底（0.4.3⑦ 顺带微修）：「正在生成…」窗口内点确认时 when 可能仍为空串——落空回退标题，whenToUse 行不落空 */
+    rpc('notes-mount', { id: mountState.id, whenToUse: mountState.when || mountState.title }).then(function (res) {
       var done = mountState; mountState = null;
       if (res && res.error) { toast(t('inj.mountFailed', { msg: res.error })) }
       else { toast(t('inj.mountSaved', { title: done.title })); closeModal() }
@@ -246,7 +313,7 @@ function openMountModal(n) {
 /* 单行直改：点 segmented 档位即切换（同详情区通道 notes-update {inject, injectRole}），toast 反馈 */
 function doInjMgrSet(n, role) {
   if (!n || !injMgrState || injMgrState.pending) return;
-  if ((n.kind || 'note') === 'log' && role !== 'off') return;   /* 日志隐身硬禁（按钮已禁用，双保险） */
+  if ((n.kind || 'note') === 'log' && role !== 'off') return;   /* 日志注入硬关（UI 已不渲染开关，函数拦截为双保险） */
   if (injMgrRole(n) === role) return;
   var upd = { id: n.id, inject: role !== 'off' };
   if (upd.inject) upd.injectRole = role;   /* 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘） */

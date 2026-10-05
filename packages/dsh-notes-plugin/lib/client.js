@@ -223,11 +223,8 @@ window.__ModuleLoader__.load({
       'tree.useCountTip': '被 Agent 引用（note_get 命中）{n} 次',
       'tree.wikiTip': '含双链 [[…]]（详情富文本中可点击跳转）',
       'tree.toggleTip': '展开/折叠',
-      'tree.logTip': '工作日志（隐身条目，展开日志夹时定向召回）',
-      'tree.folderViewTip': '文件夹视图（含子孙文件夹）',
       'tree.countN': '{n} 条',
       'tree.viewTopic': '主题 · {id}',
-      'tree.viewFolder': '文件夹 · {name}',
       'tree.viewAll': '全部笔记',
       'tree.crossFolderCount': '（跨文件夹 {n} 条）',
       'tree.clearViewTip': '清除视图过滤',
@@ -256,7 +253,7 @@ window.__ModuleLoader__.load({
       'sel.merge': '合并',
       'hint.select': '🖱 在右侧正文<b>划选文字松手</b> → 弹出快速记录卡片',
       'hint.drag': '拖笔记 → 文件夹移入 / 拖到根级笔记区移出',
-      'hint.folder': '点击展开/折叠 · 行尾漏斗进文件夹视图 · 右键管理',
+      'hint.folder': '点击展开/折叠 · 右键管理',
       'hint.keys': 'Ctrl K 搜索 · Alt N 新建 · j/k 移动 · Enter 打开 · Esc 关闭浮层 · ? 快捷键',
       'chrome.dragMove': '拖拽移动窗口',
       'chrome.entryModeTip': '切换入口模式：会话头部 / 悬浮气泡',
@@ -316,7 +313,7 @@ window.__ModuleLoader__.load({
       'editor.backlinksWarming': '（索引中…）',
       'editor.backlinkJumpTip': '跳转到「{name}」',
       'editor.backlinksEmpty': '暂无其他笔记用 [[…]] 链接到这里',
-      'meta.crumbFolderTip': '切换到文件夹视图：{name}',
+      'meta.crumbFolderExpandTip': '在目录树中展开：{name}',
       'meta.crumbTopicTip': '按主题全局过滤（跨文件夹）',
       'meta.crumbTopicViewTip': '查看同主题全部笔记',
       'meta.uncategorized': '未分类',
@@ -331,6 +328,7 @@ window.__ModuleLoader__.load({
       'meta.kindLink': '链接',
       'meta.kindQuote': '引用',
       'meta.kindLog': '日志',
+      'meta.kindSys': '机器',
       'meta.statusTip': '状态',
       'meta.topicTip': '主题（host LLM 可异步回填；改后自动保存）',
       'meta.topicTipClient': '主题（可直接编辑；点右侧按钮按主题全局过滤）',
@@ -348,6 +346,8 @@ window.__ModuleLoader__.load({
       'meta.dispDone': '派发已回执',
       'meta.roleOffTip': '不注入系统提示',
       'meta.roleOff': '关闭',
+      'meta.logNoInject': '日志不参与注入',
+      'meta.logNoInjectTip': '工作日志注入硬禁：host 强制 inject=false（injectForcedOff 硬闸）；日志同权——可见/可搜索/可编辑，进目录用下方「目录」开关显式开启',
       'meta.roleConventionTip': '须遵守的行为规则',
       'meta.roleReferenceTip': '事实性补充信息，Agent 按需取用',
       'meta.scopeTip': '选择注入范围（可多选）',
@@ -461,8 +461,8 @@ window.__ModuleLoader__.load({
       'settings.usageBudget': '用量预算提醒',
       'settings.usageBudgetTip': '本月 token 消耗超过该值时提醒（仅 toast 提示，不阻断调用）；0 = 关闭',
       'settings.usageBudgetTipT': '本月 LLM token 消耗超过该值时 toast 提醒（仅提醒，不阻断调用）；0 = 关闭',
-      'settings.catalog': '笔记目录注入',
-      'settings.catalogTip': '向 Agent 系统提示注入笔记目录（一行一条），供其规划时参考并按需 note_get 取全文',
+      'settings.catalog': '目录段补充未挂载条目（缺省关）',
+      'settings.catalogTip': '开启后，注入的笔记目录段在挂载行之后补充未挂载的普通条目（一行一条），供 Agent 规划时参考并按需 note_get 取全文；缺省关闭，显式开启后生效',
       'settings.enabled': '已开启',
       'settings.disabled': '已关闭',
       'settings.stale': '时效衰减提醒',
@@ -482,8 +482,8 @@ window.__ModuleLoader__.load({
       'settings.injPreviewTipT': '预览 Agent 系统提示中实际注入的笔记文本（约定桶 + 目录桶），含敏感打码 / 时效标注 / 预算截断效果；可按会话过滤',
       'settings.previewBtn': '预览…',
       'settings.injManager': '注入管理',
-      'settings.injManagerTip': '全库注入总览：逐篇三态直改（关闭/约定/资料）+ 多选批量 + 三态过滤/搜索；日志隐身硬禁，敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）',
-      'settings.injManagerTipT': '打开注入管理面板：总览全部笔记的注入三态（约定/资料/关闭），单行直改或多选批量调整；顶部统计 chips 点击即过滤；日志隐身硬禁，敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）',
+      'settings.injManagerTip': '全库注入总览：逐篇三态直改（关闭/约定/资料）+ 多选批量 + 三态过滤/搜索；日志不参与注入（硬关，不提供开关），敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）',
+      'settings.injManagerTipT': '打开注入管理面板：总览全部笔记的注入三态（约定/资料/关闭），单行直改或多选批量调整；顶部统计 chips 点击即过滤；日志不参与注入（硬关，不提供开关），敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）',
       'settings.manageBtn': '管理…',
       'settings.data': '数据',
       'settings.dataTip': '全库目录快照导出 / 从快照目录导入（只增改不删，导入前自动全量备份）/ 回收站兜底（恢复或彻底删除）',
@@ -504,7 +504,7 @@ window.__ModuleLoader__.load({
       'settings.suggestTipT': '整理建议：速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）',
       'settings.openBtn': '打开',
       'settings.memory': '工作记忆',
-      'settings.memoryTip': '会话工作结论沉淀为工作日志（kind=log，默认隐身：不进系统提示/目录/默认列表与搜索，筛选中心类型「日志」为专入口）；启用 = 创建一条预填约定笔记（可见/可改/可停用）',
+      'settings.memoryTip': '会话工作结论沉淀为工作日志（kind=log，与普通笔记同权：可见/可搜索/可编辑；注入硬禁，目录缺省不含）；启用 = 创建一条预填约定笔记（可见/可改/可停用）',
       'settings.memProbing': '探测中…',
       'settings.memEnabled': '已启用',
       'settings.memView': '查看约定',
@@ -513,7 +513,7 @@ window.__ModuleLoader__.load({
       'settings.memDisableTip': '停用 = 关闭引导约定笔记的注入（笔记保留可再启用）',
       'settings.memPending': '处理中…',
       'settings.memEnable': '启用沉淀引导…',
-      'settings.memEnableTip': '创建一条预填约定笔记（inject=true，contractType: memory-guide），引导 Agent 在任务收尾时把会话结论写为工作日志（kind=log，默认隐身）——与既有约定并行不冲突',
+      'settings.memEnableTip': '创建一条预填约定笔记（inject=true，contractType: memory-guide），引导 Agent 在任务收尾时把会话结论写为工作日志（kind=log，同权可见/可搜，注入硬禁）——与既有约定并行不冲突',
       'settings.logWeek': '日志周聚合窗口',
       'settings.logWeekTip': '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行；缺省 7 天）',
       'settings.logWeekTipT': '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行）',
@@ -530,8 +530,8 @@ window.__ModuleLoader__.load({
       'settings.savedLlm': '已保存：笔记 LLM = {name}',
       'settings.restoredFollow': '已恢复跟随当前会话（默认）',
       'settings.llmRequired': 'provider 与 model 均需填写',
-      'settings.catalogOn': '已开启笔记目录注入',
-      'settings.catalogOff': '已关闭笔记目录注入',
+      'settings.catalogOn': '已开启目录段补充未挂载条目',
+      'settings.catalogOff': '已关闭目录段补充未挂载条目',
       'settings.staleInvalid': '时效提醒阈值需为非负整数（0 = 关闭）',
       'settings.staleOff': '已关闭时效衰减提醒',
       'settings.savedStale': '已保存：超过 {v} 天未更新的资料将在目录标注 ⚠',
@@ -571,7 +571,7 @@ window.__ModuleLoader__.load({
       'common.schedNHours': '每 {n} 小时',
       'common.schedNMinutes': '每 {n} 分钟',
       'common.schedNMs': '每 {n}ms',
-      'inj.titleSub': '全库注入总览 · 单行直改 / 多选批量 · 日志隐身硬禁 · 调度任务区（定时派发）',
+      'inj.titleSub': '全库注入总览 · 单行直改 / 多选批量 · 日志不参与注入 · 调度任务区（定时派发）',
       'inj.searchPlaceholder': '搜索标题 / 主题 / 标签…',
       'inj.loadFailed': '加载失败：{msg}',
       'inj.chipAll': '全部 {n}',
@@ -585,8 +585,8 @@ window.__ModuleLoader__.load({
       'inj.batchReference': '设为资料',
       'inj.batchOff': '关闭注入',
       'inj.executing': '执行中…',
-      'inj.logSegTip': '日志默认隐身：inject 强制关闭（kind=log 硬禁）',
-      'inj.logRowTip': '日志默认隐身：inject 强制关闭，不参与注入批量操作',
+      'inj.logNoInject': '日志不参与注入',
+      'inj.logNoInjectTip': '工作日志注入硬禁：host 强制 inject=false（injectForcedOff 硬闸）；日志同权——可见/可搜索/可编辑，进目录需显式开启「目录」',
       'inj.sensTip': '敏感笔记：注入时自动脱敏（正文按行打码，键保留值遮蔽）',
       'inj.sensBadge': '注入时自动脱敏',
       'inj.scopeGlobal': '全局',
@@ -598,7 +598,7 @@ window.__ModuleLoader__.load({
       'inj.schedPausedToast': '已暂停定时：{title}',
       'inj.schedDelConfirm': '删除定时任务「{title}」？\n约定笔记移入回收站（可恢复），调度即刻停止。',
       'inj.schedDeleted': '已删除定时任务：{title}（回收站可恢复）',
-      'inj.forcedOff': '「{title}」日志默认隐身：inject 已强制关闭',
+      'inj.forcedOff': '「{title}」日志不参与注入：inject 已强制关闭',
       'inj.injectOffToast': '已关闭注入：{title}',
       'inj.injectSetToast': '已设为{role}：{title}',
       'inj.setFailed': '设置失败：{msg}',
@@ -618,12 +618,19 @@ window.__ModuleLoader__.load({
       'inj.mountSkip': '跳过',
       'inj.mountSaved': '已挂载索引：{title}',
       'inj.mountFailed': '挂载失败：{msg}',
+      // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
+      'inj.mountEdit': '编辑挂载',
+      'inj.mountAdd': '补充 whenToUse 并挂载',
+      'inj.mountGen': '正在生成 whenToUse…',
+      // 0.4.3 验收修复⑥（notes-043-metrics-present）：注入管理面板挂载区统计行（notes-recall-stats 账本快照，点开看全量）
+      'inj.mntStats': '挂载 {m}｜本周引用 Top：{top}｜零引用 {z}',
+      'inj.mntStatsTip': '召回价值信号（数据源 notes-recall-stats · 账本快照）· 点开看全量分通道统计',
       'mem.disabledToast': '已停用沉淀引导（约定笔记保留，inject 已关闭）',
       'mem.notEnabled': '当前未启用沉淀引导',
       'mem.disableFailed': '停用失败：{msg}',
       'mem.enableTitle': '启用沉淀引导',
       'mem.enableSub': '工作记忆 v0 · 约定笔记方案',
-      'mem.enableHint': '将创建一条预填约定笔记「约定：工作日志沉淀（工作记忆 v0）」（inject=true，contractType: memory-guide），引导 Agent 在任务收尾/你示意时把会话结论写为工作日志（kind=log）。工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看），记忆管 Agent 自己沉淀什么（自用召回），两者可同时对同一事件生效，产物重复是设计意图而非冲突。日志默认隐身：不进系统提示、不进目录、不出现在默认列表与默认搜索；筛选中心类型「日志」为专入口。该约定可见/可改/可停用/可删除；停用后再启用复用同一约定笔记（重新打开注入，不新建第二条）。',
+      'mem.enableHint': '将创建一条预填约定笔记「约定：工作日志沉淀（工作记忆 v0）」（inject=true，contractType: memory-guide），引导 Agent 在任务收尾/你示意时把会话结论写为工作日志（kind=log）。工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看），记忆管 Agent 自己沉淀什么（自用召回），两者可同时对同一事件生效，产物重复是设计意图而非冲突。日志与普通笔记同权：可见、可搜索、可编辑；注入硬禁（不提供注入开关），目录缺省不含（详情「目录」开关可显式开启）。该约定可见/可改/可停用/可删除；停用后再启用复用同一约定笔记（重新打开注入，不新建第二条）。',
       'mem.scopeTitle': '注入范围（作用域）',
       'mem.scopeGlobal': '所有会话（缺省）',
       'mem.scopeWsPick': '指定工作区（多选，下方勾选）',
@@ -858,7 +865,6 @@ window.__ModuleLoader__.load({
       'fld.movedInto': '已移入「{name}」',
       'fld.movedRoot': '已移回根级',
       'fld.moveFailed': '移动失败：{msg}',
-      'fld.menuView': '进入文件夹视图',
       'fld.menuUp': '上移',
       'fld.menuDown': '下移',
       'fld.menuRoot': '移回根级',
@@ -972,11 +978,8 @@ window.__ModuleLoader__.load({
       'tree.useCountTip': 'Referenced by Agent (note_get hit) {n} times',
       'tree.wikiTip': 'Has [[…]] wiki links (clickable in the detail rich text)',
       'tree.toggleTip': 'Expand/collapse',
-      'tree.logTip': 'Work log (stealth entry, recalled on demand when expanding its folder)',
-      'tree.folderViewTip': 'Folder view (including descendant folders)',
       'tree.countN': '{n}',
       'tree.viewTopic': 'Topic · {id}',
-      'tree.viewFolder': 'Folder · {name}',
       'tree.viewAll': 'All notes',
       'tree.crossFolderCount': '({n} across folders)',
       'tree.clearViewTip': 'Clear view filter',
@@ -1005,7 +1008,7 @@ window.__ModuleLoader__.load({
       'sel.merge': 'Merge',
       'hint.select': '🖱 <b>Select text and release</b> in the editor on the right → pop up the quick-capture card',
       'hint.drag': 'Drag a note → onto a folder to move in / onto the root note area to move out',
-      'hint.folder': 'Click to expand/collapse · row-end funnel enters folder view · right-click to manage',
+      'hint.folder': 'Click to expand/collapse · right-click to manage',
       'hint.keys': 'Ctrl K search · Alt N new · j/k move · Enter open · Esc close overlays · ? shortcuts',
       'chrome.dragMove': 'Drag to move the window',
       'chrome.entryModeTip': 'Switch entry mode: session header / floating bubble',
@@ -1065,7 +1068,7 @@ window.__ModuleLoader__.load({
       'editor.backlinksWarming': ' (indexing…)',
       'editor.backlinkJumpTip': 'Jump to "{name}"',
       'editor.backlinksEmpty': 'No other notes link here with [[…]] yet',
-      'meta.crumbFolderTip': 'Switch to folder view: {name}',
+      'meta.crumbFolderExpandTip': 'Expand in tree: {name}',
       'meta.crumbTopicTip': 'Filter globally by topic (across folders)',
       'meta.crumbTopicViewTip': 'View all notes with this topic',
       'meta.uncategorized': 'Uncategorized',
@@ -1080,6 +1083,7 @@ window.__ModuleLoader__.load({
       'meta.kindLink': 'Link',
       'meta.kindQuote': 'Quote',
       'meta.kindLog': 'Log',
+      'meta.kindSys': 'Machine',
       'meta.statusTip': 'Status',
       'meta.topicTip': 'Topic (the host LLM may backfill it asynchronously; autosaved on change)',
       'meta.topicTipClient': 'Topic (edit directly; use the button on the right to filter globally by topic)',
@@ -1097,6 +1101,8 @@ window.__ModuleLoader__.load({
       'meta.dispDone': 'All received',
       'meta.roleOffTip': 'Do not inject into the system prompt',
       'meta.roleOff': 'Off',
+      'meta.logNoInject': 'No injection (log)',
+      'meta.logNoInjectTip': 'Work logs are hard-gated out of injection (host forces inject=false); logs are first-class — visible/searchable/editable; catalog inclusion via the "Catalog" toggle below',
       'meta.roleConventionTip': 'Behavioral rules the Agent must follow',
       'meta.roleReferenceTip': 'Factual reference the Agent consults as needed',
       'meta.scopeTip': 'Choose the injection scope (multi-select)',
@@ -1210,8 +1216,8 @@ window.__ModuleLoader__.load({
       'settings.usageBudget': 'Usage budget reminder',
       'settings.usageBudgetTip': 'Remind when token usage this month exceeds this value (toast only, calls not blocked); 0 = off',
       'settings.usageBudgetTipT': 'Toast when LLM token usage this month exceeds this value (reminder only, calls not blocked); 0 = off',
-      'settings.catalog': 'Note catalog injection',
-      'settings.catalogTip': 'Inject the note catalog (one line per note) into the Agent system prompt for planning; the Agent calls note_get for full text on demand',
+      'settings.catalog': 'Directory supplements unmounted entries (off by default)',
+      'settings.catalogTip': 'When on, the injected note directory section appends unmounted entries (one line per note) after the mounted lines, so the Agent can plan with awareness and calls note_get for full text on demand; off by default — takes effect only when explicitly enabled',
       'settings.enabled': 'Enabled',
       'settings.disabled': 'Disabled',
       'settings.stale': 'Staleness reminder',
@@ -1231,8 +1237,8 @@ window.__ModuleLoader__.load({
       'settings.injPreviewTipT': 'Preview the note text actually injected into the Agent system prompt (convention bucket + catalog bucket), with sensitive masking / stale marks / budget truncation; filterable by session',
       'settings.previewBtn': 'Preview…',
       'settings.injManager': 'Injection manager',
-      'settings.injManagerTip': 'Library-wide injection overview: per-note three-state editing (off/convention/reference) + multi-select batch + three-state filter/search; logs are hard-hidden, sensitive notes auto-masked; includes the schedules area (scheduled-dispatch overview / edit backfill / pause / delete)',
-      'settings.injManagerTipT': 'Open the injection manager: overview of the injection three-state (convention/reference/off) for all notes; edit inline or batch-adjust with multi-select; top stat chips filter on click; logs are hard-hidden, sensitive notes auto-masked; includes the schedules area (scheduled-dispatch overview / edit backfill / pause / delete)',
+      'settings.injManagerTip': 'Library-wide injection overview: per-note three-state editing (off/convention/reference) + multi-select batch + three-state filter/search; logs do not participate in injection (hard gate, no switch offered), sensitive notes auto-masked; includes the schedules area (scheduled-dispatch overview / edit backfill / pause / delete)',
+      'settings.injManagerTipT': 'Open the injection manager: overview of the injection three-state (convention/reference/off) for all notes; edit inline or batch-adjust with multi-select; top stat chips filter on click; logs do not participate in injection (hard gate, no switch offered), sensitive notes auto-masked; includes the schedules area (scheduled-dispatch overview / edit backfill / pause / delete)',
       'settings.manageBtn': 'Manage…',
       'settings.data': 'Data',
       'settings.dataTip': 'Full-library catalog snapshot export / import from a snapshot directory (adds and updates only, never deletes; full backup before import) / trash as the fallback (restore or purge)',
@@ -1253,7 +1259,7 @@ window.__ModuleLoader__.load({
       'settings.suggestTipT': 'Organize suggestions: quick-note group archiving / stale unreferenced cleanup / orphan note candidates (nominates only, never auto-executes)',
       'settings.openBtn': 'Open',
       'settings.memory': 'Agent memory',
-      'settings.memoryTip': 'Session work conclusions settle into work logs (kind=log, stealth by default: excluded from the system prompt/catalog/default lists and search; the filter-center type "Log" is the dedicated entry); enabling = create one prefilled convention note (visible/editable/disable-able)',
+      'settings.memoryTip': 'Session work conclusions settle into work logs (kind=log, first-class like any note: visible/searchable/editable; injection hard-disabled, excluded from the catalog by default); enabling = create one prefilled convention note (visible/editable/disable-able)',
       'settings.memProbing': 'Probing…',
       'settings.memEnabled': 'Enabled',
       'settings.memView': 'View convention',
@@ -1262,7 +1268,7 @@ window.__ModuleLoader__.load({
       'settings.memDisableTip': 'Disable = turn off injection of the guide convention note (the note is kept and can be re-enabled)',
       'settings.memPending': 'Processing…',
       'settings.memEnable': 'Enable settling guide…',
-      'settings.memEnableTip': 'Create a prefilled convention note (inject=true, contractType: memory-guide) that guides the Agent to write session conclusions as work logs (kind=log, stealth by default) at task wrap-up — coexists with existing conventions without conflict',
+      'settings.memEnableTip': 'Create a prefilled convention note (inject=true, contractType: memory-guide) that guides the Agent to write session conclusions as work logs (kind=log, first-class visible/searchable, injection hard-disabled) at task wrap-up — coexists with existing conventions without conflict',
       'settings.logWeek': 'Log weekly rollup window',
       'settings.logWeekTip': 'Work logs older than N days are nominated for rollup by workspace×week in organize suggestions (nominates only; default 7 days)',
       'settings.logWeekTipT': 'Work logs older than N days are nominated for rollup by workspace×week in organize suggestions (nominates only)',
@@ -1279,8 +1285,8 @@ window.__ModuleLoader__.load({
       'settings.savedLlm': 'Saved: notes LLM = {name}',
       'settings.restoredFollow': 'Restored to following the current session (default)',
       'settings.llmRequired': 'Both provider and model are required',
-      'settings.catalogOn': 'Note catalog injection enabled',
-      'settings.catalogOff': 'Note catalog injection disabled',
+      'settings.catalogOn': 'Directory supplement of unmounted entries enabled',
+      'settings.catalogOff': 'Directory supplement of unmounted entries disabled',
       'settings.staleInvalid': 'The staleness threshold must be a non-negative integer (0 = off)',
       'settings.staleOff': 'Staleness reminder disabled',
       'settings.savedStale': 'Saved: references not updated for over {v} days will be marked ⚠ in the catalog',
@@ -1321,7 +1327,7 @@ window.__ModuleLoader__.load({
       'common.schedNHours': 'Every {n} hours',
       'common.schedNMinutes': 'Every {n} minutes',
       'common.schedNMs': 'Every {n}ms',
-      'inj.titleSub': 'Library-wide injection overview · inline editing / multi-select batch · logs hard-hidden · schedules area (scheduled dispatch)',
+      'inj.titleSub': 'Library-wide injection overview · inline editing / multi-select batch · logs do not participate in injection · schedules area (scheduled dispatch)',
       'inj.searchPlaceholder': 'Search title / topic / tags…',
       'inj.loadFailed': 'Load failed: {msg}',
       'inj.chipAll': 'All {n}',
@@ -1335,8 +1341,8 @@ window.__ModuleLoader__.load({
       'inj.batchReference': 'Set as reference',
       'inj.batchOff': 'Disable injection',
       'inj.executing': 'Running…',
-      'inj.logSegTip': 'Logs are stealth by default: inject is force-disabled (hard gate for kind=log)',
-      'inj.logRowTip': 'Logs are stealth by default: inject is force-disabled and excluded from batch injection operations',
+      'inj.logNoInject': 'No injection (log)',
+      'inj.logNoInjectTip': 'Work logs are hard-gated out of injection (host forces inject=false); logs are first-class — visible/searchable/editable; catalog inclusion via the explicit "Catalog" toggle',
       'inj.sensTip': 'Sensitive note: auto-masked when injected (body masked line by line; keys kept, values hidden)',
       'inj.sensBadge': 'Auto-masked on injection',
       'inj.scopeGlobal': 'Global',
@@ -1348,7 +1354,7 @@ window.__ModuleLoader__.load({
       'inj.schedPausedToast': 'Schedule paused: {title}',
       'inj.schedDelConfirm': 'Delete the scheduled task "{title}"?\nThe convention note moves to the trash (restorable) and the schedule stops immediately.',
       'inj.schedDeleted': 'Scheduled task deleted: {title} (restorable from trash)',
-      'inj.forcedOff': '"{title}" is a stealth-by-default log: inject was force-disabled',
+      'inj.forcedOff': '"{title}" is a work log (no injection): inject was force-disabled',
       'inj.injectOffToast': 'Injection disabled: {title}',
       'inj.injectSetToast': 'Set as {role}: {title}',
       'inj.setFailed': 'Update failed: {msg}',
@@ -1368,12 +1374,19 @@ window.__ModuleLoader__.load({
       'inj.mountSkip': 'Skip',
       'inj.mountSaved': 'Mounted to index: {title}',
       'inj.mountFailed': 'Mount failed: {msg}',
+      // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
+      'inj.mountEdit': 'Edit mount',
+      'inj.mountAdd': 'Add whenToUse & mount',
+      'inj.mountGen': 'Generating whenToUse…',
+      // 0.4.3 验收修复⑥（notes-043-metrics-present）：注入管理面板挂载区统计行（notes-recall-stats 账本快照，点开看全量）
+      'inj.mntStats': 'Mounted {m}｜Week Top: {top}｜Zero-ref {z}',
+      'inj.mntStatsTip': 'Recall value signal (source: notes-recall-stats · ledger snapshot) · click for full channel stats',
       'mem.disabledToast': 'Settling guide disabled (the convention note is kept; inject turned off)',
       'mem.notEnabled': 'The settling guide is not enabled',
       'mem.disableFailed': 'Failed to disable: {msg}',
       'mem.enableTitle': 'Enable settling guide',
       'mem.enableSub': 'Agent memory v0 · convention-note approach',
-      'mem.enableHint': 'This creates a prefilled convention note "约定：工作日志沉淀（工作记忆 v0）" (inject=true, contractType: memory-guide), guiding the Agent to write session conclusions as work logs (kind=log) at task wrap-up or when you ask. Agent memory is a parallel lane independent of note conventions — conventions govern how you record (for humans), memory governs what the Agent settles itself (for its own recall); both may apply to the same event, and duplicate output is by design, not a conflict. Logs are stealth by default: excluded from the system prompt, the catalog, and default lists/search; the filter-center type "Log" is the dedicated entry. This convention is visible/editable/disable-able/deletable; re-enabling after disabling reuses the same convention note (injection is turned back on; no second note is created).',
+      'mem.enableHint': 'This creates a prefilled convention note "约定：工作日志沉淀（工作记忆 v0）" (inject=true, contractType: memory-guide), guiding the Agent to write session conclusions as work logs (kind=log) at task wrap-up or when you ask. Agent memory is a parallel lane independent of note conventions — conventions govern how you record (for humans), memory governs what the Agent settles itself (for its own recall); both may apply to the same event, and duplicate output is by design, not a conflict. Logs are first-class like any note: visible, searchable, editable; injection is hard-disabled (no inject switch offered) and the catalog excludes them by default (explicit "Catalog" toggle admits). This convention is visible/editable/disable-able/deletable; re-enabling after disabling reuses the same convention note (injection is turned back on; no second note is created).',
       'mem.scopeTitle': 'Injection scope',
       'mem.scopeGlobal': 'All sessions (default)',
       'mem.scopeWsPick': 'Specific workspaces (multi-select below)',
@@ -1607,7 +1620,6 @@ window.__ModuleLoader__.load({
       'fld.movedInto': 'Moved into "{name}"',
       'fld.movedRoot': 'Moved back to the root level',
       'fld.moveFailed': 'Move failed: {msg}',
-      'fld.menuView': 'Enter folder view',
       'fld.menuUp': 'Move up',
       'fld.menuDown': 'Move down',
       'fld.menuRoot': 'Move to root',
@@ -1724,7 +1736,7 @@ window.__ModuleLoader__.load({
     function saveSideW(w) { try { if (w == null) localStorage.removeItem(SIDE_W_KEY); else localStorage.setItem(SIDE_W_KEY, String(w)) } catch (err) {} }
     loadEntryState()
     const PAGE_SIZE = 50
-    const KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' }
+    const KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '机器' }   /* 0.4.3⑩ +sys「机器」（筛选中心「机器」档标签/持久化校验用；编辑器/新建 kind 选项不收 sys——机器托管 kind 人工不转） */
     // ---- 二期：kind 模板骨架（新建笔记预填）——与 host-impl.js / index.mjs / app.html / 原型同一份（check.js 断言一致）----
     // note 为自由格式（空骨架）；机器/运维信息类由 ✨整理按内容套用机器模板（建时无法预判内容，不进 KIND_TEMPLATES）
     const KIND_TEMPLATES = {
@@ -1744,7 +1756,7 @@ window.__ModuleLoader__.load({
       { id: 'injectEver', label: '曾注入', icon: 'clock', pred: n => n.injectEver === true },
       { id: 'sensitive', label: '敏感', icon: 'lock', pred: n => n.sensitive === true },
     ]
-    const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log']   // 工作记忆 v0：类型组 + log（日志默认隐身——勾选「日志」即专入口，host 端 includeLogs 召回）
+    const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log', 'sys']   // 类型组含 log（0.4.3⑦ 日志同权：勾选「日志」= 只看日志，与普通 kind 过滤同语义，不再是隐身专入口）+ sys（0.4.3⑩「机器」档：勾选=全库 sys 机器笔记（含「记忆档案」夹内档案）经 host kind 通道直达，面板翻账本入口）
     const FILTER_SORTS = [
       { id: 'time', label: '时间', desc: '置顶优先 · 更新降序（默认）' },
       { id: 'use', label: '引用', desc: '被引用次数降序' },
@@ -2523,7 +2535,8 @@ window.__ModuleLoader__.load({
       const newNoteKind = props.newNoteKind
       const setNewNoteKind = props.setNewNoteKind
       // 创建流程：notes-create → 静默刷新列表 → 选中新笔记 → 聚焦正文 textarea → toast
-      // 落位规则（原型 btnNew）：文件夹视图落当前文件夹；主题视图带当前主题；否则落选中笔记所在文件夹/未分类
+      // 落位规则（原型 btnNew）：主题视图带当前主题；否则落选中笔记所在文件夹/未分类
+      // （0.4.3 验收修复⑦：「文件视图」（文件夹视图）模式已拆除，原「文件夹视图落当前文件夹」分支随之移除）
       // 面板能力（选中/闪现高亮/聚焦正文/切源码态/刷新列表）经 panelBridge 中转（禁横向引用）
       async function doCreateNote() {
         const title = newNoteTitle.trim()
@@ -2531,7 +2544,7 @@ window.__ModuleLoader__.load({
         setNewNotePending(true); setError('')
         try {
           const selNote = notes.find(n => n.id === selected)
-          const createFolder = view.type === 'folder' ? view.id : ((selNote && selNote.folder) || '')
+          const createFolder = (selNote && selNote.folder) || ''
           // 二期 kind 模板骨架：按所选类型预填（note=空自由格式；机器信息类由 ✨整理按内容适配，建时不预判）
           const payload = { title: title, body: KIND_TEMPLATES[newNoteKind] || '', kind: newNoteKind }
           if (createFolder) payload.folder = createFolder
@@ -3192,9 +3205,8 @@ window.__ModuleLoader__.load({
     }
     // ===== modal: inject-preview —— 注入预览对话框（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
     // provides: store.modal.injectPreview / injectPreviewOpenRef / setInjectPreviewOpen / setInjectPreviewData / setInjectPreviewSid / openInjectPreview / loadInjectPreview / InjectPreviewModal
-    // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/icons.js（e/I）
+    // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/icons.js（e/I）、kernel/bus.js（showToast）
     // state 托管：open/data/sid 迁入 store.modal.injectPreview 切片；injectPreviewOpenRef 为 Esc 栈同步镜像（模块级单例）；
-    // tab 因 check 锚定其 useState 声明原文滞留 whole.js（同 newNoteKind 先例）——组件经 props 注入，open 复位经 panelBridge.setInjectPreviewTab 中转；
     // 视角下拉数据源（sessList/sessPending）属面板域，经 props 注入（禁横向引用）；与设置卡片互斥经 panelBridge.setSettingsOpen 中转
     store.modal.injectPreview = createStore({ open: false, data: null, sid: '' })
     const injectPreviewOpenRef = { current: false }   // 注入预览对话框镜像（Esc 优先关）
@@ -3202,10 +3214,33 @@ window.__ModuleLoader__.load({
     function setInjectPreviewOpen(v) { const nv = typeof v === 'function' ? v(injectPreviewOpenRef.current) : v; injectPreviewOpenRef.current = nv; store.modal.injectPreview.set({ open: nv }) }
     function setInjectPreviewData(v) { store.modal.injectPreview.set({ data: typeof v === 'function' ? v(store.modal.injectPreview.get().data) : v }) }
     function setInjectPreviewSid(v) { store.modal.injectPreview.set({ sid: typeof v === 'function' ? v(store.modal.injectPreview.get().sid) : v }) }
-    // ===== 注入预览（设置卡片「注入预览」入口）：notes-inject-preview 纯复用 host 注入渲染（约定桶 + 目录桶），
-    // 双 tab 只读等宽展示 + 三档视角下拉（全局 / 工作区并集 / 单会话；sessList 数据源）+ 底部统计条（总字符/打码/时效标注/预算截断）=====
+    // ===== 注入预览（设置卡片「注入预览」入口）：notes-inject-preview 纯复用 host 注入渲染（约定段 + 合并目录段），
+    // 单段只读展示（约定文本 pre + 目录段可点行）+ 三档视角下拉（全局 / 工作区并集 / 单会话；sessList 数据源）+ 底部统计条（总字符/打码/时效标注/预算截断）=====
+    // 0.4.3 验收修复③（notes-043-dir-merge）：目录与资料桶合并为单一目录段——挂载行（- [[id]]，增强态）与普通行（- [id]）同段渲染、
+    // 点击均可开挂载弹层（panelBridge.openMountModal 中转，modals 禁横向引用；modal 不叠 modal——先关预览再开）：
+    // 已挂载 = 编辑模式（notes-mount-list 预填现有文案）；未挂载 = LLM 草稿模式（notes-when-suggest 预填，失败回退标题）
+    function openMountFromPreview(id) {
+      if (!id) return
+      setInjectPreviewOpen(false)
+      Promise.all([rpc('notes-get', { id: id }), rpc('notes-mount-list', {})]).then(rs => {
+        const g = rs[0], ml = rs[1]
+        if (!g || g.error || !g.note) { showToast(t('inj.mountFailed', { msg: (g && g.error) || 'not found' })); return }
+        const line = ((ml && ml.lines) || []).filter(l => l.id === id)[0]
+        if (panelBridge.openMountModal) panelBridge.openMountModal({ id: id, title: g.note.title || id, existing: line ? line.when : undefined })
+      }).catch(err => showToast(t('inj.mountFailed', { msg: String(err.message || err) })))
+    }
+    // 目录段文本 → 行节点数组：挂载行 `- [[n-xxx]]` 与普通行 `- [n-xxx]` 均可点（🔒 行 id 在方括号内不受打码影响），
+    // 其余行（标题/轻推/计数提示/挂载引导）纯文本
+    function injPrevDirectoryRows(text, tt) {
+      if (!String(text || '').trim()) return [e('div', { key: 'empty', className: 'dsh-notes-injprev-ln' }, '（无目录内容）')]
+      return String(text).split('\n').map((ln, i) => {
+        const m = ln.match(/^- \[\[?(n-[A-Za-z0-9]+)\]\]?/)
+        if (!m) return e('div', { key: i, className: 'dsh-notes-injprev-ln' }, ln || ' ')
+        return e('div', { key: i, className: 'dsh-notes-injprev-ln dsh-notes-injprev-hit dsh-nt', 'data-tooltip': tt('inj.mountAdd'), onClick: () => openMountFromPreview(m[1]) }, ln)
+      })
+    }
     function openInjectPreview() {
-      setInjectPreviewData(null); panelBridge.setInjectPreviewTab('conv'); setInjectPreviewSid(''); setError('')
+      setInjectPreviewData(null); setInjectPreviewSid(''); setError('')
       panelBridge.setSettingsOpen(false); setInjectPreviewOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
       loadInjectPreview('')
     }
@@ -3213,25 +3248,23 @@ window.__ModuleLoader__.load({
     function loadInjectPreview(sid) {
       const pvArgs = sid ? (sid.indexOf('ws:') === 0 ? { workspace: sid.slice(3) } : { sessionId: sid }) : {}
       rpc('notes-inject-preview', pvArgs).then(res => {
-        if (res && res.error) { setError(res.error); setInjectPreviewData({ conventions: '', catalog: '', stats: null }); return }
-        setInjectPreviewData(res || { conventions: '', catalog: '', stats: null })
-      }).catch(err => { setError(String(err.message || err)); setInjectPreviewData({ conventions: '', catalog: '', stats: null }) })
+        if (res && res.error) { setError(res.error); setInjectPreviewData({ conventions: '', directory: '', stats: null }); return }
+        setInjectPreviewData(res || { conventions: '', directory: '', stats: null })
+      }).catch(err => { setError(String(err.message || err)); setInjectPreviewData({ conventions: '', directory: '', stats: null }) })
     }
     // 注入预览对话框宿主（设置卡片「注入预览」入口；mask/modal 复用设置卡片风格）：
-    // 双 tab（约定/目录）+ 三档视角下拉（全局 / 工作区并集 / 单会话；sessList 数据源）+ 只读等宽文本区 + 底部统计条（总字符/打码/时效标注/预算截断）
+    // 单段视图（约定段 pre + 目录段可点行）+ 三档视角下拉（全局 / 工作区并集 / 单会话；sessList 数据源）+ 底部统计条（总字符/打码/时效标注/预算截断）
     function InjectPreviewModal(props) {
       const injectPreviewOpen = store.modal.injectPreview.useSel(s => s.open)
       const injectPreviewData = store.modal.injectPreview.useSel(s => s.data)
       const injectPreviewSid = store.modal.injectPreview.useSel(s => s.sid)
+      const tt = useT()   // 目录可点行 tooltip（inj.mountAdd）：组件级订阅语言态
       const error = props.error
       const sessList = props.sessList || []
       const sessPending = props.sessPending || []
-      const injectPreviewTab = props.injectPreviewTab
-      const setInjectPreviewTab = props.setInjectPreviewTab
       return injectPreviewOpen ? (() => {
         const d = injectPreviewData
         const stats = d && d.stats ? d.stats : null
-        const text = !d ? '' : (injectPreviewTab === 'cat' ? (d.catalog || '') : (d.conventions || ''))
         // 会话选项 = sessList（注入范围浮层同数据源）；工作区选项 = 会话 workspace 字段去重（含 pending 占位）；已选值不在列表时追加一项保证回显
         const sidOpts = sessList.slice()
         if (injectPreviewSid && injectPreviewSid.indexOf('ws:') !== 0 && !sidOpts.find(s => s.short === injectPreviewSid)) sidOpts.push({ short: injectPreviewSid, name: '' })
@@ -3242,18 +3275,17 @@ window.__ModuleLoader__.load({
           e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-injprev-modal' },
             e('div', { className: 'dsh-notes-settings-modal-t' }, I('eye', 14), ' 注入预览', e('span', { className: 'dsh-notes-imgup-sub' }, 'Agent 实际收到的注入文本 · 只读')),
             e('div', { className: 'dsh-notes-injprev-bar' },
-              e('div', { className: 'dsh-notes-injprev-tabs' },
-                e('button', { className: 'dsh-notes-injprev-tab' + (injectPreviewTab === 'conv' ? ' on' : ''), onClick: () => setInjectPreviewTab('conv') }, '约定'),
-                e('button', { className: 'dsh-notes-injprev-tab' + (injectPreviewTab === 'cat' ? ' on' : ''), onClick: () => setInjectPreviewTab('cat') }, '目录')),
               e('select', { className: 'dsh-notes-settings-select dsh-notes-injprev-sess', value: injectPreviewSid, 'data-tooltip': '预览视角三档：全局 = 所有会话共享（injectTo=[]）；工作区 = 该工作区全部会话的注入并集；会话 = 单会话 injectTo 命中口径', onChange: (ev) => { const v = ev.target.value; setInjectPreviewSid(v); loadInjectPreview(v) } },
                 e('option', { value: '' }, '全局'),
                 wsOpts.length ? e('optgroup', { label: '工作区' }, wsOpts.map(w => e('option', { key: 'ws:' + w, value: 'ws:' + w }, w))) : null,
                 e('optgroup', { label: '会话' }, sidOpts.map(s => e('option', { key: s.short, value: s.short }, s.short + (s.name ? ' · ' + s.name : '')))))),
             d === null
               ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
-              : e('pre', { className: 'dsh-notes-injprev-text' }, text || (injectPreviewTab === 'cat' ? '（无目录内容）' : '（无约定内容）')),
+              : e('div', { className: 'dsh-notes-injprev-text' },
+                  (d.conventions || '') ? e('pre', { className: 'dsh-notes-injprev-conv' }, d.conventions) : null,
+                  injPrevDirectoryRows(d.directory || '', tt)),   // 目录段：挂载行与普通行同段可点（补充/编辑 whenToUse）
             stats ? e('div', { className: 'dsh-notes-injprev-stats' },
-              '总字符 ' + stats.totalChars + '（约定 ' + stats.conventionsChars + ' / 目录 ' + stats.catalogChars + '）· 打码 ' + stats.maskedNotes + ' 条 · 时效标注 ' + stats.staleMarked + ' 条 · 预算截断 ' + (stats.budgetTruncated ? '是' : '否')) : null,
+              '总字符 ' + stats.totalChars + '（约定 ' + stats.conventionsChars + ' / 目录 ' + stats.directoryChars + '）· 打码 ' + stats.maskedNotes + ' 条 · 时效标注 ' + stats.staleMarked + ' 条 · 预算截断 ' + (stats.budgetTruncated ? '是' : '否')) : null,
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
             e('div', { className: 'dsh-notes-dispatch-actions' },
               e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setInjectPreviewOpen(false) }, '关闭'))))
@@ -3268,7 +3300,7 @@ window.__ModuleLoader__.load({
     // state 托管：open/list/filter/search/q/sel/pending 迁入 store.modal.injMgr 切片；injMgrOpenRef 为 Esc 栈同步镜像 + injMgrSearchRef/injMgrSearchDebRef
     // 搜索防抖镜像（模块级单例，防抖 effect 挂 InjMgrModal 组件）；列表刷新经 panelBridge.loadNotes 中转；与设置卡片互斥经 panelBridge.setSettingsOpen 中转
     // 单层返回栈（notes-041-settings-back）：injMgrBackRef 记录来源（仅设置卡入口传 'settings'），统一关闭入口 closeInjMgr 在关闭后回设置卡（经 panelBridge.openSettings 中转）
-    store.modal.injMgr = createStore({ open: false, list: null, filter: 'all', search: '', q: '', sel: {}, pending: false })
+    store.modal.injMgr = createStore({ open: false, list: null, filter: 'all', search: '', q: '', sel: {}, pending: false, rstats: null, rstatsOpen: false })
     const injMgrOpenRef = { current: false }          // 注入管理面板镜像（Esc 优先关）
     const injMgrBackRef = { current: null }           // 单层返回栈镜像（notes-041-settings-back）：'settings' = 从设置卡进入，关闭后自动回设置卡
     const injMgrSearchRef = { current: '' }           // 搜索框即时值镜像（防抖回调读 ref 防闭包过期；plain object 与 useRef 等价——面板为 shell.overlay 单例）
@@ -3281,18 +3313,52 @@ window.__ModuleLoader__.load({
     function setInjMgrQ(v) { store.modal.injMgr.set({ q: typeof v === 'function' ? v(store.modal.injMgr.get().q) : v }) }
     function setInjMgrSel(v) { store.modal.injMgr.set({ sel: typeof v === 'function' ? v(store.modal.injMgr.get().sel) : v }) }
     function setInjMgrPending(v) { store.modal.injMgr.set({ pending: typeof v === 'function' ? v(store.modal.injMgr.get().pending) : v }) }
-    // ===== 挂载弹层（0.4.3⑤ notes-043-index）：给资料开注入 → 手写 whenToUse（textarea 预填标题）→ 确认落注入索引 §1 行 =====
-    // host 侧开注入已自动落缺省行（whenToUse=标题），本弹层 = 换文案通道：跳过 = 保留缺省行；modal 不叠 modal（先关注入管理面板再开）
-    store.modal.mount = createStore({ open: false, id: '', title: '', when: '', pending: false })
+    function setInjMgrRstats(v) { store.modal.injMgr.set({ rstats: typeof v === 'function' ? v(store.modal.injMgr.get().rstats) : v }) }   // 挂载区统计行数据源切片（0.4.3 验收修复⑥）
+    function setInjMgrRstatsOpen(v) { store.modal.injMgr.set({ rstatsOpen: typeof v === 'function' ? v(store.modal.injMgr.get().rstatsOpen) : v }) }
+    // 分通道召回率行（挂载区统计点开全量，0.4.3 验收修复⑥ notes-043-metrics-present）：交付通道 `ch used/delivered·pct%`
+    // （无交付 → `ch —`）+ get 取用计数——机器通道名原文输出（遥测通道是机器标识符，不进 i18n；口径同 host _recallFmtChannels）
+    function injMgrChanLine(channels) {
+      const parts = []
+      for (const c of ['inject', 'mount', 'search', 'catalog']) {
+        const st = channels && channels[c]
+        if (!st || !st.delivered) { parts.push(c + ' —'); continue }
+        parts.push(c + ' ' + st.used + '/' + st.delivered + '·' + Math.round((st.rate || 0) * 100) + '%')
+      }
+      const g = channels && channels.get
+      parts.push('get ×' + (g ? g.uses : 0))
+      return parts.join(' ｜ ')
+    }
+    // ===== 挂载弹层（0.4.3⑤ notes-043-index；0.4.3 验收修复 notes-043-preview-when-edit：LLM 草稿预填 + 编辑模式）=====
+    // 两种模式：未挂载 = LLM 草稿模式（打开即「生成中…」占位 → notes-when-suggest 成功填草稿，失败/8s 超时静默回退预填标题；
+    //   用户始终可编辑——touched 后到达的草稿不覆盖）；已挂载（预览目录行点击带 existing）= 编辑模式（预填现有文案，不调 LLM）。
+    // 确认统一 notes-mount（幂等换文案）；跳过/取消 = 保留现状行；modal 不叠 modal（调用方先关来源 modal）
+    store.modal.mount = createStore({ open: false, id: '', title: '', when: '', pending: false, generating: false, edit: false, touched: false })
     function setMountOpen(v) { store.modal.mount.set({ open: typeof v === 'function' ? v(store.modal.mount.get().open) : v }) }
-    function openMountModal(n) { if (!n) return; store.modal.mount.set({ open: true, id: n.id, title: n.title || n.id, when: n.title || '', pending: false }) }
+    function openMountModal(n) {
+      if (!n) return
+      const edit = typeof n.existing === 'string'   // 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM）
+      store.modal.mount.set({ open: true, id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false })
+      if (edit) return
+      // LLM 草稿预填：成功填草稿；失败/超时回退预填标题（现状行为）；弹层已关/换目标则丢弃迟到响应
+      rpc('notes-when-suggest', { id: n.id }).then(res => {
+        const m = store.modal.mount.get()
+        if (!m.open || m.id !== n.id) return
+        const draft = res && !res.error && typeof res.suggestion === 'string' && res.suggestion ? res.suggestion : ''
+        store.modal.mount.set(m.touched ? { generating: false } : { generating: false, when: draft || m.title })
+      }).catch(() => {
+        const m = store.modal.mount.get()
+        if (!m.open || m.id !== n.id) return
+        store.modal.mount.set(m.touched ? { generating: false } : { generating: false, when: m.title })
+      })
+    }
     function closeMountModal() { setMountOpen(false) }
     async function doMountSave() {
       const m = store.modal.mount.get()
       if (!m.id || m.pending) return
       store.modal.mount.set({ pending: true })
       try {
-        const res = await rpc('notes-mount', { id: m.id, whenToUse: m.when })
+        // 空值兜底（0.4.3⑦ 顺带微修）：「正在生成…」窗口内点确认时 m.when 可能仍为空串——落空则回退标题，whenToUse 行不落空
+        const res = await rpc('notes-mount', { id: m.id, whenToUse: m.when || m.title })
         store.modal.mount.set({ pending: false })
         if (res && res.error) { showToast(t('inj.mountFailed', { msg: res.error })); return }
         showToast(t('inj.mountSaved', { title: m.title }))
@@ -3305,10 +3371,10 @@ window.__ModuleLoader__.load({
       if (!m.open) return null
       return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !m.pending) closeMountModal() } },
         e('div', { className: 'dsh-notes-settings-modal' },
-          e('div', { className: 'dsh-notes-settings-modal-t' }, I('bolt', 14), ' ' + tt('inj.mountTitle'), e('span', { className: 'dsh-notes-imgup-sub' }, tt('inj.mountSub'))),
+          e('div', { className: 'dsh-notes-settings-modal-t' }, I('bolt', 14), ' ' + (m.edit ? tt('inj.mountEdit') : tt('inj.mountTitle')), e('span', { className: 'dsh-notes-imgup-sub' }, tt('inj.mountSub'))),
           e('div', { className: 'dsh-notes-inj-mount-body' },
             e('label', { className: 'dsh-notes-inj-mount-label' }, tt('inj.mountLabel')),
-            e('textarea', { className: 'dsh-notes-inj-mount-when', rows: 3, placeholder: tt('inj.mountPlaceholder'), value: m.when, autoFocus: true, onChange: (ev) => store.modal.mount.set({ when: ev.target.value }) })),
+            e('textarea', { className: 'dsh-notes-inj-mount-when', rows: 3, placeholder: m.generating ? tt('inj.mountGen') : tt('inj.mountPlaceholder'), value: m.when, autoFocus: true, onChange: (ev) => store.modal.mount.set({ when: ev.target.value, touched: true }) })),
           e('div', { className: 'dsh-notes-dispatch-actions' },
             e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => closeMountModal(), disabled: m.pending }, tt('inj.mountSkip')),
             e('button', { className: 'dsh-notes-dispatch-ok', onClick: () => doMountSave(), disabled: m.pending }, m.pending ? '…' : tt('inj.mountSave')))))
@@ -3316,10 +3382,11 @@ window.__ModuleLoader__.load({
     // ===== 注入管理面板（设置卡片「注入管理」入口；notes-inject-manager）：全库注入总览 + 单行直改 + 多选批量 =====
     // 契约：数据源 notes-list {includeLogs:true} slim（inject/injectRole/injectEver/sensitive/kind/injectTo 齐备，零新 RPC）；
     // 三态语义与详情区三态分段控件完全一致：off→notes-update {inject:false}；约定/资料→{inject:true, injectRole}（payload 禁 undefined）；
-    // 护栏：kind=log 注入硬禁（勾选/档位禁用 + tooltip；host 侧同口径强制 inject=false 并回 injectForcedOff）；
-    //       sensitive 允许注入但行内提示「注入时自动脱敏」；排序：注入中在前（约定>资料），组内 updatedAt 降序。
+    // 护栏：kind=log 注入硬关 UI 化（0.4.3⑦ 用户裁决——行内不渲染注入开关/勾选（UI 层不提供），静态「日志不参与注入」标注；
+    //       host 侧 injectForcedOff 硬闸双保险保留）；sensitive 允许注入但行内提示「注入时自动脱敏」；排序：注入中在前（约定>资料），组内 updatedAt 降序。
     function openInjectManager(from) {
       setInjMgrList(null); setInjMgrFilter('all'); setInjMgrSearch(''); setInjMgrQ(''); setInjMgrSel({}); setInjMgrPending(false); setError('')
+      setInjMgrRstats(null); setInjMgrRstatsOpen(false)   // 挂载区统计行复位（重新拉取账本快照）
       injMgrSearchRef.current = ''
       injMgrBackRef.current = from === 'settings' ? 'settings' : null   // 单层返回栈：记录来源（仅设置卡入口传 'settings'）
       panelBridge.setSettingsOpen(false); setInjMgrOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入/注入预览同款）
@@ -3336,6 +3403,9 @@ window.__ModuleLoader__.load({
         if (res && res.error) { setError(res.error); setInjMgrList([]); return }
         setInjMgrList((res && res.notes) || [])
       }).catch(err => { setError(String(err.message || err)); setInjMgrList([]) })
+      // 挂载区统计行数据源（0.4.3 验收修复⑥ notes-043-metrics-present）：notes-recall-stats 只读 RPC（账本快照 ledger 键 + 五通道分列），
+      // 零新通道；静默降级——RPC 失败/无快照（新装库 cron 未跑）→ rstats 保持 null，统计行整区省略不占位
+      rpc('notes-recall-stats', {}).then(res => { if (res && !res.error && res.ok) setInjMgrRstats(res) }).catch(() => setInjMgrRstats(null))   // 失败清陈旧统计行（刷新场景），遥测静默降级不打扰
     }
     // 笔记三态（与详情区同口径）：inject=true → injectRole（缺省 convention）；否则 off
     function injMgrRole(n) { return n.inject === true ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off' }
@@ -3389,6 +3459,8 @@ window.__ModuleLoader__.load({
       const injMgrQ = store.modal.injMgr.useSel(s => s.q)
       const injMgrSel = store.modal.injMgr.useSel(s => s.sel)
       const injMgrPending = store.modal.injMgr.useSel(s => s.pending)
+      const injMgrRstats = store.modal.injMgr.useSel(s => s.rstats)         // 挂载区统计行：notes-recall-stats 账本快照（卡⑥）
+      const injMgrRstatsOpen = store.modal.injMgr.useSel(s => s.rstatsOpen) // 点开才见全量（分通道 + 快照明细展开态）
       const error = props.error
       const tt = useT()   // i18n 覆盖卡D：订阅 langStore，切语言本卡自渲染（模块级 handler 走 t() 直读当下语言态）
       // 注入管理面板搜索防抖（250ms，与列表搜索同口径）：输入即更新受控值，防抖后才落过滤词 injMgrQ
@@ -3400,7 +3472,7 @@ window.__ModuleLoader__.load({
       // 单行直改：点 segmented 档位即切换（同详情区通道 notes-update {inject, injectRole}），toast 反馈
       async function doInjMgrSet(n, role) {
         if (!n || injMgrPending) return
-        if ((n.kind || 'note') === 'log' && role !== 'off') return   // 日志隐身硬禁（按钮已禁用，双保险）
+        if ((n.kind || 'note') === 'log' && role !== 'off') return   // 日志注入硬关（UI 已不渲染开关，函数拦截为双保险）
         if (injMgrRole(n) === role) return
         setError('')
         const upd = { id: n.id, inject: role !== 'off' }
@@ -3417,7 +3489,7 @@ window.__ModuleLoader__.load({
           panelBridge.loadNotes(true); notifyNotesChanged()
         } catch (err) { setError(String(err.message || err)) }
       }
-      // 多选：log 行不可选（隐身硬禁——批量三档位对日志无意义）
+      // 多选：log 行不可选（注入硬关——不渲染勾选框，批量三档位对日志无意义）
       function toggleInjMgrSel(id) { setInjMgrSel(prev => { const nx = Object.assign({}, prev); if (nx[id]) delete nx[id]; else nx[id] = true; return nx }) }
       // ===== 调度任务区（notes-034-sched-ui）：contractType=dispatch-schedule 约定笔记总览/暂停/删除/编辑回填——
       // 数据源 = notes-list slim 既有 contractType/schedule 字段（零新 RPC；表单与 front-matter 同一数据源两个视图） =====
@@ -3466,14 +3538,13 @@ window.__ModuleLoader__.load({
         let shown = listAll.slice().sort((a, b) => (injMgrWeight[injMgrRole(a)] - injMgrWeight[injMgrRole(b)]) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
         if (injMgrFilter !== 'all') shown = shown.filter(n => injMgrRole(n) === injMgrFilter)
         if (injMgrQ) shown = shown.filter(n => (n.title || '').toLowerCase().indexOf(injMgrQ) >= 0 || (n.topic || '').toLowerCase().indexOf(injMgrQ) >= 0 || (n.tags || []).join(' ').toLowerCase().indexOf(injMgrQ) >= 0)
-        const selectable = shown.filter(n => (n.kind || 'note') !== 'log')   // log 行不可选（隐身硬禁）
+        const selectable = shown.filter(n => n.kind !== 'log')   // log 行不可选（注入硬关 UI 化，0.4.3⑦）
         const selCnt = Object.keys(injMgrSel).length
         const allChecked = selectable.length > 0 && selectable.every(n => injMgrSel[n.id])
         const chipBtn = (f, label) => e('button', { key: f, className: 'dsh-notes-injmgr-chip' + (injMgrFilter === f ? ' on' : ''), onClick: () => setInjMgrFilter(f) }, label)
-        // 行内三态 segmented（语义与详情区三态分段控件完全一致）；log 行约定/资料档禁用（隐身硬禁 + tooltip）
+        // 行内三态 segmented（语义与详情区三态分段控件完全一致）；log 行不渲染注入开关（0.4.3⑦ 注入硬关 UI 化——UI 层不提供，非后台纠正）
         const segOpt = (n, role, r, label, tip) => {
-          const dis = (n.kind || 'note') === 'log' && r !== 'off'
-          return e('span', { key: r, className: 'dsh-notes-injmgr-opt dsh-nt' + (role === r ? ' on' : '') + (dis ? ' dis' : ''), 'data-tooltip': dis ? tt('inj.logSegTip') : tip, onClick: () => { if (!dis) doInjMgrSet(n, r) } }, label)
+          return e('span', { key: r, className: 'dsh-notes-injmgr-opt dsh-nt' + (role === r ? ' on' : ''), 'data-tooltip': tip, onClick: () => { doInjMgrSet(n, r) } }, label)
         }
         return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !injMgrPending) closeInjMgr() } },
           e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-injmgr-modal' },
@@ -3482,6 +3553,14 @@ window.__ModuleLoader__.load({
               e('div', { className: 'dsh-notes-injmgr-chips' },
                 chipBtn('all', tt('inj.chipAll', { n: listAll.length })), chipBtn('convention', tt('inj.chipConvention', { n: cntConv })), chipBtn('reference', tt('inj.chipReference', { n: cntRef })), chipBtn('off', tt('inj.chipOff', { n: cntOff }))),
               e('input', { className: 'dsh-notes-injmgr-search', placeholder: tt('inj.searchPlaceholder'), value: injMgrSearch, onChange: (ev) => { injMgrSearchRef.current = ev.target.value; setInjMgrSearch(ev.target.value); if (injMgrSearchDebRef.current) injMgrSearchDebRef.current() } })),
+            // 挂载区统计行（0.4.3 验收修复⑥ notes-043-metrics-present）：账本快照紧凑呈现（挂载 N｜本周引用 Top3｜零引用 M），
+            // 点开才见全量（分通道召回率 + 快照明细）；无快照 → 整区省略（静默降级；用途分级红线：本行仅呈现，清理裁决走 notes-recall-stats 全量/人工）
+            injMgrRstats && injMgrRstats.ledger ? e('div', { className: 'dsh-notes-injmgr-mntstats' },
+              e('div', { className: 'dsh-notes-injmgr-mntstats-row dsh-nt', 'data-tooltip': tt('inj.mntStatsTip'), onClick: () => setInjMgrRstatsOpen(!injMgrRstatsOpen) },
+                I('eye', 11), ' ' + tt('inj.mntStats', { m: injMgrRstats.ledger.mountTotal || 0, top: (injMgrRstats.ledger.top || []).slice(0, 3).map(it => it.id + '×' + it.count).join('、') || '—', z: injMgrRstats.ledger.zeroRefCount || 0 })),
+              injMgrRstatsOpen ? e('div', { className: 'dsh-notes-injmgr-mntstats-full' },
+                e('div', null, injMgrChanLine(injMgrRstats.channels)),
+                e('div', null, 'Top5: ' + ((injMgrRstats.ledger.top || []).map(it => it.id + '×' + it.count).join('、') || '—') + ' · zero: ' + ((injMgrRstats.ledger.zeroRef || []).join('、') || '—') + ' · @ ' + fmtDT(injMgrRstats.ledger.at) + (injMgrRstats.noteId ? ' · mirror: ' + injMgrRstats.noteId : ''))) : null) : null,
             // 调度任务区（notes-034-sched-ui）：定时派发约定总览（频率/目标/下次触发/上次结果徽章）+ 编辑回填/暂停/删除
             injMgrList === null ? null : (() => {
               const schedNotes = listAll.filter(n => (n.contractType || '') === 'dispatch-schedule' && n.schedule && !n.deleted)
@@ -3526,17 +3605,21 @@ window.__ModuleLoader__.load({
                         const role = injMgrRole(n)
                         const isLog = (n.kind || 'note') === 'log'
                         return e('div', { key: n.id, className: 'dsh-notes-injmgr-row' },
-                          e('span', { className: isLog ? 'dsh-nt' : '', 'data-tooltip': isLog ? tt('inj.logRowTip') : null },
-                            e('input', { type: 'checkbox', className: 'dsh-notes-trash-check', checked: !!injMgrSel[n.id], disabled: isLog || injMgrPending, onChange: () => toggleInjMgrSel(n.id) })),
+                          // 注入硬关 UI 化（0.4.3⑦）：log 行不渲染勾选框与注入开关——静态标注「日志不参与注入」（host injectForcedOff 硬闸双保险保留）
+                          isLog
+                            ? e('span', { className: 'dsh-notes-injmgr-checkslot dsh-nt', 'data-tooltip': tt('inj.logNoInjectTip') })
+                            : e('span', null, e('input', { type: 'checkbox', className: 'dsh-notes-trash-check', checked: !!injMgrSel[n.id], disabled: injMgrPending, onChange: () => toggleInjMgrSel(n.id) })),
                           e('span', { className: 'dsh-notes-kind-dot', style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' } }),
                           e('span', { className: 'dsh-notes-injmgr-ti', title: n.title || tt('tree.untitled') }, n.title || tt('tree.untitled')),
                           n.sensitive === true ? e('span', { className: 'dsh-notes-injmgr-sens dsh-nt', 'data-tooltip': tt('inj.sensTip') }, I('lock', 9), tt('inj.sensBadge')) : null,
                           n.injectEver === true && !n.inject ? e('span', { className: 'dsh-notes-injmgr-ever dsh-nt', 'data-tooltip': tt('meta.injectEverTip') }, I('clock', 9), tt('meta.injectEver')) : null,
                           e('span', { className: 'dsh-notes-injmgr-scope' }, injMgrScopeLabel(n.injectTo)),
-                          e('span', { className: 'dsh-notes-injmgr-seg' }, I('bolt', 10),
-                            segOpt(n, role, 'off', tt('meta.roleOff'), tt('meta.roleOffTip')),
-                            segOpt(n, role, 'convention', tt('tree.roleConvention'), tt('meta.roleConventionTip')),
-                            segOpt(n, role, 'reference', tt('tree.roleReference'), tt('meta.roleReferenceTip'))))
+                          isLog
+                            ? e('span', { className: 'dsh-notes-injmgr-lognote dsh-nt', 'data-tooltip': tt('inj.logNoInjectTip') }, I('bolt', 10), tt('inj.logNoInject'))
+                            : e('span', { className: 'dsh-notes-injmgr-seg' }, I('bolt', 10),
+                              segOpt(n, role, 'off', tt('meta.roleOff'), tt('meta.roleOffTip')),
+                              segOpt(n, role, 'convention', tt('tree.roleConvention'), tt('meta.roleConventionTip')),
+                              segOpt(n, role, 'reference', tt('tree.roleReference'), tt('meta.roleReferenceTip'))))
                       }))),                error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
             e('div', { className: 'dsh-notes-dispatch-actions' },
               e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => closeInjMgr(), disabled: injMgrPending }, tt('common.close')))))
@@ -4163,7 +4246,7 @@ window.__ModuleLoader__.load({
         setSettingsData(res)
         const l = res.settings && res.settings.llm
         if (l && l.provider && l.model) { setSetLlmProvider(l.provider); setSetLlmModel(l.model) }
-        setSetCatalog(!res.settings || res.settings.catalogEnabled !== false)   // 目录注入总开关：缺省开
+        setSetCatalog(!!(res.settings && res.settings.catalogEnabled === true))   // 目录注入总开关：缺省关（显式 true 才开启）
         setSetStale(String(res.settings && typeof res.settings.staleDays === 'number' ? res.settings.staleDays : 90))   // 时效提醒阈值：缺省 90
         panelBridge.setSetMaxDepth(String(res.settings && typeof res.settings.maxFolderDepth === 'number' ? res.settings.maxFolderDepth : 3))   // 文件夹嵌套深度上限：缺省 3（0=不限）
         setSetBudget(String(res.settings && typeof res.settings.injectBudgetChars === 'number' ? res.settings.injectBudgetChars : 0))   // 注入预算：缺省 0=不限
@@ -4174,7 +4257,7 @@ window.__ModuleLoader__.load({
         // dirty/还原基准（notes-settings-feedback）：打开时快照（UI 形态字符串口径，与控件受控值同构）+ 已落盘镜像初始化
         const snap0 = {
           llmP: (l && l.provider && l.model) ? l.provider : '', llmM: (l && l.provider && l.model) ? l.model : '',
-          catalog: !res.settings || res.settings.catalogEnabled !== false,
+          catalog: !!(res.settings && res.settings.catalogEnabled === true),
           stale: String(res.settings && typeof res.settings.staleDays === 'number' ? res.settings.staleDays : 90),
           maxDepth: String(res.settings && typeof res.settings.maxFolderDepth === 'number' ? res.settings.maxFolderDepth : 3),
           budget: String(res.settings && typeof res.settings.injectBudgetChars === 'number' ? res.settings.injectBudgetChars : 0),
@@ -4230,7 +4313,7 @@ window.__ModuleLoader__.load({
         showToast(llm ? t('settings.savedLlm', { name: llm.provider + ' / ' + llm.model }) : t('settings.restoredFollow'))
       }).catch(err => setError(String(err.message || err)))
     }
-    // 目录注入总开关：勾选即保存（只传布尔 catalogEnabled；host 侧 null 才是恢复默认开，这里不用）
+    // 目录注入总开关：勾选即保存（只传布尔 catalogEnabled；host 侧 null 才是恢复缺省关，这里不用）
     function saveSettingsCatalog(enabled) {
       settingsSetQuiet({ catalogEnabled: enabled }).then(() => {
         showToast(enabled ? t('settings.catalogOn') : t('settings.catalogOff'))
@@ -4459,7 +4542,7 @@ window.__ModuleLoader__.load({
               e('input', { className: 'dsh-notes-settings-input', placeholder: 'provider', value: setLlmProvider, onChange: (ev) => setSetLlmProvider(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
               e('input', { className: 'dsh-notes-settings-input', placeholder: 'model', value: setLlmModel, onChange: (ev) => setSetLlmModel(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
               (setLlmProvider || setLlmModel) ? e('button', { className: 'dsh-notes-settings-clear', onClick: () => { setSetLlmProvider(''); setSetLlmModel(''); saveSettingsLlm(null) } }, tt('settings.followSession')) : null)
-        // 目录注入总开关控件：checkbox 勾选即保存（catalogEnabled，缺省开）；label 挂 tooltip 说明注入形态
+        // 目录注入总开关控件：checkbox 勾选即保存（catalogEnabled，缺省关）；label 挂 tooltip 说明注入形态
         const catalogControl = e('label', { className: 'dsh-notes-settings-checkwrap dsh-nt', 'data-tooltip': tt('settings.catalogTip') },
           e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: setCatalog, onChange: (ev) => { const v = !!ev.target.checked; setSetCatalog(v); saveSettingsCatalog(v) } }),
           setCatalog ? tt('settings.enabled') : tt('settings.disabled'))
@@ -4686,18 +4769,7 @@ window.__ModuleLoader__.load({
         const [folderMenu, setFolderMenu] = React.useState(null)   // 文件夹项右键菜单：{ x, y, folder }（面板内坐标）或 null
         const [renamingId, setRenamingId] = React.useState(null)   // 树内内联重命名中的文件夹 id
         const [renameText, setRenameText] = React.useState('')
-        // 树展开「含日志的文件夹」懒加载（notes-041c-tree-log-children）：定向 includeLogs 拉取的 kind=log overlay + 按夹已拉标记
-        //（R-6 豁免面=「用户主动展开日志夹」动作；overlay 不并入 notes 主缓存——默认列表/搜索/目录隐身不变）
-        const [foldLogs, setFoldLogs] = React.useState([])
-        const [foldLogLoaded, setFoldLogLoaded] = React.useState({})
-        function ensureFoldLogs(fid) {
-          if (foldLogLoaded[fid]) return
-          setFoldLogLoaded(prev => Object.assign({}, prev, { [fid]: true }))
-          if (notes.some(n => (n.kind || 'note') === 'log')) return   // 列表已是 includeLogs 口径：日志随 notes 正常渲染，零请求
-          rpc('notes-list', { includeLogs: true }).then(res => {
-            if (res && res.notes) setFoldLogs(res.notes.filter(n => (n.kind || 'note') === 'log'))
-          }).catch(err => {})
-        }
+        // 日志同权（0.4.3 验收修复⑦）：按夹日志 overlay 懒加载已拆除——日志随 notes 主缓存直达，展开日志夹零额外 RPC
         // 展开态/菜单镜像到 ref（Esc 栈闭包挂一次，需读最新值避免过期）
         React.useEffect(() => { folderMenuRef.current = folderMenu }, [folderMenu])
         React.useEffect(() => { renamingIdRef.current = renamingId }, [renamingId])
@@ -4736,15 +4808,14 @@ window.__ModuleLoader__.load({
         // 折叠判定：foldersExpanded=null 表示缺省全展开；否则数组为展开中的 id 集合（含置顶组 PINNED_KEY）
         function isFolderExpanded(id) { return foldersExpanded === null ? true : foldersExpanded.indexOf(id) >= 0 }
         // 折叠/展开切换（缺省全展开时先物化全量展开集合再切换，保证其余文件夹保持展开）
+        // 日志同权（0.4.3⑦）：展开不再触发日志懒加载（overlay 已拆）——纯折叠态翻转，零副作用
         function toggleFolder(id) {
-          const opening = !isFolderExpanded(id)
           setFoldersExpanded(prev => {
             const base = prev === null ? folders.map(f => f.id).concat([PINNED_KEY]) : prev
             const next = base.indexOf(id) >= 0 ? base.filter(x => x !== id) : base.concat([id])
             saveFoldersExpanded(next)
             return next
           })
-          if (opening) ensureFoldLogs(id)   // 仅展开动作触发日志懒加载（notes-041c），折叠不动作
         }
         // 自动展开目标文件夹（选中笔记/新建文件夹/移入笔记时调用；已展开或缺省全展开时不动）
         function expandFolder(id) {
@@ -4768,7 +4839,7 @@ window.__ModuleLoader__.load({
           setFolderMenu({ x: x, y: y, folder: f })
           setCtxMenu(null)
         }
-        // 文件夹新建（分组头 ＋ 根级 / 右键「新建子文件夹」嵌套）→ 内联输入：Enter 提交（空串=取消）；建成即展开该文件夹并进入文件夹视图
+        // 文件夹新建（分组头 ＋ 根级 / 右键「新建子文件夹」嵌套）→ 内联输入：Enter 提交（空串=取消）；建成即展开该文件夹（树内浏览）
         // 嵌套：parent 取 subFolderFor（''=根级）；深度上限/父不存在由 host checkFolderAttach 拒绝 → 错误串去 RPC 前缀后 toast（友好提示）
         async function doCreateFolder() {
           const name = folderInputText.trim()
@@ -4779,7 +4850,7 @@ window.__ModuleLoader__.load({
             const res = await rpc('notes-folders', { op: 'create', name: name, parent: parent })
             if (res && res.error) { showToast(String(res.error).replace(/^notes-folders\.\w+\s*/, '')); return }
             showToast(t('fld.created', { name: name }))
-            if (res.folder && res.folder.id) { if (parent) expandFolder(parent); expandFolder(res.folder.id); setView({ type: 'folder', id: res.folder.id }) }
+            if (res.folder && res.folder.id) { if (parent) expandFolder(parent); expandFolder(res.folder.id) }   // 0.4.3⑦：文件视图拆除——建成即展开（不再进文件夹视图）
             await loadFolders()
           } catch (err) { setError(String(err.message || err)) }
         }
@@ -4814,8 +4885,6 @@ window.__ModuleLoader__.load({
             const res = await rpc('notes-folders', { op: 'delete', id: f.id, cascade: true })
             if (res && res.error) { setError(res.error); return }
             showToast(t('fld.deleted', { name: f.name }) + ((childN || noteN) ? t('fld.deletedDetail', { childN: childN, noteN: noteN }) : ''))
-            // 当前文件夹视图落在被删子树内 → 回全部视图（视图 id 悬空会显示空名单）
-            if (view.type === 'folder' && sub[view.id]) setView({ type: 'all', id: '' })
             await loadFolders(); await loadNotes(true); notifyNotesChanged()
           } catch (err) { setError(String(err.message || err)) }
         }
@@ -4867,10 +4936,10 @@ window.__ModuleLoader__.load({
         // 文件夹右键菜单的上移/下移边界（嵌套语义：同级兄弟内首项不可上移、末项不可下移）
         const folderMenuSibs = folderMenu ? childFoldersOf(folderMenu.folder.parent || '') : []
         const folderMenuIdx = folderMenu ? folderMenuSibs.findIndex(f => f.id === folderMenu.folder.id) : -1
-        // 文件夹项右键菜单：进入文件夹视图 / 新建子文件夹（嵌套内联输入）/ 重命名 / 上移 / 下移（同级兄弟内）/ 移回根级（有父级时）/ 删除（级联 confirm）
+        // 文件夹项右键菜单：新建子文件夹（嵌套内联输入）/ 重命名 / 上移 / 下移（同级兄弟内）/ 移回根级（有父级时）/ 删除（级联 confirm）
+        // （0.4.3 验收修复⑦：文件夹右键「进视图」菜单项随文件视图模式拆除移除）
         // i18n 覆盖卡F：菜单项文案走 t()（fld.* 域；「删除文件夹」= fld.menuDeleteFolder 区别笔记行 common.delete）
         const folderMenuEl = folderMenu ? e('div', { className: 'dsh-notes-ctxmenu', style: { left: folderMenu.x + 'px', top: folderMenu.y + 'px' } },
-            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); expandFolder(mf.id); setView({ type: 'folder', id: mf.id }) } }, I('filter', 12), t('fld.menuView')),
             e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); setFolderInputOpen(false); setFolderInputText(''); expandFolder(mf.id); setSubFolderFor(mf.id) } }, I('plus', 12), t('fld.titleNewSub')),
             e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { setRenamingId(folderMenu.folder.id); setRenameText(folderMenu.folder.name); setFolderMenu(null) } }, t('fld.okRename')),
             e('button', { className: 'dsh-notes-ctxmenu-item', disabled: folderMenuIdx <= 0, onClick: () => doReorderFolder(folderMenu.folder, -1) }, t('fld.menuUp')),
@@ -4887,8 +4956,7 @@ window.__ModuleLoader__.load({
           loadFolders: loadFolders, folderSubtreeIdsOf: folderSubtreeIdsOf, childFoldersOf: childFoldersOf, rootFolders: rootFolders,
           folderPathOf: folderPathOf, isFolderExpanded: isFolderExpanded, toggleFolder: toggleFolder, expandFolder: expandFolder,
           folderName: folderName, openFolderMenu: openFolderMenu, doCreateFolder: doCreateFolder, doRenameFolder: doRenameFolder,
-          doDeleteFolder: doDeleteFolder, doReorderFolder: doReorderFolder, doReparentFolder: doReparentFolder, folderMenuEl: folderMenuEl,
-          foldLogs: foldLogs, foldLogLoaded: foldLogLoaded, ensureFoldLogs: ensureFoldLogs   // notes-041c 树日志懒加载（panel/tree.js 消费）
+          doDeleteFolder: doDeleteFolder, doReorderFolder: doReorderFolder, doReparentFolder: doReparentFolder, folderMenuEl: folderMenuEl
         }
     }
     // ===== popover: ctx-menu —— 笔记行右键菜单（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
@@ -5265,8 +5333,8 @@ window.__ModuleLoader__.load({
         function jumpToWikiTarget(target) {
           const n = resolveWikiTarget(target)
           if (!n) { showToast(t('wiki.targetNotFound', { target: target })); return }
-          const vis = (view.type === 'all' || (view.type === 'folder' && (n.folder || '') === view.id) || (view.type === 'topic' && (n.topic || '') === view.id))
-            && matchFilters(n, filters)
+          const vis = (view.type === 'all' || (view.type === 'topic' && (n.topic || '') === view.id))
+            && matchFilters(n, filters)   /* 0.4.3⑦：文件夹视图分支随「文件视图」拆除移除（view 取值收窄 all | topic） */
           if (!vis) { setView({ type: 'all', id: '' }); setFilters(FILTERS0()) }
           selectNote(n)
         }
@@ -5283,7 +5351,8 @@ window.__ModuleLoader__.load({
     // dragNoteIdRef/dragFolderIdRef 的 React.useRef 声明原文被 check.js 锚定（21/41 节）——留 hook 内（useRef 不可模块顶层调用）
     function usePanelTree(args) {
         const notes = args.notes, view = args.view, filters = args.filters, searchText = args.searchText, searchIds = args.searchIds, folders = args.folders
-        const foldLogs = args.foldLogs || [], foldLogLoaded = args.foldLogLoaded || {}   // notes-041c 树日志懒加载 overlay（folder-menu.js 托管）
+        // 日志同权（0.4.3 验收修复⑦）：日志随 notes 主缓存直达——按夹日志懒加载 overlay 特化路径（独立 RPC + 合并）已拆除，
+        // 展开日志夹与普通夹同一代码路径（零额外请求，卡顿根因消除）；「文件视图」（文件夹视图）模式同卡整体拆除
         // i18n（notes-042-i18n-cov-a 覆盖卡A）：tt = useT()——订阅 langStore，切语言本 hook（随主面板）自渲染；树区文案全走 tt()
         const tt = useT()
         const dragNoteIdRef = React.useRef(null)   // 笔记拖拽状态：dragstart 记录 noteId（ref 防闭包过期），dragend 清空
@@ -5394,8 +5463,6 @@ window.__ModuleLoader__.load({
               e('span', { className: 'dsh-notes-caret-spacer' }),
               e('span', { className: 'dsh-notes-kind-slot' }, e('span', { className: 'dsh-notes-kind-dot', style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' } })),
               e('span', { className: 'dsh-notes-note-ti' }, n.status === 'pinned' ? I('pin', 10, 'dsh-notes-note-pin') : null, highlight(n.title || tt('tree.untitled'), q)),
-              // 日志隐身标记（notes-041c-tree-log-children）：树内定向召回的 kind=log 行尾 log 文本徽章（懒加载 overlay 专属视觉；面板 emoji 红线——不用表情字符）
-              n.kind === 'log' ? e('span', { className: 'dsh-notes-logmark dsh-nt', 'data-tooltip': tt('tree.logTip'), style: { fontSize: 9, marginLeft: 2, opacity: 0.6 } }, 'log') : null,
               n.inject === true ? e('span', { className: 'dsh-notes-note-inj dsh-nt', 'data-tooltip': tt('tree.injectTip', { role: tt(n.injectRole === 'reference' ? 'tree.roleReference' : 'tree.roleConvention') }) + ' · ' + tt('tree.injectScope', { scope: injectScopeLabel(n.injectTo) }) }, I('bolt', 10)) : null,
               // 曾注入徽章（injectEver 粘性标记：历史上开启过注入、现已关闭；已注入时由 bolt 徽章表达，不重复显示；不满足不渲染）
               n.inject !== true && n.injectEver === true ? e('span', { className: 'dsh-notes-note-injevr dsh-nt', 'data-tooltip': tt('tree.injectEverTip') }, I('clock', 9)) : null,
@@ -5408,7 +5475,7 @@ window.__ModuleLoader__.load({
           // ===== 侧栏树（原型 renderTree 翻译）：视图头 → 置顶组 → 文件夹组（nested 子笔记）→ 未入夹根级平铺（drop 移出落点）→ 主题全局过滤 =====
           const treeIds = []
           const treeEls = []
-          const viewTitle = view.type === 'topic' ? tt('tree.viewTopic', { id: view.id }) : view.type === 'folder' ? tt('tree.viewFolder', { name: folderName(view.id) }) : tt('tree.viewAll')
+          const viewTitle = view.type === 'topic' ? tt('tree.viewTopic', { id: view.id }) : tt('tree.viewAll')
           treeEls.push(e('div', { key: 'sec-view', className: 'dsh-notes-sec-h' },
             I('filter', 11),
             e('span', { className: 'dsh-notes-sec-h-t' }, viewTitle),
@@ -5430,9 +5497,9 @@ window.__ModuleLoader__.load({
               if (pinRows.length) treeEls.push(e('div', { key: 'pinned-kids', className: 'dsh-notes-nested' }, pinRows))
             }
           }
-          // 文件夹组：行 = caret + folder 图标 + 名称 + 计数 + 行尾过滤图标；行主体单击 = 纯展开/折叠
-          // （经典树语义唯一职责——notes-041b 用户裁决去重；caret 与行主体同一 toggle 语义，stopPropagation 防双触发）；
-          // 行尾过滤图标 = 进入/退出文件夹视图（唯一进视图入口，不抢占单击）+ 右键菜单项；右键管理
+          // 文件夹组：行 = caret + folder 图标 + 名称 + 计数；行主体单击 = 纯展开/折叠
+          // （经典树语义唯一职责——notes-041b 用户裁决去重；caret 与行主体同一 toggle 语义，stopPropagation 防双触发）；右键管理
+          // （0.4.3 验收修复⑦：「文件视图」模式拆除——行尾漏斗进视图图标已移除，树展开即文件夹浏览）
           treeEls.push(e('div', { key: 'sec-folders', className: 'dsh-notes-sec-h' },
             I('folder', 11),
             e('span', { className: 'dsh-notes-sec-h-t' }, tt('tree.folders')),
@@ -5453,12 +5520,11 @@ window.__ModuleLoader__.load({
                   e('span', { className: 'dsh-notes-caret' }, I('chev', 10)),
                   e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
                   e('input', { className: 'dsh-notes-folder-rename', value: renameText, autoFocus: true, onChange: (ev) => setRenameText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doRenameFolder() } else if (ev.key === 'Escape') { ev.preventDefault(); setRenamingId(null) } }, onBlur: () => setRenamingId(null) }))
-              : e('div', { key: 'folder-' + f.id, className: 'dsh-notes-folder-row' + (view.type === 'folder' && view.id === f.id ? ' on' : ''), onClick: () => { toggleFolder(f.id) }, onContextMenu: (ev) => openFolderMenu(ev, f), draggable: true, onDragStart: (ev) => onFolderDragStart(ev, f), onDragEnd: (ev) => onFolderDragEnd(ev), onDragOver: (ev) => onFolderDragOver(ev, f), onDragLeave: onFolderDragLeave, onDrop: (ev) => onFolderDrop(ev, f) },
+              : e('div', { key: 'folder-' + f.id, className: 'dsh-notes-folder-row', onClick: () => { toggleFolder(f.id) }, onContextMenu: (ev) => openFolderMenu(ev, f), draggable: true, onDragStart: (ev) => onFolderDragStart(ev, f), onDragEnd: (ev) => onFolderDragEnd(ev), onDragOver: (ev) => onFolderDragOver(ev, f), onDragLeave: onFolderDragLeave, onDrop: (ev) => onFolderDrop(ev, f) },
                   e('span', { className: 'dsh-notes-caret' + (fOpen ? ' open' : '') + ' dsh-nt', 'data-tooltip': tt('tree.toggleTip'), onClick: (ev) => { ev.stopPropagation(); toggleFolder(f.id) } }, I('chev', 10)),
                   e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
                   e('span', { className: 'dsh-notes-row-nm' }, f.name),
-                  e('span', { className: 'dsh-notes-row-n' }, cnt),
-                  e('span', { className: 'dsh-notes-row-vfilter dsh-nt' + (view.type === 'folder' && view.id === f.id ? ' on' : ''), 'data-tooltip': tt('tree.folderViewTip'), onClick: (ev) => { ev.stopPropagation(); setView(view.type === 'folder' && view.id === f.id ? { type: 'all', id: '' } : { type: 'folder', id: f.id }) } }, I('filter', 11))))
+                  e('span', { className: 'dsh-notes-row-n' }, cnt)))
             if (!fOpen) return
             const childEls = []
             // 「新建子文件夹」内联输入行（右键菜单打开；渲染在本夹子内容容器首位，Enter 提交 / Esc 或空串失焦取消）
@@ -5470,12 +5536,6 @@ window.__ModuleLoader__.load({
             }
             for (const cf of childFoldersOf(f.id)) renderFolderNode(cf, childEls)
             kids.forEach(n => { treeIds.push(n.id); childEls.push(renderNoteRow(n, true)) })
-            // 日志 overlay 并入（notes-041c-tree-log-children）：夹已展开且定向拉过 → 本夹直挂 log 子条目追加到尾部（id 去重防文件夹视图双显）
-            if (foldLogLoaded[f.id] && foldLogs.length) {
-              const have = {}
-              paged.forEach(n => { have[n.id] = true })
-              foldLogs.filter(n => (n.folder || '') === f.id && !have[n.id]).forEach(n => { treeIds.push(n.id); childEls.push(renderNoteRow(n, true)) })
-            }
             if (childEls.length) sink.push(e('div', { key: 'kids-' + f.id, className: 'dsh-notes-nested' }, childEls))
           }
           for (const f of rootFolders()) renderFolderNode(f, treeEls)
@@ -6129,9 +6189,9 @@ window.__ModuleLoader__.load({
           const editorEl = curNote ? e('section', { className: 'dsh-notes-ed' },
           e('div', { className: 'dsh-notes-ed-h' },
             e('div', { className: 'dsh-notes-ed-crumb' },
-              // 面包屑文件夹段（notes-nested-folder-ui）：单文件夹名升级为「父/子/孙」路径，每段可点击 = 切到该文件夹视图
+              // 面包屑文件夹段（notes-nested-folder-ui）：「父/子/孙」路径；0.4.3⑦ 文件视图拆除后点击 = 树内展开该文件夹（含祖先链），不切视图
               curNote.folder ? folderPathOf(curNote.folder).map(pf => e(React.Fragment, { key: 'crumbf-' + pf.id },
-                e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': tt('meta.crumbFolderTip', { name: pf.name }), onClick: () => { expandFolder(pf.id); setView({ type: 'folder', id: pf.id }) } }, pf.name),
+                e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': tt('meta.crumbFolderExpandTip', { name: pf.name }), onClick: () => { folderPathOf(pf.id).forEach(af => expandFolder(af.id)) } }, pf.name),
                 e('span', { className: 'dsh-notes-crumb-sep' }, '/'))) : null,
               e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': tt('meta.crumbTopicViewTip'), onClick: jumpToTopicFilter }, curTopicName || tt('meta.uncategorized')),
               e('span', { className: 'dsh-notes-crumb-sep' }, '/'),
@@ -6146,7 +6206,9 @@ window.__ModuleLoader__.load({
                   e('option', { value: 'todo' }, tt('meta.kindTodo')),
                   e('option', { value: 'link' }, tt('meta.kindLink')),
                   e('option', { value: 'quote' }, tt('meta.kindQuote')),
-                  e('option', { value: 'log' }, tt('meta.kindLog')))),
+                  e('option', { value: 'log' }, tt('meta.kindLog')),
+                  /* 0.4.3⑩：sys 为机器托管 kind——仅当前笔记已是 sys 时渲染该选项（显示保真，防受控 select 回退首项误导），人工不可转入 */
+                  edKind === 'sys' ? e('option', { value: 'sys' }, tt('meta.kindSys')) : null)),
               e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.topicTipClient') },
                 I('topic', 11),
                 e('input', { className: 'dsh-notes-meta-topic-input', placeholder: tt('meta.topicPlaceholder'), value: edTopic, onChange: (ev) => { setEdTopic(ev.target.value); triggerAutoSave() } }),
@@ -6158,7 +6220,10 @@ window.__ModuleLoader__.load({
               curDispatches.length ? e('span', { className: 'dsh-notes-meta-chip dsh-notes-dispatch-badge ' + (dispatchOpenCount ? 'pending' : 'done'), onClick: () => setDispatchHistoryOpen(true), 'data-tooltip': dispatchOpenCount ? tt('meta.dispPendingTip', { open: dispatchOpenCount, total: curDispatches.length }) : tt('meta.dispDoneTip', { total: curDispatches.length }) },
                 I(dispatchOpenCount ? 'play' : 'check', 11),
                 dispatchOpenCount ? ' ' + tt('meta.dispPending', { open: dispatchOpenCount, total: curDispatches.length }) : ' ' + tt('meta.dispDone')) : null,
-              e('span', { className: 'dsh-notes-meta-chip dsh-notes-role-seg' },
+              // 注入三态开关（0.4.3⑦ 注入硬关 UI 化）：kind=log 不渲染开关——UI 层不提供日志注入选项（host injectForcedOff 硬闸双保险保留）
+              edKind === 'log'
+                ? e('span', { className: 'dsh-notes-meta-chip dsh-nt', 'data-tooltip': tt('meta.logNoInjectTip') }, I('bolt', 11), tt('meta.logNoInject'))
+                : e('span', { className: 'dsh-notes-meta-chip dsh-notes-role-seg' },
                 I('bolt', 11),
                 e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'off' ? ' on' : ''), onClick: () => setRoleSeg('off'), 'data-tooltip': tt('meta.roleOffTip') }, tt('meta.roleOff')),
                 e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'convention' ? ' on' : ''), onClick: () => setRoleSeg('convention'), 'data-tooltip': tt('meta.roleConventionTip') }, tt('tree.roleConvention')),
@@ -6666,7 +6731,7 @@ window.__ModuleLoader__.load({
     //
     // 【§6 步骤 E 裁决记录】
     // ① state 不迁 store：check.js 逐字锚定一批 useState/useRef 声明原文（selMode/selIds/sortBy/view/filters/foldersExpanded/dragActive/
-    //    dragNoteIdRef/dragFolderIdRef/edSens/edSensRef/newNoteKind/setSnap/setInflight/injectPreviewTab 等），且 popover 与 panel 子域 hook
+    //    dragNoteIdRef/dragFolderIdRef/edSens/edSensRef/newNoteKind/setSnap/setInflight 等），且 popover 与 panel 子域 hook
     //    均经本装配层在同一组件（FloatingPanel）渲染边界内按固定序调用——重渲染口径与单文件时代完全一致。store 切片（kernel/state.js
     //    createStore）仅服务真正独立组件边界的 modals（§6 步骤 D 已建立），本步不为 panel 域新建 store 切片。
     // ② 跨域调用：popover/panel 子域禁横向引用，跨域 setter/函数经 kernel/state.js 转发别名 → panelBridge（本组件每渲染回填）；
@@ -6689,7 +6754,8 @@ window.__ModuleLoader__.load({
         // 窗口 chrome（pos/size/sideW/sideDrag + 标题栏/分隔条/resize 拖拽族 + titlebarEl/splitterEl/resizeEl JSX）已拆出
         // （§6 步骤 E：panel/chrome.js——归 usePanelChrome；open/close/showHelp 经入参注入，open 居中/位置持久化 effect 同文随迁；
         // hook 调用点位于 help hook 之后——入参 showHelp 自其解构，TDZ 约束）
-        // UI v2 视图单选（原型 view）：all=全部 / folder=文件夹视图 / topic=主题全局过滤（跨文件夹）
+        // UI v2 视图单选（原型 view）：all=全部 / topic=主题全局过滤（跨文件夹）
+        // （0.4.3 验收修复⑦：「文件视图」（文件夹视图）模式整体拆除——树展开即文件夹浏览，漏斗进视图入口/求值分支/样式已移除）
         const [view, setView] = React.useState({ type: 'all', id: '' })
         // 帮助气泡已拆出（§6 步骤 E：popovers/help.js——showHelp 态 + 气泡 JSX 归 usePanelHelp；标题栏「?」经 kernel 转发别名 setShowHelp）
         const { showHelp, setShowHelp, helpEl } = usePanelHelp()
@@ -6713,7 +6779,7 @@ window.__ModuleLoader__.load({
         // 文件夹右键菜单 + 管理动作族已拆出（§6 步骤 E：popovers/folder-menu.js——folders/foldersExpanded/内联输入/重命名/folderMenu 态 +
         // 树 helper 族 + loadFolders + CRUD/reorder/reparent 归 usePanelFolderMenu；folderMenuRef/renamingIdRef/folderInputOpenRef/subFolderForRef
         // 为该模块顶层绑定；Esc 栈/树渲染/面包屑经解构或 kernel 转发别名接入）
-        const { folders, foldersExpanded, folderInputOpen, folderInputText, subFolderFor, renamingId, renameText, setFolderMenu, setFolderInputOpen, setFolderInputText, setSubFolderFor, setRenamingId, setRenameText, loadFolders, folderSubtreeIdsOf, childFoldersOf, rootFolders, folderPathOf, isFolderExpanded, toggleFolder, expandFolder, folderName, openFolderMenu, doCreateFolder, doRenameFolder, doDeleteFolder, doReorderFolder, doReparentFolder, folderMenuEl, foldLogs, foldLogLoaded } = usePanelFolderMenu({ notes: notes, view: view })
+        const { folders, foldersExpanded, folderInputOpen, folderInputText, subFolderFor, renamingId, renameText, setFolderMenu, setFolderInputOpen, setFolderInputText, setSubFolderFor, setRenamingId, setRenameText, loadFolders, folderSubtreeIdsOf, childFoldersOf, rootFolders, folderPathOf, isFolderExpanded, toggleFolder, expandFolder, folderName, openFolderMenu, doCreateFolder, doRenameFolder, doDeleteFolder, doReorderFolder, doReparentFolder, folderMenuEl } = usePanelFolderMenu({ notes: notes, view: view })
         // 主题过滤行原地展开态（点行主体=展开/收起该主题子列表；object map，session 内有效，不持久化；缺省折叠）
         // 主题过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「主题 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
         // （topicExpanded/topicSecOpen 两态已随 panel/tree.js 迁出）
@@ -6772,8 +6838,7 @@ window.__ModuleLoader__.load({
         const suggestOpen = store.modal.suggest.useSel(s => s.open)
         const injectPreviewOpen = store.modal.injectPreview.useSel(s => s.open)
         const injMgrOpen = store.modal.injMgr.useSel(s => s.open)
-        // injectPreviewTab 因 check 锚定其 useState 声明原文而滞留本面板（同 newNoteKind 先例），经 props 注入 InjectPreviewModal、setter 经 panelBridge 供 openInjectPreview 复位
-        const [injectPreviewTab, setInjectPreviewTab] = React.useState('conv')   // 'conv' 约定 | 'cat' 目录
+        // 0.4.3 验收修复③（notes-043-dir-merge）：注入预览改单段视图（约定段 + 合并目录段），原预览双 tab 状态已拆除
         // 工作记忆 v0 启用对话框已拆出（§6 步骤 D2：modals/memory-guide.js——status/open/scope/wsPick/sidPick/pending 走 store.modal.memory，
         // memScopeResolve/openMemEnable/doMemEnable/doMemDisable/memViewNote 迁入；memOpenRef 为模块级 Esc 镜像）；
         // 日志卫生窗口设置项（setLogWeek/setLogRetention）随设置卡迁入 modals/settings.js；panel 订阅 open 供全局错误条互斥（原渲染期读取口径）
@@ -6823,6 +6888,9 @@ window.__ModuleLoader__.load({
         // 派发对话框是 modal（自带 mask 点击外部关闭），无需 document 监听
         React.useEffect(() => { const fn = () => loadNotes(true); noteRefreshListeners.add(fn); return () => noteRefreshListeners.delete(fn) }, [])
         React.useEffect(() => { if (open) loadNotes() }, [open])
+        // ⑩ kind 档切换重拉：类型组勾选变化改变取数口径（恰选 1 个 kind → host kind 通道；「机器」档 = sys 全库）——
+        // effect 依赖 kinds 数组身份（filter-pop 勾选产生新数组），该渲染闭包的 loadNotes 读最新 filters；面板关闭时不拉（下次 open  effect 兜底）
+        React.useEffect(() => { if (open) loadNotes(true) }, [filters.kinds])
         // 打开时居中定位 effect 已随 panel/chrome.js 迁入（hook 内同文，open 经入参注入）
         // 搜索两段式已拆出（§6 步骤 E：panel/search.js——searchText/searchIds/searchMatches 态 + 250ms 防抖 host 检索归 usePanelSearch；
         // searchRef/searchDebRef 在 kernel/state.js 跨域镜像群；filtersRef 镜像随该模块；filters 经入参注入）
@@ -6831,16 +6899,11 @@ window.__ModuleLoader__.load({
         // 搜索/视图/筛选中心条件变化时重置分页 effect 已随 panel/tree.js 迁入（该 hook 内同文，入参注入依赖值）
         // 树渲染/分页/拖拽已拆出（§6 步骤 E：panel/tree.js——visibleCount/dragActive/topicExpanded/topicSecOpen 态 +
         // onListScroll/双向拖拽族/renderTreeEls（内含 renderNoteRow/renderFolderNode）归 usePanelTree；post-guard 求值经 R 入参注入）
-        const { visibleCount, setVisibleCount, onListScroll, renderTreeEls } = usePanelTree({ notes: notes, view: view, filters: filters, searchText: searchText, searchIds: searchIds, folders: folders, foldLogs: foldLogs, foldLogLoaded: foldLogLoaded })
+        const { visibleCount, setVisibleCount, onListScroll, renderTreeEls } = usePanelTree({ notes: notes, view: view, filters: filters, searchText: searchText, searchIds: searchIds, folders: folders })
         // 展开态同步到 ref（keydown 闭包读 ref 避免过期；已拆出 modal 的 open 镜像由各模块 setter 别名同步写入）
         // filtersRef 镜像 + 同步 effect 已随 panel/search.js 迁入（该模块顶层绑定 + hook 内同文）
-        // 工作记忆 v0 日志专入口：类型组「日志」勾选态变化时重拉列表（host 默认排除日志；includeLogs=true 才返回，避免日常视图混入）
-        // R-6 UI 接线：显式文件夹视图（view.type === 'folder'）同属召回口径——进文件夹视图带 includeLogs 静默重拉（夹内 log 同权展示），
-        // 切回全部/主题视图 w 翻 false 再重拉恢复隐身（不传 folder/includeLogs；[filters, view] 双源翻转，幂等比较不翻转零请求）
-        React.useEffect(() => {
-          const w = filters.kinds.indexOf('log') >= 0 || view.type === 'folder'
-          if (w !== wantLogsRef.current) { wantLogsRef.current = w; loadNotes(true) }
-        }, [filters, view])
+        // 日志同权（0.4.3 验收修复⑦，用户裁决推翻 R-6 UI 隐身）：kind=log 随默认列表直达（host 已收编），
+        // 原「勾选日志/文件夹视图 → includeLogs 重拉」翻转 effect 与 overlay 特化路径已拆除——展开日志夹与普通夹同一代码路径（零额外 RPC）
         // filterOpen/sortOpen 的 ref 镜像 effect 已随 popovers/filter-pop.js / sort-menu.js 迁入（各自 hook 内同文）
         // ctxMenuRef 同步 effect 已随 popovers/ctx-menu.js 迁入（该 hook 内同文）
         // folderMenu/renamingId/folderInputOpen/subFolderFor 的 ref 镜像 effect 已随 popovers/folder-menu.js 迁入（该 hook 内同文）
@@ -6853,9 +6916,12 @@ window.__ModuleLoader__.load({
         usePanelKeyboard()
         // 标题栏/resize/分隔条拖拽族已随 panel/chrome.js 迁出（usePanelChrome hook 内同文）
         // silent=true 时不显 loading（后台静默刷新，避免闪烁）
-        // 工作记忆 v0：筛选中心类型组勾选「日志」时列表数据源带 kind=log（host 默认排除日志——默认隐身；勾选即专入口，includeLogs 召回）
-        const wantLogsRef = React.useRef(false)
-        async function loadNotes(silent) { if (!silent) setLoading(true); setError(''); let list = []; try { const res = await rpc('notes-list', wantLogsRef.current ? { includeLogs: true } : undefined); list = res.notes || []; setNotes(list) } catch (err) { setError(String(err.message || err)) } loadFolders(); ensureWikiIndex(list); if (!silent) setLoading(false); return list }
+        // 日志同权（0.4.3⑦）：列表恒为全量口径（日志随默认列表直达，不再按勾选/视图翻转参数）
+        // 0.4.3⑩（notes-043-archive-folder 第二轮裁决）：类型组恰选 1 个 kind 时传 {kind} 给 host——host 谓词 kind 真值短路放行 sys
+        // （⑨ 保留的显式 kind 入口），「机器」档（kind=sys）= 全库 sys 笔记（含「记忆档案」夹内档案），树在该档下正常展开档案子行；
+        // 不选/多选 kind 时无参调用，行为与 ⑨ 完全一致（缺省降噪）。口径同 panel/search.js sArgs（恰选 1 个可传 kind）。
+        // filters 经 filtersRef（search.js 镜像，每渲染同步）读取——noteRefreshListeners 挂载期注册的闭包也能拿到最新筛选（防过期）
+        async function loadNotes(silent) { if (!silent) setLoading(true); setError(''); let list = []; try { const F = filtersRef.current || filters; const kf = (F && F.kinds) || []; const res = await rpc('notes-list', kf.length === 1 ? { kind: kf[0] } : undefined); list = res.notes || []; setNotes(list) } catch (err) { setError(String(err.message || err)) } loadFolders(); ensureWikiIndex(list); if (!silent) setLoading(false); return list }
         // 文件夹清单加载已随 popovers/folder-menu.js 迁出（loadFolders 经解构接入；清洗陈旧展开 id 逻辑同文随迁）
         // ===== P2 笔记双链：解析 / 索引 / 跳转 函数族已随 panel/wiki.js 迁出（上方解构接入；内核 extractWikiTargets/wikiLinksTo 同一口径）=====
         // selectNote/doSave/doDelete 已随 panel/editor.js 迁出（经解构/kernel 转发别名接入；panelBridge 回填保持原名）
@@ -6996,8 +7062,8 @@ window.__ModuleLoader__.load({
         panelBridge.jumpToWikiTarget = jumpToWikiTarget
         panelBridge.setEdBody = setEdBody   // dispatch 确认后回填正文（modals/dispatch.js 经此中转，禁横向引用）
         panelBridge.openDispatchEdit = openDispatchEdit   // 调度任务「编辑」回填派发弹窗（modals/inject-manager.js 经此中转，禁横向引用——序位 inject-manager 先于 dispatch）
+        panelBridge.openMountModal = openMountModal   // 预览目录行点击开挂载弹层（modals/inject-preview.js 经此中转，禁横向引用——序位 inject-preview 先于 inject-manager）
         // check 锚定 useState 声明而滞留本面板的字段：值/ setter 回填供 modal 模块函数读写（每渲染刷新，点击期口径与昔日闭包一致）
-        panelBridge.setInjectPreviewTab = setInjectPreviewTab
         panelBridge.setMaxDepth = setMaxDepth
         panelBridge.setSetMaxDepth = setSetMaxDepth
         panelBridge.setSnap = setSnap
@@ -7012,13 +7078,9 @@ window.__ModuleLoader__.load({
         const localFiltered = q ? notes.filter(n => { const hay = ((n.title || '') + ' ' + (n.preview || '') + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ') + ' ' + folderName(n.folder)).toLowerCase(); return hay.indexOf(q) >= 0 }) : notes
         // 搜索结果取 host 全文 + 本地即时的并集，RPC 失败/延迟时本地结果保底
         let filtered = searchIds ? notes.filter(n => searchIds.indexOf(n.id) >= 0 || localFiltered.indexOf(n) >= 0) : localFiltered
-        // 视图求值（原型 matches）：view 单选（all/folder/topic）∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索
+        // 视图求值（原型 matches）：view 单选（all/topic）∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索
         if (view.type === 'topic') filtered = filtered.filter(n => (n.topic || '') === view.id)
-        // 文件夹视图 = 递归子树口径（notes-nested-folder-ui：点父文件夹视图含全部子孙文件夹内容，与 host notes-list folder 过滤同语义）
-        else if (view.type === 'folder') { const vsub = folderSubtreeIdsOf(view.id); filtered = filtered.filter(n => vsub[(n.folder || '')]) }
-        // 工作记忆 v0 隐身渲染守卫：类型组未勾「日志」时日志永不进日常视图（含搜索并集/清除筛选后的在途数据；专入口 = 勾选 kind=log）
-        // R-6 UI 接线：显式文件夹视图放行 log（显式导航 = 同权展示，隐身只管隐式表面）；切回默认视图守卫恢复拦截（含重拉在途数据）
-        filtered = filtered.filter(n => (n.kind || 'note') !== 'log' || filters.kinds.indexOf('log') >= 0 || view.type === 'folder')
+        // 日志同权（0.4.3⑦）：无隐身渲染守卫——日志与普通笔记同一过滤管线（类型组勾选「日志」= 只看日志，与普通 kind 过滤同语义）
         filtered = filtered.filter(n => matchFilters(n, filters))
         // 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0，如仅 topic 命中)，同级 updatedAt 降序；
         // 命中字段优先取 host notes-search 返回的 matches（全文口径），无则按本地字段估算（preview 仅前 200 字，正文命中可能低估）；无搜索词时退化为 host 序
@@ -7093,7 +7155,7 @@ window.__ModuleLoader__.load({
           // 整理建议对话框已拆出（architecture-modular §6 步骤 D2：modals/suggest.js；state 走 store.modal.suggest）
           e(SuggestModal, { error: error }),
           // 注入预览对话框已拆出（architecture-modular §6 步骤 D2：modals/inject-preview.js；state 走 store.modal.injectPreview，sessList/sessPending 经 props 注入）
-          e(InjectPreviewModal, { error: error, sessList: sessList, sessPending: sessPending, injectPreviewTab: injectPreviewTab, setInjectPreviewTab: setInjectPreviewTab }),
+          e(InjectPreviewModal, { error: error, sessList: sessList, sessPending: sessPending }),
           // 注入管理面板已拆出（architecture-modular §6 步骤 D2：modals/inject-manager.js；state 走 store.modal.injMgr，搜索防抖 effect 挂 InjMgrModal）
           e(InjMgrModal, { error: error }),
           // 挂载弹层已随 inject-manager 迁入（0.4.3⑤ notes-043-index：modals/inject-manager.js 的 MountModal——资料开注入 → 手写 whenToUse 落索引行）

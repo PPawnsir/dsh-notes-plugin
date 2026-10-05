@@ -12,7 +12,7 @@ function doCreateFolder(parentId) {
       rpc('notes-folders', { op: 'create', name: name.trim(), parent: parentId || '' }).then(function (res) {
         if (res && res.error) { toast(String(res.error).replace(/^notes-folders\.\w+\s*/, '')); return }
         toast(t('fld.created', { name: name.trim() }));
-        if (res && res.folder && res.folder.id) { if (parentId) { foldOpen[parentId] = true } foldOpen[res.folder.id] = true; saveFoldOpen(); view = { type: 'folder', id: res.folder.id } }
+        if (res && res.folder && res.folder.id) { if (parentId) { foldOpen[parentId] = true } foldOpen[res.folder.id] = true; saveFoldOpen() }   /* 0.4.3⑦：文件视图拆除——建成即展开（不再进文件夹视图） */
         loadNotes(true);
       }).catch(function (e) { toast(t('fld.createFailed', { msg: e && e.message || e })) });
     }
@@ -47,8 +47,6 @@ function doDeleteFolder(f) {
   if (!confirm(msg)) return;
   rpc('notes-folders', { op: 'delete', id: f.id, cascade: true }).then(function (res) {
     if (res && res.error) { toast(res.error); return }
-    /* 当前文件夹视图落在被删子树内 → 回全部视图（视图 id 悬空会显示空名单） */
-    if (view.type === 'folder' && sub[view.id]) view = { type: 'all', id: '' };
     toast(t('fld.deleted', { name: f.name }) + ((childN || noteN) ? t('fld.deletedDetail', { childN: childN, noteN: noteN }) : ''));
     loadNotes(true);
   }).catch(function (e) { toast(t('fld.deleteFailed', { msg: e && e.message || e })) });
@@ -85,13 +83,13 @@ function reparentFolder(fid, parentId) {
     loadNotes(true);
   }).catch(function (e) { toast(t('fld.moveFailed', { msg: e && e.message || e })) });
 }
-/* 文件夹右键菜单（嵌套：新建子文件夹 / 移回根级（有父级时）） */
+/* 文件夹右键菜单（嵌套：新建子文件夹 / 移回根级（有父级时））；
+   0.4.3⑦：文件夹右键「进视图」菜单项随文件视图模式拆除移除（树展开即文件夹浏览） */
 function openFolderMenu(x, y, fid) {
   var f = folders.find(function (z) { return z.id === fid });
   if (!f) return;
   var host = $('ctxHost');
   host.innerHTML = '<div class="ctxmenu" id="ctxMenu">'
-    + '<div class="mi" data-a="view">' + icon('i-filter') + t('fld.menuView') + '</div>'
     + '<div class="mi" data-a="sub">' + icon('i-plus') + t('fld.titleNewSub') + '</div>'
     + '<div class="mi" data-a="rename">' + icon('i-note') + t('fld.okRename') + '</div>'
     + '<div class="mi" data-a="up">' + icon('i-up') + t('fld.menuUp') + '</div>'
@@ -105,8 +103,7 @@ function openFolderMenu(x, y, fid) {
     var mi = ev.target.closest('.mi'); if (!mi) return;
     closeCtx();
     var a = mi.dataset.a;
-    if (a === 'view') { view = { type: 'folder', id: f.id }; foldOpen[f.id] = true; saveFoldOpen(); render(); }
-    else if (a === 'sub') doCreateFolder(f.id);
+    if (a === 'sub') doCreateFolder(f.id);
     else if (a === 'rename') doRenameFolder(f);
     else if (a === 'up') doReorderFolder(f, -1);
     else if (a === 'down') doReorderFolder(f, 1);

@@ -21,7 +21,7 @@ module.exports = {
       assert(s.indexOf('HIST_GLOBAL_BUDGET = 50 * 1024 * 1024') >= 0, label + ' 全库 50MB 预算常量')
       assert(s.indexOf('HIST_KEEP_ALL_MS') >= 0 && s.indexOf('HIST_KEEP_DAILY_MS') >= 0, label + ' 分层保留窗口常量')
       assert(s.indexOf('async function persistNote(n, opts)') >= 0 && s.indexOf('opts.history !== false') >= 0, label + ' persistNote 第二参 opts.history 开关')
-      assert(s.split('persistNote(n, { history: false })').length - 1 >= 2, label + ' useCount 防抖 + idle 回执两处自动回写免快照（实得 ' + (s.split('persistNote(n, { history: false })').length - 1) + ' 处）')
+      assert(s.split('persistNote(n, { history: false })').length - 1 >= 2, label + ' idle 派发回执/根笔记/调度机器回写等自动回写免快照（useCount 防抖落盘已于卡⑧退役；实得 ' + (s.split('persistNote(n, { history: false })').length - 1) + ' 处）')
       assert(s.indexOf('await histSnapshot(n.id, prev)') >= 0, label + ' persistNote 写盘前快照上一版（缓存重建，零新增读盘）')
       assert(s.indexOf('const historyPurged = await histPurgeNote(id)') >= 0, label + ' _purge 连带清 .history')
       assert(s.indexOf('historyMerged += await copyHistoryDir(chk.dir, NOTES_DIR, true, n.id)') >= 0, label + ' _import added 连带历史合并')

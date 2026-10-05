@@ -22,14 +22,14 @@ module.exports = {
   const appSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
   const clientPkgSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
   const protoSrc = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
-  // 覆盖卡 A 抽串清单（64 条；key=表面.语义）
+  // 覆盖卡 A 抽串清单（62 条；key=表面.语义；0.4.3⑦：tree.folderViewTip/tree.viewFolder 随「文件视图」拆除移出清单；tree.logTip 随 logmark 徽章移除）
   const KEYS = [
     'topbar.subtitle', 'topbar.refreshTip', 'topbar.archiveTip', 'topbar.themeTip', 'topbar.homeTip',
     'topbar.filterTip', 'topbar.sortTip', 'topbar.filterAria', 'topbar.trashTip', 'topbar.selectTip',
     'side.brand', 'side.newTip', 'side.splitterTip', 'side.more', 'side.fchipStatusTip', 'side.fchipKindTip',
     'tree.topicTip', 'tree.untitled', 'tree.injectTip', 'tree.roleReference', 'tree.roleConvention', 'tree.injectScope',
-    'tree.injectEverTip', 'tree.useCountTip', 'tree.wikiTip', 'tree.toggleTip', 'tree.folderViewTip', 'tree.countN',
-    'tree.viewTopic', 'tree.viewFolder', 'tree.viewAll', 'tree.crossFolderCount', 'tree.clearViewTip', 'tree.pinned',
+    'tree.injectEverTip', 'tree.useCountTip', 'tree.wikiTip', 'tree.toggleTip', 'tree.countN',
+    'tree.viewTopic', 'tree.viewAll', 'tree.crossFolderCount', 'tree.clearViewTip', 'tree.pinned',
     'tree.folders', 'tree.addFolderTip', 'tree.dropOutHint', 'tree.dropRootHint', 'tree.topicsHeader', 'tree.crossFolder',
     'tree.topicViewTip', 'tree.noMatch', 'tree.clearFilters', 'tree.clearFiltersShort', 'tree.clearAllFiltersTip',
     'tree.movedTo', 'tree.movedOut', 'tree.moveFailed', 'tree.subFolderPlaceholder', 'tree.folderPlaceholder',
@@ -41,9 +41,9 @@ module.exports = {
   const grab = (s, v) => new Function(s + '\nreturn ' + v)()
   const zh = grab(zhSrc, 'I18N_ZH'), en = grab(enSrc, 'I18N_EN')
 
-  // ===== ① 字典双向覆盖：64 条抽串 zh/en 双双存在且值非空；两字典全域 key 集合一致 =====
-  await t('覆盖A 字典双向覆盖：64 条 topbar/side/tree/sel/hint/chrome key 双端齐备且非空', () => {
-    assert.strictEqual(KEYS.length, 64, '抽串清单条数（实得 ' + KEYS.length + '）')
+  // ===== ① 字典双向覆盖：62 条抽串 zh/en 双双存在且值非空；两字典全域 key 集合一致 =====
+  await t('覆盖A 字典双向覆盖：62 条 topbar/side/tree/sel/hint/chrome key 双端齐备且非空', () => {
+    assert.strictEqual(KEYS.length, 62, '抽串清单条数（实得 ' + KEYS.length + '）')
     for (const k of KEYS) {
       assert(typeof zh[k] === 'string' && zh[k], 'zh 缺 key/空值：' + k)
       assert(typeof en[k] === 'string' && en[k], 'en 缺 key/空值：' + k)
@@ -52,12 +52,12 @@ module.exports = {
   })
 
   // ===== ② t() 改写命中：六表面文件 t(/tt( 命中数 ≥ 抽串数 + 关键锚点 =====
-  await t('t() 改写命中：六表面文件 t(/tt( 合计 ≥64（≥抽串数）+ 逐文件关键锚点', () => {
+  await t('t() 改写命中：六表面文件 t(/tt( 合计 ≥62（≥抽串数）+ 逐文件关键锚点', () => {
     const cnt = (s) => (s.match(/[^\w]t{1,2}\('(?:topbar|side|tree|sel|hint|chrome|common)\./g) || []).length
     const per = [['topbar.js', topSrc, 20], ['tree.js(app)', treeAppSrc, 20], ['sidebar.js', sideSrc, 14], ['tree.js(client)', treeCliSrc, 20], ['chrome.js', chromeSrc, 8]]
     let total = 0
     for (const [label, s, min] of per) { const c = cnt(s); total += c; assert(c >= min, label + ' 域内 t(/tt( 命中 ≥' + min + '（实得 ' + c + '）') }
-    assert(total >= 64, '六文件域内 t(/tt( 命中合计 ≥64 抽串数（实得 ' + total + '）')
+    assert(total >= 62, '六文件域内 t(/tt( 命中合计 ≥62 抽串数（实得 ' + total + '）')
     // 关键锚点：刷新 toast 走字典；renderChrome 接线全壳；renderTree 首行收敛调用
     assert(topSrc.indexOf("toast(t('common.refreshed'))") >= 0, 'topbar.js 刷新 toast 走 t() 字典')
     assert(topSrc.indexOf('function renderChrome()') >= 0 && topSrc.indexOf('renderChrome();') >= 0, 'renderChrome 定义 + 装载即调用一次（启动本地化）')
@@ -76,7 +76,7 @@ module.exports = {
   })
 
   // ===== ③ 行为级：eval 字典 + app i18n 块——取值/插值/en 态逐条非裸 key/回退 =====
-  await t('行为级：覆盖A key 双语取值 + {name} 插值 + en 态 64 条逐条非裸 key', () => {
+  await t('行为级：覆盖A key 双语取值 + {name} 插值 + en 态 62 条逐条非裸 key', () => {
     const helpersSrc = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'kernel', 'helpers.js'), 'utf8')
     const i18nBlock = helpersSrc.match(/\/\* ==== i18n-mech BEGIN ====[\s\S]*?\/\* ==== i18n-mech END ==== \*\//)[0]
     const mk = (stored) => new Function('localStorage', 'render', zhSrc + '\n' + enSrc + '\n' + i18nBlock + '\nreturn { t: t }')({ getItem: () => stored, setItem: () => {} }, () => {})

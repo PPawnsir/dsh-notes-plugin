@@ -31,7 +31,7 @@ module.exports = {
       assert(indexSrc.indexOf('function ' + fn) >= 0, 'index.mjs 缺函数 ' + fn)
     }
     assert(/handle\('notes-folders'/.test(indexSrc), 'index.mjs 注册 notes-folders RPC（webServer 兜底路由经 handlers 表自动可达）')
-    assert(/async function _list\(tag, kind, folder, includeDeleted, includeLogs\)/.test(indexSrc) && /folderSubtree = \(folder !== undefined && folder !== ''\) \? folderSubtreeIds\(folder, folders\) : null/.test(indexSrc) && indexSrc.indexOf("if (folder === '') { if (ef !== '') continue }") >= 0, 'index.mjs _list 接 folder 递归子树过滤（folder-tree-helpers；第 4 参数 includeDeleted 回收站 / 第 5 参数 includeLogs 工作记忆日志召回）')
+    assert(/async function _list\(tag, kind, folder, includeDeleted, includeLogs, includeSys\)/.test(indexSrc) && /folderSubtree = \(folder !== undefined && folder !== ''\) \? folderSubtreeIds\(folder, folders\) : null/.test(indexSrc) && indexSrc.indexOf("if (folder === '') { if (ef !== '') continue }") >= 0, 'index.mjs _list 接 folder 递归子树过滤（folder-tree-helpers；第 4 参数 includeDeleted 回收站 / 第 5 参数 includeLogs 工作记忆日志召回 / 第 6 参数 includeSys 机器全量视图 0.4.3⑨）')
     assert(/async function _search\(query, tag, topic, kind, folder, filters\)/.test(indexSrc), 'index.mjs _search 接 folder（+ filters 组合过滤尾参，搜索体验升级）')
     assert(/enum: \['create', 'list', 'update', 'move', 'delete'/.test(indexSrc), 'index.mjs note_manage action enum 含 move')
   })
@@ -85,20 +85,21 @@ module.exports = {
     assert(clientSrc.indexOf("const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })") >= 0, '未入夹笔记根级平铺直渲（无主题分组头/nested 包裹）')
     assert(clientSrc.indexOf('notes.forEach(n => { if (n.topic) allTopics[n.topic]') >= 0, '主题过滤区统计全库主题（不按当前过滤）')
     assert(/setView\(view\.type === 'topic' && view\.id === tn \? \{ type: 'all', id: '' \} : \{ type: 'topic', id: tn \}\)/.test(clientSrc), '主题行尾过滤图标切换主题视图/全部（行主体单击已让位原地展开）')
-    assert(/setView\(view\.type === 'folder' && view\.id === f\.id \? \{ type: 'all', id: '' \} : \{ type: 'folder', id: f\.id \}\)/.test(clientSrc), '文件夹行尾过滤图标切换文件夹视图/全部（行主体单击=纯展开/折叠，进视图唯一入口=行尾图标）')
-    assert(clientSrc.indexOf("view.type === 'folder' ? view.id :") >= 0, '新建落位：文件夹视图落当前文件夹')
+    assert(!/setView\(view\.type === 'folder'/.test(clientSrc), '0.4.3⑦：文件夹行尾过滤图标（进文件夹视图）已拆除——树展开即文件夹浏览')
+    assert(clientSrc.indexOf("const createFolder = (selNote && selNote.folder) || ''") >= 0, '新建落位：选中笔记所在文件夹/未分类（文件夹视图落位分支随拆除移除）')
     assert(/payload\.folder = createFolder/.test(clientSrc), 'notes-create 携带 folder')
   })
-  await t('目录树点击语义（行点击=纯展开/折叠）：行主体/caret 同一 toggle + 行尾过滤图标=进/出视图唯一入口 + 陈旧 id 清洗（四端同步）', () => {
+  await t('目录树点击语义（行点击=纯展开/折叠）+ 文件视图拆除（文件夹行尾漏斗入口移除）+ 陈旧 id 清洗（四端同步）', () => {
     const appSrcT = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
     const protoSrcT = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
     // ① 文件夹行主体单击 = 纯展开/折叠（经典树语义唯一职责，notes-041b 用户裁决去重）；caret 同一 toggle 语义（stopPropagation 防双触发）
     assert(clientSrc.indexOf("onClick: () => { toggleFolder(f.id) }") >= 0, '文件夹行主体 onClick = 纯展开/折叠（toggleFolder）')
     assert(clientSrc.indexOf("'data-tooltip': tt('tree.toggleTip'), onClick: (ev) => { ev.stopPropagation(); toggleFolder(f.id) }") >= 0, 'caret 同一展开/折叠语义（stopPropagation + tooltip；i18n 覆盖卡A 起走 t() 字典）')
-    // ② 视图过滤降级为行尾过滤图标（stopPropagation 不抢占单击）+ 文件夹右键菜单项兜底
-    assert(clientSrc.indexOf("'dsh-notes-row-vfilter dsh-nt'") >= 0, '文件夹/主题行尾过滤图标（dsh-notes-row-vfilter）')
-    assert(/ev\.stopPropagation\(\); setView\(view\.type === 'folder' && view\.id === f\.id/.test(clientSrc), '文件夹行尾图标点击 = 进入/退出文件夹视图')
-    assert(clientSrc.indexOf('进入文件夹视图') >= 0, '文件夹右键菜单含「进入文件夹视图」')
+    // ② 0.4.3⑦：文件夹行尾过滤图标（进文件夹视图）与「进入文件夹视图」菜单项已拆除；主题行尾过滤图标保留（主题视图不受影响）
+    assert(clientSrc.indexOf("'dsh-notes-row-vfilter dsh-nt'") >= 0, '主题行尾过滤图标保留（dsh-notes-row-vfilter）')
+    assert(clientSrc.indexOf("tt('tree.folderViewTip')") < 0, '文件夹行尾漏斗图标已移除（tree.folderViewTip 引用清零）')
+    assert(!/ev\.stopPropagation\(\); setView\(view\.type === 'folder'/.test(clientSrc), '文件夹行尾图标进/出文件夹视图分支已移除')
+    assert(clientSrc.indexOf('进入文件夹视图') < 0 && clientSrc.indexOf('fld.menuView') < 0, '文件夹右键菜单「进入文件夹视图」已移除')
     // ③ 主题行主体单击 = 原地展开/收起该主题子列表（topicExpanded object，session 内不持久化）
     assert(/const \[topicExpanded, setTopicExpanded\] = React\.useState\(\{\}\)/.test(clientSrc), 'topicExpanded state（object，不持久化）')
     assert(/function toggleTopicExpanded\(tn\)/.test(clientSrc) && clientSrc.indexOf('onClick: () => toggleTopicExpanded(tn)') >= 0, '主题行主体 onClick = toggleTopicExpanded（原地展开）')
@@ -111,16 +112,17 @@ module.exports = {
     // 发布包 + styles.css 同步
     assert(clientPkgSrc.indexOf('dsh-notes-row-vfilter') >= 0 && clientPkgSrc.indexOf('toggleTopicExpanded') >= 0 && clientPkgSrc.indexOf('pruneFoldersExpanded') >= 0, '发布包 lib/client.js 同步（需先跑 scripts/build-dist.cjs）')
     const cssDevT = fsNative.readFileSync(SRC_STYLES, 'utf8')
-    assert(cssDevT.indexOf('.dsh-notes-row-vfilter{') >= 0 && cssDevT.indexOf('.dsh-notes-row-vfilter.on{') >= 0, 'styles.css 含行尾过滤图标样式（常态/hover 浮现/激活常显）')
-    // app.html / 原型 notes-ui-v2.html 同步：caret 折叠分支 + vfilter 图标 + 主题原地展开 + 陈旧清洗 + 右键菜单项
+    assert(cssDevT.indexOf('.dsh-notes-row-vfilter{') >= 0 && cssDevT.indexOf('.dsh-notes-row-vfilter.on{') >= 0, 'styles.css 含行尾过滤图标样式（主题行沿用；常态/hover 浮现/激活常显）')
+    // app.html / 原型 notes-ui-v2.html 同步：caret 折叠分支（日志同权：零副作用）+ 主题 vfilter 保留 + 主题原地展开 + 陈旧清洗
     for (const pair of [['app.html', appSrcT], ['原型 notes-ui-v2.html', protoSrcT]]) {
-      assert(pair[1].indexOf("ev.target.closest('.vfilter')") >= 0, pair[0] + ' 树事件委托识别 .vfilter 行尾图标')
-      assert(pair[1].indexOf("foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); if (opening) ensureFoldLogs(fid2); renderTree(); return") >= 0, pair[0] + ' 行点击（含 caret）= 统一展开/折叠 toggle（事件委托分支；opening 判定供 notes-041c 日志懒加载）')
+      assert(pair[1].indexOf("ev.target.closest('.vfilter')") >= 0, pair[0] + ' 树事件委托识别 .vfilter 行尾图标（主题行）')
+      assert(pair[1].indexOf("foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); renderTree(); return") >= 0, pair[0] + ' 行点击（含 caret）= 统一展开/折叠 toggle（0.4.3⑦ 日志同权：纯折叠态翻转零副作用，ensureFoldLogs 已拆）')
       assert(pair[1].indexOf("view = { type: 'folder', id: fid2 }") < 0, pair[0] + ' 行主体单击进视图分支已移除（notes-041b 语义收敛）')
-      assert(pair[1].indexOf('class="vfilter') >= 0, pair[0] + ' 文件夹/主题行渲染行尾过滤图标')
+      assert(pair[1].indexOf("if (vf && frow)") < 0, pair[0] + ' 0.4.3⑦：文件夹行 vfilter 进视图委托分支已移除')
+      assert(pair[1].indexOf('class="vfilter') >= 0, pair[0] + ' 主题行渲染行尾过滤图标（主题视图保留）')
       assert(pair[1].indexOf('var topicOpen = {}') >= 0 && pair[1].indexOf('topicOpen[t] = !topicOpen[t]') >= 0, pair[0] + ' 主题行原地展开（topicOpen）')
-      assert(pair[1].indexOf('.vfilter{') >= 0 && pair[1].indexOf('.vfilter.on{') >= 0, pair[0] + ' vfilter 样式')
-      assert(pair[1].indexOf('进入文件夹视图') >= 0, pair[0] + ' 文件夹右键菜单含「进入文件夹视图」')
+      assert(pair[1].indexOf('.vfilter{') >= 0 && pair[1].indexOf('.vfilter.on{') >= 0, pair[0] + ' vfilter 样式（主题行沿用）')
+      assert(pair[1].indexOf('进入文件夹视图') < 0, pair[0] + ' 文件夹右键菜单「进入文件夹视图」已移除')
       assert(/delete foldOpen\[k\]/.test(pair[1]), pair[0] + ' foldOpen 陈旧 id 清洗（loadFolders）')
     }
   })
@@ -563,6 +565,31 @@ module.exports = {
       assert(clientPkgSrc.indexOf(k) >= 0, '发布包 client.js 缺 ' + k)
     }
     assert(clientPkgSrc.indexOf('ctxMoveToFolder({ id: id }, f.id)') >= 0 && clientPkgSrc.indexOf("ctxMoveToFolder({ id: id }, '')") >= 0, '发布包 drop 移入/移出复用 ctxMoveToFolder')
+  })
+
+  // ===== 21.6 ⑩ 计数口径（0.4.3 验收修复⑩ 第二轮裁决③）：folders-count-sys 标记块双包逐字节一致 + 行为锚 =====
+  // （folders.js ⇄ folders.dist.js 的 _folders list 计数段此前无守卫——本轮修复曾单边漂移，立此块防再犯，模式同节 58.3）
+  await t('folders-count-sys 标记块双包逐字节一致（folders.js ⇄ folders.dist.js）+ 计数含 sys / unfiled 排 sys 行为锚', async () => {
+    const mRe = /\/\/ ==== folders-count-sys BEGIN ====[\s\S]*?\/\/ ==== folders-count-sys END ====/
+    const bDev = hostSrc.match(mRe), bDist = indexSrc.match(mRe)
+    assert(bDev && bDist, '开发版拼接与静态包均须含 folders-count-sys 标记块（需先跑 scripts/build-dist.cjs）')
+    assert.strictEqual(bDev[0], bDist[0], '标记块双包逐字节一致（folders.js ⇄ folders.dist.js 改一边忘另一边）')
+    // 行为锚①：sys 入夹笔记计入文件夹徽标（与 folder 定向视图含 sys 一致；0.4.3⑩ 前面板「记忆档案」count=0 死节点根因）
+    const fC = (await handlers['notes-folders']({ op: 'create', name: '计数锚⑩' })).folder
+    assert(fC && fC.id, '计数锚文件夹创建成功')
+    const cSysF = await handlers['notes-create']({ title: '计数锚-夹内sys', body: 'x', kind: 'sys', folder: fC.id })
+    assert(cSysF && cSysF.id, '夹内 sys fixture 创建成功')
+    const fl1 = await handlers['notes-folders']({})
+    const rowC = (fl1.folders || []).find(f => f.id === fC.id)
+    assert(rowC && rowC.count === 1, '文件夹徽标计入 sys（与定向视图一致；实得 ' + (rowC && rowC.count) + '）')
+    // 行为锚②：未入夹 sys 不计入 unfiled（⑨「未分类」平铺同族守恒）；普通笔记照常计入
+    const u0 = (await handlers['notes-folders']({})).unfiled
+    await handlers['notes-create']({ title: '计数锚-未入夹sys', body: 'x', kind: 'sys' })
+    const u1 = (await handlers['notes-folders']({})).unfiled
+    assert.strictEqual(u1, u0, '未入夹 sys 不计入 unfiled（⑨ 同族口径）')
+    await handlers['notes-create']({ title: '计数锚-未入夹普通', body: 'x' })
+    const u2 = (await handlers['notes-folders']({})).unfiled
+    assert.strictEqual(u2, u0 + 1, '未入夹普通笔记计入 unfiled（守恒口径不变）')
   })
   }
 }

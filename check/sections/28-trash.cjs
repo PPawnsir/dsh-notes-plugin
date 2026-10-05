@@ -17,7 +17,7 @@ module.exports = {
       const s = pair[1]
       assert(s.indexOf("handle('notes-purge'") >= 0, pair[0] + ' notes-purge RPC 注册')
       assert(s.indexOf('args.includeDeleted') >= 0, pair[0] + ' notes-list 透传 includeDeleted')
-      assert(s.indexOf('async function _list(tag, kind, folder, includeDeleted, includeLogs)') >= 0, pair[0] + ' _list 第 4 参数 includeDeleted / 第 5 参数 includeLogs（工作记忆 v0）')
+      assert(s.indexOf('async function _list(tag, kind, folder, includeDeleted, includeLogs, includeSys)') >= 0, pair[0] + ' _list 第 4 参数 includeDeleted / 第 5 参数 includeLogs（工作记忆 v0）/ 第 6 参数 includeSys 机器全量视图（0.4.3⑨ sys 缺省降噪）')
       assert(s.indexOf('if (note.deleted && !includeDeleted) continue') >= 0, pair[0] + ' includeDeleted 放行软删除')
       assert(s.indexOf('if (note.tombstoned) continue') >= 0, pair[0] + ' _list 跳过 purge 墓碑')
       assert(s.indexOf('note.tombstoned = !c') >= 0, pair[0] + ' readNoteFile 墓碑标记（0 字节占位）')

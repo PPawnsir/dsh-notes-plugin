@@ -34,6 +34,8 @@ const NOTES_ROOT = path.join(os.homedir(), '.dsh', 'notes')      // 发布版存
 const SETTINGS_PATH = path.join(NOTES_ROOT, 'settings.json')     // 设置持久化（通用结构；当前仅 llm 选配）。
 // LLM token 消耗统计落盘（独立于 settings.json：计量数据高频防抖写，与低频设置写隔离，互不坏档）
 const USAGE_PATH = path.join(NOTES_ROOT, 'usage.json')
+// 召回遥测机器存储层（0.4.3 验收修复⑤ notes-043-metrics-storage）：独立于 settings.json 防写放大；.json 不进笔记列表天然隐身
+const TELEMETRY_PATH = path.join(NOTES_ROOT, 'telemetry.json')
 // .json 后缀不进笔记列表（_list/listMd 只认 .md），settings.json 落在同目录天然不污染列表。
 // 开发版目录：只用于 (a) 首次启动的一次性数据迁移 (b) 开发资产回退读取。发布环境不存在这些文件时静默跳过。
 const LEGACY_PLUGIN_DIR = 'D:\\deepseek-work\\dsh-notes-plugin'

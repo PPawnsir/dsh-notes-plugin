@@ -1,4 +1,4 @@
-    // 约定命中判定（约定注入 conventionText 与目录去重 catalogText 共用）：
+    // 约定命中判定（约定注入与目录段普通行去重共用）：
     // 注入范围 injectTo 是多选数组（不再有「工作区」维度——笔记无归属，只看会话）：
     //   []（空）                  → 默认所有会话
     //   含 'global' / 'workspace' → 存量值容错：同样视为所有会话（不迁移、不保留工作区过滤）
@@ -17,19 +17,61 @@
       return false
     }
 
-    // 上下文注入（双角色）：从常驻内存 cache 同步读取 inject=true 笔记，按 injectRole 分桶注入 agent 系统提示。
+    // 上下文注入（约定桶 + 单一目录段）：从常驻内存 cache 同步读取 inject=true 笔记，按 injectRole 分桶注入 agent 系统提示。
     // text 是同步函数（systemPrompt 契约），故不能 await _list()，必须读 cache。
     // 是否注入：inject 布尔字段（noteFromParsed 已对旧数据回退到 convention 标签）；
     // 注入范围由笔记的 injectTo 字段决定（命中语义见 conventionHit）。
-    // 分桶：injectRole='convention' → 用户约定（须遵守）；'reference' → 参考资料（按需取用）；
-    // 缺省/非法值已在 noteFromParsed 回退 convention（存量零迁移）；只命中单桶时只输出该桶标题。
+    // 分桶：injectRole='convention' → 用户约定（须遵守，全文注入，红线零触碰）；挂载行 = 注入索引根笔记 §1 逐行（0.4.3⑤ 管线载荷）。
+    // 0.4.3 验收修复③（notes-043-dir-merge）：目录与资料桶合并为单一「笔记目录」段（order 130 唯一 context，原 order 131 撤销）——
+    //   挂载行排前（§1 行原样进段 = 目录行的增强态/载荷）；普通目录行排后（catalogEnabled===true 才填充，缺省关，
+    //   排除已挂载 id/已注入约定/deleted/resolved/superseded/recall=false 口径全保留）；预算省略顺序 = 先砍普通行、再砍挂载行
+    //   （挂载行内部仍 updatedAt 降序从旧整条省略）；尾部提示行（价值信号行[0.4.3⑥]/截断省略计数/脱敏/日志计数/note_get 引导/轻推）归属本段尾部；
+    //   catalog 关且无挂载行 → 目录段整段为空。约定桶与索引 §1 行格式零变化（红线）。
     // 文案不再标注工作区归属与来源会话：大量笔记由 agent 快速记录产生，归属标注对注入方无意义。
     // sidOverride（注入预览 RPC 专用）：不传 = 真实注入路径（取当前会话，行为不变）；传 '' = 「全局」视角（只命中 injectTo=[] 的笔记）；
     // 传会话短 id = 按该会话 injectTo 命中过滤；传会话短 id 数组 = 工作区并集视角（workspace 参数，命中集合内任一会话即视为命中）。
-    // 拼装逻辑不变，仅 curSid 输入来源不同（纯复用）。
-    function conventionText(sidOverride) {
-      const shortSid = (x) => x ? String(x).replace(/^session-/, '').slice(0, 8) : ''
+    // renderInjected 返回 { full, conventions, directory, catalog }：full = order 130 注入全文（conventionText 口径）；
+    //   conventions = 约定段文本（引导词 + 约定桶）；directory = 目录段文本（含尾部提示行）；
+    //   catalog = 兼容别名 = directory 中普通行部分（notes-inject-preview 旧字段保留，0.4.3③ 起语义 = 目录补充行）。
+    // CATALOG_LIMIT：普通目录行封顶（挂载行=载荷不受此限）；CATALOG_KIND_LABELS：kind 中文映射（0.4.3⑥ +sys 系统根笔记）
+    const CATALOG_LIMIT = 40
+    const CATALOG_KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '系统' }
+    // 注入价值信号行（0.4.3 验收修复⑥ notes-043-metrics-present，三层架构收口之呈现层）：
+    // 数据源 = telemetry 内存缓存的账本快照（_telemetryCache.ledger——cron/手动 _ledgerRefresh 经 _telemetrySetLedger 写入）：
+    //   同步读内存权威，零磁盘零 await（renderInjected 同步契约守住）；存储未加载/无快照/快照无命中 → 整行省略（静默降级，不占位不报错）。
+    // 快照原子性（构造性保证，节 78 断言④看守）：本行与本次渲染目录行在同一同步装配时刻现算，提及 id 一律过滤到
+    //   存活目录行 id 集（预算省略后挂载行 + 目录普通行）——信号行与目录行构造性同版本；约定桶全文条目不进目录行 → 不出现。
+    // 埋点纪律：纯读零写（零 _recallRaw/_telemetry 写入）——render→record 顺序不变，本次装配自排除（信号反映装配前存量快照）。
+    // 用途分级红线：本行只服务注入呈现（Top3 + 零引用候选首条紧凑信号，≤200 字符截断）；正确性判断/清理裁决必须走
+    //   notes-recall-stats 全量或人工（README 治理节明示）。
+    function _valueSignalLine(dirIds) {
+      try {
+        const lg = _telemetryCache && _telemetryCache.ledger
+        if (!lg || !lg.at) return ''
+        const inDir = function (id) { return dirIds.indexOf(String(id)) >= 0 }
+        const tops = []
+        for (const it of lg.top || []) {
+          if (!it || !inDir(it.id)) continue
+          tops.push(String(it.id) + '×' + Math.max(0, Math.floor(Number(it.count) || 0)))
+          if (tops.length >= 3) break   // Top3 截断
+        }
+        let zero = ''
+        for (const z0 of lg.zeroRef || []) { if (inDir(z0)) { zero = String(z0); break } }   // 零引用候选首条
+        if (!tops.length && !zero) return ''   // 无可呈现信号 → 整行省略（不占位）
+        const ms = Date.parse(lg.at)
+        const d = isFinite(ms) ? new Date(ms) : null
+        const pad = function (n) { return (n < 10 ? '0' : '') + n }
+        const parts = []
+        if (tops.length) parts.push('本周引用：' + tops.join('、'))
+        if (zero) parts.push('零引用候选：' + zero)
+        parts.push('截至 ' + (d ? pad(d.getHours()) + ':' + pad(d.getMinutes()) : String(lg.at)))
+        return ('（' + parts.join('｜') + '）').slice(0, 200)   // 红线：信号行总长 ≤200 字符
+      } catch (e) { return '' }
+    }
+    function renderInjected(sidOverride) {
+      const EMPTY = { full: '', conventions: '', directory: '', catalog: '' }
       lastConvStats.masked = 0; lastConvStats.budgetTruncated = false
+      lastCatStats.masked = 0; lastCatStats.stale = 0
       try {
         let cwd = ''
         let sid = ''
@@ -47,22 +89,70 @@
           if (conventionHit(n, ws, curSid)) matches.push(n)
         }
         matches.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
-        // 双角色分桶：约定与资料各自成段，标题换行收拢，正文行统一缩进两格保持在列表项内
-        // 0.4.3⑤ 管线切换（notes-043-index，injectindex 块）：reference 桶 = 注入索引根笔记 §1 逐行
-        // （每行 whenToUse + [[链接]]，agent 按需 note_get 拉正文）；旧「资料全文注入」通道下线；
-        // 无索引/索引无行 → 回退空 reference 桶；约定桶全文注入不动（用户裁决红线）。
-        // 索引行先于空判计算：约定零命中但索引有挂载行时，资料桶仍要注入（管线语义 = 索引行即载荷）。
-        // refBlocks 保对象形态（遥测取 id 用——Verifier 驳回①修复：此前直接 .map 成字符串后再取 b.id 恒 undefined，资料桶交付静默丢失）；
-        // refLines 为渲染行字符串（预算省略 pop 只动 refLines 尾部，存活 id = refBlocks.slice(0, refLines.length)）；
-        // 排序：按挂载目标 updatedAt 降序（延续旧「从最旧开始省略」预算语义；目标不在库/无时间 → 视为最旧沉底）
+        // 约定桶：injectRole 非 reference 的命中笔记全文注入（红线不动）
+        const conventions = []
+        for (const n of matches) { if (n.injectRole !== 'reference') conventions.push(n) }
+        // 挂载行（目录段排前 = 增强态载荷）：注入索引根笔记 §1 逐行（每行 whenToUse + [[链接]]，agent 按需 note_get 拉正文）。
+        // 索引行先于空判计算：约定零命中但有挂载行/目录行时仍要注入（行即载荷）。
+        // refBlocks 保对象形态（遥测取 id 用——Verifier 驳回①修复锚：此前直接 .map 成字符串后再取 b.id 恒 undefined，交付静默丢失）；
+        // refLines = §1 行原样进段：raw 已是 `- [[id]] …` 完整列表行（Verifier 驳回②修复锚——此前再叠 '- ' 前缀产出 `- - [[id]]` 双横线行，
+        //   与卡面契约/README 单横线形态及前端行解析正则 ^- \[\[? 三重不符，预览挂载行不可点；禁止再加前缀）；
+        // 预算省略 pop 只动 refLines 尾部，存活 id = refBlocks.slice(0, refLines.length)；
+        // 排序：按挂载目标 updatedAt 降序（延续「从最旧开始省略」预算语义；目标不在库/无时间 → 视为最旧沉底）
         const refBlocks = idxLinesSync()
           .map(function (l) { const n = cache.get(l.id); return { id: l.id, raw: l.raw, ts: (n && !n.deleted && !n.tombstoned && n.updatedAt) || '' } })
           .sort(function (a, b) { return (b.ts || '').localeCompare(a.ts || '') })
-        const refLines = refBlocks.map(function (it) { return '- ' + it.raw })
-        const conventions = []
-        for (const n of matches) { if (n.injectRole !== 'reference') conventions.push(n) }
-        if (conventions.length === 0 && refBlocks.length === 0) { if (sidOverride === undefined) lastInjectChars = 0; return '' }
-        // 敏感脱敏：sensitive=true 的笔记正文按行打码（键保留值遮蔽，见 sensitive-helpers 块），计数用于尾部提示行
+        const refLines = refBlocks.map(function (it) { return it.raw })
+        // 挂载 id 集：普通目录行去重（已挂载条目 = 增强态行排前，不以普通行重复出现）
+        const mountedIds = {}
+        for (const rb of refBlocks) mountedIds[rb.id] = true
+        // ---- 目录段普通行（面板总开关 settings.json，缺省关——显式 true 才填充；0.4.3 验收修复卡①白名单语义沿用）----
+        // 准入口径不变：排除 deleted、status=resolved/superseded（已了结不进目录）、recall=false（逐条关闭）、
+        // 约定注入去重（inject=true 且本会话命中 → 全文已在约定桶）、已挂载 id（增强态排前）；
+        // 排序 pinned 优先 → updatedAt 降序（注入无工作区维度）；日志只出计数提示行（recall 缺省 false 不含日志，不刷屏）
+        const catLines = []
+        const catIds = []
+        let catShown = []
+        let logCount = 0
+        let overflowCount = 0
+        let catMasked = 0   // 目录普通行标题打码计数（sensitive=true 同样按行打码防标题泄值 + 🔒 标记；尾部提示行）
+        let staleCount = 0   // 预览统计：被 ⚠ 时效标注的条目数
+        if (settingsCache && settingsCache.catalogEnabled === true) {
+          const pool = []
+          for (const n of cache.values()) {
+            if (n.deleted) continue
+            if ((n.kind || 'note') === 'log' && n.recall !== true) { logCount++; continue }   // 日志同权（0.4.3⑦）：目录缺省不含（recall 缺省 false）；显式 recall=true 按普通条目进目录（可进目录·显式豁免）
+            if (n.status === 'resolved' || n.status === 'superseded') continue   // 已了结的笔记不进目录
+            if (n.recall === false) continue                                     // recall=false 逐条关闭
+            if (n.inject === true && conventionHit(n, ws, curSid)) continue      // 约定注入去重（全文已在约定桶）
+            if (mountedIds[n.id]) continue                                       // 已挂载去重（增强态行排前，不重复出现）
+            pool.push(n)
+          }
+          pool.sort((x, y) => {
+            const px = x.status === 'pinned' ? 1 : 0
+            const py = y.status === 'pinned' ? 1 : 0
+            if (px !== py) return py - px                                        // pinned 优先
+            return (y.updatedAt || '').localeCompare(x.updatedAt || '')          // 更新时间降序
+          })
+          catShown = pool.slice(0, CATALOG_LIMIT)
+          overflowCount = pool.length - catShown.length
+          // P1 时效衰减提醒：kind=note/link（参考资料类）且 updatedAt 距今超过 staleDays（缺省 90 天，0=关闭）的行尾追加 ⚠ 标注
+          const staleLimit = staleDaysLimit()
+          for (const n of catShown) {
+            const kl = CATALOG_KIND_LABELS[n.kind] || CATALOG_KIND_LABELS.note
+            let title = String(n.title || 'Untitled').replace(/[\r\n]+/g, ' ')   // 一行一条：标题换行收拢
+            let mark = ''
+            if (n.sensitive === true) { catMasked++; title = maskSensitiveLine(title, n.id); mark = '🔒 ' }
+            let line = '- [' + n.id + '] ' + mark + title + ' (' + kl + ', ' + (n.topic || '未分类') + ')'
+            const sd = staleDaysOf(n.updatedAt, (n.kind === 'note' || n.kind === 'link') ? staleLimit : 0)
+            if (sd > 0) { staleCount++; line += ' ⚠ ' + sd + ' 天未更新' }
+            catLines.push(line)
+            catIds.push(n.id)
+          }
+        }
+        // 空判：约定零命中 + 无挂载行 + 目录段无普通行/无日志计数 → 整段为空不注入（catalog 关且无挂载行 → 目录段整段空）
+        if (conventions.length === 0 && refLines.length === 0 && catLines.length === 0 && logCount === 0) { if (sidOverride === undefined) lastInjectChars = 0; return EMPTY }
+        // 敏感脱敏：sensitive=true 的约定正文按行打码（键保留值遮蔽，见 sensitive-helpers 块），计数用于尾部提示行
         let maskedCount = 0
         const block = (n) => {
           const bodyTrim = String(n.body || '').trim()
@@ -71,118 +161,78 @@
         }
         const head = '以下是注入的上下文笔记（与当前任务无关时忽略）：'
         const convPart = conventions.length ? '\n\n用户约定（须遵守）：\n\n' + conventions.map(block).join('\n\n') : ''
-        const refHead = '\n\n参考资料（与当前任务相关时按需取用）：\n\n'
-        // P1 注入体积预算（约，按字符数近似）：约定桶永不截断；资料桶从最旧（updatedAt 降序的尾部）开始整条省略，
-        // 直至总长度回到预算内或资料桶为空；省略计数在尾部提示行告知（note_search 可检索原文）
+        // 目录段拼装（预算省略循环反复重算，故为函数）：挂载行排前 + 挂载 note_get 引导 + 普通行排后 + 溢出/脱敏/日志计数 + 规划轻推行
+        const dirBody = () => {
+          if (refLines.length === 0 && catLines.length === 0 && logCount === 0) return ''
+          let d = '\n\n本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：\n\n'
+          if (refLines.length) d += refLines.join('\n') + '\n\n（以上为挂载索引行：正文用 note_get <id> 获取）'
+          if (catLines.length) d += (refLines.length ? '\n\n' : '') + catLines.join('\n')
+          if (overflowCount > 0 && catLines.length > 0) d += '\n…另有 ' + overflowCount + ' 条较早笔记，用 note_search 检索'
+          if (catMasked > 0 && catLines.length > 0) d += '\n（其中 ' + catMasked + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）'
+          if (logCount > 0) d += '\n另有 ' + logCount + ' 条工作日志（kind=log，目录缺省不含），note_search 可检索'
+          d += '\n规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手'
+          return d
+        }
+        // P1 注入体积预算（约，按字符数近似统计，不引 token 计算库）：约定桶永不截断；目录段省略顺序 = 先砍普通行（尾部=较旧），
+        // 再砍挂载行（内部仍 updatedAt 降序从旧整条省略），直至总长度回到预算内或目录段为空；省略计数在尾部提示行告知（note_search 可检索原文）
         const budget = injectBudgetChars()
+        let droppedCat = 0
         let droppedRefs = 0
         if (budget > 0) {
-          while (refLines.length > 0 && (head + convPart + refHead + refLines.join('\n\n')).length > budget) {
-            refLines.pop()
-            droppedRefs++
+          while ((catLines.length > 0 || refLines.length > 0) && (head + convPart + dirBody()).length > budget) {
+            if (catLines.length > 0) { catLines.pop(); catIds.pop(); droppedCat++ }
+            else { refLines.pop(); droppedRefs++ }
           }
         }
-        let full = head + convPart
-        if (refLines.length) full += refHead + refLines.join('\n\n') + '\n\n（以上为挂载索引行：正文用 note_get <id> 获取）'
+        const convText = head + convPart
+        let full = convText + dirBody()
         if (full.length > 4000) full = full.slice(0, 4000) + '\n\n（内容过长已截断）'
-        // 尾部提示行恒定可见（截断之后追加）：预算省略计数 + 脱敏计数（原文 note_get 按 id 获取 / note_search 检索）
-        if (droppedRefs > 0) full += '\n\n…另有 ' + droppedRefs + ' 条资料超出预算未注入（note_search 可检索）'
-        if (maskedCount > 0) full += '\n\n（其中 ' + maskedCount + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）'
-        // 图片路径消歧（img-path-hint 块）：实际注入的约定正文含 assets/ 图片引用时，尾部追加一次绝对路径提示（截断之后追加，恒定可见；资料桶为索引行无正文不参与）
-        if (conventions.some(function (n) { return bodyHasImageRef(n.body) })) full += '\n\n' + assetsHintLine(NOTES_ROOT)
-        // 预览统计：脱敏条数 + 预算截断标记（资料桶有省略即视为截断）；预览渲染不触碰 lastInjectChars
-        lastConvStats.masked = maskedCount; lastConvStats.budgetTruncated = droppedRefs > 0
+        // 尾部提示行恒定可见（截断之后追加）：价值信号行（卡⑥，先渲染后记账——本行纯读内存快照，随后的 _recallRaw 才记账）+ 预算省略计数（普通行+挂载行合计）+ 约定脱敏计数 + 图片路径消歧
+        const droppedTotal = droppedCat + droppedRefs
+        // 快照原子性锚（卡⑥）：存活目录行 id 集 = 预算省略后挂载行（refBlocks 前 refLines.length 项）+ 目录普通行 catIds；
+        //   信号行与目录行同一同步装配时刻现算，构造性同版本（节 78 断言④：信号行 id ⊆ 本集）
+        const dirIds = refBlocks.slice(0, refLines.length).map(function (it) { return it.id }).concat(catIds)
+        const sigLine = _valueSignalLine(dirIds)
+        let tailLines = sigLine ? '\n\n' + sigLine : ''
+        if (droppedTotal > 0) tailLines += '\n\n…另有 ' + droppedTotal + ' 条目录行超出预算未注入（note_search 可检索）'
+        if (maskedCount > 0) tailLines += '\n\n（其中 ' + maskedCount + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）'
+        // 图片路径消歧（img-path-hint 块）：实际注入的约定正文或目录段普通行条目正文含 assets/ 图片引用时，尾部追加一次绝对路径提示（合并段后全量只出一次）
+        if (conventions.some(function (n) { return bodyHasImageRef(n.body) }) || catShown.some(function (n) { return bodyHasImageRef(n.body) })) tailLines += '\n\n' + assetsHintLine(NOTES_ROOT)
+        full += tailLines
+        // 预览统计：约定脱敏条数 + 预算截断标记（目录段有省略即视为截断）+ 目录打码/时效标注计数；预览渲染不触碰 lastInjectChars
+        lastConvStats.masked = maskedCount; lastConvStats.budgetTruncated = droppedTotal > 0
+        lastCatStats.masked = catMasked; lastCatStats.stale = staleCount   // 预览统计（notes-inject-preview）
         if (sidOverride === undefined) lastInjectChars = full.length   // 注入体积缓存：真实注入渲染才更新（设置卡片仪表数据源）
-        // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：inject 通道交付事件——真实注入路径（预览 sidOverride 不计）
-        // 记实际渲染的约定 id 集 + 资料桶存活（未被预算省略）索引行 id 集（refLines 尾部省略 → 存活 = refBlocks 前 refLines.length 项）；
-        // 签名去重 + 静默降级（recall-telemetry 块）
-        if (sidOverride === undefined) _recallRaw('inject', conventions.map(function (n) { return n.id }).concat(refBlocks.slice(0, refLines.length).map(function (it) { return it.id })), curSid)
-        return full
-      } catch (e) { return '' }
-    }
-
-    // ---- 笔记目录索引注入（recall 通道，order 131）----
-    // 全库一行一条目录 + 轻推提示：让 agent 规划时知道库里有什么，相关条目自主 note_get 拉全文、note_search 检索更多。
-    // 准入：排除 deleted、status=resolved/superseded（已了结不进目录）、recall=false（front-matter 逐条关闭，缺省 true）；
-    // 与约定注入去重：inject=true 且本会话命中（order 130 已注入全文）的笔记不再出现。
-    // 排序：pinned 优先 → updatedAt 降序（注入无工作区维度，不按工作区重排）；CATALOG_LIMIT 条封顶。
-    // text 是同步函数（systemPrompt 契约）：读常驻 cache + settingsCache；总开关关闭/无条目/异常 → 返回 ''（不能返回 undefined）。
-    const CATALOG_LIMIT = 40
-    const CATALOG_KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '系统' }   // 0.4.3⑥：+ sys 系统根笔记（注入允许是核心用途，显式 recall=true 的 sys 条目以系统标签进目录）
-    // sidOverride：注入预览 RPC 专用（语义同 conventionText——含数组形态的工作区并集视角）；不传 = 真实注入路径（当前会话），行为不变
-    function catalogText(sidOverride) {
-      lastCatStats.masked = 0; lastCatStats.stale = 0
-      try {
-        if (settingsCache && settingsCache.catalogEnabled === false) return ''   // 面板总开关（settings.json，缺省开）
-        let cwd = ''
-        let sid = ''
-        const a = agents && agents.currentInitiator ? agents.currentInitiator() : undefined
-        if (a) {
-          cwd = (a.session && a.session.header && a.session.header.cwd) || ''
-          sid = a.sessionId || (a.session && a.session.id) || ''
+        // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：真实注入路径才记（预览 sidOverride 不计），签名去重 + 静默降级（recall-telemetry 块）；
+        // 0.4.3③ 合并段口径：inject 通道 ids = 约定 + 存活挂载行 id 集（refLines 尾部省略 → 存活 = refBlocks 前 refLines.length 项）；
+        // catalog 通道 ids = 实际渲染普通行 id 集（语义 = 目录补充行通道，两侧不混计；空集 _recallRaw 自动不记）
+        if (sidOverride === undefined) {
+          _recallRaw('inject', conventions.map(function (n) { return n.id }).concat(refBlocks.slice(0, refLines.length).map(function (it) { return it.id })), curSid)
+          _recallRaw('catalog', catIds, curSid)
         }
-        const ws = basename(cwd)
-        const curSid = sidOverride !== undefined ? sidOverride : shortSid(sid)
-        const pool = []
-        // 工作记忆 v0：日志计数提示行数据源（目录条目因 recall 缺省 false 不含日志；有日志时尾部恒出现一行占位提示，不刷屏）
-        let logCount = 0
-        for (const n of cache.values()) {
-          if (n.deleted) continue
-          if ((n.kind || 'note') === 'log') { logCount++; continue }
-          if (n.status === 'resolved' || n.status === 'superseded') continue   // 已了结的笔记不进目录
-          if (n.recall === false) continue                                     // recall=false 逐条关闭
-          if (n.inject === true && conventionHit(n, ws, curSid)) continue      // 约定注入去重（全文已在 order 130）
-          pool.push(n)
-        }
-        if (pool.length === 0 && logCount === 0) return ''
-        pool.sort((x, y) => {
-          const px = x.status === 'pinned' ? 1 : 0
-          const py = y.status === 'pinned' ? 1 : 0
-          if (px !== py) return py - px                                        // pinned 优先
-          return (y.updatedAt || '').localeCompare(x.updatedAt || '')          // 更新时间降序
-        })
-        const shown = pool.slice(0, CATALOG_LIMIT)
-        // 敏感脱敏：目录只出标题一行，sensitive=true 的条目标题同样按行打码（防标题泄值）并加 🔒 标记；计数用于尾部提示行
-        let maskedCount = 0
-        // P1 时效衰减提醒：kind=note/link（参考资料类）且 updatedAt 距今超过 staleDays（缺省 90 天，0=关闭）的行尾追加 ⚠ 标注
-        const staleLimit = staleDaysLimit()
-        let staleCount = 0   // 预览统计：被 ⚠ 时效标注的条目数
-        const lines = shown.map(n => {
-          const kl = CATALOG_KIND_LABELS[n.kind] || CATALOG_KIND_LABELS.note
-          let title = String(n.title || 'Untitled').replace(/[\r\n]+/g, ' ')   // 一行一条：标题换行收拢
-          let mark = ''
-          if (n.sensitive === true) { maskedCount++; title = maskSensitiveLine(title, n.id); mark = '🔒 ' }
-          let line = '- [' + n.id + '] ' + mark + title + ' (' + kl + ', ' + (n.topic || '未分类') + ')'
-          const sd = staleDaysOf(n.updatedAt, (n.kind === 'note' || n.kind === 'link') ? staleLimit : 0)
-          if (sd > 0) { staleCount++; line += ' ⚠ ' + sd + ' 天未更新' }
-          return line
-        })
-        if (pool.length > CATALOG_LIMIT) lines.push('…另有 ' + (pool.length - CATALOG_LIMIT) + ' 条较早笔记，用 note_search 检索')
-        if (maskedCount > 0) lines.push('（其中 ' + maskedCount + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）')
-        // 工作记忆 v0（裁决 B①）：目录尾部固定日志计数提示行——只出计数不出标题（天然无泄露面），引导 agent 显式检索日志
-        if (logCount > 0) lines.push('另有 ' + logCount + ' 条工作日志（kind=log，默认隐身不进目录），用 note_search 传 kind=log 检索')
-        lastCatStats.masked = maskedCount; lastCatStats.stale = staleCount   // 预览统计（notes-inject-preview）
-        let out = '本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：\n' +
-          lines.join('\n') +
-          '\n规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手'
-        // 图片路径消歧（img-path-hint 块）：目录条目正文含 assets/ 图片引用时尾部追加一次绝对路径提示（note_get 拉全文后可直读图片）
-        if (shown.some(function (n) { return bodyHasImageRef(n.body) })) out += '\n' + assetsHintLine(NOTES_ROOT)
-        // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：catalog 通道交付事件——真实渲染路径记目录实际出清单的 id 集（预览 sidOverride 不计）
-        if (sidOverride === undefined) _recallRaw('catalog', shown.map(function (n) { return n.id }), curSid)
-        return out
-      } catch (e) { return '' }
+        // 预览拆分：conventions = 约定段（截断口径）；directory = 目录段 + 尾部提示行（totalChars = 两者之和保持）；
+        // catalog 兼容别名 = 目录段普通行部分（含溢出/脱敏/日志计数行）
+        const convShown = full.slice(0, Math.min(convText.length, full.length))
+        const dirShown = full.slice(convShown.length)
+        let catAlias = catLines.join('\n')
+        if (overflowCount > 0 && catLines.length > 0) catAlias += '\n…另有 ' + overflowCount + ' 条较早笔记，用 note_search 检索'
+        if (catMasked > 0 && catLines.length > 0) catAlias += '\n（其中 ' + catMasked + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）'
+        if (logCount > 0) catAlias += (catAlias ? '\n' : '') + '另有 ' + logCount + ' 条工作日志（kind=log，目录缺省不含），note_search 可检索'
+        return { full: full, conventions: convShown, directory: dirShown, catalog: catAlias }
+      } catch (e) { return { full: '', conventions: '', directory: '', catalog: '' } }
     }
+    function conventionText(sidOverride) { return renderInjected(sidOverride).full }
 
-
-    // 上下文注入（双角色分桶）：注册动态 prompt context（order 130，位于 policy/delegation 之后）
-    // 笔记目录索引注入（recall 通道）：order 131 紧邻上下文注入之后；text 同步返回 string，无内容/总开关关闭返回 ''
+    // 上下文注入（约定桶 + 合并目录段）：注册唯一动态 prompt context（order 130，位于 policy/delegation 之后）；
+    // 0.4.3 验收修复③：目录段并入本 context，原 notes:catalog order 131 撤销（单一目录段语义见 renderInjected 头注）
     if (systemPrompt && typeof systemPrompt.context === 'function') {
       disposers.push(systemPrompt.context({ name: 'notes:workspace-conventions', order: 130, text: () => conventionText() }))
-      disposers.push(systemPrompt.context({ name: 'notes:catalog', order: 131, text: () => catalogText() }))
     }
-    // 调试 RPC：预览当前会话将注入的上下文笔记文本（双角色分桶新文案，E2E 验证用）
-    disposers.push(handle('notes-conventions', async () => ({ text: conventionText() || '' })))
-    // 注入预览（设置卡片「注入预览」modal 数据源）：纯复用 conventionText/catalogText 渲染产物 + 统计，不重写拼装。
+    // 调试 RPC：预览当前会话将注入的上下文笔记文本（真实注入路径同渲染，E2E 验证用）；
+    // 0.4.3③ 起附 conventions/directory 分段（text = 全文 = conventions + directory，向后兼容）
+    disposers.push(handle('notes-conventions', async () => { const r = renderInjected(); return { text: r.full, conventions: r.conventions, directory: r.directory } }))
+    // 注入预览（设置卡片「注入预览」modal 数据源）：纯复用 renderInjected 渲染产物 + 统计，不重写拼装。
+    // 返回结构 0.4.3③：{ conventions, directory, stats }；catalog 字段保留为兼容别名 = directory 中普通行部分（目录补充行）。
     // 三档视角：args.sessionId（会话 id/短 id）= 单会话 injectTo 命中口径（conventionHit 同一口径）；
     // args.workspace（工作区标题，notes-sessions 的 workspace 字段）= 该工作区全部会话的注入并集（会话短 id 集合与 injectTo 求交）；
     // 两者缺省 = 「全局」视角（sidOverride=''，只命中 injectTo=[] / 存量 global/workspace 的笔记）。
@@ -200,15 +250,16 @@
           for (const s of wsAll) { if (s && s.workspace === wsName && s.short && wsSet.indexOf(s.short) < 0) wsSet.push(s.short) }
           scope = wsSet   // 空集合 = 该工作区暂无有效会话：并集退化为只命中 injectTo=[]（全局共享笔记）
         }
-        const conventions = conventionText(scope) || ''
-        const catalog = catalogText(scope) || ''
+        const r = renderInjected(scope)
         return {
-          conventions: conventions,
-          catalog: catalog,
+          conventions: r.conventions,
+          directory: r.directory,
+          catalog: r.catalog,
           stats: {
-            conventionsChars: conventions.length,
-            catalogChars: catalog.length,
-            totalChars: conventions.length + catalog.length,
+            conventionsChars: r.conventions.length,
+            directoryChars: r.directory.length,
+            catalogChars: r.catalog.length,
+            totalChars: r.full.length,
             maskedNotes: lastConvStats.masked + lastCatStats.masked,
             staleMarked: lastCatStats.stale,
             budgetTruncated: lastConvStats.budgetTruncated
@@ -223,7 +274,7 @@
       try { await loadSettings(); return { settings: settingsCache, models: await listAvailableModels(), lastInjectChars: lastInjectChars } }
       catch (e) { return { settings: settingsCache || {}, models: [], lastInjectChars: lastInjectChars, error: String(e.message || e) } }
     }))
-    // 设置保存（client 选择即保存）：浅合并顶层键；llm 为 null 恢复跟随会话；catalogEnabled 为 null 恢复默认开
+    // 设置保存（client 选择即保存）：浅合并顶层键；llm 为 null 恢复跟随会话；catalogEnabled 为 null 恢复缺省关
     disposers.push(handle('notes-settings-set', async (args) => {
       try {
         await loadSettings()
@@ -238,11 +289,11 @@
             settingsCache.llm = { provider: provider, model: model }
           }
         }
-        // 目录索引注入总开关：布尔直存；null/undefined 删除 override（缺省 = 开）
+        // 目录索引注入总开关：布尔直存；null/undefined 删除 override（缺省 = 关，显式 true 才开启）
         if ('catalogEnabled' in patch) {
           if (patch.catalogEnabled === null || patch.catalogEnabled === undefined) delete settingsCache.catalogEnabled
           else if (typeof patch.catalogEnabled === 'boolean') settingsCache.catalogEnabled = patch.catalogEnabled
-          else return { error: 'notes-settings-set: catalogEnabled 需要布尔值（或 null 恢复默认开）' }
+          else return { error: 'notes-settings-set: catalogEnabled 需要布尔值（或 null 恢复缺省关）' }
         }
         // P1 时效衰减提醒阈值（天）：非负数值取整直存；null/undefined 删除 override（缺省 90）；0 = 关闭标注
         if ('staleDays' in patch) {

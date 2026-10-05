@@ -90,6 +90,10 @@ function createHostMocks() {
         yield { type: 'text-delta', text: '```markdown\n## 背景\n\n（问题与上下文）\n\n## 结论\n\n采用方案 A\n' }
         yield { type: 'text-delta', text: '\n\n## 理由\n\n成本最低\n```' }
         yield { type: 'finish' }
+      } else if (sys.indexOf('挂载助手') >= 0) {
+        // 0.4.3 验收修复（节 73，notes-043-preview-when-edit）：notes-when-suggest 草稿固定单行
+        yield { type: 'text-delta', text: '排查断言口径时查我' }
+        yield { type: 'finish' }
       } else {
         yield { type: 'text-delta', text: '开发' }
         yield { type: 'finish' }

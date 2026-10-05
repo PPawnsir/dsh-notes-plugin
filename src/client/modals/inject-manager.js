@@ -6,7 +6,7 @@
     // state 托管：open/list/filter/search/q/sel/pending 迁入 store.modal.injMgr 切片；injMgrOpenRef 为 Esc 栈同步镜像 + injMgrSearchRef/injMgrSearchDebRef
     // 搜索防抖镜像（模块级单例，防抖 effect 挂 InjMgrModal 组件）；列表刷新经 panelBridge.loadNotes 中转；与设置卡片互斥经 panelBridge.setSettingsOpen 中转
     // 单层返回栈（notes-041-settings-back）：injMgrBackRef 记录来源（仅设置卡入口传 'settings'），统一关闭入口 closeInjMgr 在关闭后回设置卡（经 panelBridge.openSettings 中转）
-    store.modal.injMgr = createStore({ open: false, list: null, filter: 'all', search: '', q: '', sel: {}, pending: false })
+    store.modal.injMgr = createStore({ open: false, list: null, filter: 'all', search: '', q: '', sel: {}, pending: false, rstats: null, rstatsOpen: false })
     const injMgrOpenRef = { current: false }          // 注入管理面板镜像（Esc 优先关）
     const injMgrBackRef = { current: null }           // 单层返回栈镜像（notes-041-settings-back）：'settings' = 从设置卡进入，关闭后自动回设置卡
     const injMgrSearchRef = { current: '' }           // 搜索框即时值镜像（防抖回调读 ref 防闭包过期；plain object 与 useRef 等价——面板为 shell.overlay 单例）
@@ -19,18 +19,52 @@
     function setInjMgrQ(v) { store.modal.injMgr.set({ q: typeof v === 'function' ? v(store.modal.injMgr.get().q) : v }) }
     function setInjMgrSel(v) { store.modal.injMgr.set({ sel: typeof v === 'function' ? v(store.modal.injMgr.get().sel) : v }) }
     function setInjMgrPending(v) { store.modal.injMgr.set({ pending: typeof v === 'function' ? v(store.modal.injMgr.get().pending) : v }) }
-    // ===== 挂载弹层（0.4.3⑤ notes-043-index）：给资料开注入 → 手写 whenToUse（textarea 预填标题）→ 确认落注入索引 §1 行 =====
-    // host 侧开注入已自动落缺省行（whenToUse=标题），本弹层 = 换文案通道：跳过 = 保留缺省行；modal 不叠 modal（先关注入管理面板再开）
-    store.modal.mount = createStore({ open: false, id: '', title: '', when: '', pending: false })
+    function setInjMgrRstats(v) { store.modal.injMgr.set({ rstats: typeof v === 'function' ? v(store.modal.injMgr.get().rstats) : v }) }   // 挂载区统计行数据源切片（0.4.3 验收修复⑥）
+    function setInjMgrRstatsOpen(v) { store.modal.injMgr.set({ rstatsOpen: typeof v === 'function' ? v(store.modal.injMgr.get().rstatsOpen) : v }) }
+    // 分通道召回率行（挂载区统计点开全量，0.4.3 验收修复⑥ notes-043-metrics-present）：交付通道 `ch used/delivered·pct%`
+    // （无交付 → `ch —`）+ get 取用计数——机器通道名原文输出（遥测通道是机器标识符，不进 i18n；口径同 host _recallFmtChannels）
+    function injMgrChanLine(channels) {
+      const parts = []
+      for (const c of ['inject', 'mount', 'search', 'catalog']) {
+        const st = channels && channels[c]
+        if (!st || !st.delivered) { parts.push(c + ' —'); continue }
+        parts.push(c + ' ' + st.used + '/' + st.delivered + '·' + Math.round((st.rate || 0) * 100) + '%')
+      }
+      const g = channels && channels.get
+      parts.push('get ×' + (g ? g.uses : 0))
+      return parts.join(' ｜ ')
+    }
+    // ===== 挂载弹层（0.4.3⑤ notes-043-index；0.4.3 验收修复 notes-043-preview-when-edit：LLM 草稿预填 + 编辑模式）=====
+    // 两种模式：未挂载 = LLM 草稿模式（打开即「生成中…」占位 → notes-when-suggest 成功填草稿，失败/8s 超时静默回退预填标题；
+    //   用户始终可编辑——touched 后到达的草稿不覆盖）；已挂载（预览目录行点击带 existing）= 编辑模式（预填现有文案，不调 LLM）。
+    // 确认统一 notes-mount（幂等换文案）；跳过/取消 = 保留现状行；modal 不叠 modal（调用方先关来源 modal）
+    store.modal.mount = createStore({ open: false, id: '', title: '', when: '', pending: false, generating: false, edit: false, touched: false })
     function setMountOpen(v) { store.modal.mount.set({ open: typeof v === 'function' ? v(store.modal.mount.get().open) : v }) }
-    function openMountModal(n) { if (!n) return; store.modal.mount.set({ open: true, id: n.id, title: n.title || n.id, when: n.title || '', pending: false }) }
+    function openMountModal(n) {
+      if (!n) return
+      const edit = typeof n.existing === 'string'   // 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM）
+      store.modal.mount.set({ open: true, id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false })
+      if (edit) return
+      // LLM 草稿预填：成功填草稿；失败/超时回退预填标题（现状行为）；弹层已关/换目标则丢弃迟到响应
+      host.call('notes-when-suggest', { id: n.id }).then(res => {
+        const m = store.modal.mount.get()
+        if (!m.open || m.id !== n.id) return
+        const draft = res && !res.error && typeof res.suggestion === 'string' && res.suggestion ? res.suggestion : ''
+        store.modal.mount.set(m.touched ? { generating: false } : { generating: false, when: draft || m.title })
+      }).catch(() => {
+        const m = store.modal.mount.get()
+        if (!m.open || m.id !== n.id) return
+        store.modal.mount.set(m.touched ? { generating: false } : { generating: false, when: m.title })
+      })
+    }
     function closeMountModal() { setMountOpen(false) }
     async function doMountSave() {
       const m = store.modal.mount.get()
       if (!m.id || m.pending) return
       store.modal.mount.set({ pending: true })
       try {
-        const res = await host.call('notes-mount', { id: m.id, whenToUse: m.when })
+        // 空值兜底（0.4.3⑦ 顺带微修）：「正在生成…」窗口内点确认时 m.when 可能仍为空串——落空则回退标题，whenToUse 行不落空
+        const res = await host.call('notes-mount', { id: m.id, whenToUse: m.when || m.title })
         store.modal.mount.set({ pending: false })
         if (res && res.error) { showToast(t('inj.mountFailed', { msg: res.error })); return }
         showToast(t('inj.mountSaved', { title: m.title }))
@@ -43,10 +77,10 @@
       if (!m.open) return null
       return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !m.pending) closeMountModal() } },
         e('div', { className: 'dsh-notes-settings-modal' },
-          e('div', { className: 'dsh-notes-settings-modal-t' }, I('bolt', 14), ' ' + tt('inj.mountTitle'), e('span', { className: 'dsh-notes-imgup-sub' }, tt('inj.mountSub'))),
+          e('div', { className: 'dsh-notes-settings-modal-t' }, I('bolt', 14), ' ' + (m.edit ? tt('inj.mountEdit') : tt('inj.mountTitle')), e('span', { className: 'dsh-notes-imgup-sub' }, tt('inj.mountSub'))),
           e('div', { className: 'dsh-notes-inj-mount-body' },
             e('label', { className: 'dsh-notes-inj-mount-label' }, tt('inj.mountLabel')),
-            e('textarea', { className: 'dsh-notes-inj-mount-when', rows: 3, placeholder: tt('inj.mountPlaceholder'), value: m.when, autoFocus: true, onChange: (ev) => store.modal.mount.set({ when: ev.target.value }) })),
+            e('textarea', { className: 'dsh-notes-inj-mount-when', rows: 3, placeholder: m.generating ? tt('inj.mountGen') : tt('inj.mountPlaceholder'), value: m.when, autoFocus: true, onChange: (ev) => store.modal.mount.set({ when: ev.target.value, touched: true }) })),
           e('div', { className: 'dsh-notes-dispatch-actions' },
             e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => closeMountModal(), disabled: m.pending }, tt('inj.mountSkip')),
             e('button', { className: 'dsh-notes-dispatch-ok', onClick: () => doMountSave(), disabled: m.pending }, m.pending ? '…' : tt('inj.mountSave')))))
@@ -54,10 +88,11 @@
     // ===== 注入管理面板（设置卡片「注入管理」入口；notes-inject-manager）：全库注入总览 + 单行直改 + 多选批量 =====
     // 契约：数据源 notes-list {includeLogs:true} slim（inject/injectRole/injectEver/sensitive/kind/injectTo 齐备，零新 RPC）；
     // 三态语义与详情区三态分段控件完全一致：off→notes-update {inject:false}；约定/资料→{inject:true, injectRole}（payload 禁 undefined）；
-    // 护栏：kind=log 注入硬禁（勾选/档位禁用 + tooltip；host 侧同口径强制 inject=false 并回 injectForcedOff）；
-    //       sensitive 允许注入但行内提示「注入时自动脱敏」；排序：注入中在前（约定>资料），组内 updatedAt 降序。
+    // 护栏：kind=log 注入硬关 UI 化（0.4.3⑦ 用户裁决——行内不渲染注入开关/勾选（UI 层不提供），静态「日志不参与注入」标注；
+    //       host 侧 injectForcedOff 硬闸双保险保留）；sensitive 允许注入但行内提示「注入时自动脱敏」；排序：注入中在前（约定>资料），组内 updatedAt 降序。
     function openInjectManager(from) {
       setInjMgrList(null); setInjMgrFilter('all'); setInjMgrSearch(''); setInjMgrQ(''); setInjMgrSel({}); setInjMgrPending(false); setError('')
+      setInjMgrRstats(null); setInjMgrRstatsOpen(false)   // 挂载区统计行复位（重新拉取账本快照）
       injMgrSearchRef.current = ''
       injMgrBackRef.current = from === 'settings' ? 'settings' : null   // 单层返回栈：记录来源（仅设置卡入口传 'settings'）
       panelBridge.setSettingsOpen(false); setInjMgrOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入/注入预览同款）
@@ -74,6 +109,9 @@
         if (res && res.error) { setError(res.error); setInjMgrList([]); return }
         setInjMgrList((res && res.notes) || [])
       }).catch(err => { setError(String(err.message || err)); setInjMgrList([]) })
+      // 挂载区统计行数据源（0.4.3 验收修复⑥ notes-043-metrics-present）：notes-recall-stats 只读 RPC（账本快照 ledger 键 + 五通道分列），
+      // 零新通道；静默降级——RPC 失败/无快照（新装库 cron 未跑）→ rstats 保持 null，统计行整区省略不占位
+      host.call('notes-recall-stats', {}).then(res => { if (res && !res.error && res.ok) setInjMgrRstats(res) }).catch(() => setInjMgrRstats(null))   // 失败清陈旧统计行（刷新场景），遥测静默降级不打扰
     }
     // 笔记三态（与详情区同口径）：inject=true → injectRole（缺省 convention）；否则 off
     function injMgrRole(n) { return n.inject === true ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off' }
@@ -127,6 +165,8 @@
       const injMgrQ = store.modal.injMgr.useSel(s => s.q)
       const injMgrSel = store.modal.injMgr.useSel(s => s.sel)
       const injMgrPending = store.modal.injMgr.useSel(s => s.pending)
+      const injMgrRstats = store.modal.injMgr.useSel(s => s.rstats)         // 挂载区统计行：notes-recall-stats 账本快照（卡⑥）
+      const injMgrRstatsOpen = store.modal.injMgr.useSel(s => s.rstatsOpen) // 点开才见全量（分通道 + 快照明细展开态）
       const error = props.error
       const tt = useT()   // i18n 覆盖卡D：订阅 langStore，切语言本卡自渲染（模块级 handler 走 t() 直读当下语言态）
       // 注入管理面板搜索防抖（250ms，与列表搜索同口径）：输入即更新受控值，防抖后才落过滤词 injMgrQ
@@ -138,7 +178,7 @@
       // 单行直改：点 segmented 档位即切换（同详情区通道 notes-update {inject, injectRole}），toast 反馈
       async function doInjMgrSet(n, role) {
         if (!n || injMgrPending) return
-        if ((n.kind || 'note') === 'log' && role !== 'off') return   // 日志隐身硬禁（按钮已禁用，双保险）
+        if ((n.kind || 'note') === 'log' && role !== 'off') return   // 日志注入硬关（UI 已不渲染开关，函数拦截为双保险）
         if (injMgrRole(n) === role) return
         setError('')
         const upd = { id: n.id, inject: role !== 'off' }
@@ -155,7 +195,7 @@
           panelBridge.loadNotes(true); notifyNotesChanged()
         } catch (err) { setError(String(err.message || err)) }
       }
-      // 多选：log 行不可选（隐身硬禁——批量三档位对日志无意义）
+      // 多选：log 行不可选（注入硬关——不渲染勾选框，批量三档位对日志无意义）
       function toggleInjMgrSel(id) { setInjMgrSel(prev => { const nx = Object.assign({}, prev); if (nx[id]) delete nx[id]; else nx[id] = true; return nx }) }
       // ===== 调度任务区（notes-034-sched-ui）：contractType=dispatch-schedule 约定笔记总览/暂停/删除/编辑回填——
       // 数据源 = notes-list slim 既有 contractType/schedule 字段（零新 RPC；表单与 front-matter 同一数据源两个视图） =====
@@ -204,14 +244,13 @@
         let shown = listAll.slice().sort((a, b) => (injMgrWeight[injMgrRole(a)] - injMgrWeight[injMgrRole(b)]) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
         if (injMgrFilter !== 'all') shown = shown.filter(n => injMgrRole(n) === injMgrFilter)
         if (injMgrQ) shown = shown.filter(n => (n.title || '').toLowerCase().indexOf(injMgrQ) >= 0 || (n.topic || '').toLowerCase().indexOf(injMgrQ) >= 0 || (n.tags || []).join(' ').toLowerCase().indexOf(injMgrQ) >= 0)
-        const selectable = shown.filter(n => (n.kind || 'note') !== 'log')   // log 行不可选（隐身硬禁）
+        const selectable = shown.filter(n => n.kind !== 'log')   // log 行不可选（注入硬关 UI 化，0.4.3⑦）
         const selCnt = Object.keys(injMgrSel).length
         const allChecked = selectable.length > 0 && selectable.every(n => injMgrSel[n.id])
         const chipBtn = (f, label) => e('button', { key: f, className: 'dsh-notes-injmgr-chip' + (injMgrFilter === f ? ' on' : ''), onClick: () => setInjMgrFilter(f) }, label)
-        // 行内三态 segmented（语义与详情区三态分段控件完全一致）；log 行约定/资料档禁用（隐身硬禁 + tooltip）
+        // 行内三态 segmented（语义与详情区三态分段控件完全一致）；log 行不渲染注入开关（0.4.3⑦ 注入硬关 UI 化——UI 层不提供，非后台纠正）
         const segOpt = (n, role, r, label, tip) => {
-          const dis = (n.kind || 'note') === 'log' && r !== 'off'
-          return e('span', { key: r, className: 'dsh-notes-injmgr-opt dsh-nt' + (role === r ? ' on' : '') + (dis ? ' dis' : ''), 'data-tooltip': dis ? tt('inj.logSegTip') : tip, onClick: () => { if (!dis) doInjMgrSet(n, r) } }, label)
+          return e('span', { key: r, className: 'dsh-notes-injmgr-opt dsh-nt' + (role === r ? ' on' : ''), 'data-tooltip': tip, onClick: () => { doInjMgrSet(n, r) } }, label)
         }
         return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !injMgrPending) closeInjMgr() } },
           e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-injmgr-modal' },
@@ -220,6 +259,14 @@
               e('div', { className: 'dsh-notes-injmgr-chips' },
                 chipBtn('all', tt('inj.chipAll', { n: listAll.length })), chipBtn('convention', tt('inj.chipConvention', { n: cntConv })), chipBtn('reference', tt('inj.chipReference', { n: cntRef })), chipBtn('off', tt('inj.chipOff', { n: cntOff }))),
               e('input', { className: 'dsh-notes-injmgr-search', placeholder: tt('inj.searchPlaceholder'), value: injMgrSearch, onChange: (ev) => { injMgrSearchRef.current = ev.target.value; setInjMgrSearch(ev.target.value); if (injMgrSearchDebRef.current) injMgrSearchDebRef.current() } })),
+            // 挂载区统计行（0.4.3 验收修复⑥ notes-043-metrics-present）：账本快照紧凑呈现（挂载 N｜本周引用 Top3｜零引用 M），
+            // 点开才见全量（分通道召回率 + 快照明细）；无快照 → 整区省略（静默降级；用途分级红线：本行仅呈现，清理裁决走 notes-recall-stats 全量/人工）
+            injMgrRstats && injMgrRstats.ledger ? e('div', { className: 'dsh-notes-injmgr-mntstats' },
+              e('div', { className: 'dsh-notes-injmgr-mntstats-row dsh-nt', 'data-tooltip': tt('inj.mntStatsTip'), onClick: () => setInjMgrRstatsOpen(!injMgrRstatsOpen) },
+                I('eye', 11), ' ' + tt('inj.mntStats', { m: injMgrRstats.ledger.mountTotal || 0, top: (injMgrRstats.ledger.top || []).slice(0, 3).map(it => it.id + '×' + it.count).join('、') || '—', z: injMgrRstats.ledger.zeroRefCount || 0 })),
+              injMgrRstatsOpen ? e('div', { className: 'dsh-notes-injmgr-mntstats-full' },
+                e('div', null, injMgrChanLine(injMgrRstats.channels)),
+                e('div', null, 'Top5: ' + ((injMgrRstats.ledger.top || []).map(it => it.id + '×' + it.count).join('、') || '—') + ' · zero: ' + ((injMgrRstats.ledger.zeroRef || []).join('、') || '—') + ' · @ ' + fmtDT(injMgrRstats.ledger.at) + (injMgrRstats.noteId ? ' · mirror: ' + injMgrRstats.noteId : ''))) : null) : null,
             // 调度任务区（notes-034-sched-ui）：定时派发约定总览（频率/目标/下次触发/上次结果徽章）+ 编辑回填/暂停/删除
             injMgrList === null ? null : (() => {
               const schedNotes = listAll.filter(n => (n.contractType || '') === 'dispatch-schedule' && n.schedule && !n.deleted)
@@ -264,17 +311,21 @@
                         const role = injMgrRole(n)
                         const isLog = (n.kind || 'note') === 'log'
                         return e('div', { key: n.id, className: 'dsh-notes-injmgr-row' },
-                          e('span', { className: isLog ? 'dsh-nt' : '', 'data-tooltip': isLog ? tt('inj.logRowTip') : null },
-                            e('input', { type: 'checkbox', className: 'dsh-notes-trash-check', checked: !!injMgrSel[n.id], disabled: isLog || injMgrPending, onChange: () => toggleInjMgrSel(n.id) })),
+                          // 注入硬关 UI 化（0.4.3⑦）：log 行不渲染勾选框与注入开关——静态标注「日志不参与注入」（host injectForcedOff 硬闸双保险保留）
+                          isLog
+                            ? e('span', { className: 'dsh-notes-injmgr-checkslot dsh-nt', 'data-tooltip': tt('inj.logNoInjectTip') })
+                            : e('span', null, e('input', { type: 'checkbox', className: 'dsh-notes-trash-check', checked: !!injMgrSel[n.id], disabled: injMgrPending, onChange: () => toggleInjMgrSel(n.id) })),
                           e('span', { className: 'dsh-notes-kind-dot', style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' } }),
                           e('span', { className: 'dsh-notes-injmgr-ti', title: n.title || tt('tree.untitled') }, n.title || tt('tree.untitled')),
                           n.sensitive === true ? e('span', { className: 'dsh-notes-injmgr-sens dsh-nt', 'data-tooltip': tt('inj.sensTip') }, I('lock', 9), tt('inj.sensBadge')) : null,
                           n.injectEver === true && !n.inject ? e('span', { className: 'dsh-notes-injmgr-ever dsh-nt', 'data-tooltip': tt('meta.injectEverTip') }, I('clock', 9), tt('meta.injectEver')) : null,
                           e('span', { className: 'dsh-notes-injmgr-scope' }, injMgrScopeLabel(n.injectTo)),
-                          e('span', { className: 'dsh-notes-injmgr-seg' }, I('bolt', 10),
-                            segOpt(n, role, 'off', tt('meta.roleOff'), tt('meta.roleOffTip')),
-                            segOpt(n, role, 'convention', tt('tree.roleConvention'), tt('meta.roleConventionTip')),
-                            segOpt(n, role, 'reference', tt('tree.roleReference'), tt('meta.roleReferenceTip'))))
+                          isLog
+                            ? e('span', { className: 'dsh-notes-injmgr-lognote dsh-nt', 'data-tooltip': tt('inj.logNoInjectTip') }, I('bolt', 10), tt('inj.logNoInject'))
+                            : e('span', { className: 'dsh-notes-injmgr-seg' }, I('bolt', 10),
+                              segOpt(n, role, 'off', tt('meta.roleOff'), tt('meta.roleOffTip')),
+                              segOpt(n, role, 'convention', tt('tree.roleConvention'), tt('meta.roleConventionTip')),
+                              segOpt(n, role, 'reference', tt('tree.roleReference'), tt('meta.roleReferenceTip'))))
                       }))),                error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
             e('div', { className: 'dsh-notes-dispatch-actions' },
               e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => closeInjMgr(), disabled: injMgrPending }, tt('common.close')))))
