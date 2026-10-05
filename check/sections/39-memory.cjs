@@ -16,9 +16,9 @@ module.exports = {
   await t('host 双侧：kind=log 枚举三处 + KIND_TEMPLATES.log 四节模板（§4.2）', () => {
     for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
       const s = pair[1], label = pair[0]
-      assert(s.indexOf("const KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log']") >= 0, label + ' KINDS 含 log')
+      assert(s.indexOf("const KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log', 'sys']") >= 0, label + ' KINDS 含 log（0.4.3⑥ +sys）')
       assert(s.indexOf("quote: '引用', log: '日志'") >= 0, label + ' 中文标签映射含 log:日志')
-      assert(s.indexOf("const CATALOG_KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' }") >= 0, label + ' CATALOG_KIND_LABELS 含 log')
+      assert(s.indexOf("const CATALOG_KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '系统' }") >= 0, label + ' CATALOG_KIND_LABELS 含 log（0.4.3⑥ +sys）')
       assert(s.indexOf("'## 做了什么\\n\\n（本会话完成的任务/阶段，一句话一条）") >= 0, label + ' log 模板「做了什么」节')
       assert(s.indexOf('## 改动\\n\\n（改动的文件/配置/数据，路径 + 一句话）') >= 0, label + ' log 模板「改动」节')
       assert(s.indexOf('## 遗留与后续') >= 0 && s.indexOf('## 相关笔记\\n\\n（[[n-xxxxxxxx]] 双链引用本库相关笔记；无则空）') >= 0, label + ' log 模板「遗留与后续/相关笔记」节（双链占位）')
@@ -46,10 +46,10 @@ module.exports = {
       const s = pair[1], label = pair[0]
       assert(s.indexOf("const isLog = (ex.kind || 'note') === 'log'") >= 0, label + ' _create isLog 判定')
       assert(s.indexOf('inject: isLog ? false : ex.inject === true,') >= 0, label + ' _create inject 硬 false（显式 true 也纠正）')
-      assert(s.indexOf('recall: isLog ? (ex.recall === true) : (ex.recall !== false),') >= 0, label + ' _create recall 缺省 false（显式 true 豁免保留）')
+      assert(s.indexOf('recall: (isLog || isSys) ? (ex.recall === true) : (ex.recall !== false),') >= 0, label + ' _create recall 缺省 false（显式 true 豁免保留；0.4.3⑥ +isSys 同口径）')
       assert(s.indexOf("if (effKind === 'log' && inject === true) { note.inject = false; injectForcedOff = true }") >= 0, label + ' _update inject 硬闸纠正')
       assert(s.indexOf('if (injectForcedOff) r.injectForcedOff = true') >= 0, label + ' 响应 injectForcedOff 告知（create/update 同款）')
-      assert(s.indexOf("p.meta.kind === 'log' ? false : true") >= 0, label + ' noteFromParsed：存量/外部直写 log 缺省 recall=false')
+      assert(s.indexOf("(p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true") >= 0, label + ' noteFromParsed：存量/外部直写 log/sys 缺省 recall=false')
     }
   })
   await t('host 双侧：_list/_search 默认排除 kind=log（显式 kind=log / includeLogs / 回收站 / R-6 显式 folder 召回）+ 目录尾部日志计数提示行', () => {

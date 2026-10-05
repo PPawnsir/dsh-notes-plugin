@@ -38,7 +38,9 @@
         }
         const all = await _search(args && args.query, args && args.tag, args && args.topic, args && args.kind, folder, { sensitive: args && args.sensitive, inject: args && args.inject, includeLogs: !!(args && args.includeLogs) })
         const limit = (args && args.limit) || 50
-        return { count: all.length, notes: all.slice(0, limit).map(n => { const s = slim(n); if (n.matches) s.matches = n.matches; return s }) }
+        const page = all.slice(0, limit)
+        _recallHit('search', page.map(function (n) { return n.id }))   // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：search 通道交付=工具实际返回页（与 notes-search RPC 同口径日聚合）
+        return { count: all.length, notes: page.map(n => { const s = slim(n); if (n.matches) s.matches = n.matches; return s }) }
       }
     })
 
@@ -56,6 +58,9 @@
           const n = await _get(args.id)
           // 使用遥测（P2）：命中计数 +1（内存即时生效，60s 防抖批量落盘，见 use-telemetry 块）
           const uc = bumpUseCount(n.id)
+          // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：note_get 工具取用信号（与 notes-get RPC 同通道日聚合）；
+          // 序位钉住：必须在 bumpUseCount 之后（useCount 60s 防抖定时器先于本 3s 聚合防抖调度——节 30 假定时器捕获序断言看守）
+          _recallHit('get', [n.id])
           if (uc !== null) n.useCount = uc
           return { note: n }
         }
@@ -255,11 +260,14 @@
     loadSettings()
     // 用量统计启动加载（同口径不阻塞）：recordUsage 记账前内部也会 await loadUsage()，双保险防覆盖存量
     loadUsage()
+    // 0.4.3⑤ 升级首启自动建「注入索引（自动）」根笔记（notes-043-index，fire-and-forget；失败静默下次启动重试）
+    idxEnsure()
 
     ctx.effect(() => () => {
       for (const d of disposers) { try { d() } catch (e) {} }
       flushUseCounts()   // 卸载 flush：防抖窗口内未落盘的 useCount 立即写盘（fire-and-forget，不阻塞卸载）
       flushUsage()       // 卸载 flush：usage.json 防抖窗口内未落盘的 token 计数立即写盘（同上 fire-and-forget）
+      _recallFlushAgg()  // 卸载 flush：召回遥测防抖窗口内 pending 日聚合并入落盘（0.4.3+ 卡⑫；同上 fire-and-forget）
     })
     console.log('notes plugin: host ready, dir =', NOTES_DIR, ', llm =', !!llm, ', adm =', !!adm)
     // 心跳文件：自检验证 impl 真正加载成功（bootstrap 架构下 apply 异步完成）

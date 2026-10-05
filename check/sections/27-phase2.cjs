@@ -132,7 +132,7 @@ module.exports = {
     assert.strictEqual(pv.orphans[0].bytes, 6, 'bytes = base64 解码字节数（6）')
     assert.strictEqual(pv.referenced, 2, '引用中 2 个（含软删除笔记的 a-delref.png）')
     assert.strictEqual(pv.tombstoned, 1, '墓碑 1 个（0 字节占位自动排除）')
-    assert.strictEqual(pv.notes, 2, '扫描笔记 2 条（含软删除）')
+    assert.strictEqual(pv.notes, 3, '扫描笔记 3 条（2 种子含软删除 + 注入索引根笔记）')
     assert.strictEqual(pv.totalBytes, 6, 'totalBytes 求和')
   })
   await t('notes-assets-prune 行为：files 白名单执行（开发版墓碑式清空）+ 白名单外跳过 + 保护资产不动', async () => {
@@ -256,7 +256,8 @@ module.exports = {
     for (const kw of ['✨ 整理', '模板骨架', '资产清理', '压缩']) assert(readme.indexOf(kw) >= 0, 'README 功能清单缺二期关键词：' + kw)
     assert(readme.indexOf('notes-ai-organize') >= 0 && readme.indexOf('notes-assets-prune') >= 0, 'README 数据位置/RPC 提及二期 RPC')
     const dev = fsNative.readFileSync(path.join(DIR, 'DEVELOPMENT.md'), 'utf8')
-    assert(dev.indexOf('41 个 RPC') >= 0, 'DEVELOPMENT RPC 计数更新为 41（历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch）')
+    assert(dev.indexOf('43 个 RPC') >= 0, 'DEVELOPMENT RPC 计数更新为 43（历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 召回遥测 notes-recall-stats）')
+    assert(dev.indexOf('notes-recall-stats') >= 0, 'DEVELOPMENT RPC 清单提及统一召回遥测 notes-recall-stats（0.4.3+ 卡⑫）')
     assert(dev.indexOf('notes-get-batch') >= 0, 'DEVELOPMENT RPC 清单提及 N+1 批量端点 notes-get-batch')
     assert(dev.indexOf('notes-schedule-eval') >= 0, 'DEVELOPMENT RPC 清单提及定时派发 notes-schedule-eval')
     assert(dev.indexOf('notes-memory-guide') >= 0, 'DEVELOPMENT RPC 清单提及工作记忆 notes-memory-guide')

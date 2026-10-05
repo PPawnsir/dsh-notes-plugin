@@ -50,8 +50,8 @@ module.exports = {
     assert.deepStrictEqual(g.members.map(m => m.id), ['n-qk01', 'n-qk02'], '组内 updatedAt 升序；已删速记/单条速记（<2）不进组')
     assert.strictEqual(g.title, '运维', '组标题沿用现规则 last.topic（实得 ' + g.title + '）')
     assert.deepStrictEqual(g.dateSpan, { from: '2026-01-01', to: '2026-01-02' }, 'dateSpan = 首尾成员日期')
-    // parseFM 对 buildFM 格式（'---' 后空行）解析出的 body 带前导 '\n'（与真实落盘文件口径一致）
-    const eb1 = Buffer.byteLength('\n速记一正文\n', 'utf8'), eb2 = Buffer.byteLength('\n速记二正文\n', 'utf8')
+    // parseFM 节 77 起吃掉闭合 '---' 后全部前导换行（分隔符空行不属正文语义）：body 不带前导 '\n'（canonical 口径）
+    const eb1 = Buffer.byteLength('速记一正文\n', 'utf8'), eb2 = Buffer.byteLength('速记二正文\n', 'utf8')
     assert.strictEqual(g.members[0].bodyBytes, eb1, 'members[].bodyBytes = UTF-8 字节数')
     assert.strictEqual(g.totalBytes, eb1 + eb2, 'totalBytes = 成员字节求和')
     for (const grp of pv.quickGroups) for (const m of grp.members) {

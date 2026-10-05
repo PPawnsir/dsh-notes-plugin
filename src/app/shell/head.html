@@ -178,6 +178,8 @@
   .pick-check{flex-shrink:0;accent-color:var(--nacc);cursor:pointer;margin:0}
   .selbar{position:fixed;left:22px;bottom:22px;z-index:110;width:316px;display:flex;align-items:center;gap:8px;background:var(--npanel);border:1px solid var(--nbd);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.30);padding:8px 12px}
   .selbar .n{flex:1;font-size:11.5px;color:var(--nt2)}
+  /* 0.4.3⑥（notes-043-sys-kind）：多选含 kind=sys 系统根笔记红字警示（confirm 门槛在 doSelBatchDelete） */
+  .selbar .syswarn{display:none;flex-shrink:0;max-width:110px;font-size:10.5px;line-height:1.25;color:var(--nwarn);cursor:help}
   /* ===== 归档预览对话框（组勾选/成员展开；复用 mask/modal） ===== */
   .arch-list{border:1px solid var(--nbd-soft);border-radius:var(--nr-md);margin-bottom:10px;max-height:300px;overflow-y:auto}
   .arch-group+.arch-group{border-top:1px solid var(--nbd-soft)}
@@ -418,6 +420,11 @@
   .injmgr-opt.on{background:var(--nbg-sel);color:var(--nacc-tx);font-weight:600}
   .injmgr-opt.dis{opacity:.38;cursor:default}
   .injmgr-opt.dis:hover{background:transparent;color:var(--nt3)}
+  /* ===== 挂载弹层 modal（0.4.3⑤ notes-043-index：资料开注入 → 手写 whenToUse 落注入索引 §1 行；mask/modal 复用框架类） ===== */
+  .inj-mount-body{display:flex;flex-direction:column;gap:5px;margin:10px 0 4px}
+  .inj-mount-label{font-size:11px;color:var(--nt2)}
+  .inj-mount-when{width:100%;box-sizing:border-box;font:inherit;font-size:12px;line-height:1.6;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:7px 9px;outline:0;resize:vertical;min-height:64px}
+  .inj-mount-when:focus{border-color:var(--nacc)}
   /* ===== 历史版本面板 modal（详情 meta 行「历史」入口；notes-history-ui）：左列版本列表（时间+大小，倒序）+ 右侧只读预览（renderMarkdown 内核渲染；与原型 notes-ui-v2.html 同款） ===== */
   .modal.hist{width:720px}
   .hist-body{display:flex;gap:10px;min-height:190px;margin-bottom:4px}

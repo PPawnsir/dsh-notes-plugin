@@ -15,11 +15,25 @@
         function toggleSelMode() { setSelMode(!selMode); setSelIds({}) }
         function toggleSelId(id) { setSelIds(prev => { const next = Object.assign({}, prev); if (next[id]) delete next[id]; else next[id] = true; return next }) }
         // 多选合并弹窗已拆出（modals/merge.js：openMerge/doMergeConfirm 迁入）；toggleSelMode/toggleSelId 属多选操作条域
+        // 0.4.3⑥（notes-043-sys-kind）：多选集合中 kind=sys 系统根笔记计数（执行记录/注入索引/记忆档案等机器产物）——
+        //   操作条红字警示 + 删除前 confirm 门槛（豁免面收口，与 app 端同口径）
+        function selSysCount() {
+          const ids = Object.keys(selIds)
+          if (!ids.length) return 0
+          const byId = {}
+          for (const n of (notesRef.current || [])) byId[n.id] = n
+          let c = 0
+          for (const id of ids) { const n = byId[id]; if (n && (n.kind || 'note') === 'sys') c++ }
+          return c
+        }
         // 多选批量删除（软删进回收站，与整理建议器批量软删同通道）：确认强度 = 不可恢复性（notes-034-c-confirm）——
-        // 软删可恢复 → 轻：无 confirm 直接删，撤销 toast 兜底（逐条 notes-restore；回收站亦可恢复）；不可恢复的 purge 才保留双确认
+        // 软删可恢复 → 轻：无 confirm 直接删，撤销 toast 兜底（逐条 notes-restore；回收站亦可恢复）；不可恢复的 purge 才保留双确认；
+        // 含 kind=sys 系统根笔记 → 追加 confirm 红线门槛（机器产物误删会破坏调度回执/资料召回/引用账本）
         async function doSelBatchDelete() {
           const ids = Object.keys(selIds)
           if (!ids.length || selDelPending) return
+          const sysN = selSysCount()
+          if (sysN > 0 && !window.confirm(t('sys.batchDelWarn', { n: sysN }))) return
           setSelDelPending(true); setError('')
           let ok = 0, fail = 0
           const okIds = []
@@ -46,6 +60,7 @@
         // i18n 覆盖卡F：复用 A/E 卡 sel.selCount/merge、common.delete/cancel、meta.undo 字典；sel.deleting 本卡建
         const selbarEl = selMode ? e('div', { className: 'dsh-notes-selbar' },
             e('span', { className: 'dsh-notes-selbar-n' }, t('sel.selCount', { n: Object.keys(selIds).length })),
+            selSysCount() > 0 ? e('span', { className: 'dsh-notes-syswarn', title: t('sys.batchDelWarn', { n: selSysCount() }) }, t('sys.selWarn', { n: selSysCount() })) : null,
             e('button', { className: 'dsh-notes-dispatch-ok', onClick: openMerge, disabled: Object.keys(selIds).length < 2 }, t('sel.merge')),
             e('button', { className: 'dsh-notes-data-danger', onClick: doSelBatchDelete, disabled: Object.keys(selIds).length < 1 || selDelPending }, selDelPending ? t('sel.deleting') : t('common.delete')),
             e('button', { className: 'dsh-notes-dispatch-cancel', onClick: toggleSelMode }, t('common.cancel')))

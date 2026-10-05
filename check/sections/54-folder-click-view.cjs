@@ -96,7 +96,7 @@ module.exports = {
     // ① app.html 产物 + 原型：行点击统一 toggle 锚点 + 旧「行主体进视图」分支移除 + caret tooltip + hintbar 指引（app.html 需先跑 scripts/build-dist.cjs）
     for (const pair of [['app.html', appSrcV], ['原型 notes-ui-v2.html', protoSrcV]]) {
       const s = pair[1], label = pair[0]
-      assert(s.indexOf("foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); renderTree(); return") >= 0, label + ' 行点击（含 caret）= 统一展开/折叠 toggle（事件委托分支）')
+      assert(s.indexOf("foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); if (opening) ensureFoldLogs(fid2); renderTree(); return") >= 0, label + ' 行点击（含 caret）= 统一展开/折叠 toggle（事件委托分支；opening 判定供 notes-041c 日志懒加载）')
       assert(s.indexOf("view = { type: 'folder', id: fid2 }") < 0, label + ' 行主体单击进视图分支已移除（进视图唯一入口=行尾 vfilter）')
       assert(s.indexOf("if (vf && frow)") >= 0, label + ' vfilter 进/出视图分支保留')
       assert(s.indexOf('点击展开/折叠 · 行尾漏斗进文件夹视图 · 右键管理') >= 0, label + ' hintbar 指引文案（点击展开/折叠 · 行尾漏斗进文件夹视图 · 右键管理）')

@@ -74,8 +74,11 @@ module.exports = {
     effect: () => {},
   }
   new Function('harness', 'pluginDir', hostSrc)(harnessMock6, DIR).apply(ctx6)
-  await t('开发版注册 41 个 RPC（含 notes-export / notes-export-single / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge + P3 单文件导出 + notes-inject-preview 注入预览 + notes-suggest 整理建议 + notes-usage-get 用量统计 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch）', () => {
-    assert.strictEqual(Object.keys(handlers6).length, 41, '实得 ' + Object.keys(handlers6).length)
+  await t('开发版注册 46 个 RPC（含 notes-export / notes-export-single / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge + P3 单文件导出 + notes-inject-preview 注入预览 + notes-suggest 整理建议 + notes-usage-get 用量统计 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats）', () => {
+    assert.strictEqual(Object.keys(handlers6).length, 46, '实得 ' + Object.keys(handlers6).length)
+    assert(typeof handlers6['notes-recall-stats'] === 'function', 'notes-recall-stats handler 存在（0.4.3+ 卡⑫ 统一召回遥测，notes-043-inject-receipt）')
+    assert(typeof handlers6['notes-ledger-refresh'] === 'function', 'notes-ledger-refresh handler 存在（0.4.3⑥ 效用账本，notes-043-ledger）')
+    assert(typeof handlers6['notes-graph'] === 'function', 'notes-graph handler 存在（0.4.3 内核① 图查询，notes-043-graph）')
     assert(typeof handlers6['notes-get-batch'] === 'function', 'notes-get-batch handler 存在（N+1 批量端点，notes-034-batch3）')
     assert(typeof handlers6['notes-schedule-eval'] === 'function', 'notes-schedule-eval handler 存在（定时派发·执行层）')
     assert(typeof handlers6['notes-memory-guide'] === 'function', 'notes-memory-guide handler 存在（工作记忆 v0 沉淀引导）')
@@ -96,7 +99,7 @@ module.exports = {
   await t('notes-export：全库快照（n-*.md + folders.json）到 <dir>\\dsh-notes-export-<ts>', async () => {
     const r = await handlers6['notes-export']({ dir: 'D:\\exp-out' })
     assert(!r.error, '导出成功（实得 ' + JSON.stringify(r) + '）')
-    assert.strictEqual(r.exported, 3, '导出 3 条笔记')
+    assert.strictEqual(r.exported, 4, '导出 4 条笔记（A/B/C + 注入索引根笔记，notes-043-index 升级首启在库）')
     assert.strictEqual(r.foldersFile, true, 'folders.json 一并导出')
     assert(/\\dsh-notes-export-\d{8}-\d{6}$/.test(r.target), 'target = <dir>\\dsh-notes-export-<yyyyMMdd-HHmmss>（实得：' + r.target + '）')
     for (const id of [exA.id, exB.id, exC.id]) {
@@ -120,8 +123,8 @@ module.exports = {
     const sizeBefore = store6.size
     const p = await handlers6['notes-import-preview']({ dir: expDir })
     assert(!p.error, '预览成功（实得 ' + JSON.stringify(p).slice(0, 200) + '）')
-    assert.strictEqual(p.total, 3)
-    assert.strictEqual(p.same, 3); assert.strictEqual(p.diff, 0); assert.strictEqual(p.added, 0)
+    assert.strictEqual(p.total, 4)
+    assert.strictEqual(p.same, 4); assert.strictEqual(p.diff, 0); assert.strictEqual(p.added, 0)
     assert(p.detail.every(d => d.status === 'same' && d.deleted === false), 'detail 全 same 且未标注 deleted')
     assert(p.folders && p.folders.total === 1 && p.folders.new === 0, 'folders：清单 1 个且全部已存在')
     assert.strictEqual(store6.size, sizeBefore, '预览不写任何文件（纯只读）')
@@ -136,8 +139,8 @@ module.exports = {
     curFolders.push({ id: 'f-imp01', name: '导入新文件夹', order: 5 })
     store6.set(expDir + '\\folders.json', JSON.stringify(curFolders, null, 2))
     const p = await handlers6['notes-import-preview']({ dir: expDir })
-    assert.strictEqual(p.total, 5, 'A/B/C + 2 新增')
-    assert.strictEqual(p.same, 2); assert.strictEqual(p.diff, 1); assert.strictEqual(p.added, 2)
+    assert.strictEqual(p.total, 6, 'A/B/C + 索引 + 2 新增')
+    assert.strictEqual(p.same, 3); assert.strictEqual(p.diff, 1); assert.strictEqual(p.added, 2)
     const byId = {}
     for (const d of p.detail) byId[d.id] = d
     assert.strictEqual(byId[exB.id].status, 'diff', 'B 分类为 diff')
@@ -158,7 +161,7 @@ module.exports = {
     const r = await handlers6['notes-import']({ dir: expDir })
     assert(!r.error, '导入成功（实得 ' + JSON.stringify(r) + '）')
     assert.strictEqual(r.imported, 2, 'n-newimp01 + n-delimp01 入库')
-    assert.strictEqual(r.skippedSame, 2, 'A/C 相同跳过')
+    assert.strictEqual(r.skippedSame, 3, 'A/C + 索引相同跳过')
     assert.strictEqual(r.skippedDiff, 1, 'B 不同且未 overwrite → 跳过')
     assert.strictEqual(r.overwritten, 0)
     assert.strictEqual(r.foldersMerged, 1, 'f-imp01 追加合并')
@@ -190,7 +193,7 @@ module.exports = {
   await t('notes-import 幂等：二次导入全 same / folders 无新增；overwrite=true 才覆盖 diff', async () => {
     const r2 = await handlers6['notes-import']({ dir: expDir })
     assert.strictEqual(r2.imported, 0, '二次导入无新增')
-    assert.strictEqual(r2.skippedSame, 4, 'A/C + 2 条新导入全部相同')
+    assert.strictEqual(r2.skippedSame, 5, 'A/C + 索引 + 2 条新导入全部相同')
     assert.strictEqual(r2.skippedDiff, 1, 'diff 仍跳过')
     assert.strictEqual(r2.foldersMerged, 0, 'folders 无新增')
     const r3 = await handlers6['notes-import']({ dir: expDir, overwrite: true })
@@ -283,7 +286,7 @@ module.exports = {
   await t('旧结构零回归：无 assets/ 旧库导出 assets=0；无 assets 旧导出导入 assetsMerged=0', async () => {
     await handlers8['notes-create']({ title: '旧库笔记', body: '无图', topic: '旧' })
     const ex = await handlers8['notes-export']({ dir: 'D:\\exp-old' })
-    assert(!ex.error && ex.exported === 1 && ex.assets === 0, '旧库导出正常且 assets=0（实得 ' + JSON.stringify(ex) + '）')
+    assert(!ex.error && ex.exported === 2 && ex.assets === 0, '旧库导出正常且 assets=0（1 种子 + 索引）（实得 ' + JSON.stringify(ex) + '）')
     assert(!Array.from(store8.keys()).some(k => k.indexOf(ex.target + '\\assets') === 0), '快照不产生 assets 目录')
     // 手工构造无 assets/ 的旧导出目录（仅 n-*.md + folders.json，模拟旧版本导出物）
     const oldExp = 'D:\\exp-old-snap'

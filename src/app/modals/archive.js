@@ -111,10 +111,15 @@ function doMergeConfirm() {
   }).catch(function (e) { modalErr(t('arch.mergeFailed', { msg: e && e.message || e })); $('mgOk').disabled = false; $('mgOk').textContent = t('sel.merge') });
 }
 /* 多选批量删除（软删进回收站，与整理建议器批量软删同通道）：确认强度 = 不可恢复性（notes-034-c-confirm）——
-   软删可恢复 → 轻：无 confirm 直接删，撤销 toast 兜底（逐条 notes-restore；回收站亦可恢复）；不可恢复的 purge 才保留双确认 */
+   软删可恢复 → 轻：无 confirm 直接删，撤销 toast 兜底（逐条 notes-restore；回收站亦可恢复）；不可恢复的 purge 才保留双确认；
+   0.4.3⑥（notes-043-sys-kind）：含 kind=sys 系统根笔记 → 追加 confirm 红线门槛（机器产物误删会破坏调度回执/资料召回/引用账本；与 client selbar 同口径） */
 function doSelBatchDelete() {
   var ids = Object.keys(selIds);
   if (!ids.length) return;
+  var sysN = 0, byId = {};
+  notes.forEach(function (n) { byId[n.id] = n });
+  ids.forEach(function (id) { if (byId[id] && (byId[id].kind || 'note') === 'sys') sysN++ });
+  if (sysN > 0 && !confirm(t('sys.batchDelWarn', { n: sysN }))) return;
   var ok = 0, fail = 0, okIds = [], chain = Promise.resolve();
   ids.forEach(function (id) {
     chain = chain.then(function () {

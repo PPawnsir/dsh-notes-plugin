@@ -115,7 +115,7 @@ module.exports = {
     // app.html / 原型 notes-ui-v2.html 同步：caret 折叠分支 + vfilter 图标 + 主题原地展开 + 陈旧清洗 + 右键菜单项
     for (const pair of [['app.html', appSrcT], ['原型 notes-ui-v2.html', protoSrcT]]) {
       assert(pair[1].indexOf("ev.target.closest('.vfilter')") >= 0, pair[0] + ' 树事件委托识别 .vfilter 行尾图标')
-      assert(pair[1].indexOf("foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); renderTree(); return") >= 0, pair[0] + ' 行点击（含 caret）= 统一展开/折叠 toggle（事件委托分支）')
+      assert(pair[1].indexOf("foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); if (opening) ensureFoldLogs(fid2); renderTree(); return") >= 0, pair[0] + ' 行点击（含 caret）= 统一展开/折叠 toggle（事件委托分支；opening 判定供 notes-041c 日志懒加载）')
       assert(pair[1].indexOf("view = { type: 'folder', id: fid2 }") < 0, pair[0] + ' 行主体单击进视图分支已移除（notes-041b 语义收敛）')
       assert(pair[1].indexOf('class="vfilter') >= 0, pair[0] + ' 文件夹/主题行渲染行尾过滤图标')
       assert(pair[1].indexOf('var topicOpen = {}') >= 0 && pair[1].indexOf('topicOpen[t] = !topicOpen[t]') >= 0, pair[0] + ' 主题行原地展开（topicOpen）')

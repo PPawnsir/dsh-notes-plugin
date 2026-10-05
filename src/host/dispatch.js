@@ -133,6 +133,9 @@
       note.dispatches = (note.dispatches || []).concat([rec])
       note.updatedAt = new Date().toISOString()
       await persistNote(note)
+      // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：mount 通道交付事件——笔记作为待办上下文挂载进目标任务会话
+      // （notes-dispatch / note_manage.dispatch / 定时派发 _schedFire 三入口同走本单点；签名含会话——换会话重派计独立交付）
+      _recallRaw('mount', [note.id], shortSid(o.sessionId))
       return { ok: true, id: note.id, sessionId: o.sessionId, sessionName: rec.sessionName, dispatch: rec }
     }
 

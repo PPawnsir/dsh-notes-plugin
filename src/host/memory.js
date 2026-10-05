@@ -111,6 +111,7 @@
       if (staleLimit > 0) {
         for (const n of all) {
           if (n.kind === 'log') continue   // 日志永不被过期清理提名（工作记忆 v0 §6.3：记录类资产只聚合不淘汰；kind 白名单之外的显式双保险）
+          if (n.kind === 'sys') continue   // 0.4.3⑥：kind=sys 系统根笔记（注入索引/记忆档案等机器产物）永不被过期清理提名（豁免面收口）
           if (n.kind !== 'note' && n.kind !== 'link') continue
           const sd = suggestStaleDays(n.updatedAt, staleLimit)
           if (sd <= 0) continue
@@ -125,6 +126,10 @@
       const orphans = []
       for (const n of all) {
         if ((n.kind || 'note') === 'log') continue   // 日志永不被孤儿清理提名（同上：只聚合不淘汰）
+        if ((n.kind || 'note') === 'sys') continue   // 0.4.3⑥：kind=sys 系统根笔记永不被孤儿清理提名（机器产物豁免面收口，双重保险——下方 kind==='note' 白名单已天然排除）
+        // 注入索引根笔记（0.4.3⑤ notes-043-index）：机器托管的管线载荷笔记，整理建议器永不提名（误删即断资料召回管线）
+        if (typeof settingsCache !== 'undefined' && settingsCache && settingsCache.indexNoteId && n.id === settingsCache.indexNoteId) continue
+        if (n.title === '注入索引（自动）') continue
         if ((n.kind || 'note') !== 'note') continue
         if ((n.status || 'active') !== 'active') continue
         if (n.inject === true) continue

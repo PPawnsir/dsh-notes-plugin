@@ -1,5 +1,11 @@
     // ---- 缓存层：解析结果按 id 常驻内存；本插件所有写入同步缓存，外部新增文件在 list 时懒加载 ----
-    const KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log']   // 工作记忆 v0：+ kind=log（工作日志；治理语义不同——默认隐身 + 永不被过期/孤儿清理提名，见 design/agent-memory-v0.md §4.1）
+    // 存储加固声明（notes-043-atomic-store）：写入原子性委托 DSH fs 服务 writeText（底层 writeFileAtomic：
+    // staging+temp+sync+rename+targetKey 锁，见 kernel/persist.js 声明）；cache 为常驻权威，跨 apply 由磁盘恢复。
+    //   sys 常驻语义：kind=sys 系统根笔记与普通笔记同走本通道（无特例写路径、无旁路缓存）——机器托管正文与全库同口径，
+    //   盘上字节即 cache 权威源，重启后由磁盘 front-matter 逐字段重建（墓碑/软链字段一并恢复）。
+    const KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log', 'sys']   // 工作记忆 v0：+ kind=log（工作日志；治理语义不同——默认隐身 + 永不被过期/孤儿清理提名，见 design/agent-memory-v0.md §4.1）
+    // 0.4.3⑥（notes-043-sys-kind）：+ kind=sys（系统根笔记——机器托管的公司笔记：注入允许且是核心用途、recall 缺省 false
+    //   （不进目录/默认召回）、编辑器可见可改；整理建议器/批量删除豁免面收口——见 memory.js suggestCandidates + selbar/archive 红字警示）
     const STATUSES = ['active', 'pinned', 'resolved', 'superseded']
     // ---- 二期：kind 模板骨架（新建笔记预填）+ ✨整理 LLM prompt 的模板示例，同源于此 ----
     // （与开发版 host-impl.js 双边同步；client-impl.js / app.html / 原型 design/notes-editor-v3.html 同款，check.js 断言一致）
@@ -43,7 +49,8 @@
         injectRole: injectRole,
         // recall：目录索引准入字段，缺省 true（旧文件无 recall 字段 → 进目录）；显式 false 逐条关闭（与 inject 正交）；
         // 工作记忆 v0 默认隐身（裁决 B①）：kind=log 缺省 recall=false（日志不进目录；显式 recall=true 允许进目录的豁免保留）
-        recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : (p.meta.kind === 'log' ? false : true)),
+        // 0.4.3⑥：kind=sys 缺省 recall=false（系统根笔记不进目录注入；显式 true 豁免保留——注入允许是核心用途，与 log 的 inject 硬禁不同）
+        recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : ((p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true)),
         // sensitive：敏感内容标记（注入时正文按行打码，键保留值遮蔽），缺省 false（存量零迁移）
         sensitive: p.meta.sensitive === 'true',
         // injectEver：曾注入粘性标记（单向只升不降——inject 曾置 true 即永久 true，关闭不回退），缺省 false（存量零迁移）；
@@ -60,6 +67,8 @@
         // 工作记忆 v0 r3 车道模型：contractType（契约身份标记，memory-guide 引导笔记）；origin（产物溯源，引导激活期日志）；缺省 '' 存量零迁移
         contractType: p.meta.contractType || '',
         origin: p.meta.origin || '',
+        // 效用账本（0.4.3⑥）：记忆档案 → 被引用记忆 id 的结构化软链，缺省 ''（存量零迁移；仅 notes-ledger 懒创建回写）
+        refNote: p.meta.refNote || '',
         // 定时派发·执行层：调度声明 + 机器状态（dispatch-schedule 约定笔记），缺省 null（存量零迁移；非法 JSON 回退 null 不触发）
         schedule: parseSchedule(p.meta.schedule),
         mergedFrom: p.meta.mergedFrom || [],

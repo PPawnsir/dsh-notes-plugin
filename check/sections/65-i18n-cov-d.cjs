@@ -1,4 +1,4 @@
-// 节 65. i18n 覆盖卡 D（notes-042-i18n-cov-d：注入管理 + 记忆引导双语化）
+﻿// 节 65. i18n 覆盖卡 D（notes-042-i18n-cov-d：注入管理 + 记忆引导双语化）
 // 规格源：反馈条目 n-mut488gske5v 覆盖卡统一方法（免调研模板）——grep 表面 [一-鿿] → 抽串进 zh.js（key=inj.*/mem.*）
 //   → 内联改 t()/tt()（变量 {name} 插值禁拼接）→ en.js 直译 → 断言（t( 命中≥抽串、字典双向覆盖、产物英文态抽查）。
 // 表面：app modals/{inject-manager,memory-guide}.js（全局 t() 直读 NOTES_LANG）
@@ -88,7 +88,7 @@ module.exports = {
     assert(memAppSrc.indexOf("t('mem.enableHint')") >= 0 && memAppSrc.indexOf("t('mem.scopeWsPick')") >= 0, 'app 启用对话框说明/作用域档走 t()')
     assert(memAppSrc.indexOf("t('mem.needWorkspace')") >= 0 && memAppSrc.indexOf("t('mem.wsLabel', { name: w,") >= 0, 'app 多选校验/工作区行标签走 t()')
     // client inject-manager.js 锚点：组件挂 tt=useT()（唯一）订阅自渲染；模块级 handler 走 t()
-    assert((injCliSrc.match(/const tt = useT\(\)/g) || []).length === 1, 'client InjMgrModal 挂 tt=useT()（唯一，订阅 langStore 自渲染）')
+    assert((injCliSrc.match(/const tt = useT\(\)/g) || []).length === 2, 'client 注入管理双组件挂 tt=useT()（InjMgrModal + MountModal 挂载弹层，订阅 langStore 自渲染）')
     assert(injCliSrc.indexOf("chipBtn('all', tt('inj.chipAll', { n: listAll.length }))") >= 0 && injCliSrc.indexOf("' ' + tt('settings.injManager')") >= 0, 'client 注入管理标题/chips 走 tt()')
     assert(injCliSrc.indexOf("tt('meta.schedPaused')") >= 0 && injCliSrc.indexOf("tt('meta.schedDelTip')") >= 0, 'client 调度区暂停徽章/操作 tooltip 复用 meta.sched* 走 tt()')
     assert(injCliSrc.indexOf("t('inj.schedDelConfirm', { title:") >= 0 && injCliSrc.indexOf("t('inj.batchConfirm', { label: label") >= 0, 'client 模块级/组件内命令式 confirm 走 t() 直读')

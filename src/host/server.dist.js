@@ -84,7 +84,11 @@
     }))
     // args.includeDeleted（回收站行预览 notes-trash-batch-preview）：已软删笔记正文只读可达（缺省拒绝，编辑器链路口径不变）；墓碑仍拒绝
     disposers.push(handle('notes-get', async (args) => {
-      try { const n = args && args.includeDeleted ? await _getDeleted(args.id) : await _get(args.id); const s = slim(n); s.body = n.body; return { note: s } } catch (e) { return { error: String(e.message || e) } }
+      try {
+        const n = args && args.includeDeleted ? await _getDeleted(args.id) : await _get(args.id)
+        _recallHit('get', [n.id])   // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：get 通道取用信号日聚合（成功返回才计；静默降级）
+        const s = slim(n); s.body = n.body; return { note: s }
+      } catch (e) { return { error: String(e.message || e) } }
     }))
     // ==== notes-get-batch BEGIN ====（N+1 批量端点 notes-034-batch3：双包同源——server.js 与 server.dist.js 本块逐字节一致，check 节 49 看守）
     // 首屏双链索引等「全库正文」场景的批量通道：一次调用拉全补缺/过期条目，请求数 O(n)→O(1)（证据 n-mut6u356mloa：76 条库 159 次 notes-get）。

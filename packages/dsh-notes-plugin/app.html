@@ -178,6 +178,8 @@
   .pick-check{flex-shrink:0;accent-color:var(--nacc);cursor:pointer;margin:0}
   .selbar{position:fixed;left:22px;bottom:22px;z-index:110;width:316px;display:flex;align-items:center;gap:8px;background:var(--npanel);border:1px solid var(--nbd);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.30);padding:8px 12px}
   .selbar .n{flex:1;font-size:11.5px;color:var(--nt2)}
+  /* 0.4.3⑥（notes-043-sys-kind）：多选含 kind=sys 系统根笔记红字警示（confirm 门槛在 doSelBatchDelete） */
+  .selbar .syswarn{display:none;flex-shrink:0;max-width:110px;font-size:10.5px;line-height:1.25;color:var(--nwarn);cursor:help}
   /* ===== 归档预览对话框（组勾选/成员展开；复用 mask/modal） ===== */
   .arch-list{border:1px solid var(--nbd-soft);border-radius:var(--nr-md);margin-bottom:10px;max-height:300px;overflow-y:auto}
   .arch-group+.arch-group{border-top:1px solid var(--nbd-soft)}
@@ -418,6 +420,11 @@
   .injmgr-opt.on{background:var(--nbg-sel);color:var(--nacc-tx);font-weight:600}
   .injmgr-opt.dis{opacity:.38;cursor:default}
   .injmgr-opt.dis:hover{background:transparent;color:var(--nt3)}
+  /* ===== 挂载弹层 modal（0.4.3⑤ notes-043-index：资料开注入 → 手写 whenToUse 落注入索引 §1 行；mask/modal 复用框架类） ===== */
+  .inj-mount-body{display:flex;flex-direction:column;gap:5px;margin:10px 0 4px}
+  .inj-mount-label{font-size:11px;color:var(--nt2)}
+  .inj-mount-when{width:100%;box-sizing:border-box;font:inherit;font-size:12px;line-height:1.6;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:7px 9px;outline:0;resize:vertical;min-height:64px}
+  .inj-mount-when:focus{border-color:var(--nacc)}
   /* ===== 历史版本面板 modal（详情 meta 行「历史」入口；notes-history-ui）：左列版本列表（时间+大小，倒序）+ 右侧只读预览（renderMarkdown 内核渲染；与原型 notes-ui-v2.html 同款） ===== */
   .modal.hist{width:720px}
   .hist-body{display:flex;gap:10px;min-height:190px;margin-bottom:4px}
@@ -621,7 +628,7 @@
 <div id="capHost"></div>
 <div id="modalHost"></div>
 <div id="ctxHost"></div>
-<div class="selbar" id="selbar" style="display:none"><span class="n" id="selbarN">已选 0 条</span><button class="mbtn primary" id="selMerge">合并</button><button class="mbtn danger" id="selDelete">删除</button><button class="mbtn" id="selCancel">取消</button></div>
+<div class="selbar" id="selbar" style="display:none"><span class="n" id="selbarN">已选 0 条</span><span class="syswarn" id="selSysWarn" style="display:none"></span><button class="mbtn primary" id="selMerge">合并</button><button class="mbtn danger" id="selDelete">删除</button><button class="mbtn" id="selCancel">取消</button></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1078,6 +1085,7 @@ var I18N_ZH = {
   'tree.useCountTip': '被 Agent 引用（note_get 命中）{n} 次',
   'tree.wikiTip': '含双链 [[…]]（详情富文本中可点击跳转）',
   'tree.toggleTip': '展开/折叠',
+  'tree.logTip': '工作日志（隐身条目，展开日志夹时定向召回）',
   'tree.folderViewTip': '文件夹视图（含子孙文件夹）',
   'tree.countN': '{n} 条',
   'tree.viewTopic': '主题 · {id}',
@@ -1463,6 +1471,15 @@ var I18N_ZH = {
   'inj.batchEffConv': '注入为约定（须遵守）。',
   'inj.batchDone': '已{label} {ok} 条',
   'inj.batchDoneFail': '，失败 {n} 条',
+  // 0.4.3⑤ 挂载弹层（notes-043-index）：给资料开注入 → 手写 whenToUse → 确认落注入索引 §1 行
+  'inj.mountTitle': '挂载到注入索引',
+  'inj.mountSub': '写入索引 §1 一行：Agent 何时该查我？',
+  'inj.mountLabel': 'whenToUse · 何时查我',
+  'inj.mountPlaceholder': '如：接入/校验 e2e 断言口径时…',
+  'inj.mountSave': '挂载',
+  'inj.mountSkip': '跳过',
+  'inj.mountSaved': '已挂载索引：{title}',
+  'inj.mountFailed': '挂载失败：{msg}',
   'mem.disabledToast': '已停用沉淀引导（约定笔记保留，inject 已关闭）',
   'mem.notEnabled': '当前未启用沉淀引导',
   'mem.disableFailed': '停用失败：{msg}',
@@ -1595,6 +1612,9 @@ var I18N_ZH = {
   'trash.restoreBatchConfirm': '批量恢复：所选的 {n} 条笔记将移出回收站（恢复后回到正常列表）。\n确认恢复？',
   'trash.purgeBatchConfirm': '批量彻底删除：所选的 {n} 条笔记将彻底删除，不可恢复（含历史版本）。\n删除后正文、历史版本快照与归档备份将一并移除，确认彻底删除？',
   'trash.purgedBatch': '已彻底删除 {ok} 条',
+  /* 0.4.3⑥（notes-043-sys-kind）：kind=sys 系统根笔记豁免面——多选批量删除红字警示 + confirm 门槛（双端 selbar/archive 共用） */
+  'sys.selWarn': '含 {n} 篇系统笔记',
+  'sys.batchDelWarn': '所选含 {n} 篇系统托管笔记（kind=sys：执行记录/注入索引/记忆档案等机器产物）。\n删除可能破坏调度回执、资料召回与引用账本，仍要删除吗？',
   'sugg.sub': '只提名不自动执行 · 软删除可恢复',
   'sugg.analyzing': '分析中…',
   'sugg.failed': '分析失败：{msg}',
@@ -1814,6 +1834,7 @@ var I18N_EN = {
   'tree.useCountTip': 'Referenced by Agent (note_get hit) {n} times',
   'tree.wikiTip': 'Has [[…]] wiki links (clickable in the detail rich text)',
   'tree.toggleTip': 'Expand/collapse',
+  'tree.logTip': 'Work log (stealth entry, recalled on demand when expanding its folder)',
   'tree.folderViewTip': 'Folder view (including descendant folders)',
   'tree.countN': '{n}',
   'tree.viewTopic': 'Topic · {id}',
@@ -2200,6 +2221,15 @@ var I18N_EN = {
   'inj.batchEffConv': 'be injected as convention (must follow).',
   'inj.batchDone': '{label}: {ok} notes updated',
   'inj.batchDoneFail': ', {n} failed',
+  // 0.4.3⑤ 挂载弹层（notes-043-index）：给资料开注入 → 手写 whenToUse → 确认落注入索引 §1 行
+  'inj.mountTitle': 'Mount to injection index',
+  'inj.mountSub': 'One line in index §1: when should the Agent consult this note?',
+  'inj.mountLabel': 'whenToUse — when to consult me',
+  'inj.mountPlaceholder': 'e.g. When wiring or asserting e2e check conventions…',
+  'inj.mountSave': 'Mount',
+  'inj.mountSkip': 'Skip',
+  'inj.mountSaved': 'Mounted to index: {title}',
+  'inj.mountFailed': 'Mount failed: {msg}',
   'mem.disabledToast': 'Settling guide disabled (the convention note is kept; inject turned off)',
   'mem.notEnabled': 'The settling guide is not enabled',
   'mem.disableFailed': 'Failed to disable: {msg}',
@@ -2329,6 +2359,9 @@ var I18N_EN = {
   'trash.restoreBatchConfirm': 'Batch restore: the selected {n} notes will leave Trash (back to the normal list).\nConfirm restore?',
   'trash.purgeBatchConfirm': 'Batch purge: the selected {n} notes will be permanently deleted, irreversibly (history versions included).\nBodies, history snapshots and archive backups will be removed together. Purge for good?',
   'trash.purgedBatch': 'Purged {ok} notes',
+  /* 0.4.3⑥（notes-043-sys-kind）：kind=sys 系统根笔记豁免面——多选批量删除红字警示 + confirm 门槛（双端 selbar/archive 共用） */
+  'sys.selWarn': '{n} system note(s) selected',
+  'sys.batchDelWarn': 'The selection includes {n} system-hosted note(s) (kind=sys: run logs / injection index / memory archives — machine-produced).\nDeleting them may break dispatch receipts, reference recall and the usage ledger. Delete anyway?',
   'sugg.sub': 'Nominations only, never auto-executed · soft-deletes are restorable',
   'sugg.analyzing': 'Analyzing…',
   'sugg.failed': 'Analysis failed: {msg}',
@@ -2822,6 +2855,22 @@ function renderSortMenu() {
 function reSearch() { if (searchText.trim()) { clearTimeout(searchTimer); searchTimer = setTimeout(doSearch, 250) } }
 
 /* ================= 侧栏树 ================= */
+/* 树展开「含日志的文件夹」懒加载日志子条目（notes-041c-tree-log-children）：
+   R-6 豁免面 = 「用户主动展开日志夹」这一动作——定向 includeLogs 重拉，日志条目以 overlay 形式并入树子节点
+   （不并入 notes 主缓存：默认列表/搜索/目录的隐身口径不变）；foldLogLoaded 会话级按夹去重——折叠再展开不重复拉取 */
+var logOverlay = [];      /* 定向 includeLogs 拉取的 kind=log overlay（仅树渲染消费） */
+var foldLogLoaded = {};   /* fid → true：该夹展开动作已触发过定向拉取（会话级，不持久化） */
+function ensureFoldLogs(fid) {
+  if (foldLogLoaded[fid]) return;
+  foldLogLoaded[fid] = true;
+  /* 列表已是 includeLogs 口径（筛选「日志」勾选 / 文件夹视图）：日志在 notes 里随 vis 正常渲染，零请求 */
+  if (notes.some(function (n) { return (n.kind || 'note') === 'log' })) return;
+  rpc('notes-list', { includeLogs: true }).then(function (res) {
+    if (!res || res.error || !res.notes) return;
+    logOverlay = res.notes.filter(function (n) { return (n.kind || 'note') === 'log' });
+    renderTree();
+  }).catch(function (e) {});
+}
 function noteRow(n, inFolderCtx) {
   var tail = '';
   if (view.type === 'topic' && n.folder) tail += '<span class="fbadge">' + icon('i-folder', 9) + esc(fname(n.folder)) + '</span>';
@@ -2833,6 +2882,8 @@ function noteRow(n, inFolderCtx) {
     /* 行首槽位对齐：caret 槽同宽占位 + 图标槽（kind 色点居中），与文件夹行标题起点一致 */
     + '<span class="caret-spacer"></span><span class="kind-slot"><span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span></span>'
     + '<span class="ti">' + (isPinned(n) ? '<svg class="ic pin"><use href="#i-pin"/></svg> ' : '') + hl(n.title || t('tree.untitled'), searchText) + '</span>'
+    /* 日志隐身标记（notes-041c-tree-log-children）：树内定向召回的 kind=log 行尾 log 文本徽章（懒加载 overlay 专属视觉；面板 emoji 红线——不用表情字符） */
+    + (n.kind === 'log' ? '<span class="logmark" style="font-size:9px;margin-left:2px;opacity:.6" title="' + esc(t('tree.logTip')) + '">log</span>' : '')
     + (n.inject ? '<span style="color:var(--nacc);display:flex" title="' + esc(t('tree.injectTip', { role: t(n.injectRole === 'reference' ? 'tree.roleReference' : 'tree.roleConvention') })) + '">' + icon('i-bolt', 10) + '</span>' : '')
     /* 曾注入徽章（injectEver 粘性标记：历史上开启过注入、现已关闭；已注入由 bolt 表达不重复显示；不满足不渲染） */
     + (!n.inject && n.injectEver === true ? '<span class="injevr" title="' + t('tree.injectEverTip') + '">' + icon('i-clock', 9) + '</span>' : '')
@@ -2851,6 +2902,12 @@ function folderNodeHtml(f, vis, filtering) {
   var kids = vis.filter(function (n) { return (n.folder || '') === f.id });
   var subHits = filtering ? vis.filter(function (n) { return sub[n.folder || ''] }).length : 0;
   var open = (foldOpen[f.id] !== false) || (filtering && subHits > 0);
+  /* 日志 overlay 并入（notes-041c-tree-log-children）：夹已展开且定向拉过 → 本夹直挂 log 子条目追加到 kids 尾部（id 去重防文件夹视图双显） */
+  if (open && foldLogLoaded[f.id] && logOverlay.length) {
+    var _have = {};
+    kids.forEach(function (n) { _have[n.id] = 1 });
+    logOverlay.forEach(function (n) { if ((n.folder || '') === f.id && !_have[n.id]) kids.push(n) });
+  }
   /* 行点击（含名称/图标/caret）= 纯展开/折叠（经典树语义，唯一职责——notes-041b 用户裁决去重）；
      行尾 vfilter 图标=进入/退出文件夹视图（唯一进视图入口，不抢占单击） */
   h += '<div class="row head' + (view.type === 'folder' && view.id === f.id ? ' on' : '') + '" data-fold="' + f.id + '" data-drop="1" draggable="true">'
@@ -2893,8 +2950,12 @@ function renderTree() {
      空态非拖拽不渲染任何占位；拖拽中由 dragstart 委托点亮/补插落点容器（.drag-on 显示「拖到此处移出文件夹」提示行），dragend 清理 */
   var unfiled = vis.filter(function (n) { return !n.folder });
   if (unfiled.length) {
-    h += '<div class="unfiled-drop" data-drop-out="1"><div class="unfiled-hint">' + t('tree.dropOutHint') + '</div>';
+    /* 提示行必须排在笔记行**之后**（notes-041d-drag-root-note）：.unfiled-hint 默认 display:none、dragstart 时 .drag-on 点亮为 block——
+       若提示行在行首，点亮瞬间把本夹笔记行（=拖拽源行）整体下移，Chromium 判定拖拽源位移直接取消拖拽（dragstart→立即 dragend，无 dragover/drop），
+       根目录笔记因此永远拖不进文件夹（真实浏览器 A/B 复现实锤：hint 置尾后 dragover/drop 链路恢复）；已归类笔记不在容器内不受影响 */
+    h += '<div class="unfiled-drop" data-drop-out="1">';
     unfiled.forEach(function (n) { h += noteRow(n, false) });
+    h += '<div class="unfiled-hint">' + t('tree.dropOutHint') + '</div>';
     h += '</div>';
   }
   /* 主题全局过滤器（整区默认折叠：常态只显示「主题 (N)」一行，点分组头展开/收起（topicSecOpen，session 记忆不持久化）；
@@ -2931,11 +2992,18 @@ function renderTree() {
   renderFilterBar();
   renderSelBar();
 }
-/* 多选操作条：已选 N 条 | 合并 | 删除 | 取消（多选态常显于左下角） */
+/* 多选操作条：已选 N 条 | [红字 sys 警示] | 合并 | 删除 | 取消（多选态常显于左下角）
+   0.4.3⑥（notes-043-sys-kind）：所选含 kind=sys 系统根笔记时红字警示（豁免面收口；confirm 门槛在 doSelBatchDelete，与 client selbar 同口径） */
 function renderSelBar() {
   var n = Object.keys(selIds).length;
+  var sysN = 0, byId = {};
+  notes.forEach(function (x) { byId[x.id] = x });
+  Object.keys(selIds).forEach(function (id) { if (byId[id] && (byId[id].kind || 'note') === 'sys') sysN++ });
   $('selbar').style.display = selMode ? 'flex' : 'none';
   $('selbarN').textContent = t('sel.selCount', { n: n });
+  $('selSysWarn').style.display = sysN > 0 ? '' : 'none';
+  $('selSysWarn').textContent = sysN > 0 ? t('sys.selWarn', { n: sysN }) : '';
+  $('selSysWarn').title = sysN > 0 ? t('sys.batchDelWarn', { n: sysN }) : '';
   $('selMerge').disabled = n < 2;
   $('selDelete').disabled = n < 1;
 }
@@ -2949,7 +3017,8 @@ $('tree').addEventListener('click', function (ev) {
   if (vf && frow) { var fid = frow.dataset.fold; view = view.type === 'folder' && view.id === fid ? { type: 'all', id: '' } : { type: 'folder', id: fid }; foldOpen[fid] = true; saveFoldOpen(); render(); return }
   if (frow) {
     var fid2 = frow.dataset.fold;
-    foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); renderTree(); return
+    var opening = foldOpen[fid2] === false;   /* 展开动作（notes-041c）：仅此动作触发日志懒加载（R-6 定向豁免），折叠不动作 */
+    foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); if (opening) ensureFoldLogs(fid2); renderTree(); return
   }
   /* 主题过滤区分组头：点击=整区展开/收起（topicSecOpen；列表内主题行原地展开行为不变） */
   var tsec = ev.target.closest('[data-tsec]');
@@ -5168,6 +5237,31 @@ function toggleInjMgrAll() {
   if (!all) selectable.forEach(function (n) { injMgrState.sel[n.id] = true });
   renderInjectManager();
 }
+/* ===== 挂载弹层（0.4.3⑤ notes-043-index）：给资料开注入 → 手写 whenToUse（textarea 预填标题）→ 确认落注入索引 §1 行 =====
+   host 侧开注入已自动落缺省行（whenToUse=标题），本弹层 = 换文案通道：跳过 = 保留缺省行；modal 不叠 modal（先关注入管理面板，清返回栈） */
+var mountState = null;
+function openMountModal(n) {
+  if (!n) return;
+  injMgrState = null; modalBackTo = null;
+  mountState = { id: n.id, title: n.title || n.id, when: n.title || '', pending: false };
+  openModal(
+    '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + t('inj.mountTitle') + '<span class="sub">' + t('inj.mountSub') + '</span></div>'
+    + '<div class="inj-mount-body"><label class="inj-mount-label">' + t('inj.mountLabel') + '</label>'
+    + '<textarea class="inj-mount-when" id="injMountWhen" rows="3" placeholder="' + esc(t('inj.mountPlaceholder')) + '">' + esc(mountState.when) + '</textarea></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="injMountSkip">' + t('inj.mountSkip') + '</button>'
+    + '<button class="mbtn primary" id="injMountSave">' + t('inj.mountSave') + '</button></div>'
+  );
+  $('injMountSkip').onclick = function () { mountState = null; closeModal() };
+  $('injMountSave').onclick = function () {
+    if (!mountState || mountState.pending) return;
+    mountState.pending = true; mountState.when = $('injMountWhen').value;
+    rpc('notes-mount', { id: mountState.id, whenToUse: mountState.when }).then(function (res) {
+      var done = mountState; mountState = null;
+      if (res && res.error) { toast(t('inj.mountFailed', { msg: res.error })) }
+      else { toast(t('inj.mountSaved', { title: done.title })); closeModal() }
+    }).catch(function (e) { mountState = null; toast(t('inj.mountFailed', { msg: e && e.message || e })) });
+  };
+}
 /* 单行直改：点 segmented 档位即切换（同详情区通道 notes-update {inject, injectRole}），toast 反馈 */
 function doInjMgrSet(n, role) {
   if (!n || !injMgrState || injMgrState.pending) return;
@@ -5180,6 +5274,8 @@ function doInjMgrSet(n, role) {
     if (res && res.error) { modalErr(res.error); return }
     if (res && res.injectForcedOff) toast(t('inj.forcedOff', { title: n.title || n.id }));
     else toast(role === 'off' ? t('inj.injectOffToast', { title: n.title || n.id }) : t('inj.injectSetToast', { role: t(role === 'reference' ? 'tree.roleReference' : 'tree.roleConvention'), title: n.title || n.id }));
+    /* 0.4.3⑤ 挂载弹层：设为资料（reference）→ 手写 whenToUse（host 已自动落缺省行，弹层换文案；modal 不叠 modal——先关注入管理面板） */
+    if (role === 'reference') { loadNotes(true); setTimeout(function () { openMountModal({ id: n.id, title: n.title }) }, 0); return }
     /* 本地即时回写（injectEver 粘性：开启即曾注入），后台刷新对齐 host */
     n.inject = role !== 'off';
     if (role !== 'off') { n.injectRole = role; n.injectEver = true }
@@ -5824,10 +5920,15 @@ function doMergeConfirm() {
   }).catch(function (e) { modalErr(t('arch.mergeFailed', { msg: e && e.message || e })); $('mgOk').disabled = false; $('mgOk').textContent = t('sel.merge') });
 }
 /* 多选批量删除（软删进回收站，与整理建议器批量软删同通道）：确认强度 = 不可恢复性（notes-034-c-confirm）——
-   软删可恢复 → 轻：无 confirm 直接删，撤销 toast 兜底（逐条 notes-restore；回收站亦可恢复）；不可恢复的 purge 才保留双确认 */
+   软删可恢复 → 轻：无 confirm 直接删，撤销 toast 兜底（逐条 notes-restore；回收站亦可恢复）；不可恢复的 purge 才保留双确认；
+   0.4.3⑥（notes-043-sys-kind）：含 kind=sys 系统根笔记 → 追加 confirm 红线门槛（机器产物误删会破坏调度回执/资料召回/引用账本；与 client selbar 同口径） */
 function doSelBatchDelete() {
   var ids = Object.keys(selIds);
   if (!ids.length) return;
+  var sysN = 0, byId = {};
+  notes.forEach(function (n) { byId[n.id] = n });
+  ids.forEach(function (id) { if (byId[id] && (byId[id].kind || 'note') === 'sys') sysN++ });
+  if (sysN > 0 && !confirm(t('sys.batchDelWarn', { n: sysN }))) return;
   var ok = 0, fail = 0, okIds = [], chain = Promise.resolve();
   ids.forEach(function (id) {
     chain = chain.then(function () {

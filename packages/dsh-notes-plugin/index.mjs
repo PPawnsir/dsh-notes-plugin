@@ -216,6 +216,9 @@ export function apply(ctx) {
         // origin 条件行（工作记忆 v0 r3 车道模型·产物溯源：memory-guide 引导激活期间产生的沉淀日志落 origin=memory-guide；
         // 可选轻字段本期只落数据，详情区展示另期）
         (m.origin ? 'origin: ' + escYaml(m.origin) + '\n' : '') +
+        // refNote 条件行（0.4.3⑥ 效用账本：记忆档案笔记 → 被引用记忆 id 的结构化软链，notes-ledger 懒创建回写；
+        // 普通笔记不落此行，存量零迁移）
+        (m.refNote ? 'refNote: ' + escYaml(m.refNote) + '\n' : '') +
         // schedule 条件行（定时派发·执行层：contractType=dispatch-schedule 约定笔记的调度声明 + 机器状态——
         // 声明 {at|every, target, action, enabled} + 状态 {lastFiredAt, lastRun{at,status,receiptId}, lastError}；
         // JSON 单行存储同 dispatches 先例；普通笔记不落此行，存量零迁移）
@@ -225,13 +228,18 @@ export function apply(ctx) {
         'useCount: ' + escYaml(m.useCount || 0) + '\n' +
         'archivedAt: ' + escYaml(m.archivedAt || '') + '\n' +
         'deleted: ' + escYaml(m.deleted || 'false') + '\n' +
-        '---\n\n'
+        // 闭合分隔符固定单换行收尾、不多写空行（notes-043-fm-newline）：与 parseFM「吃掉闭合 --- 后全部连续前导换行」
+        //   配对，保证 读盘→写盘 往返幂等（旧口径 '---\n\n' + 只吃一个 \n 曾致正文前导换行每轮 +1 无上界递增）
+        '---\n'
     }
 
     function parseFM(content) {
       const meta = {}
       let body = content
-      const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
+      // 闭合 --- 后吃掉全部连续前导换行：front-matter 与正文间的空行属分隔符填充、不属正文语义——
+      //   旧格式（'---\n\n' 收尾）及缺陷累积的多空行存量文件首轮读入即归一，回写后稳定零增长（不做全库迁移）；
+      //   只作用于最前缘，正文内部空行不受影响。canonical 口径：正文不再以前导空行开头。
+      const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n)*([\s\S]*)$/)
       if (m) {
         body = m[2] || ''
         for (const line of m[1].split(/\r?\n/)) {
@@ -563,7 +571,13 @@ export function apply(ctx) {
     }
 
     // ---- 缓存层：解析结果按 id 常驻内存；本插件所有写入同步缓存，外部新增文件在 list 时懒加载 ----
-    const KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log']   // 工作记忆 v0：+ kind=log（工作日志；治理语义不同——默认隐身 + 永不被过期/孤儿清理提名，见 design/agent-memory-v0.md §4.1）
+    // 存储加固声明（notes-043-atomic-store）：写入原子性委托 DSH fs 服务 writeText（底层 writeFileAtomic：
+    // staging+temp+sync+rename+targetKey 锁，见 kernel/persist.js 声明）；cache 为常驻权威，跨 apply 由磁盘恢复。
+    //   sys 常驻语义：kind=sys 系统根笔记与普通笔记同走本通道（无特例写路径、无旁路缓存）——机器托管正文与全库同口径，
+    //   盘上字节即 cache 权威源，重启后由磁盘 front-matter 逐字段重建（墓碑/软链字段一并恢复）。
+    const KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log', 'sys']   // 工作记忆 v0：+ kind=log（工作日志；治理语义不同——默认隐身 + 永不被过期/孤儿清理提名，见 design/agent-memory-v0.md §4.1）
+    // 0.4.3⑥（notes-043-sys-kind）：+ kind=sys（系统根笔记——机器托管的公司笔记：注入允许且是核心用途、recall 缺省 false
+    //   （不进目录/默认召回）、编辑器可见可改；整理建议器/批量删除豁免面收口——见 memory.js suggestCandidates + selbar/archive 红字警示）
     const STATUSES = ['active', 'pinned', 'resolved', 'superseded']
     // ---- 二期：kind 模板骨架（新建笔记预填）+ ✨整理 LLM prompt 的模板示例，同源于此 ----
     // （与开发版 host-impl.js 双边同步；client-impl.js / app.html / 原型 design/notes-editor-v3.html 同款，check.js 断言一致）
@@ -607,7 +621,8 @@ export function apply(ctx) {
         injectRole: injectRole,
         // recall：目录索引准入字段，缺省 true（旧文件无 recall 字段 → 进目录）；显式 false 逐条关闭（与 inject 正交）；
         // 工作记忆 v0 默认隐身（裁决 B①）：kind=log 缺省 recall=false（日志不进目录；显式 recall=true 允许进目录的豁免保留）
-        recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : (p.meta.kind === 'log' ? false : true)),
+        // 0.4.3⑥：kind=sys 缺省 recall=false（系统根笔记不进目录注入；显式 true 豁免保留——注入允许是核心用途，与 log 的 inject 硬禁不同）
+        recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : ((p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true)),
         // sensitive：敏感内容标记（注入时正文按行打码，键保留值遮蔽），缺省 false（存量零迁移）
         sensitive: p.meta.sensitive === 'true',
         // injectEver：曾注入粘性标记（单向只升不降——inject 曾置 true 即永久 true，关闭不回退），缺省 false（存量零迁移）；
@@ -624,6 +639,8 @@ export function apply(ctx) {
         // 工作记忆 v0 r3 车道模型：contractType（契约身份标记，memory-guide 引导笔记）；origin（产物溯源，引导激活期日志）；缺省 '' 存量零迁移
         contractType: p.meta.contractType || '',
         origin: p.meta.origin || '',
+        // 效用账本（0.4.3⑥）：记忆档案 → 被引用记忆 id 的结构化软链，缺省 ''（存量零迁移；仅 notes-ledger 懒创建回写）
+        refNote: p.meta.refNote || '',
         // 定时派发·执行层：调度声明 + 机器状态（dispatch-schedule 约定笔记），缺省 null（存量零迁移；非法 JSON 回退 null 不触发）
         schedule: parseSchedule(p.meta.schedule),
         mergedFrom: p.meta.mergedFrom || [],
@@ -941,8 +958,8 @@ export function apply(ctx) {
       const name = await histFindName(id, ts)
       if (!name) return { error: '历史版本不存在（可能已被保留策略淘汰）' }
       const content = await fs.readText(await fs.resolve(path.join(HISTORY_DIR, id, name)))
-      // 快照字节 = noteFileContent 产物（front-matter + '\n' 分隔行 + 正文原形）：parseFM 后剥一个前导换行，逐字节还原落盘前正文（cache 口径）
-      return { ts: Number(ts), body: (parseFM(content).body || '').replace(/^\r?\n/, '') }
+      // 快照字节 = noteFileContent 产物（front-matter + 正文原形）：parseFM 节 77 起已吃掉闭合分隔符后全部前导换行，逐字节还原落盘前正文（cache 口径，旧「剥一个前导换行」绕行已消除）
+      return { ts: Number(ts), body: parseFM(content).body || '' }
     }
     // notes-restore-history {id, ts} → 把历史版正文写回当前笔记（其余元数据不动，updatedAt 刷新）。
     // 安全核心 = 恢复前置快照：persistNote 缺省（opts.history 不传 ≠ false）在写盘前把「当前版」自动快照进 .history——恢复动作本身可撤销（再恢复一次即回滚）。
@@ -953,7 +970,7 @@ export function apply(ctx) {
       const note = Object.assign({}, await loadNote(id))
       if (note.deleted || note.tombstoned) throw new Error('Note has been deleted')
       const content = await fs.readText(await fs.resolve(path.join(HISTORY_DIR, id, name)))
-      note.body = (parseFM(content).body || '').replace(/^\r?\n/, '')   // 剥一个前导换行，还原落盘前正文原形（同 _historyGet 口径）
+      note.body = parseFM(content).body || ''   // 还原落盘前正文原形（同 _historyGet 口径：parseFM 节 77 起已归一前导换行，无需再剥）
       note.updatedAt = new Date().toISOString()
       await persistNote(note)   // 恢复前置快照：当前版先自动入 .history（缺省快照语义），随后才写恢复版——恢复可再撤销
       return { id: id, restored: true, ts: Number(ts) }
@@ -961,16 +978,52 @@ export function apply(ctx) {
     // ==== history-engine END ====
 
     // opts.history===false：自动元数据回写（useCount 防抖/idle 派发回执）不算编辑，不产生历史快照；其余每次真实落盘前快照上一版
-    async function persistNote(n, opts) {
-      perfStats.diskWrites++
-      if (!opts || opts.history !== false) {
-        const prev = cache.get(n.id)
-        if (prev) await histSnapshot(n.id, prev)
+    // 0.4.3 存储加固（notes-043-atomic-store）·存储层语义声明：
+    //   ①原子性——本插件全部笔记写路径统一收口 persistNote → fs.writeText；DSH fs 服务的 writeText 底层即
+    //     writeFileAtomic（staging 目录 + temp 文件 + fsync + rename 发布，按目标路径 targetKey 加锁），
+    //     单次写入对崩溃半写天然免疫（崩溃只会留下完整旧版或完整新版，无中间字节）——插件层不再叠加 tmp+rename。
+    //   ②常驻——cache 为常驻内存权威：所有写入同步缓存（写后缓存即盘上字节的同口径重建源，历史快照/列表共用），
+    //     外部新增文件仅在 list 懒加载；跨 apply 生命周期由磁盘文件恢复，墓碑（deleted:true）落盘后重载不复活。
+    //   ③串行化——per-note 写链：同笔记并发 persistNote 读-改-写竞态（两异步流程同时 rootNoteAppend 丢行不报错）
+    //     由 _persistChains[id] 串行消除；跨笔记仍并行。失败不断链（catch 吞尾），错误原样抛给调用方。
+    //   ④事件分发（0.4.3+ notes-043-event-bus）——落盘成功后经 notes-events 注册表单点分发（替代洋葱包裹），见下方标记块。
+    const _persistChains = Object.create(null)
+    // ==== notes-events BEGIN ====（0.4.3+ 内核事件总线：onNoteChanged 单点注册表，notes-043-event-bus——替代 persistNote/_purge 洋葱包裹）
+    // 契约：persistNote/_purge 落盘成功后单点分发 { event, note?, id? }：
+    //   event ∈ create（首写，cache 无旧版）/ update（已存笔记改写）/ delete（软删落盘 deleted:true）/
+    //           restore（删除态重存 deleted:true→false 同通道）/ purge（彻底删除——不经 persistNote，由 _purge 分发，载荷只带 id）。
+    // 顺序契约：监听者按注册序同步执行（manifest 登记序 = 执行序，check 节 45 序断言看守——比洋葱包裹序显式）。
+    // 红线：监听者异常隔离（逐监听 try/catch + console.error 记录）——任何监听者抛错不影响其余监听者与落盘主流程（零阻塞）。
+    const _noteListeners = []
+    function onNoteChanged(fn) { if (typeof fn === 'function') _noteListeners.push(fn) }
+    function _emitNoteChanged(ev) {
+      for (const fn of _noteListeners.slice()) {
+        try { fn(ev) } catch (e) { console.error('notes: onNoteChanged 监听者异常（已隔离）', e) }
       }
+    }
+    // 事件类型推导：prev = 写前 cache 旧版（常驻权威）；墓碑视作不存在（purge 后重写 = 新建语义）
+    function _noteEventOf(prev, n) {
+      if (n && n.deleted === true) return 'delete'
+      if (!prev || prev.tombstoned) return 'create'
+      if (prev.deleted === true) return 'restore'
+      return 'update'
+    }
+    // ==== notes-events END ====
+    async function _persistNoteInner(n, opts) {
+      perfStats.diskWrites++
+      const prev = cache.get(n.id)
+      if ((!opts || opts.history !== false) && prev) await histSnapshot(n.id, prev)
       const content = noteFileContent(n)
       const ft = await fs.resolve(noteFile(n.id))
       await fs.writeText(ft, content, undefined, undefined, getPolicy())
       cache.set(n.id, Object.assign({}, n))
+      _emitNoteChanged({ event: _noteEventOf(prev, n), note: n })   // 落盘成功且缓存同步后单点分发（notes-043-event-bus）
+    }
+    async function persistNote(n, opts) {
+      const prev = _persistChains[n.id] || Promise.resolve()
+      const run = prev.then(() => _persistNoteInner(n, opts))
+      _persistChains[n.id] = run.then(function () {}, function () {})   // 失败不断链：后续写不受前次失败阻塞
+      await run
     }
 
     // 列表/RPC 瘦身：不带 body，正文编辑走 notes-get 按需加载
@@ -982,6 +1035,7 @@ export function apply(ctx) {
         createdAt: n.createdAt, updatedAt: n.updatedAt,
         sessionId: n.sessionId, cwd: n.cwd, logDate: n.logDate || '', entities: n.entities || [], summarizedAt: n.summarizedAt || '', contractType: n.contractType || '', origin: n.origin || '', schedule: n.schedule || null, mergedFrom: n.mergedFrom,
         dispatches: n.dispatches || [],
+        refNote: n.refNote || '',
         useCount: n.useCount || 0,
         archivedAt: n.archivedAt, deleted: n.deleted === true, preview: String(n.body || '').slice(0, 200)
       }
@@ -1294,6 +1348,9 @@ export function apply(ctx) {
       // 工作记忆 v0 隐身硬闸（裁决 B①）：kind=log 强制 inject=false（显式传 true 也纠正，返回值 injectForcedOff 告知），
       // recall 缺省 false（显式 true 豁免——用户/agent 显式选择进目录不算混入）；日志永不进系统提示与目录索引
       const isLog = (ex.kind || 'note') === 'log'
+      // 0.4.3⑥（notes-043-sys-kind）：kind=sys 系统根笔记——recall 缺省 false（不进目录/默认召回，显式 true 豁免）；
+      //   inject 允许且是核心用途（与 log 的隐身硬闸不同，不做 inject 纠正）
+      const isSys = (ex.kind || 'note') === 'sys'
       const injectForcedOff = isLog && ex.inject === true
       // 定时派发·执行层：schedule 声明写入闸门（校验红线：at 必须未来 / 轮询≥5min / 目标存活 / 契约配对——非法声明拒绝落库，错得安全）
       const createCT = ex.contractType || ''
@@ -1318,7 +1375,7 @@ export function apply(ctx) {
         injectEver: isLog ? (ex.injectEver === true) : (ex.injectEver === true || ex.inject === true),
         injectTo: injectToNorm || [],
         injectRole: ex.injectRole === 'reference' ? 'reference' : 'convention',
-        recall: isLog ? (ex.recall === true) : (ex.recall !== false),
+        recall: (isLog || isSys) ? (ex.recall === true) : (ex.recall !== false),
         sensitive: ex.sensitive === true,
         createdAt: ex.createdAt || now, updatedAt: ex.updatedAt || now,
         sessionId: ex.sessionId !== undefined ? ex.sessionId : sc.sessionId,
@@ -1781,6 +1838,7 @@ export function apply(ctx) {
       // 快照历史连带清除（.history/<id> 整棵；删除语义同 purge——processPath 可用时真删，否则墓碑式清空）
       const historyPurged = await histPurgeNote(id)
       cache.delete(id)
+      _emitNoteChanged({ event: 'purge', id: id })   // 事件总线单点分发（0.4.3+ notes-043-event-bus；彻底删除不经 persistNote）
       return { id: id, purged: true, mode: mode, historyPurged: historyPurged }
     }
 
@@ -1870,7 +1928,11 @@ export function apply(ctx) {
     }))
     // args.includeDeleted（回收站行预览 notes-trash-batch-preview）：已软删笔记正文只读可达（缺省拒绝，编辑器链路口径不变）；墓碑仍拒绝
     disposers.push(handle('notes-get', async (args) => {
-      try { const n = args && args.includeDeleted ? await _getDeleted(args.id) : await _get(args.id); const s = slim(n); s.body = n.body; return { note: s } } catch (e) { return { error: String(e.message || e) } }
+      try {
+        const n = args && args.includeDeleted ? await _getDeleted(args.id) : await _get(args.id)
+        _recallHit('get', [n.id])   // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：get 通道取用信号日聚合（成功返回才计；静默降级）
+        const s = slim(n); s.body = n.body; return { note: s }
+      } catch (e) { return { error: String(e.message || e) } }
     }))
     // ==== notes-get-batch BEGIN ====（N+1 批量端点 notes-034-batch3：双包同源——server.js 与 server.dist.js 本块逐字节一致，check 节 49 看守）
     // 首屏双链索引等「全库正文」场景的批量通道：一次调用拉全补缺/过期条目，请求数 O(n)→O(1)（证据 n-mut6u356mloa：76 条库 159 次 notes-get）。
@@ -2050,6 +2112,932 @@ export function apply(ctx) {
       }))
     }
 
+    // ==== notes-graph BEGIN ====（0.4.3 内核①：四类边统一扫描建图 + 增量维护 + 图查询 RPC，notes-043-graph；0.4.3+ notes-043-graph-registry：边类型收敛为 EDGE_REGISTRY 声明式描述符——扩展新边类型 = 追加一个描述符，行为零变化）
+    // EDGE_REGISTRY 描述符契约（声明式注册表，非继承——同 RootNoteTpl 先例；差异只在「提取方式 / 死链语义」两个数据维度）：
+    //   type          边类型名（GRAPH_EDGE_TYPES 由注册表派生 → notes-graph RPC type 过滤白名单/byType 键/死链清单 type 字段自动跟随）
+    //   extract(note, cache) 纯函数：只读 n（cache 供同笔记多描述符共享一次正文扫描），返回出现清单 [{ target, meta }]
+    //   deadLinkable  目标解析不中是否计死链：true = 走解析/置死/raw 复活通道；false = 命名空间边永不死链（dispatch 承载 to=session:<id> 语义）
+    //   resolve       仅 deadLinkable:true：'full' = id 精确 + 全库标题精确（与 client 反向链接同口径）| 'id' = 仅 id 精确（softref 软链口径）
+    //   deadVia       仅 deadLinkable:true：死链时 via 回退值（link/mount='raw' 保留原始形态供复活比对；softref='id'——runLog 写的就是 id）
+    //   via           仅 deadLinkable:false：入图 via（dispatch='session'）
+    // 四描述符：link（正文 [[双链]] 行内引用）/ mount（行首列表项挂载行，注入索引根笔记 §1 形态）/
+    //   softref（front-matter 软链 schedule.runLog 执行记录）/ dispatch（派发记录 → 会话命名空间，永不死链）。
+    // 红线：①只读挂载——本模块零改写笔记内容（onNoteChanged 监听只在内存图上做增量，落盘载荷原样透传）；
+    //       ②图是派生物——全量重建 _graphRebuild 随时可做（notes-graph {rebuild:true}），增量异常一律降级
+    //       built=false，下次查询自动全量重建自愈（错得安全：宁可重建不报错卡死）。
+    // 双包共源：本文件物理单份，manifest.dev.js / manifest.dist.js 同名登记（check 节 45/71 看守）。
+    // 命名纪律：双链词法与 client 内核同一口径（target 不含方括号/换行），但符号独立命名——host 不引入 client 内核符号。
+    const EDGE_REGISTRY = [
+      { type: 'link', deadLinkable: true, resolve: 'full', deadVia: 'raw', extract: function (n, cache) { if (!cache.body) cache.body = _graphBodyScan(n); return cache.body.link } },
+      { type: 'softref', deadLinkable: true, resolve: 'id', deadVia: 'id', extract: _graphSoftrefOccs },
+      { type: 'mount', deadLinkable: true, resolve: 'full', deadVia: 'raw', extract: function (n, cache) { if (!cache.body) cache.body = _graphBodyScan(n); return cache.body.mount } },
+      { type: 'dispatch', deadLinkable: false, via: 'session', extract: _graphDispatchOccs }
+    ]
+    // nodes: id → { title, dead }（dead=软删/清除后不再作解析目标）；edges: [{from,to,raw,type,via,dead,meta}]
+    //   raw = 双链原始 target（死链保留原始形态供复活比对）；via = 'id'|'title'|'raw'|'session'（解析路径）
+    const graphState = { built: false, edges: [], nodes: {} }
+    const GRAPH_EDGE_TYPES = EDGE_REGISTRY.map(function (d) { return d.type })
+    const GRAPH_LINK_RE = /\[\[([^\[\]\r\n]+)\]\]/g
+    const GRAPH_MOUNT_RE = /^\s*(?:[-*]|\d+[.)])\s+\[\[([^\[\]\r\n]+)\]\]/
+    const GRAPH_SESSION_NS = 'session:'
+    function _graphSortKey(e) { return e.from + '\u0000' + e.to + '\u0000' + e.type }
+    // 死链复活/改名复估共用：指向 id 的存活边 → 置死（to 回退 raw 原始形态）
+    function _graphKillEdgesTo(id) {
+      for (const e of graphState.edges) {
+        if (!e.dead && e.to === id) { e.dead = true; e.to = e.raw }
+      }
+    }
+    // 按当前库解析 target：id 精确优先、标题全库精确匹配（与 client 反向链接同一口径）；不中 → null（死链）
+    function _graphResolve(target) {
+      const n = graphState.nodes[target]
+      if (n && !n.dead) return { id: target, via: 'id' }
+      for (const id in graphState.nodes) {
+        const nd = graphState.nodes[id]
+        if (!nd.dead && nd.title && nd.title === target) return { id: id, via: 'title' }
+      }
+      return null
+    }
+    // ---- EDGE_REGISTRY 提取器（纯函数：只读入参，不触库不改写）----
+    // 正文出现扫描（link/mount 共享一次）：挂载行只归该行的那一处出现（摘出后行内余文照常按 link 扫），其余出现 = link；
+    // 按 target×type 去重（meta.count 记出现次数），link/mount 两组各自保持首次出现序
+    function _graphBodyScan(n) {
+      const body = String(n.body || '')
+      const seen = {}
+      const add = function (target, type) {
+        const key = target + '\u0000' + type
+        if (!seen[key]) seen[key] = { target: target, type: type, count: 0 }
+        seen[key].count++
+      }
+      let rest = ''
+      for (const ln of body.split(/\r?\n/)) {
+        const m = ln.match(GRAPH_MOUNT_RE)
+        if (m) { add(m[1], 'mount'); rest += ln.slice(0, ln.indexOf(m[0])) + ln.slice(ln.indexOf(m[0]) + m[0].length) + '\n' }
+        else rest += ln + '\n'
+      }
+      let m2
+      GRAPH_LINK_RE.lastIndex = 0
+      while ((m2 = GRAPH_LINK_RE.exec(rest)) !== null) add(m2[1], 'link')
+      const link = [], mount = []
+      for (const k in seen) {
+        const it = seen[k]
+        ;(it.type === 'mount' ? mount : link).push({ target: it.target, meta: { count: it.count } })
+      }
+      return { link: link, mount: mount }
+    }
+    // softref 提取：schedule.runLog 软链（自链排除；目标不存在同样计死链）
+    function _graphSoftrefOccs(n) {
+      if (!(n.schedule && n.schedule.runLog && String(n.schedule.runLog) !== n.id)) return []
+      const rl = String(n.schedule.runLog)
+      return [{ target: rl, meta: { key: 'schedule.runLog' } }]
+    }
+    // dispatch 提取：派发记录（to = session:<sessionId> 会话命名空间，不属笔记库；status 为记录时点快照，done 布尔向后兼容）
+    function _graphDispatchOccs(n) {
+      const out = []
+      for (const d of (n.dispatches || [])) {
+        if (!d || !d.sessionId) continue
+        out.push({ target: GRAPH_SESSION_NS + d.sessionId, meta: { at: d.at || '', status: d.dispatchStatus || (d.done === true ? 'done' : 'sent') } })
+      }
+      return out
+    }
+    // 注册表收口：单描述符出现清单 → 边（统一自链排除；deadLinkable 走解析/死链/raw 复活通道，否则命名空间边原样入图永不置死）
+    function _graphEdgesOf(d, n, cache) {
+      const out = []
+      for (const o of d.extract(n, cache)) {
+        if (o.target === n.id) continue   // 自链不入图（反向链接面板同口径；dispatch target 为 session 命名空间天然不中）
+        if (d.deadLinkable) {
+          const r = d.resolve === 'id'
+            ? (graphState.nodes[o.target] && !graphState.nodes[o.target].dead ? { id: o.target, via: 'id' } : null)
+            : _graphResolve(o.target)
+          out.push({ from: n.id, to: r ? r.id : o.target, raw: o.target, type: d.type, via: r ? r.via : d.deadVia, dead: !r, meta: o.meta })
+        } else {
+          out.push({ from: n.id, to: o.target, raw: o.target, type: d.type, via: d.via, dead: false, meta: o.meta })
+        }
+      }
+      return out
+    }
+    // 单笔记边提取：遍历 EDGE_REGISTRY 逐描述符收口（扩展 = 注册表追加描述符，此处与查询/死链通道零改动）
+    function _graphEdgesFor(n) {
+      const out = []
+      if (!n || n.deleted === true || n.tombstoned) return out
+      const cache = {}
+      for (const d of EDGE_REGISTRY) {
+        const es = _graphEdgesOf(d, n, cache)
+        for (const e of es) out.push(e)
+      }
+      return out
+    }
+    // 全量重建（复用 _list：含 kind=log——日志正文双链覆盖「相关笔记」节；排除软删）
+    async function _graphRebuild() {
+      const all = await _list(undefined, undefined, undefined, false, true)
+      const nodes = {}
+      for (const n of all) nodes[n.id] = { title: n.title || '', dead: false }
+      graphState.nodes = nodes
+      graphState.edges = []
+      for (const n of all) graphState.edges = graphState.edges.concat(_graphEdgesFor(n))
+      graphState.built = true
+      return graphState
+    }
+    async function _graphEnsure() { if (!graphState.built) await _graphRebuild(); return graphState }
+    // 增量·节点 upsert（create/update/restore 共用；restore = 删除态笔记重新 persistNote(deleted:false) 同通道覆盖）
+    function _graphUpsert(n) {
+      if (!graphState.built) return
+      const prev = graphState.nodes[n.id]
+      const title = n.title || ''
+      if (prev && prev.title && prev.title !== title) {
+        // 改名：原经旧标题解析指向本笔记的存活边 → 复估置死（raw 保留旧标题，下轮 revive 不误复活）
+        for (const e of graphState.edges) { if (!e.dead && e.to === n.id && e.via === 'title') { e.dead = true; e.to = e.raw } }
+      }
+      graphState.nodes[n.id] = { title: title, dead: false }
+      // 死链复活：raw 命中本笔记 id 或当前标题（他链指向本笔记，先前目标不存在/已删）
+      for (const e of graphState.edges) {
+        if (e.dead && e.from !== n.id && (e.raw === n.id || (!!title && e.raw === title))) { e.dead = false; e.to = n.id; e.via = e.raw === n.id ? 'id' : 'title' }
+      }
+      _graphDropFrom(n.id)
+      graphState.edges = graphState.edges.concat(_graphEdgesFor(n))
+    }
+    function _graphDropFrom(id) { graphState.edges = graphState.edges.filter(function (e) { return e.from !== id }) }
+    // 增量·节点移除（软删/清除共用）：级联删该节点全部出边 + 指向它的存活边置死（死链 = to 不存在）
+    function _graphRemove(id) {
+      if (!graphState.built) return
+      _graphDropFrom(id)
+      _graphKillEdgesTo(id)
+      if (graphState.nodes[id]) graphState.nodes[id].dead = true
+    }
+    // 增量钩子·事件总线监听（0.4.3+ notes-043-event-bus：persistNote/_purge 洋葱包裹 → onNoteChanged 单点注册表）：
+    //   create/update/delete/restore/archive/派发记录/runLog 回写全部经 persistNote 落盘 → 总线单点分发；
+    //   purge 事件由 _purge 落盘成功后分发（彻底删除不经 persistNote，cache.delete 直通），载荷只带 id。
+    //   注册序 = 执行序、监听者异常隔离由总线保证；本监听仍保留降级兜底（增量异常 → built=false，下次查询全量重建自愈）。
+    onNoteChanged(function (ev) {
+      try {
+        if (!ev) return
+        if (ev.event === 'purge') { _graphRemove(ev.id); return }
+        const n = ev.note
+        if (n && n.id) { if (n.deleted === true) _graphRemove(n.id); else _graphUpsert(n) }
+      } catch (e) { graphState.built = false }
+    })
+    function _graphByType(es) {
+      const o = {}
+      for (const t of GRAPH_EDGE_TYPES) o[t] = 0
+      for (const e of es) o[e.type] = (o[e.type] || 0) + 1
+      return o
+    }
+    // 图查询 RPC：notes-graph {id?, type?, direction?, rebuild?}
+    //   无 id：全图概览 { nodes, edges, byType, dead:[{from,target,type}], types }
+    //   有 id：{ id, exists, out, back, counts:{out,back}, byType }
+    //   direction：'out'|'in'|'both'（缺省 both）；type：单类型过滤（白名单 = GRAPH_EDGE_TYPES，注册表派生）；rebuild:true 强制全量重建（增量一致性对照口）
+    disposers.push(handle('notes-graph', async (args) => {
+      try {
+        const a = args || {}
+        if (a.rebuild || !graphState.built) await _graphRebuild()
+        const et = a.type !== undefined && a.type !== null && a.type !== '' ? String(a.type) : undefined
+        if (et !== undefined && GRAPH_EDGE_TYPES.indexOf(et) < 0) return { error: 'notes-graph type 须为 ' + GRAPH_EDGE_TYPES.join('/') + '（实得 ' + et + '）' }
+        const dir = ['out', 'in', 'both'].indexOf(a.direction) >= 0 ? a.direction : 'both'
+        const filt = function (es) { return es.filter(function (e) { return !et || e.type === et }) }
+        if (a.id !== undefined && a.id !== null && a.id !== '') {
+          const id = String(a.id)
+          const node = graphState.nodes[id]
+          const allOut = filt(graphState.edges.filter(function (e) { return e.from === id }))
+          const allBack = filt(graphState.edges.filter(function (e) { return e.to === id && !e.dead && e.from !== id }))
+          const out = dir === 'in' ? [] : allOut
+          const back = dir === 'out' ? [] : allBack
+          return { id: id, exists: !!(node && !node.dead), out: out, back: back, counts: { out: allOut.length, back: allBack.length }, byType: _graphByType(allOut.concat(allBack)) }
+        }
+        const es = filt(graphState.edges)
+        const dead = es.filter(function (e) { return e.dead }).map(function (e) { return { from: e.from, target: e.raw, type: e.type } })
+        let live = 0
+        for (const id in graphState.nodes) { if (!graphState.nodes[id].dead) live++ }
+        return { nodes: live, edges: es.length, edgeList: es, byType: _graphByType(es), dead: dead, types: GRAPH_EDGE_TYPES }
+      } catch (e) { return { error: String(e.message || e) } }
+    }))
+    // ==== notes-graph END ====
+    // ==== rootnote BEGIN ====（0.4.3 内核②：RootNote 托管节框架，notes-043-rootnote。
+    // 目标：把「机器托管的根笔记自动节」从 runLog 专属实现提炼为一套通用框架——
+    //   RootNoteTpl 模板声明式描述：锚点节标题（'## §名'）/ 行格式（lineOf 消费者注入）/
+    //   排序（newestFirst 新→旧缺省）/ 容量上限（max 裁尾）/ 幂等键（keyOfLine/keyOfEntry 去重）/ 软链键（linkOf/writeLink）。
+    // 红线（迁就现状格式，不是反过来）：
+    //   ①节外零触碰——锚点节标题行与用户手写备注区逐字节保留；托管笔记其余正文原样；
+    //   ②节锚点不存在则创建（首写时 pre 缺省补锚点行）；
+    //   ③幂等——同幂等键条目已存在跳过（崩溃重放/双通道回执防御）；
+    //   ④容量裁尾——合并序保留前 max 条（缺省新→旧 = 保最新裁最旧）；
+    //   ⑤机器产物零历史快照——托管笔记创建/追加/摘行一律 persistNote { history:false }。
+    // 创建级锁（0.4.3+ notes-043-ensure-lock）：rootNoteCreateLock 模块级单链串行化懒创建读-改-写窗口（见下方标记），
+    //   索引（injectindex.js idxEnsure）/档案（ledger.js）/runLog（本框架 ensure）三消费点共用，并发首建不再产孤儿文件。
+    // 依赖序位：本文件消费前位模块的 _create / loadNote / persistNote（notes.js / kernel/persist.js），被后位 schedule.js 消费。
+    const ROOTNOTE_MAX_DEFAULT = 50
+    // 模板归一：缺省补齐（head 必填；max 缺省 50；newestFirst 缺省 true；行格式缺省按 /^-\s/ 识别条目行、整行为幂等键）
+    function rootNoteTpl(tpl) {
+      return Object.assign({ max: ROOTNOTE_MAX_DEFAULT, newestFirst: true, lineRe: /^-\s/ }, tpl || {})
+    }
+    // 行幂等键：keyOfLine 注入优先，缺省整行
+    function rootNoteKeyOfLine(tpl, line) { return tpl.keyOfLine ? tpl.keyOfLine(line) : line }
+    // 节切分（纯函数）：body → { pre（至锚点行含；无锚点 = [锚点行]）, entries（条目行）, others（非条目非空行=用户手写备注） }
+    //   无锚点时 rest = 全部行（迁就现状：与 runLog 原实现同口径，既有正文不丢，锚点行补在最前）
+    function rootNoteSplit(body, tpl) {
+      tpl = rootNoteTpl(tpl)
+      const lines = String(body || '').split('\n')
+      let headIdx = -1
+      for (let i = 0; i < lines.length; i++) { if (lines[i].trim() === tpl.head) { headIdx = i; break } }
+      const pre = headIdx >= 0 ? lines.slice(0, headIdx + 1) : [tpl.head]
+      const rest = headIdx >= 0 ? lines.slice(headIdx + 1) : lines
+      const entries = rest.filter(function (l) { return tpl.lineRe.test(l) })
+      const others = rest.filter(function (l) { return !tpl.lineRe.test(l) && l.trim() !== '' })
+      return { pre: pre, entries: entries, others: others }
+    }
+    // 节重写（纯函数）：pre + 空行 + 合并条目（新条目按排序入队 + 旧条目，按行幂等键去重，≤max 裁尾）+（备注区）
+    function rootNoteRender(body, tpl, newLines) {
+      tpl = rootNoteTpl(tpl)
+      const sec = rootNoteSplit(body, tpl)
+      const all = tpl.newestFirst === false ? sec.entries.concat(newLines) : newLines.concat(sec.entries)
+      const seen = {}
+      const merged = []
+      for (const l of all) {
+        const key = rootNoteKeyOfLine(tpl, l)
+        if (seen[key]) continue
+        seen[key] = true
+        merged.push(l)
+        if (merged.length >= (tpl.max || ROOTNOTE_MAX_DEFAULT)) break
+      }
+      let out = sec.pre.concat(['']).concat(merged)
+      if (sec.others.length) out = out.concat(['']).concat(sec.others)
+      return out.join('\n') + '\n'
+    }
+    // sys 归位（0.4.3⑥ notes-043-sys-kind）：存量托管笔记 kind 元数据迁移到 sys——只写 kind（正文/其余字段零变化红线），
+    //   { history:false } 机器产物零历史快照；异常吞（迁移失败不阻塞主链路，下次 ensure 重试）
+    async function rootNoteEnsureSysKind(n) {
+      try {
+        if (n && n.kind !== 'sys') {
+          n.kind = 'sys'
+          n.updatedAt = new Date().toISOString()
+          await persistNote(n, { history: false })
+        }
+      } catch (e) {}
+      return n
+    }
+    // 托管笔记解析：id 存活（非软删/非墓碑）→ 笔记，否则 null
+    async function rootNoteResolve(id) {
+      if (!id) return null
+      try { const t = await loadNote(String(id)); if (t && !t.deleted && !t.tombstoned) return t } catch (e) {}
+      return null
+    }
+    // 创建级锁（0.4.3+ notes-043-ensure-lock）：模块级单链 Promise（同 notes.js quickChain 模式）串行化全部
+    //   「托管根笔记懒创建」的「存在性检查 → 创建 → 软链回写」读-改-写窗口——索引/档案/runLog 并发首建竞态
+    //   （两个并发 ensure 各建一篇 → 盘上孤儿文件，软链指针只留其一）由此消除；单 host 进程内串行即可，不引跨进程锁。
+    // 红线：①快路径零开销——命中既有根笔记的 ensure 不进锁（锁只覆盖创建窗口，并发 mount 正常路径不变慢）；
+    //       ②失败不断链——创建抛错链不挂（.then 双参吞尾），后续调用仍可重试创建（死锁防护）；
+    //       ③锁内不得再入队本链（同链重入 = 自死锁）——现消费者锁内仅 _create/persistNote/saveSettings/loadNote，无递归 ensure。
+    let _rootNoteCreateChain = Promise.resolve()
+    function rootNoteCreateLock(work) {
+      const run = _rootNoteCreateChain.then(work)
+      _rootNoteCreateChain = run.then(function () {}, function () {})
+      return run
+    }
+    // ensure：软链（linkOf）失效/缺省 → 懒创建托管笔记（标题/类别/文件夹/主题随 tpl.hostNote 派生）+ writeLink 软链回写；
+    //   创建窗口经 rootNoteCreateLock 串行化（notes-043-ensure-lock），锁内双检——并发 ensure 同 hostNote 时后者命中前者产物复用
+    async function rootNoteEnsure(hostNote, tpl) {
+      tpl = rootNoteTpl(tpl)
+      const rl = await rootNoteResolve(tpl.linkOf ? tpl.linkOf(hostNote) : null)
+      if (rl) { if (tpl.kind === 'sys') await rootNoteEnsureSysKind(rl); return rl }   // sys 模板才做存量 kind 迁移（非 sys 模板零触碰）
+      return rootNoteCreateLock(async function () {
+        // 锁内双检：重读宿主最新软链（调用方可能持陈旧快照——writeLink 经 persistNote 落缓存副本，此处读缓存权威）；
+        //   宿主并发删除时回退入参快照（与原行为一致：仍按入参派生创建）
+        const freshHost = await rootNoteResolve(hostNote.id)
+        const rl2 = await rootNoteResolve(tpl.linkOf ? tpl.linkOf(freshHost || hostNote) : null)
+        if (rl2) { if (tpl.kind === 'sys') await rootNoteEnsureSysKind(rl2); return rl2 }
+        const cr = await _create(
+          tpl.titleOf ? tpl.titleOf(hostNote) : String(hostNote.title || hostNote.id),
+          tpl.head + '\n', [],
+          tpl.topicOf ? tpl.topicOf(hostNote) : '未分类',
+          { kind: tpl.kind || 'note', folder: tpl.folderOf ? tpl.folderOf(hostNote) : undefined }
+        )
+        if (!cr || !cr.id) return null
+        if (tpl.writeLink) await tpl.writeLink(hostNote, cr.id)
+        return rootNoteResolve(cr.id)
+      })
+    }
+    // 追加（幂等 + 裁尾 + 落盘）：entries 按时序旧→新传入；框架按排序自行倒序（新→旧时新条目在合并序前列）；
+    //   entry 幂等键经 keyOfEntry（缺省行落键）；命中正文已存在跳过；返回是否落盘
+    async function rootNoteAppend(rl, tpl, entries) {
+      tpl = rootNoteTpl(tpl)
+      const curBody = String(rl.body || '')
+      const newLines = []
+      const ordered = tpl.newestFirst === false ? entries : entries.slice().reverse()
+      for (const d of ordered) {
+        const line = tpl.lineOf(d)
+        const key = tpl.keyOfEntry ? tpl.keyOfEntry(d) : rootNoteKeyOfLine(tpl, line)
+        if (curBody.indexOf(key) >= 0) continue
+        newLines.push(line)
+      }
+      if (!newLines.length) return false
+      rl.body = rootNoteRender(curBody, tpl, newLines)
+      rl.updatedAt = new Date().toISOString()
+      await persistNote(rl, { history: false })
+      return true
+    }
+    // 组合口（runLog 首消费者）：ensure + append，返回托管笔记或 null（异常由消费者吞）
+    async function rootNoteAppendEnsured(hostNote, tpl, entries) {
+      const items = (entries || []).filter(Boolean)
+      if (!items.length) return null
+      const rl = await rootNoteEnsure(hostNote, tpl)
+      if (!rl) return null
+      await rootNoteAppend(rl, tpl, items)
+      return rl
+    }
+    // 按幂等键摘除条目行（removeLine）：节外零触碰——锚点行/备注区逐字节保留；无锚点或键未命中零改动；返回是否落盘
+    async function rootNoteRemoveLine(rl, tpl, key) {
+      tpl = rootNoteTpl(tpl)
+      const body = String(rl.body || '')
+      const sec = rootNoteSplit(body, tpl)
+      if (body.split('\n').indexOf(tpl.head) < 0) return false
+      const kept = sec.entries.filter(function (l) { return rootNoteKeyOfLine(tpl, l) !== key })
+      if (kept.length === sec.entries.length) return false
+      let out = sec.pre
+      if (kept.length) out = out.concat(['']).concat(kept)
+      if (sec.others.length) out = out.concat(['']).concat(sec.others)
+      rl.body = out.join('\n') + '\n'
+      rl.updatedAt = new Date().toISOString()
+      await persistNote(rl, { history: false })
+      return true
+    }
+    // ==== rootnote END ====
+    // ==== inject-index BEGIN ====（0.4.3⑤：注入索引根笔记 + 管线 reference 桶切换 + 挂载行级联动，notes-043-index）
+    // 行为（总纲 n-muufiroz67it 卡5/7）：
+    //   ①升级首启自动建「注入索引（自动）」根笔记（RootNote 框架创建；settings 记 indexNoteId 软链；自身不注入 inject=false；
+    //     创建窗口经 rootNoteCreateLock 创建级锁串行化，并发首建竞态消除——0.4.3+ notes-043-ensure-lock）；
+    //   ②§1 挂载清单：行格式 `- [[n-xxx]] 何时查我：…`（幂等键 = 笔记 id，同笔记唯一行，重挂载 = 换文案）；
+    //     §2 召回指标节占位（卡 6 填充，本卡只保逐字节保留——rootNoteSplit others 区天然不碰）；
+    //   ③管线切换（inject.js 消费）：reference 桶 = §1 逐行（每行 whenToUse + [[链接]]，agent 按需 note_get 拉正文）；
+    //     旧「资料全文注入」通道下线；无索引/索引无行 → 回退空 reference 桶；约定桶全文注入不动（用户裁决红线）；
+    //   ④联动：资料（reference）开注入 → 自动落缺省行（whenToUse=标题，弹层确认后 notes-mount 换文案）；
+    //     关注入/改约定桶 → 摘行；删笔记（软删/彻底删）→ 清行（图内核死链联动上游——行摘了死链自然不出现）。
+    //   ⑤索引笔记编辑器可见可手工整理（recall=false 不进目录注入，但列表/编辑器可见）；机器只行级操作（RootNote 节外零触碰）。
+    // 依赖序位：rootnote.js（框架）之后、inject.js（管线消费）之前；_update/_delete/_purge/_create 包装序位在 graph.js 之后（RPC 域包装保留；
+    //   graph 增量维护 0.4.3+ 已迁 onNoteChanged 事件总线，notes-043-event-bus——本模块包装与之不再叠加）。
+    const INJECT_INDEX_TITLE = '注入索引（自动）'
+    const INJECT_INDEX_HEAD = '## §1 挂载清单'
+    const INJECT_INDEX_S2 = '## §2 召回指标'
+    const INJECT_INDEX_BODY = INJECT_INDEX_HEAD + '\n\n' + INJECT_INDEX_S2 + '\n'
+    const INJECT_INDEX_MAX = 200
+    // RootNote 模板：newestFirst=false 挂载序稳定（追加节尾）；§2 指标节（非条目行）进 others 区逐字节保留
+    const INJECT_INDEX_TPL = rootNoteTpl({
+      head: INJECT_INDEX_HEAD,
+      lineRe: /^\s*-\s\[\[[^\[\]\r\n]+\]\]/,
+      keyOfLine: function (l) { const m = String(l).match(/\[\[([^\[\]\r\n]+)\]\]/); return m ? m[1] : l },
+      keyOfEntry: function (d) { return d.id },
+      lineOf: function (d) { return '- [[' + d.id + ']] ' + String(d.when == null ? '' : d.when).replace(/[\r\n]+/g, ' ').trim() },
+      max: INJECT_INDEX_MAX,
+      newestFirst: false
+    })
+    // 索引笔记解析（同步，conventionText 管线用）：indexNoteId 指针优先，丢了按 kind=sys 判定（0.4.3⑥）在 cache 自愈找回，
+    //   再退按标题（存量旧笔记——升级前创建的索引）；都没有 → null
+    function idxNoteSync() {
+      try {
+        if (settingsCache && settingsCache.indexNoteId) {
+          const n = cache.get(String(settingsCache.indexNoteId))
+          if (n && !n.deleted && !n.tombstoned) return n
+        }
+        for (const n of cache.values()) { if (!n.deleted && !n.tombstoned && (n.kind || 'note') === 'sys' && n.title === INJECT_INDEX_TITLE) return n }
+        for (const n of cache.values()) { if (!n.deleted && !n.tombstoned && n.title === INJECT_INDEX_TITLE) return n }
+      } catch (e) {}
+      return null
+    }
+    // §1 挂载行解析（同步）：[{ id, when, raw }]——行首 `- [[target]] 文案`；无索引 → []（管线回退空 reference 桶）
+    function idxLinesSync() {
+      const rl = idxNoteSync()
+      if (!rl) return []
+      const out = []
+      for (const l of String(rl.body || '').split('\n')) {
+        const m = l.match(/^\s*-\s\[\[([^\[\]\r\n]+)\]\]\s*(.*)$/)
+        if (m) out.push({ id: m[1], when: m[2] || '', raw: l.trim() })
+      }
+      return out
+    }
+    // 升级首启/指针丢失自愈：懒创建索引根笔记（kind=sys 系统根笔记——recall=false 不进目录注入；自身不 inject）；
+    //   存量迁移（0.4.3⑥）：按标题找回的旧索引 kind≠sys → rootNoteEnsureSysKind 只写 kind 元数据（正文零变化红线）；返回托管笔记或 null
+    // 创建级锁（0.4.3+ notes-043-ensure-lock）：「存在性检查 → 创建 → indexNoteId 回写」读-改-写窗口经 rootNoteCreateLock 串行化——
+    //   并发首建竞态（索引不存在时两个并发 notes-mount 各建一篇，盘上孤儿索引文件）消除；命中既有索引走快路径不进锁零开销
+    async function idxEnsure() {
+      try {
+        await loadSettings()
+        let rl = idxNoteSync()
+        if (rl) {
+          await rootNoteEnsureSysKind(rl)
+          if (settingsCache.indexNoteId !== rl.id) { settingsCache.indexNoteId = rl.id; await saveSettings() }
+          return rl
+        }
+        return await rootNoteCreateLock(async function () {
+          // 锁内双检：并发首建时后者命中前者产物（settings 指针/标题扫描同口径），不再重复创建
+          rl = idxNoteSync()
+          if (rl) {
+            await rootNoteEnsureSysKind(rl)
+            if (settingsCache.indexNoteId !== rl.id) { settingsCache.indexNoteId = rl.id; await saveSettings() }
+            return rl
+          }
+          const cr = await _create(INJECT_INDEX_TITLE, INJECT_INDEX_BODY, ['自动'], '注入索引', { kind: 'sys', inject: false, recall: false })
+          if (!cr || !cr.id) return null
+          settingsCache.indexNoteId = cr.id
+          await saveSettings()
+          return rootNoteResolve(cr.id)
+        })
+      } catch (e) { return null }
+    }
+    // 挂载/换文案（幂等）：先摘同键旧行再落新行（同笔记唯一行）；机器只行级操作；返回索引笔记 id 或 null
+    async function idxMount(noteId, whenToUse) {
+      const rl = await idxEnsure()
+      if (!rl) return null
+      const key = String(noteId)
+      await rootNoteRemoveLine(rl, INJECT_INDEX_TPL, key)
+      await rootNoteAppend(rl, INJECT_INDEX_TPL, [{ id: key, when: whenToUse }])
+      return rl.id
+    }
+    // 摘行（幂等零改动）：索引不存在/键未命中均 no-op 返回 false
+    async function idxUnmount(noteId) {
+      const rl = idxNoteSync()
+      if (!rl) return false
+      return rootNoteRemoveLine(rl, INJECT_INDEX_TPL, String(noteId))
+    }
+    // ---- 挂载 RPC：notes-mount { id, whenToUse? }（弹层确认落行；缺省 whenToUse = 标题）----
+    disposers.push(handle('notes-mount', async (args) => {
+      try {
+        if (!args || !args.id) return { error: 'notes-mount 需要 id' }
+        const n = await loadNote(String(args.id))
+        if (!n || n.deleted || n.tombstoned) return { error: 'notes-mount: 笔记不存在' }
+        const when = args.whenToUse === undefined || args.whenToUse === null ? String(n.title || '') : String(args.whenToUse)
+        const rlId = await idxMount(String(args.id), when)
+        if (!rlId) return { error: 'notes-mount: 索引笔记创建失败' }
+        return { ok: true, id: String(args.id), indexNoteId: rlId, whenToUse: when }
+      } catch (e) { return { error: String(e.message || e) } }
+    }))
+    // 索引总览（client 弹层回填 / 卡 6 指标数据源）：{ indexNoteId, lines:[{ id, when, raw }] }
+    disposers.push(handle('notes-mount-list', async () => {
+      try { const rl = idxNoteSync(); return { indexNoteId: rl ? rl.id : null, lines: idxLinesSync() } }
+      catch (e) { return { error: String(e.message || e) } }
+    }))
+    // ---- 开关联动（单点收口包装）：_create / _update 后按注入态同步挂载行 ----
+    // 同步判据：存活 + inject=true + injectRole=reference → 无行补缺省行（whenToUse=标题）；
+    //          其余（关注入 / 约定桶 / 索引自身）→ 摘行（幂等零改动）。异常全吞（联动失败不阻塞主写路径）。
+    async function _idxSyncMount(id) {
+      try {
+        const n = await loadNote(id)
+        if (n && !n.deleted && !n.tombstoned && n.inject === true && n.injectRole === 'reference') {
+          const has = idxLinesSync().some(function (l) { return l.id === String(n.id) })
+          if (!has) await idxMount(n.id, n.title || n.id)
+        } else if (n) { await idxUnmount(id) }
+      } catch (e) {}
+    }
+    const _idxCreateOrig = _create
+    _create = async function (title, body, tags, topic, opts) {
+      const r = await _idxCreateOrig(title, body, tags, topic, opts)
+      try { if (r && r.id) await _idxSyncMount(r.id) } catch (e) {}
+      return r
+    }
+    const _idxUpdateOrig = _update
+    _update = async function (id, title, body, tags, topic, kind, status, inject, injectTo, folder, recall, injectRole, sensitive, extra) {
+      const r = await _idxUpdateOrig(id, title, body, tags, topic, kind, status, inject, injectTo, folder, recall, injectRole, sensitive, extra)
+      try { await _idxSyncMount(id) } catch (e) {}
+      return r
+    }
+    // 删笔记 → 清行（软删/彻底删双通道；恢复不自动回挂——挂载是显式动作，回收站恢复后可重开注入）
+    const _idxDeleteOrig = _delete
+    _delete = async function (id) {
+      const r = await _idxDeleteOrig(id)
+      try { await idxUnmount(id) } catch (e) {}
+      return r
+    }
+    const _idxPurgeOrig = _purge
+    _purge = async function (id) {
+      const r = await _idxPurgeOrig(id)
+      try { await idxUnmount(id) } catch (e) {}
+      return r
+    }
+    // ==== inject-index END ====
+    // ==== notes-ledger BEGIN ====（0.4.3⑥：效用账本——日志双链扫描 → §2 指标行级更新 + 记忆档案懒创建回填（无 LLM），notes-043-ledger）
+    // 行为（总纲 n-muufiroz67it 卡6/7）：
+    //   ①扫描：复用 notes-graph 内核（_graphRebuild 全量只读重建，图是派生物），取近 7 天 kind=log 日志的 link 存活边
+    //     聚合引用（本周口径 = logDate 距今 ≤7 天，缺省回退 createdAt 前 10 位；无法解析的日志不提名）。扫描只读，零 LLM。
+    //   ②§2 指标行级更新（注入索引根笔记「## §2 召回指标」节整节重写，§1 与备注区逐字节不动）：
+    //     挂载总数 / 本周引用 Top5 / 零引用候选（挂载且笔记库内 0 引用）/ 任务挂载排行
+    //     （口径受限：看板 contextFiles RPC 本期未接入，可得项 = useCount 引用计数 Top5，行内注明口径）。
+    //   ③记忆档案懒创建：近 7 天日志引用且无档案 → 建「记忆 @标题 · 档案」（首行 [[记忆id]]；front-matter refNote
+    //     结构化软链指向记忆 id；永不 inject 红线 + recall=false）→ 引用记录倒序追加（RootNote 框架，幂等键 = 日志 id，重放不重复行）。
+    //   ④触发：schedule.js cron tick 顺带（10min 节流在 _ledgerRefresh 内部）+ notes-ledger-refresh 手动 RPC（绕过节流）。
+    // 红线：档案/指标永不 inject（ensure 内强制纠正锁）；无 LLM；扫描只读（写入仅限索引笔记 §2 节行级 + 档案笔记，均 { history:false } 机器产物零历史快照）。
+    // 依赖序位：rootnote.js（框架）→ injectindex.js（索引 INJECT_INDEX_S2/idxEnsure/idxLinesSync）之后、schedule.js（cron 顺带）之前；
+    //   双清单同名共源（无 .dist 变体，check 节 45/74 看守）。
+    const LEDGER_WINDOW_MS = 7 * 86400000        // 本周口径：近 7 天日志
+    const LEDGER_CRON_MIN_MS = 10 * 60 * 1000    // cron 顺带刷新节流（手动 RPC 不受限）
+    const LEDGER_TOP_N = 5                       // Top5 行容量
+    const LEDGER_ZERO_MAX = 10                   // 零引用候选提名上限（提名而非穷尽）
+    const LEDGER_ARCHIVE_MAX = 50                // 档案引用记录容量红线（倒序保留最新 50 条裁尾）
+    // §2 指标节模板：非条目行（备注区）逐字节保留；行级更新 = 整节条目行重写（指标是快照非流水，不做追加式）
+    const LEDGER_S2_TPL = rootNoteTpl({ head: INJECT_INDEX_S2, lineRe: /^\s*-\s/, newestFirst: false, max: 100 })
+    const LEDGER_ARCHIVE_HEAD = '## 引用记录（自动）'
+    // 档案引用记录模板：新→旧倒序 + 日志 id 幂等键（重放/双触发不重复行）+ ≤50 裁尾
+    const LEDGER_ARCHIVE_TPL = rootNoteTpl({
+      head: LEDGER_ARCHIVE_HEAD,
+      max: LEDGER_ARCHIVE_MAX,
+      newestFirst: true,
+      keyOfLine: function (l) { const m = String(l).match(/\[\[([^\[\]\r\n]+)\]\]/); return m ? m[1] : l },
+      keyOfEntry: function (d) { return d.logId },
+      lineOf: function (d) { return '- [[' + d.logId + ']] ' + d.at + ' · ' + String(d.label || '').replace(/[\r\n]+/g, ' ').slice(0, 60) }
+    })
+    // ISO → 本地 YYYY-MM-DD HH:MM（人读优先；与 runLog 条目同口径的本地墙钟语义，符号独立不复用 schedule 域）
+    function ledgerTs(iso) {
+      const ms = Date.parse(iso || '')
+      if (!isFinite(ms)) return String(iso || '')
+      const d = new Date(ms)
+      const p = function (n) { return (n < 10 ? '0' : '') + n }
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
+    }
+    // 日志归键（与日志卫生 suggestLogDateOf 同口径）：logDate 前 10 位优先，回退 createdAt 前 10 位
+    function _ledgerLogDateStr(n) {
+      const s = String(n.logDate || '').slice(0, 10)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+      const c = String(n.createdAt || '').slice(0, 10)
+      return /^\d{4}-\d{2}-\d{2}$/.test(c) ? c : ''
+    }
+    // 扫描（只读）：全量重建图 → 近 7 天日志的 link 存活出边聚合
+    //   refs: 记忆 id → { count 出现次数, logs: [{ logId, at, label }] }；inRefs: 全库 link 存活入度（零引用候选判据，不只看本周）
+    async function _ledgerScan(nowMs) {
+      await _graphRebuild()
+      const all = await _list(undefined, undefined, undefined, false, true)
+      const logs = {}
+      for (const n of all) {
+        if ((n.kind || 'note') !== 'log' || n.deleted || n.tombstoned) continue
+        const ds = _ledgerLogDateStr(n)
+        const ms = ds ? Date.parse(ds + 'T00:00:00') : NaN
+        if (!isFinite(ms) || nowMs - ms > LEDGER_WINDOW_MS || ms - nowMs > LEDGER_WINDOW_MS) continue
+        logs[n.id] = n
+      }
+      const refs = {}
+      let weekRefs = 0
+      for (const e of graphState.edges) {
+        if (e.type !== 'link' || e.dead) continue
+        const lg = logs[e.from]
+        if (!lg) continue
+        const cnt = e.meta && e.meta.count ? e.meta.count : 1
+        const t = String(e.to)
+        if (!refs[t]) refs[t] = { count: 0, logs: [] }
+        refs[t].count += cnt
+        refs[t].logs.push({ logId: e.from, at: ledgerTs(lg.updatedAt || lg.createdAt || ''), label: lg.title || '' })
+        weekRefs += cnt
+      }
+      const inRefs = {}
+      for (const e of graphState.edges) {
+        if (e.type !== 'link' || e.dead) continue
+        inRefs[e.to] = (inRefs[e.to] || 0) + (e.meta && e.meta.count ? e.meta.count : 1)
+      }
+      return { all: all, logs: logs, refs: refs, weekRefs: weekRefs, inRefs: inRefs }
+    }
+    // §2 整节重写（节外零触碰：§1 挂载清单与 §2 后备注区逐字节保留；RootNote split/render 同源语义）
+    async function _ledgerWriteS2(rl, lines) {
+      const body = String(rl.body || '')
+      const sec = rootNoteSplit(body, LEDGER_S2_TPL)
+      let out = sec.pre.concat(['']).concat(lines)
+      if (sec.others.length) out = out.concat(['']).concat(sec.others)
+      rl.body = out.join('\n') + '\n'
+      rl.updatedAt = new Date().toISOString()
+      await persistNote(rl, { history: false })
+    }
+    // 档案查找：refNote 软链精确命中（front-matter 结构化主识别键；标题仅人读）
+    function _ledgerArchiveFind(memId) {
+      for (const n of cache.values()) {
+        if (!n || n.deleted || n.tombstoned) continue
+        if (String(n.refNote || '') === memId) return n
+      }
+      return null
+    }
+    // 档案懒创建（幂等）：无档案 → _create（inject=false + recall=false）→ refNote 软链回写（{ history:false }）；
+    //   永不 inject 红线锁：被人为开注入的档案强制纠正回 false（防套娃注入）
+    // 创建级锁（0.4.3+ notes-043-ensure-lock）：「查找 → 创建 → refNote 回写」窗口经 rootNoteCreateLock 串行化 + 锁内双检
+    //   （_ledgerArchiveFind 扫共享 cache 权威）——并发 refresh 同记忆各建档案的竞态消除；命中既有档案走快路径不进锁
+    async function _ledgerArchiveEnsure(mem) {
+      const memId = String(mem.id)
+      let a = _ledgerArchiveFind(memId)
+      if (a) await rootNoteEnsureSysKind(a)   // 存量迁移（0.4.3⑥）：旧档案 kind=note → sys（只写 kind 元数据，正文零变化）
+      if (!a) {
+        a = await rootNoteCreateLock(async function () {
+          const hit = _ledgerArchiveFind(memId)   // 锁内双检：并发创建者产物已带 refNote 落缓存，命中即复用
+          if (hit) { await rootNoteEnsureSysKind(hit); return hit }
+          const cr = await _create('记忆 @' + String(mem.title || memId) + ' · 档案', '[[' + memId + ']]\n\n' + LEDGER_ARCHIVE_HEAD + '\n', ['自动'], '记忆档案', { kind: 'sys', inject: false, recall: false })
+          if (!cr || !cr.id) return null
+          const na = await rootNoteResolve(cr.id)
+          if (!na) return null
+          na.refNote = memId
+          na.updatedAt = new Date().toISOString()
+          await persistNote(na, { history: false })
+          return na
+        })
+        if (!a) return null
+      }
+      if (a.inject === true) {
+        a.inject = false
+        a.updatedAt = new Date().toISOString()
+        await persistNote(a, { history: false })
+      }
+      return a
+    }
+    function _ledgerFmtTop(items) { return items.length ? items.map(function (it) { return '[[' + it.id + ']]×' + it.count }).join('、') : '无' }
+    // 刷新主口：§2 快照重写 + 记忆档案懒创建回填。trigger='cron' 时 10min 节流；手动 RPC 绕过节流。
+    // 全量吞异常由调用方兜底（cron 顺带）或转 error 字段（手动 RPC）——账本是观察面产物，任何故障不扩散主链路。
+    async function _ledgerRefresh(opts) {
+      const trig = (opts && opts.trigger) || 'manual'
+      const nowMs = Date.now()
+      if (trig === 'cron' && nowMs - ledgerLastCronMs < LEDGER_CRON_MIN_MS) return { ok: true, skipped: 'throttled' }
+      if (trig === 'cron') ledgerLastCronMs = nowMs
+      const rl = await idxEnsure()
+      if (!rl) return { ok: false, error: '注入索引笔记不可用' }
+      const scan = await _ledgerScan(nowMs)
+      const mounted = idxLinesSync()
+      const tops = Object.keys(scan.refs).map(function (id) { return { id: id, count: scan.refs[id].count } }).sort(function (x, y) { return y.count - x.count }).slice(0, LEDGER_TOP_N)
+      const zero = mounted.filter(function (l) { return !(scan.inRefs[l.id] > 0) }).slice(0, LEDGER_ZERO_MAX).map(function (l) { return '[[' + l.id + ']]' })
+      const useRank = mounted.map(function (l) {
+        const n = cache.get(l.id)
+        return { id: l.id, count: Math.max(0, (n && !n.deleted && !n.tombstoned && n.useCount) || 0) }
+      }).filter(function (it) { return it.count > 0 }).sort(function (x, y) { return y.count - x.count }).slice(0, LEDGER_TOP_N)
+      const lines = [
+        '- 挂载总数：' + mounted.length,
+        '- 本周引用 Top5（近 7 天日志双链）：' + _ledgerFmtTop(tops),
+        '- 零引用候选（挂载且笔记库内 0 引用；看板 contextFiles 口径本期未接入）：' + (zero.length ? zero.join('、') : '无'),
+        '- 任务挂载排行（口径受限，可得项=useCount 引用计数 Top5）：' + _ledgerFmtTop(useRank),
+        '- 统计：本周引用日志 ' + Object.keys(scan.logs).length + ' 篇 · 引用 ' + scan.weekRefs + ' 次 · 更新于 ' + ledgerTs(new Date(nowMs).toISOString()) + '（' + trig + '）'
+      ]
+      // 分通道召回率旁挂（0.4.3+ 卡⑫ 统一召回遥测 notes-043-inject-receipt）：近 7 天流水口径（五通道交付→note_get 取用），
+      //   与上方双链引用口径不混算（行内标注）；无数据/异常静默略过（遥测故障不扩散账本主链路）
+      try {
+        const rc = await _recallStats({ sinceDays: 7 })
+        if (rc && rc.ok && rc.events > 0) lines.push('- 分通道召回率（近 7 天遥测流水：交付→取用口径，与上方双链引用口径不混算）：' + _recallFmtChannels(rc.channels))
+      } catch (e) {}
+      await _ledgerWriteS2(rl, lines)
+      // 记忆档案懒创建回填：仅近 7 天被日志引用的记忆（零引用挂载不建空档案）
+      let archivesCreated = 0
+      for (const memId of Object.keys(scan.refs)) {
+        const mem = await rootNoteResolve(memId)
+        if (!mem) continue
+        const existed = !!_ledgerArchiveFind(memId)
+        const a = await _ledgerArchiveEnsure(mem)
+        if (!a) continue
+        if (!existed) archivesCreated++
+        await rootNoteAppend(a, LEDGER_ARCHIVE_TPL, scan.refs[memId].logs)
+      }
+      return { ok: true, trigger: trig, indexNoteId: rl.id, mountTotal: mounted.length, weekLogs: Object.keys(scan.logs).length, weekRefs: scan.weekRefs, top: tops, zeroRefCount: zero.length, archivesCreated: archivesCreated }
+    }
+    let ledgerLastCronMs = 0
+    // 手动触发 RPC：notes-ledger-refresh { trigger? }（缺省 manual，绕过 cron 节流）
+    disposers.push(handle('notes-ledger-refresh', async (args) => {
+      try { return await _ledgerRefresh({ trigger: (args && args.trigger) || 'manual' }) }
+      catch (e) { return { error: String(e.message || e) } }
+    }))
+    // ==== notes-ledger END ====
+    // ==== recall-telemetry BEGIN ====（0.4.3+ 卡⑫：统一召回遥测——五通道 × 交付/使用事件流水 + 分通道召回率查询面，notes-043-inject-receipt）
+    // 覆盖矩阵（五通道，主窗口裁决 n-muufiroz67it 卡⑫ 修订版）：
+    //   inject  装配（强）：conventionText 真实注入路径（预览 sidOverride 不计）实际渲染的约定 id 集 + 资料桶存活索引行 id 集；
+    //   mount   任务挂载（中）：_dispatch 派发成功 = 笔记作为待办上下文挂载进目标任务会话
+    //     （看板 contextFiles/contextNotes 属宿主域 task_create 通道，不在本插件观察面——本通道即笔记侧唯一可观测的挂载点，口径注明）；
+    //   search  自由检索（弱）：notes-search RPC 与 note_search 工具各自实际返回的 id 集（两处埋点同源口径）；
+    //   get     按需取（使用信号）：note_get 工具 + notes-get RPC 成功返回（取用 = 五通道统一的「使用」事件源）；
+    //   catalog 目录（弱）：catalogText 真实渲染路径实际出清单的 id 集（可枚举，预览不计）。
+    // 分仓策略（低频明细 + 高频日聚合）：
+    //   · 低频通道（inject/mount/catalog）记原始回执行：- {"ts","channel","ids":[],"session"?}——
+    //     签名去重（同通道同会话同 id 集连续重复装配只记一行，防每轮系统提示拼装写盘风暴；id 集按集合序判等——排序 join，换序不重复记；id 集/会话变化即新签名立即记）；
+    //   · 高频通道（search/get）记日聚合行：- {"day","channel","id","count"}，行级 upsert 幂等（同日同通道同 id = count 累加，不爆行）——
+    //     keyOfLine 取 day|channel|id 复合键，RootNote render 合并序新行在前、同键新行胜出 = 天然 upsert；
+    //     内存 pending 累积 + 3s 防抖批量落盘（整批一次读-改-写）+ 卸载 flush（index.js effect 挂载点）。
+    // 托管根笔记：「召回遥测（自动）」kind=sys + recall=false + inject=false（永不进目录注入），
+    //   永不建议器提名（kind=sys 豁免面既有收口，memory.js 双重保险）；inject 红线锁（人为开注入 → 落盘时强制纠正，防套娃注入）；
+    //   settings.recallNoteId 软链指针（与 indexNoteId 同模式）；机器产物零历史快照（{ history:false }）；容量红线 max 400 裁尾（保最新裁最旧）；
+    //   首事件懒建：建帐与首批行一次 _create 落盘（不空建）；落盘不动 updatedAt（遥测计数不算编辑——useCount 落盘同哲学，防列表排序抖动）。
+    // 红线：埋点零阻塞——全部 fire-and-forget + 静默降级（落盘失败吞异常，不扩散主流程）；写路径经 _recallChain 单链串行（读-改-写不交错）；
+    //   查询语义零变化——只加遥测，不改任何既有返回结构（notes-recall-stats 为新增只读 RPC；读前落账 flush 保证自洽读）。
+    // 依赖序位：rootnote.js（框架）+ injectindex.js/ledger.js（sys 根笔记先例）之后、inject/img-path-hint.js 之前；
+    //   消费方 server/dispatch/inject/search/index 全部运行时引用（函数声明提升，RPC 调用期引用——节 45 方向断言看守）。
+    const RECALL_TITLE = '召回遥测（自动）'
+    const RECALL_HEAD = '## 事件流水（自动）'
+    const RECALL_MAX = 400                  // 容量裁尾红线（合并序保最新裁最旧）
+    const RECALL_AGG_DEBOUNCE_MS = 3000     // 高频通道日聚合防抖（整批一次落盘；卸载 flush 兜底）
+    const RECALL_CHANNELS = ['inject', 'mount', 'search', 'get', 'catalog']
+    // 行解析：`- {json}`；非法行 → null（手写备注行落 RootNote 备注区，节外零触碰保护，lint 不管）
+    function _recallParseLine(l) {
+      const m = String(l).match(/^\s*-\s(\{.*\})\s*$/)
+      if (!m) return null
+      try { const o = JSON.parse(m[1]); return o && typeof o === 'object' ? o : null } catch (e) { return null }
+    }
+    // 行幂等键：日聚合行（day+channel+id 齐备）→ 复合键（upsert 语义：同键新行替换旧行）；原始回执行 → 整行（ts 唯一，重放/双触发去重）
+    function _recallKeyOfLine(l) {
+      const o = _recallParseLine(l)
+      if (o && o.day && o.channel && o.id) return o.day + '|' + o.channel + '|' + o.id
+      return l
+    }
+    const RECALL_TPL = rootNoteTpl({
+      head: RECALL_HEAD,
+      lineRe: /^\s*-\s\{/,
+      max: RECALL_MAX,
+      newestFirst: true,
+      keyOfLine: _recallKeyOfLine,
+      lineOf: function (d) { return '- ' + JSON.stringify(d) }
+    })
+    // 本地日键（YYYY-MM-DD，日聚合行粒度；本地墙钟语义与 ledger 日志归键同口径）
+    function _recallDay(ms) {
+      const d = ms === undefined ? new Date() : new Date(ms)
+      const p = function (n) { return (n < 10 ? '0' : '') + n }
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+    }
+    // 遥测根笔记解析（同步，stats 读路径用）：settings.recallNoteId 指针优先，丢了按 kind=sys + 标题在 cache 自愈找回，再退按标题（存量旧笔记）
+    function _recallNoteSync() {
+      try {
+        if (settingsCache && settingsCache.recallNoteId) {
+          const n = cache.get(String(settingsCache.recallNoteId))
+          if (n && !n.deleted && !n.tombstoned) return n
+        }
+        for (const n of cache.values()) { if (!n.deleted && !n.tombstoned && (n.kind || 'note') === 'sys' && n.title === RECALL_TITLE) return n }
+        for (const n of cache.values()) { if (!n.deleted && !n.tombstoned && n.title === RECALL_TITLE) return n }
+      } catch (e) {}
+      return null
+    }
+    // 解析（异步，落盘路径用）：同步口径之上补指针读盘兜底——重启/重载后冷缓存 cache.get 未命中时经 loadNote 读盘自愈，
+    //   不重复建帐（同一 settings.json 指针跨 apply 生命周期稳定；loadNote 命中即回缓存）
+    async function _recallResolve() {
+      const hit = _recallNoteSync()
+      if (hit) return hit
+      try {
+        if (settingsCache && settingsCache.recallNoteId) {
+          const t = await loadNote(String(settingsCache.recallNoteId))
+          if (t && !t.deleted && !t.tombstoned) return t
+        }
+      } catch (e) {}
+      return null
+    }
+    // 写路径单链串行化：全部落盘（原始行 + 聚合批量 upsert）经同一 promise 链排队，读-改-写不交错；失败吞（遥测永不阻塞主流程）
+    let _recallChain = Promise.resolve()
+    function _recallEnqueue(work) {
+      _recallChain = _recallChain.then(work).catch(function () {})
+      return _recallChain
+    }
+    // 落盘单点（仅链内调用）：RootNote render 合并（聚合行同键新行胜出 = upsert；原始行整行去重 = 重放防御）+ persistNote { history:false }。
+    //   落盘不动 updatedAt（遥测计数不算编辑，useCount 同哲学——防列表排序抖动）；根笔记缺失时带首批行内联懒建（建帐 + 首写一次落盘，不空建）；
+    //   存量根笔记：sys kind 迁移 + inject 红线锁（一次性元数据纠正，允许 bump updatedAt）+ 指针回写。
+    async function _recallPersistRows(newLines) {
+      if (!newLines || !newLines.length) return
+      await loadSettings()
+      let rl = await _recallResolve()
+      if (!rl) {
+        const cr = await _create(RECALL_TITLE, RECALL_HEAD + '\n\n' + newLines.join('\n') + '\n', ['自动'], '召回遥测', { kind: 'sys', inject: false, recall: false })
+        if (!cr || !cr.id) return
+        settingsCache.recallNoteId = cr.id
+        await saveSettings()
+        return
+      }
+      await rootNoteEnsureSysKind(rl)
+      if (rl.inject === true) {   // 永不 inject 红线锁（与记忆档案同 pattern，防套娃注入）
+        rl.inject = false
+        rl.updatedAt = new Date().toISOString()
+        await persistNote(rl, { history: false })
+      }
+      if (settingsCache.recallNoteId !== rl.id) { settingsCache.recallNoteId = rl.id; await saveSettings() }
+      // 聚合行 upsert：pending 增量累加进既有同键行计数（读-改-写在 _recallChain 内串行，不交错）
+      const body = String(rl.body || '')
+      const sec = rootNoteSplit(body, RECALL_TPL)
+      const existing = {}
+      for (const l of sec.entries) {
+        const o = _recallParseLine(l)
+        if (o && o.day && o.channel && o.id) existing[o.day + '|' + o.channel + '|' + o.id] = o.count || 0
+      }
+      const merged = newLines.map(function (l) {
+        const o = _recallParseLine(l)
+        if (o && o.day && o.channel && o.id) {
+          const k = o.day + '|' + o.channel + '|' + o.id
+          const cnt = (existing[k] || 0) + (o.count || 0)
+          existing[k] = 0   // 同批同键不重复累加（pending 键唯一，防御性兜底）
+          return RECALL_TPL.lineOf({ day: o.day, channel: o.channel, id: o.id, count: cnt })
+        }
+        return l
+      })
+      rl.body = rootNoteRender(body, RECALL_TPL, merged)
+      await persistNote(rl, { history: false })   // 不动 rl.updatedAt：机器遥测落盘不算编辑
+    }
+    // 低频通道原始回执行（inject/mount/catalog）：签名去重——同通道同会话同 id 集连续装配只记一行；
+    //   签名按集合序（排序后 join）：同 id 集仅渲染顺序抖动（cache 迭代序/updatedAt 并列）不视为新交付——
+    //   Verifier 驳回②修复：有序 join 会把同集合换序记成第二条交付行（遥测交付量虚增 + --only=78 断言脆）；
+    //   id 集或会话变化即新签名立即记（装配类防每轮系统提示拼装写盘风暴；mount 换会话重派仍计独立交付）
+    const _recallLastSig = {}
+    function _recallRaw(channel, ids, session) {
+      try {
+        const list = []
+        for (const id0 of ids || []) { const s = String(id0 || ''); if (s && list.indexOf(s) < 0) list.push(s) }
+        if (!list.length) return
+        const sig = (session || '') + '|' + list.slice().sort().join(',')
+        if (_recallLastSig[channel] === sig) return
+        _recallLastSig[channel] = sig
+        const row = { ts: new Date().toISOString(), channel: channel, ids: list }
+        if (session) row.session = String(session)
+        const line = RECALL_TPL.lineOf(row)
+        _recallEnqueue(function () { return _recallPersistRows([line]) })
+      } catch (e) {}
+    }
+    // 高频通道日聚合（search/get）：内存 pending 累积 + 防抖批量落盘（整批一次读-改-写）；防抖定时器在 flush 时清除（卸载 flush 不二次触发）
+    const _recallPending = {}
+    let _recallAggTimer = null
+    function _recallHit(channel, ids) {
+      try {
+        const day = _recallDay()
+        let n = 0
+        for (const id0 of ids || []) {
+          const id = String(id0 || '')
+          if (!id) continue
+          const k = day + '|' + channel + '|' + id
+          const cur = _recallPending[k] || { day: day, channel: channel, id: id, count: 0 }
+          cur.count++
+          _recallPending[k] = cur
+          n++
+        }
+        if (!n || _recallAggTimer) return
+        _recallAggTimer = setTimeout(function () { _recallAggTimer = null; _recallFlushAgg() }, RECALL_AGG_DEBOUNCE_MS)
+        if (_recallAggTimer && typeof _recallAggTimer.unref === 'function') _recallAggTimer.unref()
+      } catch (e) {}
+    }
+    // 聚合批量落盘（幂等 upsert）：清防抖定时器（手动/卸载 flush 不二次触发）→ pending 快照即清 → 链内累加合并单次 persist；
+    //   落盘失败丢本批（遥测静默降级语义，不 retry 不阻塞）
+    async function _recallFlushAgg() {
+      try { if (_recallAggTimer) { clearTimeout(_recallAggTimer); _recallAggTimer = null } } catch (e) {}
+      let batch
+      try {
+        const keys = Object.keys(_recallPending)
+        if (!keys.length) return
+        batch = keys.map(function (k) { return RECALL_TPL.lineOf(_recallPending[k]) })
+        for (const k of keys) delete _recallPending[k]
+      } catch (e) { return }
+      await _recallEnqueue(function () { return _recallPersistRows(batch) })
+    }
+    // 查询面统计：窗口内五通道分列
+    //   交付通道（inject/mount/search/catalog）：delivered=交付的去重笔记数，deliveries=交付事件计数（原始行 ids 计数累加/聚合行 count 累加），
+    //     used=交付且窗口内被 get 实际取用的去重数，uses=那些笔记的取用总次数，rate=used/delivered（无交付 → null）；
+    //   get 通道（纯使用信号，无交付侧）：delivered=0/rate=null，used=取用去重笔记数，uses=取用总次数。
+    // 读前落账：防抖 pending 与在途原始行先 flush 再统计（自洽读）；根笔记不存在 → 全零结构（静默降级）。
+    async function _recallStats(opts) {
+      const sinceDays = Math.max(1, Math.floor((opts && opts.sinceDays) || 7))
+      await _recallFlushAgg()
+      await _recallChain.catch(function () {})
+      const fromDay = _recallDay(Date.now() - (sinceDays - 1) * 86400000)   // 日聚合行窗口下沿（含当日共 sinceDays 天，日粒度字符串比较）
+      const fromMs = Date.now() - sinceDays * 86400000                      // 原始回执行 ts 窗口下沿
+      const channels = {}
+      for (const c of RECALL_CHANNELS) channels[c] = { deliveredIds: {}, deliveries: 0 }
+      const getIds = {}
+      const getCount = {}
+      let events = 0
+      const rl = _recallNoteSync()
+      if (rl) {
+        const sec = rootNoteSplit(String(rl.body || ''), RECALL_TPL)
+        for (const l of sec.entries) {
+          const o = _recallParseLine(l)
+          if (!o || RECALL_CHANNELS.indexOf(o.channel) < 0) continue
+          if (o.day && o.id) {   // 日聚合行（search/get）
+            if (String(o.day) < fromDay) continue
+            const cnt = o.count || 0
+            events += cnt
+            if (o.channel === 'get') { getIds[o.id] = true; getCount[o.id] = (getCount[o.id] || 0) + cnt }
+            else { channels[o.channel].deliveredIds[o.id] = true; channels[o.channel].deliveries += cnt }
+          } else if (o.ts && o.ids) {   // 原始回执行（inject/mount/catalog）
+            const ms = Date.parse(o.ts)
+            if (!isFinite(ms) || ms < fromMs) continue
+            events += o.ids.length
+            for (const id0 of o.ids) { const id = String(id0); channels[o.channel].deliveredIds[id] = true; channels[o.channel].deliveries++ }
+          }
+        }
+      }
+      const out = {}
+      for (const c of RECALL_CHANNELS) {
+        if (c === 'get') {
+          let uses = 0
+          for (const id in getCount) uses += getCount[id]
+          out.get = { delivered: 0, deliveries: 0, used: Object.keys(getIds).length, uses: uses, rate: null }
+          continue
+        }
+        const st = channels[c]
+        const ids = Object.keys(st.deliveredIds)
+        let used = 0
+        let uses = 0
+        for (const id of ids) { if (getIds[id]) { used++; uses += getCount[id] || 0 } }
+        out[c] = { delivered: ids.length, deliveries: st.deliveries, used: used, uses: uses, rate: ids.length ? Math.round(used / ids.length * 1000) / 1000 : null }
+      }
+      return { ok: true, noteId: rl ? rl.id : null, sinceDays: sinceDays, fromDay: fromDay, events: events, channels: out }
+    }
+    // §2 旁挂行格式化（账本 _ledgerRefresh 消费）：交付通道 `ch used/delivered·pct%`（无交付 → `ch 无交付`）+ get 取用计数
+    function _recallFmtChannels(channels) {
+      const parts = []
+      for (const c of ['inject', 'mount', 'search', 'catalog']) {
+        const st = channels[c]
+        if (!st || !st.delivered) { parts.push(c + ' 无交付'); continue }
+        parts.push(c + ' ' + st.used + '/' + st.delivered + '·' + Math.round(st.rate * 100) + '%')
+      }
+      const g = channels.get
+      parts.push('get 取用 ' + (g ? g.used : 0) + ' 条/' + (g ? g.uses : 0) + ' 次')
+      return parts.join('、')
+    }
+    // 手动查询 RPC：notes-recall-stats {sinceDays?}（缺省 7 天；只读——除读前落账 flush 防抖 pending 外零副作用）
+    disposers.push(handle('notes-recall-stats', async (args) => {
+      try { return await _recallStats({ sinceDays: args && args.sinceDays }) }
+      catch (e) { return { error: String(e.message || e) } }
+    }))
+    // ==== recall-telemetry END ====
     // ==== img-path-hint BEGIN ====（注入/派发图片路径消歧；host-impl.js 与 packages/dsh-notes-plugin/index.mjs 双包逐字节一致，check.js 提取比对，改动必须双边同步）
     // 背景：正文图片引用 ![](assets/xxx.png) 是相对笔记库根的相对路径；注入/派发以纯文本下发，agent 无法确定基准目录。
     // 策略：注入文本（conventionText/catalogText）与派发消息（_dispatch）尾部追加一行绝对路径提示，agent 可用文件工具直读；
@@ -2196,6 +3184,9 @@ export function apply(ctx) {
       note.dispatches = (note.dispatches || []).concat([rec])
       note.updatedAt = new Date().toISOString()
       await persistNote(note)
+      // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：mount 通道交付事件——笔记作为待办上下文挂载进目标任务会话
+      // （notes-dispatch / note_manage.dispatch / 定时派发 _schedFire 三入口同走本单点；签名含会话——换会话重派计独立交付）
+      _recallRaw('mount', [note.id], shortSid(o.sessionId))
       return { ok: true, id: note.id, sessionId: o.sessionId, sessionName: rec.sessionName, dispatch: rec }
     }
 
@@ -2585,6 +3576,10 @@ export function apply(ctx) {
           try { await _schedMarkError(n && n.id, 'tick 执行异常：' + String(e && e.message || e), nowMs, true) } catch (e2) {}
         }
       }
+      // 效用账本顺带刷新（0.4.3⑥ notes-043-ledger）：仅在有调度实际触发时（fired>0）顺带跑一轮 §2 指标+档案回填——
+      // 只 evaluated 不 fired 的普通 tick 不刷新（防后台 tick 与在途断言/写入交错）；10min 节流在 _ledgerRefresh 内部；
+      // 全量吞异常——账本是观察面产物，任何故障绝不扩散到调度主链路（同 tick 吞异常裁决）
+      if (out.fired > 0) { try { await _ledgerRefresh({ trigger: 'cron' }) } catch (e) { console.error('notes: ledger cron refresh failed', e) } }
       return out
     }
 
@@ -2615,8 +3610,9 @@ export function apply(ctx) {
 
     // ==== schedule-runlog BEGIN ====（notes-041-sched-runlog：执行记录独立笔记 + schedule.runLog 软链。
     // 设计红线（用户裁决 2026-10-04 晚）：约定正文零改动——克隆体约定正文=派发载荷（整体注入 target 会话），
-    //   历史追加会无限膨胀并污染下次派发上下文；执行记录落独立笔记（title「<约定标题> · 执行记录」，kind=note 可见可检索——
-    //   非 log（要进默认列表/检索），folder/topic 随约定），约定 front-matter schedule.runLog 存其 id 软链；
+    //   历史追加会无限膨胀并污染下次派发上下文；执行记录落独立笔记（title「<约定标题> · 执行记录」，kind=sys 机器托管——
+    //   0.4.3⑥ notes-043-sys-kind：recall 缺省 false 不进目录/默认召回，编辑器可见可改，批量删除红字警示豁免面收口；
+    //   存量 kind=note 的 runLog 经 rootNoteEnsureSysKind 惰性迁移，只写 kind 元数据正文零变化），约定 front-matter schedule.runLog 存其 id 软链；
     //   回执落盘时机（idle 事件 / resolved 保底 / 手动标记完成三通道共用）懒创建并追加条目；条目倒序（最新在前）≤50 裁尾；
     //   幂等：同 msgId（=lastRun.receiptId）条目已存在跳过；删除约定不级联删 runLog（留档）。
     // 写入纪律：runLog 笔记创建/追加与 runLog 软链回写都是机器自动产物——persistNote { history:false } 不产生历史快照；
@@ -2636,30 +3632,32 @@ export function apply(ctx) {
     function schedRunLogLine(d) {
       return '- ✅ ' + schedRunLogTs(d.doneAt) + ' · 回执（' + (d.receipt || 'manual') + '）· → ' + (d.sessionName || shortSid(d.sessionId) || '?') + ' · ' + d.msgId
     }
-    // 正文重写：头部（至 SCHED_RUNLOG_HEAD 行，缺则补）与非条目尾部（用户手写备注）原样保留；
-    //   条目区合并 = 新条目前置 + 旧条目续后，按行内 msgId 去重（幂等兜底），≤SCHED_RUNLOG_MAX 裁尾
-    function schedRunLogRender(body, newLines) {
-      const lines = String(body || '').split('\n')
-      let headIdx = -1
-      for (let i = 0; i < lines.length; i++) { if (lines[i].trim() === SCHED_RUNLOG_HEAD) { headIdx = i; break } }
-      const pre = headIdx >= 0 ? lines.slice(0, headIdx + 1) : [SCHED_RUNLOG_HEAD]
-      const rest = headIdx >= 0 ? lines.slice(headIdx + 1) : []
-      const oldEntries = rest.filter(function (l) { return /^-\s/.test(l) })
-      const others = rest.filter(function (l) { return !/^-\s/.test(l) && l.trim() !== '' })
-      const seen = {}
-      const merged = []
-      const all = newLines.concat(oldEntries)
-      for (const l of all) {
-        const m = l.match(/(note-dispatch-\S+)/)
-        const key = m ? m[1] : l
-        if (seen[key]) continue
-        seen[key] = true
-        merged.push(l)
-        if (merged.length >= SCHED_RUNLOG_MAX) break
-      }
-      let out = pre.concat(['']).concat(merged)
-      if (others.length) out = out.concat(['']).concat(others)
-      return out.join('\n') + '\n'
+    // 正文重写已上收 RootNote 托管节框架（0.4.3 内核②，notes-043-rootnote）：锚点补建/幂等去重/裁尾/备注区保留
+    //   由 src/host/rootnote.js rootNoteRender 统一实现——runLog 是首个消费者，行为等价迁移（节 59 断言不改语义仍全绿 = 等价证明）。
+    // runLog 消费者模板：锚点节标题 + 容量 50 + 新→旧排序 + note-dispatch msgId 幂等键 + schedule.runLog 软链键
+    const SCHED_RUNLOG_TPL = {
+      head: SCHED_RUNLOG_HEAD,
+      max: SCHED_RUNLOG_MAX,
+      newestFirst: true,
+      // 行幂等键：行内 note-dispatch-* msgId（缺省退整行）
+      keyOfLine: function (l) { const m = l.match(/(note-dispatch-\S+)/); return m ? m[1] : l },
+      // 条目幂等键：msgId（=lastRun.receiptId）——与正文 indexOf 命中同口径
+      keyOfEntry: function (d) { return d.msgId },
+      lineOf: function (d) { return schedRunLogLine(d) },
+      linkOf: function (note) { return note.schedule && note.schedule.runLog },
+      // 软链回写 schedule.runLog：直读最新笔记对象防 tick 在途改写被覆盖（机器状态回写，不产生历史快照）
+      writeLink: async function (note, rlId) {
+        const fresh = await loadNote(note.id)
+        if (fresh && !fresh.deleted && !fresh.tombstoned && fresh.schedule) {
+          fresh.schedule = Object.assign({}, fresh.schedule, { runLog: rlId })
+          fresh.updatedAt = new Date().toISOString()
+          try { await persistNote(fresh, { history: false }) } catch (e) { console.error('notes: schedule runLog link persist failed', note.id, e) }
+        }
+      },
+      titleOf: function (note) { return String(note.title || note.id) + ' · 执行记录' },
+      kind: 'sys',
+      folderOf: function (note) { return note.folder || undefined },
+      topicOf: function (note) { return note.topic || '未分类' }
     }
     // 回执落盘挂钩（三通道共用：dispatch.js _receiptDispatchesForSession idle 事件 / _dispatchDone 手动标记、notes.js _update resolved 保底）。
     //   仅 dispatch-schedule 约定生效（其余笔记零开销直通返回）；schedule.runLog 空/失效 → 懒创建执行记录笔记并回写软链；条目追加幂等。
@@ -2669,36 +3667,8 @@ export function apply(ctx) {
         if (!note || (note.contractType || '') !== SCHEDULE_CONTRACT_TYPE || !note.schedule) return
         const items = (entries || []).filter(function (d) { return d && d.msgId })
         if (!items.length) return
-        let rl = null
-        const rlId = note.schedule.runLog
-        if (rlId) {
-          try { const t = await loadNote(String(rlId)); if (t && !t.deleted && !t.tombstoned) rl = t } catch (e) {}
-        }
-        if (!rl) {
-          // 懒创建（首条回执时）：独立笔记正文仅含自动节标题；folder/topic 随约定；kind=note 缺省可见可检索
-          const cr = await _create(String(note.title || note.id) + ' · 执行记录', SCHED_RUNLOG_HEAD + '\n', [], note.topic || '未分类', { kind: 'note', folder: note.folder || undefined })
-          if (!cr || !cr.id) return
-          rl = await loadNote(cr.id)
-          // 软链回写 schedule.runLog：直读最新笔记对象防 tick 在途改写被覆盖（机器状态回写，不产生历史快照）
-          const fresh = await loadNote(note.id)
-          if (fresh && !fresh.deleted && !fresh.tombstoned && fresh.schedule) {
-            fresh.schedule = Object.assign({}, fresh.schedule, { runLog: cr.id })
-            fresh.updatedAt = new Date().toISOString()
-            try { await persistNote(fresh, { history: false }) } catch (e) { console.error('notes: schedule runLog link persist failed', note.id, e) }
-          }
-        }
-        if (!rl) return
-        // 幂等：同 msgId（=receiptId）条目已存在跳过（崩溃重放/双通道回执防御）；批量回执倒序prepend（最新在前）
-        const curBody = String(rl.body || '')
-        const newLines = []
-        for (let i = items.length - 1; i >= 0; i--) {
-          if (curBody.indexOf(items[i].msgId) >= 0) continue
-          newLines.push(schedRunLogLine(items[i]))
-        }
-        if (!newLines.length) return
-        rl.body = schedRunLogRender(curBody, newLines)
-        rl.updatedAt = new Date().toISOString()
-        try { await persistNote(rl, { history: false }) } catch (e) { console.error('notes: schedule runLog append persist failed', rl.id, e) }
+        // RootNote 框架组合口：懒创建（首条回执）+ 幂等追加 + ≤50 裁尾 + 落盘 { history:false }——异常吞在下方
+        await rootNoteAppendEnsured(note, SCHED_RUNLOG_TPL, items)
       } catch (e) { console.error('notes: schedule runLog append failed', note && note.id, e) }
     }
     // ==== schedule-runlog END ====
@@ -2750,12 +3720,22 @@ export function apply(ctx) {
           if (n.inject !== true) continue
           if (conventionHit(n, ws, curSid)) matches.push(n)
         }
-        if (matches.length === 0) { if (sidOverride === undefined) lastInjectChars = 0; return '' }
         matches.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
         // 双角色分桶：约定与资料各自成段，标题换行收拢，正文行统一缩进两格保持在列表项内
+        // 0.4.3⑤ 管线切换（notes-043-index，injectindex 块）：reference 桶 = 注入索引根笔记 §1 逐行
+        // （每行 whenToUse + [[链接]]，agent 按需 note_get 拉正文）；旧「资料全文注入」通道下线；
+        // 无索引/索引无行 → 回退空 reference 桶；约定桶全文注入不动（用户裁决红线）。
+        // 索引行先于空判计算：约定零命中但索引有挂载行时，资料桶仍要注入（管线语义 = 索引行即载荷）。
+        // refBlocks 保对象形态（遥测取 id 用——Verifier 驳回①修复：此前直接 .map 成字符串后再取 b.id 恒 undefined，资料桶交付静默丢失）；
+        // refLines 为渲染行字符串（预算省略 pop 只动 refLines 尾部，存活 id = refBlocks.slice(0, refLines.length)）；
+        // 排序：按挂载目标 updatedAt 降序（延续旧「从最旧开始省略」预算语义；目标不在库/无时间 → 视为最旧沉底）
+        const refBlocks = idxLinesSync()
+          .map(function (l) { const n = cache.get(l.id); return { id: l.id, raw: l.raw, ts: (n && !n.deleted && !n.tombstoned && n.updatedAt) || '' } })
+          .sort(function (a, b) { return (b.ts || '').localeCompare(a.ts || '') })
+        const refLines = refBlocks.map(function (it) { return '- ' + it.raw })
         const conventions = []
-        const references = []
-        for (const n of matches) (n.injectRole === 'reference' ? references : conventions).push(n)
+        for (const n of matches) { if (n.injectRole !== 'reference') conventions.push(n) }
+        if (conventions.length === 0 && refBlocks.length === 0) { if (sidOverride === undefined) lastInjectChars = 0; return '' }
         // 敏感脱敏：sensitive=true 的笔记正文按行打码（键保留值遮蔽，见 sensitive-helpers 块），计数用于尾部提示行
         let maskedCount = 0
         const block = (n) => {
@@ -2765,30 +3745,32 @@ export function apply(ctx) {
         }
         const head = '以下是注入的上下文笔记（与当前任务无关时忽略）：'
         const convPart = conventions.length ? '\n\n用户约定（须遵守）：\n\n' + conventions.map(block).join('\n\n') : ''
-        // 资料块整列预渲染（block 有 maskedCount 计数副作用，每条只渲染一次；被预算省略时整块丢弃）
-        const refBlocks = references.map(block)
         const refHead = '\n\n参考资料（与当前任务相关时按需取用）：\n\n'
         // P1 注入体积预算（约，按字符数近似）：约定桶永不截断；资料桶从最旧（updatedAt 降序的尾部）开始整条省略，
         // 直至总长度回到预算内或资料桶为空；省略计数在尾部提示行告知（note_search 可检索原文）
         const budget = injectBudgetChars()
         let droppedRefs = 0
         if (budget > 0) {
-          while (refBlocks.length > 0 && (head + convPart + refHead + refBlocks.join('\n\n')).length > budget) {
-            refBlocks.pop()
+          while (refLines.length > 0 && (head + convPart + refHead + refLines.join('\n\n')).length > budget) {
+            refLines.pop()
             droppedRefs++
           }
         }
         let full = head + convPart
-        if (refBlocks.length) full += refHead + refBlocks.join('\n\n')
+        if (refLines.length) full += refHead + refLines.join('\n\n') + '\n\n（以上为挂载索引行：正文用 note_get <id> 获取）'
         if (full.length > 4000) full = full.slice(0, 4000) + '\n\n（内容过长已截断）'
         // 尾部提示行恒定可见（截断之后追加）：预算省略计数 + 脱敏计数（原文 note_get 按 id 获取 / note_search 检索）
         if (droppedRefs > 0) full += '\n\n…另有 ' + droppedRefs + ' 条资料超出预算未注入（note_search 可检索）'
         if (maskedCount > 0) full += '\n\n（其中 ' + maskedCount + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）'
-        // 图片路径消歧（img-path-hint 块）：实际注入的正文含 assets/ 图片引用时，尾部追加一次绝对路径提示（截断之后追加，恒定可见；预算省略的资料不算）
-        if (conventions.concat(references.slice(0, refBlocks.length)).some(function (n) { return bodyHasImageRef(n.body) })) full += '\n\n' + assetsHintLine(NOTES_ROOT)
+        // 图片路径消歧（img-path-hint 块）：实际注入的约定正文含 assets/ 图片引用时，尾部追加一次绝对路径提示（截断之后追加，恒定可见；资料桶为索引行无正文不参与）
+        if (conventions.some(function (n) { return bodyHasImageRef(n.body) })) full += '\n\n' + assetsHintLine(NOTES_ROOT)
         // 预览统计：脱敏条数 + 预算截断标记（资料桶有省略即视为截断）；预览渲染不触碰 lastInjectChars
         lastConvStats.masked = maskedCount; lastConvStats.budgetTruncated = droppedRefs > 0
         if (sidOverride === undefined) lastInjectChars = full.length   // 注入体积缓存：真实注入渲染才更新（设置卡片仪表数据源）
+        // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：inject 通道交付事件——真实注入路径（预览 sidOverride 不计）
+        // 记实际渲染的约定 id 集 + 资料桶存活（未被预算省略）索引行 id 集（refLines 尾部省略 → 存活 = refBlocks 前 refLines.length 项）；
+        // 签名去重 + 静默降级（recall-telemetry 块）
+        if (sidOverride === undefined) _recallRaw('inject', conventions.map(function (n) { return n.id }).concat(refBlocks.slice(0, refLines.length).map(function (it) { return it.id })), curSid)
         return full
       } catch (e) { return '' }
     }
@@ -2800,7 +3782,7 @@ export function apply(ctx) {
     // 排序：pinned 优先 → updatedAt 降序（注入无工作区维度，不按工作区重排）；CATALOG_LIMIT 条封顶。
     // text 是同步函数（systemPrompt 契约）：读常驻 cache + settingsCache；总开关关闭/无条目/异常 → 返回 ''（不能返回 undefined）。
     const CATALOG_LIMIT = 40
-    const CATALOG_KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' }
+    const CATALOG_KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '系统' }   // 0.4.3⑥：+ sys 系统根笔记（注入允许是核心用途，显式 recall=true 的 sys 条目以系统标签进目录）
     // sidOverride：注入预览 RPC 专用（语义同 conventionText——含数组形态的工作区并集视角）；不传 = 真实注入路径（当前会话），行为不变
     function catalogText(sidOverride) {
       lastCatStats.masked = 0; lastCatStats.stale = 0
@@ -2859,6 +3841,8 @@ export function apply(ctx) {
           '\n规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手'
         // 图片路径消歧（img-path-hint 块）：目录条目正文含 assets/ 图片引用时尾部追加一次绝对路径提示（note_get 拉全文后可直读图片）
         if (shown.some(function (n) { return bodyHasImageRef(n.body) })) out += '\n' + assetsHintLine(NOTES_ROOT)
+        // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：catalog 通道交付事件——真实渲染路径记目录实际出清单的 id 集（预览 sidOverride 不计）
+        if (sidOverride === undefined) _recallRaw('catalog', shown.map(function (n) { return n.id }), curSid)
         return out
       } catch (e) { return '' }
     }
@@ -3093,6 +4077,7 @@ export function apply(ctx) {
       if (staleLimit > 0) {
         for (const n of all) {
           if (n.kind === 'log') continue   // 日志永不被过期清理提名（工作记忆 v0 §6.3：记录类资产只聚合不淘汰；kind 白名单之外的显式双保险）
+          if (n.kind === 'sys') continue   // 0.4.3⑥：kind=sys 系统根笔记（注入索引/记忆档案等机器产物）永不被过期清理提名（豁免面收口）
           if (n.kind !== 'note' && n.kind !== 'link') continue
           const sd = suggestStaleDays(n.updatedAt, staleLimit)
           if (sd <= 0) continue
@@ -3107,6 +4092,10 @@ export function apply(ctx) {
       const orphans = []
       for (const n of all) {
         if ((n.kind || 'note') === 'log') continue   // 日志永不被孤儿清理提名（同上：只聚合不淘汰）
+        if ((n.kind || 'note') === 'sys') continue   // 0.4.3⑥：kind=sys 系统根笔记永不被孤儿清理提名（机器产物豁免面收口，双重保险——下方 kind==='note' 白名单已天然排除）
+        // 注入索引根笔记（0.4.3⑤ notes-043-index）：机器托管的管线载荷笔记，整理建议器永不提名（误删即断资料召回管线）
+        if (typeof settingsCache !== 'undefined' && settingsCache && settingsCache.indexNoteId && n.id === settingsCache.indexNoteId) continue
+        if (n.title === '注入索引（自动）') continue
         if ((n.kind || 'note') !== 'note') continue
         if ((n.status || 'active') !== 'active') continue
         if (n.inject === true) continue
@@ -3471,6 +4460,8 @@ export function apply(ctx) {
       try {
         const a = args || {}
         const found = await _search(a.query, a.tag, a.topic, a.kind, a.folder, { sensitive: a.sensitive, inject: a.inject, includeLogs: !!a.includeLogs })
+        // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：search 通道交付事件——实际返回的 id 集日聚合（同日同 id 计数累加不爆行；静默降级）
+        _recallHit('search', found.map(function (n) { return n.id }))
         return { notes: found.map(n => { const s = slim(n); if (n.matches) s.matches = n.matches; return s }) }
       } catch (e) { return { error: String(e.message || e) } }
     }))
@@ -4009,7 +5000,9 @@ export function apply(ctx) {
         }
         const all = await _search(args && args.query, args && args.tag, args && args.topic, args && args.kind, folder, { sensitive: args && args.sensitive, inject: args && args.inject, includeLogs: !!(args && args.includeLogs) })
         const limit = (args && args.limit) || 50
-        return { count: all.length, notes: all.slice(0, limit).map(n => { const s = slim(n); if (n.matches) s.matches = n.matches; return s }) }
+        const page = all.slice(0, limit)
+        _recallHit('search', page.map(function (n) { return n.id }))   // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：search 通道交付=工具实际返回页（与 notes-search RPC 同口径日聚合）
+        return { count: all.length, notes: page.map(n => { const s = slim(n); if (n.matches) s.matches = n.matches; return s }) }
       }
     })
 
@@ -4027,6 +5020,9 @@ export function apply(ctx) {
           const n = await _get(args.id)
           // 使用遥测（P2）：命中计数 +1（内存即时生效，60s 防抖批量落盘，见 use-telemetry 块）
           const uc = bumpUseCount(n.id)
+          // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：note_get 工具取用信号（与 notes-get RPC 同通道日聚合）；
+          // 序位钉住：必须在 bumpUseCount 之后（useCount 60s 防抖定时器先于本 3s 聚合防抖调度——节 30 假定时器捕获序断言看守）
+          _recallHit('get', [n.id])
           if (uc !== null) n.useCount = uc
           return { note: n }
         }
@@ -4266,6 +5262,8 @@ export function apply(ctx) {
     loadSettings()
     // 用量统计启动加载（同口径不阻塞）：recordUsage 记账前内部也会 await loadUsage()，双保险防覆盖存量
     loadUsage()
+    // 0.4.3⑤ 升级首启自动建「注入索引（自动）」根笔记（notes-043-index，fire-and-forget；失败静默下次启动重试）
+    idxEnsure()
 
     // 存量一次性修补：agents 未就绪期创建的笔记 workspace 为空，导致“本工作区”注入范围严格匹配后永不命中。
     // 启动时按来源会话推导补填一次（只补空值）。注意：不用 _list()（它 await migrationDone，会与本补全死锁），
@@ -4302,6 +5300,7 @@ export function apply(ctx) {
       for (const d of disposers) { try { d() } catch (e) {} }
       flushUseCounts()   // 卸载 flush：防抖窗口内未落盘的 useCount 立即写盘（fire-and-forget，不阻塞卸载）
       flushUsage()       // 卸载 flush：usage.json 防抖窗口内未落盘的 token 计数立即写盘（同上 fire-and-forget）
+      _recallFlushAgg()  // 卸载 flush：召回遥测防抖窗口内 pending 日聚合并入落盘（0.4.3+ 卡⑫；同上 fire-and-forget）
     })
     // 发布版不再写 .last-host-load 开发心跳（静态包 import 即就绪，无需引导壳自检）
     console.log('notes plugin: host ready (static pkg), notes dir =', NOTES_ROOT, ', llm =', !!llm, ', adm =', !!adm, ', rpc =', RPC_PATH, ', app =', APP_PAGE_ROUTE, ', asset =', ASSET_ROUTE)

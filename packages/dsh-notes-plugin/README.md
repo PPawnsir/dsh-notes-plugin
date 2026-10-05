@@ -58,6 +58,25 @@ dsh-notes 把这件事变成可积累的本地资产：
 | 待办没人执行 | 一键把待办派发给任意**活跃**会话（`Agent.send` 注入「召回上下文 + 具体要求」并唤醒对方开始工作），派发历史可标记完成 |
 | 事后找不到 | 面板即时搜索 + 全文兜底并集检索、`note_search` 工具按 tag/topic/kind 过滤、归档按会话或标签合并、软删除可恢复 |
 
+## 设计哲学：笔记网络
+
+dsh-notes 不只是「一个带面板的笔记插件」——整个产品是**一张不断生长的笔记引用网络**：节点 = 笔记（记忆 / 资料 / 日志 / 档案 / 索引 / 待办…），边 = 引用。功能千变万化，载体永远是网络上的一个节点；治理界面皆节点，高频写皆根文件。每加一个新特性，先用裁决问句过一遍：**它的节点是什么？它的边是什么？**（先有节点，再有边）
+
+网络里的四类边：
+
+| 边 | 形态 | 语义 |
+| --- | --- | --- |
+| 双链 | 正文 `[[id]]` | 证据（日志 → 记忆）/ 关联 |
+| 软链 | front-matter 字段（`schedule.runLog`、`refNote`） | 关联（伴生笔记指向宿主） |
+| 索引挂载 | 注入索引 §1 行 `- [[id]] 何时查我：…` | 挂载（索引 → 资料，召回主通道） |
+| 派发挂载 | `dispatches[].sessionId` | 召回（任务 → 资料 = 确定性分发） |
+
+**根索引模式**：机器产物不建新面板、不加新存储——数据集中在链接的伴生笔记（RootNote 托管节框架：锚点节 / 行格式 / 幂等 / 裁尾；机器只做节内行级操作，节外零触碰）。四个实例：定时派发执行记录、记忆档案、召回指标（注入索引 §2）、注入索引。原正文零触碰——约定正文是派发载荷，历史一律写进伴生笔记。
+
+**记忆治理三层**（召回保证性分级）：`inject` 全文注入 = 强保证；任务挂载（索引 §1 一行 whenToUse）= 中保证 · 主力通道；索引目录（recall 一行目录）= 弱保证。资料默认不注入——挂载是显式动作。
+
+**红线**：约定桶全文注入不动；资料默认不注入（任务挂载显式开通）；档案/指标类根笔记永不注入（防套娃）；工作日志默认隐身，只在展开日志夹/档案/指标等定向动作豁免。
+
 ## 安装
 
 > 宿主要求：Node ≥ 22；DSH ≥ `0.1.5-rc.1`（已通过 `peerDependencies` 声明，含预发布分支的版本范围见 package.json）
@@ -201,7 +220,8 @@ deleted: "false"       # 软删除标记
 node scripts/build-dist.cjs           # 改完 src/**（client/host/app/shared/styles）后一次性刷新四产物：lib/client.js + lib/styles.css + app.html + index.mjs
 node --check packages/dsh-notes-plugin/index.mjs
 node --check packages/dsh-notes-plugin/lib/client.js
-node check.js                         # 736 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录注入 + 导入导出 + 半独立页 + 双模式编辑器 + 敏感脱敏 + 注入增强 + 遥测/双链 + 快照式历史引擎 + 模块化结构契约 + README.en 双语 + i18n 守卫）
+node check.js                         # 780 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录注入 + 导入导出 + 半独立页 + 双模式编辑器 + 敏感脱敏 + 注入增强 + 遥测/双链 + 快照式历史引擎 + 模块化结构契约 + README.en 双语 + i18n 守卫 + 笔记网络守卫/README 哲学节）
+npm run e2e                           # 浏览器 e2e（Playwright + 内置 mock host，3 条样板路径：加载零报错 / 新建笔记落列表 / 设置卡切 English；需 chromium 或系统 Chrome）
 ```
 
 详见 [DEVELOPMENT.md](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/DEVELOPMENT.md)。

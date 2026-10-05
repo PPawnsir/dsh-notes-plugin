@@ -218,6 +218,31 @@ function toggleInjMgrAll() {
   if (!all) selectable.forEach(function (n) { injMgrState.sel[n.id] = true });
   renderInjectManager();
 }
+/* ===== 挂载弹层（0.4.3⑤ notes-043-index）：给资料开注入 → 手写 whenToUse（textarea 预填标题）→ 确认落注入索引 §1 行 =====
+   host 侧开注入已自动落缺省行（whenToUse=标题），本弹层 = 换文案通道：跳过 = 保留缺省行；modal 不叠 modal（先关注入管理面板，清返回栈） */
+var mountState = null;
+function openMountModal(n) {
+  if (!n) return;
+  injMgrState = null; modalBackTo = null;
+  mountState = { id: n.id, title: n.title || n.id, when: n.title || '', pending: false };
+  openModal(
+    '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + t('inj.mountTitle') + '<span class="sub">' + t('inj.mountSub') + '</span></div>'
+    + '<div class="inj-mount-body"><label class="inj-mount-label">' + t('inj.mountLabel') + '</label>'
+    + '<textarea class="inj-mount-when" id="injMountWhen" rows="3" placeholder="' + esc(t('inj.mountPlaceholder')) + '">' + esc(mountState.when) + '</textarea></div>'
+    + '<div class="modal-acts"><button class="mbtn" id="injMountSkip">' + t('inj.mountSkip') + '</button>'
+    + '<button class="mbtn primary" id="injMountSave">' + t('inj.mountSave') + '</button></div>'
+  );
+  $('injMountSkip').onclick = function () { mountState = null; closeModal() };
+  $('injMountSave').onclick = function () {
+    if (!mountState || mountState.pending) return;
+    mountState.pending = true; mountState.when = $('injMountWhen').value;
+    rpc('notes-mount', { id: mountState.id, whenToUse: mountState.when }).then(function (res) {
+      var done = mountState; mountState = null;
+      if (res && res.error) { toast(t('inj.mountFailed', { msg: res.error })) }
+      else { toast(t('inj.mountSaved', { title: done.title })); closeModal() }
+    }).catch(function (e) { mountState = null; toast(t('inj.mountFailed', { msg: e && e.message || e })) });
+  };
+}
 /* 单行直改：点 segmented 档位即切换（同详情区通道 notes-update {inject, injectRole}），toast 反馈 */
 function doInjMgrSet(n, role) {
   if (!n || !injMgrState || injMgrState.pending) return;
@@ -230,6 +255,8 @@ function doInjMgrSet(n, role) {
     if (res && res.error) { modalErr(res.error); return }
     if (res && res.injectForcedOff) toast(t('inj.forcedOff', { title: n.title || n.id }));
     else toast(role === 'off' ? t('inj.injectOffToast', { title: n.title || n.id }) : t('inj.injectSetToast', { role: t(role === 'reference' ? 'tree.roleReference' : 'tree.roleConvention'), title: n.title || n.id }));
+    /* 0.4.3⑤ 挂载弹层：设为资料（reference）→ 手写 whenToUse（host 已自动落缺省行，弹层换文案；modal 不叠 modal——先关注入管理面板） */
+    if (role === 'reference') { loadNotes(true); setTimeout(function () { openMountModal({ id: n.id, title: n.title }) }, 0); return }
     /* 本地即时回写（injectEver 粘性：开启即曾注入），后台刷新对齐 host */
     n.inject = role !== 'off';
     if (role !== 'off') { n.injectRole = role; n.injectEver = true }

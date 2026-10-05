@@ -1,4 +1,4 @@
-// 节 42. 列表韧性：_list 并集防御（list-union-defense）
+﻿// 节 42. 列表韧性：_list 并集防御（list-union-defense）
 // 拆分自 check.js 单文件（notes-check-split）：节体逐字节保留，仅首尾为机械接线（H=helpers 设施，S=跨节共享状态）。
 module.exports = {
   id: "42",
@@ -59,7 +59,7 @@ module.exports = {
     U.visible.add(c1.id + '.md')
     ids = (await U.handlers['notes-list']({})).notes.map(n => n.id)
     assert.strictEqual(ids.filter(x => x === c1.id).length, 1, 'watcher 恢复后仍仅一行（主循环+并集不重复）')
-    assert.strictEqual(ids.length, 2, '总数不变（实得 ' + ids.length + '：' + ids.join(',') + '）')
+    assert.strictEqual(ids.length, 3, '总数不变（2 种子 + 注入索引根笔记；实得 ' + ids.length + '：' + ids.join(',') + '）')
   })
 
   await t('并集条目同一过滤管线：deleted/log 隐身/tag/kind/folder 与目录条目零差异', async () => {
@@ -164,7 +164,7 @@ module.exports = {
     visibleU2.add(c.body.id + '.md')
     ids = (await rpcU2('notes-list', {})).body.notes.map(n => n.id)
     assert.strictEqual(ids.filter(x => x === c.body.id).length, 1, '静态包：watcher 恢复后幂等零重复')
-    assert.strictEqual(ids.length, 1, '静态包：总数不变（实得 ' + ids.length + '）')
+    assert.strictEqual(ids.length, 2, '静态包：总数不变（1 种子 + 注入索引根笔记；实得 ' + ids.length + '）')
   })
   }
 }

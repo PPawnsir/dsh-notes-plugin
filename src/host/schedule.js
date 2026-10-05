@@ -280,6 +280,10 @@
           try { await _schedMarkError(n && n.id, 'tick 执行异常：' + String(e && e.message || e), nowMs, true) } catch (e2) {}
         }
       }
+      // 效用账本顺带刷新（0.4.3⑥ notes-043-ledger）：仅在有调度实际触发时（fired>0）顺带跑一轮 §2 指标+档案回填——
+      // 只 evaluated 不 fired 的普通 tick 不刷新（防后台 tick 与在途断言/写入交错）；10min 节流在 _ledgerRefresh 内部；
+      // 全量吞异常——账本是观察面产物，任何故障绝不扩散到调度主链路（同 tick 吞异常裁决）
+      if (out.fired > 0) { try { await _ledgerRefresh({ trigger: 'cron' }) } catch (e) { console.error('notes: ledger cron refresh failed', e) } }
       return out
     }
 
@@ -310,8 +314,9 @@
 
     // ==== schedule-runlog BEGIN ====（notes-041-sched-runlog：执行记录独立笔记 + schedule.runLog 软链。
     // 设计红线（用户裁决 2026-10-04 晚）：约定正文零改动——克隆体约定正文=派发载荷（整体注入 target 会话），
-    //   历史追加会无限膨胀并污染下次派发上下文；执行记录落独立笔记（title「<约定标题> · 执行记录」，kind=note 可见可检索——
-    //   非 log（要进默认列表/检索），folder/topic 随约定），约定 front-matter schedule.runLog 存其 id 软链；
+    //   历史追加会无限膨胀并污染下次派发上下文；执行记录落独立笔记（title「<约定标题> · 执行记录」，kind=sys 机器托管——
+    //   0.4.3⑥ notes-043-sys-kind：recall 缺省 false 不进目录/默认召回，编辑器可见可改，批量删除红字警示豁免面收口；
+    //   存量 kind=note 的 runLog 经 rootNoteEnsureSysKind 惰性迁移，只写 kind 元数据正文零变化），约定 front-matter schedule.runLog 存其 id 软链；
     //   回执落盘时机（idle 事件 / resolved 保底 / 手动标记完成三通道共用）懒创建并追加条目；条目倒序（最新在前）≤50 裁尾；
     //   幂等：同 msgId（=lastRun.receiptId）条目已存在跳过；删除约定不级联删 runLog（留档）。
     // 写入纪律：runLog 笔记创建/追加与 runLog 软链回写都是机器自动产物——persistNote { history:false } 不产生历史快照；
@@ -331,30 +336,32 @@
     function schedRunLogLine(d) {
       return '- ✅ ' + schedRunLogTs(d.doneAt) + ' · 回执（' + (d.receipt || 'manual') + '）· → ' + (d.sessionName || shortSid(d.sessionId) || '?') + ' · ' + d.msgId
     }
-    // 正文重写：头部（至 SCHED_RUNLOG_HEAD 行，缺则补）与非条目尾部（用户手写备注）原样保留；
-    //   条目区合并 = 新条目前置 + 旧条目续后，按行内 msgId 去重（幂等兜底），≤SCHED_RUNLOG_MAX 裁尾
-    function schedRunLogRender(body, newLines) {
-      const lines = String(body || '').split('\n')
-      let headIdx = -1
-      for (let i = 0; i < lines.length; i++) { if (lines[i].trim() === SCHED_RUNLOG_HEAD) { headIdx = i; break } }
-      const pre = headIdx >= 0 ? lines.slice(0, headIdx + 1) : [SCHED_RUNLOG_HEAD]
-      const rest = headIdx >= 0 ? lines.slice(headIdx + 1) : []
-      const oldEntries = rest.filter(function (l) { return /^-\s/.test(l) })
-      const others = rest.filter(function (l) { return !/^-\s/.test(l) && l.trim() !== '' })
-      const seen = {}
-      const merged = []
-      const all = newLines.concat(oldEntries)
-      for (const l of all) {
-        const m = l.match(/(note-dispatch-\S+)/)
-        const key = m ? m[1] : l
-        if (seen[key]) continue
-        seen[key] = true
-        merged.push(l)
-        if (merged.length >= SCHED_RUNLOG_MAX) break
-      }
-      let out = pre.concat(['']).concat(merged)
-      if (others.length) out = out.concat(['']).concat(others)
-      return out.join('\n') + '\n'
+    // 正文重写已上收 RootNote 托管节框架（0.4.3 内核②，notes-043-rootnote）：锚点补建/幂等去重/裁尾/备注区保留
+    //   由 src/host/rootnote.js rootNoteRender 统一实现——runLog 是首个消费者，行为等价迁移（节 59 断言不改语义仍全绿 = 等价证明）。
+    // runLog 消费者模板：锚点节标题 + 容量 50 + 新→旧排序 + note-dispatch msgId 幂等键 + schedule.runLog 软链键
+    const SCHED_RUNLOG_TPL = {
+      head: SCHED_RUNLOG_HEAD,
+      max: SCHED_RUNLOG_MAX,
+      newestFirst: true,
+      // 行幂等键：行内 note-dispatch-* msgId（缺省退整行）
+      keyOfLine: function (l) { const m = l.match(/(note-dispatch-\S+)/); return m ? m[1] : l },
+      // 条目幂等键：msgId（=lastRun.receiptId）——与正文 indexOf 命中同口径
+      keyOfEntry: function (d) { return d.msgId },
+      lineOf: function (d) { return schedRunLogLine(d) },
+      linkOf: function (note) { return note.schedule && note.schedule.runLog },
+      // 软链回写 schedule.runLog：直读最新笔记对象防 tick 在途改写被覆盖（机器状态回写，不产生历史快照）
+      writeLink: async function (note, rlId) {
+        const fresh = await loadNote(note.id)
+        if (fresh && !fresh.deleted && !fresh.tombstoned && fresh.schedule) {
+          fresh.schedule = Object.assign({}, fresh.schedule, { runLog: rlId })
+          fresh.updatedAt = new Date().toISOString()
+          try { await persistNote(fresh, { history: false }) } catch (e) { console.error('notes: schedule runLog link persist failed', note.id, e) }
+        }
+      },
+      titleOf: function (note) { return String(note.title || note.id) + ' · 执行记录' },
+      kind: 'sys',
+      folderOf: function (note) { return note.folder || undefined },
+      topicOf: function (note) { return note.topic || '未分类' }
     }
     // 回执落盘挂钩（三通道共用：dispatch.js _receiptDispatchesForSession idle 事件 / _dispatchDone 手动标记、notes.js _update resolved 保底）。
     //   仅 dispatch-schedule 约定生效（其余笔记零开销直通返回）；schedule.runLog 空/失效 → 懒创建执行记录笔记并回写软链；条目追加幂等。
@@ -364,36 +371,8 @@
         if (!note || (note.contractType || '') !== SCHEDULE_CONTRACT_TYPE || !note.schedule) return
         const items = (entries || []).filter(function (d) { return d && d.msgId })
         if (!items.length) return
-        let rl = null
-        const rlId = note.schedule.runLog
-        if (rlId) {
-          try { const t = await loadNote(String(rlId)); if (t && !t.deleted && !t.tombstoned) rl = t } catch (e) {}
-        }
-        if (!rl) {
-          // 懒创建（首条回执时）：独立笔记正文仅含自动节标题；folder/topic 随约定；kind=note 缺省可见可检索
-          const cr = await _create(String(note.title || note.id) + ' · 执行记录', SCHED_RUNLOG_HEAD + '\n', [], note.topic || '未分类', { kind: 'note', folder: note.folder || undefined })
-          if (!cr || !cr.id) return
-          rl = await loadNote(cr.id)
-          // 软链回写 schedule.runLog：直读最新笔记对象防 tick 在途改写被覆盖（机器状态回写，不产生历史快照）
-          const fresh = await loadNote(note.id)
-          if (fresh && !fresh.deleted && !fresh.tombstoned && fresh.schedule) {
-            fresh.schedule = Object.assign({}, fresh.schedule, { runLog: cr.id })
-            fresh.updatedAt = new Date().toISOString()
-            try { await persistNote(fresh, { history: false }) } catch (e) { console.error('notes: schedule runLog link persist failed', note.id, e) }
-          }
-        }
-        if (!rl) return
-        // 幂等：同 msgId（=receiptId）条目已存在跳过（崩溃重放/双通道回执防御）；批量回执倒序prepend（最新在前）
-        const curBody = String(rl.body || '')
-        const newLines = []
-        for (let i = items.length - 1; i >= 0; i--) {
-          if (curBody.indexOf(items[i].msgId) >= 0) continue
-          newLines.push(schedRunLogLine(items[i]))
-        }
-        if (!newLines.length) return
-        rl.body = schedRunLogRender(curBody, newLines)
-        rl.updatedAt = new Date().toISOString()
-        try { await persistNote(rl, { history: false }) } catch (e) { console.error('notes: schedule runLog append persist failed', rl.id, e) }
+        // RootNote 框架组合口：懒创建（首条回执）+ 幂等追加 + ≤50 裁尾 + 落盘 { history:false }——异常吞在下方
+        await rootNoteAppendEnsured(note, SCHED_RUNLOG_TPL, items)
       } catch (e) { console.error('notes: schedule runLog append failed', note && note.id, e) }
     }
     // ==== schedule-runlog END ====

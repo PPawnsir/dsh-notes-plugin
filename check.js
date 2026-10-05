@@ -1,5 +1,5 @@
 // DSH 笔记插件回归测试套件 —— runner（模块化拆分：check/helpers.cjs + check/sections/*.cjs，notes-check-split）
-// 架构：check.js = runner（模式解析 + CORE 名单 + 节注册表 + 收尾总结 + i18n 未覆盖清单尾部打印）；check/helpers.cjs = 共享设施（t/section/mock 工厂/计数器）；check/sections/*.cjs = 83 节断言体（逐字节迁移）。
+// 架构：check.js = runner（模式解析 + CORE 名单 + 节注册表 + 收尾总结 + i18n 未覆盖清单尾部打印）；check/helpers.cjs = 共享设施（t/section/mock 工厂/计数器）；check/sections/*.cjs = 93 节断言体（逐字节迁移）。
 // 测试：host 全链路逻辑（内存 mock fs/llm）+ 工具 schema 校验 + 实现源码结构断言。不触碰真实笔记目录。
 const H = require('./check/helpers.cjs')
 const { state, io, S } = H
@@ -21,7 +21,7 @@ const CORE = new Set([
   'token 语义映射 bg-layer 系 + 鲜蓝强调（开发版/发布包/原型/app.html 四处同步）',
   'T1.1 工具瘦身 9→3',
   'index.mjs 是 ESM（export name/inject/apply，无 bootstrap return）',
-  'index.mjs 保留 41 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval',
+  'index.mjs 保留 46 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats',
   '两栏布局骨架（侧栏 + 编辑器通栏）',
   'note_search 已注册',
   'note_get 已注册',
@@ -43,7 +43,7 @@ const CORE = new Set([
   'preview：速记按 sessionId 分组（≥2），手动/单条/已删不进组，dry-run 零写入',
   '无 groups 归档：只合速记组 + 默认标题 + .bak 备份 + undo 事务落盘',
   'undo 往返：成员批量还原 + 归档笔记软删 + undo 清空；二次 undo → undone=0',
-  'host-impl 应用成功（41 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch）',
+  'host-impl 应用成功（46 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats）',
   'manage.create 返回 id',
   'manage.archive 显式 groups 合并手动组（白名单 + title 覆盖）',
   'kind 默认 note（向后兼容）',
@@ -152,8 +152,25 @@ const CORE = new Set([
   // 59. 定时派发·执行记录独立笔记（notes-041-sched-runlog：schedule.runLog 软链 + 约定正文零改动红线）
   'runLog 懒创建 + 软链回写 + 约定正文零改动红线（idle 回执 → 执行记录独立笔记）',
   'runLog 写入闸门：存在笔记 id 放行 / 幽灵 id 与非串拒绝 / 缺省延续 / 空串解除',
+  // 74. 效用账本（notes-043-ledger：§2 指标快照 + 记忆档案懒创建回填，无 LLM）
+  'fixture 全链路：挂载 2 条 + 近 7 天/超窗日志各 1 → refresh → §2 数值正确 + 档案懒创建恰 1 个（refNote 软链 + 红线）',
+  '幂等重放：二次 refresh → archivesCreated=0 + 引用记录仍 1 行 + §2 快照行唯一',
   // 68. i18n 守卫（notes-042-i18n-lint：常驻 lint——字典↔代码双向覆盖为守卫核心，常驻 --core 防字典/代码漂移）
   'i18n 守卫② 字典↔代码双向覆盖：字典 key 全被引用 + 代码 key 形字面量全命中字典（白名单逐条锚定）',
+  // 75. 守卫扩展 + README 哲学节（notes-043-guard：索引 lint / 死链查图 / 四文件同步——常驻 --core 防索引与 README 漂移）
+  '守卫① 索引行格式：现行索引 §1 全部合规（正则 `- [[id]] when`）+ notes-mount-list 解析行与正文行数一致',
+  'README 四文件同步：双语言发布包 README = 根 README 仅图片路径改写（sync-pkg-readme 同口径，逐字节）',
+  // 76. 存储加固（notes-043-atomic-store：per-note 串行化链 + 原子性委托声明 + 崩溃恢复断言——常驻 --core 防丢行竞态回归）
+  'per-note 串行化链标记块双包逐字节一致（kernel/persist.js ⇄ persist.dist.js）+ 构建产物锚点',
+  '崩溃恢复·半写：目标笔记写失败（RPC 报错）→ 盘上保持完整旧版 + 重启读回完整旧版；重试落全量新版',
+  '崩溃恢复·墓碑：软删墓碑落盘后重启不复活 + 删除写失败时盘上仍存活态 + 恢复翻转 deleted:false',
+  'per-note 写链串行化：同笔记并发写零重叠在飞 + 并发双 append 两行都在（重启后仍在）',
+  // 77. front-matter 往返幂等（notes-043-fm-newline：正文前导换行零增长 + 存量首轮归一——常驻 --core 防数据保真回归）
+  '往返幂等：读→原样回写→读三轮正文逐字节相同（含内部空行/尾部换行）',
+  '存量污染首轮归一：多前导换行读入即归一 + 纯读不改盘 + 回写后稳定零增长',
+  // 79. 创建级锁（notes-043-ensure-lock：根笔记并发首建竞态修复——常驻 --core 防孤儿索引/档案/runLog 回归）
+  '创建级锁落地结构：rootNoteCreateLock 模块级单链（quickChain 同模式）+ 三消费点共用 + 快路径在锁前 + 双产物同步',
+  '并发首建：索引不存在时启动 ensure + 两个并发 notes-mount 三方竞态 → 恰 1 篇索引 + indexNoteId 唯一 + 挂载行双在',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====
@@ -249,6 +266,17 @@ const SECTIONS = [
   require('./check/sections/66-i18n-cov-e.cjs'),   // 66. i18n 覆盖E（弹窗族双语化：dispatch/archive/trash/suggest/newnote/cheatsheet/folder-input + schedFormDecl 校验串，notes-042-i18n-cov-e）
   require('./check/sections/67-i18n-cov-f.cjs'),   // 67. i18n 覆盖F（其余面板 + popovers + 共享常量表条件映射 + host toast 面核查，notes-042-i18n-cov-f）
   require('./check/sections/68-i18n-lint.cjs'),   // 68. i18n 守卫（常驻 lint：key 集一致 + 字典↔代码双向覆盖 + 产物抽查 + 未覆盖清单，notes-042-i18n-lint）
+  require('./check/sections/69-tree-log-children.cjs'),   // 69. 树展开日志夹懒加载日志子条目（overlay 并入 + 按夹去重 + R-6 豁免面收敛 + 三端同步，notes-041c-tree-log-children）
+  require('./check/sections/70-unfiled-drag-root.cjs'),   // 70. 根目录笔记拖拽落夹（未入夹提示行置尾防源行位移取消拖拽 + 三端同步，notes-041d-drag-root-note）
+  require('./check/sections/71-graph.cjs'),   // 71. 笔记网络内核①：四类边建图 + 增量维护 + notes-graph 查询（notes-043-graph）
+  require('./check/sections/72-rootnote.cjs'),   // 72. 内核②：RootNote 托管节框架 + runLog 迁移等价回归（notes-043-rootnote）
+  require('./check/sections/73-inject-index.cjs'),   // 73. 内核③⑤：注入索引根笔记 + 管线 reference 桶切换 + 挂载联动/弹层（notes-043-index）
+  require('./check/sections/74-ledger.cjs'),   // 74. 内核⑥：效用账本 §2 指标 + 记忆档案懒创建回填（notes-043-ledger）
+  require('./check/sections/75-guard-readme.cjs'),   // 75. 0.4.3⑦：守卫扩展（索引行格式 lint / 死链行标记 / 待补清单）+ README 哲学节（notes-043-guard）
+  require('./check/sections/76-atomic-store.cjs'),   // 76. 存储加固：per-note 写链串行化 + 原子性委托/常驻声明 + 崩溃恢复断言（notes-043-atomic-store）
+  require('./check/sections/77-fm-roundtrip.cjs'),   // 77. front-matter 往返幂等：正文前导换行零增长 + 存量首轮归一（notes-043-fm-newline）
+  require('./check/sections/78-recall-telemetry.cjs'),   // 78. 统一召回遥测：五通道交付/使用事件流水 + 分通道召回率（notes-043-inject-receipt）
+  require('./check/sections/79-ensure-lock.cjs'),   // 79. 创建级锁：根笔记并发首建竞态修复（索引/档案/runLog 同锁，notes-043-ensure-lock）
 ]
 
 async function main() {
@@ -294,6 +322,19 @@ async function main() {
         const restLines = u.files.slice(TOP_N).reduce((s, r) => s + r.lines, 0)
         console.log('      …其余 ' + (u.files.length - top.length) + ' 文件合计 ' + restLines + ' 行')
       }
+    }
+  }
+  // ===== 「待补」占位行清单（节 75 守卫产出；常驻提示，只提示不阻塞，复用 §68 未覆盖清单模式）=====
+  if (S.guardPending) {
+    const p = S.guardPending
+    console.log('\n\x1b[1m=== 待补占位行清单（正文含 待补:/TODO: · 只提示不阻塞）===\x1b[0m')
+    console.log('  扫描面全库存活笔记（含 kind=log）共 ' + p.scanned + ' 篇')
+    if (!p.files.length) {
+      console.log('  ✓ 无待补占位行')
+    } else {
+      console.log('  命中 ' + p.files.length + ' 篇 / ' + p.total + ' 行（补齐由人裁决，不计失败）：')
+      p.files.slice(0, 15).forEach((r, i) => console.log('   ' + String(i + 1).padStart(2) + '. [' + r.id + '] ' + (r.title || '(无题)') + ' — ' + r.lines + ' 行'))
+      if (p.files.length > 15) console.log('      …其余 ' + (p.files.length - 15) + ' 篇')
     }
   }
   // 非零退出码仅在 host 运行时不可用时（即 [boot] 之前的错误）；当前 T1.1 等特性未实现属于"测试预期失败"，不阻塞 CI

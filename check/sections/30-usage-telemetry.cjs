@@ -79,8 +79,10 @@ module.exports = {
       assert.strictEqual(g2.note.useCount, 2, '第 2 次命中返回 useCount=2')
       assert.strictEqual(g3.note.useCount, 3, '第 3 次命中返回 useCount=3')
       assert.strictEqual(writesU, w0, '3 次命中防抖期内零写盘（写入增量 ' + (writesU - w0) + '）')
-      assert.strictEqual(scheduledU.length, 1, '重复命中只挂一个防抖定时器（实得 ' + scheduledU.length + '）')
-      assert.strictEqual(scheduledU[0].ms, 60000, '防抖窗口 60s')
+      // 0.4.3+ 卡⑫（notes-043-inject-receipt）：note_get 另挂召回遥测 3s 聚合防抖（假定时器捕获即不落盘，本窗口零写盘语义不变）
+      assert.strictEqual(scheduledU.length, 2, '重复命中只挂两个防抖定时器（useCount 60s + 召回遥测 3s；实得 ' + scheduledU.length + '）')
+      assert.strictEqual(scheduledU[0].ms, 60000, '防抖窗口 60s（useCount 先挂——bumpUseCount 序位在 _recallHit 前）')
+      assert.strictEqual(scheduledU[1].ms, 3000, '召回遥测聚合防抖 3s（卡⑫）')
       const lst = await handlersU['notes-list']({})
       assert.strictEqual(lst.notes.find(n => n.id === cU.id).useCount, 3, 'slim 列表即时携带 useCount=3（内存可见，未落盘）')
       assert.strictEqual(writesU, w0, 'notes-list 不触发写盘')
@@ -92,7 +94,7 @@ module.exports = {
       await handlersU['notes-delete']({ id: cDel.id })
       const gDel = await noteGetU.execute({ id: cDel.id })
       assert(gDel.error, '已删笔记 note_get 报错')
-      assert.strictEqual(scheduledU.length, 1, '报错不挂防抖定时器（不计数）')
+      assert.strictEqual(scheduledU.length, 2, '报错不挂防抖定时器（不计数；仍为先前两个防抖定时器）')
     })
     await t('防抖批量落盘：3 次命中 flush 仅 1 次写盘；front-matter 恒写 useCount；updatedAt 不动', async () => {
       const w0 = writesU
@@ -105,7 +107,7 @@ module.exports = {
       assert(mC && mU && mC[1] === mU[1], '计数落盘不动 updatedAt（计数不算编辑）')
       // 再命中 → 重挂防抖（供 30.2d 卸载 flush 用）
       await noteGetU.execute({ id: teleNoteId })
-      assert.strictEqual(scheduledU.length, 2, '命中重挂防抖定时器')
+      assert.strictEqual(scheduledU.length, 3, '命中重挂防抖定时器（useCount 60s 重挂；召回 3s 防抖已挂不重复——卡⑫）')
     })
     await t('归档预览组行合计引用数（totalUseCount）+ 合并归档继承成员引用合计', async () => {
       const qA = await handlersU['notes-create']({ title: '速记甲', body: 'quick a', tags: ['quick'] })
@@ -128,8 +130,11 @@ module.exports = {
       const disposeU = effectsU[0]()   // ctx.effect 注册的 effect 体 → 返回 dispose
       disposeU()                        // 模拟插件卸载
       await flushMicro30()
-      assert.strictEqual(writesU, w1 + 1, '卸载 flush 仅落盘活跃脏笔记（增量 ' + (writesU - w1) + '；已删速记甲跳过）')
-      assert.strictEqual(scheduledU[1].cleared, true, '卸载 flush 清掉防抖定时器（不二次触发）')
+      // 0.4.3+ 卡⑫（notes-043-inject-receipt）：卸载 flush 另落召回遥测——防抖窗口内 pending 日聚合一次性落盘：
+      //   遥测根笔记懒建（建帐+首批行一次 _create 落盘 +1）+ settings.recallNoteId 指针回写（+1）
+      assert.strictEqual(writesU, w1 + 3, '卸载 flush 落盘活跃脏笔记（增量 ' + (writesU - w1) + ' = useCount +1 + 召回遥测建帐/指针 +2；已删速记甲跳过）')
+      assert.strictEqual(scheduledU[2].cleared, true, '卸载 flush 清掉 useCount 防抖定时器（不二次触发）')
+      assert.strictEqual(scheduledU[1].cleared, true, '卸载 flush 清掉召回遥测 3s 聚合防抖定时器（卡⑫，不二次触发）')
       assert(storeU.get(NOTES_DIR + '\\' + teleNoteId + '.md').indexOf('\nuseCount: 4\n') >= 0, '卸载后磁盘 useCount: 4')
     })
   } finally {
@@ -191,8 +196,10 @@ module.exports = {
         assert.strictEqual(g1.note.useCount, 1, '静态包第 1 次命中 useCount=1')
         assert.strictEqual(g2.note.useCount, 2, '静态包第 2 次命中 useCount=2')
         assert.strictEqual(writesU2, w0, '静态包防抖期内零写盘（增量 ' + (writesU2 - w0) + '）')
-        assert.strictEqual(scheduledU2.length, 1, '静态包重复命中只挂一个防抖定时器')
-        assert.strictEqual(scheduledU2[0].ms, 60000, '静态包防抖窗口 60s')
+        // 0.4.3+ 卡⑫（notes-043-inject-receipt）：note_get 另挂召回遥测 3s 聚合防抖（假定时器捕获即不落盘，本窗口零写盘语义不变）
+        assert.strictEqual(scheduledU2.length, 2, '静态包重复命中只挂两个防抖定时器（useCount 60s + 召回遥测 3s）')
+        assert.strictEqual(scheduledU2[0].ms, 60000, '静态包防抖窗口 60s（useCount 先挂——bumpUseCount 序位在 _recallHit 前）')
+        assert.strictEqual(scheduledU2[1].ms, 3000, '静态包召回遥测聚合防抖 3s（卡⑫）')
         scheduledU2[0].fn()   // 模拟防抖到期
         await flushMicro30()
         assert.strictEqual(writesU2, w0 + 1, '静态包批量落盘仅 1 次写盘（增量 ' + (writesU2 - w0) + '）')
@@ -202,8 +209,10 @@ module.exports = {
         const w1 = writesU2
         effectsU2[0]()()   // effect 体 → dispose（插件卸载）
         await flushMicro30()
-        assert.strictEqual(writesU2, w1 + 1, '静态包卸载 flush 落盘（增量 ' + (writesU2 - w1) + '）')
-        assert.strictEqual(scheduledU2[1].cleared, true, '静态包卸载清掉防抖定时器')
+        // 0.4.3+ 卡⑫：卸载 flush 另落召回遥测（懒建 +1 + settings 指针回写 +1）
+        assert.strictEqual(writesU2, w1 + 3, '静态包卸载 flush 落盘（增量 ' + (writesU2 - w1) + ' = useCount +1 + 召回遥测建帐/指针 +2）')
+        assert.strictEqual(scheduledU2[2].cleared, true, '静态包卸载清掉 useCount 防抖定时器')
+        assert.strictEqual(scheduledU2[1].cleared, true, '静态包卸载清掉召回遥测 3s 聚合防抖定时器（卡⑫）')
         assert(storeU2.get(path.join(NOTES_ROOT_STATIC, idU2 + '.md')).indexOf('\nuseCount: 3\n') >= 0, '静态包卸载后 useCount: 3')
       } finally {
         global.setTimeout = realSetTimeout30; global.clearTimeout = realClearTimeout30

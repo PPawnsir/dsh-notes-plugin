@@ -58,6 +58,25 @@ dsh-notes turns this into an accumulable local asset:
 | Todos never get executed | One click dispatches a todo to any **live** session (`Agent.send` injects "recall context + concrete instructions" and wakes the target to start work); dispatch history can be marked done |
 | Can't find it afterwards | Instant panel search + full-text fallback union search, the `note_search` tool filters by tag/topic/kind, archive merges by session or tag, soft delete is restorable |
 
+## Design Philosophy: The Note Network
+
+dsh-notes is not just "a notes plugin with a panel" — the whole product is **a continuously growing network of note references**: nodes = notes (memory / reference / log / archive / index / todo…), edges = references. Features change endlessly, but their carrier is always a node on this network; every governance surface is a node, and high-frequency writes always land in root notes. Every new feature must first pass the design question: **What are its nodes? What are its edges?** (nodes first, then edges)
+
+The four kinds of edges in the network:
+
+| Edge | Form | Semantics |
+| --- | --- | --- |
+| Wiki link | `[[id]]` in the body | Evidence (log → memory) / association |
+| Soft link | front-matter field (`schedule.runLog`, `refNote`) | Association (companion note points to its host) |
+| Index mount | Injection-index §1 line `- [[id]] 何时查我：…` | Mount (index → reference; the primary recall channel) |
+| Dispatch mount | `dispatches[].sessionId` | Recall (task → reference = deterministic distribution) |
+
+**Root-index pattern**: machine-produced artifacts never add a new panel or a new store — data concentrates in linked companion notes (the RootNote hosted-section framework: anchor section / line format / idempotence / tail trimming; the machine only performs line-level edits inside the section, zero touches outside it). Four instances: scheduled-dispatch execution log, memory archive, recall metrics (injection index §2), and the injection index. The original body is never touched — a convention's body is the dispatch payload; history always goes into the companion note.
+
+**Memory governance tiers** (recall guarantee grading): `inject` full-text injection = strong guarantee; task mount (one whenToUse line in index §1) = medium guarantee · the primary channel; the catalog index (one recall line per note) = weak guarantee. Reference notes are not injected by default — mounting is an explicit action.
+
+**Red lines**: the convention bucket is injected verbatim and untouched; reference notes are not injected by default (mounting opts in explicitly); archive/metrics root notes are never injected (no recursion); work logs are stealth by default, exempted only by directed actions such as expanding the log folder / archive / metrics.
+
 ## Install
 
 > Host requirements: Node ≥ 22; DSH ≥ `0.1.5-rc.1` (declared via `peerDependencies`; see package.json for the version range including prerelease branches)
@@ -201,7 +220,7 @@ Backward compatibility: old files missing `inject`/`kind`/`status`/`injectRole`/
 node scripts/build-dist.cjs           # after changing src/** (client/host/app/shared/styles), refresh all four artifacts at once: lib/client.js + lib/styles.css + app.html + index.mjs
 node --check packages/dsh-notes-plugin/index.mjs
 node --check packages/dsh-notes-plugin/lib/client.js
-node check.js                         # 736-case regression (host full chain + static package + client UI surface + virtual folders + catalog injection + import & export + semi-standalone page + dual-mode editor + sensitive masking + injection enhancements + telemetry/wiki-links + snapshot history engine + modular structure contract + bilingual README.en + i18n guard)
+node check.js                         # 780-case regression (host full chain + static package + client UI surface + virtual folders + catalog injection + import & export + semi-standalone page + dual-mode editor + sensitive masking + injection enhancements + telemetry/wiki-links + snapshot history engine + modular structure contract + bilingual README.en + i18n guard + note-network guard / README philosophy)
 ```
 
 See [DEVELOPMENT.md](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/DEVELOPMENT.md) for details.

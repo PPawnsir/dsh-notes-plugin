@@ -23,6 +23,18 @@
         const [folderMenu, setFolderMenu] = React.useState(null)   // 文件夹项右键菜单：{ x, y, folder }（面板内坐标）或 null
         const [renamingId, setRenamingId] = React.useState(null)   // 树内内联重命名中的文件夹 id
         const [renameText, setRenameText] = React.useState('')
+        // 树展开「含日志的文件夹」懒加载（notes-041c-tree-log-children）：定向 includeLogs 拉取的 kind=log overlay + 按夹已拉标记
+        //（R-6 豁免面=「用户主动展开日志夹」动作；overlay 不并入 notes 主缓存——默认列表/搜索/目录隐身不变）
+        const [foldLogs, setFoldLogs] = React.useState([])
+        const [foldLogLoaded, setFoldLogLoaded] = React.useState({})
+        function ensureFoldLogs(fid) {
+          if (foldLogLoaded[fid]) return
+          setFoldLogLoaded(prev => Object.assign({}, prev, { [fid]: true }))
+          if (notes.some(n => (n.kind || 'note') === 'log')) return   // 列表已是 includeLogs 口径：日志随 notes 正常渲染，零请求
+          host.call('notes-list', { includeLogs: true }).then(res => {
+            if (res && res.notes) setFoldLogs(res.notes.filter(n => (n.kind || 'note') === 'log'))
+          }).catch(err => {})
+        }
         // 展开态/菜单镜像到 ref（Esc 栈闭包挂一次，需读最新值避免过期）
         React.useEffect(() => { folderMenuRef.current = folderMenu }, [folderMenu])
         React.useEffect(() => { renamingIdRef.current = renamingId }, [renamingId])
@@ -62,12 +74,14 @@
         function isFolderExpanded(id) { return foldersExpanded === null ? true : foldersExpanded.indexOf(id) >= 0 }
         // 折叠/展开切换（缺省全展开时先物化全量展开集合再切换，保证其余文件夹保持展开）
         function toggleFolder(id) {
+          const opening = !isFolderExpanded(id)
           setFoldersExpanded(prev => {
             const base = prev === null ? folders.map(f => f.id).concat([PINNED_KEY]) : prev
             const next = base.indexOf(id) >= 0 ? base.filter(x => x !== id) : base.concat([id])
             saveFoldersExpanded(next)
             return next
           })
+          if (opening) ensureFoldLogs(id)   // 仅展开动作触发日志懒加载（notes-041c），折叠不动作
         }
         // 自动展开目标文件夹（选中笔记/新建文件夹/移入笔记时调用；已展开或缺省全展开时不动）
         function expandFolder(id) {
@@ -210,6 +224,7 @@
           loadFolders: loadFolders, folderSubtreeIdsOf: folderSubtreeIdsOf, childFoldersOf: childFoldersOf, rootFolders: rootFolders,
           folderPathOf: folderPathOf, isFolderExpanded: isFolderExpanded, toggleFolder: toggleFolder, expandFolder: expandFolder,
           folderName: folderName, openFolderMenu: openFolderMenu, doCreateFolder: doCreateFolder, doRenameFolder: doRenameFolder,
-          doDeleteFolder: doDeleteFolder, doReorderFolder: doReorderFolder, doReparentFolder: doReparentFolder, folderMenuEl: folderMenuEl
+          doDeleteFolder: doDeleteFolder, doReorderFolder: doReorderFolder, doReparentFolder: doReparentFolder, folderMenuEl: folderMenuEl,
+          foldLogs: foldLogs, foldLogLoaded: foldLogLoaded, ensureFoldLogs: ensureFoldLogs   // notes-041c 树日志懒加载（panel/tree.js 消费）
         }
     }

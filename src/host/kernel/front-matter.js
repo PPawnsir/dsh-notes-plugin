@@ -34,6 +34,9 @@
         // origin 条件行（工作记忆 v0 r3 车道模型·产物溯源：memory-guide 引导激活期间产生的沉淀日志落 origin=memory-guide；
         // 可选轻字段本期只落数据，详情区展示另期）
         (m.origin ? 'origin: ' + escYaml(m.origin) + '\n' : '') +
+        // refNote 条件行（0.4.3⑥ 效用账本：记忆档案笔记 → 被引用记忆 id 的结构化软链，notes-ledger 懒创建回写；
+        // 普通笔记不落此行，存量零迁移）
+        (m.refNote ? 'refNote: ' + escYaml(m.refNote) + '\n' : '') +
         // schedule 条件行（定时派发·执行层：contractType=dispatch-schedule 约定笔记的调度声明 + 机器状态——
         // 声明 {at|every, target, action, enabled} + 状态 {lastFiredAt, lastRun{at,status,receiptId}, lastError}；
         // JSON 单行存储同 dispatches 先例；普通笔记不落此行，存量零迁移）
@@ -43,13 +46,18 @@
         'useCount: ' + escYaml(m.useCount || 0) + '\n' +
         'archivedAt: ' + escYaml(m.archivedAt || '') + '\n' +
         'deleted: ' + escYaml(m.deleted || 'false') + '\n' +
-        '---\n\n'
+        // 闭合分隔符固定单换行收尾、不多写空行（notes-043-fm-newline）：与 parseFM「吃掉闭合 --- 后全部连续前导换行」
+        //   配对，保证 读盘→写盘 往返幂等（旧口径 '---\n\n' + 只吃一个 \n 曾致正文前导换行每轮 +1 无上界递增）
+        '---\n'
     }
 
     function parseFM(content) {
       const meta = {}
       let body = content
-      const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
+      // 闭合 --- 后吃掉全部连续前导换行：front-matter 与正文间的空行属分隔符填充、不属正文语义——
+      //   旧格式（'---\n\n' 收尾）及缺陷累积的多空行存量文件首轮读入即归一，回写后稳定零增长（不做全库迁移）；
+      //   只作用于最前缘，正文内部空行不受影响。canonical 口径：正文不再以前导空行开头。
+      const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n)*([\s\S]*)$/)
       if (m) {
         body = m[2] || ''
         for (const line of m[1].split(/\r?\n/)) {

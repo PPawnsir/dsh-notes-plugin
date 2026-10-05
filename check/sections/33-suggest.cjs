@@ -120,6 +120,10 @@ module.exports = {
     seed('n-sg-linked', ['title: 被反链笔记', 'topic: 其他', 'createdAt: "' + iso(1) + '"', 'updatedAt: "' + iso(1) + '"'], '被引用正文')
     seed('n-sg-inject', ['title: 注入中笔记', 'topic: 约定', 'inject: true', 'createdAt: "' + iso(1) + '"', 'updatedAt: "' + iso(1) + '"'], '注入正文')
     seed('n-sg-quick-single', ['title: 单条速记', 'topic: 调试', 'tags: quick', 'sessionId: sess-sg-2', 'createdAt: "' + iso(1) + '"', 'updatedAt: "' + iso(1) + '"'], '单条速记不成组')
+    // 启动异步写沉降（notes-043-index 升级首启 idxEnsure 的索引笔记 + settings.json 为 fire-and-forget 写）：
+    // 先跑一个 awaited RPC + 宏任务等待让启动写落定，再取零写入基线快照
+    await handlersSG['notes-list']({})
+    await new Promise(r2 => setTimeout(r2, 60))
     const keysBefore = Array.from(storeSG.keys()).filter(k => k.indexOf(NOTES_DIR + '\\') === 0).sort()
     const r = await handlersSG['notes-suggest']({})
     const keysAfter = Array.from(storeSG.keys()).filter(k => k.indexOf(NOTES_DIR + '\\') === 0).sort()

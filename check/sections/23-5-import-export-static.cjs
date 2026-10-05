@@ -23,7 +23,10 @@ module.exports = {
         get: (name) => ({ agents: agentsMock, systemPrompt: { context: () => () => {} } })[name],
         effect: () => {},
       })
-      assert.strictEqual(Object.keys(handlers7).length, 42, '静态包注册 42 个 RPC（41 + notes-ping；41 含工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch），实得 ' + Object.keys(handlers7).length)
+      assert.strictEqual(Object.keys(handlers7).length, 47, '静态包注册 47 个 RPC（46 + notes-ping；46 含工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats），实得 ' + Object.keys(handlers7).length)
+      assert(typeof handlers7['notes-recall-stats'] === 'function', '静态包 notes-recall-stats handler 存在（0.4.3+ 卡⑫ 统一召回遥测，notes-043-inject-receipt）')
+      assert(typeof handlers7['notes-ledger-refresh'] === 'function', '静态包 notes-ledger-refresh handler 存在（0.4.3⑥ 效用账本，notes-043-ledger）')
+      assert(typeof handlers7['notes-graph'] === 'function', '静态包 notes-graph handler 存在（0.4.3 内核① 图查询，notes-043-graph）')
       assert(typeof handlers7['notes-get-batch'] === 'function', '静态包 notes-get-batch handler 存在（N+1 批量端点，notes-034-batch3）')
       assert(typeof handlers7['notes-schedule-eval'] === 'function', '静态包 notes-schedule-eval handler 存在（定时派发·执行层）')
       const sA = await handlers7['notes-create']({ title: '静态导出A', body: 'SA正文' })
@@ -31,12 +34,12 @@ module.exports = {
       await handlers7['notes-folders']({ op: 'create', name: '静态夹' })
       // 导出
       const ex = await handlers7['notes-export']({ dir: 'D:\\exp-st' })
-      assert(!ex.error && ex.exported === 2 && ex.foldersFile === true, '导出 2 条 + folders.json（实得 ' + JSON.stringify(ex) + '）')
+      assert(!ex.error && ex.exported === 3 && ex.foldersFile === true, '导出 3 条（2 种子 + 注入索引）+ folders.json（实得 ' + JSON.stringify(ex) + '）')
       assert(/\\dsh-notes-export-\d{8}-\d{6}$/.test(ex.target), '静态包导出目录命名一致（path.join）')
       assert.strictEqual(store7.get(path.join(ex.target, sA.id + '.md')), store7.get(path.join(NOTES_ROOT_STATIC, sA.id + '.md')), '快照逐字节一致')
       // 预览基线全 same
       const p0 = await handlers7['notes-import-preview']({ dir: ex.target })
-      assert(p0.same === 2 && p0.diff === 0 && p0.added === 0 && p0.folders.new === 0, '预览基线全 same')
+      assert(p0.same === 3 && p0.diff === 0 && p0.added === 0 && p0.folders.new === 0, '预览基线全 same（2 种子 + 注入索引）')
       // 混合场景：B 改动 + 新增 + 新文件夹
       store7.set(path.join(ex.target, sB.id + '.md'), store7.get(path.join(ex.target, sB.id + '.md')) + '静态改动')
       store7.set(path.join(ex.target, 'n-stnew01.md'), '---\nid: n-stnew01\ntitle: 静态新入\ncreatedAt: "2026-01-02T00:00:00.000Z"\nupdatedAt: "2026-01-02T00:00:00.000Z"\n---\n\n新\n')
@@ -44,10 +47,10 @@ module.exports = {
       fArr.push({ id: 'f-stimp01', name: '静态新夹', order: 9 })
       store7.set(path.join(ex.target, 'folders.json'), JSON.stringify(fArr))
       const p1 = await handlers7['notes-import-preview']({ dir: ex.target })
-      assert(p1.same === 1 && p1.diff === 1 && p1.added === 1 && p1.folders.new === 1, '预览分类：1 same / 1 diff / 1 added / 1 新文件夹（实得 ' + JSON.stringify({ s: p1.same, d: p1.diff, a: p1.added, f: p1.folders }) + '）')
+      assert(p1.same === 2 && p1.diff === 1 && p1.added === 1 && p1.folders.new === 1, '预览分类：1 same / 1 diff / 1 added / 1 新文件夹（实得 ' + JSON.stringify({ s: p1.same, d: p1.diff, a: p1.added, f: p1.folders }) + '）')
       // 默认导入：备份 + added 入库 + diff 跳过 + folders 合并
       const im = await handlers7['notes-import']({ dir: ex.target })
-      assert(im.imported === 1 && im.skippedSame === 1 && im.skippedDiff === 1 && im.overwritten === 0 && im.foldersMerged === 1, '默认导入计数（实得 ' + JSON.stringify(im) + '）')
+      assert(im.imported === 1 && im.skippedSame === 2 && im.skippedDiff === 1 && im.overwritten === 0 && im.foldersMerged === 1, '默认导入计数（实得 ' + JSON.stringify(im) + '）')
       assert(/\\notes-backup-\d{8}-\d{6}$/.test(im.backupDir), '备份目录命名一致')
       assert(store7.get(path.join(im.backupDir, sB.id + '.md')).indexOf('静态改动') < 0, '备份保留导入前 B 原文')
       assert(store7.has(path.join(NOTES_ROOT_STATIC, 'n-stnew01.md')), '新笔记入库')
@@ -57,7 +60,7 @@ module.exports = {
       assert(onDisk.length === 2 && nf && nf.order === 1, 'folders 合并只增不删 + order 续排（实得 ' + JSON.stringify(onDisk) + '）')
       // overwrite 覆盖
       const im2 = await handlers7['notes-import']({ dir: ex.target, overwrite: true })
-      assert(im2.overwritten === 1 && im2.skippedSame === 2, 'overwrite 覆盖 1 条 diff（实得 ' + JSON.stringify(im2) + '）')
+      assert(im2.overwritten === 1 && im2.skippedSame === 3, 'overwrite 覆盖 1 条 diff（same 含注入索引）（实得 ' + JSON.stringify(im2) + '）')
       assert(store7.get(path.join(NOTES_ROOT_STATIC, sB.id + '.md')).indexOf('静态改动') >= 0, '覆盖生效')
       const g = await handlers7['notes-get']({ id: sB.id })
       assert(g.note.body.indexOf('静态改动') >= 0, '缓存同步覆盖后内容')

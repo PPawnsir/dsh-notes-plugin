@@ -1,4 +1,4 @@
-// 节 23.6 P3 单文件导出（scope 拼接 + 图片内联 + 体积告警 + 双包同步）
+﻿// 节 23.6 P3 单文件导出（scope 拼接 + 图片内联 + 体积告警 + 双包同步）
 // 拆分自 check.js 单文件（notes-check-split）：节体逐字节保留，仅首尾为机械接线（H=helpers 设施，S=跨节共享状态）。
 module.exports = {
   id: "23.6",
@@ -102,7 +102,7 @@ module.exports = {
   await t('notes-export-single 全部 scope：单文件拼接 + 图片内联 + 缺失保留 + 结构完整 + 小体积无 warning', async () => {
     const r = await handlersES['notes-export-single']({ dir: 'D:\\exp-single', scope: { all: true }, format: 'md' })
     assert(!r.error, '导出成功（实得 ' + JSON.stringify(r).slice(0, 300) + '）')
-    assert.strictEqual(r.exported, 3, '3 篇全部导出')
+    assert.strictEqual(r.exported, 4, '4 篇全部导出（3 种子 + 注入索引）')
     assert(/\\dsh-notes-export-single-\d{8}-\d{6}\.md$/.test(r.target), 'target = <dir>\\dsh-notes-export-single-<ts>.md（实得：' + r.target + '）')
     assert.strictEqual(r.images, 1, '内联 1 张')
     assert.strictEqual(r.missingAssets, 1, '缺失 1 张保留原引用')
@@ -116,7 +116,7 @@ module.exports = {
     assert(doc.indexOf('data:image/png;base64,' + pngB64ES) >= 0, '图片 base64 内联为 data URL')
     assert(doc.indexOf('![缺](assets/20990101-000000-none.png)') >= 0, '缺失资产保留原引用')
     assert(doc.indexOf('](' + upES.file + ')') < 0, '已内联引用不再保留相对路径')
-    assert.strictEqual(doc.split('\n\n---\n\n').length - 1, 3, '3 篇 = 3 条篇间分隔线')
+    assert.strictEqual(doc.split('\n\n---\n\n').length - 1, 4, '4 篇 = 4 条篇间分隔线（3 种子 + 注入索引）')
     assert.strictEqual(r.bytes, expNS.utf8Bytes(doc), 'bytes = 文档 UTF-8 字节数')
   })
   await t('notes-export-single scope 过滤：文件夹（id/名称双兼容）/ 标签', async () => {
@@ -138,7 +138,7 @@ module.exports = {
     assert(storeES.get(r.target).indexOf('## 目录') < 0, 'toc:false 无目录页')
     await handlersES['notes-delete']({ id: esC.id })
     const r2 = await handlersES['notes-export-single']({ dir: 'D:\\exp-single', scope: {} })
-    assert(r2.exported === 2 && storeES.get(r2.target).indexOf(esC.id) < 0, '软删除笔记不进单文件导出（与 _list 同口径）')
+    assert(r2.exported === 3 && storeES.get(r2.target).indexOf(esC.id) < 0, '软删除笔记不进单文件导出（与 _list 同口径；3 = 2 存活种子 + 注入索引）')
     await handlersES['notes-restore']({ id: esC.id })
   })
   await t('notes-export-single 参数校验：缺 dir / dir 是文件 / format 非 md / 文件夹不存在', async () => {
@@ -181,7 +181,7 @@ module.exports = {
       const nA = await handlersES2['notes-create']({ title: '静态单A', body: 'SA\n![图](' + up.file + ')\n' })
       const nB = await handlersES2['notes-create']({ title: '静态单B', body: 'SB', tags: ['静态标签'] })
       const r = await handlersES2['notes-export-single']({ dir: 'D:\\exp-single-st', scope: {} })
-      assert(!r.error && r.exported === 2, '静态包导出 2 篇（实得 ' + JSON.stringify(r).slice(0, 200) + '）')
+      assert(!r.error && r.exported === 3, '静态包导出 3 篇（2 种子 + 注入索引）（实得 ' + JSON.stringify(r).slice(0, 200) + '）')
       assert(/dsh-notes-export-single-\d{8}-\d{6}\.md$/.test(r.target), '静态包文件命名一致（path.join）')
       const doc = storeES2.get(r.target)
       assert(doc && doc.indexOf('# 静态单A\n\n---\nid: ' + nA.id) >= 0, '静态包拼接结构（# 标题 + front-matter）')

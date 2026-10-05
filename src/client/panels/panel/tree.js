@@ -9,6 +9,7 @@
     // dragNoteIdRef/dragFolderIdRef 的 React.useRef 声明原文被 check.js 锚定（21/41 节）——留 hook 内（useRef 不可模块顶层调用）
     function usePanelTree(args) {
         const notes = args.notes, view = args.view, filters = args.filters, searchText = args.searchText, searchIds = args.searchIds, folders = args.folders
+        const foldLogs = args.foldLogs || [], foldLogLoaded = args.foldLogLoaded || {}   // notes-041c 树日志懒加载 overlay（folder-menu.js 托管）
         // i18n（notes-042-i18n-cov-a 覆盖卡A）：tt = useT()——订阅 langStore，切语言本 hook（随主面板）自渲染；树区文案全走 tt()
         const tt = useT()
         const dragNoteIdRef = React.useRef(null)   // 笔记拖拽状态：dragstart 记录 noteId（ref 防闭包过期），dragend 清空
@@ -119,6 +120,8 @@
               e('span', { className: 'dsh-notes-caret-spacer' }),
               e('span', { className: 'dsh-notes-kind-slot' }, e('span', { className: 'dsh-notes-kind-dot', style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' } })),
               e('span', { className: 'dsh-notes-note-ti' }, n.status === 'pinned' ? I('pin', 10, 'dsh-notes-note-pin') : null, highlight(n.title || tt('tree.untitled'), q)),
+              // 日志隐身标记（notes-041c-tree-log-children）：树内定向召回的 kind=log 行尾 log 文本徽章（懒加载 overlay 专属视觉；面板 emoji 红线——不用表情字符）
+              n.kind === 'log' ? e('span', { className: 'dsh-notes-logmark dsh-nt', 'data-tooltip': tt('tree.logTip'), style: { fontSize: 9, marginLeft: 2, opacity: 0.6 } }, 'log') : null,
               n.inject === true ? e('span', { className: 'dsh-notes-note-inj dsh-nt', 'data-tooltip': tt('tree.injectTip', { role: tt(n.injectRole === 'reference' ? 'tree.roleReference' : 'tree.roleConvention') }) + ' · ' + tt('tree.injectScope', { scope: injectScopeLabel(n.injectTo) }) }, I('bolt', 10)) : null,
               // 曾注入徽章（injectEver 粘性标记：历史上开启过注入、现已关闭；已注入时由 bolt 徽章表达，不重复显示；不满足不渲染）
               n.inject !== true && n.injectEver === true ? e('span', { className: 'dsh-notes-note-injevr dsh-nt', 'data-tooltip': tt('tree.injectEverTip') }, I('clock', 9)) : null,
@@ -193,6 +196,12 @@
             }
             for (const cf of childFoldersOf(f.id)) renderFolderNode(cf, childEls)
             kids.forEach(n => { treeIds.push(n.id); childEls.push(renderNoteRow(n, true)) })
+            // 日志 overlay 并入（notes-041c-tree-log-children）：夹已展开且定向拉过 → 本夹直挂 log 子条目追加到尾部（id 去重防文件夹视图双显）
+            if (foldLogLoaded[f.id] && foldLogs.length) {
+              const have = {}
+              paged.forEach(n => { have[n.id] = true })
+              foldLogs.filter(n => (n.folder || '') === f.id && !have[n.id]).forEach(n => { treeIds.push(n.id); childEls.push(renderNoteRow(n, true)) })
+            }
             if (childEls.length) sink.push(e('div', { key: 'kids-' + f.id, className: 'dsh-notes-nested' }, childEls))
           }
           for (const f of rootFolders()) renderFolderNode(f, treeEls)
@@ -210,9 +219,11 @@
           const unfiled = paged.filter(n => !(n.folder || ''))
           const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })
           if (unfiledKids.length || dragActive) {
+            // 提示行排笔记行**之后**（notes-041d-drag-root-note）：dragActive 点亮瞬间若在行首插入提示行，会把本夹笔记行（=拖拽源行）整体下移，
+            // Chromium 判定拖拽源位移直接取消拖拽（dragstart→立即 dragend）——根目录笔记因此拖不进文件夹；置尾后源行零位移，拖拽链路恢复
             treeEls.push(e('div', { key: 'unfiled-drop', className: 'dsh-notes-unfiled-drop', onDragOver: onUnfiledDragOver, onDragLeave: onUnfiledDragLeave, onDrop: onUnfiledDrop },
-              dragActive ? e('div', { key: 'unfiled-hint', className: 'dsh-notes-unfiled-hint' }, dragFolderIdRef.current ? tt('tree.dropRootHint') : tt('tree.dropOutHint')) : null,
-              unfiledKids))
+              unfiledKids,
+              dragActive ? e('div', { key: 'unfiled-hint', className: 'dsh-notes-unfiled-hint' }, dragFolderIdRef.current ? tt('tree.dropRootHint') : tt('tree.dropOutHint')) : null))
           }
           // 主题全局过滤（原型底部区）：全库主题 + 计数；点行主体 = 原地展开/收起该主题的笔记子列表（topicExpanded，不持久化）；
           // 主题视图（跨文件夹过滤）降级为行尾过滤图标按钮（不抢占单击）

@@ -19,6 +19,38 @@
     function setInjMgrQ(v) { store.modal.injMgr.set({ q: typeof v === 'function' ? v(store.modal.injMgr.get().q) : v }) }
     function setInjMgrSel(v) { store.modal.injMgr.set({ sel: typeof v === 'function' ? v(store.modal.injMgr.get().sel) : v }) }
     function setInjMgrPending(v) { store.modal.injMgr.set({ pending: typeof v === 'function' ? v(store.modal.injMgr.get().pending) : v }) }
+    // ===== 挂载弹层（0.4.3⑤ notes-043-index）：给资料开注入 → 手写 whenToUse（textarea 预填标题）→ 确认落注入索引 §1 行 =====
+    // host 侧开注入已自动落缺省行（whenToUse=标题），本弹层 = 换文案通道：跳过 = 保留缺省行；modal 不叠 modal（先关注入管理面板再开）
+    store.modal.mount = createStore({ open: false, id: '', title: '', when: '', pending: false })
+    function setMountOpen(v) { store.modal.mount.set({ open: typeof v === 'function' ? v(store.modal.mount.get().open) : v }) }
+    function openMountModal(n) { if (!n) return; store.modal.mount.set({ open: true, id: n.id, title: n.title || n.id, when: n.title || '', pending: false }) }
+    function closeMountModal() { setMountOpen(false) }
+    async function doMountSave() {
+      const m = store.modal.mount.get()
+      if (!m.id || m.pending) return
+      store.modal.mount.set({ pending: true })
+      try {
+        const res = await host.call('notes-mount', { id: m.id, whenToUse: m.when })
+        store.modal.mount.set({ pending: false })
+        if (res && res.error) { showToast(t('inj.mountFailed', { msg: res.error })); return }
+        showToast(t('inj.mountSaved', { title: m.title }))
+        closeMountModal()
+      } catch (err) { store.modal.mount.set({ pending: false }); showToast(t('inj.mountFailed', { msg: String(err.message || err) })) }
+    }
+    function MountModal() {
+      const m = store.modal.mount.useSel(s => s)
+      const tt = useT()
+      if (!m.open) return null
+      return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !m.pending) closeMountModal() } },
+        e('div', { className: 'dsh-notes-settings-modal' },
+          e('div', { className: 'dsh-notes-settings-modal-t' }, I('bolt', 14), ' ' + tt('inj.mountTitle'), e('span', { className: 'dsh-notes-imgup-sub' }, tt('inj.mountSub'))),
+          e('div', { className: 'dsh-notes-inj-mount-body' },
+            e('label', { className: 'dsh-notes-inj-mount-label' }, tt('inj.mountLabel')),
+            e('textarea', { className: 'dsh-notes-inj-mount-when', rows: 3, placeholder: tt('inj.mountPlaceholder'), value: m.when, autoFocus: true, onChange: (ev) => store.modal.mount.set({ when: ev.target.value }) })),
+          e('div', { className: 'dsh-notes-dispatch-actions' },
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => closeMountModal(), disabled: m.pending }, tt('inj.mountSkip')),
+            e('button', { className: 'dsh-notes-dispatch-ok', onClick: () => doMountSave(), disabled: m.pending }, m.pending ? '…' : tt('inj.mountSave')))))
+    }
     // ===== 注入管理面板（设置卡片「注入管理」入口；notes-inject-manager）：全库注入总览 + 单行直改 + 多选批量 =====
     // 契约：数据源 notes-list {includeLogs:true} slim（inject/injectRole/injectEver/sensitive/kind/injectTo 齐备，零新 RPC）；
     // 三态语义与详情区三态分段控件完全一致：off→notes-update {inject:false}；约定/资料→{inject:true, injectRole}（payload 禁 undefined）；
@@ -116,6 +148,8 @@
           if (res && res.error) { setError(res.error); return }
           if (res && res.injectForcedOff) showToast(t('inj.forcedOff', { title: n.title || n.id }))
           else showToast(role === 'off' ? t('inj.injectOffToast', { title: n.title || n.id }) : t('inj.injectSetToast', { role: t(role === 'reference' ? 'tree.roleReference' : 'tree.roleConvention'), title: n.title || n.id }))
+          // 0.4.3⑤ 挂载弹层：设为资料（reference）→ 手写 whenToUse（host 已自动落缺省行，弹层换文案；modal 不叠 modal——先关注入管理面板）
+          if (role === 'reference') { setInjMgrOpen(false); injMgrBackRef.current = null; openMountModal({ id: n.id, title: n.title }) }
           // 本地即时回写（injectEver 粘性：开启即曾注入），后台刷新对齐 host
           setInjMgrList(prev => (prev || []).map(x => x.id === n.id ? Object.assign({}, x, role === 'off' ? { inject: false } : { inject: true, injectRole: role, injectEver: true }) : x))
           panelBridge.loadNotes(true); notifyNotesChanged()

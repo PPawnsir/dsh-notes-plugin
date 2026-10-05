@@ -46,12 +46,22 @@
           if (n.inject !== true) continue
           if (conventionHit(n, ws, curSid)) matches.push(n)
         }
-        if (matches.length === 0) { if (sidOverride === undefined) lastInjectChars = 0; return '' }
         matches.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
         // 双角色分桶：约定与资料各自成段，标题换行收拢，正文行统一缩进两格保持在列表项内
+        // 0.4.3⑤ 管线切换（notes-043-index，injectindex 块）：reference 桶 = 注入索引根笔记 §1 逐行
+        // （每行 whenToUse + [[链接]]，agent 按需 note_get 拉正文）；旧「资料全文注入」通道下线；
+        // 无索引/索引无行 → 回退空 reference 桶；约定桶全文注入不动（用户裁决红线）。
+        // 索引行先于空判计算：约定零命中但索引有挂载行时，资料桶仍要注入（管线语义 = 索引行即载荷）。
+        // refBlocks 保对象形态（遥测取 id 用——Verifier 驳回①修复：此前直接 .map 成字符串后再取 b.id 恒 undefined，资料桶交付静默丢失）；
+        // refLines 为渲染行字符串（预算省略 pop 只动 refLines 尾部，存活 id = refBlocks.slice(0, refLines.length)）；
+        // 排序：按挂载目标 updatedAt 降序（延续旧「从最旧开始省略」预算语义；目标不在库/无时间 → 视为最旧沉底）
+        const refBlocks = idxLinesSync()
+          .map(function (l) { const n = cache.get(l.id); return { id: l.id, raw: l.raw, ts: (n && !n.deleted && !n.tombstoned && n.updatedAt) || '' } })
+          .sort(function (a, b) { return (b.ts || '').localeCompare(a.ts || '') })
+        const refLines = refBlocks.map(function (it) { return '- ' + it.raw })
         const conventions = []
-        const references = []
-        for (const n of matches) (n.injectRole === 'reference' ? references : conventions).push(n)
+        for (const n of matches) { if (n.injectRole !== 'reference') conventions.push(n) }
+        if (conventions.length === 0 && refBlocks.length === 0) { if (sidOverride === undefined) lastInjectChars = 0; return '' }
         // 敏感脱敏：sensitive=true 的笔记正文按行打码（键保留值遮蔽，见 sensitive-helpers 块），计数用于尾部提示行
         let maskedCount = 0
         const block = (n) => {
@@ -61,30 +71,32 @@
         }
         const head = '以下是注入的上下文笔记（与当前任务无关时忽略）：'
         const convPart = conventions.length ? '\n\n用户约定（须遵守）：\n\n' + conventions.map(block).join('\n\n') : ''
-        // 资料块整列预渲染（block 有 maskedCount 计数副作用，每条只渲染一次；被预算省略时整块丢弃）
-        const refBlocks = references.map(block)
         const refHead = '\n\n参考资料（与当前任务相关时按需取用）：\n\n'
         // P1 注入体积预算（约，按字符数近似）：约定桶永不截断；资料桶从最旧（updatedAt 降序的尾部）开始整条省略，
         // 直至总长度回到预算内或资料桶为空；省略计数在尾部提示行告知（note_search 可检索原文）
         const budget = injectBudgetChars()
         let droppedRefs = 0
         if (budget > 0) {
-          while (refBlocks.length > 0 && (head + convPart + refHead + refBlocks.join('\n\n')).length > budget) {
-            refBlocks.pop()
+          while (refLines.length > 0 && (head + convPart + refHead + refLines.join('\n\n')).length > budget) {
+            refLines.pop()
             droppedRefs++
           }
         }
         let full = head + convPart
-        if (refBlocks.length) full += refHead + refBlocks.join('\n\n')
+        if (refLines.length) full += refHead + refLines.join('\n\n') + '\n\n（以上为挂载索引行：正文用 note_get <id> 获取）'
         if (full.length > 4000) full = full.slice(0, 4000) + '\n\n（内容过长已截断）'
         // 尾部提示行恒定可见（截断之后追加）：预算省略计数 + 脱敏计数（原文 note_get 按 id 获取 / note_search 检索）
         if (droppedRefs > 0) full += '\n\n…另有 ' + droppedRefs + ' 条资料超出预算未注入（note_search 可检索）'
         if (maskedCount > 0) full += '\n\n（其中 ' + maskedCount + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）'
-        // 图片路径消歧（img-path-hint 块）：实际注入的正文含 assets/ 图片引用时，尾部追加一次绝对路径提示（截断之后追加，恒定可见；预算省略的资料不算）
-        if (conventions.concat(references.slice(0, refBlocks.length)).some(function (n) { return bodyHasImageRef(n.body) })) full += '\n\n' + assetsHintLine(NOTES_ROOT)
+        // 图片路径消歧（img-path-hint 块）：实际注入的约定正文含 assets/ 图片引用时，尾部追加一次绝对路径提示（截断之后追加，恒定可见；资料桶为索引行无正文不参与）
+        if (conventions.some(function (n) { return bodyHasImageRef(n.body) })) full += '\n\n' + assetsHintLine(NOTES_ROOT)
         // 预览统计：脱敏条数 + 预算截断标记（资料桶有省略即视为截断）；预览渲染不触碰 lastInjectChars
         lastConvStats.masked = maskedCount; lastConvStats.budgetTruncated = droppedRefs > 0
         if (sidOverride === undefined) lastInjectChars = full.length   // 注入体积缓存：真实注入渲染才更新（设置卡片仪表数据源）
+        // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：inject 通道交付事件——真实注入路径（预览 sidOverride 不计）
+        // 记实际渲染的约定 id 集 + 资料桶存活（未被预算省略）索引行 id 集（refLines 尾部省略 → 存活 = refBlocks 前 refLines.length 项）；
+        // 签名去重 + 静默降级（recall-telemetry 块）
+        if (sidOverride === undefined) _recallRaw('inject', conventions.map(function (n) { return n.id }).concat(refBlocks.slice(0, refLines.length).map(function (it) { return it.id })), curSid)
         return full
       } catch (e) { return '' }
     }
@@ -96,7 +108,7 @@
     // 排序：pinned 优先 → updatedAt 降序（注入无工作区维度，不按工作区重排）；CATALOG_LIMIT 条封顶。
     // text 是同步函数（systemPrompt 契约）：读常驻 cache + settingsCache；总开关关闭/无条目/异常 → 返回 ''（不能返回 undefined）。
     const CATALOG_LIMIT = 40
-    const CATALOG_KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' }
+    const CATALOG_KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '系统' }   // 0.4.3⑥：+ sys 系统根笔记（注入允许是核心用途，显式 recall=true 的 sys 条目以系统标签进目录）
     // sidOverride：注入预览 RPC 专用（语义同 conventionText——含数组形态的工作区并集视角）；不传 = 真实注入路径（当前会话），行为不变
     function catalogText(sidOverride) {
       lastCatStats.masked = 0; lastCatStats.stale = 0
@@ -155,6 +167,8 @@
           '\n规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手'
         // 图片路径消歧（img-path-hint 块）：目录条目正文含 assets/ 图片引用时尾部追加一次绝对路径提示（note_get 拉全文后可直读图片）
         if (shown.some(function (n) { return bodyHasImageRef(n.body) })) out += '\n' + assetsHintLine(NOTES_ROOT)
+        // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：catalog 通道交付事件——真实渲染路径记目录实际出清单的 id 集（预览 sidOverride 不计）
+        if (sidOverride === undefined) _recallRaw('catalog', shown.map(function (n) { return n.id }), curSid)
         return out
       } catch (e) { return '' }
     }

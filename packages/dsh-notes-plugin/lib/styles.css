@@ -502,6 +502,13 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-injmgr-opt.dis{opacity:.38;cursor:not-allowed}
 .dsh-notes-injmgr-opt.dis:hover{background:transparent;color:var(--nt3)}
 
+/* ===== 挂载弹层 modal（0.4.3⑤ notes-043-index：资料开注入 → 手写 whenToUse 落注入索引 §1 行；mask/modal 复用设置卡片类） ===== */
+.dsh-notes-inj-mount-body{display:flex;flex-direction:column;gap:5px;margin:10px 0 4px}
+.dsh-notes-inj-mount-label{font-size:11px;color:var(--nt2)}
+.dsh-notes-inj-mount-when{width:100%;box-sizing:border-box;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:7px;color:var(--ntx);font-size:12px;line-height:1.6;padding:7px 9px;font-family:var(--nfont);outline:none;resize:vertical;min-height:64px}
+.dsh-notes-inj-mount-when:focus{border-color:var(--nacc)}
+.dsh-notes-inj-mount-when::placeholder{color:var(--nt3)}
+
 /* ===== 历史版本面板 modal（详情 meta 行「历史」入口；notes-history-ui）：左列版本列表（时间+大小，倒序）+ 右侧只读预览（renderMarkdown 内核渲染） ===== */
 .dsh-notes-hist-modal{width:640px}   /* 列表+预览双栏需要更宽，覆盖 settings-modal 的 400px */
 .dsh-notes-hist-body{display:flex;gap:10px;min-height:180px;margin-bottom:4px}
@@ -526,6 +533,8 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-data-summary .added,.dsh-notes-data-summary .added b{color:var(--nkind-todo)}
 .dsh-notes-data-summary .diff,.dsh-notes-data-summary .diff b{color:var(--nwarn)}
 .dsh-notes-data-warn{font-size:11px;color:var(--nwarn);margin-bottom:8px;line-height:1.5}
+/* 0.4.3⑥（notes-043-sys-kind）：多选操作条含 kind=sys 系统根笔记红字警示（confirm 门槛在 doSelBatchDelete） */
+.dsh-notes-syswarn{flex-shrink:0;max-width:110px;font-size:10.5px;line-height:1.25;color:var(--nwarn);cursor:help}
 /* 预览明细列表：状态徽章 + 标题（省略）+ 已删除标注 */
 .dsh-notes-imp-list{max-height:220px;overflow-y:auto;border:1px solid var(--nbd-soft);border-radius:8px;background:var(--nbg-raise);margin-bottom:10px}
 .dsh-notes-imp-row{display:flex;align-items:center;gap:7px;padding:5px 9px;border-bottom:1px solid var(--nbd-soft)}

@@ -1,4 +1,20 @@
 /* ================= 侧栏树 ================= */
+/* 树展开「含日志的文件夹」懒加载日志子条目（notes-041c-tree-log-children）：
+   R-6 豁免面 = 「用户主动展开日志夹」这一动作——定向 includeLogs 重拉，日志条目以 overlay 形式并入树子节点
+   （不并入 notes 主缓存：默认列表/搜索/目录的隐身口径不变）；foldLogLoaded 会话级按夹去重——折叠再展开不重复拉取 */
+var logOverlay = [];      /* 定向 includeLogs 拉取的 kind=log overlay（仅树渲染消费） */
+var foldLogLoaded = {};   /* fid → true：该夹展开动作已触发过定向拉取（会话级，不持久化） */
+function ensureFoldLogs(fid) {
+  if (foldLogLoaded[fid]) return;
+  foldLogLoaded[fid] = true;
+  /* 列表已是 includeLogs 口径（筛选「日志」勾选 / 文件夹视图）：日志在 notes 里随 vis 正常渲染，零请求 */
+  if (notes.some(function (n) { return (n.kind || 'note') === 'log' })) return;
+  rpc('notes-list', { includeLogs: true }).then(function (res) {
+    if (!res || res.error || !res.notes) return;
+    logOverlay = res.notes.filter(function (n) { return (n.kind || 'note') === 'log' });
+    renderTree();
+  }).catch(function (e) {});
+}
 function noteRow(n, inFolderCtx) {
   var tail = '';
   if (view.type === 'topic' && n.folder) tail += '<span class="fbadge">' + icon('i-folder', 9) + esc(fname(n.folder)) + '</span>';
@@ -10,6 +26,8 @@ function noteRow(n, inFolderCtx) {
     /* 行首槽位对齐：caret 槽同宽占位 + 图标槽（kind 色点居中），与文件夹行标题起点一致 */
     + '<span class="caret-spacer"></span><span class="kind-slot"><span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span></span>'
     + '<span class="ti">' + (isPinned(n) ? '<svg class="ic pin"><use href="#i-pin"/></svg> ' : '') + hl(n.title || t('tree.untitled'), searchText) + '</span>'
+    /* 日志隐身标记（notes-041c-tree-log-children）：树内定向召回的 kind=log 行尾 log 文本徽章（懒加载 overlay 专属视觉；面板 emoji 红线——不用表情字符） */
+    + (n.kind === 'log' ? '<span class="logmark" style="font-size:9px;margin-left:2px;opacity:.6" title="' + esc(t('tree.logTip')) + '">log</span>' : '')
     + (n.inject ? '<span style="color:var(--nacc);display:flex" title="' + esc(t('tree.injectTip', { role: t(n.injectRole === 'reference' ? 'tree.roleReference' : 'tree.roleConvention') })) + '">' + icon('i-bolt', 10) + '</span>' : '')
     /* 曾注入徽章（injectEver 粘性标记：历史上开启过注入、现已关闭；已注入由 bolt 表达不重复显示；不满足不渲染） */
     + (!n.inject && n.injectEver === true ? '<span class="injevr" title="' + t('tree.injectEverTip') + '">' + icon('i-clock', 9) + '</span>' : '')
@@ -28,6 +46,12 @@ function folderNodeHtml(f, vis, filtering) {
   var kids = vis.filter(function (n) { return (n.folder || '') === f.id });
   var subHits = filtering ? vis.filter(function (n) { return sub[n.folder || ''] }).length : 0;
   var open = (foldOpen[f.id] !== false) || (filtering && subHits > 0);
+  /* 日志 overlay 并入（notes-041c-tree-log-children）：夹已展开且定向拉过 → 本夹直挂 log 子条目追加到 kids 尾部（id 去重防文件夹视图双显） */
+  if (open && foldLogLoaded[f.id] && logOverlay.length) {
+    var _have = {};
+    kids.forEach(function (n) { _have[n.id] = 1 });
+    logOverlay.forEach(function (n) { if ((n.folder || '') === f.id && !_have[n.id]) kids.push(n) });
+  }
   /* 行点击（含名称/图标/caret）= 纯展开/折叠（经典树语义，唯一职责——notes-041b 用户裁决去重）；
      行尾 vfilter 图标=进入/退出文件夹视图（唯一进视图入口，不抢占单击） */
   h += '<div class="row head' + (view.type === 'folder' && view.id === f.id ? ' on' : '') + '" data-fold="' + f.id + '" data-drop="1" draggable="true">'
@@ -70,8 +94,12 @@ function renderTree() {
      空态非拖拽不渲染任何占位；拖拽中由 dragstart 委托点亮/补插落点容器（.drag-on 显示「拖到此处移出文件夹」提示行），dragend 清理 */
   var unfiled = vis.filter(function (n) { return !n.folder });
   if (unfiled.length) {
-    h += '<div class="unfiled-drop" data-drop-out="1"><div class="unfiled-hint">' + t('tree.dropOutHint') + '</div>';
+    /* 提示行必须排在笔记行**之后**（notes-041d-drag-root-note）：.unfiled-hint 默认 display:none、dragstart 时 .drag-on 点亮为 block——
+       若提示行在行首，点亮瞬间把本夹笔记行（=拖拽源行）整体下移，Chromium 判定拖拽源位移直接取消拖拽（dragstart→立即 dragend，无 dragover/drop），
+       根目录笔记因此永远拖不进文件夹（真实浏览器 A/B 复现实锤：hint 置尾后 dragover/drop 链路恢复）；已归类笔记不在容器内不受影响 */
+    h += '<div class="unfiled-drop" data-drop-out="1">';
     unfiled.forEach(function (n) { h += noteRow(n, false) });
+    h += '<div class="unfiled-hint">' + t('tree.dropOutHint') + '</div>';
     h += '</div>';
   }
   /* 主题全局过滤器（整区默认折叠：常态只显示「主题 (N)」一行，点分组头展开/收起（topicSecOpen，session 记忆不持久化）；
@@ -108,11 +136,18 @@ function renderTree() {
   renderFilterBar();
   renderSelBar();
 }
-/* 多选操作条：已选 N 条 | 合并 | 删除 | 取消（多选态常显于左下角） */
+/* 多选操作条：已选 N 条 | [红字 sys 警示] | 合并 | 删除 | 取消（多选态常显于左下角）
+   0.4.3⑥（notes-043-sys-kind）：所选含 kind=sys 系统根笔记时红字警示（豁免面收口；confirm 门槛在 doSelBatchDelete，与 client selbar 同口径） */
 function renderSelBar() {
   var n = Object.keys(selIds).length;
+  var sysN = 0, byId = {};
+  notes.forEach(function (x) { byId[x.id] = x });
+  Object.keys(selIds).forEach(function (id) { if (byId[id] && (byId[id].kind || 'note') === 'sys') sysN++ });
   $('selbar').style.display = selMode ? 'flex' : 'none';
   $('selbarN').textContent = t('sel.selCount', { n: n });
+  $('selSysWarn').style.display = sysN > 0 ? '' : 'none';
+  $('selSysWarn').textContent = sysN > 0 ? t('sys.selWarn', { n: sysN }) : '';
+  $('selSysWarn').title = sysN > 0 ? t('sys.batchDelWarn', { n: sysN }) : '';
   $('selMerge').disabled = n < 2;
   $('selDelete').disabled = n < 1;
 }
@@ -126,7 +161,8 @@ $('tree').addEventListener('click', function (ev) {
   if (vf && frow) { var fid = frow.dataset.fold; view = view.type === 'folder' && view.id === fid ? { type: 'all', id: '' } : { type: 'folder', id: fid }; foldOpen[fid] = true; saveFoldOpen(); render(); return }
   if (frow) {
     var fid2 = frow.dataset.fold;
-    foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); renderTree(); return
+    var opening = foldOpen[fid2] === false;   /* 展开动作（notes-041c）：仅此动作触发日志懒加载（R-6 定向豁免），折叠不动作 */
+    foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); if (opening) ensureFoldLogs(fid2); renderTree(); return
   }
   /* 主题过滤区分组头：点击=整区展开/收起（topicSecOpen；列表内主题行原地展开行为不变） */
   var tsec = ev.target.closest('[data-tsec]');

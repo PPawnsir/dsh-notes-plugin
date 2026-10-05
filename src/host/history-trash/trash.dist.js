@@ -42,6 +42,7 @@
       // 快照历史连带清除（.history/<id> 整棵；删除语义同 purge——processPath 可用时真删，否则墓碑式清空）
       const historyPurged = await histPurgeNote(id)
       cache.delete(id)
+      _emitNoteChanged({ event: 'purge', id: id })   // 事件总线单点分发（0.4.3+ notes-043-event-bus；彻底删除不经 persistNote）
       return { id: id, purged: true, mode: mode, historyPurged: historyPurged }
     }
 

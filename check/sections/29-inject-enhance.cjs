@@ -102,6 +102,10 @@ module.exports = {
     await handlers9i['notes-create']({ title: '资料二', body: 'b'.repeat(200), inject: true, injectRole: 'reference', topic: '资料' })
     await new Promise(r => setTimeout(r, 2))
     await handlers9i['notes-create']({ title: '资料三', body: 'c'.repeat(200), inject: true, injectRole: 'reference', topic: '资料' })
+    // 0.4.3⑤ 管线切换后资料桶载荷 = 索引挂载行：换文案为「标题 + 200 字符长尾」保持行级预算语义可测（行内仍含标题供断言）
+    await handlers9i['notes-mount']({ id: (await handlers9i['notes-list']({})).notes.find(n => n.title === '资料一').id, whenToUse: '资料一' + 'a'.repeat(200) })
+    await handlers9i['notes-mount']({ id: (await handlers9i['notes-list']({})).notes.find(n => n.title === '资料二').id, whenToUse: '资料二' + 'b'.repeat(200) })
+    await handlers9i['notes-mount']({ id: (await handlers9i['notes-list']({})).notes.find(n => n.title === '资料三').id, whenToUse: '资料三' + 'c'.repeat(200) })
     // 基线（缺省 0=不限）：全部注入，无省略提示行
     const f0 = convCtx9i.text()
     assert(f0.indexOf('预算约定条目') >= 0 && f0.indexOf('资料一') >= 0 && f0.indexOf('资料二') >= 0 && f0.indexOf('资料三') >= 0, '缺省不限：约定 + 3 条资料全部注入')

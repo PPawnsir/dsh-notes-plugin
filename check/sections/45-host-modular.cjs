@@ -16,15 +16,20 @@ module.exports = {
   const distList = parseManifest(fsNative.readFileSync(MANIFEST_DIST_PATH, 'utf8'))
   const read = (rel) => fsNative.readFileSync(path.join(HOST_DIR, rel), 'utf8').replace(/\r\n/g, '\n')
 
-  await t('P2·5 序位锁定：双 manifest 尾部序 = server → inject/img-path-hint → dispatch → schedule → inject → memory → search → transfer → index', () => {
+  await t('P2·5 序位锁定：双 manifest 尾部序 = server → graph → rootnote → injectindex → ledger → recall → inject/img-path-hint → dispatch → schedule → inject → memory → search → transfer → index', () => {
     // 定时派发·执行层（notes-034-sched-exec）：schedule.js 紧随 dispatch.js（消费 _dispatch），双清单同名共源（无 .dist 变体）
-    const devTail = ['server.js', 'inject/img-path-hint.js', 'dispatch.js', 'schedule.js', 'inject.js', 'memory.js', 'search.js', 'transfer.js', 'index.js']
-    const distTail = ['server.dist.js', 'inject/img-path-hint.js', 'dispatch.dist.js', 'schedule.js', 'inject.dist.js', 'memory.dist.js', 'search.js', 'transfer.dist.js', 'index.dist.js']
-    assert.deepStrictEqual(devList.slice(-9), devTail, 'manifest.dev.js 尾部序（实得：' + devList.slice(-9).join(', ') + '）')
-    assert.deepStrictEqual(distList.slice(-9), distTail, 'manifest.dist.js 尾部序（实得：' + distList.slice(-9).join(', ') + '）')
+    // 0.4.3 内核①（notes-043-graph）：graph.js 紧随 server（消费 handle 注册 notes-graph + 注册 onNoteChanged 增量监听），双清单同名共源（无 .dist 变体）
+    // 0.4.3 内核②（notes-043-rootnote）：rootnote.js 紧随 graph（消费 _create/loadNote/persistNote，被 schedule.js 的 runLog 消费），双清单同名共源（无 .dist 变体）
+    // 0.4.3 内核③⑤（notes-043-index）：injectindex.js 紧随 rootnote（消费 RootNote 框架 + _update/_delete/_purge 包装，被 inject.js 管线消费），双清单同名共源（无 .dist 变体）
+    // 0.4.3 内核⑥（notes-043-ledger）：ledger.js 紧随 injectindex（消费 idxEnsure/idxLinesSync/INJECT_INDEX_S2，被 schedule.js cron 顺带消费），双清单同名共源（无 .dist 变体）
+    // 0.4.3+ 卡⑫（notes-043-inject-receipt）：recall.js 紧随 ledger（消费 RootNote 框架 + sys 根笔记先例，被 server/dispatch/inject/search/index 运行时引用），双清单同名共源（无 .dist 变体）
+    const devTail = ['server.js', 'graph.js', 'rootnote.js', 'injectindex.js', 'ledger.js', 'recall.js', 'inject/img-path-hint.js', 'dispatch.js', 'schedule.js', 'inject.js', 'memory.js', 'search.js', 'transfer.js', 'index.js']
+    const distTail = ['server.dist.js', 'graph.js', 'rootnote.js', 'injectindex.js', 'ledger.js', 'recall.js', 'inject/img-path-hint.js', 'dispatch.dist.js', 'schedule.js', 'inject.dist.js', 'memory.dist.js', 'search.js', 'transfer.dist.js', 'index.dist.js']
+    assert.deepStrictEqual(devList.slice(-14), devTail, 'manifest.dev.js 尾部序（实得：' + devList.slice(-14).join(', ') + '）')
+    assert.deepStrictEqual(distList.slice(-14), distTail, 'manifest.dist.js 尾部序（实得：' + distList.slice(-14).join(', ') + '）')
     // 双清单前段（P2·3/P2·4 域）同序同名（.dist.js 后缀映射）
-    const devHead = devList.slice(0, -9)
-    const distHead = distList.slice(0, -9).map(x => x === 'head.js' || x === 'apply-head.js' ? x : x.replace(/\.dist\.js$/, '.js'))
+    const devHead = devList.slice(0, -14)
+    const distHead = distList.slice(0, -14).map(x => x === 'head.js' || x === 'apply-head.js' ? x : x.replace(/\.dist\.js$/, '.js'))
     assert.deepStrictEqual(distHead.filter(x => x !== 'head.js' && x !== 'apply-head.js'), devHead.filter(x => x !== 'kernel/head.js'), '双清单共有片同序同名（.dist.js 后缀映射）')
   })
 
@@ -35,8 +40,8 @@ module.exports = {
     assert(hostSrc.indexOf('src/host/whole.js') < 0 && indexSrc.indexOf('dist-whole') < 0, '产物不再引用余量文件')
   })
 
-  await t('共源片登记：inject/img-path-hint.js 与 search.js 与 schedule.js 双清单同名引用同一物理文件（无 .dist 变体）', () => {
-    for (const rel of ['inject/img-path-hint.js', 'search.js', 'schedule.js']) {
+  await t('共源片登记：inject/img-path-hint.js 与 search.js 与 schedule.js 与 graph.js 与 rootnote.js 与 injectindex.js 与 ledger.js 与 recall.js 双清单同名引用同一物理文件（无 .dist 变体）', () => {
+    for (const rel of ['inject/img-path-hint.js', 'search.js', 'schedule.js', 'graph.js', 'rootnote.js', 'injectindex.js', 'ledger.js', 'recall.js']) {
       assert(devList.indexOf(rel) >= 0 && distList.indexOf(rel) >= 0, rel + ' 双清单同名引用')
       assert(!fsNative.existsSync(path.join(HOST_DIR, rel.replace('.js', '.dist.js'))), rel + ' 不得出现 .dist 变体（第三份拷贝红线）')
     }
@@ -94,6 +99,18 @@ module.exports = {
       ['dispatch.js', 'inject.js', '_activeSessions → notes-inject-preview 工作区视角'],
       ['inject.js', 'memory.js', 'conventionHit → memoryGuideActiveFor'],
       ['notes.js', 'server.js', 'CRUD 域 → 核心注册表'],
+      ['server.js', 'graph.js', 'handle → notes-graph 注册 + onNoteChanged 监听（0.4.3 内核① notes-043-graph）'],
+      ['kernel/persist.js', 'graph.js', 'onNoteChanged 事件注册表 → graph 增量监听注册（0.4.3+ notes-043-event-bus：注册表序 = manifest 登记序）'],
+      ['kernel/persist.js', 'history-trash/trash.js', '_emitNoteChanged → _purge 落盘成功后分发 purge 事件（0.4.3+ notes-043-event-bus）'],
+      ['rootnote.js', 'schedule.js', 'RootNote 托管节框架 → runLog 首消费者 _schedRunLogAppend（0.4.3 内核② notes-043-rootnote）'],
+      ['injectindex.js', 'ledger.js', '注入索引 idxEnsure/idxLinesSync/INJECT_INDEX_S2 → 效用账本 §2 指标+档案回填（0.4.3⑥ notes-043-ledger）'],
+      ['ledger.js', 'schedule.js', '_ledgerRefresh → schedule cron tick 顺带刷新（0.4.3⑥ notes-043-ledger）'],
+      ['rootnote.js', 'recall.js', 'RootNote 框架 → 召回遥测流水根笔记（0.4.3+ 卡⑫ notes-043-inject-receipt）'],
+      ['recall.js', 'inject/img-path-hint.js', 'recall.js 序位钉住（紧随 ledger，共源登记）'],
+      ['recall.js', 'dispatch.js', '_recallRaw mount 通道埋点 → _dispatch（0.4.3+ 卡⑫）'],
+      ['recall.js', 'inject.js', '_recallRaw inject/catalog 通道埋点 → conventionText/catalogText（0.4.3+ 卡⑫）'],
+      ['recall.js', 'search.js', '_recallHit search 通道埋点 → notes-search（0.4.3+ 卡⑫）'],
+      ['recall.js', 'index.js', '_recallHit note_get 取用埋点 + _recallFlushAgg 卸载 flush（0.4.3+ 卡⑫）'],
       ['folders.js', 'server.js', '_folders → notes-folders 注册'],
       ['history-trash/trash.js', 'server.js', 'history 三 RPC → 核心注册表'],
       ['llm/organize.js', 'server.js', '_aiOrganize → notes-ai-organize 注册'],

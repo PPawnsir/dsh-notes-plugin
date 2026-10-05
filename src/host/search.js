@@ -47,6 +47,8 @@
       try {
         const a = args || {}
         const found = await _search(a.query, a.tag, a.topic, a.kind, a.folder, { sensitive: a.sensitive, inject: a.inject, includeLogs: !!a.includeLogs })
+        // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：search 通道交付事件——实际返回的 id 集日聚合（同日同 id 计数累加不爆行；静默降级）
+        _recallHit('search', found.map(function (n) { return n.id }))
         return { notes: found.map(n => { const s = slim(n); if (n.matches) s.matches = n.matches; return s }) }
       } catch (e) { return { error: String(e.message || e) } }
     }))

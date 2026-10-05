@@ -30,7 +30,7 @@ module.exports = {
     for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
       const label = pair[0], src = pair[1]
       assert(/'recall: ' \+ escYaml\(m\.recall === false \? 'false' : 'true'\)/.test(src), label + ' buildFM 写 recall 行')
-      assert(src.indexOf("recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : (p.meta.kind === 'log' ? false : true)),") >= 0, label + ' noteFromParsed 读 recall（缺省 true；工作记忆 v0：kind=log 缺省 false，显式 true 豁免）')
+      assert(src.indexOf("recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : ((p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true)),") >= 0, label + ' noteFromParsed 读 recall（缺省 true；工作记忆 v0：kind=log 缺省 false，显式 true 豁免；0.4.3⑥ +sys 同口径）')
       assert((src.match(/recall: n\.recall !== false/g) || []).length >= 2, label + ' persistNote 与 slim 均带 recall')
       assert(/if \(recall !== undefined\) note\.recall = recall !== false/.test(src), label + ' _update 显式传 recall 才改（undefined 不动）')
       assert(/recall: \{ type: 'boolean'/.test(src), label + ' note_manage schema 含 recall 参数')

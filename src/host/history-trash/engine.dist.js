@@ -234,8 +234,8 @@
       const name = await histFindName(id, ts)
       if (!name) return { error: '历史版本不存在（可能已被保留策略淘汰）' }
       const content = await fs.readText(await fs.resolve(path.join(HISTORY_DIR, id, name)))
-      // 快照字节 = noteFileContent 产物（front-matter + '\n' 分隔行 + 正文原形）：parseFM 后剥一个前导换行，逐字节还原落盘前正文（cache 口径）
-      return { ts: Number(ts), body: (parseFM(content).body || '').replace(/^\r?\n/, '') }
+      // 快照字节 = noteFileContent 产物（front-matter + 正文原形）：parseFM 节 77 起已吃掉闭合分隔符后全部前导换行，逐字节还原落盘前正文（cache 口径，旧「剥一个前导换行」绕行已消除）
+      return { ts: Number(ts), body: parseFM(content).body || '' }
     }
     // notes-restore-history {id, ts} → 把历史版正文写回当前笔记（其余元数据不动，updatedAt 刷新）。
     // 安全核心 = 恢复前置快照：persistNote 缺省（opts.history 不传 ≠ false）在写盘前把「当前版」自动快照进 .history——恢复动作本身可撤销（再恢复一次即回滚）。
@@ -246,7 +246,7 @@
       const note = Object.assign({}, await loadNote(id))
       if (note.deleted || note.tombstoned) throw new Error('Note has been deleted')
       const content = await fs.readText(await fs.resolve(path.join(HISTORY_DIR, id, name)))
-      note.body = (parseFM(content).body || '').replace(/^\r?\n/, '')   // 剥一个前导换行，还原落盘前正文原形（同 _historyGet 口径）
+      note.body = parseFM(content).body || ''   // 还原落盘前正文原形（同 _historyGet 口径：parseFM 节 77 起已归一前导换行，无需再剥）
       note.updatedAt = new Date().toISOString()
       await persistNote(note)   // 恢复前置快照：当前版先自动入 .history（缺省快照语义），随后才写恢复版——恢复可再撤销
       return { id: id, restored: true, ts: Number(ts) }

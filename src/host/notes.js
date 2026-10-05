@@ -66,6 +66,9 @@
       // 工作记忆 v0 隐身硬闸（裁决 B①）：kind=log 强制 inject=false（显式传 true 也纠正，返回值 injectForcedOff 告知），
       // recall 缺省 false（显式 true 豁免——用户/agent 显式选择进目录不算混入）；日志永不进系统提示与目录索引
       const isLog = (ex.kind || 'note') === 'log'
+      // 0.4.3⑥（notes-043-sys-kind）：kind=sys 系统根笔记——recall 缺省 false（不进目录/默认召回，显式 true 豁免）；
+      //   inject 允许且是核心用途（与 log 的隐身硬闸不同，不做 inject 纠正）
+      const isSys = (ex.kind || 'note') === 'sys'
       const injectForcedOff = isLog && ex.inject === true
       // 定时派发·执行层：schedule 声明写入闸门（校验红线：at 必须未来 / 轮询≥5min / 目标存活 / 契约配对——非法声明拒绝落库，错得安全）
       const createCT = ex.contractType || ''
@@ -90,7 +93,7 @@
         injectEver: isLog ? (ex.injectEver === true) : (ex.injectEver === true || ex.inject === true),
         injectTo: injectToNorm || [],
         injectRole: ex.injectRole === 'reference' ? 'reference' : 'convention',
-        recall: isLog ? (ex.recall === true) : (ex.recall !== false),
+        recall: (isLog || isSys) ? (ex.recall === true) : (ex.recall !== false),
         sensitive: ex.sensitive === true,
         createdAt: ex.createdAt || now, updatedAt: ex.updatedAt || now,
         sessionId: ex.sessionId !== undefined ? ex.sessionId : sc.sessionId,
