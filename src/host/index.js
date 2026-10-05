@@ -262,7 +262,8 @@
     // 用量统计启动加载（同口径不阻塞）：recordUsage 记账前内部也会 await loadUsage()，双保险防覆盖存量
     loadUsage()
     // 0.4.3⑤ 升级首启自动建「注入索引（自动）」根笔记（notes-043-index，fire-and-forget；失败静默下次启动重试）
-    idxEnsure()
+    // 0.4.3 验收修复⑪：ensure 落定后顺带孤儿索引自愈（idxHealOrphans：存量同名索引 §1 行并入正式索引 + 软删孤儿；冷缓存防御在 idxEnsure 内水化闸门）
+    idxEnsure().then(function (rl) { if (rl) idxHealOrphans(rl) })
     // 0.4.3 验收修复⑤（notes-043-metrics-storage）：遥测存储层启动加载 + 旧「召回遥测（自动）」笔记一次性迁移
     //   （首个 flush 前回填 telemetry.json，幂等；fire-and-forget 内部全吞异常，失败下个事件/启动重试）
     _recallMaybeMigrate()

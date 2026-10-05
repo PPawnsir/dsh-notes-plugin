@@ -313,7 +313,8 @@
     // 用量统计启动加载（同口径不阻塞）：recordUsage 记账前内部也会 await loadUsage()，双保险防覆盖存量
     loadUsage()
     // 0.4.3⑤ 升级首启自动建「注入索引（自动）」根笔记（notes-043-index，fire-and-forget；失败静默下次启动重试）
-    idxEnsure()
+    // 0.4.3 验收修复⑪：ensure 落定后顺带孤儿索引自愈（idxHealOrphans：存量同名索引 §1 行并入正式索引 + 软删孤儿；冷缓存防御在 idxEnsure 内水化闸门）
+    idxEnsure().then(function (rl) { if (rl) idxHealOrphans(rl) })
 
     // 存量一次性修补：agents 未就绪期创建的笔记 workspace 为空，导致“本工作区”注入范围严格匹配后永不命中。
     // 启动时按来源会话推导补填一次（只补空值）。注意：不用 _list()（它 await migrationDone，会与本补全死锁），

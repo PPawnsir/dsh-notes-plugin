@@ -103,7 +103,7 @@ module.exports = {
     assert(clientSrc.indexOf('dsh-notes-ed-foot') >= 0 && clientSrc.indexOf("tt('meta.createdAt',") >= 0 && clientSrc.indexOf("tt('meta.updatedAt',") >= 0 && clientSrc.indexOf("tt('meta.sourceSession',") >= 0, '底部 创建/更新/来源（i18n 覆盖卡B 起走 tt() 字典）')
     assert(clientSrc.indexOf('dsh-notes-ed-saved') >= 0 && clientSrc.indexOf("tt('editor.autoSavedFlat',") >= 0, '自动保存提示（覆盖卡B 走 tt()）')
   })
-  await t('编辑器 meta：注入三态分段控件 + 目录可见 toggle + 派发/来源/置顶/删除', () => {
+  await t('编辑器 meta：注入三态分段控件 + 敏感/派发/来源/置顶/删除（0.4.3⑪ 目录可见 chip 已拆除）', () => {
     assert(clientSrc.indexOf("'dsh-notes-meta-chip dsh-notes-role-seg'") >= 0, '三态分段控件容器（meta-chip + role-seg）')
     assert((clientSrc.match(/dsh-notes-role-opt/g) || []).length >= 3, '三个段位（关闭/约定/资料）')
     assert(clientSrc.indexOf("onClick: () => setRoleSeg('off')") >= 0 && clientSrc.indexOf("onClick: () => setRoleSeg('convention')") >= 0 && clientSrc.indexOf("onClick: () => setRoleSeg('reference')") >= 0, '三段点击切换 setRoleSeg')
@@ -113,7 +113,9 @@ module.exports = {
     assert(/edRole === 'off' \? ' on' : ''/.test(clientSrc) && /edRole === 'convention' \? ' on' : ''/.test(clientSrc) && /edRole === 'reference' \? ' on' : ''/.test(clientSrc), '选中段 on 态高亮（三态各自分支）')
     assert(clientSrc.indexOf('dsh-notes-ed-scope-wrap') >= 0 && clientSrc.indexOf('dsh-notes-scope-panel') >= 0 && clientSrc.indexOf('dsh-notes-scope-trigger') >= 0, '逐级范围浮层挂 meta 行')
     assert(/const isInjected = edRole !== 'off'/.test(clientSrc) && clientSrc.indexOf('isInjected ? e(\'span\', { className: \'dsh-notes-ed-scope-wrap\' }') >= 0, '范围浮层在非 off（约定/资料）时显示')
-    assert(clientSrc.indexOf("tt('meta.recall')") >= 0 && clientSrc.indexOf("I('eye', 11)") >= 0, '目录可见 toggle（eye 图标；覆盖卡B 走 tt()）')
+    // 0.4.3 验收修复⑪：「目录可见」chip 已拆除（目录注入缺省关后无感知作用；host recall 字段保留——22.6 节看守）
+    assert(clientSrc.indexOf("tt('meta.recall')") < 0 && clientSrc.indexOf('toggleRecall') < 0, '目录可见 chip 已拆除（0.4.3⑪；recall i18n/函数零残留）')
+    assert(clientSrc.indexOf("tt('meta.sens')") >= 0 && clientSrc.indexOf("I('lock', 11)") >= 0, '敏感 chip（lock 图标；覆盖卡B 走 tt()）')
     assert(clientSrc.indexOf("tt('meta.dispatch')") >= 0 && clientSrc.indexOf("I('play', 12)") >= 0, '派发操作（play 图标；覆盖卡B 走 tt()）')
     assert(clientSrc.indexOf("tt('meta.source')") >= 0 && clientSrc.indexOf("I('ext', 12)") >= 0, '来源操作（ext 图标；覆盖卡B 走 tt()）')
     assert(clientSrc.indexOf("I('pin', 12)") >= 0 && clientSrc.indexOf("I('trash', 12)") >= 0, '置顶/删除操作图标')

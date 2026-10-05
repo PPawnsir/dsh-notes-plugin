@@ -1225,9 +1225,6 @@ var I18N_ZH = {
   'meta.scopeHint': '默认注入到所有会话；勾选会话则仅限这些会话',
   'meta.scopePending': '{short} · 标题加载中…',
   'meta.wsOther': '其他',
-  'meta.recallTip': '关闭后不出现在注入给 Agent 的目录中',
-  'meta.recallTipNote': '关闭后该笔记不出现在注入给 Agent 的目录中',
-  'meta.recall': '目录可见',
   'meta.sensTip': '敏感内容：注入系统提示时正文按行打码（键保留值遮蔽），Agent 用 note_get 取原文',
   'meta.sens': '敏感',
   'meta.injectEverTip': '曾注入：历史上开启过上下文注入（现已关闭；injectEver 为粘性标记，不随关闭回退）',
@@ -1257,8 +1254,6 @@ var I18N_ZH = {
   'meta.delTipClient': '删除（软删除，可恢复）',
   'meta.injectOff': '已关闭上下文注入',
   'meta.injectOn': '已注入为上下文 · {role}（范围见右侧下拉）',
-  'meta.recallOn': '已加入 Agent 目录',
-  'meta.recallOff': '已从 Agent 目录隐藏',
   'meta.sensOn': '已标记敏感（注入时自动脱敏）',
   'meta.sensOff': '已取消敏感标记',
   'meta.sourceToast': '来源会话 {short}（{full}）· 页面无跳转能力，请回 DSH 主界面打开',
@@ -1452,6 +1447,7 @@ var I18N_ZH = {
   'inj.selectAll': '全选',
   'inj.batchConvention': '设为约定',
   'inj.batchReference': '设为资料',
+  'inj.batchRefTip': '批量设为资料：每条静默落缺省挂载行（whenToUse=标题），不逐条弹框；单行切「资料」档会先弹编辑框',
   'inj.batchOff': '关闭注入',
   'inj.executing': '执行中…',
   'inj.logNoInject': '日志不参与注入',
@@ -1980,9 +1976,6 @@ var I18N_EN = {
   'meta.scopeHint': 'Injected into all sessions by default; check sessions to restrict injection to them',
   'meta.scopePending': '{short} · loading title…',
   'meta.wsOther': 'Other',
-  'meta.recallTip': 'When off, the note is hidden from the catalog injected into the Agent',
-  'meta.recallTipNote': 'When off, this note is hidden from the catalog injected into the Agent',
-  'meta.recall': 'In catalog',
   'meta.sensTip': 'Sensitive: when injected into the system prompt, the body is masked line by line (keys kept, values hidden); the Agent uses note_get for the original',
   'meta.sens': 'Sensitive',
   'meta.injectEverTip': 'Injected before: context injection was once enabled (now off; injectEver is a sticky mark that never reverts)',
@@ -2012,8 +2005,6 @@ var I18N_EN = {
   'meta.delTipClient': 'Delete (soft delete, restorable)',
   'meta.injectOff': 'Context injection disabled',
   'meta.injectOn': 'Injected as context · {role} (scope in the dropdown on the right)',
-  'meta.recallOn': 'Added to the Agent catalog',
-  'meta.recallOff': 'Hidden from the Agent catalog',
   'meta.sensOn': 'Marked sensitive (auto-masked when injected)',
   'meta.sensOff': 'Sensitive mark removed',
   'meta.sourceToast': 'Source session {short} ({full}) · this page cannot jump; open it from the DSH main UI',
@@ -2208,6 +2199,7 @@ var I18N_EN = {
   'inj.selectAll': 'Select all',
   'inj.batchConvention': 'Set as convention',
   'inj.batchReference': 'Set as reference',
+  'inj.batchRefTip': 'Batch set as reference: each note silently gets a default mount line (whenToUse = title) without a per-note dialog; switching a single row to Reference opens the editor dialog first',
   'inj.batchOff': 'Disable injection',
   'inj.executing': 'Running…',
   'inj.logNoInject': 'No injection (log)',
@@ -3798,7 +3790,6 @@ function renderMeta() {
       + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="' + t('meta.roleConventionTip') + '">' + t('tree.roleConvention') + '</span>'
       + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="' + t('meta.roleReferenceTip') + '">' + t('tree.roleReference') + '</span></span>')
     + (role !== 'off' ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="' + t('meta.scopeTip') + '">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
-    + '<span class="meta-chip tgl' + (n.recall !== false ? ' on' : '') + '" id="mRecall" title="' + t('meta.recallTip') + '">' + icon('i-eye') + t('meta.recall') + '</span>'
     + '<span class="meta-chip tgl' + (n.sensitive === true ? ' on' : '') + '" id="mSens" title="' + t('meta.sensTip') + '">' + icon('i-lock') + t('meta.sens') + '</span>'
     /* 曾注入徽章（injectEver 粘性标记：单向只升不降，不随关闭回退；当前已注入时由上方注入角色段表达，不重复显示） */
     + (n.injectEver === true && !n.inject ? '<span class="meta-chip" title="' + t('meta.injectEverTip') + '">' + icon('i-clock') + t('meta.injectEver') + '</span>' : '')
@@ -3830,6 +3821,18 @@ function renderMeta() {
     seg.onclick = function () {
       var r = seg.getAttribute('data-role');
       if (r === role) return;
+      /* 设为资料 = 先弹 whenToUse 挂载框（0.4.3 验收修复⑪：LLM 草稿预填，取消零副作用——不翻注入不落行；
+         确认 = 弹层内 notes-mount 单点收口（落索引行 + host 同步翻 reference 档）→ onConfirm 回填编辑器三态并保存 */
+      if (r === 'reference') {
+        openMountModal({ id: n.id, title: n.title }, function () {
+          edNote.inject = true; edNote.injectRole = 'reference';
+          if (!sessList.length) pullSessions();
+          scopeOpen = true;
+          triggerSave(); renderMeta();
+          toast(t('meta.injectOn', { role: t('tree.roleReference') }));
+        });
+        return;
+      }
       if (r === 'off') { edNote.inject = false; scopeOpen = false }
       else { edNote.inject = true; edNote.injectRole = r; if (!sessList.length) pullSessions(); scopeOpen = true }
       triggerSave(); renderMeta();
@@ -3838,7 +3841,7 @@ function renderMeta() {
   });
   var trig = $('scopeTrig');
   if (trig) trig.onclick = function (ev) { ev.stopPropagation(); scopeOpen = !scopeOpen; if (scopeOpen && !sessList.length) pullSessions(); renderScopePanel() };
-  $('mRecall').onclick = function () { edNote.recall = edNote.recall === false; triggerSave(); renderMeta(); toast(edNote.recall !== false ? t('meta.recallOn') : t('meta.recallOff')) };
+  /* 「目录可见」chip 已拆除（0.4.3 验收修复⑪：目录注入缺省关后开关无感知作用）；host recall 字段与目录过滤逻辑保留（chip 拆除≠字段退役，doSave 仍随 edNote 带上原值） */
   $('mSens').onclick = function () { edNote.sensitive = edNote.sensitive !== true; triggerSave(); renderMeta(); toast(edNote.sensitive === true ? t('meta.sensOn') : t('meta.sensOff')) };
   $('mDispatch').onclick = function () { openDispatch() };
   /* P3 派发闭环徽章：点击展开派发历史并滚动到位 */
@@ -5157,7 +5160,7 @@ function renderInjectManager() {
       + '<label class="trash-all"><input type="checkbox" id="injMgrAll"' + (allChecked ? ' checked' : '') + (st.pending || !selectable.length ? ' disabled' : '') + '>' + t('inj.selectAll') + '</label>'
       + '<span class="selcnt">' + t('sel.selCount', { n: selCnt }) + '</span>'
       + '<button class="mbtn trash-act" id="injMgrBatchConv"' + (st.pending || selCnt < 1 ? ' disabled' : '') + '>' + t('inj.batchConvention') + '</button>'
-      + '<button class="mbtn trash-act" id="injMgrBatchRef"' + (st.pending || selCnt < 1 ? ' disabled' : '') + '>' + t('inj.batchReference') + '</button>'
+      + '<button class="mbtn trash-act" id="injMgrBatchRef" title="' + t('inj.batchRefTip') + '"' + (st.pending || selCnt < 1 ? ' disabled' : '') + '>' + t('inj.batchReference') + '</button>'
       + '<button class="mbtn trash-act" id="injMgrBatchOff"' + (st.pending || selCnt < 1 ? ' disabled' : '') + '>' + (st.pending ? t('inj.executing') : t('inj.batchOff')) + '</button></div>'
     + '<div class="injmgr-list">'
     + shown.map(function (n) {
@@ -5308,13 +5311,16 @@ function toggleInjMgrAll() {
 /* ===== 挂载弹层（0.4.3⑤ notes-043-index；0.4.3 验收修复 notes-043-preview-when-edit：LLM 草稿预填 + 编辑模式）=====
    两种模式：未挂载 = LLM 草稿模式（打开即「生成中…」占位 → notes-when-suggest 成功填草稿，失败/8s 超时静默回退预填标题；
      用户始终可编辑——touched 后到达的草稿不覆盖）；已挂载（预览目录行点击带 existing）= 编辑模式（预填现有文案，不调 LLM）。
-   确认统一 notes-mount（幂等换文案）；跳过 = 保留现状行；modal 不叠 modal（调用方先关来源 modal，清返回栈） */
+   确认统一 notes-mount（幂等换文案；0.4.3 验收修复⑪起 host 单点收口：落行同时把目标翻 reference 档，挂载 ⇔ 资料不变量成立，
+     挂载行不再被目标笔记的下一次 update 摘掉）；跳过 = 保留现状行；modal 不叠 modal（调用方先关来源 modal，清返回栈）。
+   0.4.3 验收修复⑪（notes-043-mount-ux-final）：openMountModal(n, onConfirm)——确认成功后回调（详情三态入口回填编辑器态）；
+     跳过/取消不落回调（零副作用语义）；确认后统一 loadNotes 刷新收敛 */
 var mountState = null;
-function openMountModal(n) {
+function openMountModal(n, onConfirm) {
   if (!n) return;
   injMgrState = null; modalBackTo = null;
   var edit = typeof n.existing === 'string';   /* 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM） */
-  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false };
+  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, onConfirm: typeof onConfirm === 'function' ? onConfirm : null };
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + (edit ? t('inj.mountEdit') : t('inj.mountTitle')) + '<span class="sub">' + t('inj.mountSub') + '</span></div>'
     + '<div class="inj-mount-body"><label class="inj-mount-label">' + t('inj.mountLabel') + '</label>'
@@ -5348,7 +5354,11 @@ function openMountModal(n) {
     rpc('notes-mount', { id: mountState.id, whenToUse: mountState.when || mountState.title }).then(function (res) {
       var done = mountState; mountState = null;
       if (res && res.error) { toast(t('inj.mountFailed', { msg: res.error })) }
-      else { toast(t('inj.mountSaved', { title: done.title })); closeModal() }
+      else {
+        toast(t('inj.mountSaved', { title: done.title })); closeModal();
+        if (done.onConfirm) { try { done.onConfirm() } catch (e2) {} }   /* 确认回调（0.4.3⑪：详情三态入口回填编辑器态） */
+        loadNotes(true);   /* 挂载收敛刷新：host 已把目标翻 reference 档——列表/编辑器数据源即刻对齐（陈旧 inject=false 态保存会摘行） */
+      }
     }).catch(function (e) { mountState = null; toast(t('inj.mountFailed', { msg: e && e.message || e })) });
   };
 }
@@ -5357,6 +5367,10 @@ function doInjMgrSet(n, role) {
   if (!n || !injMgrState || injMgrState.pending) return;
   if ((n.kind || 'note') === 'log' && role !== 'off') return;   /* 日志注入硬关（UI 已不渲染开关，函数拦截为双保险） */
   if (injMgrRole(n) === role) return;
+  /* 0.4.3 验收修复⑪：单行「设为资料」先开挂载弹层（LLM 预填 whenToUse；确认 = notes-mount 单点收口落行 + 翻 reference 档，
+     取消零副作用——不先静默翻转）；modal 不叠 modal——openMountModal 接管 modal 宿主（ injMgrState 清零由弹层入口承担），
+     确认后的收敛刷新由弹层保存路径统一承担（loadNotes） */
+  if (role === 'reference') { openMountModal({ id: n.id, title: n.title }); return }
   var upd = { id: n.id, inject: role !== 'off' };
   if (upd.inject) upd.injectRole = role;   /* 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘） */
   rpc('notes-update', upd).then(function (res) {
@@ -5364,8 +5378,6 @@ function doInjMgrSet(n, role) {
     if (res && res.error) { modalErr(res.error); return }
     if (res && res.injectForcedOff) toast(t('inj.forcedOff', { title: n.title || n.id }));
     else toast(role === 'off' ? t('inj.injectOffToast', { title: n.title || n.id }) : t('inj.injectSetToast', { role: t(role === 'reference' ? 'tree.roleReference' : 'tree.roleConvention'), title: n.title || n.id }));
-    /* 0.4.3⑤ 挂载弹层：设为资料（reference）→ 手写 whenToUse（host 已自动落缺省行，弹层换文案；modal 不叠 modal——先关注入管理面板） */
-    if (role === 'reference') { loadNotes(true); setTimeout(function () { openMountModal({ id: n.id, title: n.title }) }, 0); return }
     /* 本地即时回写（injectEver 粘性：开启即曾注入），后台刷新对齐 host */
     n.inject = role !== 'off';
     if (role !== 'off') { n.injectRole = role; n.injectEver = true }

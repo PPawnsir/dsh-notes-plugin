@@ -25,8 +25,9 @@ module.exports = {
   const clientPkgSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
   const stylesPkgSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
   const protoSrc = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
-  // 覆盖卡 B 抽串清单（176 条 = editor.* 52 + meta.* 123 + common.listSep 1；key=表面.语义；
-  // 0.4.3⑦：meta.crumbFolderTip → meta.crumbFolderExpandTip（文件视图拆除，面包屑改树内展开）+ meta.logNoInject/logNoInjectTip 新增（注入硬关 UI 化））
+  // 覆盖卡 B 抽串清单（171 条 = editor.* 52 + meta.* 118 + common.listSep 1；key=表面.语义；
+  // 0.4.3⑦：meta.crumbFolderTip → meta.crumbFolderExpandTip（文件视图拆除，面包屑改树内展开）+ meta.logNoInject/logNoInjectTip 新增（注入硬关 UI 化）；
+  // 0.4.3 验收修复⑪：meta.recall/recallTip/recallTipNote/recallOn/recallOff 五键退役（「目录可见」chip 拆除，notes-043-mount-ux-final））
   const KEYS = [
     'editor.richDegradedReasons', 'editor.loadFailed', 'editor.loadFailedData', 'editor.loadFailedLocked',
     'editor.autoSaved', 'editor.autoSavedFlat', 'editor.emptyTitle', 'editor.emptySub',
@@ -52,7 +53,7 @@ module.exports = {
     'meta.logNoInject', 'meta.logNoInjectTip',
     'meta.roleConventionTip', 'meta.roleReferenceTip', 'meta.scopeTip', 'meta.scopeAll',
     'meta.scopeSession', 'meta.scopeHint', 'meta.scopePending', 'meta.wsOther',
-    'meta.recallTip', 'meta.recallTipNote', 'meta.recall', 'meta.sensTip',
+    'meta.sensTip',
     'meta.sens', 'meta.injectEverTip', 'meta.injectEver', 'meta.srcModeTip',
     'meta.src', 'meta.richModeTip', 'meta.richModeTipClient', 'meta.rich',
     'meta.richDegradedShort', 'meta.modeAria', 'meta.organizingTip', 'meta.organizeTip',
@@ -60,7 +61,7 @@ module.exports = {
     'meta.dispatch', 'meta.sourceTip', 'meta.sourceJumpTip', 'meta.source',
     'meta.histTip', 'meta.history', 'meta.unpin', 'meta.pin',
     'meta.delTip', 'meta.delTipClient', 'meta.injectOff', 'meta.injectOn',
-    'meta.recallOn', 'meta.recallOff', 'meta.sensOn', 'meta.sensOff',
+    'meta.sensOn', 'meta.sensOff',
     'meta.sourceToast', 'meta.pinnedToast', 'meta.unpinnedToast', 'meta.runLogNotFound',
     'meta.schedPlan', 'meta.schedPaused', 'meta.runLogTip', 'meta.runLog',
     'meta.schedEditTip', 'meta.edit', 'meta.schedResumeTip', 'meta.schedPauseTip',
@@ -78,9 +79,9 @@ module.exports = {
   const grab = (s, v) => new Function(s + '\nreturn ' + v)()
   const zh = grab(zhSrc, 'I18N_ZH'), en = grab(enSrc, 'I18N_EN')
 
-  // ===== ① 字典双向覆盖：176 条 editor/meta/common.listSep key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
-  await t('覆盖B 字典双向覆盖：176 条 editor/meta key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
-    assert.strictEqual(KEYS.length, 176, '抽串清单条数（实得 ' + KEYS.length + '）')
+  // ===== ① 字典双向覆盖：171 条 editor/meta/common.listSep key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
+  await t('覆盖B 字典双向覆盖：171 条 editor/meta key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
+    assert.strictEqual(KEYS.length, 171, '抽串清单条数（实得 ' + KEYS.length + '）')
     for (const k of KEYS) {
       assert(typeof zh[k] === 'string' && zh[k], 'zh 缺 key/空值：' + k)
       assert(typeof en[k] === 'string' && en[k], 'en 缺 key/空值：' + k)
@@ -94,12 +95,12 @@ module.exports = {
   })
 
   // ===== ② t() 改写命中：四表面文件 t(/tt( 命中数阈值 + 逐文件关键锚点 =====
-  await t('t() 改写命中：四表面文件域内 t(/tt( 合计 ≥176（≥抽串数）+ 逐文件关键锚点', () => {
+  await t('t() 改写命中：四表面文件域内 t(/tt( 合计 ≥170（≥抽串数）+ 逐文件关键锚点', () => {
     const cnt = (s) => (s.match(/[^\w]t{1,2}\('(?:editor|meta|common|tree)\./g) || []).length
-    const per = [['editor.js(app)', edAppSrc, 48], ['editor-meta.js', metaAppSrc, 100], ['editor.js(client)', edCliSrc, 155]]
+    const per = [['editor.js(app)', edAppSrc, 48], ['editor-meta.js', metaAppSrc, 96], ['editor.js(client)', edCliSrc, 153]]
     let total = cnt(topSrc)
     for (const [label, s, min] of per) { const c = cnt(s); total += c; assert(c >= min, label + ' 域内 t(/tt( 命中 ≥' + min + '（实得 ' + c + '）') }
-    assert(total >= 176, '四文件域内 t(/tt( 命中合计 ≥176 抽串数（实得 ' + total + '）')
+    assert(total >= 170, '四文件域内 t(/tt( 命中合计 ≥170 抽串数（实得 ' + total + '）')
     // 关键锚点：app 编辑器空态/占位/工具栏/降级横幅走字典；injectScopeLabel 形参改名 tg 消遮蔽
     assert(edAppSrc.indexOf("t('editor.emptyTitle')") >= 0 && edAppSrc.indexOf("t('editor.bodyPlaceholder')") >= 0, 'editor.js(app) 空态/正文占位走 t()')
     assert(edAppSrc.indexOf("t('editor.tbBold')") >= 0 && edAppSrc.indexOf("t('editor.richDegradedReasons'") >= 0, 'editor.js(app) 工具栏/降级提示走 t()')
@@ -118,7 +119,7 @@ module.exports = {
   })
 
   // ===== ③ 行为级：eval 字典 + app i18n 块——取值/插值/en 态逐条非裸 key/回退 =====
-  await t('行为级：覆盖B key 双语取值 + {name} 插值 + en 态 176 条逐条非裸 key', () => {
+  await t('行为级：覆盖B key 双语取值 + {name} 插值 + en 态 171 条逐条非裸 key', () => {
     const helpersSrc = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'kernel', 'helpers.js'), 'utf8')
     const i18nBlock = helpersSrc.match(/\/\* ==== i18n-mech BEGIN ====[\s\S]*?\/\* ==== i18n-mech END ==== \*\//)[0]
     const mk = (stored) => new Function('localStorage', 'render', zhSrc + '\n' + enSrc + '\n' + i18nBlock + '\nreturn { t: t }')({ getItem: () => stored, setItem: () => {} }, () => {})

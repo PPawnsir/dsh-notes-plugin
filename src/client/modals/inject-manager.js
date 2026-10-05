@@ -37,11 +37,16 @@
     // ===== 挂载弹层（0.4.3⑤ notes-043-index；0.4.3 验收修复 notes-043-preview-when-edit：LLM 草稿预填 + 编辑模式）=====
     // 两种模式：未挂载 = LLM 草稿模式（打开即「生成中…」占位 → notes-when-suggest 成功填草稿，失败/8s 超时静默回退预填标题；
     //   用户始终可编辑——touched 后到达的草稿不覆盖）；已挂载（预览目录行点击带 existing）= 编辑模式（预填现有文案，不调 LLM）。
-    // 确认统一 notes-mount（幂等换文案）；跳过/取消 = 保留现状行；modal 不叠 modal（调用方先关来源 modal）
+    // 确认统一 notes-mount（幂等换文案；0.4.3 验收修复⑪起 host 单点收口：落行同时把目标翻 reference 档，挂载 ⇔ 资料不变量成立，
+    //   挂载行不再被目标笔记的下一次 update 摘掉）；跳过/取消 = 保留现状行；modal 不叠 modal（调用方先关来源 modal）
+    // 0.4.3 验收修复⑪（notes-043-mount-ux-final）：openMountModal(n, { onConfirmed } )——确认成功后的回调（三态/管理面板入口的
+    //   确认后动作：编辑器同步三态态等）；打开即重置，取消/跳过/关层清零（零副作用语义）；确认后统一 loadNotes 刷新收敛
     store.modal.mount = createStore({ open: false, id: '', title: '', when: '', pending: false, generating: false, edit: false, touched: false })
     function setMountOpen(v) { store.modal.mount.set({ open: typeof v === 'function' ? v(store.modal.mount.get().open) : v }) }
-    function openMountModal(n) {
+    const mountOnConfirmedRef = { current: null }   // 确认回调（模块级单例镜像；打开时重置）
+    function openMountModal(n, opts) {
       if (!n) return
+      mountOnConfirmedRef.current = (opts && typeof opts.onConfirmed === 'function') ? opts.onConfirmed : null
       const edit = typeof n.existing === 'string'   // 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM）
       store.modal.mount.set({ open: true, id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false })
       if (edit) return
@@ -57,7 +62,7 @@
         store.modal.mount.set(m.touched ? { generating: false } : { generating: false, when: m.title })
       })
     }
-    function closeMountModal() { setMountOpen(false) }
+    function closeMountModal() { mountOnConfirmedRef.current = null; setMountOpen(false) }
     async function doMountSave() {
       const m = store.modal.mount.get()
       if (!m.id || m.pending) return
@@ -68,7 +73,11 @@
         store.modal.mount.set({ pending: false })
         if (res && res.error) { showToast(t('inj.mountFailed', { msg: res.error })); return }
         showToast(t('inj.mountSaved', { title: m.title }))
+        const cb = mountOnConfirmedRef.current   // 先取回调再关层（closeMountModal 清零）
         closeMountModal()
+        if (cb) { try { cb() } catch (e) {} }
+        // 挂载收敛刷新（0.4.3⑪）：host 已把目标翻 reference 档——列表/编辑器选中态数据源即刻对齐（陈旧 inject=false 态保存会摘行）
+        panelBridge.loadNotes(true); notifyNotesChanged()
       } catch (err) { store.modal.mount.set({ pending: false }); showToast(t('inj.mountFailed', { msg: String(err.message || err) })) }
     }
     function MountModal() {
@@ -181,6 +190,10 @@
         if ((n.kind || 'note') === 'log' && role !== 'off') return   // 日志注入硬关（UI 已不渲染开关，函数拦截为双保险）
         if (injMgrRole(n) === role) return
         setError('')
+        // 0.4.3 验收修复⑪：单行「设为资料」先开挂载弹层（LLM 预填 whenToUse；确认 = notes-mount 单点收口落行 + 翻 reference 档，
+        //   取消零副作用——不先静默翻转）；modal 不叠 modal——先关注入管理面板（沿用卡②「先关再开」，清返回栈）；
+        //   确认后的收敛刷新由 doMountSave 统一承担（loadNotes + notifyNotesChanged）
+        if (role === 'reference') { setInjMgrOpen(false); injMgrBackRef.current = null; openMountModal({ id: n.id, title: n.title }); return }
         const upd = { id: n.id, inject: role !== 'off' }
         if (upd.inject) upd.injectRole = role   // 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘）
         try {
@@ -188,8 +201,6 @@
           if (res && res.error) { setError(res.error); return }
           if (res && res.injectForcedOff) showToast(t('inj.forcedOff', { title: n.title || n.id }))
           else showToast(role === 'off' ? t('inj.injectOffToast', { title: n.title || n.id }) : t('inj.injectSetToast', { role: t(role === 'reference' ? 'tree.roleReference' : 'tree.roleConvention'), title: n.title || n.id }))
-          // 0.4.3⑤ 挂载弹层：设为资料（reference）→ 手写 whenToUse（host 已自动落缺省行，弹层换文案；modal 不叠 modal——先关注入管理面板）
-          if (role === 'reference') { setInjMgrOpen(false); injMgrBackRef.current = null; openMountModal({ id: n.id, title: n.title }) }
           // 本地即时回写（injectEver 粘性：开启即曾注入），后台刷新对齐 host
           setInjMgrList(prev => (prev || []).map(x => x.id === n.id ? Object.assign({}, x, role === 'off' ? { inject: false } : { inject: true, injectRole: role, injectEver: true }) : x))
           panelBridge.loadNotes(true); notifyNotesChanged()
@@ -304,7 +315,7 @@
                         tt('inj.selectAll')),
                       e('span', { className: 'dsh-notes-trash-selcnt' }, tt('sel.selCount', { n: selCnt })),
                       e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('convention'), disabled: injMgrPending || selCnt < 1 }, tt('inj.batchConvention')),
-                      e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('reference'), disabled: injMgrPending || selCnt < 1 }, tt('inj.batchReference')),
+                      e('button', { className: 'dsh-notes-trash-act dsh-nt', 'data-tooltip': tt('inj.batchRefTip'), onClick: () => doInjMgrBatch('reference'), disabled: injMgrPending || selCnt < 1 }, tt('inj.batchReference')),
                       e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('off'), disabled: injMgrPending || selCnt < 1 }, injMgrPending ? tt('inj.executing') : tt('inj.batchOff'))),
                     e('div', { className: 'dsh-notes-injmgr-list' },
                       shown.map(n => {

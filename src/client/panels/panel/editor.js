@@ -6,7 +6,8 @@
     //        kernel/bus.js（showToast）、kernel/icons.js（e/I）、editor-kernel.js（esc/renderMarkdown/serializeRich/analyzeMarkdown/sanitizeFragment/assetDisplaySrc/wikiLinksTo）、
     //        panel/wiki.js（jumpWikiRef/wikiBodiesRef 顶层绑定，序位在前）、modals/link.js（setLinkModal）+ modals/image.js（openImgModal/pickImageFile）+
     //        modals/dispatch.js（openDispatch/doDispatchDone）+ modals/history.js（openHistory）+
-    //        modals/inject-manager.js（doInjSchedEdit/doInjSchedToggle/doInjSchedDel——计划块原地操作复用，notes-041-sched-plan-edit）——序位在前；
+    //        modals/inject-manager.js（doInjSchedEdit/doInjSchedToggle/doInjSchedDel——计划块原地操作复用，notes-041-sched-plan-edit；
+    //        openMountModal——三态切「资料」档先弹挂载框，0.4.3 验收修复⑪）——序位在前；
     //        selected/notes/dispatching/wikiVer/wikiResolve/bumpWikiBody/jumpToWikiTarget 经 hook 入参注入（装配层回填，渲染期新鲜值）
     // state 托管：全部 state/ref 留 hook 内（useState/useRef 声明原文被 check.js 锚定者不迁 store——27-5 节 edSens/edSensRef 等；
     // 与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）
@@ -22,7 +23,8 @@
         const [edKind, setEdKind] = React.useState('note')
         const [edStatus, setEdStatus] = React.useState('active')
         const [edRole, setEdRole] = React.useState('off')   // 注入三态：off=不注入 / convention=约定（须遵守）/ reference=资料（按需取用）
-        const [edRecall, setEdRecall] = React.useState(true)   // 目录可见（recall 字段，缺省 true=进目录；与 inject 正交）
+        // 「目录可见」chip 已拆除（0.4.3 验收修复⑪ notes-043-mount-ux-final：目录注入缺省关后开关无感知作用）——
+        //   host recall 字段/缺省/目录开关过滤逻辑保留（chip 拆除≠字段退役）；doSave 不再携带 recall（undefined=host 保留存量值）
         const [edSens, setEdSens] = React.useState(false)   // 敏感标记（sensitive 字段，缺省 false；开启后注入系统提示时正文按行打码）
         const [edScope, setEdScope] = React.useState([])
         const [savedAt, setSavedAt] = React.useState(0)
@@ -72,7 +74,6 @@
         const edKindRef = React.useRef('note')
         const edStatusRef = React.useRef('active')
         const edRoleRef = React.useRef('off')
-        const edRecallRef = React.useRef(true)
         const edSensRef = React.useRef(false)
         const edScopeRef = React.useRef([])
         const autoSaveRef = React.useRef(null)
@@ -85,7 +86,7 @@
           setSelected(n.id); setFocusId(n.id); setEdTitle(n.title); setEdTopic(n.topic && n.topic !== '分类中' ? n.topic : '')
           keepQuickRef.current = (n.tags || []).indexOf('quick') >= 0
           setEdTags((n.tags || []).filter(t => t !== 'quick').join(', '))
-          setEdKind(n.kind || 'note'); setEdStatus(n.status || 'active'); setEdRole(n.inject ? (n.injectRole || 'convention') : 'off'); setEdScope(n.injectTo || []); setEdRecall(n.recall !== false); setEdSens(n.sensitive === true)
+          setEdKind(n.kind || 'note'); setEdStatus(n.status || 'active'); setEdRole(n.inject ? (n.injectRole || 'convention') : 'off'); setEdScope(n.injectTo || []); setEdSens(n.sensitive === true)
           setEdBody('')
           setDegraded({ ok: true, reasons: [] })   // 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果）
           histCountRef.current = null; setHistCount(null)   // 换笔记重置「历史」入口可见性，随即探测版本计数
@@ -134,7 +135,7 @@
           setError('')
           const tags = (edTagsRef.current || '').split(/[,，;；]/).map(s => s.trim()).filter(Boolean)
           if (keepQuickRef.current && tags.indexOf('quick') < 0) tags.push('quick')
-          const upd = { id: id, title: edTitleRef.current, tags: tags, kind: edKindRef.current, status: edStatusRef.current, inject: edRoleRef.current !== 'off', injectTo: edScopeRef.current, recall: edRecallRef.current, sensitive: edSensRef.current === true }
+          const upd = { id: id, title: edTitleRef.current, tags: tags, kind: edKindRef.current, status: edStatusRef.current, inject: edRoleRef.current !== 'off', injectTo: edScopeRef.current, sensitive: edSensRef.current === true }
           // R-1 正文提交闸：仅 notes-get 成功加载过正文（edBodyLoadedRef）才携带 body（host 对 undefined 保留原内容，防竞态清空正文）；
           // 已加载基础上清空为空串 = 用户有意为之，附 confirmClearBody:true 显式过 host 空覆盖兜底闸（empty-body-overwrite-guard）
           if (edBodyLoadedRef.current) { upd.body = edBodyRef.current; if (upd.body === '') upd.confirmClearBody = true }
@@ -260,16 +261,28 @@
         }
         // 注入三态切换：独立字段 inject + injectRole（off→inject:false；约定/资料→inject:true+injectRole），不碰标签
         // off→非off 时自动展开范围浮层（与原 toggle 开启行为一致）；切到 off 收起浮层
+        // 0.4.3 验收修复⑪（notes-043-mount-ux-final）：切「资料」档不再静默翻转——先弹 MountModal（LLM 草稿预填 whenToUse，
+        //   editor 在面板内非 modal 可直接开）；确认 = 弹层内 notes-mount 单点收口（落索引行 + host 同步翻 reference 档），
+        //   onConfirmed 同步编辑器三态 + 走既有自动保存；取消/跳过 = 零副作用（不翻注入、不落行）
         function setRoleSeg(r) {
           if (r === edRole) return
+          if (r === 'reference') {
+            const wasOff0 = edRole === 'off'
+            const mid = selectedRef.current
+            if (!mid) return
+            openMountModal({ id: mid, title: edTitleRef.current || mid }, { onConfirmed: () => {
+              setEdRole('reference')
+              if (wasOff0) setScopeOpen(true)
+              triggerAutoSave()
+            } })
+            return
+          }
           const wasOff = edRole === 'off'
           setEdRole(r)
           if (r === 'off') setScopeOpen(false)
           else if (wasOff) setScopeOpen(true)
           triggerAutoSave()
         }
-        // 目录可见开关：独立字段 recall（缺省 true=进目录；false 逐条排除，与 inject 正交）
-        function toggleRecall() { setEdRecall(!edRecall); triggerAutoSave() }
         // 敏感开关：独立字段 sensitive（缺省 false；开启后注入系统提示时正文按行打码，键保留值遮蔽，Agent 用 note_get 取原文）
         function toggleSens() { setEdSens(!edSens); triggerAutoSave() }
         // 范围多选：切换某个会话短 id 的选中态（缺省=所有会话；存量 'global'/'workspace' 值在首次勾选时规范化掉，host 端仍容错）
@@ -518,7 +531,6 @@
         edKindRef.current = edKind
         edStatusRef.current = edStatus
         edRoleRef.current = edRole
-        edRecallRef.current = edRecall
         edSensRef.current = edSens
         edScopeRef.current = edScope
         // 双模式编辑器 ref 镜像（keydown/effect 闭包读最新值）
@@ -618,7 +630,6 @@
               : null,
               // 曾注入徽章（injectEver 粘性标记：单向只升不降，不随关闭回退；当前已注入时由上方注入角色段表达，不重复显示）
               curNote.injectEver === true && !isInjected ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.injectEverTip') }, I('clock', 11), tt('meta.injectEver')) : null,
-              e('span', { className: 'dsh-notes-meta-chip tgl' + (edRecall ? ' on' : ''), onClick: toggleRecall, 'data-tooltip': tt('meta.recallTipNote') }, I('eye', 11), tt('meta.recall')),
               e('span', { className: 'dsh-notes-meta-chip tgl' + (edSens ? ' on' : ''), onClick: toggleSens, 'data-tooltip': tt('meta.sensTip') }, I('lock', 11), tt('meta.sens')),
               e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.tagsTipClient') },
                 I('tag', 11),

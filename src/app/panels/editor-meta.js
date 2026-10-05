@@ -39,7 +39,6 @@ function renderMeta() {
       + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="' + t('meta.roleConventionTip') + '">' + t('tree.roleConvention') + '</span>'
       + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="' + t('meta.roleReferenceTip') + '">' + t('tree.roleReference') + '</span></span>')
     + (role !== 'off' ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="' + t('meta.scopeTip') + '">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
-    + '<span class="meta-chip tgl' + (n.recall !== false ? ' on' : '') + '" id="mRecall" title="' + t('meta.recallTip') + '">' + icon('i-eye') + t('meta.recall') + '</span>'
     + '<span class="meta-chip tgl' + (n.sensitive === true ? ' on' : '') + '" id="mSens" title="' + t('meta.sensTip') + '">' + icon('i-lock') + t('meta.sens') + '</span>'
     /* 曾注入徽章（injectEver 粘性标记：单向只升不降，不随关闭回退；当前已注入时由上方注入角色段表达，不重复显示） */
     + (n.injectEver === true && !n.inject ? '<span class="meta-chip" title="' + t('meta.injectEverTip') + '">' + icon('i-clock') + t('meta.injectEver') + '</span>' : '')
@@ -71,6 +70,18 @@ function renderMeta() {
     seg.onclick = function () {
       var r = seg.getAttribute('data-role');
       if (r === role) return;
+      /* 设为资料 = 先弹 whenToUse 挂载框（0.4.3 验收修复⑪：LLM 草稿预填，取消零副作用——不翻注入不落行；
+         确认 = 弹层内 notes-mount 单点收口（落索引行 + host 同步翻 reference 档）→ onConfirm 回填编辑器三态并保存 */
+      if (r === 'reference') {
+        openMountModal({ id: n.id, title: n.title }, function () {
+          edNote.inject = true; edNote.injectRole = 'reference';
+          if (!sessList.length) pullSessions();
+          scopeOpen = true;
+          triggerSave(); renderMeta();
+          toast(t('meta.injectOn', { role: t('tree.roleReference') }));
+        });
+        return;
+      }
       if (r === 'off') { edNote.inject = false; scopeOpen = false }
       else { edNote.inject = true; edNote.injectRole = r; if (!sessList.length) pullSessions(); scopeOpen = true }
       triggerSave(); renderMeta();
@@ -79,7 +90,7 @@ function renderMeta() {
   });
   var trig = $('scopeTrig');
   if (trig) trig.onclick = function (ev) { ev.stopPropagation(); scopeOpen = !scopeOpen; if (scopeOpen && !sessList.length) pullSessions(); renderScopePanel() };
-  $('mRecall').onclick = function () { edNote.recall = edNote.recall === false; triggerSave(); renderMeta(); toast(edNote.recall !== false ? t('meta.recallOn') : t('meta.recallOff')) };
+  /* 「目录可见」chip 已拆除（0.4.3 验收修复⑪：目录注入缺省关后开关无感知作用）；host recall 字段与目录过滤逻辑保留（chip 拆除≠字段退役，doSave 仍随 edNote 带上原值） */
   $('mSens').onclick = function () { edNote.sensitive = edNote.sensitive !== true; triggerSave(); renderMeta(); toast(edNote.sensitive === true ? t('meta.sensOn') : t('meta.sensOff')) };
   $('mDispatch').onclick = function () { openDispatch() };
   /* P3 派发闭环徽章：点击展开派发历史并滚动到位 */

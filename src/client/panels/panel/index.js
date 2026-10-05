@@ -20,8 +20,8 @@
         const [open, setOpen] = React.useState(panelOpen)
         const [notes, setNotes] = React.useState([])
         const [selected, setSelected] = React.useState(null)
-        // edTitle/edTopic/edTags/edBody/edKind/edStatus/edRole/edRecall/edSens/edScope + savedAt 已拆出（§6 步骤 E：panel/editor.js——
-        // 编辑器域归 usePanelEditor，下方 wiki 装配点后解构接入）
+        // edTitle/edTopic/edTags/edBody/edKind/edStatus/edRole/edSens/edScope + savedAt 已拆出（§6 步骤 E：panel/editor.js——
+        // 编辑器域归 usePanelEditor，下方 wiki 装配点后解构接入；「目录可见」chip 态随 0.4.3⑪ 拆除退役）
         // searchText/searchIds/searchMatches 已拆出（§6 步骤 E：panel/search.js——归 usePanelSearch，下方防抖装配点解构接入）
         const [loading, setLoading] = React.useState(false)
         const [error, setError] = React.useState('')
@@ -211,8 +211,8 @@
         // 点击菜单外部关闭 effect 已随 popovers/ctx-menu.js / folder-menu.js 迁入各自 hook（同文）
         function close() { panelOpen = false; notify() }
         // jumpToSession（来源会话跳转）已随 panel/editor.js 迁出（编辑器 meta 行「来源」按钮同域）
-        // setRoleSeg/toggleRecall/toggleSens/toggleScope（注入三态/目录可见/敏感/范围多选）已随 panel/editor.js 迁出（同文；
-        // setScopeOpen 联动经 kernel 转发别名 → panelBridge 回填）
+        // setRoleSeg/toggleSens/toggleScope（注入三态/敏感/范围多选）已随 panel/editor.js 迁出（同文；
+        // setScopeOpen 联动经 kernel 转发别名 → panelBridge 回填；「目录可见」开关随 0.4.3⑪ chip 拆除退役）
         // ===== 双模式编辑器 v3：模式切换 / 序列化同步 / 工具栏 / 图片三入口 已随 panel/editor.js 迁出（switchMode/syncFromRich/scheduleRichSync/
         // scheduleDegAnalyze/keepSel/restoreSel/toolbarAction/updateToolbarState/insertSanitizedHtml/insertImageMd + 富文本绑定 effect，同文）=====
         // 派发链路已拆出（§6 步骤 D2：modals/dispatch.js——loadActiveSessions/loadWorkspaces/openDispatch 迁入，

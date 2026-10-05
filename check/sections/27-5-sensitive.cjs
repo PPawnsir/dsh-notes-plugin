@@ -247,7 +247,7 @@ module.exports = {
   })
   await t('app.html 敏感 toggle：i-lock symbol + mSens chip + doSave 携带 sensitive', () => {
     assert(appSrc.indexOf('id="i-lock"') >= 0, 'i-lock symbol')
-    assert(appSrc.indexOf('id="mSens"') >= 0 && appSrc.indexOf("icon('i-lock')") >= 0, 'mSens chip（mRecall 旁）')
+    assert(appSrc.indexOf('id="mSens"') >= 0 && appSrc.indexOf("icon('i-lock')") >= 0, 'mSens chip（mRecall 已于 0.4.3⑪ 拆除，本锚只看 mSens）')
     assert(appSrc.indexOf("$('mSens').onclick") >= 0 && appSrc.indexOf('edNote.sensitive = edNote.sensitive !== true') >= 0, 'mSens toggle 处理')
     assert(appSrc.indexOf('sensitive: edNote.sensitive === true') >= 0, 'app.html doSave 携带 sensitive')
   })

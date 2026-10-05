@@ -48,14 +48,12 @@
       } catch (e) {}
       return null
     }
-    // §1 挂载行解析（同步）：[{ id, when, raw }]——行首 `- [[target]] 何时查我：文案`；无索引 → []（管线回退空 reference 桶）。
+    // §1 挂载行解析核（body → [{ id, when, raw }]）：idxLinesSync（正式索引）与孤儿索引自愈合并（idxHealOrphans）共用同一口径。
     //   行格式归一（0.4.3 验收修复④ notes-043-index-preset-v2）：when = 纯文案——剥离可选「何时查我：」机器前缀，
-    //   存量无前缀行零迁移照常解析；raw = 行原样（管线注入用，自带前缀形态）；返回结构 {id,when,raw} 不变（红线）
-    function idxLinesSync() {
-      const rl = idxNoteSync()
-      if (!rl) return []
+    //   存量无前缀行零迁移照常解析；raw = 行原样（管线注入用，自带前缀形态）
+    function idxParseBody(body) {
       const out = []
-      for (const l of String(rl.body || '').split('\n')) {
+      for (const l of String(body || '').split('\n')) {
         const m = l.match(/^\s*-\s\[\[([^\[\]\r\n]+)\]\]\s*(.*)$/)
         if (!m) continue
         let when = m[2] || ''
@@ -63,6 +61,13 @@
         out.push({ id: m[1], when: when, raw: l.trim() })
       }
       return out
+    }
+    // §1 挂载行解析（同步）：[{ id, when, raw }]——行首 `- [[target]] 何时查我：文案`；无索引 → []（管线回退空 reference 桶）。
+    //   解析核 = idxParseBody（上方）；返回结构 {id,when,raw} 不变（红线）
+    function idxLinesSync() {
+      const rl = idxNoteSync()
+      if (!rl) return []
+      return idxParseBody(rl.body)
     }
     // 升级首启/指针丢失自愈：懒创建索引根笔记（kind=sys 系统根笔记——recall=false 不进目录注入；自身不 inject）；
     //   存量迁移（0.4.3⑥）：按标题找回的旧索引 kind≠sys → rootNoteEnsureSysKind 只写 kind 元数据（正文零变化红线）；返回托管笔记或 null
@@ -72,6 +77,11 @@
       try {
         await loadSettings()
         let rl = idxNoteSync()
+        // 冷缓存防御（0.4.3 验收修复⑪ notes-043-mount-ux-final）：快路径未命中才水化——启动装配 fire-and-forget 调用本函数时
+        //   cache 可能尚未水化，idxNoteSync 的指针/标题两条腿都读 cache，冷缓存误判「无索引」会在存量库上重复创建孤儿索引
+        //   （实案：复测环境出现两篇同名「注入索引（自动）」，指针迁走后旧索引挂载行全部隐形）。仅未命中时全量水化一次
+        //   （含删除态/日志/sys 口径，存活索引必命中）；指针命中的挂载热路径零额外磁盘读
+        if (!rl) { try { await _list(undefined, undefined, undefined, true, true, true) } catch (e) {} rl = idxNoteSync() }
         if (rl) {
           await rootNoteEnsureSysKind(rl)
           if (settingsCache.indexNoteId !== rl.id) { settingsCache.indexNoteId = rl.id; await saveSettings() }
@@ -93,6 +103,25 @@
         })
       } catch (e) { return null }
     }
+    // 孤儿索引自愈（0.4.3 验收修复⑪，启动装配处 idxEnsure().then 单次触发，见 index 收口模块）：正式索引之外仍存活的同名
+    //   「注入索引（自动）」笔记（冷缓存竞态/指针丢失的历史产物）——其 §1 存量行并入正式索引（跳过已存在键与目标已死行，
+    //   idxMount 幂等落行），然后软删孤儿（回收站可恢复）。孤儿正文只读不写（行级操作红线延伸到自愈路径）；异常全吞（失败下次启动重试）
+    async function idxHealOrphans(rl) {
+      try {
+        if (!rl) return
+        const dups = []
+        for (const m of cache.values()) { if (!m.deleted && !m.tombstoned && m.id !== rl.id && m.title === INJECT_INDEX_TITLE) dups.push(m) }
+        for (const dp of dups) {
+          const lines = idxParseBody(dp.body)
+          for (const l of lines) {
+            const tn = cache.get(l.id)
+            if (!tn || tn.deleted || tn.tombstoned) continue   // 死挂载行不并入（图内核死链不扩散）
+            if (!idxLinesSync().some(function (x) { return x.id === l.id })) await idxMount(l.id, l.when)
+          }
+          await _delete(dp.id)
+        }
+      } catch (e) {}
+    }
     // 挂载/换文案（幂等）：先摘同键旧行再落新行（同笔记唯一行）；机器只行级操作；返回索引笔记 id 或 null
     async function idxMount(noteId, whenToUse) {
       const rl = await idxEnsure()
@@ -109,12 +138,20 @@
       return rootNoteRemoveLine(rl, INJECT_INDEX_TPL, String(noteId))
     }
     // ---- 挂载 RPC：notes-mount { id, whenToUse? }（弹层确认落行；缺省 whenToUse = 标题）----
+    // 0.4.3 验收修复⑪（notes-043-mount-ux-final）：挂载 ⇔ 资料档不变量单点收口——落行前先把目标翻 inject=true +
+    //   injectRole=reference（undefined 位参数 = 保留存量值，patch 语义）。此前 preview/弹层直挂路径不翻注入态，
+    //   _idxSyncMount 会在目标笔记下一次 update 时判 inject≠true 摘行——用户复测③「whenToUse 不进预览」的断链根因；
+    //   翻转经 _update 普通链路（wrapper 先落缺省行，随后 idxMount 幂等换文案）；kind=log 注入硬关延伸到挂载（拒绝）。
     disposers.push(handle('notes-mount', async (args) => {
       try {
         if (!args || !args.id) return { error: 'notes-mount 需要 id' }
         const n = await loadNote(String(args.id))
         if (!n || n.deleted || n.tombstoned) return { error: 'notes-mount: 笔记不存在' }
+        if ((n.kind || 'note') === 'log') return { error: 'notes-mount: kind=log 工作日志不参与注入，不可挂载' }
         const when = args.whenToUse === undefined || args.whenToUse === null ? String(n.title || '') : String(args.whenToUse)
+        if (!(n.inject === true && n.injectRole === 'reference')) {
+          await _update(String(args.id), undefined, undefined, undefined, undefined, undefined, undefined, true, undefined, undefined, undefined, 'reference', undefined, undefined)
+        }
         const rlId = await idxMount(String(args.id), when)
         if (!rlId) return { error: 'notes-mount: 索引笔记创建失败' }
         return { ok: true, id: String(args.id), indexNoteId: rlId, whenToUse: when }

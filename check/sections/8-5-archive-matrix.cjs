@@ -40,6 +40,9 @@ module.exports = {
   const mm2 = await handlers9['notes-create']({ title: '手动乙', body: '手动正文二', tags: ['arc9'], topic: '其他' })
 
   await t('preview：速记按 sessionId 分组（≥2），手动/单条/已删不进组，dry-run 零写入', async () => {
+    // 0.4.3 验收修复⑪：idxEnsure 冷缓存水化闸门使启动索引创建链多一跳 _list——零写入窗口前先等启动写沉降
+    //   （settings.json 落盘 = idxEnsure 链尾写；轮询确定性等待，不靠裸 sleep 碰运气）
+    for (let i = 0; i < 40 && !store9.has(NOTES_DIR + '\\settings.json'); i++) { await new Promise(r => setTimeout(r, 25)) }
     const w0 = writes9
     const pv = await handlers9['notes-archive-preview']({})
     assert.strictEqual(writes9, w0, 'preview 零写入（写入增量 ' + (writes9 - w0) + '）')

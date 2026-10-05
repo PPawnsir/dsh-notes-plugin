@@ -459,5 +459,128 @@ module.exports = {
     await handlers['notes-delete']({ id: mnt73.id })
     if (!hadCatalog) await handlers['notes-settings-set']({ catalogEnabled: null })
   })
+
+  // ---- 73.4 0.4.3 验收修复⑪（notes-043-mount-ux-final）：挂载 ⇔ 资料档不变量单点收口（复测③断链修复）----
+  // 探针结论（活探针固化）：preview/弹层直挂路径此前不翻注入态 → _idxSyncMount 在目标笔记下一次 update 时判 inject≠true 摘行
+  //   → whenToUse 行进预览后旋即消失。修复：notes-mount 落行前单点翻 inject=true + injectRole=reference（patch 语义，其余字段不动）。
+  await t('0.4.3⑪ 挂载⇔资料不变量：notes-mount 翻 reference 档 + patch 更新行存活 + 显式关注入摘行 + log 挂载拒绝', async () => {
+    const c = await handlers['notes-create']({ title: '挂载不变量73', body: 'x', topic: '资料' })
+    assert(c && c.id && !c.error, '创建普通笔记（inject 缺省 false）')
+    const m = await handlers['notes-mount']({ id: c.id, whenToUse: '探针文案73-⑪' })
+    assert(m && m.ok === true, 'notes-mount 成功')
+    const gn = await handlers['notes-get']({ id: c.id })
+    assert(gn.note.inject === true && gn.note.injectRole === 'reference', 'mount 后目标翻 inject=true + injectRole=reference（挂载⇔资料单点收口；实得 ' + gn.note.inject + '/' + gn.note.injectRole + '）')
+    // 回归锁（③断链）：patch 更新（inject 不传 = patch 语义保留）→ 挂载行存活
+    await handlers['notes-update']({ id: c.id, title: '挂载不变量73-改' })
+    let ml = await handlers['notes-mount-list']({})
+    let hit = ml.lines.filter(l => l.id === c.id)
+    assert.strictEqual(hit.length, 1, 'patch 更新后挂载行存活（修复前被 _idxSyncMount 摘掉）')
+    assert.strictEqual(hit[0].when, '探针文案73-⑪', '文案不丢')
+    const pv = await handlers['notes-inject-preview']({})
+    assert((pv.directory || '').indexOf('何时查我：探针文案73-⑪') >= 0, '预览 directory 含挂载行（patch 更新后链路终点复验）')
+    // reference 态全 payload 保存（编辑器收敛后形态）→ 行存活
+    await handlers['notes-update']({ id: c.id, title: '挂载不变量73-改', tags: [], kind: 'note', status: 'active', inject: true, injectRole: 'reference', injectTo: [], recall: true, sensitive: false })
+    ml = await handlers['notes-mount-list']({})
+    assert.strictEqual(ml.lines.filter(l => l.id === c.id).length, 1, 'reference 态全 payload 保存后行存活')
+    // 显式关注入 → 摘行（不变量反向语义不变：关注入 = 摘行联动保留）
+    await handlers['notes-update']({ id: c.id, inject: false })
+    ml = await handlers['notes-mount-list']({})
+    assert(ml.lines.every(l => l.id !== c.id), '显式 inject:false → 摘行（反向语义不变）')
+    await handlers['notes-delete']({ id: c.id })
+    // kind=log 挂载拒绝（注入硬关延伸到挂载通道）
+    const lg = await handlers['notes-create']({ title: '日志73⑪', body: 'x', kind: 'log', topic: '日志' })
+    const lm = await handlers['notes-mount']({ id: lg.id, whenToUse: 'x' })
+    assert(lm && !!lm.error, 'kind=log 挂载被拒绝（实得 ' + JSON.stringify(lm) + '）')
+    await handlers['notes-delete']({ id: lg.id })
+  })
+
+  await t('0.4.3⑪ 设为资料弹框接线：三入口 modal-first + 取消零副作用 + 批量静默（行为不变）+ 确认后收敛刷新', () => {
+    // 入口① client 详情三态：reference 档先弹 MountModal（确认才经 onConfirmed 同步三态 + 自动保存；取消零副作用）
+    const edCli = fsNative.readFileSync(path.join(DIR, 'src', 'client', 'panels', 'panel', 'editor.js'), 'utf8')
+    assert(edCli.indexOf("if (r === 'reference') {") >= 0 && edCli.indexOf('openMountModal({ id: mid, title: edTitleRef.current || mid }, { onConfirmed:') >= 0, 'client 三态切资料 → openMountModal（modal-first + onConfirmed）')
+    assert(edCli.indexOf("setEdRole('reference')") >= 0, 'onConfirmed 同步编辑器三态（reference）')
+    // 弹层机制：onConfirmed 回调存管 + 取消/关闭清零 + 确认后收敛刷新（loadNotes + notifyNotesChanged）
+    assert(clientSrc.indexOf('const mountOnConfirmedRef = { current: null }') >= 0, 'client 挂载确认回调镜像在位')
+    assert(clientSrc.indexOf("function closeMountModal() { mountOnConfirmedRef.current = null; setMountOpen(false) }") >= 0, '取消/跳过 = 回调清零（零副作用语义）')
+    assert(clientSrc.indexOf('const cb = mountOnConfirmedRef.current') >= 0 && clientSrc.indexOf('panelBridge.loadNotes(true); notifyNotesChanged()') >= 0, '确认后先取回调再关层 + 收敛刷新（陈旧 inject=false 态保存会摘行）')
+    // 入口② client 注入管理单行：modal-first（先关面板再开弹层，不先静默翻转）
+    assert(clientSrc.indexOf("if (role === 'reference') { setInjMgrOpen(false); injMgrBackRef.current = null; openMountModal({ id: n.id, title: n.title }); return }") >= 0, 'client 注入管理单行设为资料 = modal-first（modal 不叠 modal：先关再开）')
+    // 入口③ app 详情三态 + app 注入管理单行 + app 弹层 onConfirm/收敛刷新
+    const appMeta = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'panels', 'editor-meta.js'), 'utf8')
+    assert(appMeta.indexOf("openMountModal({ id: n.id, title: n.title }, function () {") >= 0 && appMeta.indexOf("edNote.injectRole = 'reference';") >= 0, 'app 详情三态切资料 → openMountModal（onConfirm 回填 inject=true+reference）')
+    const appMgr = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'modals', 'inject-manager.js'), 'utf8')
+    assert(appMgr.indexOf("if (role === 'reference') { openMountModal({ id: n.id, title: n.title }); return }") >= 0, 'app 注入管理单行设为资料 = modal-first')
+    assert(appMgr.indexOf('function openMountModal(n, onConfirm)') >= 0 && appMgr.indexOf('if (done.onConfirm)') >= 0 && appMgr.indexOf('onConfirm: typeof onConfirm') >= 0, 'app 挂载弹层 onConfirm 接线（取消不落回调）')
+    // 批量条维持静默缺省行（行为不变红线）+ tooltip 注明「缺省文案=标题」
+    assert(clientSrc.indexOf("tt('inj.batchRefTip')") >= 0 && appMgr.indexOf("t('inj.batchRefTip')") >= 0, '批量「设为资料」tooltip 双端注明缺省文案=标题')
+    assert(clientSrc.indexOf('async function doInjMgrBatch(role)') >= 0 && appMgr.indexOf('function doInjMgrBatch(role)') >= 0, '批量通道维持静默 notes-update 缺省行（行为不变）')
+  })
+
+  await t('0.4.3⑪ 冷缓存水化闸门 + 孤儿索引自愈：不重复创建 + 存量行并入 + 孤儿软删（独立实例行为级）', async () => {
+    // 静态锚：idxEnsure 快路径未命中才水化（挂载热路径零额外磁盘读）+ 自愈函数 + 启动装配接线
+    assert(hostSrc.indexOf("if (!rl) { try { await _list(undefined, undefined, undefined, true, true, true) } catch (e) {} rl = idxNoteSync() }") >= 0, 'idxEnsure 冷缓存水化闸门（仅未命中才全量水化）')
+    assert(hostSrc.indexOf('async function idxHealOrphans(rl)') >= 0, '孤儿自愈函数在位')
+    assert(hostSrc.indexOf('idxEnsure().then(function (rl) { if (rl) idxHealOrphans(rl) })') >= 0, '启动装配接线：ensure 落定后自愈')
+    // 行为级（探针 S3/S3b 固化）：预置存量库 = 正式索引（指针）+ 孤儿索引（含存量行）+ 行目标笔记 → 启动后
+    //   不新建第三篇 + 孤儿行并入正式索引 + 孤儿软删
+    const store11 = new Map()
+    const PD11 = 'D:\\probe\\check73-11'
+    const IDX_A = 'n-idxaaaa0000001', IDX_B = 'n-idxbbbb0000002', TG = 'n-preexisting02'
+    const idxMd = (id, extra) => [
+      '---', 'id: ' + id, 'title: 注入索引（自动）', 'topic: 注入索引', 'workspace: ', 'folder: ', 'tags: 自动',
+      'kind: sys', 'status: active', 'inject: false', 'injectEver: false', 'injectTo: ', 'recall: false', 'sensitive: false',
+      'createdAt: "2026-10-05T06:30:37.183Z"', 'updatedAt: "2026-10-05T06:30:37.183Z"', 'sessionId: ', 'cwd: ', 'logDate: ',
+      'mergedFrom: ', 'dispatches: "[]"', 'archivedAt: ', 'deleted: false', '---', '## §1 挂载清单', '', extra, ''
+    ].join('\n')
+    store11.set(PD11 + '\\notes\\' + TG + '.md', [
+      '---', 'id: ' + TG, 'title: 孤儿行目标', 'topic: 资料', 'workspace: ', 'folder: ', 'tags: ',
+      'kind: note', 'status: active', 'inject: false', 'injectEver: false', 'injectTo: ', 'recall: true', 'sensitive: false',
+      'createdAt: "2026-10-05T06:00:00.000Z"', 'updatedAt: "2026-10-05T06:00:00.000Z"', 'sessionId: ', 'cwd: ', 'logDate: ',
+      'mergedFrom: ', 'dispatches: "[]"', 'archivedAt: ', 'deleted: false', '---', 'x', ''
+    ].join('\n'))
+    store11.set(PD11 + '\\notes\\' + IDX_A + '.md', idxMd(IDX_A, ''))                                  // 正式（settings 指针）
+    store11.set(PD11 + '\\notes\\' + IDX_B + '.md', idxMd(IDX_B, '- [[' + TG + ']] 孤儿索引存量文案'))   // 孤儿（无前缀旧行）
+    store11.set(PD11 + '\\notes\\settings.json', JSON.stringify({ indexNoteId: IDX_A }))
+    const fsMock11 = {
+      resolve: async (p) => p,
+      stat: async (p) => (p === PD11 + '\\notes' ? { dir: true } : (store11.has(p) ? { file: true } : null)),
+      listDir: async (p) => {
+        const prefix = p + '\\'
+        const out = []
+        for (const k of store11.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) })
+        return out
+      },
+      readText: async (p) => { if (!store11.has(p)) throw new Error('ENOENT: ' + p); return store11.get(p) },
+      writeText: async (p, c2) => { store11.set(p, c2) },
+    }
+    const handlers11 = {}
+    const harnessMock11 = { handle: (n2, fn) => { handlers11[n2] = fn; return () => { delete handlers11[n2] } }, defineTool: (d) => d, registerTool: () => () => {} }
+    new Function('harness', 'pluginDir', hostSrc)(harnessMock11, PD11).apply({
+      fs: fsMock11, sandboxPolicy: { resolve: () => ({}) },
+      get: (name) => ({ llm: S.llmMock, agentDefaultModel: S.admMock, agents: S.agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: S.sessionPersistenceMock, workspaceRegistry: S.workspaceRegistryMock, sessionTitle: S.sessionTitleMock, sessionQuery: S.sessionQueryMock })[name],
+      effect: () => {}, on: () => () => {},
+    })
+    // 等启动 fire-and-forget 沉降（idxEnsure 水化闸门 + idxHealOrphans）——自愈完成信号 = 孤儿软删（轮询确定性等待）
+    let ml11 = null
+    for (let i = 0; i < 40; i++) {
+      await new Promise(r => setTimeout(r, 25))
+      ml11 = await handlers11['notes-mount-list']({})
+      const l11 = await handlers11['notes-list']({ includeLogs: true })
+      if (ml11 && ml11.indexNoteId && !l11.notes.some(n => n.id === IDX_B) && (ml11.lines || []).some(l => l.id === TG)) break
+    }
+    assert(ml11 && ml11.indexNoteId === IDX_A, '指针不迁移（正式索引 = 存量指针目标；实得 ' + (ml11 && ml11.indexNoteId) + '）')
+    const hit11 = (ml11.lines || []).filter(l => l.id === TG)
+    assert.strictEqual(hit11.length, 1, '孤儿 §1 行并入正式索引（实得 ' + JSON.stringify(ml11.lines) + '）')
+    assert.strictEqual(hit11[0].when, '孤儿索引存量文案', '并入行 when 解析（无前缀旧行同口径）')
+    const lst11 = await handlers11['notes-list']({ includeLogs: true })
+    assert(!lst11.notes.some(n => n.id === IDX_B), '孤儿索引已软删（常规列表消失）')
+    const idxAlive11 = [...store11.keys()].filter(k => {
+      const pre = PD11 + '\\notes\\'
+      if (!k.startsWith(pre) || k.indexOf('\\', pre.length) >= 0 || !k.endsWith('.md')) return false   // 仅直子级笔记文件（排除 .history 删除快照）
+      const c = store11.get(k) || ''
+      return c.indexOf('title: 注入索引（自动）') >= 0 && c.indexOf('deleted: true') < 0
+    })
+    assert.strictEqual(idxAlive11.length, 1, '存活同名索引恰一篇（不新建第三篇；实得 ' + idxAlive11.length + '）')
+  })
   }
 }

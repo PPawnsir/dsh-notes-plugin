@@ -356,9 +356,6 @@ window.__ModuleLoader__.load({
       'meta.scopeHint': '默认注入到所有会话；勾选会话则仅限这些会话',
       'meta.scopePending': '{short} · 标题加载中…',
       'meta.wsOther': '其他',
-      'meta.recallTip': '关闭后不出现在注入给 Agent 的目录中',
-      'meta.recallTipNote': '关闭后该笔记不出现在注入给 Agent 的目录中',
-      'meta.recall': '目录可见',
       'meta.sensTip': '敏感内容：注入系统提示时正文按行打码（键保留值遮蔽），Agent 用 note_get 取原文',
       'meta.sens': '敏感',
       'meta.injectEverTip': '曾注入：历史上开启过上下文注入（现已关闭；injectEver 为粘性标记，不随关闭回退）',
@@ -388,8 +385,6 @@ window.__ModuleLoader__.load({
       'meta.delTipClient': '删除（软删除，可恢复）',
       'meta.injectOff': '已关闭上下文注入',
       'meta.injectOn': '已注入为上下文 · {role}（范围见右侧下拉）',
-      'meta.recallOn': '已加入 Agent 目录',
-      'meta.recallOff': '已从 Agent 目录隐藏',
       'meta.sensOn': '已标记敏感（注入时自动脱敏）',
       'meta.sensOff': '已取消敏感标记',
       'meta.sourceToast': '来源会话 {short}（{full}）· 页面无跳转能力，请回 DSH 主界面打开',
@@ -583,6 +578,7 @@ window.__ModuleLoader__.load({
       'inj.selectAll': '全选',
       'inj.batchConvention': '设为约定',
       'inj.batchReference': '设为资料',
+      'inj.batchRefTip': '批量设为资料：每条静默落缺省挂载行（whenToUse=标题），不逐条弹框；单行切「资料」档会先弹编辑框',
       'inj.batchOff': '关闭注入',
       'inj.executing': '执行中…',
       'inj.logNoInject': '日志不参与注入',
@@ -1111,9 +1107,6 @@ window.__ModuleLoader__.load({
       'meta.scopeHint': 'Injected into all sessions by default; check sessions to restrict injection to them',
       'meta.scopePending': '{short} · loading title…',
       'meta.wsOther': 'Other',
-      'meta.recallTip': 'When off, the note is hidden from the catalog injected into the Agent',
-      'meta.recallTipNote': 'When off, this note is hidden from the catalog injected into the Agent',
-      'meta.recall': 'In catalog',
       'meta.sensTip': 'Sensitive: when injected into the system prompt, the body is masked line by line (keys kept, values hidden); the Agent uses note_get for the original',
       'meta.sens': 'Sensitive',
       'meta.injectEverTip': 'Injected before: context injection was once enabled (now off; injectEver is a sticky mark that never reverts)',
@@ -1143,8 +1136,6 @@ window.__ModuleLoader__.load({
       'meta.delTipClient': 'Delete (soft delete, restorable)',
       'meta.injectOff': 'Context injection disabled',
       'meta.injectOn': 'Injected as context · {role} (scope in the dropdown on the right)',
-      'meta.recallOn': 'Added to the Agent catalog',
-      'meta.recallOff': 'Hidden from the Agent catalog',
       'meta.sensOn': 'Marked sensitive (auto-masked when injected)',
       'meta.sensOff': 'Sensitive mark removed',
       'meta.sourceToast': 'Source session {short} ({full}) · this page cannot jump; open it from the DSH main UI',
@@ -1339,6 +1330,7 @@ window.__ModuleLoader__.load({
       'inj.selectAll': 'Select all',
       'inj.batchConvention': 'Set as convention',
       'inj.batchReference': 'Set as reference',
+      'inj.batchRefTip': 'Batch set as reference: each note silently gets a default mount line (whenToUse = title) without a per-note dialog; switching a single row to Reference opens the editor dialog first',
       'inj.batchOff': 'Disable injection',
       'inj.executing': 'Running…',
       'inj.logNoInject': 'No injection (log)',
@@ -3331,11 +3323,16 @@ window.__ModuleLoader__.load({
     // ===== 挂载弹层（0.4.3⑤ notes-043-index；0.4.3 验收修复 notes-043-preview-when-edit：LLM 草稿预填 + 编辑模式）=====
     // 两种模式：未挂载 = LLM 草稿模式（打开即「生成中…」占位 → notes-when-suggest 成功填草稿，失败/8s 超时静默回退预填标题；
     //   用户始终可编辑——touched 后到达的草稿不覆盖）；已挂载（预览目录行点击带 existing）= 编辑模式（预填现有文案，不调 LLM）。
-    // 确认统一 notes-mount（幂等换文案）；跳过/取消 = 保留现状行；modal 不叠 modal（调用方先关来源 modal）
+    // 确认统一 notes-mount（幂等换文案；0.4.3 验收修复⑪起 host 单点收口：落行同时把目标翻 reference 档，挂载 ⇔ 资料不变量成立，
+    //   挂载行不再被目标笔记的下一次 update 摘掉）；跳过/取消 = 保留现状行；modal 不叠 modal（调用方先关来源 modal）
+    // 0.4.3 验收修复⑪（notes-043-mount-ux-final）：openMountModal(n, { onConfirmed } )——确认成功后的回调（三态/管理面板入口的
+    //   确认后动作：编辑器同步三态态等）；打开即重置，取消/跳过/关层清零（零副作用语义）；确认后统一 loadNotes 刷新收敛
     store.modal.mount = createStore({ open: false, id: '', title: '', when: '', pending: false, generating: false, edit: false, touched: false })
     function setMountOpen(v) { store.modal.mount.set({ open: typeof v === 'function' ? v(store.modal.mount.get().open) : v }) }
-    function openMountModal(n) {
+    const mountOnConfirmedRef = { current: null }   // 确认回调（模块级单例镜像；打开时重置）
+    function openMountModal(n, opts) {
       if (!n) return
+      mountOnConfirmedRef.current = (opts && typeof opts.onConfirmed === 'function') ? opts.onConfirmed : null
       const edit = typeof n.existing === 'string'   // 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM）
       store.modal.mount.set({ open: true, id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false })
       if (edit) return
@@ -3351,7 +3348,7 @@ window.__ModuleLoader__.load({
         store.modal.mount.set(m.touched ? { generating: false } : { generating: false, when: m.title })
       })
     }
-    function closeMountModal() { setMountOpen(false) }
+    function closeMountModal() { mountOnConfirmedRef.current = null; setMountOpen(false) }
     async function doMountSave() {
       const m = store.modal.mount.get()
       if (!m.id || m.pending) return
@@ -3362,7 +3359,11 @@ window.__ModuleLoader__.load({
         store.modal.mount.set({ pending: false })
         if (res && res.error) { showToast(t('inj.mountFailed', { msg: res.error })); return }
         showToast(t('inj.mountSaved', { title: m.title }))
+        const cb = mountOnConfirmedRef.current   // 先取回调再关层（closeMountModal 清零）
         closeMountModal()
+        if (cb) { try { cb() } catch (e) {} }
+        // 挂载收敛刷新（0.4.3⑪）：host 已把目标翻 reference 档——列表/编辑器选中态数据源即刻对齐（陈旧 inject=false 态保存会摘行）
+        panelBridge.loadNotes(true); notifyNotesChanged()
       } catch (err) { store.modal.mount.set({ pending: false }); showToast(t('inj.mountFailed', { msg: String(err.message || err) })) }
     }
     function MountModal() {
@@ -3475,6 +3476,10 @@ window.__ModuleLoader__.load({
         if ((n.kind || 'note') === 'log' && role !== 'off') return   // 日志注入硬关（UI 已不渲染开关，函数拦截为双保险）
         if (injMgrRole(n) === role) return
         setError('')
+        // 0.4.3 验收修复⑪：单行「设为资料」先开挂载弹层（LLM 预填 whenToUse；确认 = notes-mount 单点收口落行 + 翻 reference 档，
+        //   取消零副作用——不先静默翻转）；modal 不叠 modal——先关注入管理面板（沿用卡②「先关再开」，清返回栈）；
+        //   确认后的收敛刷新由 doMountSave 统一承担（loadNotes + notifyNotesChanged）
+        if (role === 'reference') { setInjMgrOpen(false); injMgrBackRef.current = null; openMountModal({ id: n.id, title: n.title }); return }
         const upd = { id: n.id, inject: role !== 'off' }
         if (upd.inject) upd.injectRole = role   // 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘）
         try {
@@ -3482,8 +3487,6 @@ window.__ModuleLoader__.load({
           if (res && res.error) { setError(res.error); return }
           if (res && res.injectForcedOff) showToast(t('inj.forcedOff', { title: n.title || n.id }))
           else showToast(role === 'off' ? t('inj.injectOffToast', { title: n.title || n.id }) : t('inj.injectSetToast', { role: t(role === 'reference' ? 'tree.roleReference' : 'tree.roleConvention'), title: n.title || n.id }))
-          // 0.4.3⑤ 挂载弹层：设为资料（reference）→ 手写 whenToUse（host 已自动落缺省行，弹层换文案；modal 不叠 modal——先关注入管理面板）
-          if (role === 'reference') { setInjMgrOpen(false); injMgrBackRef.current = null; openMountModal({ id: n.id, title: n.title }) }
           // 本地即时回写（injectEver 粘性：开启即曾注入），后台刷新对齐 host
           setInjMgrList(prev => (prev || []).map(x => x.id === n.id ? Object.assign({}, x, role === 'off' ? { inject: false } : { inject: true, injectRole: role, injectEver: true }) : x))
           panelBridge.loadNotes(true); notifyNotesChanged()
@@ -3598,7 +3601,7 @@ window.__ModuleLoader__.load({
                         tt('inj.selectAll')),
                       e('span', { className: 'dsh-notes-trash-selcnt' }, tt('sel.selCount', { n: selCnt })),
                       e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('convention'), disabled: injMgrPending || selCnt < 1 }, tt('inj.batchConvention')),
-                      e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('reference'), disabled: injMgrPending || selCnt < 1 }, tt('inj.batchReference')),
+                      e('button', { className: 'dsh-notes-trash-act dsh-nt', 'data-tooltip': tt('inj.batchRefTip'), onClick: () => doInjMgrBatch('reference'), disabled: injMgrPending || selCnt < 1 }, tt('inj.batchReference')),
                       e('button', { className: 'dsh-notes-trash-act', onClick: () => doInjMgrBatch('off'), disabled: injMgrPending || selCnt < 1 }, injMgrPending ? tt('inj.executing') : tt('inj.batchOff'))),
                     e('div', { className: 'dsh-notes-injmgr-list' },
                       shown.map(n => {
@@ -5623,7 +5626,8 @@ window.__ModuleLoader__.load({
     //        kernel/bus.js（showToast）、kernel/icons.js（e/I）、editor-kernel.js（esc/renderMarkdown/serializeRich/analyzeMarkdown/sanitizeFragment/assetDisplaySrc/wikiLinksTo）、
     //        panel/wiki.js（jumpWikiRef/wikiBodiesRef 顶层绑定，序位在前）、modals/link.js（setLinkModal）+ modals/image.js（openImgModal/pickImageFile）+
     //        modals/dispatch.js（openDispatch/doDispatchDone）+ modals/history.js（openHistory）+
-    //        modals/inject-manager.js（doInjSchedEdit/doInjSchedToggle/doInjSchedDel——计划块原地操作复用，notes-041-sched-plan-edit）——序位在前；
+    //        modals/inject-manager.js（doInjSchedEdit/doInjSchedToggle/doInjSchedDel——计划块原地操作复用，notes-041-sched-plan-edit；
+    //        openMountModal——三态切「资料」档先弹挂载框，0.4.3 验收修复⑪）——序位在前；
     //        selected/notes/dispatching/wikiVer/wikiResolve/bumpWikiBody/jumpToWikiTarget 经 hook 入参注入（装配层回填，渲染期新鲜值）
     // state 托管：全部 state/ref 留 hook 内（useState/useRef 声明原文被 check.js 锚定者不迁 store——27-5 节 edSens/edSensRef 等；
     // 与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）
@@ -5639,7 +5643,8 @@ window.__ModuleLoader__.load({
         const [edKind, setEdKind] = React.useState('note')
         const [edStatus, setEdStatus] = React.useState('active')
         const [edRole, setEdRole] = React.useState('off')   // 注入三态：off=不注入 / convention=约定（须遵守）/ reference=资料（按需取用）
-        const [edRecall, setEdRecall] = React.useState(true)   // 目录可见（recall 字段，缺省 true=进目录；与 inject 正交）
+        // 「目录可见」chip 已拆除（0.4.3 验收修复⑪ notes-043-mount-ux-final：目录注入缺省关后开关无感知作用）——
+        //   host recall 字段/缺省/目录开关过滤逻辑保留（chip 拆除≠字段退役）；doSave 不再携带 recall（undefined=host 保留存量值）
         const [edSens, setEdSens] = React.useState(false)   // 敏感标记（sensitive 字段，缺省 false；开启后注入系统提示时正文按行打码）
         const [edScope, setEdScope] = React.useState([])
         const [savedAt, setSavedAt] = React.useState(0)
@@ -5689,7 +5694,6 @@ window.__ModuleLoader__.load({
         const edKindRef = React.useRef('note')
         const edStatusRef = React.useRef('active')
         const edRoleRef = React.useRef('off')
-        const edRecallRef = React.useRef(true)
         const edSensRef = React.useRef(false)
         const edScopeRef = React.useRef([])
         const autoSaveRef = React.useRef(null)
@@ -5702,7 +5706,7 @@ window.__ModuleLoader__.load({
           setSelected(n.id); setFocusId(n.id); setEdTitle(n.title); setEdTopic(n.topic && n.topic !== '分类中' ? n.topic : '')
           keepQuickRef.current = (n.tags || []).indexOf('quick') >= 0
           setEdTags((n.tags || []).filter(t => t !== 'quick').join(', '))
-          setEdKind(n.kind || 'note'); setEdStatus(n.status || 'active'); setEdRole(n.inject ? (n.injectRole || 'convention') : 'off'); setEdScope(n.injectTo || []); setEdRecall(n.recall !== false); setEdSens(n.sensitive === true)
+          setEdKind(n.kind || 'note'); setEdStatus(n.status || 'active'); setEdRole(n.inject ? (n.injectRole || 'convention') : 'off'); setEdScope(n.injectTo || []); setEdSens(n.sensitive === true)
           setEdBody('')
           setDegraded({ ok: true, reasons: [] })   // 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果）
           histCountRef.current = null; setHistCount(null)   // 换笔记重置「历史」入口可见性，随即探测版本计数
@@ -5751,7 +5755,7 @@ window.__ModuleLoader__.load({
           setError('')
           const tags = (edTagsRef.current || '').split(/[,，;；]/).map(s => s.trim()).filter(Boolean)
           if (keepQuickRef.current && tags.indexOf('quick') < 0) tags.push('quick')
-          const upd = { id: id, title: edTitleRef.current, tags: tags, kind: edKindRef.current, status: edStatusRef.current, inject: edRoleRef.current !== 'off', injectTo: edScopeRef.current, recall: edRecallRef.current, sensitive: edSensRef.current === true }
+          const upd = { id: id, title: edTitleRef.current, tags: tags, kind: edKindRef.current, status: edStatusRef.current, inject: edRoleRef.current !== 'off', injectTo: edScopeRef.current, sensitive: edSensRef.current === true }
           // R-1 正文提交闸：仅 notes-get 成功加载过正文（edBodyLoadedRef）才携带 body（host 对 undefined 保留原内容，防竞态清空正文）；
           // 已加载基础上清空为空串 = 用户有意为之，附 confirmClearBody:true 显式过 host 空覆盖兜底闸（empty-body-overwrite-guard）
           if (edBodyLoadedRef.current) { upd.body = edBodyRef.current; if (upd.body === '') upd.confirmClearBody = true }
@@ -5877,16 +5881,28 @@ window.__ModuleLoader__.load({
         }
         // 注入三态切换：独立字段 inject + injectRole（off→inject:false；约定/资料→inject:true+injectRole），不碰标签
         // off→非off 时自动展开范围浮层（与原 toggle 开启行为一致）；切到 off 收起浮层
+        // 0.4.3 验收修复⑪（notes-043-mount-ux-final）：切「资料」档不再静默翻转——先弹 MountModal（LLM 草稿预填 whenToUse，
+        //   editor 在面板内非 modal 可直接开）；确认 = 弹层内 notes-mount 单点收口（落索引行 + host 同步翻 reference 档），
+        //   onConfirmed 同步编辑器三态 + 走既有自动保存；取消/跳过 = 零副作用（不翻注入、不落行）
         function setRoleSeg(r) {
           if (r === edRole) return
+          if (r === 'reference') {
+            const wasOff0 = edRole === 'off'
+            const mid = selectedRef.current
+            if (!mid) return
+            openMountModal({ id: mid, title: edTitleRef.current || mid }, { onConfirmed: () => {
+              setEdRole('reference')
+              if (wasOff0) setScopeOpen(true)
+              triggerAutoSave()
+            } })
+            return
+          }
           const wasOff = edRole === 'off'
           setEdRole(r)
           if (r === 'off') setScopeOpen(false)
           else if (wasOff) setScopeOpen(true)
           triggerAutoSave()
         }
-        // 目录可见开关：独立字段 recall（缺省 true=进目录；false 逐条排除，与 inject 正交）
-        function toggleRecall() { setEdRecall(!edRecall); triggerAutoSave() }
         // 敏感开关：独立字段 sensitive（缺省 false；开启后注入系统提示时正文按行打码，键保留值遮蔽，Agent 用 note_get 取原文）
         function toggleSens() { setEdSens(!edSens); triggerAutoSave() }
         // 范围多选：切换某个会话短 id 的选中态（缺省=所有会话；存量 'global'/'workspace' 值在首次勾选时规范化掉，host 端仍容错）
@@ -6135,7 +6151,6 @@ window.__ModuleLoader__.load({
         edKindRef.current = edKind
         edStatusRef.current = edStatus
         edRoleRef.current = edRole
-        edRecallRef.current = edRecall
         edSensRef.current = edSens
         edScopeRef.current = edScope
         // 双模式编辑器 ref 镜像（keydown/effect 闭包读最新值）
@@ -6235,7 +6250,6 @@ window.__ModuleLoader__.load({
               : null,
               // 曾注入徽章（injectEver 粘性标记：单向只升不降，不随关闭回退；当前已注入时由上方注入角色段表达，不重复显示）
               curNote.injectEver === true && !isInjected ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.injectEverTip') }, I('clock', 11), tt('meta.injectEver')) : null,
-              e('span', { className: 'dsh-notes-meta-chip tgl' + (edRecall ? ' on' : ''), onClick: toggleRecall, 'data-tooltip': tt('meta.recallTipNote') }, I('eye', 11), tt('meta.recall')),
               e('span', { className: 'dsh-notes-meta-chip tgl' + (edSens ? ' on' : ''), onClick: toggleSens, 'data-tooltip': tt('meta.sensTip') }, I('lock', 11), tt('meta.sens')),
               e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.tagsTipClient') },
                 I('tag', 11),
@@ -6746,8 +6760,8 @@ window.__ModuleLoader__.load({
         const [open, setOpen] = React.useState(panelOpen)
         const [notes, setNotes] = React.useState([])
         const [selected, setSelected] = React.useState(null)
-        // edTitle/edTopic/edTags/edBody/edKind/edStatus/edRole/edRecall/edSens/edScope + savedAt 已拆出（§6 步骤 E：panel/editor.js——
-        // 编辑器域归 usePanelEditor，下方 wiki 装配点后解构接入）
+        // edTitle/edTopic/edTags/edBody/edKind/edStatus/edRole/edSens/edScope + savedAt 已拆出（§6 步骤 E：panel/editor.js——
+        // 编辑器域归 usePanelEditor，下方 wiki 装配点后解构接入；「目录可见」chip 态随 0.4.3⑪ 拆除退役）
         // searchText/searchIds/searchMatches 已拆出（§6 步骤 E：panel/search.js——归 usePanelSearch，下方防抖装配点解构接入）
         const [loading, setLoading] = React.useState(false)
         const [error, setError] = React.useState('')
@@ -6937,8 +6951,8 @@ window.__ModuleLoader__.load({
         // 点击菜单外部关闭 effect 已随 popovers/ctx-menu.js / folder-menu.js 迁入各自 hook（同文）
         function close() { panelOpen = false; notify() }
         // jumpToSession（来源会话跳转）已随 panel/editor.js 迁出（编辑器 meta 行「来源」按钮同域）
-        // setRoleSeg/toggleRecall/toggleSens/toggleScope（注入三态/目录可见/敏感/范围多选）已随 panel/editor.js 迁出（同文；
-        // setScopeOpen 联动经 kernel 转发别名 → panelBridge 回填）
+        // setRoleSeg/toggleSens/toggleScope（注入三态/敏感/范围多选）已随 panel/editor.js 迁出（同文；
+        // setScopeOpen 联动经 kernel 转发别名 → panelBridge 回填；「目录可见」开关随 0.4.3⑪ chip 拆除退役）
         // ===== 双模式编辑器 v3：模式切换 / 序列化同步 / 工具栏 / 图片三入口 已随 panel/editor.js 迁出（switchMode/syncFromRich/scheduleRichSync/
         // scheduleDegAnalyze/keepSel/restoreSel/toolbarAction/updateToolbarState/insertSanitizedHtml/insertImageMd + 富文本绑定 effect，同文）=====
         // 派发链路已拆出（§6 步骤 D2：modals/dispatch.js——loadActiveSessions/loadWorkspaces/openDispatch 迁入，
