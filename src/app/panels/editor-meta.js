@@ -74,7 +74,7 @@ function renderMeta() {
          确认 = 弹层内 notes-mount 单点收口（落索引行 + host 同步翻 reference 档）→ onConfirm 回填编辑器三态并保存 */
       if (r === 'reference') {
         /* ⑫ 收尾对齐：开弹层前查 notes-mount-list 取 existing（client editor 同款）——已挂载进编辑模式预填现文案，非草稿观感；查询失败静默回退草稿 */
-        host.call('notes-mount-list', {}).then(function (ml) {
+        rpc('notes-mount-list', {}).then(function (ml) {
           var line = ((ml && ml.lines) || []).filter(function (l) { return l.id === n.id })[0]
           openMountModal({ id: n.id, title: n.title, existing: line ? line.when : undefined }, function () {
             edNote.inject = true; edNote.injectRole = 'reference';
