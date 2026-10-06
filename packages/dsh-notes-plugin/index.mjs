@@ -1342,9 +1342,14 @@ export function apply(ctx) {
       }
     }
 
-    // ---- 虚拟文件夹：~/.dsh/notes/folders.json 登记清单 [{id,name,order,parent?,hidden?}]；parent=父文件夹 id（缺省=根级，存量数据无 parent 字段零迁移）；笔记 front-matter 的 folder 字段存文件夹 id（缺省 ''=未分类，向后兼容） ----
+    // ---- 虚拟文件夹：~/.dsh/notes/folders.json 登记清单 [{id,name,order,parent?,hidden?,sys?}]；parent=父文件夹 id（缺省=根级，存量数据无 parent 字段零迁移）；笔记 front-matter 的 folder 字段存文件夹 id（缺省 ''=未分类，向后兼容） ----
     // hidden（0.4.4-D 隐藏属性，OS 文件管理对齐）：纯 UI 遮罩标记——面板显隐开关关时该夹行+nested 子树容器滤除、开时半透明渲染；
     //   host 计数/过滤/导出语义零改动（遮罩全在 client/app 渲染层）；仅 true 落对象（缺省 false 存量零迁移）。写入走 op:'set-flags' {id,hidden}。
+    // sys（0.4.4-G 机器属性，自动沉淀文件夹默认隐身）：工作日志/记忆档案/执行记录三夹的机器托管标记——树默认不渲染该夹行+nested 子树容器
+    //   （夹内普通笔记随夹隐身，OS 父子树语义同 hidden）；显式入口双通道并集放行：筛选中心「机器」档选中 或 「显示隐藏」开关开；
+    //   host 计数/过滤/导出语义零改动（遮罩全在 client/app 渲染层，与⑨ 内容级 kind=sys 谓词正交）。
+    //   自动标记三管线：①ledger 记忆档案 ensure ②schedule 执行记录 ensure ③loadFolders 一次性懒迁移（名称严格匹配三值 + sys 字段缺席 → 置 true 落盘）；
+    //   用户可经右键「取消机器属性」摘除——set-flags sys:false 落**显式 false 墓碑**（区别于 hidden 的摘字段：墓碑挡懒迁移回标，摘除生效不回弹）。
     // .json 后缀不进笔记列表（_list 只认 .md），与 settings.json 同理落在同目录天然不污染列表。
     const FOLDERS_PATH = path.join(NOTES_ROOT, 'folders.json')
 
@@ -1352,14 +1357,24 @@ export function apply(ctx) {
       return 'f-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
     }
 
+    // 0.4.4-G 机器属性（folder 级 sys）：自动沉淀三夹名称严格匹配表——loadFolders 懒迁移判据（用户改名过的夹不匹配则不动）
+    const SYS_FOLDER_NAMES = { '工作日志': true, '记忆档案': true, '执行记录': true }
+
     // 读文件夹清单：文件缺失/JSON 损坏/结构非法一律兜底为空数组（不抛错，笔记主流程不受 folders.json 影响）；
-    // parent 仅真值落对象（缺省 undefined=根级，saveFolders JSON 序列化时 undefined 键自然省略，磁盘格式零迁移）
+    // parent 仅真值落对象（缺省 undefined=根级，saveFolders JSON 序列化时 undefined 键自然省略，磁盘格式零迁移）；
+    // sys 三态（0.4.4-G）：true/false 显式落对象（false=用户摘除墓碑，挡懒迁移回标），缺席=undefined 待迁移判定
     async function loadFolders() {
       try {
         const ft = await fs.resolve(FOLDERS_PATH)
         const arr = JSON.parse(await fs.readText(ft))
         if (!Array.isArray(arr)) return []
-        return arr.filter(f => f && f.id).map(f => { const o = { id: String(f.id), name: String(f.name || ''), order: typeof f.order === 'number' ? f.order : 0 }; if (f.parent) o.parent = String(f.parent); if (f.hidden === true) o.hidden = true; return o })
+        const out = arr.filter(f => f && f.id).map(f => { const o = { id: String(f.id), name: String(f.name || ''), order: typeof f.order === 'number' ? f.order : 0 }; if (f.parent) o.parent = String(f.parent); if (f.hidden === true) o.hidden = true; if (f.sys === true) o.sys = true; else if (f.sys === false) o.sys = false; return o })
+        // 0.4.4-G 一次性懒迁移：名称 ∈ SYS_FOLDER_NAMES 且 sys 字段缺席 → 置 true 落盘（幂等：置位后不再命中；
+        //   显式 sys:false 墓碑不命中——用户右键摘除不回弹；用户改名过的夹名称不匹配不动；并发重放同内容落盘幂等）
+        let migrated = false
+        for (const f of out) { if (f.sys === undefined && SYS_FOLDER_NAMES[f.name] === true) { f.sys = true; migrated = true } }
+        if (migrated) await saveFolders(out)
+        return out
       } catch (e) { return [] }
     }
 
@@ -1440,7 +1455,7 @@ export function apply(ctx) {
     }
 
     // notes-folders RPC 核心：无参/op 缺省 = list（按 order 排序，含各文件夹计数 + unfiled 未分类计数 + parent/depth 嵌套字段供 UI 递归渲染）；
-    // op = create(name,parent?)/rename/set-flags(id,hidden)/delete(id,cascade?)/reorder(ids,parents?)。
+    // op = create(name,parent?,sys?)/rename/set-flags(id,hidden?,sys?)/delete(id,cascade?)/reorder(ids,parents?)。
     // 计数口径：deleted 笔记由 _list 排除不计；folder 指向清单外 id 的笔记计入 unfiled；count 为**递归子树口径**（含全部子孙文件夹内笔记）。
     // 0.4.3⑩（notes-043-archive-folder 第二轮裁决）：计数取 includeSys 机器全量视图——文件夹徽标 = 夹内全部笔记数
     //   （与 folder 定向视图（⑨ 保留通道，含 sys）逐字一致，消除「count=0 但夹内有 sys 档案」的死节点观感；通用计数语义修正，非文件夹特判）；
@@ -1470,7 +1485,7 @@ export function apply(ctx) {
             const sub = folderSubtreeIds(f.id, folders)
             let count = 0
             for (const sid in sub) count += direct[sid] || 0
-            return { id: f.id, name: f.name, order: f.order, parent: f.parent || '', depth: folderDepth(f.id, folders), count: count, hidden: f.hidden === true }
+            return { id: f.id, name: f.name, order: f.order, parent: f.parent || '', depth: folderDepth(f.id, folders), count: count, hidden: f.hidden === true, sys: f.sys === true }
           })
         return { folders: list, unfiled: unfiled }
       }
@@ -1489,6 +1504,7 @@ export function apply(ctx) {
         const maxOrder = folders.reduce((m, f) => Math.max(m, f.order), -1)
         const folder = { id: genFolderId(), name: name, order: maxOrder + 1 }
         if (parent) folder.parent = parent
+        if (a.sys === true) folder.sys = true   // 0.4.4-G：机器属性创建直入（自动沉淀管线下水点用；UI 新建不传 = 缺省普通夹）
         folders.push(folder)
         await saveFolders(folders)
         return { ok: true, folder: folder }
@@ -1505,15 +1521,17 @@ export function apply(ctx) {
         return { ok: true, id: a.id, name: name }
       }
       if (op === 'set-flags') {
-        // 0.4.4-D hidden 隐藏属性：文件夹显隐标记写入通道（{id, hidden}——true 落 hidden:true / false 摘字段回缺省；存量零迁移）
+        // 0.4.4-D hidden 隐藏属性 + 0.4.4-G sys 机器属性：文件夹标记写入通道（两键独立——仅显式传入的键才触碰）——
+        //   hidden：true 落 hidden:true / false 摘字段回缺省（存量零迁移）；
+        //   sys：true 落 sys:true / false 落**显式 false 墓碑**（不摘字段——墓碑挡 loadFolders 懒迁移回标，用户摘除不回弹；再传 true 可恢复）
         if (!a.id) return { error: 'notes-folders.set-flags 需要 id' }
         const folders = await loadFolders()
         const f = folders.find(x => x.id === a.id)
         if (!f) return { error: '文件夹不存在: ' + a.id }
-        if (a.hidden === true) f.hidden = true
-        else delete f.hidden
+        if (a.hidden !== undefined) { if (a.hidden === true) f.hidden = true; else delete f.hidden }
+        if (a.sys !== undefined) { if (a.sys === true) f.sys = true; else f.sys = false }
         await saveFolders(folders)
-        return { ok: true, id: a.id, hidden: f.hidden === true }
+        return { ok: true, id: a.id, hidden: f.hidden === true, sys: f.sys === true }
       }
       if (op === 'delete') {
         if (!a.id) return { error: 'notes-folders.delete 需要 id' }
@@ -1564,7 +1582,7 @@ export function apply(ctx) {
         const merged = inList.concat(outList)
         merged.forEach((f, i) => { f.order = i })
         await saveFolders(merged)
-        return { ok: true, folders: merged.map(f => ({ id: f.id, name: f.name, order: f.order, parent: f.parent || '', hidden: f.hidden === true })) }
+        return { ok: true, folders: merged.map(f => ({ id: f.id, name: f.name, order: f.order, parent: f.parent || '', hidden: f.hidden === true, sys: f.sys === true })) }
       }
       return { error: 'notes-folders: 未知 op：' + String(op) + '（期望 list/create/rename/set-flags/delete/reorder）' }
     }
@@ -3197,7 +3215,7 @@ export function apply(ctx) {
       return rootNoteCreateLock(async function () {
         const again = await resolveFolderRef(LEDGER_ARCHIVE_FOLDER)   // 锁内双检：并发 ensure 前者产物已落 folders.json，命中即复用
         if (again && again.id) return again.id
-        const c = await _folders({ op: 'create', name: LEDGER_ARCHIVE_FOLDER })
+        const c = await _folders({ op: 'create', name: LEDGER_ARCHIVE_FOLDER, sys: true })   // 0.4.4-G：机器属性创建直入（自动沉淀夹默认隐身；幂等——命中复用路径不触碰 sys，用户摘除墓碑不回弹）
         return (c && c.ok && c.folder) ? c.folder.id : ''
       })
     }
@@ -4377,7 +4395,7 @@ export function apply(ctx) {
         return await rootNoteCreateLock(async function () {
           const again = await resolveFolderRef(EXEC_LOG_FOLDER_NAME)   // 锁内双检：并发 ensure 前者产物已落 folders.json，命中即复用
           if (again && again.id) return again.id
-          const c = await _folders({ op: 'create', name: EXEC_LOG_FOLDER_NAME })
+          const c = await _folders({ op: 'create', name: EXEC_LOG_FOLDER_NAME, sys: true })   // 0.4.4-G：机器属性创建直入（自动沉淀夹默认隐身；幂等——命中复用路径不触碰 sys，用户摘除墓碑不回弹）
           return (c && c.ok && c.folder) ? c.folder.id : ''
         })
       } catch (e) { return '' }
@@ -5097,13 +5115,14 @@ export function apply(ctx) {
         const scope = Array.isArray(a.scope) ? a.scope.map(String) : []
         if (active) return { ok: true, id: active.id, already: true }   // 幂等：已启用直接返回现状（重复启用不建第二条）
         // r3 车道模型：无冲突确认闸门（不再返回待确认响应，confirmed 参数不再需要）——约定车道共存是设计意图，无需用户裁决
-        // 同时确保虚拟文件夹「工作日志」存在（同名复用不重复建；日志默认落入）
+        // 同时确保虚拟文件夹「工作日志」存在（同名复用不重复建；日志默认落入；0.4.4-G：创建带 sys:true 机器属性——自动沉淀夹默认隐身，
+        //   命中复用路径不触碰 sys（用户右键摘除的显式 false 墓碑不回弹）；存量缺席字段由 loadFolders 懒迁移置位）
         const folders = await loadFolders()
         let logFolder = null
         for (const f of folders) { if (f.name === MEMORY_GUIDE_FOLDER) { logFolder = f; break } }
         if (!logFolder) {
           const maxOrder = folders.reduce((m, f) => Math.max(m, f.order), -1)
-          logFolder = { id: genFolderId(), name: MEMORY_GUIDE_FOLDER, order: maxOrder + 1 }
+          logFolder = { id: genFolderId(), name: MEMORY_GUIDE_FOLDER, order: maxOrder + 1, sys: true }
           folders.push(logFolder)
           await saveFolders(folders)
         }

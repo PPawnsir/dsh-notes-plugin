@@ -5,6 +5,8 @@ function matches(n) {
   /* 0.4.4-D hidden 纯 UI 遮罩：显隐开关关 → hidden 笔记 + hidden 夹链内笔记滤除（OS 语义：父夹隐藏即子项不可见；
      note 级/folder 级独立判定；与筛选条件正交——不计 filtersActiveCount）；host 零改动；跳转/open-by-id 不经本函数天然常显 */
   if (!showHidden && (n.hidden === true || (n.folder && folderHidden(n.folder)))) return false;
+  /* 0.4.4-G sys 机器属性：双通道（机器档/显示隐藏）均关时，sys 夹链内笔记随夹滤除（OS 父子树语义同 hidden；与⑨ 内容级 kind 谓词正交——⑨ 遮条目自身，本卡遮「夹归属」） */
+  if (!showHidden && !machineKindOn() && n.folder && folderSys(n.folder)) return false;
   /* 日志同权（0.4.3⑦）：无隐身渲染守卫——日志与普通笔记同一过滤管线（类型组勾选「日志」= 只看日志，matchFilters 同语义） */
   if (!matchFilters(n, filters)) return false;
   if (searchText) {

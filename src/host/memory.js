@@ -413,13 +413,14 @@
         const scope = Array.isArray(a.scope) ? a.scope.map(String) : []
         if (active) return { ok: true, id: active.id, already: true }   // 幂等：已启用直接返回现状（重复启用不建第二条）
         // r3 车道模型：无冲突确认闸门（不再返回待确认响应，confirmed 参数不再需要）——约定车道共存是设计意图，无需用户裁决
-        // 同时确保虚拟文件夹「工作日志」存在（同名复用不重复建；日志默认落入）
+        // 同时确保虚拟文件夹「工作日志」存在（同名复用不重复建；日志默认落入；0.4.4-G：创建带 sys:true 机器属性——自动沉淀夹默认隐身，
+        //   命中复用路径不触碰 sys（用户右键摘除的显式 false 墓碑不回弹）；存量缺席字段由 loadFolders 懒迁移置位）
         const folders = await loadFolders()
         let logFolder = null
         for (const f of folders) { if (f.name === MEMORY_GUIDE_FOLDER) { logFolder = f; break } }
         if (!logFolder) {
           const maxOrder = folders.reduce((m, f) => Math.max(m, f.order), -1)
-          logFolder = { id: genFolderId(), name: MEMORY_GUIDE_FOLDER, order: maxOrder + 1 }
+          logFolder = { id: genFolderId(), name: MEMORY_GUIDE_FOLDER, order: maxOrder + 1, sys: true }
           folders.push(logFolder)
           await saveFolders(folders)
         }

@@ -14,6 +14,8 @@
     function usePanelFolderMenu(args) {
         const notes = args.notes
         const view = args.view
+        // 0.4.4-G（notes-044-sys-folders）：showHidden 显隐开关态入参注入（sysKids 补拉效应的 sys 夹遮罩门用——树中隐身的 sys 夹不补拉）
+        const showHidden = args.showHidden === true
         // 虚拟文件夹树：清单走 notes-folders RPC（list/create/rename/delete/reorder）；折叠态持久化 localStorage
         const [folders, setFolders] = React.useState([])
         const [foldersExpanded, setFoldersExpanded] = React.useState(loadFoldersExpanded)
@@ -115,6 +117,9 @@
             if (fid === PINNED_KEY) continue   // 置顶聚合组非真实文件夹
             const f = folders.find(x => x.id === fid)
             if (!f) continue
+            // 0.4.4-G：树中隐身的 sys 夹不补拉（遮罩期零请求——机器档/显示隐藏双通道均关时该夹行不渲染，sysKids 无消费点；
+            // 通道放开后随 notes 换代/展开复核自然补拉；showHidden 在 deps 内，开关切换即重审）
+            if (f.sys === true && !showHidden && kf.indexOf('sys') < 0) continue
             const ent = sysKids[fid]
             if (ent && ent.stamp === notes) continue   // 新鲜缓存：同批数据再展开零请求（折叠不清缓存口径）
             if (sysKidsInflightRef.current[fid]) continue
@@ -130,13 +135,13 @@
               setSysKids(prev => Object.assign({}, prev, { [fid]: { stamp: stamp, rows: rows } }))
             }, () => { delete sysKidsInflightRef.current[fid] })   // 失败静默降级：sys 行不显示，下次复核重试
           }
-        }, [foldersExpanded, notes, folders])
+        }, [foldersExpanded, notes, folders, showHidden])
         // 文件夹项右键菜单：与笔记行菜单同坐标换算（面板内绝对定位；两菜单互斥）
         function openFolderMenu(ev, f) {
           ev.preventDefault(); ev.stopPropagation()
           const floatEl = ev.currentTarget.closest('.dsh-notes-floating')
           const rect = floatEl ? floatEl.getBoundingClientRect() : { left: 0, top: 0, width: 600, height: 500 }
-          const mw = 190, mh = 260
+          const mw = 190, mh = 292
           let x = ev.clientX - rect.left, y = ev.clientY - rect.top
           x = Math.max(4, Math.min(x, rect.width - mw - 4))
           y = Math.max(4, Math.min(y, rect.height - mh - 4))
@@ -241,6 +246,17 @@
             await loadFolders()
           } catch (err) { setError(String(err.message || err)) }
         }
+        // 0.4.4-G sys 机器属性（notes-044-sys-folders）：文件夹机器托管标记（set-flags 同通道扩 sys 键）——标记后该夹默认从树隐身
+        // （显式入口双通道：筛选中心「机器」档 / 「显示隐藏」开关）；摘除落显式 false 墓碑（host 懒迁移不回标）；host 语义零改动，纯 UI 遮罩
+        async function doSetFolderSys(f, sys) {
+          setFolderMenu(null)
+          try {
+            const res = await host.call('notes-folders', { op: 'set-flags', id: f.id, sys: sys === true })
+            if (res && res.error) { setError(res.error); return }
+            showToast(sys === true ? t('fld.sysToast', { name: f.name }) : t('fld.unsysToast', { name: f.name }))
+            await loadFolders()
+          } catch (err) { setError(String(err.message || err)) }
+        }
         // 文件夹右键菜单：点击菜单外部关闭（与笔记行菜单共用 .dsh-notes-ctxmenu 样式）
         React.useEffect(() => {
           if (!folderMenu) return
@@ -262,6 +278,8 @@
             (folderMenu.folder.parent || '') ? e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); doReparentFolder(mf.id, '') } }, t('fld.menuRoot')) : null,
             // 0.4.4-D：隐藏此文件夹 / 取消隐藏（hidden 属性，OS 文件管理对齐；隐藏项显隐由筛选中心「显示隐藏」开关总控）
             e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; doSetFolderHidden(mf, !(mf.hidden === true)) } }, I('eye', 12), folderMenu.folder.hidden === true ? t('fld.menuUnhide') : t('fld.menuHide')),
+            // 0.4.4-G：标记为机器文件夹 / 取消机器属性（sys 机器属性——自动沉淀夹默认隐身；「机器」档/「显示隐藏」双通道显式可见）
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; doSetFolderSys(mf, !(mf.sys === true)) } }, I('bolt', 12), folderMenu.folder.sys === true ? t('fld.menuUnsys') : t('fld.menuSys')),
             e('div', { className: 'dsh-notes-ctxmenu-sep' }),
             e('button', { className: 'dsh-notes-ctxmenu-item danger', onClick: () => doDeleteFolder(folderMenu.folder) }, t('fld.menuDeleteFolder')))
           : null

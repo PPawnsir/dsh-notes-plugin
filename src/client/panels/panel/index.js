@@ -58,7 +58,7 @@
         // 树 helper 族 + loadFolders + CRUD/reorder/reparent 归 usePanelFolderMenu；folderMenuRef/renamingIdRef/folderInputOpenRef/subFolderForRef
         // 为该模块顶层绑定；Esc 栈/树渲染/面包屑经解构或 kernel 转发别名接入）
         // 0.4.4-C：filters 入参注入（sysKids 补拉效应的 kind 单档口径门用）；sysKids 解构接入 → 下方树装配点注入 usePanelTree
-        const { folders, foldersExpanded, sysKids, folderInputOpen, folderInputText, subFolderFor, renamingId, renameText, setFolderMenu, setFolderInputOpen, setFolderInputText, setSubFolderFor, setRenamingId, setRenameText, loadFolders, folderSubtreeIdsOf, childFoldersOf, rootFolders, folderPathOf, isFolderExpanded, toggleFolder, expandFolder, folderName, openFolderMenu, doCreateFolder, doRenameFolder, doDeleteFolder, doReorderFolder, doReparentFolder, folderMenuEl } = usePanelFolderMenu({ notes: notes, view: view, filters: filters })
+        const { folders, foldersExpanded, sysKids, folderInputOpen, folderInputText, subFolderFor, renamingId, renameText, setFolderMenu, setFolderInputOpen, setFolderInputText, setSubFolderFor, setRenamingId, setRenameText, loadFolders, folderSubtreeIdsOf, childFoldersOf, rootFolders, folderPathOf, isFolderExpanded, toggleFolder, expandFolder, folderName, openFolderMenu, doCreateFolder, doRenameFolder, doDeleteFolder, doReorderFolder, doReparentFolder, folderMenuEl } = usePanelFolderMenu({ notes: notes, view: view, filters: filters, showHidden: showHidden })
         // 主题过滤行原地展开态（点行主体=展开/收起该主题子列表；object map，session 内有效，不持久化；缺省折叠）
         // 主题过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「主题 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
         // （topicExpanded/topicSecOpen 两态已随 panel/tree.js 迁出）
@@ -371,6 +371,14 @@
           const hiddenSubtree = {}
           for (const f of folders) if (f.hidden === true) Object.assign(hiddenSubtree, folderSubtreeIdsOf(f.id))
           filtered = filtered.filter(n => n.hidden !== true && !hiddenSubtree[(n.folder || '')])
+        }
+        // 0.4.4-G sys 机器属性（notes-044-sys-folders）：sys 夹默认隐身——双通道（筛选中心「机器」档 / 「显示隐藏」开关）均关时，
+        // sys 夹子树链内笔记随夹滤除（OS 父子树语义同 hidden：夹不渲染则夹内普通笔记也不混入置顶组/主题区/未入夹）；
+        // 与⑨ 内容级 kind=sys 谓词正交（⑨ 遮条目自身，本卡遮「夹归属」）；host 语义零改动，纯 UI 遮罩；跳转/open-by-id 不经本管线天然常显
+        if (!showHidden && filters.kinds.indexOf('sys') < 0) {
+          const sysSubtree = {}
+          for (const f of folders) if (f.sys === true) Object.assign(sysSubtree, folderSubtreeIdsOf(f.id))
+          filtered = filtered.filter(n => !sysSubtree[(n.folder || '')])
         }
         // 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0，如仅 topic 命中)，同级 updatedAt 降序；
         // 命中字段优先取 host notes-search 返回的 matches（全文口径），无则按本地字段估算（preview 仅前 200 字，正文命中可能低估）；无搜索词时退化为 host 序

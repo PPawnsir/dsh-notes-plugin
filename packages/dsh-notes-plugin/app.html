@@ -722,6 +722,8 @@ var showHidden = loadShowHidden();
 function loadShowHidden() { try { return localStorage.getItem('dsh-notes-app-show-hidden') === '1' } catch (e) { return false } }
 function saveShowHidden() { try { localStorage.setItem('dsh-notes-app-show-hidden', showHidden ? '1' : '0') } catch (e) {} }
 function filtersActiveCount() { var n = filters.kinds.length; FILTER_STATUS.forEach(function (s) { if (filters[s.id]) n++ }); return n }
+/* 0.4.4-G（notes-044-sys-folders）：「机器」档选中判定（筛选中心类型组 kinds 含 sys）——sys 文件夹双通道放行的通道①（与⑨⑩ 机器内容总览语义一致） */
+function machineKindOn() { return filters.kinds.indexOf('sys') >= 0 }
 /* 曾注入条件 feature-detect：列表 slim 含 injectEver 字段才显示该选项（host 未提供时隐藏；存量激活条件仍渲染 chip 可 × 移除） */
 function hasInjectEver() { return notes.some(function (n) { return n.injectEver !== undefined }) }
 /* 筛选谓词（纯函数，check.js 提取做语义回归）：状态组组内 OR、类型组组内 OR、跨组 AND */
@@ -1109,6 +1111,7 @@ var I18N_ZH = {
   'tree.wikiTip': '含双链 [[…]]（详情富文本中可点击跳转）',
   'tree.toggleTip': '展开/折叠',
   'tree.sysChipTip': '机器托管笔记（sys）：默认列表/搜索降噪不显示，随文件夹展开可见（0.4.4-C 显式入口）',
+  'tree.sysFolderTip': '机器托管文件夹（自动沉淀：工作日志/记忆档案/执行记录）——默认从树隐身；筛选中心「机器」档或「显示隐藏」开时可见（0.4.4-G）',
   'tree.countN': '{n} 条',
   'tree.viewTopic': '主题 · {id}',
   'tree.viewAll': '全部笔记',
@@ -1762,6 +1765,11 @@ var I18N_ZH = {
   'fld.hiddenToast': '已隐藏文件夹「{name}」（列表遮罩滤除；筛选中心「显示隐藏」可再显）',
   'fld.unhiddenToast': '已取消隐藏「{name}」',
   'fld.hideFailed': '显隐设置失败：{msg}',
+  'fld.menuSys': '标记为机器文件夹',
+  'fld.menuUnsys': '取消机器属性',
+  'fld.sysToast': '已将「{name}」标记为机器文件夹（默认从树隐身；筛选中心「机器」档或「显示隐藏」可再显）',
+  'fld.unsysToast': '已取消「{name}」的机器属性',
+  'fld.sysFailed': '机器属性设置失败：{msg}',
   'fld.menuDeleteFolder': '删除文件夹',
   'fld.loadFailed': '文件夹加载失败，显示本地缓存：{msg}',
   'wiki.idxFailedPartial': '双链索引失败 {n} 条：反向链接/行尾标记不完整（下次刷新自动重试）',
@@ -1873,6 +1881,7 @@ var I18N_EN = {
   'tree.wikiTip': 'Has [[…]] wiki links (clickable in the detail rich text)',
   'tree.toggleTip': 'Expand/collapse',
   'tree.sysChipTip': 'Machine-managed note (sys): hidden from default list/search, shown when its folder is expanded (0.4.4-C explicit entry)',
+  'tree.sysFolderTip': 'Machine-managed folder (auto-sedimented: work logs / memory archives / execution records) — hidden from the tree by default; visible when the "Machine" kind filter or "Show hidden items" is on (0.4.4-G)',
   'tree.countN': '{n}',
   'tree.viewTopic': 'Topic · {id}',
   'tree.viewAll': 'All notes',
@@ -2526,6 +2535,11 @@ var I18N_EN = {
   'fld.hiddenToast': 'Folder "{name}" hidden (masked from lists; re-show via the filter-center "Show hidden items" toggle)',
   'fld.unhiddenToast': '"{name}" unhidden',
   'fld.hideFailed': 'Failed to set hidden flag: {msg}',
+  'fld.menuSys': 'Mark as machine folder',
+  'fld.menuUnsys': 'Unmark machine attribute',
+  'fld.sysToast': 'Marked "{name}" as a machine folder (hidden from the tree by default; re-show via the filter-center "Machine" kind or "Show hidden items")',
+  'fld.unsysToast': 'Removed machine attribute from "{name}"',
+  'fld.sysFailed': 'Failed to set machine flag: {msg}',
   'fld.menuDeleteFolder': 'Delete folder',
   'fld.loadFailed': 'Failed to load folders; showing the local cache: {msg}',
   'wiki.idxFailedPartial': 'Wiki index failed for {n} notes: backlinks/trailing marks incomplete (auto-retry on next refresh)',
@@ -2604,6 +2618,8 @@ function folderKids(pid) { return folders.filter(function (x) { return (x.parent
 function folderSubtree(id) { var out = {}; out[id] = true; var q = [id]; while (q.length) { var c = q.shift(); folders.forEach(function (f) { if ((f.parent || '') === c && !out[f.id]) { out[f.id] = true; q.push(f.id) } }) } return out }
 /* 0.4.4-D hidden（notes-044-hidden-attr）：fid 是否落在 hidden 文件夹链上（自身或任一祖先 hidden=true；parent 链上溯，cycle 防御 visited 截断） */
 function folderHidden(fid) { var seen = {}; var f = folders.find(function (x) { return x.id === fid }); while (f && !seen[f.id]) { seen[f.id] = true; if (f.hidden === true) return true; f = f.parent ? folders.find(function (x) { return x.id === f.parent }) : null } return false }
+/* 0.4.4-G sys 机器属性（notes-044-sys-folders）：fid 是否落在 sys 文件夹链上（自身或任一祖先 sys=true；同 folderHidden 口径，cycle 防御） */
+function folderSys(fid) { var seen = {}; var f = folders.find(function (x) { return x.id === fid }); while (f && !seen[f.id]) { seen[f.id] = true; if (f.sys === true) return true; f = f.parent ? folders.find(function (x) { return x.id === f.parent }) : null } return false }
 function folderPath(id) { var byId = {}; folders.forEach(function (f) { byId[f.id] = f }); var path = [], cur = id, seen = {}; while (cur && byId[cur] && !seen[cur]) { seen[cur] = true; path.unshift(byId[cur]); cur = byId[cur].parent || '' } return path }
 function rootFolders() { var byId = {}; folders.forEach(function (f) { byId[f.id] = f }); return folders.filter(function (f) { return !(f.parent || '') || !byId[f.parent || ''] }) }
 function shortSid(sid) { return sid ? String(sid).replace(/^session-/, '').slice(0, 8) : '' }
@@ -2832,6 +2848,8 @@ function matches(n) {
   /* 0.4.4-D hidden 纯 UI 遮罩：显隐开关关 → hidden 笔记 + hidden 夹链内笔记滤除（OS 语义：父夹隐藏即子项不可见；
      note 级/folder 级独立判定；与筛选条件正交——不计 filtersActiveCount）；host 零改动；跳转/open-by-id 不经本函数天然常显 */
   if (!showHidden && (n.hidden === true || (n.folder && folderHidden(n.folder)))) return false;
+  /* 0.4.4-G sys 机器属性：双通道（机器档/显示隐藏）均关时，sys 夹链内笔记随夹滤除（OS 父子树语义同 hidden；与⑨ 内容级 kind 谓词正交——⑨ 遮条目自身，本卡遮「夹归属」） */
+  if (!showHidden && !machineKindOn() && n.folder && folderSys(n.folder)) return false;
   /* 日志同权（0.4.3⑦）：无隐身渲染守卫——日志与普通笔记同一过滤管线（类型组勾选「日志」= 只看日志，matchFilters 同语义） */
   if (!matchFilters(n, filters)) return false;
   if (searchText) {
@@ -2960,6 +2978,10 @@ function ensureSysKids(fid) {
   /* kind 单档口径门（0.4.3⑩）：恰选 1 个非 sys kind 时缓存 = host kind 通道子集，与 count 不可比——跳过
      （「机器」档（sys）缓存已含全库 sys 无需补拉；其余单 kind 档下 sys 行本就不该混入） */
   if (filters.kinds.length === 1 && filters.kinds[0] !== 'sys') return
+  /* 0.4.4-G：树中隐身的 sys 夹不补拉（遮罩期零请求——机器档/显示隐藏双通道均关时该夹行不渲染，sysKids 无消费点；通道放开后随刷新复核补拉） */
+  var fSelf = null
+  folders.forEach(function (x) { if (x.id === fid) fSelf = x })
+  if (fSelf && fSelf.sys === true && !showHidden && !machineKindOn()) return
   var ent = sysKids[fid]
   if (ent && ent.stamp === notes) return   /* 新鲜缓存：同批数据再展开零请求 */
   if (sysKidsInflight[fid]) return
@@ -2990,6 +3012,8 @@ function refreshSysKids() {
 function folderNodeHtml(f, vis, filtering) {
   /* 0.4.4-D：hidden 文件夹在显隐开关关时整节点滤除（行 + .nested 子树容器随父夹消失，OS 语义；子文件夹递归与本夹笔记行自然不渲染） */
   if (!showHidden && f.hidden === true) return '';
+  /* 0.4.4-G：sys 机器属性文件夹默认整节点滤除（同 hidden 早退同层）；双通道任一开即放行（机器档选中 / 显示隐藏开）；徽标计数照常 */
+  if (f.sys === true && !showHidden && !machineKindOn()) return '';
   var h = '';
   var sub = folderSubtree(f.id);
   var kids = vis.filter(function (n) { return (n.folder || '') === f.id });
@@ -3004,7 +3028,8 @@ function folderNodeHtml(f, vis, filtering) {
   h += '<div class="row head' + (f.hidden === true ? ' hid' : '') + '" data-fold="' + f.id + '" data-drop="1" draggable="true">'
     + '<span class="caret' + (open ? ' open' : '') + '" title="' + t('tree.toggleTip') + '">' + icon('i-chev') + '</span>'
     + '<span class="ic-slot">' + icon('i-folder', 13) + '</span>'
-    + '<span class="nm">' + esc(f.name) + '</span><span class="n">' + (filtering ? subHits : (f.count != null ? f.count : kids.length)) + '</span></div>';
+    /* 0.4.4-G：sys 夹行名带机器托管 tooltip（双通道放行可见时的辨识；无 sys 时零属性零 class 变化） */
+    + '<span class="nm"' + (f.sys === true ? ' title="' + esc(t('tree.sysFolderTip')) + '"' : '') + '>' + esc(f.name) + '</span><span class="n">' + (filtering ? subHits : (f.count != null ? f.count : kids.length)) + '</span></div>';
   if (!open) return h;
   var subFolders = folderKids(f.id);
   if (!subFolders.length && !kids.length) return h;
@@ -3300,6 +3325,15 @@ function doSetFolderHidden(f, hidden) {
     loadNotes(true);
   }).catch(function (e) { toast(t('fld.hideFailed', { msg: e && e.message || e })) });
 }
+/* 0.4.4-G sys 机器属性（notes-044-sys-folders）：文件夹机器托管标记（set-flags 同通道扩 sys 键）——标记后该夹默认从树隐身
+   （显式入口双通道：筛选中心「机器」档 / 「显示隐藏」开关）；摘除落显式 false 墓碑（host 懒迁移不回标）；host 语义零改动，纯 UI 遮罩 */
+function doSetFolderSys(f, sys) {
+  rpc('notes-folders', { op: 'set-flags', id: f.id, sys: sys === true }).then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    toast(sys === true ? t('fld.sysToast', { name: f.name }) : t('fld.unsysToast', { name: f.name }));
+    loadNotes(true);
+  }).catch(function (e) { toast(t('fld.sysFailed', { msg: e && e.message || e })) });
+}
 /* 文件夹右键菜单（嵌套：新建子文件夹 / 移回根级（有父级时）/ 隐藏此文件夹·取消隐藏（0.4.4-D））；
    0.4.3⑦：文件夹右键「进视图」菜单项随文件视图模式拆除移除（树展开即文件夹浏览） */
 function openFolderMenu(x, y, fid) {
@@ -3313,10 +3347,11 @@ function openFolderMenu(x, y, fid) {
     + '<div class="mi" data-a="down">' + icon('i-down') + t('fld.menuDown') + '</div>'
     + ((f.parent || '') ? '<div class="mi" data-a="root">' + icon('i-up') + t('fld.menuRoot') + '</div>' : '')
     + '<div class="mi" data-a="hide">' + icon('i-eye') + (f.hidden === true ? t('fld.menuUnhide') : t('fld.menuHide')) + '</div>'
+    + '<div class="mi" data-a="sys">' + icon('i-bolt') + (f.sys === true ? t('fld.menuUnsys') : t('fld.menuSys')) + '</div>'
     + '<div class="mi danger" data-a="del">' + icon('i-trash') + t('common.delete') + '</div></div>';
   var m = $('ctxMenu');
   m.style.left = Math.min(x, innerWidth - 170) + 'px';
-  m.style.top = Math.min(y, innerHeight - 250) + 'px';
+  m.style.top = Math.min(y, innerHeight - 282) + 'px';
   m.addEventListener('click', function (ev) {
     var mi = ev.target.closest('.mi'); if (!mi) return;
     closeCtx();
@@ -3327,6 +3362,7 @@ function openFolderMenu(x, y, fid) {
     else if (a === 'down') doReorderFolder(f, 1);
     else if (a === 'root') reparentFolder(f.id, '');
     else if (a === 'hide') doSetFolderHidden(f, !(f.hidden === true));
+    else if (a === 'sys') doSetFolderSys(f, !(f.sys === true));
     else if (a === 'del') doDeleteFolder(f);
   });
 }

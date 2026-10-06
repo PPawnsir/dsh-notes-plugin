@@ -64,6 +64,8 @@ var showHidden = loadShowHidden();
 function loadShowHidden() { try { return localStorage.getItem('dsh-notes-app-show-hidden') === '1' } catch (e) { return false } }
 function saveShowHidden() { try { localStorage.setItem('dsh-notes-app-show-hidden', showHidden ? '1' : '0') } catch (e) {} }
 function filtersActiveCount() { var n = filters.kinds.length; FILTER_STATUS.forEach(function (s) { if (filters[s.id]) n++ }); return n }
+/* 0.4.4-G（notes-044-sys-folders）：「机器」档选中判定（筛选中心类型组 kinds 含 sys）——sys 文件夹双通道放行的通道①（与⑨⑩ 机器内容总览语义一致） */
+function machineKindOn() { return filters.kinds.indexOf('sys') >= 0 }
 /* 曾注入条件 feature-detect：列表 slim 含 injectEver 字段才显示该选项（host 未提供时隐藏；存量激活条件仍渲染 chip 可 × 移除） */
 function hasInjectEver() { return notes.some(function (n) { return n.injectEver !== undefined }) }
 /* 筛选谓词（纯函数，check.js 提取做语义回归）：状态组组内 OR、类型组组内 OR、跨组 AND */

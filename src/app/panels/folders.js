@@ -92,6 +92,15 @@ function doSetFolderHidden(f, hidden) {
     loadNotes(true);
   }).catch(function (e) { toast(t('fld.hideFailed', { msg: e && e.message || e })) });
 }
+/* 0.4.4-G sys 机器属性（notes-044-sys-folders）：文件夹机器托管标记（set-flags 同通道扩 sys 键）——标记后该夹默认从树隐身
+   （显式入口双通道：筛选中心「机器」档 / 「显示隐藏」开关）；摘除落显式 false 墓碑（host 懒迁移不回标）；host 语义零改动，纯 UI 遮罩 */
+function doSetFolderSys(f, sys) {
+  rpc('notes-folders', { op: 'set-flags', id: f.id, sys: sys === true }).then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    toast(sys === true ? t('fld.sysToast', { name: f.name }) : t('fld.unsysToast', { name: f.name }));
+    loadNotes(true);
+  }).catch(function (e) { toast(t('fld.sysFailed', { msg: e && e.message || e })) });
+}
 /* 文件夹右键菜单（嵌套：新建子文件夹 / 移回根级（有父级时）/ 隐藏此文件夹·取消隐藏（0.4.4-D））；
    0.4.3⑦：文件夹右键「进视图」菜单项随文件视图模式拆除移除（树展开即文件夹浏览） */
 function openFolderMenu(x, y, fid) {
@@ -105,10 +114,11 @@ function openFolderMenu(x, y, fid) {
     + '<div class="mi" data-a="down">' + icon('i-down') + t('fld.menuDown') + '</div>'
     + ((f.parent || '') ? '<div class="mi" data-a="root">' + icon('i-up') + t('fld.menuRoot') + '</div>' : '')
     + '<div class="mi" data-a="hide">' + icon('i-eye') + (f.hidden === true ? t('fld.menuUnhide') : t('fld.menuHide')) + '</div>'
+    + '<div class="mi" data-a="sys">' + icon('i-bolt') + (f.sys === true ? t('fld.menuUnsys') : t('fld.menuSys')) + '</div>'
     + '<div class="mi danger" data-a="del">' + icon('i-trash') + t('common.delete') + '</div></div>';
   var m = $('ctxMenu');
   m.style.left = Math.min(x, innerWidth - 170) + 'px';
-  m.style.top = Math.min(y, innerHeight - 250) + 'px';
+  m.style.top = Math.min(y, innerHeight - 282) + 'px';
   m.addEventListener('click', function (ev) {
     var mi = ev.target.closest('.mi'); if (!mi) return;
     closeCtx();
@@ -119,6 +129,7 @@ function openFolderMenu(x, y, fid) {
     else if (a === 'down') doReorderFolder(f, 1);
     else if (a === 'root') reparentFolder(f.id, '');
     else if (a === 'hide') doSetFolderHidden(f, !(f.hidden === true));
+    else if (a === 'sys') doSetFolderSys(f, !(f.sys === true));
     else if (a === 'del') doDeleteFolder(f);
   });
 }

@@ -34,7 +34,7 @@ module.exports = {
     assert(cliMenu.indexOf('if ((f.count || 0) - visible <= 0) continue') >= 0, 'folder-menu.js 惰性闸：子树计数 − 缓存可见数 > 0 才发请求（普通夹零请求）')
     assert(cliMenu.indexOf("if (ent && ent.stamp === notes) continue") >= 0, 'folder-menu.js 新鲜缓存短路（折叠不清缓存：同批数据再展开零请求）')
     assert(cliMenu.indexOf('sysKids: sysKids') >= 0, 'folder-menu.js return 暴露 sysKids')
-    assert(cliIndex.indexOf('usePanelFolderMenu({ notes: notes, view: view, filters: filters })') >= 0, 'panel/index.js filters 入参注入（口径门数据源）')
+    assert(cliIndex.indexOf('usePanelFolderMenu({ notes: notes, view: view, filters: filters, showHidden: showHidden })') >= 0, 'panel/index.js filters+showHidden 入参注入（口径门/0.4.4-G sys 夹遮罩门数据源）')
     assert(cliIndex.indexOf('searchIds: searchIds, folders: folders, sysKids: sysKids') >= 0, 'panel/index.js sysKids 注入 usePanelTree')
     assert(cliTree.indexOf('const sysKids = args.sysKids || {}') >= 0, 'panel/tree.js sysKids 入参接入')
     assert(cliTree.indexOf('filtersActive ? kidsBase : kidsBase.concat(((sysKids[f.id] && sysKids[f.id].rows) || [])') >= 0, 'panel/tree.js kids 置尾合并 sys 子行（过滤激活不混入 = ⑨ 零放松）')

@@ -144,7 +144,7 @@
       return rootNoteCreateLock(async function () {
         const again = await resolveFolderRef(LEDGER_ARCHIVE_FOLDER)   // 锁内双检：并发 ensure 前者产物已落 folders.json，命中即复用
         if (again && again.id) return again.id
-        const c = await _folders({ op: 'create', name: LEDGER_ARCHIVE_FOLDER })
+        const c = await _folders({ op: 'create', name: LEDGER_ARCHIVE_FOLDER, sys: true })   // 0.4.4-G：机器属性创建直入（自动沉淀夹默认隐身；幂等——命中复用路径不触碰 sys，用户摘除墓碑不回弹）
         return (c && c.ok && c.folder) ? c.folder.id : ''
       })
     }

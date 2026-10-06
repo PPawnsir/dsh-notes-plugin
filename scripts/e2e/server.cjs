@@ -156,12 +156,14 @@ function handleRpc(state, method, args) {
         f.name = String(a.name || '').trim()
         return { ok: true }
       }
-      /* 0.4.4-D：set-flags 显隐标记写入通道（{id, hidden}——true 落 / false 摘字段回缺省，与 host folders.js 同口径） */
+      /* 0.4.4-D：set-flags 显隐标记写入通道（{id, hidden}——true 落 / false 摘字段回缺省，与 host folders.js 同口径）；
+         0.4.4-G：同通道扩 sys 键（两键独立——仅显式传入的键才触碰；sys:false 落显式 false 墓碑，与 host 懒迁移墓碑语义同口径） */
       if (a.op === 'set-flags') {
         const f = state.folders.find(x => x.id === a.id)
         if (!f) return { error: 'not found' }
-        if (a.hidden === true) f.hidden = true; else delete f.hidden
-        return { ok: true, id: f.id, hidden: f.hidden === true }
+        if (a.hidden !== undefined) { if (a.hidden === true) f.hidden = true; else delete f.hidden }
+        if (a.sys !== undefined) { if (a.sys === true) f.sys = true; else f.sys = false }
+        return { ok: true, id: f.id, hidden: f.hidden === true, sys: f.sys === true }
       }
       if (a.op === 'delete') {
         const sub = folderSubtreeIds(state, a.id)

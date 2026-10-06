@@ -285,6 +285,7 @@ const SECTIONS = [
   require('./check/sections/82-hidden-attr.cjs'),   // 82. 0.4.4-D hidden 隐藏属性（字段+显隐开关+纯 UI 遮罩+跳转常显，OS 文件管理对齐，双端，notes-044-hidden-attr）
   require('./check/sections/83-dormant-dispatch.cjs'),   // 83. 0.4.4-B 休眠会话送达 + 定时派发专属会话复用（_dispatch 双通道 + durable inbox + target='new' 首轮创建回写复用，notes-044-dormant-dispatch）
   require('./check/sections/84-organize-instruct.cjs'),   // 84. 0.4.4-F AI 整理可选追加指令（弹卡引导 + prompt 条件插入 + 空路径逐字节等价，notes-044-organize-instruct）
+  require('./check/sections/85-sys-folder-attr.cjs'),   // 85. 0.4.4-G 自动沉淀文件夹 sys 机器属性（folder 级 sys + 懒迁移墓碑 + 双通道树显隐 + 右键标记/摘除，双端，notes-044-sys-folders）
 ]
 
 async function main() {

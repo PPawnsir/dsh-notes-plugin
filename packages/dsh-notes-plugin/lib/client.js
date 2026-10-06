@@ -225,6 +225,7 @@ window.__ModuleLoader__.load({
       'tree.wikiTip': '含双链 [[…]]（详情富文本中可点击跳转）',
       'tree.toggleTip': '展开/折叠',
       'tree.sysChipTip': '机器托管笔记（sys）：默认列表/搜索降噪不显示，随文件夹展开可见（0.4.4-C 显式入口）',
+      'tree.sysFolderTip': '机器托管文件夹（自动沉淀：工作日志/记忆档案/执行记录）——默认从树隐身；筛选中心「机器」档或「显示隐藏」开时可见（0.4.4-G）',
       'tree.countN': '{n} 条',
       'tree.viewTopic': '主题 · {id}',
       'tree.viewAll': '全部笔记',
@@ -878,6 +879,11 @@ window.__ModuleLoader__.load({
       'fld.hiddenToast': '已隐藏文件夹「{name}」（列表遮罩滤除；筛选中心「显示隐藏」可再显）',
       'fld.unhiddenToast': '已取消隐藏「{name}」',
       'fld.hideFailed': '显隐设置失败：{msg}',
+      'fld.menuSys': '标记为机器文件夹',
+      'fld.menuUnsys': '取消机器属性',
+      'fld.sysToast': '已将「{name}」标记为机器文件夹（默认从树隐身；筛选中心「机器」档或「显示隐藏」可再显）',
+      'fld.unsysToast': '已取消「{name}」的机器属性',
+      'fld.sysFailed': '机器属性设置失败：{msg}',
       'fld.menuDeleteFolder': '删除文件夹',
       'fld.loadFailed': '文件夹加载失败，显示本地缓存：{msg}',
       'wiki.idxFailedPartial': '双链索引失败 {n} 条：反向链接/行尾标记不完整（下次刷新自动重试）',
@@ -989,6 +995,7 @@ window.__ModuleLoader__.load({
       'tree.wikiTip': 'Has [[…]] wiki links (clickable in the detail rich text)',
       'tree.toggleTip': 'Expand/collapse',
       'tree.sysChipTip': 'Machine-managed note (sys): hidden from default list/search, shown when its folder is expanded (0.4.4-C explicit entry)',
+      'tree.sysFolderTip': 'Machine-managed folder (auto-sedimented: work logs / memory archives / execution records) — hidden from the tree by default; visible when the "Machine" kind filter or "Show hidden items" is on (0.4.4-G)',
       'tree.countN': '{n}',
       'tree.viewTopic': 'Topic · {id}',
       'tree.viewAll': 'All notes',
@@ -1642,6 +1649,11 @@ window.__ModuleLoader__.load({
       'fld.hiddenToast': 'Folder "{name}" hidden (masked from lists; re-show via the filter-center "Show hidden items" toggle)',
       'fld.unhiddenToast': '"{name}" unhidden',
       'fld.hideFailed': 'Failed to set hidden flag: {msg}',
+      'fld.menuSys': 'Mark as machine folder',
+      'fld.menuUnsys': 'Unmark machine attribute',
+      'fld.sysToast': 'Marked "{name}" as a machine folder (hidden from the tree by default; re-show via the filter-center "Machine" kind or "Show hidden items")',
+      'fld.unsysToast': 'Removed machine attribute from "{name}"',
+      'fld.sysFailed': 'Failed to set machine flag: {msg}',
       'fld.menuDeleteFolder': 'Delete folder',
       'fld.loadFailed': 'Failed to load folders; showing the local cache: {msg}',
       'wiki.idxFailedPartial': 'Wiki index failed for {n} notes: backlinks/trailing marks incomplete (auto-retry on next refresh)',
@@ -4817,6 +4829,8 @@ window.__ModuleLoader__.load({
     function usePanelFolderMenu(args) {
         const notes = args.notes
         const view = args.view
+        // 0.4.4-G（notes-044-sys-folders）：showHidden 显隐开关态入参注入（sysKids 补拉效应的 sys 夹遮罩门用——树中隐身的 sys 夹不补拉）
+        const showHidden = args.showHidden === true
         // 虚拟文件夹树：清单走 notes-folders RPC（list/create/rename/delete/reorder）；折叠态持久化 localStorage
         const [folders, setFolders] = React.useState([])
         const [foldersExpanded, setFoldersExpanded] = React.useState(loadFoldersExpanded)
@@ -4918,6 +4932,9 @@ window.__ModuleLoader__.load({
             if (fid === PINNED_KEY) continue   // 置顶聚合组非真实文件夹
             const f = folders.find(x => x.id === fid)
             if (!f) continue
+            // 0.4.4-G：树中隐身的 sys 夹不补拉（遮罩期零请求——机器档/显示隐藏双通道均关时该夹行不渲染，sysKids 无消费点；
+            // 通道放开后随 notes 换代/展开复核自然补拉；showHidden 在 deps 内，开关切换即重审）
+            if (f.sys === true && !showHidden && kf.indexOf('sys') < 0) continue
             const ent = sysKids[fid]
             if (ent && ent.stamp === notes) continue   // 新鲜缓存：同批数据再展开零请求（折叠不清缓存口径）
             if (sysKidsInflightRef.current[fid]) continue
@@ -4933,13 +4950,13 @@ window.__ModuleLoader__.load({
               setSysKids(prev => Object.assign({}, prev, { [fid]: { stamp: stamp, rows: rows } }))
             }, () => { delete sysKidsInflightRef.current[fid] })   // 失败静默降级：sys 行不显示，下次复核重试
           }
-        }, [foldersExpanded, notes, folders])
+        }, [foldersExpanded, notes, folders, showHidden])
         // 文件夹项右键菜单：与笔记行菜单同坐标换算（面板内绝对定位；两菜单互斥）
         function openFolderMenu(ev, f) {
           ev.preventDefault(); ev.stopPropagation()
           const floatEl = ev.currentTarget.closest('.dsh-notes-floating')
           const rect = floatEl ? floatEl.getBoundingClientRect() : { left: 0, top: 0, width: 600, height: 500 }
-          const mw = 190, mh = 260
+          const mw = 190, mh = 292
           let x = ev.clientX - rect.left, y = ev.clientY - rect.top
           x = Math.max(4, Math.min(x, rect.width - mw - 4))
           y = Math.max(4, Math.min(y, rect.height - mh - 4))
@@ -5044,6 +5061,17 @@ window.__ModuleLoader__.load({
             await loadFolders()
           } catch (err) { setError(String(err.message || err)) }
         }
+        // 0.4.4-G sys 机器属性（notes-044-sys-folders）：文件夹机器托管标记（set-flags 同通道扩 sys 键）——标记后该夹默认从树隐身
+        // （显式入口双通道：筛选中心「机器」档 / 「显示隐藏」开关）；摘除落显式 false 墓碑（host 懒迁移不回标）；host 语义零改动，纯 UI 遮罩
+        async function doSetFolderSys(f, sys) {
+          setFolderMenu(null)
+          try {
+            const res = await rpc('notes-folders', { op: 'set-flags', id: f.id, sys: sys === true })
+            if (res && res.error) { setError(res.error); return }
+            showToast(sys === true ? t('fld.sysToast', { name: f.name }) : t('fld.unsysToast', { name: f.name }))
+            await loadFolders()
+          } catch (err) { setError(String(err.message || err)) }
+        }
         // 文件夹右键菜单：点击菜单外部关闭（与笔记行菜单共用 .dsh-notes-ctxmenu 样式）
         React.useEffect(() => {
           if (!folderMenu) return
@@ -5065,6 +5093,8 @@ window.__ModuleLoader__.load({
             (folderMenu.folder.parent || '') ? e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); doReparentFolder(mf.id, '') } }, t('fld.menuRoot')) : null,
             // 0.4.4-D：隐藏此文件夹 / 取消隐藏（hidden 属性，OS 文件管理对齐；隐藏项显隐由筛选中心「显示隐藏」开关总控）
             e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; doSetFolderHidden(mf, !(mf.hidden === true)) } }, I('eye', 12), folderMenu.folder.hidden === true ? t('fld.menuUnhide') : t('fld.menuHide')),
+            // 0.4.4-G：标记为机器文件夹 / 取消机器属性（sys 机器属性——自动沉淀夹默认隐身；「机器」档/「显示隐藏」双通道显式可见）
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; doSetFolderSys(mf, !(mf.sys === true)) } }, I('bolt', 12), folderMenu.folder.sys === true ? t('fld.menuUnsys') : t('fld.menuSys')),
             e('div', { className: 'dsh-notes-ctxmenu-sep' }),
             e('button', { className: 'dsh-notes-ctxmenu-item danger', onClick: () => doDeleteFolder(folderMenu.folder) }, t('fld.menuDeleteFolder')))
           : null
@@ -5484,6 +5514,9 @@ window.__ModuleLoader__.load({
         // 0.4.4-D（notes-044-hidden-attr）：showHidden = 显隐开关（panel/index.js 态，localStorage dsh-notes-show-hidden 持久）；
         // 关=hidden 文件夹行+nested 容器滤除（OS 语义）且 sysKids 合并层同谓词拦截 hidden 行；开=照常渲染 + hid 遮罩样式（半透明）
         const showHidden = args.showHidden === true
+        // 0.4.4-G（notes-044-sys-folders）：sys 机器属性文件夹默认隐身——双通道并集放行：①筛选中心「机器」档选中
+        // （filters.kinds 含 sys，与⑨⑩ 机器内容总览语义一致）②「显示隐藏」开关开（复用 D 卡开关，一档管全部「被遮」内容）；任一开即见
+        const machineOn = ((filters && filters.kinds) || []).indexOf('sys') >= 0
         // 日志同权（0.4.3 验收修复⑦）：日志随 notes 主缓存直达——按夹日志懒加载 overlay 特化路径（独立 RPC + 合并）已拆除，
         // 展开日志夹与普通夹同一代码路径（零额外请求，卡顿根因消除）；「文件视图」（文件夹视图）模式同卡整体拆除
         // i18n（notes-042-i18n-cov-a 覆盖卡A）：tt = useT()——订阅 langStore，切语言本 hook（随主面板）自渲染；树区文案全走 tt()
@@ -5646,6 +5679,8 @@ window.__ModuleLoader__.load({
           function renderFolderNode(f, sink) {
             // 0.4.4-D：hidden 文件夹在显隐开关关时整节点滤除（行 + nested 子树容器随父夹消失，OS 语义；子文件夹递归与本夹笔记行自然不渲染）
             if (!showHidden && f.hidden === true) return
+            // 0.4.4-G：sys 机器属性文件夹默认整节点滤除（同 hidden 早退同层）；双通道任一开即放行（机器档选中 / 显示隐藏开）；徽标计数照常
+            if (f.sys === true && !showHidden && !machineOn) return
             const sub = folderSubtreeIdsOf(f.id)
             // 0.4.4-C：合并按需补拉的 sys 子行（置尾从简——sys 行 host 序与主缓存排序口径分离，混排易误导，注释即取舍）；
             // 过滤/搜索激活时不混入（⑨ 默认列表/搜索降噪零放松：sys 仅「文件夹展开」这一个显式入口放行）；id 去重防御陈旧窗口（kind 变更等）；
@@ -5664,7 +5699,8 @@ window.__ModuleLoader__.load({
               : e('div', { key: 'folder-' + f.id, className: 'dsh-notes-folder-row' + (f.hidden === true ? ' hid' : ''), onClick: () => { toggleFolder(f.id) }, onContextMenu: (ev) => openFolderMenu(ev, f), draggable: true, onDragStart: (ev) => onFolderDragStart(ev, f), onDragEnd: (ev) => onFolderDragEnd(ev), onDragOver: (ev) => onFolderDragOver(ev, f), onDragLeave: onFolderDragLeave, onDrop: (ev) => onFolderDrop(ev, f) },
                   e('span', { className: 'dsh-notes-caret' + (fOpen ? ' open' : '') + ' dsh-nt', 'data-tooltip': tt('tree.toggleTip'), onClick: (ev) => { ev.stopPropagation(); toggleFolder(f.id) } }, I('chev', 10)),
                   e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
-                  e('span', { className: 'dsh-notes-row-nm' }, f.name),
+                  // 0.4.4-G：sys 夹行名带机器托管 tooltip（双通道放行可见时的辨识；无 sys 时零属性零 class 变化）
+                  e('span', { className: 'dsh-notes-row-nm' + (f.sys === true ? ' dsh-nt' : ''), 'data-tooltip': f.sys === true ? tt('tree.sysFolderTip') : undefined }, f.name),
                   e('span', { className: 'dsh-notes-row-n' }, cnt)))
             if (!fOpen) return
             const childEls = []
@@ -6983,7 +7019,7 @@ window.__ModuleLoader__.load({
         // 树 helper 族 + loadFolders + CRUD/reorder/reparent 归 usePanelFolderMenu；folderMenuRef/renamingIdRef/folderInputOpenRef/subFolderForRef
         // 为该模块顶层绑定；Esc 栈/树渲染/面包屑经解构或 kernel 转发别名接入）
         // 0.4.4-C：filters 入参注入（sysKids 补拉效应的 kind 单档口径门用）；sysKids 解构接入 → 下方树装配点注入 usePanelTree
-        const { folders, foldersExpanded, sysKids, folderInputOpen, folderInputText, subFolderFor, renamingId, renameText, setFolderMenu, setFolderInputOpen, setFolderInputText, setSubFolderFor, setRenamingId, setRenameText, loadFolders, folderSubtreeIdsOf, childFoldersOf, rootFolders, folderPathOf, isFolderExpanded, toggleFolder, expandFolder, folderName, openFolderMenu, doCreateFolder, doRenameFolder, doDeleteFolder, doReorderFolder, doReparentFolder, folderMenuEl } = usePanelFolderMenu({ notes: notes, view: view, filters: filters })
+        const { folders, foldersExpanded, sysKids, folderInputOpen, folderInputText, subFolderFor, renamingId, renameText, setFolderMenu, setFolderInputOpen, setFolderInputText, setSubFolderFor, setRenamingId, setRenameText, loadFolders, folderSubtreeIdsOf, childFoldersOf, rootFolders, folderPathOf, isFolderExpanded, toggleFolder, expandFolder, folderName, openFolderMenu, doCreateFolder, doRenameFolder, doDeleteFolder, doReorderFolder, doReparentFolder, folderMenuEl } = usePanelFolderMenu({ notes: notes, view: view, filters: filters, showHidden: showHidden })
         // 主题过滤行原地展开态（点行主体=展开/收起该主题子列表；object map，session 内有效，不持久化；缺省折叠）
         // 主题过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「主题 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
         // （topicExpanded/topicSecOpen 两态已随 panel/tree.js 迁出）
@@ -7296,6 +7332,14 @@ window.__ModuleLoader__.load({
           const hiddenSubtree = {}
           for (const f of folders) if (f.hidden === true) Object.assign(hiddenSubtree, folderSubtreeIdsOf(f.id))
           filtered = filtered.filter(n => n.hidden !== true && !hiddenSubtree[(n.folder || '')])
+        }
+        // 0.4.4-G sys 机器属性（notes-044-sys-folders）：sys 夹默认隐身——双通道（筛选中心「机器」档 / 「显示隐藏」开关）均关时，
+        // sys 夹子树链内笔记随夹滤除（OS 父子树语义同 hidden：夹不渲染则夹内普通笔记也不混入置顶组/主题区/未入夹）；
+        // 与⑨ 内容级 kind=sys 谓词正交（⑨ 遮条目自身，本卡遮「夹归属」）；host 语义零改动，纯 UI 遮罩；跳转/open-by-id 不经本管线天然常显
+        if (!showHidden && filters.kinds.indexOf('sys') < 0) {
+          const sysSubtree = {}
+          for (const f of folders) if (f.sys === true) Object.assign(sysSubtree, folderSubtreeIdsOf(f.id))
+          filtered = filtered.filter(n => !sysSubtree[(n.folder || '')])
         }
         // 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0，如仅 topic 命中)，同级 updatedAt 降序；
         // 命中字段优先取 host notes-search 返回的 matches（全文口径），无则按本地字段估算（preview 仅前 200 字，正文命中可能低估）；无搜索词时退化为 host 序

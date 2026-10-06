@@ -46,6 +46,10 @@ function ensureSysKids(fid) {
   /* kind 单档口径门（0.4.3⑩）：恰选 1 个非 sys kind 时缓存 = host kind 通道子集，与 count 不可比——跳过
      （「机器」档（sys）缓存已含全库 sys 无需补拉；其余单 kind 档下 sys 行本就不该混入） */
   if (filters.kinds.length === 1 && filters.kinds[0] !== 'sys') return
+  /* 0.4.4-G：树中隐身的 sys 夹不补拉（遮罩期零请求——机器档/显示隐藏双通道均关时该夹行不渲染，sysKids 无消费点；通道放开后随刷新复核补拉） */
+  var fSelf = null
+  folders.forEach(function (x) { if (x.id === fid) fSelf = x })
+  if (fSelf && fSelf.sys === true && !showHidden && !machineKindOn()) return
   var ent = sysKids[fid]
   if (ent && ent.stamp === notes) return   /* 新鲜缓存：同批数据再展开零请求 */
   if (sysKidsInflight[fid]) return
@@ -76,6 +80,8 @@ function refreshSysKids() {
 function folderNodeHtml(f, vis, filtering) {
   /* 0.4.4-D：hidden 文件夹在显隐开关关时整节点滤除（行 + .nested 子树容器随父夹消失，OS 语义；子文件夹递归与本夹笔记行自然不渲染） */
   if (!showHidden && f.hidden === true) return '';
+  /* 0.4.4-G：sys 机器属性文件夹默认整节点滤除（同 hidden 早退同层）；双通道任一开即放行（机器档选中 / 显示隐藏开）；徽标计数照常 */
+  if (f.sys === true && !showHidden && !machineKindOn()) return '';
   var h = '';
   var sub = folderSubtree(f.id);
   var kids = vis.filter(function (n) { return (n.folder || '') === f.id });
@@ -90,7 +96,8 @@ function folderNodeHtml(f, vis, filtering) {
   h += '<div class="row head' + (f.hidden === true ? ' hid' : '') + '" data-fold="' + f.id + '" data-drop="1" draggable="true">'
     + '<span class="caret' + (open ? ' open' : '') + '" title="' + t('tree.toggleTip') + '">' + icon('i-chev') + '</span>'
     + '<span class="ic-slot">' + icon('i-folder', 13) + '</span>'
-    + '<span class="nm">' + esc(f.name) + '</span><span class="n">' + (filtering ? subHits : (f.count != null ? f.count : kids.length)) + '</span></div>';
+    /* 0.4.4-G：sys 夹行名带机器托管 tooltip（双通道放行可见时的辨识；无 sys 时零属性零 class 变化） */
+    + '<span class="nm"' + (f.sys === true ? ' title="' + esc(t('tree.sysFolderTip')) + '"' : '') + '>' + esc(f.name) + '</span><span class="n">' + (filtering ? subHits : (f.count != null ? f.count : kids.length)) + '</span></div>';
   if (!open) return h;
   var subFolders = folderKids(f.id);
   if (!subFolders.length && !kids.length) return h;

@@ -14,6 +14,9 @@
         // 0.4.4-D（notes-044-hidden-attr）：showHidden = 显隐开关（panel/index.js 态，localStorage dsh-notes-show-hidden 持久）；
         // 关=hidden 文件夹行+nested 容器滤除（OS 语义）且 sysKids 合并层同谓词拦截 hidden 行；开=照常渲染 + hid 遮罩样式（半透明）
         const showHidden = args.showHidden === true
+        // 0.4.4-G（notes-044-sys-folders）：sys 机器属性文件夹默认隐身——双通道并集放行：①筛选中心「机器」档选中
+        // （filters.kinds 含 sys，与⑨⑩ 机器内容总览语义一致）②「显示隐藏」开关开（复用 D 卡开关，一档管全部「被遮」内容）；任一开即见
+        const machineOn = ((filters && filters.kinds) || []).indexOf('sys') >= 0
         // 日志同权（0.4.3 验收修复⑦）：日志随 notes 主缓存直达——按夹日志懒加载 overlay 特化路径（独立 RPC + 合并）已拆除，
         // 展开日志夹与普通夹同一代码路径（零额外请求，卡顿根因消除）；「文件视图」（文件夹视图）模式同卡整体拆除
         // i18n（notes-042-i18n-cov-a 覆盖卡A）：tt = useT()——订阅 langStore，切语言本 hook（随主面板）自渲染；树区文案全走 tt()
@@ -176,6 +179,8 @@
           function renderFolderNode(f, sink) {
             // 0.4.4-D：hidden 文件夹在显隐开关关时整节点滤除（行 + nested 子树容器随父夹消失，OS 语义；子文件夹递归与本夹笔记行自然不渲染）
             if (!showHidden && f.hidden === true) return
+            // 0.4.4-G：sys 机器属性文件夹默认整节点滤除（同 hidden 早退同层）；双通道任一开即放行（机器档选中 / 显示隐藏开）；徽标计数照常
+            if (f.sys === true && !showHidden && !machineOn) return
             const sub = folderSubtreeIdsOf(f.id)
             // 0.4.4-C：合并按需补拉的 sys 子行（置尾从简——sys 行 host 序与主缓存排序口径分离，混排易误导，注释即取舍）；
             // 过滤/搜索激活时不混入（⑨ 默认列表/搜索降噪零放松：sys 仅「文件夹展开」这一个显式入口放行）；id 去重防御陈旧窗口（kind 变更等）；
@@ -194,7 +199,8 @@
               : e('div', { key: 'folder-' + f.id, className: 'dsh-notes-folder-row' + (f.hidden === true ? ' hid' : ''), onClick: () => { toggleFolder(f.id) }, onContextMenu: (ev) => openFolderMenu(ev, f), draggable: true, onDragStart: (ev) => onFolderDragStart(ev, f), onDragEnd: (ev) => onFolderDragEnd(ev), onDragOver: (ev) => onFolderDragOver(ev, f), onDragLeave: onFolderDragLeave, onDrop: (ev) => onFolderDrop(ev, f) },
                   e('span', { className: 'dsh-notes-caret' + (fOpen ? ' open' : '') + ' dsh-nt', 'data-tooltip': tt('tree.toggleTip'), onClick: (ev) => { ev.stopPropagation(); toggleFolder(f.id) } }, I('chev', 10)),
                   e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
-                  e('span', { className: 'dsh-notes-row-nm' }, f.name),
+                  // 0.4.4-G：sys 夹行名带机器托管 tooltip（双通道放行可见时的辨识；无 sys 时零属性零 class 变化）
+                  e('span', { className: 'dsh-notes-row-nm' + (f.sys === true ? ' dsh-nt' : ''), 'data-tooltip': f.sys === true ? tt('tree.sysFolderTip') : undefined }, f.name),
                   e('span', { className: 'dsh-notes-row-n' }, cnt)))
             if (!fOpen) return
             const childEls = []

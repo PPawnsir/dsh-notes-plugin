@@ -18,6 +18,8 @@ function folderKids(pid) { return folders.filter(function (x) { return (x.parent
 function folderSubtree(id) { var out = {}; out[id] = true; var q = [id]; while (q.length) { var c = q.shift(); folders.forEach(function (f) { if ((f.parent || '') === c && !out[f.id]) { out[f.id] = true; q.push(f.id) } }) } return out }
 /* 0.4.4-D hidden（notes-044-hidden-attr）：fid 是否落在 hidden 文件夹链上（自身或任一祖先 hidden=true；parent 链上溯，cycle 防御 visited 截断） */
 function folderHidden(fid) { var seen = {}; var f = folders.find(function (x) { return x.id === fid }); while (f && !seen[f.id]) { seen[f.id] = true; if (f.hidden === true) return true; f = f.parent ? folders.find(function (x) { return x.id === f.parent }) : null } return false }
+/* 0.4.4-G sys 机器属性（notes-044-sys-folders）：fid 是否落在 sys 文件夹链上（自身或任一祖先 sys=true；同 folderHidden 口径，cycle 防御） */
+function folderSys(fid) { var seen = {}; var f = folders.find(function (x) { return x.id === fid }); while (f && !seen[f.id]) { seen[f.id] = true; if (f.sys === true) return true; f = f.parent ? folders.find(function (x) { return x.id === f.parent }) : null } return false }
 function folderPath(id) { var byId = {}; folders.forEach(function (f) { byId[f.id] = f }); var path = [], cur = id, seen = {}; while (cur && byId[cur] && !seen[cur]) { seen[cur] = true; path.unshift(byId[cur]); cur = byId[cur].parent || '' } return path }
 function rootFolders() { var byId = {}; folders.forEach(function (f) { byId[f.id] = f }); return folders.filter(function (f) { return !(f.parent || '') || !byId[f.parent || ''] }) }
 function shortSid(sid) { return sid ? String(sid).replace(/^session-/, '').slice(0, 8) : '' }

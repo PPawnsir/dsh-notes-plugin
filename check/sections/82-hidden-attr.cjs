@@ -44,7 +44,7 @@ module.exports = {
     for (const f of ['folders.js', 'folders.dist.js']) {
       const fs2 = read(path.join('src', 'host', f))
       assert(fs2.indexOf('if (f.hidden === true) o.hidden = true;') >= 0, f + ' loadFolders 读 hidden 字段')
-      assert(fs2.indexOf("count: count, hidden: f.hidden === true }") >= 0, f + ' _folders list 返回带 hidden')
+      assert(fs2.indexOf("count: count, hidden: f.hidden === true") >= 0, f + ' _folders list 返回带 hidden（0.4.4-G 起同行扩 sys 键，hidden 前缀口径不变）')
       assert(fs2.indexOf("if (op === 'set-flags')") >= 0 && fs2.indexOf("notes-folders.set-flags 需要 id") >= 0, f + ' set-flags op 在位')
       assert(fs2.indexOf('list/create/rename/set-flags/delete/reorder') >= 0, f + ' 未知 op 提示含 set-flags')
     }
