@@ -241,6 +241,8 @@
     //   setup 内 agentPresets.mount 绑定默认 preset（同 session-controller composeAgent 口径——无 preset 的裸 agent 无工具能力）；
     //   workspace.attachSession 落账（GUI 左侧列表可见性——工作区 sessionIds 经 header cwd 校验归组）；
     //   sessionTitle.rename 命名「定时 · <任务名>」（观察面，失败不阻塞主链路）。
+    //   孤儿探测（0.4.5-A notes-045-debt-host）：创建前先按标题探测工作区账目内既有同名专属会话（target 回写失败窗口遗留），
+    //   命中即复用其 sid 返回（reused:true，handle=null——非本轮创建，调用方回收路径跳过），未命中才新建（防重复建会话）。
     //   归属模型（实测结论）：create 经调用方 fiber 归属——插件重载/卸载会 dispose 该 agent，但会话日志已持久化，
     //   退化为休眠态（GUI 可见、用户打开即复活），后续触发由休眠送达通道（_queueDormantDispatch）承接，优雅降级不丢任务。
     //   返回 { sessionId, handle, name } | { error }；失败方负责回收半成品（handle.dispose），调用方零清理负担。
@@ -257,6 +259,27 @@
       const cwd = String((ws && ws.path) || '').trim()
       if (!cwd) return { error: '工作区缺 path（专属会话无 cwd 不可创建）' }
       const name = '定时 · ' + String((note && note.title) || '任务').replace(/^定时\s*·?\s*/, '')
+      // 孤儿专属会话探测（0.4.5-A notes-045-debt-host，B 卡 verifier 遗留④）：「agents.create 成功但 target 回写落盘失败/
+      //   进程崩溃于回写前」的极端窗口下，工作区账目里已存在上次创建的同名专属会话——下 tick 若不探测会重复创建。
+      //   修复：创建前先按标题「定时 · <任务名>」探测既有专属会话（工作区 sessionIds 账目 + readTitleSnapshots 批量读标题，
+      //   live/持久化双覆盖，同 _activeSessions 数据源口径），命中则复用其 sid 回写 target（零新建），未命中才走新建。
+      //   探测失败（服务缺失/读盘异常）静默降级为直接新建——与改造前行为等价，不扩散主链路。
+      try {
+        const archivedSet = {}
+        const arch0 = workspaceRegistry && workspaceRegistry.archivedSessionIds
+        if (Array.isArray(arch0)) { for (const id of arch0) archivedSet[id] = true }
+        const candIds = ((ws && ws.sessionIds) || []).filter(function (s) { return s && !archivedSet[s] })
+        if (candIds.length && sessionQuery && typeof sessionQuery.readTitleSnapshots === 'function') {
+          const snaps = await sessionQuery.readTitleSnapshots(candIds)
+          for (const r of (snaps || [])) {
+            if (!r || r.status !== 'fulfilled' || !r.value) continue
+            const rt = r.value.title && r.value.title.title
+            const rsid = r.sessionId || (r.value.session && r.value.session.id)
+            // 标题精确命中专属会话命名形态即复用；handle=null（复用会话非本轮创建，调用方 dispose 回收路径天然跳过）
+            if (rt === name && rsid) return { sessionId: rsid, handle: null, name: name, reused: true }
+          }
+        }
+      } catch (e) {}
       let presetId
       try { const p = await agentPresets.resolve(); presetId = p && p.id } catch (e) { return { error: 'preset 解析失败：' + String(e && e.message || e) } }
       const sel = adm && typeof adm.currentSelection === 'function' ? adm.currentSelection() : null
@@ -267,7 +290,10 @@
           sessionId: sid,
           agentOptions: sel ? { provider: sel.provider, model: sel.model } : {},
           meta: presetId ? { cwd: cwd, agentPreset: presetId } : { cwd: cwd },
-          setup: function (agentCtx) { return agentPresets.mount(agentCtx, presetId) }
+          // setup 契约（0.4.5 热修，活机故障「(intermediate value)?.commit is not a function」实锤）：宿主
+          //   dsh-agent-loop setupAndPublish 对 setup 返回值调 `?.commit()`——mount 返回 disposer 函数会炸。
+          //   正解（session-controller composeAgent 同款）：await 掉 mount，setup 本身返回 undefined（?. 短路安全）。
+          setup: async function (agentCtx) { await agentPresets.mount(agentCtx, presetId) }
         })
       } catch (e) { return { error: 'agents.create 失败：' + String(e && e.message || e) } }
       // GUI 可见性落账（致命）：失败回收 agent 报错（lastFiredAt 未推进，下 tick 重试创建）

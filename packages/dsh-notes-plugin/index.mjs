@@ -200,7 +200,9 @@ export function apply(ctx) {
         // injectEver 恒写（true/false 显式落盘，缺省 false）：曾注入粘性标记——一旦 inject 置 true 即永久 true，后续关闭 inject 不回退（侧栏「曾注入」过滤/行徽章数据源）
         'injectEver: ' + escYaml(m.injectEver === true ? 'true' : 'false') + '\n' +
         'injectTo: ' + (m.injectTo || []).map(escYaml).join(', ') + '\n' +
-        'recall: ' + escYaml(m.recall === false ? 'false' : 'true') + '\n' +
+        // recall 字段写侧退役（0.4.5-A notes-045-debt-host，0.4.4-E 遗留裁决落地）：buildFM 不再写此行——
+        //   新笔记无此字段；存量文件该行保留无害、parseFM/noteFromParsed 解析保留（读写兼容红线：存量零迁移零删除）、
+        //   字段随下次真实保存自然脱落；note_manage schema 入参保留（deprecated，见工具描述）
         // sensitive 恒写（true/false 显式落盘，缺省 false）：敏感笔记注入时正文按行打码
         'sensitive: ' + escYaml(m.sensitive === true ? 'true' : 'false') + '\n' +
         // hidden 条件行（0.4.4-D hidden 隐藏属性，OS 文件管理对齐：纯 UI 遮罩标记——面板显隐开关关时滤除、开时半透明渲染；
@@ -913,7 +915,8 @@ export function apply(ctx) {
         inject: inject,
         injectTo: injectTo,
         injectRole: injectRole,
-        // recall：原目录索引准入字段——0.4.4-E 起目录段唯挂载行源，字段 dormant（读写兼容、无注入效果，0.4.5 清理卡统一裁决退役）；
+        // recall：原目录索引准入字段——0.4.4-E 起目录段唯挂载行源，字段失去最后消费方；0.4.5-A（notes-045-debt-host）写侧退役落地
+        //   （buildFM 不再写 recall 行，存量文件该行保留不迁移、本处解析保留 = 读写兼容红线；无注入效果）；
         // 缺省 true（旧文件无 recall 字段 → true，向后兼容解析保留）；显式 false 逐条置否（与 inject 正交）；
         // 工作记忆 v0（裁决 B①）/0.4.3⑥：kind=log/sys 缺省 recall=false（dormant 缺省口径保留）
         recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : ((p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true)),
@@ -1010,11 +1013,12 @@ export function apply(ctx) {
       const meta = {
         id: n.id, title: n.title, topic: n.topic, workspace: n.workspace, folder: n.folder || '',
         tags: n.tags || [], kind: n.kind || 'note', status: n.status || 'active',
-        inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, sensitive: n.sensitive === true, hidden: n.hidden === true,
+        inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', sensitive: n.sensitive === true, hidden: n.hidden === true,
         createdAt: n.createdAt, updatedAt: n.updatedAt,
         sessionId: n.sessionId, cwd: n.cwd, logDate: n.logDate || '', entities: n.entities || [], summarizedAt: n.summarizedAt || '', contractType: n.contractType || '', origin: n.origin || '', refNote: n.refNote || '', runLog: n.runLog || '', schedule: n.schedule || null, mergedFrom: n.mergedFrom || [],
         dispatches: n.dispatches || [],
         // useCount 不落盘（0.4.3 验收修复⑧字段退役）：统计归 telemetry.json facets.use 单一事实源，buildFM 无此行
+        // recall 不落盘（0.4.5-A notes-045-debt-host 写侧退役）：buildFM 无此行；内存视图保留（slim 读侧下发不变），存量行解析保留
         archivedAt: n.archivedAt || '', deleted: n.deleted ? 'true' : 'false'
       }
       return buildFM(meta) + (n.body || '')
@@ -2586,11 +2590,13 @@ export function apply(ctx) {
       }
       return { link: link, mount: mount }
     }
-    // softref 提取：schedule.runLog 软链（自链排除；目标不存在同样计死链）
+    // softref 提取：执行记录软链——schedule.runLog（调度派发源）+ 顶层 runLog（0.4.4-A 非调度派发源的执行记录伴生笔记软链）；
+    //   自链排除；目标不存在同样计死链；两键独立成边（meta.key 区分来源）
     function _graphSoftrefOccs(n) {
-      if (!(n.schedule && n.schedule.runLog && String(n.schedule.runLog) !== n.id)) return []
-      const rl = String(n.schedule.runLog)
-      return [{ target: rl, meta: { key: 'schedule.runLog' } }]
+      const out = []
+      if (n.schedule && n.schedule.runLog && String(n.schedule.runLog) !== n.id) out.push({ target: String(n.schedule.runLog), meta: { key: 'schedule.runLog' } })
+      if (n.runLog && String(n.runLog) !== n.id) out.push({ target: String(n.runLog), meta: { key: 'runLog' } })
+      return out
     }
     // dispatch 提取：派发记录（to = session:<sessionId> 会话命名空间，不属笔记库；status 为记录时点快照，done 布尔向后兼容）
     function _graphDispatchOccs(n) {
@@ -4135,6 +4141,8 @@ export function apply(ctx) {
     //   setup 内 agentPresets.mount 绑定默认 preset（同 session-controller composeAgent 口径——无 preset 的裸 agent 无工具能力）；
     //   workspace.attachSession 落账（GUI 左侧列表可见性——工作区 sessionIds 经 header cwd 校验归组）；
     //   sessionTitle.rename 命名「定时 · <任务名>」（观察面，失败不阻塞主链路）。
+    //   孤儿探测（0.4.5-A notes-045-debt-host）：创建前先按标题探测工作区账目内既有同名专属会话（target 回写失败窗口遗留），
+    //   命中即复用其 sid 返回（reused:true，handle=null——非本轮创建，调用方回收路径跳过），未命中才新建（防重复建会话）。
     //   归属模型（实测结论）：create 经调用方 fiber 归属——插件重载/卸载会 dispose 该 agent，但会话日志已持久化，
     //   退化为休眠态（GUI 可见、用户打开即复活），后续触发由休眠送达通道（_queueDormantDispatch）承接，优雅降级不丢任务。
     //   返回 { sessionId, handle, name } | { error }；失败方负责回收半成品（handle.dispose），调用方零清理负担。
@@ -4151,6 +4159,27 @@ export function apply(ctx) {
       const cwd = String((ws && ws.path) || '').trim()
       if (!cwd) return { error: '工作区缺 path（专属会话无 cwd 不可创建）' }
       const name = '定时 · ' + String((note && note.title) || '任务').replace(/^定时\s*·?\s*/, '')
+      // 孤儿专属会话探测（0.4.5-A notes-045-debt-host，B 卡 verifier 遗留④）：「agents.create 成功但 target 回写落盘失败/
+      //   进程崩溃于回写前」的极端窗口下，工作区账目里已存在上次创建的同名专属会话——下 tick 若不探测会重复创建。
+      //   修复：创建前先按标题「定时 · <任务名>」探测既有专属会话（工作区 sessionIds 账目 + readTitleSnapshots 批量读标题，
+      //   live/持久化双覆盖，同 _activeSessions 数据源口径），命中则复用其 sid 回写 target（零新建），未命中才走新建。
+      //   探测失败（服务缺失/读盘异常）静默降级为直接新建——与改造前行为等价，不扩散主链路。
+      try {
+        const archivedSet = {}
+        const arch0 = workspaceRegistry && workspaceRegistry.archivedSessionIds
+        if (Array.isArray(arch0)) { for (const id of arch0) archivedSet[id] = true }
+        const candIds = ((ws && ws.sessionIds) || []).filter(function (s) { return s && !archivedSet[s] })
+        if (candIds.length && sessionQuery && typeof sessionQuery.readTitleSnapshots === 'function') {
+          const snaps = await sessionQuery.readTitleSnapshots(candIds)
+          for (const r of (snaps || [])) {
+            if (!r || r.status !== 'fulfilled' || !r.value) continue
+            const rt = r.value.title && r.value.title.title
+            const rsid = r.sessionId || (r.value.session && r.value.session.id)
+            // 标题精确命中专属会话命名形态即复用；handle=null（复用会话非本轮创建，调用方 dispose 回收路径天然跳过）
+            if (rt === name && rsid) return { sessionId: rsid, handle: null, name: name, reused: true }
+          }
+        }
+      } catch (e) {}
       let presetId
       try { const p = await agentPresets.resolve(); presetId = p && p.id } catch (e) { return { error: 'preset 解析失败：' + String(e && e.message || e) } }
       const sel = adm && typeof adm.currentSelection === 'function' ? adm.currentSelection() : null
@@ -4161,7 +4190,10 @@ export function apply(ctx) {
           sessionId: sid,
           agentOptions: sel ? { provider: sel.provider, model: sel.model } : {},
           meta: presetId ? { cwd: cwd, agentPreset: presetId } : { cwd: cwd },
-          setup: function (agentCtx) { return agentPresets.mount(agentCtx, presetId) }
+          // setup 契约（0.4.5 热修，活机故障「(intermediate value)?.commit is not a function」实锤）：宿主
+          //   dsh-agent-loop setupAndPublish 对 setup 返回值调 `?.commit()`——mount 返回 disposer 函数会炸。
+          //   正解（session-controller composeAgent 同款）：await 掉 mount，setup 本身返回 undefined（?. 短路安全）。
+          setup: async function (agentCtx) { await agentPresets.mount(agentCtx, presetId) }
         })
       } catch (e) { return { error: 'agents.create 失败：' + String(e && e.message || e) } }
       // GUI 可见性落账（致命）：失败回收 agent 报错（lastFiredAt 未推进，下 tick 重试创建）
@@ -4446,8 +4478,9 @@ export function apply(ctx) {
     // 分桶：injectRole='convention' → 用户约定（须遵守，全文注入，红线零触碰）；挂载行 = 注入索引根笔记 §1 逐行（0.4.3⑤ 管线载荷）。
     // 0.4.4-E（notes-044-catalog-remove）：「目录段补充未挂载条目」整体移除——全库平铺普通行与「资料=显式挂载」模型冲突，
     //   挂载行（注入索引 §1 管线载荷）是目录段唯一内容源；catalogEnabled 设置分支/UI 开关/预览徽标/catalog 遥测埋点/catalog 兼容别名一并退役
-    //   （用户 settings.json 存量 catalogEnabled 键保留不迁移 = 惰性死键无人读；recall 字段随之失去最后消费方，保留 dormant 读写兼容，
-    //   0.4.5 清理卡统一裁决退役；staleDays 的 ⚠ 注入标注呈现面随普通行拆除——现存唯一消费方 = 整理建议器过期候选提名（memory.js suggestCandidates））。
+    //   （用户 settings.json 存量 catalogEnabled 键保留不迁移 = 惰性死键无人读；recall 字段随之失去最后消费方——
+    //   0.4.5-A（notes-045-debt-host）写侧退役落地：buildFM 不再写 recall 行，存量行解析保留 = 读写兼容；
+    //   staleDays 的 ⚠ 注入标注呈现面随普通行拆除——现存唯一消费方 = 整理建议器过期候选提名（memory.js suggestCandidates））。
     // 目录段语义：挂载行排前（§1 行原样进段）+ 挂载 note_get 引导 + 尾部提示行（价值信号行[0.4.3⑥]/预算省略计数/约定脱敏计数/日志计数尾行/规划轻推）；
     //   无挂载行且无日志 → 目录段整段为空。约定桶与索引 §1 行格式零变化（红线）。
     // 文案不再标注工作区归属与来源会话：大量笔记由 agent 快速记录产生，归属标注对注入方无意义。
@@ -4911,19 +4944,129 @@ export function apply(ctx) {
       weekly.sort(byKey); monthly.sort(byKey)
       return { weekly: weekly, monthly: monthly }
     }
+    // ---- 遥测驱动候选（0.4.5-C 治理建议器 v0：遥测消费端首卡——纯函数，遥测快照/挂载行/窗口下沿全部由调用方注入，可 eval 单测）----
+    // 两个新候选类（只提名不执行红线同 stale/orphan；信号=启发式，清理裁决=全量+人工）：
+    //   zeroRefMountCandidates（零引用挂载）：注入索引 §1 挂载行 id 集 ∩ 窗口内五通道（inject/mount/catalog 原始回执 + search/get 日聚合）
+    //     零事件 → 建议「摘除挂载」（不删笔记）或「改文案」。豁免：①窗口内任一通道有事件即跳过（约定桶高频笔记 inject 通道有事件，
+    //     天然豁免成立）；②新建未满窗口期——挂载时间戳无独立数据源，以笔记 createdAt 兜底口径：createdAt ≥ 窗口下沿（或无法解析）
+    //     不提名（遥测未覆盖其完整生命周期，宁缺勿滥）；③死挂载行（目标已删/不在全量集）不提名（死链清理由图内核/守卫面负责）。
+    //   hotUnmountedCandidates（高频取用未挂载）：窗口内 get+search 合计 ≥ hotMin（v0 缺省 3 次/14 天——常量先行+注释口径，
+    //     后续可 settings 化）∩ 未在 §1 ∩ inject=false（已注入不提名——约定桶高频笔记豁免位）∩ kind=note/link；
+    //     status≠active / quick 速记 / mergedFrom 归档产物豁免面同 orphanCandidates（防误伤同一哲学）。
+    //     数据源 = byDay 高频双通道窗口聚合（facets.use 是全期总计数、无窗口维度，不作本判定数据源——口径注释锁定）。
+    // 静默降级红线：t（遥测快照）缺失/损坏/非法 → 两类候选皆空数组（零异常上抛；stale/orphan 等既有输出零影响）。
+    const SUGGEST_TELEM_WINDOW_DAYS = 14   // 遥测窗口缺省 14 天（v0 常量；调用方可经 opts.windowDays 覆写）
+    const SUGGEST_TELEM_HOT_MIN = 3        // 高频阈值：窗口内 get+search 合计 ≥3 才提名（2 不提名/3 提名——边界语义锁定）
+    const SUGGEST_TELEM_HOT_LIMIT = 20     // 高频候选上限（提名而非穷尽，与孤儿同哲学；取用降序保最热的在前）
+    // 窗口内事件计数聚合（纯函数）：events = 五通道合计（零引用判据）；useHits = get+search 合计（高频判据）。
+    //   fromMs = 原始回执 ts 窗口下沿（含）；fromDay = 日聚合本地日键下沿（含，YYYY-MM-DD 字符串比较，空串 = byDay 全量兜底）
+    function suggestTelemWindowCounts(t, fromMs, fromDay) {
+      const events = {}, useHits = {}
+      if (!t || typeof t !== 'object') return { events: events, useHits: useHits }
+      const receipts = t.receipts && typeof t.receipts === 'object' ? t.receipts : {}
+      for (const ch of ['inject', 'mount', 'catalog']) {
+        const arr = Array.isArray(receipts[ch]) ? receipts[ch] : []
+        for (const r of arr) {
+          const ms = Date.parse(r && r.ts)
+          if (!isFinite(ms) || ms < fromMs) continue
+          const ids = Array.isArray(r.ids) ? r.ids : []
+          for (const id0 of ids) { const id = String(id0); events[id] = (events[id] || 0) + 1 }
+        }
+      }
+      const byDay = t.byDay && typeof t.byDay === 'object' ? t.byDay : {}
+      for (const ch of ['search', 'get']) {
+        const days = byDay[ch] && typeof byDay[ch] === 'object' ? byDay[ch] : {}
+        for (const d of Object.keys(days)) {
+          if (d < fromDay) continue
+          const bucket = days[d]
+          if (!bucket || typeof bucket !== 'object') continue
+          for (const id of Object.keys(bucket)) {
+            const cnt = Math.max(0, Math.floor(Number(bucket[id]) || 0))
+            if (!cnt) continue
+            events[id] = (events[id] || 0) + cnt
+            useHits[id] = (useHits[id] || 0) + cnt
+          }
+        }
+      }
+      return { events: events, useHits: useHits }
+    }
+    // 两候选类判定（纯函数）：all = 未删除全量笔记；mountLines = idxLinesSync() 形态 [{ id, when }]；opts = { windowDays, hotMin, nowMs, fromDay }
+    function suggestTelemetryCandidates(all, mountLines, t, opts) {
+      if (!t || typeof t !== 'object') return { zeroRefMountCandidates: [], hotUnmountedCandidates: [] }   // 静默降级红线：遥测缺失/损坏 → 两类皆空
+      const o = opts || {}
+      const windowDays = Math.max(1, Math.floor(o.windowDays || SUGGEST_TELEM_WINDOW_DAYS))
+      const hotMin = Math.max(1, Math.floor(o.hotMin || SUGGEST_TELEM_HOT_MIN))
+      const nowMs = o.nowMs || Date.now()
+      const fromMs = nowMs - windowDays * 86400000
+      const fromDay = typeof o.fromDay === 'string' ? o.fromDay : ''
+      const counts = suggestTelemWindowCounts(t, fromMs, fromDay)
+      const byId = {}
+      for (const n of all || []) byId[String(n.id)] = n
+      // ① 零引用挂载：§1 挂载行 ∩ 窗口内五通道零事件（豁免面见块头口径）
+      const zeroRef = []
+      const mountSet = {}
+      for (const l of mountLines || []) {
+        const id = String(l && l.id || '')
+        if (!id || mountSet[id]) continue
+        mountSet[id] = true
+        const n = byId[id]
+        if (!n || n.deleted) continue                          // 死挂载行不提名
+        if ((counts.events[id] || 0) > 0) continue             // 窗口内任一通道事件即豁免
+        const cms = Date.parse(n.createdAt || '')
+        if (!isFinite(cms) || cms >= fromMs) continue          // 新建未满窗口期豁免（createdAt 兜底口径；不可解析同样豁免）
+        zeroRef.push({ id: id, title: n.title, topic: n.topic || '', when: String(l.when || ''), updatedAt: n.updatedAt || '' })
+      }
+      zeroRef.sort((x, y) => String(x.updatedAt || '').localeCompare(String(y.updatedAt || '')))   // 最旧在前（与孤儿同序）
+      // ② 高频取用未挂载：窗口内 get+search ≥ hotMin ∩ 未挂载 ∩ inject=false ∩ kind=note/link ∩ orphan 豁免面
+      const hot = []
+      for (const n of all || []) {
+        const id = String(n.id)
+        if (mountSet[id]) continue
+        const k = n.kind || 'note'
+        if (k !== 'note' && k !== 'link') continue             // log/sys/todo/decision/quote 豁免（orphan 面同哲学；log/sys 双保险）
+        if ((n.status || 'active') !== 'active') continue
+        if (n.inject === true) continue                        // 已注入笔记不提名（约定桶高频笔记天然豁免位）
+        if ((n.tags || []).indexOf('quick') >= 0) continue
+        if ((n.mergedFrom || []).length > 0) continue
+        const hits = counts.useHits[id] || 0
+        if (hits < hotMin) continue
+        hot.push({ id: id, title: n.title, topic: n.topic || '', hits: hits, updatedAt: n.updatedAt || '' })
+      }
+      hot.sort((x, y) => (y.hits - x.hits) || String(x.id).localeCompare(String(y.id)))   // 取用降序（并列按 id 稳定序）
+      return { zeroRefMountCandidates: zeroRef, hotUnmountedCandidates: hot.slice(0, SUGGEST_TELEM_HOT_LIMIT) }
+    }
     // ==== suggest-helpers END ====
 
-    // 整理建议（notes-suggest，dry-run 零写入）：返回 { archiveCandidates, staleCandidates, orphanCandidates, logHygieneCandidates, generatedAt }
+    // 整理建议（notes-suggest，dry-run 零写入）：返回 { archiveCandidates, staleCandidates, orphanCandidates, logHygieneCandidates,
+    //   zeroRefMountCandidates, hotUnmountedCandidates, telemetryWindowDays, generatedAt }
     // archiveCandidates 内聚复用 _archivePreview——速记组结构与 notes-archive-preview 完全同源，
     // client「去归档」直达归档预览对话框对接的正是同一批组（dry-run 非热路径，二次 _list 走缓存）。
     // logHygieneCandidates（工作记忆 v0 §6.3）：日志卫生两级聚合提名（周 >7 天 / 月 >90 天，设置键 logWeekAfterDays/logRetentionDays 可调），
     // 只提名不执行——v0 面板仅展示明细，合并执行（机械拼接 + 概览索引）走归档白名单通道留待 Phase 2。
+    // zeroRefMountCandidates / hotUnmountedCandidates（0.4.5-C 治理建议器 v0 遥测消费端）：判定内核 = suggestTelemetryCandidates 纯函数
+    // （口径/豁免面见 suggest-helpers 块头注释）；只提名不执行——摘除挂载复用 notes-update inject:false 既有通道（_idxSyncMount 联动摘行），
+    // 挂载/改文案复用 MountModal（LLM 预填 notes-when-suggest），均人工确认才动作。
     async function _suggest() {
       await loadSettings()   // 幂等（缓存 promise）：确保 staleDays 用户 override 已加载生效
       const all = await _list(undefined, undefined, undefined, undefined, true)   // 治理路径显式包含日志（隐身只作用于日常浏览/默认搜索；stale/orphan 内核已排除 kind=log）
       const pv = await _archivePreview()
       const c = suggestCandidates(all, staleDaysLimit())
-      return { archiveCandidates: pv.quickGroups, staleCandidates: c.staleCandidates, orphanCandidates: c.orphanCandidates, logHygieneCandidates: suggestLogHygiene(all, logWeekAfterDaysLimit(), logRetentionDaysLimit()), generatedAt: new Date().toISOString() }
+      // 遥测驱动两类候选（只读消费）：读前落账（_recallFlushAgg——防抖 pending 与在途回执先 flush 再统计，notes-recall-stats 同款自洽读）。
+      //   可用性闸门：meta.lastFlush 缺失 = 遥测从未落账（新装库零事件 / telemetry.json 缺失 / 损坏自愈空桶）→ 两类候选静默为空
+      //   （防「空遥测库上全量旧挂载被误提名零引用」）；计算异常同样静默降级——stale/orphan 等既有候选零影响（静默降级红线）。
+      let telem = { zeroRefMountCandidates: [], hotUnmountedCandidates: [] }
+      try {
+        await _recallFlushAgg()
+        const t0 = _telemetryCache
+        if (t0 && t0.meta && t0.meta.lastFlush) {
+          const nowMs = Date.now()
+          telem = suggestTelemetryCandidates(all, idxLinesSync(), t0, {
+            windowDays: SUGGEST_TELEM_WINDOW_DAYS, hotMin: SUGGEST_TELEM_HOT_MIN, nowMs: nowMs,
+            fromDay: _recallDay(nowMs - (SUGGEST_TELEM_WINDOW_DAYS - 1) * 86400000)   // 日聚合窗口下沿（含当日共 14 天，notes-recall-stats 同口径）
+          })
+        }
+      } catch (e) { /* 静默降级：遥测故障不扩散整理建议主输出 */ }
+      return { archiveCandidates: pv.quickGroups, staleCandidates: c.staleCandidates, orphanCandidates: c.orphanCandidates, logHygieneCandidates: suggestLogHygiene(all, logWeekAfterDaysLimit(), logRetentionDaysLimit()), zeroRefMountCandidates: telem.zeroRefMountCandidates, hotUnmountedCandidates: telem.hotUnmountedCandidates, telemetryWindowDays: SUGGEST_TELEM_WINDOW_DAYS, generatedAt: new Date().toISOString() }
     }
 
     // 合并一组笔记为一条归档笔记：正文按 updatedAt 升序拼接（## 日期 分节），原笔记先 .bak 备份再软删除。
@@ -5058,7 +5201,8 @@ export function apply(ctx) {
     disposers.push(handle('notes-archive-undo', async () => {
       try { return await _archiveUndo() } catch (e) { return { error: String(e.message || e) } }
     }))
-    // 整理建议（dry-run 零写入）：四类候选（速记组/过期未引用/孤儿/日志卫生）——只提名不执行；过期未引用的批量软删由 client confirm 后逐条 notes-delete
+    // 整理建议（dry-run 零写入）：六类候选（速记组/过期未引用/孤儿/日志卫生/零引用挂载/高频取用未挂载——后两类 0.4.5-C 遥测驱动）——
+    // 只提名不执行；过期未引用的批量软删由 client confirm 后逐条 notes-delete；遥测两类动作复用既有通道（notes-update 关注入 / MountModal）
     disposers.push(handle('notes-suggest', async () => {
       try { return await _suggest() } catch (e) { return { error: String(e.message || e) } }
     }))
@@ -5797,9 +5941,9 @@ export function apply(ctx) {
     regTool({
       name: 'note_manage',
       description: 'Single tool for create/list/update/delete/restore/archive. Pick an action and supply its required fields. The Agent should prefer this for any non-search CRUD: one tool means one decision point and one schema to learn.\n\n' +
-        'Fields kind (what it is) and status (its lifecycle) are orthogonal: kind ∈ note/decision/todo/link/quote/log (default note); status ∈ active/pinned/resolved/superseded (default active). kind=log is a work log (工作日志): first-class in list/search/edit (visible by default) — inject is force-disabled (hard gate, true is corrected with injectForcedOff in the response) and recall defaults false (the recall field is dormant — see below); put work logs in folder「工作日志」.\n' +
+        'Fields kind (what it is) and status (its lifecycle) are orthogonal: kind ∈ note/decision/todo/link/quote/log (default note); status ∈ active/pinned/resolved/superseded (default active). kind=log is a work log (工作日志): first-class in list/search/edit (visible by default) — inject is force-disabled (hard gate, true is corrected with injectForcedOff in the response) and recall defaults false (the recall field is deprecated — see below); put work logs in folder「工作日志」.\n' +
         'inject (boolean) controls whether the note is injected into the system prompt as context — an explicit field, NOT a tag. injectRole ("convention"|"reference", default "convention") picks the injection bucket: convention = user rules to follow; reference = background facts to consult only when relevant to the current task. Rule of thumb — infer from kind: decision/todo → convention, note/link/quote → reference. injectTo (string[]) is the injection scope, a multi-select list: [] or omitted=all sessions (default), or session short-ids like ["99f2b674","7f8b49e6"] to restrict the scope.\n\n' +
-        'recall (boolean, default true) is a DORMANT compatibility field: it used to control the notes catalog index (a one-line-per-note flat library listing injected into the system prompt), which was removed entirely in 0.4.4-E — the injected directory section now carries mounted index lines only (a note enters it solely via an explicit mount in the injection index). The field is still accepted and stored (read/write compatible) but has no effect on injection; every note stays searchable via note_search regardless.\n\n' +
+        'recall (boolean, default true) is a DEPRECATED compatibility field (deprecated since 0.4.5-A, write side retired): it used to control the notes catalog index (a one-line-per-note flat library listing injected into the system prompt), which was removed entirely in 0.4.4-E — the injected directory section now carries mounted index lines only (a note enters it solely via an explicit mount in the injection index). The argument is still accepted for backward compatibility and existing front-matter recall lines are still parsed (存量行保留不迁移、读侧兼容), but new writes no longer persist the field to disk and it has no effect on injection; every note stays searchable via note_search regardless.\n\n' +
         'sensitive (boolean) marks the note as containing secrets (passwords/tokens/keys); default false. When true, injected text (conventions) masks secret-looking lines — keys and structure are kept, only values are hidden as ******（敏感，note_get <id> 获取）— so agents must call note_get for the original. Create/quick responses may return sensitiveSuggested: true when the body matches secret patterns; quick-capture notes are auto-flagged sensitive instead.\n\n' +
         'hidden (boolean, default false) is the OS-style hidden attribute (0.4.4-D): hidden notes are masked out of the notes panel tree/lists only — a pure client-side UI filter governed by the panel「显示隐藏」toggle (localStorage-persisted). Agents and all read/write paths are UNAFFECTED: note_search/note_get/note_manage see hidden notes exactly like normal ones, and opening a hidden note via backlink/dispatch/search hit renders and edits normally. Folders carry the same flag via the notes-folders RPC op:\'set-flags\' { id, hidden } (a hidden folder masks its row and its nested subtree from the tree).\n\n' +
         'folder (string) assigns a note to a virtual folder: pass a folder id or an exact folder name — a name is normalized to its folder id on write, and an unknown id/name is rejected with an error (never silently filed as unfiled); "" or omitted = unfiled (未分类). Folders (name/order/parent/hidden) are managed via the notes-folders RPC (list/create/rename/delete/reorder/set-flags): folders NEST via a parent field (maxFolderDepth setting caps the depth, default 3, 0 = unlimited), any folder filter is a recursive subtree match (a folder includes notes in all its descendant folders), and deleting a folder that still has child folders or notes requires explicit cascade:true — the folder structure is removed for good while its notes are soft-deleted into the trash and can be restored (restored notes fall back to unfiled when their folder is gone).\n\n' +
@@ -5829,7 +5973,7 @@ export function apply(ctx) {
           inject: { type: 'boolean', description: 'Inject into system prompt as context (create/update); default false. Setting inject=true permanently marks injectEver=true (sticky "ever injected" flag — later turning inject off never unsets it; injectEver is read-only and appears in list/get output).' },
           injectRole: { type: 'string', enum: ['convention', 'reference'], description: 'Injection role: convention=rules to follow | reference=background facts to consult as needed; default convention' },
           injectTo: { type: 'array', items: { type: 'string' }, description: 'Injection scope multi-select: [] or omitted=all sessions (default), or session short-ids like ["99f2b674","7f8b49e6"] to restrict' },
-          recall: { type: 'boolean', description: 'Dormant compatibility field (create/update); default true. The catalog index it once fed was removed in 0.4.4-E (directory section = mounted lines only) — the value is stored/read back unchanged but has no injection effect; notes stay searchable via note_search regardless.' },
+          recall: { type: 'boolean', description: 'DEPRECATED compatibility field (create/update); default true. The catalog index it once fed was removed in 0.4.4-E (directory section = mounted lines only); since 0.4.5-A the write side is retired — the argument is still accepted and existing front-matter recall lines are still parsed (read-compatible), but new writes no longer persist the field and it has no injection effect; notes stay searchable via note_search regardless.' },
           sensitive: { type: 'boolean', description: 'Sensitive-content flag (create/update); default false. When true, injected text masks secret-looking lines (keys kept, values hidden as ******（敏感，note_get <id> 获取）); agents call note_get for the original.' },
           hidden: { type: 'boolean', description: 'Hidden flag (create/update); default false. Pure UI mask (0.4.4-D): hidden notes are filtered from the panel tree/lists only when the「显示隐藏」toggle is off; search/get/agent faces are unaffected. Folders: notes-folders RPC op:\'set-flags\' { id, hidden }.' },
           folder: { type: 'string', description: 'Virtual folder (create/move/list filter): folder id or exact folder name (a name is normalized to its id on write; unknown id/name is rejected); "" = unfiled (未分类). Folders nest via parent (maxFolderDepth setting, default 3); a list filter matches the whole subtree recursively (notes in descendant folders included).' },
