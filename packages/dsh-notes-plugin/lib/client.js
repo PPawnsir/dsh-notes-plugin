@@ -309,6 +309,11 @@ window.__ModuleLoader__.load({
       'editor.organized': '已按「{kind}」模板整理',
       'editor.noOrganizeUndo': '没有可撤销的整理',
       'editor.organizeUndone': '已恢复整理前正文',
+      /* 0.4.4-F：AI 整理追加用户指令引导弹卡（notes-044-organize-instruct）——可选输入，留空=系统默认整理规则 */
+      'editor.organizeInstructTitle': 'AI 整理 · 追加指令（可选）',
+      'editor.organizeInstructPlaceholder': '告诉 AI 整理方向，如「突出待办事项」「精简为三条结论」；留空使用系统默认整理规则',
+      'editor.organizeInstructConfirm': '开始整理',
+      'editor.organizeInstructCancel': '取消',
       'editor.charCount': '{n} 字',
       'editor.backlinks': '反向链接',
       'editor.backlinksCount': '（{n}）',
@@ -1068,6 +1073,11 @@ window.__ModuleLoader__.load({
       'editor.organized': 'Organized with the "{kind}" template',
       'editor.noOrganizeUndo': 'No organize to undo',
       'editor.organizeUndone': 'Restored the pre-organize body',
+      /* 0.4.4-F: AI organize extra-instruction guide card (notes-044-organize-instruct) — optional input; empty = default system rules */
+      'editor.organizeInstructTitle': 'AI Organize · Extra Instruction (optional)',
+      'editor.organizeInstructPlaceholder': 'Guide the AI, e.g. "highlight action items" or "trim to three conclusions"; leave empty to use the default system rules',
+      'editor.organizeInstructConfirm': 'Organize',
+      'editor.organizeInstructCancel': 'Cancel',
       'editor.charCount': '{n} chars',
       'editor.backlinks': 'Backlinks',
       'editor.backlinksCount': ' ({n})',
@@ -3651,6 +3661,40 @@ window.__ModuleLoader__.load({
       })()
       : null
     }
+    // ===== modal: organize-instruct —— AI 整理追加指令引导卡（0.4.4-F notes-044-organize-instruct）=====
+    // provides: store.modal.organizeInstruct / setOrganizeInstructOpen / openOrganizeInstruct / closeOrganizeInstruct /
+    //           confirmOrganizeInstruct / OrganizeInstructModal
+    // needs: kernel/state.js（store/createStore/panelBridge）、kernel/icons.js（e/I）、kernel/i18n.js（useT）
+    // 交互定稿（用户裁决 2026-10-06）：点 ✨整理 → 弹引导卡（可选指令输入框 + 确认/取消）——
+    //   留空确认 = instruction:''（host 空指令路径 prompt 与二期现行逐字节等价，节 84 锁定）；
+    //   填写确认 = trim 后追加进 prompt（host 在【当前草稿】前插【用户追加指令】段）；取消/点遮罩 = 关卡零副作用。
+    // 确认经 panelBridge.doAiOrganize(instr) 中转（modals 禁横向引用——editor.js hook 内 doAiOrganize 由 panel/index.js 回填），
+    //   守卫（空正文/加载中/整理中）/一次撤销栈/容错全在 doAiOrganize 内复用，本卡只做输入收集。
+    // state 托管：open/instr 迁入 store.modal.organizeInstruct 切片；Esc 栈不挂（dispatch/mount 同口径先例：遮罩/取消按钮关闭）。
+    store.modal.organizeInstruct = createStore({ open: false, instr: '' })
+    function setOrganizeInstructOpen(v) { store.modal.organizeInstruct.set({ open: typeof v === 'function' ? v(store.modal.organizeInstruct.get().open) : v }) }
+    // 打开即重置输入（上次填写不残留——每次整理独立决策）
+    function openOrganizeInstruct() { store.modal.organizeInstruct.set({ open: true, instr: '' }) }
+    function closeOrganizeInstruct() { store.modal.organizeInstruct.set({ open: false, instr: '' }) }
+    // 确认：先关卡再整理（弹层不滞留——整理中态由 meta 行「整理中…」按钮承载）；trim 在 doAiOrganize 内统一做
+    function confirmOrganizeInstruct() {
+      const instr = store.modal.organizeInstruct.get().instr || ''
+      closeOrganizeInstruct()
+      if (panelBridge.doAiOrganize) panelBridge.doAiOrganize(instr)
+    }
+    function OrganizeInstructModal() {
+      const m = store.modal.organizeInstruct.useSel(s => s)
+      const tt = useT()
+      if (!m.open) return null
+      return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) closeOrganizeInstruct() } },
+        e('div', { className: 'dsh-notes-settings-modal' },
+          e('div', { className: 'dsh-notes-settings-modal-t' }, I('sparkle', 14), ' ' + tt('editor.organizeInstructTitle')),
+          e('div', { className: 'dsh-notes-inj-mount-body' },
+            e('textarea', { className: 'dsh-notes-inj-mount-when', rows: 3, placeholder: tt('editor.organizeInstructPlaceholder'), value: m.instr, autoFocus: true, onChange: (ev) => store.modal.organizeInstruct.set({ instr: ev.target.value }) })),
+          e('div', { className: 'dsh-notes-dispatch-actions' },
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => closeOrganizeInstruct() }, tt('editor.organizeInstructCancel')),
+            e('button', { className: 'dsh-notes-dispatch-ok', onClick: () => confirmOrganizeInstruct() }, tt('editor.organizeInstructConfirm')))))
+    }
     // ===== modal: suggest —— 整理建议对话框（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
     // provides: store.modal.suggest / suggestOpenRef / setSuggestOpen / setSuggestData / setSuggestPending / setLogHgExpand /
     //           openSuggest / loadSuggest / suggestGoArchive / suggestViewNote / SuggestModal
@@ -5721,7 +5765,8 @@ window.__ModuleLoader__.load({
     //        panel/wiki.js（jumpWikiRef/wikiBodiesRef 顶层绑定，序位在前）、modals/link.js（setLinkModal）+ modals/image.js（openImgModal/pickImageFile）+
     //        modals/dispatch.js（openDispatch/doDispatchDone）+ modals/history.js（openHistory）+
     //        modals/inject-manager.js（doInjSchedEdit/doInjSchedToggle/doInjSchedDel——计划块原地操作复用，notes-041-sched-plan-edit；
-    //        openMountModal——三态切「资料」档先弹挂载框，0.4.3 验收修复⑪）——序位在前；
+    //        openMountModal——三态切「资料」档先弹挂载框，0.4.3 验收修复⑪）+ modals/organize-instruct.js（openOrganizeInstruct——
+    //        ✨整理先弹追加指令引导卡，0.4.4-F）——序位在前；
     //        selected/notes/dispatching/wikiVer/wikiResolve/bumpWikiBody/jumpToWikiTarget 经 hook 入参注入（装配层回填，渲染期新鲜值）
     // state 托管：全部 state/ref 留 hook 内（useState/useRef 声明原文被 check.js 锚定者不迁 store——27-5 节 edSens/edSensRef 等；
     // 与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）
@@ -5908,7 +5953,9 @@ window.__ModuleLoader__.load({
         // ===== 二期 ✨整理：当前草稿经 notes-ai-organize（notes-quick-instruct 同款 LLM 通道）按 kind 模板结构化重写 =====
         // 契约：host 只返回重写正文不落盘；client 替换编辑器内容后走既有自动保存；原正文进一次撤销栈（toast「撤销」恢复）。
         // 容错：正文为空/加载中/整理中不重入；error 或空返回一律不动原文。
-        async function doAiOrganize() {
+        // 0.4.4-F（notes-044-organize-instruct）：按钮先弹 openOrganizeInstruct 引导卡（modals/organize-instruct.js）；
+        //   确认回跳 panelBridge.doAiOrganize(instr)——本函数全部守卫/撤销栈/容错复用，仅 RPC payload 多带 instruction（空 = 系统默认规则）
+        async function doAiOrganize(instruction) {
           if (organizing) return
           if (!selectedRef.current) { showToast(tt('editor.selectNoteFirst')); return }
           if (edLoadingRef.current) { showToast(tt('editor.bodyLoading')); return }
@@ -5916,9 +5963,10 @@ window.__ModuleLoader__.load({
           if (editorModeRef.current === 'rich' && richDirtyRef.current) syncFromRich('整理前同步')
           const body = edBodyRef.current
           if (!body || !body.trim()) { showToast(tt('editor.bodyEmpty')); return }
+          const instr = typeof instruction === 'string' ? instruction.trim() : ''   // 0.4.4-F：追加指令 trim（空 = 系统默认规则）
           setOrganizing(true); setError('')
           try {
-            const res = await rpc('notes-ai-organize', { body: body, kind: edKindRef.current, title: edTitleRef.current })
+            const res = await rpc('notes-ai-organize', { body: body, kind: edKindRef.current, title: edTitleRef.current, instruction: instr })
             if (res && res.error) { showToast(tt('editor.organizeFailed', { msg: res.error })); return }
             if (!res || !res.body || !res.body.trim()) { showToast(tt('editor.organizeEmpty')); return }
             organizeUndoRef.current = { body: body }   // 一次撤销栈：只保留最近一次整理前的正文
@@ -6393,8 +6441,8 @@ window.__ModuleLoader__.load({
                 e('button', { className: 'dsh-notes-modeseg-seg' + (editorMode === 'source' ? ' on' : '') + ' dsh-nt', 'data-tooltip': tt('meta.srcModeTip'), onClick: () => switchMode('source') }, I('codeblock', 12), tt('meta.src')),
                 e('button', { className: 'dsh-notes-modeseg-seg' + (editorMode === 'rich' ? ' on' : '') + (!degraded.ok ? ' dis' : '') + ' dsh-nt', 'data-tooltip': !degraded.ok ? tt('editor.richDegradedReasons', { reasons: degraded.reasons.map(r => r.label).join(tt('common.listSep')) }) : tt('meta.richModeTipClient'), onClick: () => switchMode('rich') }, I('eye', 12), tt('meta.rich'))),
               e('span', { className: 'dsh-notes-kbd dsh-notes-modeseg-kbd' }, 'Ctrl+/'),
-              // 二期 ✨整理：AI 按当前 kind 模板重写正文（notes-ai-organize；替换后 toast 可撤销一次）
-              e('span', { className: 'dsh-notes-meta-act dsh-notes-organize-btn' + (organizing ? ' busy' : '') + ' dsh-nt', onClick: (ev) => { ev.stopPropagation(); if (!organizing) doAiOrganize() }, 'data-tooltip': organizing ? tt('meta.organizingTip') : tt('meta.organizeTip', { kind: kindLabel(edKind) || tt('meta.kindNote') }) }, I('sparkle', 12), organizing ? tt('meta.organizing') : tt('meta.organize')),
+              // 二期 ✨整理：AI 按当前 kind 模板重写正文（notes-ai-organize；替换后 toast 可撤销一次）；0.4.4-F 起先弹追加指令引导卡（确认才进 doAiOrganize）
+              e('span', { className: 'dsh-notes-meta-act dsh-notes-organize-btn' + (organizing ? ' busy' : '') + ' dsh-nt', onClick: (ev) => { ev.stopPropagation(); if (!organizing) openOrganizeInstruct() }, 'data-tooltip': organizing ? tt('meta.organizingTip') : tt('meta.organizeTip', { kind: kindLabel(edKind) || tt('meta.kindNote') }) }, I('sparkle', 12), organizing ? tt('meta.organizing') : tt('meta.organize')),
               e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); openDispatch() }, 'data-tooltip': tt('meta.dispatchTipClient') }, I('play', 12), dispatching ? '…' : tt('meta.dispatch')),
               curNote.sessionId ? e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: () => jumpToSession(curNote.sessionId), 'data-tooltip': tt('meta.sourceJumpTip') }, I('ext', 12), tt('meta.source')) : null,
               // 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数）
@@ -6502,7 +6550,8 @@ window.__ModuleLoader__.load({
           probeHistCount: probeHistCount, histCountRef: histCountRef, setHistCount: setHistCount, insertImageMd: insertImageMd,
           afterArchiveCleanup: afterArchiveCleanup, toggleScope: toggleScope, keepSel: keepSel, restoreSel: restoreSel,
           scheduleRichSync: scheduleRichSync, setEditorModeState: setEditorModeState, edBodyDomRef: edBodyDomRef,
-          richRef: richRef, richDirtyRef: richDirtyRef, setEdBody: setEdBody, renderEditorEl: renderEditorEl
+          richRef: richRef, richDirtyRef: richDirtyRef, setEdBody: setEdBody, renderEditorEl: renderEditorEl,
+          doAiOrganize: doAiOrganize   // 0.4.4-F：整理引导卡确认回跳（modals/organize-instruct.js 经 panelBridge 中转，禁横向引用）
         }
     }
     // ===== panel/sidebar —— 侧栏：brand 行 / 搜索框 / 筛选中心控制行 / 树容器 / side-foot（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
@@ -7011,7 +7060,7 @@ window.__ModuleLoader__.load({
         // 编辑器域已拆出（§6 步骤 E：panel/editor.js——ed* 字段态/整理撤销栈/历史计数/双模式运行时 + selectNote/doSave/doDelete/
         // applyRestoredBody/probeHistCount/insertImageMd/三态开关/工具栏/富文本绑定 + renderEditorEl 渲染函数 归 usePanelEditor；
         // selected/notes/dispatching/wiki 族经入参注入；setSelected/setFocusId/later 等经 kernel 转发别名）
-        const { edScope, selectNote, doDelete, applyRestoredBody, probeHistCount, histCountRef, setHistCount, insertImageMd, afterArchiveCleanup, toggleScope, keepSel, restoreSel, scheduleRichSync, setEditorModeState, edBodyDomRef, richRef, richDirtyRef, setEdBody, renderEditorEl } = usePanelEditor({ selected: selected, notes: notes, dispatching: dispatching, wikiVer: wikiVer, wikiResolve: wikiResolve, bumpWikiBody: bumpWikiBody, jumpToWikiTarget: jumpToWikiTarget })
+        const { edScope, selectNote, doDelete, applyRestoredBody, probeHistCount, histCountRef, setHistCount, insertImageMd, afterArchiveCleanup, toggleScope, keepSel, restoreSel, scheduleRichSync, setEditorModeState, edBodyDomRef, richRef, richDirtyRef, setEdBody, renderEditorEl, doAiOrganize } = usePanelEditor({ selected: selected, notes: notes, dispatching: dispatching, wikiVer: wikiVer, wikiResolve: wikiResolve, bumpWikiBody: bumpWikiBody, jumpToWikiTarget: jumpToWikiTarget })
         // 注入范围浮层已拆出（§6 步骤 E：popovers/scope.js；hook 调用点随 edScope 依赖后置于此——editor hook 先行回填 edScope）
         const { sessList, sessPending, scopeOpen, setScopeOpen, injectScopeLabel, scopePanelEl } = usePanelScope({ open: open, notes: notes, edScope: edScope })
         // keepQuickRef/edBodyDomRef/edLoadingRef/rich*Ref/ed*Ref/autoSaveRef 等编辑器运行时 ref 已随 panel/editor.js 迁出（hook 内同文）
@@ -7217,6 +7266,7 @@ window.__ModuleLoader__.load({
         panelBridge.sessPending = sessPending
         panelBridge.jumpToWikiTarget = jumpToWikiTarget
         panelBridge.setEdBody = setEdBody   // dispatch 确认后回填正文（modals/dispatch.js 经此中转，禁横向引用）
+        panelBridge.doAiOrganize = doAiOrganize   // 0.4.4-F 整理引导卡确认回跳（modals/organize-instruct.js 经此中转，禁横向引用——序位 organize-instruct 先于 panels）
         panelBridge.openDispatchEdit = openDispatchEdit   // 调度任务「编辑」回填派发弹窗（modals/inject-manager.js 经此中转，禁横向引用——序位 inject-manager 先于 dispatch）
         panelBridge.openMountModal = openMountModal   // 预览目录行点击开挂载弹层（modals/inject-preview.js 经此中转，禁横向引用——序位 inject-preview 先于 inject-manager）
         // check 锚定 useState 声明而滞留本面板的字段：值/ setter 回填供 modal 模块函数读写（每渲染刷新，点击期口径与昔日闭包一致）
@@ -7325,6 +7375,8 @@ window.__ModuleLoader__.load({
           e(InjMgrModal, { error: error }),
           // 挂载弹层已随 inject-manager 迁入（0.4.3⑤ notes-043-index：modals/inject-manager.js 的 MountModal——资料开注入 → 手写 whenToUse 落索引行）
           e(MountModal),
+          // 0.4.4-F AI 整理追加指令引导卡（notes-044-organize-instruct：modals/organize-instruct.js；state 走 store.modal.organizeInstruct，确认经 panelBridge.doAiOrganize 回跳）
+          e(OrganizeInstructModal),
           // 历史版本面板已拆出（architecture-modular §6 步骤 D1：modals/history.js；state 走 store.modal.history）
           e(HistoryModal, { error: error }),
           // 多选合并标题输入框已拆出（architecture-modular §6 步骤 D1：modals/merge.js；state 走 store.modal.merge，selIds 经 props 注入）

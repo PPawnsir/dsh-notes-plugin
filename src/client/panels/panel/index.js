@@ -135,7 +135,7 @@
         // 编辑器域已拆出（§6 步骤 E：panel/editor.js——ed* 字段态/整理撤销栈/历史计数/双模式运行时 + selectNote/doSave/doDelete/
         // applyRestoredBody/probeHistCount/insertImageMd/三态开关/工具栏/富文本绑定 + renderEditorEl 渲染函数 归 usePanelEditor；
         // selected/notes/dispatching/wiki 族经入参注入；setSelected/setFocusId/later 等经 kernel 转发别名）
-        const { edScope, selectNote, doDelete, applyRestoredBody, probeHistCount, histCountRef, setHistCount, insertImageMd, afterArchiveCleanup, toggleScope, keepSel, restoreSel, scheduleRichSync, setEditorModeState, edBodyDomRef, richRef, richDirtyRef, setEdBody, renderEditorEl } = usePanelEditor({ selected: selected, notes: notes, dispatching: dispatching, wikiVer: wikiVer, wikiResolve: wikiResolve, bumpWikiBody: bumpWikiBody, jumpToWikiTarget: jumpToWikiTarget })
+        const { edScope, selectNote, doDelete, applyRestoredBody, probeHistCount, histCountRef, setHistCount, insertImageMd, afterArchiveCleanup, toggleScope, keepSel, restoreSel, scheduleRichSync, setEditorModeState, edBodyDomRef, richRef, richDirtyRef, setEdBody, renderEditorEl, doAiOrganize } = usePanelEditor({ selected: selected, notes: notes, dispatching: dispatching, wikiVer: wikiVer, wikiResolve: wikiResolve, bumpWikiBody: bumpWikiBody, jumpToWikiTarget: jumpToWikiTarget })
         // 注入范围浮层已拆出（§6 步骤 E：popovers/scope.js；hook 调用点随 edScope 依赖后置于此——editor hook 先行回填 edScope）
         const { sessList, sessPending, scopeOpen, setScopeOpen, injectScopeLabel, scopePanelEl } = usePanelScope({ open: open, notes: notes, edScope: edScope })
         // keepQuickRef/edBodyDomRef/edLoadingRef/rich*Ref/ed*Ref/autoSaveRef 等编辑器运行时 ref 已随 panel/editor.js 迁出（hook 内同文）
@@ -341,6 +341,7 @@
         panelBridge.sessPending = sessPending
         panelBridge.jumpToWikiTarget = jumpToWikiTarget
         panelBridge.setEdBody = setEdBody   // dispatch 确认后回填正文（modals/dispatch.js 经此中转，禁横向引用）
+        panelBridge.doAiOrganize = doAiOrganize   // 0.4.4-F 整理引导卡确认回跳（modals/organize-instruct.js 经此中转，禁横向引用——序位 organize-instruct 先于 panels）
         panelBridge.openDispatchEdit = openDispatchEdit   // 调度任务「编辑」回填派发弹窗（modals/inject-manager.js 经此中转，禁横向引用——序位 inject-manager 先于 dispatch）
         panelBridge.openMountModal = openMountModal   // 预览目录行点击开挂载弹层（modals/inject-preview.js 经此中转，禁横向引用——序位 inject-preview 先于 inject-manager）
         // check 锚定 useState 声明而滞留本面板的字段：值/ setter 回填供 modal 模块函数读写（每渲染刷新，点击期口径与昔日闭包一致）
@@ -449,6 +450,8 @@
           e(InjMgrModal, { error: error }),
           // 挂载弹层已随 inject-manager 迁入（0.4.3⑤ notes-043-index：modals/inject-manager.js 的 MountModal——资料开注入 → 手写 whenToUse 落索引行）
           e(MountModal),
+          // 0.4.4-F AI 整理追加指令引导卡（notes-044-organize-instruct：modals/organize-instruct.js；state 走 store.modal.organizeInstruct，确认经 panelBridge.doAiOrganize 回跳）
+          e(OrganizeInstructModal),
           // 历史版本面板已拆出（architecture-modular §6 步骤 D1：modals/history.js；state 走 store.modal.history）
           e(HistoryModal, { error: error }),
           // 多选合并标题输入框已拆出（architecture-modular §6 步骤 D1：modals/merge.js；state 走 store.modal.merge，selIds 经 props 注入）

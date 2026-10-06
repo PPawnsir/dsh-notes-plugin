@@ -23,6 +23,7 @@
     const MACHINE_TEMPLATE = '## 环境\n\n（环境名称与说明）\n\n## 机器清单\n\n（主机名 / IP / 用途）\n\n## 账号\n\n（登录方式与账号）\n\n## 门户\n\n（门户与入口地址）\n'
     const KIND_LABELS_ZH = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' }
     const AI_ORGANIZE_MAX_CHARS = 12000   // ✨整理草稿上限（防 token 爆量）；超限报错引导分段
+    const AI_ORGANIZE_INSTR_MAX_CHARS = 500   // 0.4.4-F：整理追加用户指令上限（trim 后计，超限报 error 不落 prompt）
     const cache = new Map()
 
     function noteFromParsed(id, p) {

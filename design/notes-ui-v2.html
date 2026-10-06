@@ -1151,12 +1151,16 @@ function _mockRpc(method, a) {
     return { error: 'notes-memory-guide: 未知 op：' + String(mgOp) };
   }
   if (method === 'notes-ai-organize') {
-    /* 二期 ✨整理 mock（契约同 host：{body,kind,title} → {ok,body} / {error}）：原型无 LLM，
-       用「模板骨架置顶 + 原文保留」演示替换效果（真实实现由 host LLM 按模板重写，事实零丢失） */
+    /* 二期 ✨整理 mock（契约同 host：{body,kind,title,instruction?} → {ok,body} / {error}）：原型无 LLM，
+       用「模板骨架置顶 + 原文保留」演示替换效果（真实实现由 host LLM 按模板重写，事实零丢失）。
+       0.4.4-F：instruction 可选追加指令——trim 后 >500 字报与 host 同款 error 契约；带指令时结果首行加演示引用行
+       （host 真实行为 = 指令追加进 prompt 而非正文，此处仅为原型演示引导卡效果可见） */
     var ab = String(a.body || '');
     if (!ab.trim()) return { error: '正文为空，无可整理内容' };
+    var oInstr = typeof a.instruction === 'string' ? a.instruction.trim() : '';
+    if (oInstr.length > 500) return { error: '追加指令过长（' + oInstr.length + ' 字，上限 500 字），请精简后再试' };
     var tpl = KIND_TEMPLATES[a.kind] || '';
-    return { ok: true, body: (tpl ? tpl + '\n' : '') + ab.trim() + '\n', kind: a.kind || 'note' };
+    return { ok: true, body: (tpl ? tpl + '\n' : '') + (oInstr ? '> 追加指令：' + oInstr.replace(/\s+/g, ' ') + '\n\n' : '') + ab.trim() + '\n', kind: a.kind || 'note' };
   }
   if (method === 'notes-assets-prune') {
     /* 二期 孤儿资产清理 mock（契约同 host）：扫全部笔记正文 assets/<name> 引用（含软删除笔记，宁留勿删），
@@ -1917,13 +1921,17 @@ function renderEd() {
   $('edBody').addEventListener('input', function () { if (!edNote) return; edNote.body = this.textContent; triggerSave() });
 }
 /* ===== 二期 ✨整理：当前草稿经 notes-ai-organize（quick-instruct 同款 LLM 通道）按 kind 模板结构化重写 =====
-   契约：host 只返回重写正文不落盘；替换正文后走既有 triggerSave 自动保存；原正文进一次撤销栈（toast「撤销」恢复）。 */
-function doAiOrganize() {
+   契约：host 只返回重写正文不落盘；替换正文后走既有 triggerSave 自动保存；原正文进一次撤销栈（toast「撤销」恢复）。
+   0.4.4-F（notes-044-organize-instruct）：点「整理」先弹引导卡（可选追加指令 textarea + 确认/取消）——
+   留空确认 = instruction:''（host 空指令路径 prompt 与二期现行逐字节等价）；填写 = 追加进 prompt 再整理；取消/点遮罩 = 零副作用。
+   doAiOrganize(instruction) 复用全部守卫/撤销栈/容错，仅 RPC payload 多带一个 instruction 字段 */
+function doAiOrganize(instruction) {
   if (!edNote || organizing) return;
   var body = edNote.body || '';
   if (!body.trim()) { toast('正文为空，无可整理内容'); return }
+  var instr = typeof instruction === 'string' ? instruction.trim() : '';   /* 0.4.4-F：追加指令 trim（空 = 系统默认整理规则） */
   organizing = true; renderMeta();
-  rpc('notes-ai-organize', { body: body, kind: edNote.kind || 'note', title: edNote.title === 'Untitled' ? '' : (edNote.title || '') }).then(function (res) {
+  rpc('notes-ai-organize', { body: body, kind: edNote.kind || 'note', title: edNote.title === 'Untitled' ? '' : (edNote.title || ''), instruction: instr }).then(function (res) {
     organizing = false; renderMeta();
     if (res && res.error) { toast('整理失败：' + res.error); return }
     if (!res || !res.body || !res.body.trim()) { toast('整理返回为空，原文未动'); return }
@@ -1938,6 +1946,21 @@ function undoAiOrganize() {
   var b = organizeUndo; organizeUndo = null;
   edNote.body = b; fillEdBody(); triggerSave();
   toast('已恢复整理前正文');
+}
+/* 0.4.4-F 整理引导弹卡（notes-044-organize-instruct）：点「整理」先弹可选追加指令输入——
+   确认 = 带 instruction 调 doAiOrganize（守卫/撤销栈/容错全复用，留空 = 系统默认整理规则）；
+   取消/点遮罩/Esc（modalHost 统一分支 closeModalFlushed）= 关弹卡零副作用。organizing 态守卫保留（整理中按钮 busy 不重入，弹卡亦不另开）。
+   文案与 src/i18n/zh.js editor.organizeInstruct* 同文（原型不双语红线：硬编码 zh，不走 t()） */
+function openOrganizeInstruct() {
+  if (!edNote || organizing) return;
+  openModal(
+    '<div class="modal-t">' + icon('i-sparkle') + ' AI 整理 · 追加指令（可选）</div>'
+    + '<textarea class="minput" id="oiInstr" rows="3" placeholder="告诉 AI 整理方向，如「突出待办事项」「精简为三条结论」；留空使用系统默认整理规则"></textarea>'
+    + '<div class="modal-acts"><button class="mbtn" id="oiCancel">取消</button><button class="mbtn primary" id="oiOk">开始整理</button></div>'
+  );
+  $('oiCancel').onclick = closeModal;
+  $('oiOk').onclick = function () { var v = $('oiInstr').value; closeModal(); doAiOrganize(v) };
+  $('oiInstr').focus();
 }
 function renderCrumb() {
   var n = edNote; if (!n) return;
@@ -2015,7 +2038,7 @@ function renderMeta() {
   /* P3 派发闭环徽章：点击展开派发历史并滚动到位 */
   var dBadge = $('mDispBadge');
   if (dBadge) dBadge.onclick = function () { var host = $('dispHost'); if (!host) return; host.dataset.open = '1'; renderDispatches(); try { host.scrollIntoView({ block: 'nearest' }) } catch (e) {} };
-  $('mOrganize').onclick = function () { if (!organizing) doAiOrganize() };
+  $('mOrganize').onclick = function () { if (!organizing) openOrganizeInstruct() };   /* 0.4.4-F：先弹追加指令引导卡，确认才整理（留空 = 系统默认规则） */
   var src = $('mSrc');
   if (src) src.onclick = function () { toast('来源会话 ' + shortSid(edNote.sessionId) + '（' + edNote.sessionId + '）· 页面无跳转能力，请回 DSH 主界面打开') };
   /* 历史版本面板入口（无版本时入口不渲染，需守卫） */

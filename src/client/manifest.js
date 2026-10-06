@@ -34,6 +34,7 @@ module.exports = [
   'modals/import.js',
   'modals/inject-preview.js',
   'modals/inject-manager.js',
+  'modals/organize-instruct.js',
   'modals/suggest.js',
   'modals/memory-guide.js',
   'modals/dispatch.js',

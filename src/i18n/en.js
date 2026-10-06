@@ -135,6 +135,11 @@ var I18N_EN = {
   'editor.organized': 'Organized with the "{kind}" template',
   'editor.noOrganizeUndo': 'No organize to undo',
   'editor.organizeUndone': 'Restored the pre-organize body',
+  /* 0.4.4-F: AI organize extra-instruction guide card (notes-044-organize-instruct) — optional input; empty = default system rules */
+  'editor.organizeInstructTitle': 'AI Organize · Extra Instruction (optional)',
+  'editor.organizeInstructPlaceholder': 'Guide the AI, e.g. "highlight action items" or "trim to three conclusions"; leave empty to use the default system rules',
+  'editor.organizeInstructConfirm': 'Organize',
+  'editor.organizeInstructCancel': 'Cancel',
   'editor.charCount': '{n} chars',
   'editor.backlinks': 'Backlinks',
   'editor.backlinksCount': ' ({n})',

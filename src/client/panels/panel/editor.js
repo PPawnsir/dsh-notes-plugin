@@ -7,7 +7,8 @@
     //        panel/wiki.js（jumpWikiRef/wikiBodiesRef 顶层绑定，序位在前）、modals/link.js（setLinkModal）+ modals/image.js（openImgModal/pickImageFile）+
     //        modals/dispatch.js（openDispatch/doDispatchDone）+ modals/history.js（openHistory）+
     //        modals/inject-manager.js（doInjSchedEdit/doInjSchedToggle/doInjSchedDel——计划块原地操作复用，notes-041-sched-plan-edit；
-    //        openMountModal——三态切「资料」档先弹挂载框，0.4.3 验收修复⑪）——序位在前；
+    //        openMountModal——三态切「资料」档先弹挂载框，0.4.3 验收修复⑪）+ modals/organize-instruct.js（openOrganizeInstruct——
+    //        ✨整理先弹追加指令引导卡，0.4.4-F）——序位在前；
     //        selected/notes/dispatching/wikiVer/wikiResolve/bumpWikiBody/jumpToWikiTarget 经 hook 入参注入（装配层回填，渲染期新鲜值）
     // state 托管：全部 state/ref 留 hook 内（useState/useRef 声明原文被 check.js 锚定者不迁 store——27-5 节 edSens/edSensRef 等；
     // 与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）
@@ -194,7 +195,9 @@
         // ===== 二期 ✨整理：当前草稿经 notes-ai-organize（notes-quick-instruct 同款 LLM 通道）按 kind 模板结构化重写 =====
         // 契约：host 只返回重写正文不落盘；client 替换编辑器内容后走既有自动保存；原正文进一次撤销栈（toast「撤销」恢复）。
         // 容错：正文为空/加载中/整理中不重入；error 或空返回一律不动原文。
-        async function doAiOrganize() {
+        // 0.4.4-F（notes-044-organize-instruct）：按钮先弹 openOrganizeInstruct 引导卡（modals/organize-instruct.js）；
+        //   确认回跳 panelBridge.doAiOrganize(instr)——本函数全部守卫/撤销栈/容错复用，仅 RPC payload 多带 instruction（空 = 系统默认规则）
+        async function doAiOrganize(instruction) {
           if (organizing) return
           if (!selectedRef.current) { showToast(tt('editor.selectNoteFirst')); return }
           if (edLoadingRef.current) { showToast(tt('editor.bodyLoading')); return }
@@ -202,9 +205,10 @@
           if (editorModeRef.current === 'rich' && richDirtyRef.current) syncFromRich('整理前同步')
           const body = edBodyRef.current
           if (!body || !body.trim()) { showToast(tt('editor.bodyEmpty')); return }
+          const instr = typeof instruction === 'string' ? instruction.trim() : ''   // 0.4.4-F：追加指令 trim（空 = 系统默认规则）
           setOrganizing(true); setError('')
           try {
-            const res = await host.call('notes-ai-organize', { body: body, kind: edKindRef.current, title: edTitleRef.current })
+            const res = await host.call('notes-ai-organize', { body: body, kind: edKindRef.current, title: edTitleRef.current, instruction: instr })
             if (res && res.error) { showToast(tt('editor.organizeFailed', { msg: res.error })); return }
             if (!res || !res.body || !res.body.trim()) { showToast(tt('editor.organizeEmpty')); return }
             organizeUndoRef.current = { body: body }   // 一次撤销栈：只保留最近一次整理前的正文
@@ -679,8 +683,8 @@
                 e('button', { className: 'dsh-notes-modeseg-seg' + (editorMode === 'source' ? ' on' : '') + ' dsh-nt', 'data-tooltip': tt('meta.srcModeTip'), onClick: () => switchMode('source') }, I('codeblock', 12), tt('meta.src')),
                 e('button', { className: 'dsh-notes-modeseg-seg' + (editorMode === 'rich' ? ' on' : '') + (!degraded.ok ? ' dis' : '') + ' dsh-nt', 'data-tooltip': !degraded.ok ? tt('editor.richDegradedReasons', { reasons: degraded.reasons.map(r => r.label).join(tt('common.listSep')) }) : tt('meta.richModeTipClient'), onClick: () => switchMode('rich') }, I('eye', 12), tt('meta.rich'))),
               e('span', { className: 'dsh-notes-kbd dsh-notes-modeseg-kbd' }, 'Ctrl+/'),
-              // 二期 ✨整理：AI 按当前 kind 模板重写正文（notes-ai-organize；替换后 toast 可撤销一次）
-              e('span', { className: 'dsh-notes-meta-act dsh-notes-organize-btn' + (organizing ? ' busy' : '') + ' dsh-nt', onClick: (ev) => { ev.stopPropagation(); if (!organizing) doAiOrganize() }, 'data-tooltip': organizing ? tt('meta.organizingTip') : tt('meta.organizeTip', { kind: kindLabel(edKind) || tt('meta.kindNote') }) }, I('sparkle', 12), organizing ? tt('meta.organizing') : tt('meta.organize')),
+              // 二期 ✨整理：AI 按当前 kind 模板重写正文（notes-ai-organize；替换后 toast 可撤销一次）；0.4.4-F 起先弹追加指令引导卡（确认才进 doAiOrganize）
+              e('span', { className: 'dsh-notes-meta-act dsh-notes-organize-btn' + (organizing ? ' busy' : '') + ' dsh-nt', onClick: (ev) => { ev.stopPropagation(); if (!organizing) openOrganizeInstruct() }, 'data-tooltip': organizing ? tt('meta.organizingTip') : tt('meta.organizeTip', { kind: kindLabel(edKind) || tt('meta.kindNote') }) }, I('sparkle', 12), organizing ? tt('meta.organizing') : tt('meta.organize')),
               e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); openDispatch() }, 'data-tooltip': tt('meta.dispatchTipClient') }, I('play', 12), dispatching ? '…' : tt('meta.dispatch')),
               curNote.sessionId ? e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: () => jumpToSession(curNote.sessionId), 'data-tooltip': tt('meta.sourceJumpTip') }, I('ext', 12), tt('meta.source')) : null,
               // 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数）
@@ -788,6 +792,7 @@
           probeHistCount: probeHistCount, histCountRef: histCountRef, setHistCount: setHistCount, insertImageMd: insertImageMd,
           afterArchiveCleanup: afterArchiveCleanup, toggleScope: toggleScope, keepSel: keepSel, restoreSel: restoreSel,
           scheduleRichSync: scheduleRichSync, setEditorModeState: setEditorModeState, edBodyDomRef: edBodyDomRef,
-          richRef: richRef, richDirtyRef: richDirtyRef, setEdBody: setEdBody, renderEditorEl: renderEditorEl
+          richRef: richRef, richDirtyRef: richDirtyRef, setEdBody: setEdBody, renderEditorEl: renderEditorEl,
+          doAiOrganize: doAiOrganize   // 0.4.4-F：整理引导卡确认回跳（modals/organize-instruct.js 经 panelBridge 中转，禁横向引用）
         }
     }

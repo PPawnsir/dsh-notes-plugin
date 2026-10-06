@@ -135,6 +135,11 @@ var I18N_ZH = {
   'editor.organized': '已按「{kind}」模板整理',
   'editor.noOrganizeUndo': '没有可撤销的整理',
   'editor.organizeUndone': '已恢复整理前正文',
+  /* 0.4.4-F：AI 整理追加用户指令引导弹卡（notes-044-organize-instruct）——可选输入，留空=系统默认整理规则 */
+  'editor.organizeInstructTitle': 'AI 整理 · 追加指令（可选）',
+  'editor.organizeInstructPlaceholder': '告诉 AI 整理方向，如「突出待办事项」「精简为三条结论」；留空使用系统默认整理规则',
+  'editor.organizeInstructConfirm': '开始整理',
+  'editor.organizeInstructCancel': '取消',
   'editor.charCount': '{n} 字',
   'editor.backlinks': '反向链接',
   'editor.backlinksCount': '（{n}）',

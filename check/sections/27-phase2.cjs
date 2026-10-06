@@ -156,8 +156,8 @@ module.exports = {
       assert(s.indexOf('const KIND_TEMPLATES = {') >= 0 && s.indexOf("'## 背景\\n\\n（问题与上下文）") >= 0 && s.indexOf("'- [ ] （待办事项）\\n'") >= 0, label + ' KIND_TEMPLATES 与 host 同份')
       assert(s.indexOf("sparkle: [e('path'") >= 0, label + ' sparkle 图标（二期 ✨整理）')
       assert(s.indexOf('dsh-notes-organize-btn') >= 0, label + ' 整理按钮 class')
-      assert(s.indexOf('async function doAiOrganize()') >= 0, label + ' doAiOrganize 存在')
-      assert(s.indexOf("'notes-ai-organize', { body: body, kind: edKindRef.current, title: edTitleRef.current }") >= 0, label + ' RPC payload {body,kind,title}')
+      assert(s.indexOf('async function doAiOrganize(instruction)') >= 0, label + ' doAiOrganize 存在（0.4.4-F 起带可选 instruction 形参）')
+      assert(s.indexOf("'notes-ai-organize', { body: body, kind: edKindRef.current, title: edTitleRef.current, instruction: instr }") >= 0, label + ' RPC payload {body,kind,title,instruction}（0.4.4-F 追加指令字段，空=系统默认规则）')
       assert(s.indexOf('organizeUndoRef.current = { body: body }') >= 0, label + ' 一次撤销栈（整理前正文）')
       assert(s.indexOf("{ label: tt('meta.undo'), fn: undoAiOrganize }") >= 0, label + ' 整理成功 toast 带「撤销」（i18n 覆盖卡B 起走 tt() 字典）')
       assert(s.indexOf("tt('editor.organizeUndone')") >= 0, label + ' 撤销恢复 toast（覆盖卡B 走 tt()）')
@@ -216,7 +216,7 @@ module.exports = {
   await t('app.html 二期同款：KIND_TEMPLATES + ✨整理 + 压缩 + 资产清理 + i-sparkle', () => {
     assert(appSrc.indexOf('var KIND_TEMPLATES = {') >= 0 && appSrc.indexOf("'## 背景\\n\\n（问题与上下文）") >= 0, 'app.html KIND_TEMPLATES 同份')
     assert(appSrc.indexOf('id="i-sparkle"') >= 0, 'app.html i-sparkle 图标')
-    assert(appSrc.indexOf('id="mOrganize"') >= 0 && appSrc.indexOf('function doAiOrganize()') >= 0, 'app.html 整理按钮 + doAiOrganize')
+    assert(appSrc.indexOf('id="mOrganize"') >= 0 && appSrc.indexOf('function doAiOrganize(instruction)') >= 0, 'app.html 整理按钮 + doAiOrganize（0.4.4-F 起带可选 instruction 形参）')
     assert(appSrc.indexOf("rpc('notes-ai-organize', { body: body, kind: edNote.kind || 'note'") >= 0, 'app.html 整理 RPC payload')
     /* i18n 覆盖卡F：app 整理 toast 走 t() 字典（editor.organized 复用 B 卡 + meta.undo；kind 名经 kindLabel() 条件映射） */
     assert(appSrc.indexOf("toast(t('editor.organized', { kind: kindLabel(edNote.kind) || t('meta.kindNote') }), { label: t('meta.undo'), fn: undoAiOrganize })") >= 0, 'app.html 整理 toast 撤销（覆盖卡F 起走 t()）')
@@ -231,7 +231,7 @@ module.exports = {
   await t('原型 notes-ui-v2.html 二期硬性同步：模板/整理/清理 + mock RPC + i-sparkle', () => {
     assert(protoV2Src.indexOf('var KIND_TEMPLATES = {') >= 0, 'v2 KIND_TEMPLATES 同份')
     assert(protoV2Src.indexOf('id="i-sparkle"') >= 0, 'v2 i-sparkle 图标')
-    assert(protoV2Src.indexOf('id="mOrganize"') >= 0 && protoV2Src.indexOf('function doAiOrganize()') >= 0, 'v2 整理按钮 + 函数')
+    assert(protoV2Src.indexOf('id="mOrganize"') >= 0 && protoV2Src.indexOf('function doAiOrganize(instruction)') >= 0, 'v2 整理按钮 + 函数（0.4.4-F 起带可选 instruction 形参，与 27.4 app.html 锚同口径；引导卡第四端锚点见节 84.6）')
     assert(protoV2Src.indexOf("method === 'notes-ai-organize'") >= 0, 'v2 mock notes-ai-organize')
     assert(protoV2Src.indexOf("method === 'notes-assets-prune'") >= 0 && protoV2Src.indexOf('_mockAssets') >= 0, 'v2 mock notes-assets-prune + 资产清单')
     assert(protoV2Src.indexOf('id="setPrune"') >= 0 && protoV2Src.indexOf('function openPrune()') >= 0, 'v2 设置行 + openPrune')

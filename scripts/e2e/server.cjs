@@ -236,6 +236,14 @@ function handleRpc(state, method, args) {
       return { ok: true, exported: notes.filter(n => !n.deleted).length, target: dir }
     }
     case 'notes-history': return { versions: [] }
+    case 'notes-ai-organize': {
+      /* 0.4.4-F（notes-044-organize-instruct）：整理 mock——回显 instruction 供弹卡链路断言（留空 = '(无)'）；
+         不做真实重写，仅在正文前加标记行（ok+body 契约与 host 对齐：不落盘，client 替换+自动保存） */
+      const oiInstr = String((args && args.instruction) || '').trim()
+      const oiBody = String((args && args.body) || '')
+      if (!oiBody.trim()) return { error: '正文为空，无可整理内容' }
+      return { ok: true, body: '## 已整理\n\n[指令:' + (oiInstr || '(无)') + ']\n\n' + oiBody + '\n', kind: (args && args.kind) || 'note' }
+    }
     case 'notes-memory-guide': return { guide: '' }
     case 'notes-ping': return { ok: true }
     default: return { ok: true }

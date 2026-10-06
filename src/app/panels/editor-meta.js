@@ -111,7 +111,7 @@ function renderMeta() {
   /* P3 派发闭环徽章：点击展开派发历史并滚动到位 */
   var dBadge = $('mDispBadge');
   if (dBadge) dBadge.onclick = function () { var host = $('dispHost'); if (!host) return; host.dataset.open = '1'; renderDispatches(); try { host.scrollIntoView({ block: 'nearest' }) } catch (e) {} };
-  $('mOrganize').onclick = function () { if (!organizing) doAiOrganize() };
+  $('mOrganize').onclick = function () { if (!organizing) openOrganizeInstruct() };   /* 0.4.4-F：先弹追加指令引导卡（确认才进 doAiOrganize；取消零副作用） */
   var src = $('mSrc');
   if (src) src.onclick = function () { toast(t('meta.sourceToast', { short: shortSid(edNote.sessionId), full: edNote.sessionId })) };
   /* 历史版本面板入口（无版本时入口不渲染，需守卫） */

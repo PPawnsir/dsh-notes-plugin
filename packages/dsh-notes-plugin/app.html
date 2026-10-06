@@ -1193,6 +1193,11 @@ var I18N_ZH = {
   'editor.organized': '已按「{kind}」模板整理',
   'editor.noOrganizeUndo': '没有可撤销的整理',
   'editor.organizeUndone': '已恢复整理前正文',
+  /* 0.4.4-F：AI 整理追加用户指令引导弹卡（notes-044-organize-instruct）——可选输入，留空=系统默认整理规则 */
+  'editor.organizeInstructTitle': 'AI 整理 · 追加指令（可选）',
+  'editor.organizeInstructPlaceholder': '告诉 AI 整理方向，如「突出待办事项」「精简为三条结论」；留空使用系统默认整理规则',
+  'editor.organizeInstructConfirm': '开始整理',
+  'editor.organizeInstructCancel': '取消',
   'editor.charCount': '{n} 字',
   'editor.backlinks': '反向链接',
   'editor.backlinksCount': '（{n}）',
@@ -1952,6 +1957,11 @@ var I18N_EN = {
   'editor.organized': 'Organized with the "{kind}" template',
   'editor.noOrganizeUndo': 'No organize to undo',
   'editor.organizeUndone': 'Restored the pre-organize body',
+  /* 0.4.4-F: AI organize extra-instruction guide card (notes-044-organize-instruct) — optional input; empty = default system rules */
+  'editor.organizeInstructTitle': 'AI Organize · Extra Instruction (optional)',
+  'editor.organizeInstructPlaceholder': 'Guide the AI, e.g. "highlight action items" or "trim to three conclusions"; leave empty to use the default system rules',
+  'editor.organizeInstructConfirm': 'Organize',
+  'editor.organizeInstructCancel': 'Cancel',
   'editor.charCount': '{n} chars',
   'editor.backlinks': 'Backlinks',
   'editor.backlinksCount': ' ({n})',
@@ -3837,15 +3847,19 @@ function openLinkModal(selText) {
    契约：host 只返回重写正文不落盘；页面替换正文后走既有 triggerSave 自动保存；原正文进一次撤销栈（toast「撤销」恢复）。
    容错：正文为空/加载中/整理中不重入；error 或空返回一律不动原文。
    i18n 覆盖卡F：文案复用 B 卡 editor.bodyLoading/bodyEmpty/organizeFailed/organizeEmpty/organized/noOrganizeUndo/organizeUndone
-   + meta.undo 字典（禁重复建别名）；kind 名经 kindLabel() 条件映射（KIND 字面量仅作锚） */
-function doAiOrganize() {
+   + meta.undo 字典（禁重复建别名）；kind 名经 kindLabel() 条件映射（KIND 字面量仅作锚）
+   0.4.4-F（notes-044-organize-instruct）：点「整理」先弹引导卡（可选追加指令 textarea + 确认/取消）——
+   留空确认 = instruction:''（host 空指令路径 prompt 与二期现行逐字节等价）；填写 = 追加进 prompt 再整理；取消/点遮罩 = 零副作用。
+   doAiOrganize(instruction) 复用全部守卫/撤销栈/容错，仅 RPC payload 多带一个 instruction 字段 */
+function doAiOrganize(instruction) {
   if (!edNote || organizing) return;
   if (edLoading) { toast(t('editor.bodyLoading')); return }
   if (edMode === 'rich' && richDirty) syncFromRich('整理前同步');   /* 富文本在途编辑先落回源码 */
   var body = edNote.body || '';
   if (!body.trim()) { toast(t('editor.bodyEmpty')); return }
+  var instr = typeof instruction === 'string' ? instruction.trim() : '';   /* 0.4.4-F：追加指令 trim（空 = 系统默认规则） */
   organizing = true; renderMeta();
-  rpc('notes-ai-organize', { body: body, kind: edNote.kind || 'note', title: edNote.title === 'Untitled' ? '' : (edNote.title || '') }).then(function (res) {
+  rpc('notes-ai-organize', { body: body, kind: edNote.kind || 'note', title: edNote.title === 'Untitled' ? '' : (edNote.title || ''), instruction: instr }).then(function (res) {
     organizing = false; renderMeta();
     if (res && res.error) { toast(t('editor.organizeFailed', { msg: res.error })); return }
     if (!res || !res.body || !res.body.trim()) { toast(t('editor.organizeEmpty')); return }
@@ -3869,6 +3883,20 @@ function undoAiOrganize() {
   var b = organizeUndo; organizeUndo = null;
   applyOrganizedBody(b);
   toast(t('editor.organizeUndone'));
+}
+/* 0.4.4-F 整理引导弹卡（notes-044-organize-instruct）：点「整理」先弹可选追加指令输入——
+   确认 = 带 instruction 调 doAiOrganize（守卫/撤销栈/容错全复用，留空 = 系统默认整理规则）；
+   取消/点遮罩/Esc（键盘面统一 closeModalFlushed）= 关弹卡零副作用。organizing 态守卫保留（整理中按钮 busy 不重入，弹卡亦不另开） */
+function openOrganizeInstruct() {
+  if (!edNote || organizing) return;
+  openModal(
+    '<div class="modal-t">' + icon('i-sparkle') + ' ' + t('editor.organizeInstructTitle') + '</div>'
+    + '<textarea class="minput" id="oiInstr" rows="3" placeholder="' + t('editor.organizeInstructPlaceholder') + '"></textarea>'
+    + '<div class="modal-acts"><button class="mbtn" id="oiCancel">' + t('editor.organizeInstructCancel') + '</button><button class="mbtn primary" id="oiOk">' + t('editor.organizeInstructConfirm') + '</button></div>'
+  );
+  $('oiCancel').onclick = closeModal;
+  $('oiOk').onclick = function () { var v = $('oiInstr').value; closeModal(); doAiOrganize(v) };
+  $('oiInstr').focus();
 }
 function renderCrumb() {
   var n = edNote; if (!n) return;
@@ -3983,7 +4011,7 @@ function renderMeta() {
   /* P3 派发闭环徽章：点击展开派发历史并滚动到位 */
   var dBadge = $('mDispBadge');
   if (dBadge) dBadge.onclick = function () { var host = $('dispHost'); if (!host) return; host.dataset.open = '1'; renderDispatches(); try { host.scrollIntoView({ block: 'nearest' }) } catch (e) {} };
-  $('mOrganize').onclick = function () { if (!organizing) doAiOrganize() };
+  $('mOrganize').onclick = function () { if (!organizing) openOrganizeInstruct() };   /* 0.4.4-F：先弹追加指令引导卡（确认才进 doAiOrganize；取消零副作用） */
   var src = $('mSrc');
   if (src) src.onclick = function () { toast(t('meta.sourceToast', { short: shortSid(edNote.sessionId), full: edNote.sessionId })) };
   /* 历史版本面板入口（无版本时入口不渲染，需守卫） */

@@ -888,6 +888,7 @@ export function apply(ctx) {
     const MACHINE_TEMPLATE = '## 环境\n\n（环境名称与说明）\n\n## 机器清单\n\n（主机名 / IP / 用途）\n\n## 账号\n\n（登录方式与账号）\n\n## 门户\n\n（门户与入口地址）\n'
     const KIND_LABELS_ZH = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' }
     const AI_ORGANIZE_MAX_CHARS = 12000   // ✨整理草稿上限（防 token 爆量）；超限报错引导分段
+    const AI_ORGANIZE_INSTR_MAX_CHARS = 500   // 0.4.4-F：整理追加用户指令上限（trim 后计，超限报 error 不落 prompt）
     const cache = new Map()
 
     function noteFromParsed(id, p) {
@@ -2070,6 +2071,8 @@ export function apply(ctx) {
     // 不落盘：client 拿到重写正文后替换编辑器内容并走既有自动保存；原正文由 client 一次撤销栈兜底（toast「撤销」）。
     // prompt 设计（先规则后模板示例再草稿）：规则——事实零丢失/不编造、图片 ![](assets/...) 与链接原样保留、
     // 空章节只留标题、只输出正文；模板示例——直接嵌入 KIND_TEMPLATES/MACHINE_TEMPLATE 全文。
+    // 0.4.4-F 可选追加用户指令（弹卡引导）：args.instruction（string 可选）trim 后 ≤500 字（超限 error）；
+    //   有才在【当前草稿】前插【用户追加指令】段，空/缺省路径 prompt 与二期现行逐字节等价（节 84 行为级断言锁定）；system 提示词不动。
     // 输出容错：剥离 ```markdown 围栏；空结果/LLM 不可用/未配置模型 → error（client 保留原文不动）。
     async function _aiOrganize(args) {
       const body = args && typeof args.body === 'string' ? args.body : ''
@@ -2077,6 +2080,8 @@ export function apply(ctx) {
       if (body.length > AI_ORGANIZE_MAX_CHARS) return { error: '正文过长（' + body.length + ' 字，上限 ' + AI_ORGANIZE_MAX_CHARS + ' 字），请分段整理' }
       const kind = KINDS.indexOf(args && args.kind) >= 0 ? args.kind : 'note'
       const title = args && typeof args.title === 'string' ? args.title.trim() : ''
+      const instruction = args && typeof args.instruction === 'string' ? args.instruction.trim() : ''
+      if (instruction.length > AI_ORGANIZE_INSTR_MAX_CHARS) return { error: '追加指令过长（' + instruction.length + ' 字，上限 ' + AI_ORGANIZE_INSTR_MAX_CHARS + ' 字），请精简后再试' }
       if (!llm) return { error: 'LLM 不可用（宿主无 llm 服务）' }
       await loadSettings()
       const sel = resolveLlmSelection()
@@ -2097,6 +2102,7 @@ export function apply(ctx) {
         '笔记（kind=note）：自由结构（适当的标题/列表/段落）；若草稿内容是机器/运维/部署信息，套用机器信息模板：\n' + MACHINE_TEMPLATE + '\n' +
         '【本篇类型】' + kindLabel + '（kind=' + kind + '）\n' +
         (title ? '【笔记标题】' + title + '\n' : '') +
+        (instruction ? '【用户追加指令】\n' + instruction + '\n' : '') +
         '【当前草稿】\n' + body + '\n\n只输出重写后的 Markdown 正文：'
       try {
         // 计量包装（llm-usage 块）：feature='organize'
