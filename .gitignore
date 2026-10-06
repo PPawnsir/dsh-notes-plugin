@@ -4,3 +4,5 @@ node_modules/
 check/e2e-artifacts/
 
 .tmp-app-fresh.html
+
+$null
