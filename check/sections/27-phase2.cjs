@@ -256,7 +256,7 @@ module.exports = {
     for (const kw of ['✨ 整理', '模板骨架', '资产清理', '压缩']) assert(readme.indexOf(kw) >= 0, 'README 功能清单缺二期关键词：' + kw)
     assert(readme.indexOf('notes-ai-organize') >= 0 && readme.indexOf('notes-assets-prune') >= 0, 'README 数据位置/RPC 提及二期 RPC')
     const dev = fsNative.readFileSync(path.join(DIR, 'DEVELOPMENT.md'), 'utf8')
-    assert(dev.indexOf('43 个 RPC') >= 0, 'DEVELOPMENT RPC 计数更新为 43（历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 召回遥测 notes-recall-stats）')
+    assert(dev.indexOf('47 个 RPC') >= 0, 'DEVELOPMENT RPC 计数更新为 47（含 notes-mount/notes-mount-list + notes-ledger-refresh + notes-when-suggest；与节 23 实测 47 / 静态包 48 含 notes-ping 对齐——0.4.3 发版清偿 43 旧账）')
     assert(dev.indexOf('notes-recall-stats') >= 0, 'DEVELOPMENT RPC 清单提及统一召回遥测 notes-recall-stats（0.4.3+ 卡⑫）')
     assert(dev.indexOf('notes-get-batch') >= 0, 'DEVELOPMENT RPC 清单提及 N+1 批量端点 notes-get-batch')
     assert(dev.indexOf('notes-schedule-eval') >= 0, 'DEVELOPMENT RPC 清单提及定时派发 notes-schedule-eval')

@@ -27,6 +27,7 @@ DSH 更新频繁，插件各版本能力与适配范围不同，**升级插件�
 
 | 插件版本 | 发布 | 声明适配 DSH | 实测基线 | 要点 |
 | --- | --- | --- | --- | --- |
+| **0.4.3** | 2026-10-05 | `^0.1.7 \| 0.2.0-rc.2 \| ^0.2.0` | **0.2.0-rc.2** | 合版（含未发版的 0.4.1/0.4.2 及主批次 14 卡 + 验收修复 12 卡）：**笔记网络内核**（图内核/RootNote 托管节/onNoteChanged 事件总线/per-note 串行链/kind=sys）+ **注入管线三层架构**（载荷=注入索引 §1 挂载行「何时查我」人可编辑 / 机器存储=telemetry.json 四纪律 / 呈现=目录段价值信号行）+ 目录与资料桶合并单一目录段（挂载行=增强态，缺省关）+ whenToUse LLM 预填挂载弹框（三入口 modal-first，8s 回退标题）+ **日志与普通笔记同权**（可见/可搜/可编辑/显式可目录，唯注入硬关；「文件视图」与 overlay 特化拆除，展开卡顿 64×→1×）+ sys 机器笔记缺省降噪（面板「机器」档翻记忆档案，档案归位真实文件夹）+ useCount 收编 note-stats facet 单一事实源（note_get 热路径零 .md 重写）+ 效用账本三层（遥测/信号行/记忆档案明细）+ 浏览器 e2e 套件（17 用例 90 断言）；check 736→824 |
 | **0.3.3** | 2026-10-04 | `^0.1.7 \| 0.2.0-rc.2 \| ^0.2.0` | **0.2.0-rc.2** | 工作记忆 r3 车道模型（约定/记忆并行通道，启用不再做重叠冲突确认）+ 注入管理面板（全库注入三态总览 + 单行直改 + 多选批量）+ 设置卡交互反馈（✕ 常驻关闭 + dirty 保存/还原 + 关闭兜底 flush）+ 内部模块化重构（client 46 片 / app 40 片 / host 双清单 45 片次，双包同源组装器逐字节等价 + 发布面零 BOM 断言）+ `check --only` 分节回归；peer 声明不变 |
 | 0.3.2 | 2026-10-03 | `^0.1.7 \| 0.2.0-rc.2 \| ^0.2.0` | 0.2.0-rc.2 | 纯 README 补发（0.3.1 发版 README 未同步事故补救：补齐版本历史/Token 统计/嵌套文件夹等特性描述），零代码变更 |
 | 0.3.1 | 2026-10-03 | `^0.1.7 \| 0.2.0-rc.2 \| ^0.2.0` | 0.2.0-rc.2 | 工作记忆 v0（kind=log 工作日志沉淀 + memory-guide 引导 + 日志卫生）+ 快照版本历史 + Token 消耗统计 + 虚拟文件夹嵌套（maxFolderDepth/递归子树/级联删除）+ 回收站批量与多选删除 + 列表韧性；npm 页 README 停留 0.3.0 清单（0.3.2 已补救） |
@@ -220,8 +221,8 @@ deleted: "false"       # 软删除标记
 node scripts/build-dist.cjs           # 改完 src/**（client/host/app/shared/styles）后一次性刷新四产物：lib/client.js + lib/styles.css + app.html + index.mjs
 node --check packages/dsh-notes-plugin/index.mjs
 node --check packages/dsh-notes-plugin/lib/client.js
-node check.js                         # 810 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录注入 + 导入导出 + 半独立页 + 双模式编辑器 + 敏感脱敏 + 注入增强 + 遥测/双链 + 快照式历史引擎 + 模块化结构契约 + README.en 双语 + i18n 守卫 + 笔记网络守卫/README 哲学节）
-npm run e2e                           # 浏览器 e2e（Playwright + 内置 mock host，3 条样板路径：加载零报错 / 新建笔记落列表 / 设置卡切 English；需 chromium 或系统 Chrome）
+node check.js                         # 824 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录注入 + 导入导出 + 半独立页 + 双模式编辑器 + 敏感脱敏 + 注入增强 + 遥测/双链 + 快照式历史引擎 + 模块化结构契约 + README.en 双语 + i18n 守卫 + 笔记网络守卫/README 哲学节）
+npm run e2e                           # 浏览器 e2e（Playwright + 内置 mock host，17 用例 90 断言：加载/CRUD/搜索/注入管理与挂载弹框/日志同权/拖拽/回收站/导出/机器档翻档案等；需 chromium 或系统 Chrome）
 ```
 
 详见 [DEVELOPMENT.md](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/DEVELOPMENT.md)。
