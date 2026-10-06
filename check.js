@@ -286,6 +286,7 @@ const SECTIONS = [
   require('./check/sections/83-dormant-dispatch.cjs'),   // 83. 0.4.4-B 休眠会话送达 + 定时派发专属会话复用（_dispatch 双通道 + durable inbox + target='new' 首轮创建回写复用，notes-044-dormant-dispatch）
   require('./check/sections/84-organize-instruct.cjs'),   // 84. 0.4.4-F AI 整理可选追加指令（弹卡引导 + prompt 条件插入 + 空路径逐字节等价，notes-044-organize-instruct）
   require('./check/sections/85-sys-folder-attr.cjs'),   // 85. 0.4.4-G 自动沉淀文件夹 sys 机器属性（folder 级 sys + 懒迁移墓碑 + 双通道树显隐 + 右键标记/摘除，双端，notes-044-sys-folders）
+  require('./check/sections/86-reopen-body-reload.cjs'),   // 86. 0.4.4-H 重开笔记面板正文空白修复（富文本重开回填 + 选中存活未加载自动补拉，R-1 不动，notes-044-reopen-body-reload）
 ]
 
 async function main() {

@@ -5808,6 +5808,7 @@ window.__ModuleLoader__.load({
     // 与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）
     function usePanelEditor(args) {
         const selected = args.selected, notes = args.notes, dispatching = args.dispatching
+        const open = args.open   // 0.4.4-H：面板开合态注入（重开恢复效应用——单例 overlay 关闭时 return null 销毁 DOM、状态存活）
         const wikiVer = args.wikiVer, wikiResolve = args.wikiResolve, bumpWikiBody = args.bumpWikiBody, jumpToWikiTarget = args.jumpToWikiTarget
         // i18n（notes-042-i18n-cov-b 覆盖卡B）：tt = useT()——订阅 langStore，切语言本 hook（随主面板）自渲染；编辑器/meta 区文案全走 tt()
         const tt = useT()
@@ -5942,6 +5943,14 @@ window.__ModuleLoader__.load({
             showToast(tt('editor.loadFailedLocked', { msg: msg }))
           })
         }
+        // 0.4.4-H（notes-044-reopen-body-reload）：重开面板「选中态存活但正文未加载」半链路兜底——
+        // open false→true 且选中存活而正文从未成功加载（未在途、无错误横幅待用户重试）时自动补拉 loadEdBody；
+        // 幂等：在途不重发、错误态留给横幅「重试」；正常路径（选中即加载完成）零额外 RPC（R-1 守卫与迟到丢弃语义不动）
+        const prevOpenRef = React.useRef(open)
+        React.useEffect(() => {
+          if (open && !prevOpenRef.current && selected && !edBodyLoadedRef.current && !edLoadingRef.current && !edLoadErrRef.current) loadEdBody(selected)
+          prevOpenRef.current = open
+        }, [open])
         async function doSave() {
           const id = selectedRef.current
           if (!id) return
@@ -6259,12 +6268,14 @@ window.__ModuleLoader__.load({
             later(() => { try { const t2 = edBodyDomRef.current; if (t2) { t2.focus(); t2.setSelectionRange(pos + ins.length, pos + ins.length) } } catch (err) {} }, 60)
           }
         }
-        // 进入富文本 / 切换笔记：渲染内核产物进 contenteditable + 绑定编辑事件（编辑期间不重渲染，防 IME 打断）
+        // 进入富文本 / 切换笔记 / 面板重开（0.4.4-H：open 翻转时富文本 DOM 随关闭销毁、重建为空，须重新填充+重绑事件）：
+        // 渲染内核产物进 contenteditable + 绑定编辑事件（编辑期间不重渲染，防 IME 打断）
         React.useEffect(() => {
           if (editorMode !== 'rich') return
           const el = richRef.current, wrap = richWrapRef.current
           if (!el || !wrap) return
-          if (!richDirtyRef.current) el.innerHTML = renderMarkdown(edBodyRef.current, wikiResolve)
+          // 0.4.4-H：el 为重建空节点（重开）时 dirty 卡死态（关闭时在途编辑随旧 DOM 销毁）一并按已同步基底回填并复位 dirty
+          if (!richDirtyRef.current || !el.innerHTML) { richDirtyRef.current = false; try { el.innerHTML = renderMarkdown(edBodyRef.current, wikiResolve) } catch (err) {} }
           try { document.execCommand('styleWithCSS', false, false) } catch (err) {}
           const onInput = () => { richDirtyRef.current = true; setRichSyncing(true); scheduleRichSync(); keepSel() }
           const onCompStart = () => { composingRef.current = true; if (richSyncTimerRef.current) { try { richSyncTimerRef.current() } catch (e2) {} richSyncTimerRef.current = null } }
@@ -6333,7 +6344,7 @@ window.__ModuleLoader__.load({
             wrap.removeEventListener('drop', onDrop)
             document.removeEventListener('selectionchange', onSelChange)
           }
-        }, [editorMode, selected])
+        }, [editorMode, selected, open])
         // 关联调度兜底（notes-034-sched-detail③）：详情涉及调度（自身是调度约定或缓存内已有匹配）且缓存口径不含 log 时，
         // 会话级按需一次 notes-list includeLogs 补齐 log 型调度约定（front-matter 旁路）；常态零新 RPC（复用 notes slim 缓存）
         React.useEffect(() => {
@@ -7096,7 +7107,7 @@ window.__ModuleLoader__.load({
         // 编辑器域已拆出（§6 步骤 E：panel/editor.js——ed* 字段态/整理撤销栈/历史计数/双模式运行时 + selectNote/doSave/doDelete/
         // applyRestoredBody/probeHistCount/insertImageMd/三态开关/工具栏/富文本绑定 + renderEditorEl 渲染函数 归 usePanelEditor；
         // selected/notes/dispatching/wiki 族经入参注入；setSelected/setFocusId/later 等经 kernel 转发别名）
-        const { edScope, selectNote, doDelete, applyRestoredBody, probeHistCount, histCountRef, setHistCount, insertImageMd, afterArchiveCleanup, toggleScope, keepSel, restoreSel, scheduleRichSync, setEditorModeState, edBodyDomRef, richRef, richDirtyRef, setEdBody, renderEditorEl, doAiOrganize } = usePanelEditor({ selected: selected, notes: notes, dispatching: dispatching, wikiVer: wikiVer, wikiResolve: wikiResolve, bumpWikiBody: bumpWikiBody, jumpToWikiTarget: jumpToWikiTarget })
+        const { edScope, selectNote, doDelete, applyRestoredBody, probeHistCount, histCountRef, setHistCount, insertImageMd, afterArchiveCleanup, toggleScope, keepSel, restoreSel, scheduleRichSync, setEditorModeState, edBodyDomRef, richRef, richDirtyRef, setEdBody, renderEditorEl, doAiOrganize } = usePanelEditor({ selected: selected, notes: notes, dispatching: dispatching, open: open, wikiVer: wikiVer, wikiResolve: wikiResolve, bumpWikiBody: bumpWikiBody, jumpToWikiTarget: jumpToWikiTarget })
         // 注入范围浮层已拆出（§6 步骤 E：popovers/scope.js；hook 调用点随 edScope 依赖后置于此——editor hook 先行回填 edScope）
         const { sessList, sessPending, scopeOpen, setScopeOpen, injectScopeLabel, scopePanelEl } = usePanelScope({ open: open, notes: notes, edScope: edScope })
         // keepQuickRef/edBodyDomRef/edLoadingRef/rich*Ref/ed*Ref/autoSaveRef 等编辑器运行时 ref 已随 panel/editor.js 迁出（hook 内同文）
