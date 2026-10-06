@@ -57,6 +57,12 @@ function loadFilters() {
   } catch (e) { return { filters: F, sortBy: 'time' } }
 }
 function saveFilters() { try { localStorage.setItem('dsh-notes-app-filters', JSON.stringify({ filters: filters, sortBy: sortBy })) } catch (e) {} }
+/* ===== 0.4.4-D hidden 隐藏属性（notes-044-hidden-attr）：显隐开关——开=hidden 项半透明渲染（hid 遮罩样式），关=树/列表滤除；
+   纯 UI 遮罩（host _list/_search 零改动，agent 面/读写面天然完整）；localStorage 独立键持久（dsh-notes-app-show-hidden）；
+   与筛选中心条件正交：不计 filtersActiveCount、清空筛选不重置 ===== */
+var showHidden = loadShowHidden();
+function loadShowHidden() { try { return localStorage.getItem('dsh-notes-app-show-hidden') === '1' } catch (e) { return false } }
+function saveShowHidden() { try { localStorage.setItem('dsh-notes-app-show-hidden', showHidden ? '1' : '0') } catch (e) {} }
 function filtersActiveCount() { var n = filters.kinds.length; FILTER_STATUS.forEach(function (s) { if (filters[s.id]) n++ }); return n }
 /* 曾注入条件 feature-detect：列表 slim 含 injectEver 字段才显示该选项（host 未提供时隐藏；存量激活条件仍渲染 chip 可 × 移除） */
 function hasInjectEver() { return notes.some(function (n) { return n.injectEver !== undefined }) }
@@ -98,6 +104,8 @@ var richSyncTimer = null, degTimer = null;
 var imgDraft = null, imgUploading = false; // 图片插入弹窗草稿 + 上传中标记（三入口共用：粘贴/拖拽/工具栏按钮）
 var sessList = [], sessPending = [];   // 注入范围浮层会话源（notes-sessions）
 var foldOpen = loadFoldOpen();         // 文件夹折叠态（localStorage；缺省全展开）
+var sysKids = {};                      // 0.4.4-C：文件夹显式展开按需补拉的 sys 子行缓存（fid → { stamp, rows }；stamp=取数时 notes 缓存身份，刷新防陈旧）
+var sysKidsInflight = {};              // 0.4.4-C：补拉在途去重闸（fid → true；快速连点/刷新重入不并发重复请求）
 var topicOpen = {};                    // 主题过滤行原地展开态（点行主体=展开/收起子列表；session 内有效，不持久化）
 var topicSecOpen = false;              // 主题过滤区整体折叠态（缺省折叠：常态只显示「主题 (N)」一行，点分组头展开；session 内记忆，不持久化）
 var scopeOpen = false;

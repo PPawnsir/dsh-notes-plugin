@@ -74,7 +74,7 @@ const CORE = new Set([
   'XSS 红线：渲染全量转义 + 图片仅 assets/ 前缀放行（javascript:/外链/引号注入全拒绝）',
   'notes-folders create：落盘 folders.json + order 递增；缺 name 报错',
   'folder 字段数据往返：create 带 folder → get/list/磁盘 front-matter 一致',
-  '准入排除：resolved / superseded / recall=false / 约定去重',
+  '负向锚：未挂载条目一律不进目录段（普通/pinned 待办/resolved/superseded/recall=false/约定命中——catalog 已移除）',
   'notes-asset-upload：mime 白名单 / 超 5MB / 非法 base64 / 空 data 拒绝',
   '静态包导入/导出全链路（导出 → 预览分类 → 备份 → 默认跳过 diff → overwrite 覆盖 → folders 合并）',
   '内核三端字节一致（client-impl.js / app.html / 发布包 lib/client.js，去公共缩进比较）',
@@ -82,7 +82,7 @@ const CORE = new Set([
   'notes-quick 命中敏感模式：直接落 sensitive=true + 返回 sensitiveSuggested（磁盘原文不动）',
   'injectBudgetChars 预算截断：资料桶从最旧整条省略 + 提示行；约定桶永不截断；lastInjectChars 随渲染更新',
   'note_get 命中计数：内存即时 +1（响应即见），防抖期内零写盘；notes-get RPC 不计数',
-  'notes-inject-preview 返回结构：conventions/directory 字符串 + catalog 兼容别名 + stats 字符数值正确',
+  'notes-inject-preview 返回结构：conventions/directory 字符串 + stats 字符数值正确（catalog 别名已退役）',
   'workspace 视角：该工作区全部会话注入并集 + 未知工作区退化全局 + sessionId 互斥优先',
   'notes-suggest 三段返回 + 遥测/时效闭环 + 零写入（开发版独立实例）',
   '组合过滤：sensitive / inject / kind 三态组合',
@@ -171,6 +171,9 @@ const CORE = new Set([
   // 79. 创建级锁（notes-043-ensure-lock：根笔记并发首建竞态修复——常驻 --core 防孤儿索引/档案/runLog 回归）
   '创建级锁落地结构：rootNoteCreateLock 模块级单链（quickChain 同模式）+ 三消费点共用 + 快路径在锁前 + 双产物同步',
   '并发首建：索引不存在时启动 ensure + 两个并发 notes-mount 三方竞态 → 恰 1 篇索引 + indexNoteId 唯一 + 挂载行双在',
+  // 83. 0.4.4-B 休眠送达 + 专属会话（notes-044-dormant-dispatch：常驻 --core 防双通道/专属会话生命周期回归）
+  '休眠目标派发 → queued:true + durable inbox splice 落盘（agent/inbox/spliced 同 live send 形态）+ 执行记录行注（下次活动送达）',
+  '专属会话全生命周期：首轮创建「定时 · 任务名」+ target 回写 → 二轮复用同 sid（零新建）→ 休眠降级 queued 送达',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====
@@ -277,6 +280,10 @@ const SECTIONS = [
   require('./check/sections/77-fm-roundtrip.cjs'),   // 77. front-matter 往返幂等：正文前导换行零增长 + 存量首轮归一（notes-043-fm-newline）
   require('./check/sections/78-recall-telemetry.cjs'),   // 78. 统一召回遥测：五通道交付/使用事件流水 + 分通道召回率（notes-043-inject-receipt）
   require('./check/sections/79-ensure-lock.cjs'),   // 79. 创建级锁：根笔记并发首建竞态修复（索引/档案/runLog 同锁，notes-043-ensure-lock）
+  require('./check/sections/80-folder-sys-view.cjs'),   // 80. 文件夹显式展开放行 sys（按需补拉 sysKids + 树合并 + 机器 chip + 惰性/防陈旧/⑨降噪红线，双端，notes-044-folder-explicit-view）
+  require('./check/sections/81-dispatch-execlog.cjs'),   // 81. 0.4.4-A 派发回执笔记化（三表归一：执行记录=派发历史=调度回执 + kind=log + 执行记录夹 + 双端跳转，notes-044-dispatch-receipts）
+  require('./check/sections/82-hidden-attr.cjs'),   // 82. 0.4.4-D hidden 隐藏属性（字段+显隐开关+纯 UI 遮罩+跳转常显，OS 文件管理对齐，双端，notes-044-hidden-attr）
+  require('./check/sections/83-dormant-dispatch.cjs'),   // 83. 0.4.4-B 休眠会话送达 + 定时派发专属会话复用（_dispatch 双通道 + durable inbox + target='new' 首轮创建回写复用，notes-044-dormant-dispatch）
 ]
 
 async function main() {

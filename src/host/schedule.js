@@ -17,12 +17,20 @@
     //   ⑦锚定时刻（notes-034-sched-time）：every 可配 anchor:'HH:MM'（本地墙钟时刻，触发序列钉死该时刻不随创建/触发时刻漂移；
     //     需整天间隔——子日间隔锚定语义有歧义一律拒绝）；weekly 另配 dow:0-6（星期几，0=周日；需搭配 anchor 且 every=1w）。
     //     无 anchor 的存量 every 声明保持纯间隔语义（锚点 lastFiredAt||createdAt）——存量零迁移兼容。
+    //   ⑧专属会话 + 休眠送达（0.4.4-B，notes-044-dormant-dispatch）：target='new'（仅周期模式）= 首轮触发创建「定时 · <标题>」
+    //     专属会话并随幂等生命线回写 target=新 sid（持久复用，后续轮次同 sid）；执行红线由「目标 live」改写为「目标可送达」——
+    //     live 直通 / 持久化可达（stat 命中）走 _dispatch 休眠送达通道（durable inbox 排队，下次活动送达，零唤醒）；
+    //     两路皆不可达才记 lastError 不推进 lastFiredAt（补发语义不变）。lastRun.status 新增 queued 枚举（休眠送达标记）。
     // 序位说明（§8.4.2 例外备案）：本模块消费 dispatch.js 的 _dispatch 故置于其后；notes.js 的 _create/_update 经函数声明提升
     //   调用本模块的 _schedValidateWrite/SCHEDULE_CONTRACT_TYPE——全部为运行期（RPC 调用时）引用，apply 执行期零触碰，无 TDZ 风险。
     const SCHED_TICK_MS = 30 * 1000              // 常驻 tick 周期（裁决②）
     const SCHED_MIN_INTERVAL_MS = 5 * 60 * 1000  // 校验红线：轮询间隔 ≥5min
     const SCHED_ERR_RETRY_MS = 5 * 60 * 1000     // 执行失败 lastError 刷写节流（防 30s tick 对同一故障反复写盘）
     const SCHEDULE_CONTRACT_TYPE = 'dispatch-schedule'   // 契约身份标记（front-matter contractType，调度声明的主识别键）
+    // 专属会话目标字面量（0.4.4-B，notes-044-dormant-dispatch）：schedule.target='new' = 周期任务专属会话——
+    //   首轮触发时 agents.create 创建「定时 · <任务名>」会话并回写 target=新 sid（持久复用），后续轮次 live 直发/休眠送达复用同一会话。
+    //   仅周期模式（every）接受；存量真实 sid 声明零迁移兼容（'new' 是保留字面量，绝非合法会话 id 形态——session-* 前缀约束天然隔离）。
+    const SCHED_TARGET_NEW = 'new'
 
     // every 声明 → 毫秒：number 直给（毫秒）；字符串 '<n>m|<n>h|<n>d|<n>w'（分钟/小时/天/周）。非法 → null
     function schedEveryMs(every) {
@@ -123,6 +131,8 @@
           value.dow = raw.dow
         }
       }
+      // 专属会话（0.4.4-B）：target='new' 仅周期模式（every）接受——首轮触发自动创建并回写复用；单次 at 无复用场景一律拒绝（错得安全）
+      if (target === SCHED_TARGET_NEW && !value.every) return { error: 'schedule.target=\'new\' 专属会话仅周期模式（every）支持——首轮触发自动创建「定时 · 任务名」会话并持久复用；单次 at 请直接指定目标会话 id' }
       return { value: value }
     }
 
@@ -156,8 +166,9 @@
       const chk = schedCheckDecl(raw, Date.now())
       if (chk.error) return { error: chk.error }
       const decl = chk.value
-      // 校验红线③目标存活：enabled=false（停用/暂停）豁免——暂停操作随时可落，不因目标漂移锁死治理面
-      if (decl.enabled !== false) {
+      // 校验红线③目标存活：enabled=false（停用/暂停）豁免——暂停操作随时可落，不因目标漂移锁死治理面；
+      //   target='new'（0.4.4-B 专属会话）同豁免——首轮触发时才创建，声明期无目标可校验
+      if (decl.enabled !== false && decl.target !== SCHED_TARGET_NEW) {
         const aliveErr = await _schedTargetAliveErr(decl.target)
         if (aliveErr) return { error: aliveErr }
       }
@@ -226,32 +237,101 @@
       try { await persistNote(n, { history: false }) } catch (e) { console.error('notes: schedule lastError persist failed', noteId, e) }
     }
 
-    // 单笔记触发：执行红线（目标 live）→ 标记 lastFiredAt 落盘（幂等生命线，先于派发）→ _dispatch 全链路 → lastRun 回写
+    // 专属会话创建（0.4.4-B）：agents.create 真实 agent（走注册 factory——持久化写把手 + 会话注册一体），
+    //   setup 内 agentPresets.mount 绑定默认 preset（同 session-controller composeAgent 口径——无 preset 的裸 agent 无工具能力）；
+    //   workspace.attachSession 落账（GUI 左侧列表可见性——工作区 sessionIds 经 header cwd 校验归组）；
+    //   sessionTitle.rename 命名「定时 · <任务名>」（观察面，失败不阻塞主链路）。
+    //   归属模型（实测结论）：create 经调用方 fiber 归属——插件重载/卸载会 dispose 该 agent，但会话日志已持久化，
+    //   退化为休眠态（GUI 可见、用户打开即复活），后续触发由休眠送达通道（_queueDormantDispatch）承接，优雅降级不丢任务。
+    //   返回 { sessionId, handle, name } | { error }；失败方负责回收半成品（handle.dispose），调用方零清理负担。
+    async function _schedCreateDedicatedSession(note) {
+      if (!agents || typeof agents.create !== 'function') return { error: '宿主不支持 agents.create（无法创建专属会话）' }
+      if (!agentPresets || typeof agentPresets.resolve !== 'function' || typeof agentPresets.mount !== 'function') return { error: 'agentPresets 服务缺失（专属会话需挂载默认 preset 获得工具能力）' }
+      // 工作区归属：note.workspace 标题命中优先（笔记创建时自会话上下文自动填充），缺省回落首个工作区
+      const wl = workspaceRegistry && workspaceRegistry.list ? workspaceRegistry.list() || [] : []
+      if (!wl.length) return { error: '无可用工作区（专属会话无处归属）' }
+      let ws = null
+      const wtitle = String((note && note.workspace) || '').trim()
+      if (wtitle) { for (const w of wl) { if (w && (w.title || '') === wtitle) { ws = w; break } } }
+      if (!ws) ws = wl[0]
+      const cwd = String((ws && ws.path) || '').trim()
+      if (!cwd) return { error: '工作区缺 path（专属会话无 cwd 不可创建）' }
+      const name = '定时 · ' + String((note && note.title) || '任务').replace(/^定时\s*·?\s*/, '')
+      let presetId
+      try { const p = await agentPresets.resolve(); presetId = p && p.id } catch (e) { return { error: 'preset 解析失败：' + String(e && e.message || e) } }
+      const sel = adm && typeof adm.currentSelection === 'function' ? adm.currentSelection() : null
+      const sid = 'session-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
+      let handle = null
+      try {
+        handle = await agents.create({
+          sessionId: sid,
+          agentOptions: sel ? { provider: sel.provider, model: sel.model } : {},
+          meta: presetId ? { cwd: cwd, agentPreset: presetId } : { cwd: cwd },
+          setup: function (agentCtx) { return agentPresets.mount(agentCtx, presetId) }
+        })
+      } catch (e) { return { error: 'agents.create 失败：' + String(e && e.message || e) } }
+      // GUI 可见性落账（致命）：失败回收 agent 报错（lastFiredAt 未推进，下 tick 重试创建）
+      try { if (typeof ws.attachSession === 'function') await ws.attachSession(sid) } catch (e) {
+        try { if (handle && typeof handle.dispose === 'function') await handle.dispose() } catch (e2) {}
+        return { error: '工作区落账失败：' + String(e && e.message || e) }
+      }
+      // 命名（非致命观察面：失败时 GUI 显示缺省标题，不阻塞派发）
+      try { if (sessionTitle && typeof sessionTitle.rename === 'function' && handle && handle.agent && handle.agent.session) sessionTitle.rename(handle.agent.session, name) } catch (e) {}
+      return { sessionId: sid, handle: handle, name: name }
+    }
+
+    // 单笔记触发：专属会话首轮创建（target='new'）→ 可送达预检 → 标记 lastFiredAt 落盘（幂等生命线，先于派发）→ _dispatch 全链路 → lastRun 回写
     async function _schedFire(note, nowMs) {
       const nowIso = new Date(nowMs).toISOString()
       const sched = note.schedule
-      // 执行红线：派发经 agent.send 触发工作，目标必须 live；未 live → 记 lastError（节流）不推进 lastFiredAt——目标上线后下个 tick 自动补发
-      const target = agents && agents.get ? agents.get(sched.target) : undefined
-      if (!target || typeof target.send !== 'function') {
-        await _schedMarkError(note.id, '目标会话当前未打开，无法触发工作（目标 live 后下个 tick 自动补发）', nowMs, true)
+      // 专属会话（0.4.4-B）：target='new' → 首轮触发先创建「定时 · <标题>」会话，target 回写随幂等生命线同事务落盘（持久复用）
+      let created = null
+      let effTarget = sched.target
+      if (sched.target === SCHED_TARGET_NEW) {
+        created = await _schedCreateDedicatedSession(note)
+        if (!created || created.error) {
+          await _schedMarkError(note.id, '专属会话创建失败：' + (created && created.error || 'unknown'), nowMs, true)
+          return false   // 不推进 lastFiredAt——下个 tick 自动重试创建
+        }
+        effTarget = created.sessionId
+      } else {
+        // 执行红线（0.4.4-B 改写：目标 live ⟹ 可送达）：live 直通；非 live 探持久化可达（stat 命中 = 休眠送达可排队）——
+        //   两路皆不可达 → 记 lastError（节流）不推进 lastFiredAt（目标上线/可送达后下个 tick 自动补发）
+        const target = agents && agents.get ? agents.get(effTarget) : undefined
+        if (!target || typeof target.send !== 'function') {
+          let reachable = false
+          try { reachable = !!(sessionPersistence && typeof sessionPersistence.stat === 'function' && (await sessionPersistence.stat(effTarget))) } catch (e) {}
+          if (!reachable) {
+            await _schedMarkError(note.id, '目标会话当前未打开且持久化不可达，无法触发工作（目标 live 或可送达后下个 tick 自动补发）', nowMs, true)
+            return false
+          }
+        }
+      }
+      // 幂等生命线：先推进 lastFiredAt 落盘再派发（专属会话首轮：target=新 sid 同事务回写）——进程在「派发后、lastRun 回写前」崩溃最多漏记一次 lastRun，绝不重发同一触发
+      const marked = await loadNote(note.id)
+      if (!marked || marked.deleted || marked.tombstoned || !marked.schedule || (marked.contractType || '') !== SCHEDULE_CONTRACT_TYPE) {
+        if (created && created.handle && typeof created.handle.dispose === 'function') { try { await created.handle.dispose() } catch (e) {} }
         return false
       }
-      // 幂等生命线：先推进 lastFiredAt 落盘再派发——进程在「派发后、lastRun 回写前」崩溃最多漏记一次 lastRun，绝不重发同一触发
-      const marked = await loadNote(note.id)
-      if (!marked || marked.deleted || marked.tombstoned || !marked.schedule || (marked.contractType || '') !== SCHEDULE_CONTRACT_TYPE) return false
       const markedSched = Object.assign({}, marked.schedule, { lastFiredAt: nowIso })
+      if (created) markedSched.target = created.sessionId   // 专属会话持久复用锚点：次轮起按真实 sid 走 live/休眠双通道
       delete markedSched.lastError   // lastError 仅失败记：进入成功路径即摘除（不留空串脏键）
       marked.schedule = markedSched
       marked.updatedAt = nowIso
-      try { await persistNote(marked, { history: false }) } catch (e) { console.error('notes: schedule lastFiredAt mark failed', note.id, e); return false }
-      const r = await _dispatch(note.id, { sessionId: sched.target, mode: 'existing', sourceLabel: '定时调度 @' + (marked.title || note.title || note.id) })
+      try { await persistNote(marked, { history: false }) } catch (e) {
+        console.error('notes: schedule lastFiredAt mark failed', note.id, e)
+        if (created && created.handle && typeof created.handle.dispose === 'function') { try { await created.handle.dispose() } catch (e2) {} }   // 落盘失败回收新建 agent（防孤儿 live 会话）
+        return false
+      }
+      const r = await _dispatch(note.id, { sessionId: effTarget, sessionName: created ? created.name : undefined, mode: 'existing', sourceLabel: '定时调度 @' + (marked.title || note.title || note.id) })
       if (r && r.error) {
         await _schedMarkError(note.id, '派发执行失败：' + r.error, nowMs, false)
         return false
       }
-      // 状态三层①：lastRun{at,status,receiptId}（receiptId = 派发消息 msgId，与 dispatches 记录关联；回执闭环走既有 dispatch-loop 链路）
+      // 状态三层①：lastRun{at,status,receiptId}（status：sent=live 直发 / queued=休眠送达·下次活动处理（0.4.4-B 新增枚举值，存量 sent/error 不变）；
+      //   receiptId = 派发消息 msgId，与 dispatches 记录关联；回执闭环走既有 dispatch-loop 链路）
       const done = await loadNote(note.id)
-      const doneSched = Object.assign({}, done.schedule, { lastRun: { at: nowIso, status: 'sent', receiptId: (r.dispatch && r.dispatch.msgId) || '' } })
+      const doneSched = Object.assign({}, done.schedule, { lastRun: { at: nowIso, status: r && r.queued ? 'queued' : 'sent', receiptId: (r.dispatch && r.dispatch.msgId) || '' } })
       delete doneSched.lastError   // lastError 仅失败记：派发成功摘除
       done.schedule = doneSched
       done.updatedAt = nowIso
@@ -312,18 +392,28 @@
     ;(async function () { try { await _schedTickGuarded(Date.now()) } catch (e) {} })()
     // ==== schedule-exec END ====
 
-    // ==== schedule-runlog BEGIN ====（notes-041-sched-runlog：执行记录独立笔记 + schedule.runLog 软链。
+    // ==== schedule-runlog BEGIN ====（notes-041-sched-runlog：执行记录独立笔记 + schedule.runLog 软链；
+    //   0.4.4-A notes-044-dispatch-receipts 升级·三表归一：执行记录 = 派发历史 = 调度回执 同一篇伴生笔记——
+    //   每篇派发源笔记 ≤1 篇「执行记录 · <源笔记标题>」（设计修正·用户最新裁决 2026-10-05：kind=log 工作日志型——
+    //   注入硬关天然适用（回执永不进系统提示）、可见/可搜/可编辑照常 + folder='执行记录' 专用文件夹（懒创建 ensure；
+    //   严禁放「工作日志」夹——工作日志=会话沉淀、执行记录=派发回执，语义不同分目录存放）+ refNote=源笔记 id 回链 +
+    //   软链字段统一 runLog：调度约定存 schedule.runLog（存量直接继承零迁移），非调度派发源笔记存顶层 runLog front-matter 条件行）。
     // 设计红线（用户裁决 2026-10-04 晚）：约定正文零改动——克隆体约定正文=派发载荷（整体注入 target 会话），
-    //   历史追加会无限膨胀并污染下次派发上下文；执行记录落独立笔记（title「<约定标题> · 执行记录」，kind=sys 机器托管——
-    //   0.4.3⑥ notes-043-sys-kind：recall 缺省 false 不进目录/默认召回，编辑器可见可改，批量删除红字警示豁免面收口；
-    //   存量 kind=note 的 runLog 经 rootNoteEnsureSysKind 惰性迁移，只写 kind 元数据正文零变化），约定 front-matter schedule.runLog 存其 id 软链；
+    //   历史追加会无限膨胀并污染下次派发上下文；执行记录落独立笔记（0.4.4-A 起 kind=log——recall 缺省 false 不进目录/默认召回、
+    //   inject 硬闸强制 false（injectForcedOff）；存量 kind=sys 的 runLog 零迁移原样留档，软链指针无关 kind 照常命中），
+    //   front-matter 软链存其 id；
     //   回执落盘时机（idle 事件 / resolved 保底 / 手动标记完成三通道共用）懒创建并追加条目；条目倒序（最新在前）≤50 裁尾；
     //   幂等：同 msgId（=lastRun.receiptId）条目已存在跳过；删除约定不级联删 runLog（留档）。
+    // 0.4.4-A 行型三族：📤 派发行（_dispatch 成功即落——派发历史笔记化）/ 📥 回执行（idle/resolved 真实回执）/ ✅ 人工闭环行
+    //   （_dispatchDone 手动标记）；dispatches[] 数组与 dispatchStatus 状态机零改动（结构化状态给闭环逻辑，笔记行给人读——双载体正交）。
     // 写入纪律：runLog 笔记创建/追加与 runLog 软链回写都是机器自动产物——persistNote { history:false } 不产生历史快照；
-    //   软链回写直改 schedule 不经 _update 声明闸门（避免目标存活等声明校验阻塞回执链路；声明改写时 runLog 由 _schedValidateWrite 延续存量）。
+    //   软链回写直改 schedule/runLog 不经 _update 声明闸门（避免目标存活等声明校验阻塞回执链路；声明改写时 runLog 由 _schedValidateWrite 延续存量）。
     // 序位：本块跨模块调用点（dispatch.js/notes.js）经函数声明提升在运行期引用，apply 执行期零触碰，无 TDZ 风险（同 _schedValidateWrite 先例）。
     const SCHED_RUNLOG_MAX = 50                        // 条目容量红线：倒序保留最新 50 条裁尾
     const SCHED_RUNLOG_HEAD = '## 执行记录（自动）'     // runLog 笔记正文的自动管理节标题
+    const EXEC_LOG_FOLDER_NAME = '执行记录'             // 0.4.4-A 设计修正：伴生笔记专用文件夹（懒创建 ensure folders.json 条目；严禁复用「工作日志」夹）
+    // 说明块（预设首行，RootNote pre 区逐字节保留）：机器托管声明 + kind=log 用途 + 行型契约 + 可编辑边界
+    const EXEC_LOG_GUIDE = '机器托管笔记（请勿手动清理，由派发管线维护）：本笔记 = 派发源笔记的执行记录（0.4.4-A 三表归一：派发历史/调度回执/执行记录同一篇；kind=log 工作日志型——注入硬关天然适用，回执永不进系统提示）。行型：📤 派发（带（下次活动送达）后缀 = 休眠会话排队送达，0.4.4-B）/ 📥 回执 / ✅ 人工闭环；可直接编辑备注，请保持条目行首 `- 📤/📥/✅` 结构。\n\n'
     // 条目时间戳：ISO → 本地 YYYY-MM-DD HH:MM（人读优先；与调度 at 声明同口径的本地墙钟语义）
     function schedRunLogTs(iso) {
       const ms = Date.parse(iso || '')
@@ -332,9 +422,31 @@
       const p = function (n) { return (n < 10 ? '0' : '') + n }
       return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
     }
-    // 条目行：- ✅ {本地时刻} · 回执（{idle|resolved|manual}）· → {会话名|短id} · {msgId}
+    // 派发行时间戳（0.4.4-A）：秒级精度——同分钟连发可区分（行幂等键成分；崩溃重放同秒同文天然去重）
+    function schedRunLogTsS(iso) {
+      const ms = Date.parse(iso || '')
+      if (!isFinite(ms)) return String(iso || '')
+      const d = new Date(ms)
+      const p = function (n) { return (n < 10 ? '0' : '') + n }
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
+    }
+    // 回执条目行：- 📥 {本地时刻} · 回执（{idle|resolved}）· → {会话名|短id} · {msgId}（真实回执）；人工闭环 = ✅（回执（manual））。
+    //   0.4.4-A 起真实回执前缀 ✅→📥（设计「📥 回执：<会话> <时间>」）；存量 ✅ 行零迁移原样保留（msgId 幂等键跨新旧行型同口径）
     function schedRunLogLine(d) {
-      return '- ✅ ' + schedRunLogTs(d.doneAt) + ' · 回执（' + (d.receipt || 'manual') + '）· → ' + (d.sessionName || shortSid(d.sessionId) || '?') + ' · ' + d.msgId
+      return '- ' + (d.receipt === 'manual' ? '✅' : '📥') + ' ' + schedRunLogTs(d.doneAt) + ' · 回执（' + (d.receipt || 'manual') + '）· → ' + (d.sessionName || shortSid(d.sessionId) || '?') + ' · ' + d.msgId
+    }
+    // 派发条目行（0.4.4-A 派发历史笔记化）：- 📤 {本地时刻·秒级} · → {会话名|短id}[（下次活动送达）][ · 指令：{摘要≤40字}][ · {sourceLabel}] · 单号 {msgId 尾段}。
+    //   （下次活动送达）后缀（0.4.4-B）：休眠送达（queued）派发专属标注——目标会话未 live，消息已持久化排队，会话下次活动时处理。
+    //   红线：行内绝不出现完整 msgId（note-dispatch-* 前缀形态）——keyOfLine 的 msgId 提取与正文 indexOf 幂等去重专属回执族，
+    //   派发行混入完整 msgId 会让同 msgId 回执行被误吞；单号尾段 = 行幂等键成分（同秒连发区分 + 崩溃重放同 msgId 去重）兼人读派发↔回执对参
+    function schedRunLogDispatchLine(d) {
+      let l = '- 📤 ' + schedRunLogTsS(d.at) + ' · → ' + (d.sessionName || shortSid(d.sessionId) || '?') + (d.queued ? '（下次活动送达）' : '')
+      const instr = String(d.instruction || '').replace(/[\r\n]+/g, ' ').trim()
+      if (instr) l += ' · 指令：' + (instr.length > 40 ? instr.slice(0, 40) + '…' : instr)
+      if (d.sourceLabel) l += ' · ' + String(d.sourceLabel)
+      const tail = String(d.msgId || '')
+      if (tail) l += ' · 单号 ' + (tail.indexOf('note-dispatch-') === 0 ? tail.slice(14) : tail)
+      return l
     }
     // 正文重写已上收 RootNote 托管节框架（0.4.3 内核②，notes-043-rootnote）：锚点补建/幂等去重/裁尾/备注区保留
     //   由 src/host/rootnote.js rootNoteRender 统一实现——runLog 是首个消费者，行为等价迁移（节 59 断言不改语义仍全绿 = 等价证明）。
@@ -343,36 +455,74 @@
       head: SCHED_RUNLOG_HEAD,
       max: SCHED_RUNLOG_MAX,
       newestFirst: true,
-      // 行幂等键：行内 note-dispatch-* msgId（缺省退整行）
+      // 行幂等键：回执族 = 行内 note-dispatch-* msgId；派发行（无 msgId）= 整行（秒级时刻+会话+指令摘要区分连发）
       keyOfLine: function (l) { const m = l.match(/(note-dispatch-\S+)/); return m ? m[1] : l },
-      // 条目幂等键：msgId（=lastRun.receiptId）——与正文 indexOf 命中同口径
-      keyOfEntry: function (d) { return d.msgId },
-      lineOf: function (d) { return schedRunLogLine(d) },
-      linkOf: function (note) { return note.schedule && note.schedule.runLog },
-      // 软链回写 schedule.runLog：直读最新笔记对象防 tick 在途改写被覆盖（机器状态回写，不产生历史快照）
+      // 条目幂等键：回执 = msgId（=lastRun.receiptId）——与正文 indexOf 命中同口径；派发 = 整行渲染（正文子串命中同口径）
+      keyOfEntry: function (d) { return d._dispatch ? schedRunLogDispatchLine(d) : d.msgId },
+      lineOf: function (d) { return d._dispatch ? schedRunLogDispatchLine(d) : schedRunLogLine(d) },
+      // 软链键统一 runLog（0.4.4-A 裁决·三表归一）：调度约定读 schedule.runLog（存量继承），非调度派发源笔记读顶层 runLog
+      linkOf: function (note) { return (note.schedule && note.schedule.runLog) || note.runLog || '' },
+      // 软链回写：调度约定写 schedule.runLog、非调度写顶层 runLog（直读最新笔记对象防 tick 在途改写被覆盖；机器状态回写零历史快照）；
+      //   顺手给执行记录笔记落 refNote=源笔记 id 回链（0.4.4-A 设计① 双端跳转的机器键；同 { history:false } 口径）
       writeLink: async function (note, rlId) {
         const fresh = await loadNote(note.id)
-        if (fresh && !fresh.deleted && !fresh.tombstoned && fresh.schedule) {
-          fresh.schedule = Object.assign({}, fresh.schedule, { runLog: rlId })
+        if (fresh && !fresh.deleted && !fresh.tombstoned) {
+          if (fresh.schedule) fresh.schedule = Object.assign({}, fresh.schedule, { runLog: rlId })
+          else fresh.runLog = rlId
           fresh.updatedAt = new Date().toISOString()
           try { await persistNote(fresh, { history: false }) } catch (e) { console.error('notes: schedule runLog link persist failed', note.id, e) }
         }
+        try {
+          const rl = await rootNoteResolve(rlId)
+          if (rl && String(rl.refNote || '') !== String(note.id)) {
+            rl.refNote = String(note.id)
+            rl.updatedAt = new Date().toISOString()
+            await persistNote(rl, { history: false })
+          }
+        } catch (e) {}
       },
-      titleOf: function (note) { return String(note.title || note.id) + ' · 执行记录' },
-      kind: 'sys',
-      folderOf: function (note) { return note.folder || undefined },
+      titleOf: function (note) { return '执行记录 · ' + String(note.title || note.id) },
+      // 0.4.4-A 设计修正（用户最新裁决）：kind=log 工作日志型——注入硬关天然适用（injectForcedOff 强制 inject=false、
+      //   recall 缺省 false），可见/可搜/可编辑照常；存量 kind=sys runLog 零迁移（软链指针无关 kind 照常命中）
+      kind: 'log',
+      // 说明块（preText）：创建正文 = 机器托管声明 + 锚点节（RootNote pre 区逐字节保留）
+      preText: EXEC_LOG_GUIDE,
+      // folder 设计修正（0.4.4-A）：'执行记录' 专用夹——缺省未分类（undefined）；_schedRunLogAppend 懒创建路径先 ensure 夹条目再覆写为夹 id
+      folderOf: function (note) { return undefined },
       topicOf: function (note) { return note.topic || '未分类' }
     }
-    // 回执落盘挂钩（三通道共用：dispatch.js _receiptDispatchesForSession idle 事件 / _dispatchDone 手动标记、notes.js _update resolved 保底）。
-    //   仅 dispatch-schedule 约定生效（其余笔记零开销直通返回）；schedule.runLog 空/失效 → 懒创建执行记录笔记并回写软链；条目追加幂等。
-    //   异常全量吞掉——执行记录是观察面产物，任何故障绝不扩散到回执主链路（同 tick 吞异常裁决）。
+    // 执行记录文件夹 ensure（0.4.4-A 设计修正②）：「执行记录」专用文件夹懒创建——resolveFolderRef 命中（id/名称双通道）直接复用；
+    //   未命中经 rootNoteCreateLock 串行化创建 + 锁内双检（并发首建竞态消除；同 ledger「记忆档案」_ledgerArchiveFolderEnsure 先例）。
+    //   红线：必须在 rootNoteAppendEnsured 的创建锁之外调用（嵌套同链 = 自死锁，rootnote 红线③）；失败 → '' 降级未分类，不扩散主链路。
+    async function _execLogFolderEnsure() {
+      try {
+        const hit = await resolveFolderRef(EXEC_LOG_FOLDER_NAME)
+        if (hit && hit.id) return hit.id
+        return await rootNoteCreateLock(async function () {
+          const again = await resolveFolderRef(EXEC_LOG_FOLDER_NAME)   // 锁内双检：并发 ensure 前者产物已落 folders.json，命中即复用
+          if (again && again.id) return again.id
+          const c = await _folders({ op: 'create', name: EXEC_LOG_FOLDER_NAME })
+          return (c && c.ok && c.folder) ? c.folder.id : ''
+        })
+      } catch (e) { return '' }
+    }
+    // 执行记录落盘挂钩（0.4.4-A 起全笔记生效·三表归一；四通道共用：dispatch.js _dispatch 派发 📤 / _receiptDispatchesForSession
+    //   idle 事件 📥 / _dispatchDone 手动标记 ✅ / notes.js _update resolved 保底 📥）。
+    //   软链空/失效 → 懒创建执行记录笔记并回写软链；条目追加幂等；异常全量吞掉——执行记录是观察面产物，任何故障绝不扩散派发/回执主链路。
     async function _schedRunLogAppend(note, entries) {
       try {
-        if (!note || (note.contractType || '') !== SCHEDULE_CONTRACT_TYPE || !note.schedule) return
-        const items = (entries || []).filter(function (d) { return d && d.msgId })
+        if (!note || !note.id) return
+        const items = (entries || []).filter(function (d) { return d && (d.msgId || d._dispatch) })
         if (!items.length) return
-        // RootNote 框架组合口：懒创建（首条回执）+ 幂等追加 + ≤50 裁尾 + 落盘 { history:false }——异常吞在下方
-        await rootNoteAppendEnsured(note, SCHED_RUNLOG_TPL, items)
+        let tpl = SCHED_RUNLOG_TPL
+        // 懒创建路径才 ensure 归夹（0.4.4-A 设计修正：folder='执行记录' 专用夹——folders.json 条目懒创建；
+        //   在 rootNoteAppendEnsured 创建锁外求值（嵌套同链 = 自死锁红线不触）；ensure 失败 → '' 降级未分类）
+        if (!((note.schedule && note.schedule.runLog) || note.runLog)) {
+          const fid = await _execLogFolderEnsure()
+          if (fid) tpl = Object.assign({}, SCHED_RUNLOG_TPL, { folderOf: function () { return fid } })
+        }
+        // RootNote 框架组合口：懒创建（首条派发/回执）+ 幂等追加 + ≤50 裁尾 + 落盘 { history:false }——异常吞在下方
+        await rootNoteAppendEnsured(note, tpl, items)
       } catch (e) { console.error('notes: schedule runLog append failed', note && note.id, e) }
     }
     // ==== schedule-runlog END ====

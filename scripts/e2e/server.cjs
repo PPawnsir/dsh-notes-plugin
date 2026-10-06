@@ -24,9 +24,12 @@ function slimNote(n) {
     inject: !!n.inject, injectRole: n.injectRole || '', injectEver: !!n.injectEver,
     injectTo: n.injectTo || [], recall: n.recall !== false,
     sensitive: !!n.sensitive, folder: n.folder || '', useCount: n.useCount || 0,
+    hidden: !!n.hidden,   /* 0.4.4-D：hidden 隐藏属性随 slim/get 下发（纯 UI 遮罩数据源，host 面零过滤） */
     contractType: n.contractType || '', schedule: n.schedule || undefined,
     deleted: !!n.deleted, dispatchStatus: n.dispatchStatus || '',
     sessionId: n.sessionId || '',
+    /* 0.4.4-A：派发历史/执行记录跳转数据源（dispatches + 统一 runLog 软链 + refNote 回链） */
+    dispatches: n.dispatches || [], runLog: n.runLog || '', refNote: n.refNote || '',
     createdAt: n.createdAt, updatedAt: n.updatedAt,
     preview: String(n.body || '').slice(0, 200),
   }
@@ -83,7 +86,8 @@ function handleRpc(state, method, args) {
     }
     case 'notes-get': {
       const n = notes.find(x => x.id === (args && args.id) && ((args && args.includeDeleted) || !x.deleted))
-      return n ? { note: { id: n.id, title: n.title, body: n.body || '', topic: n.topic, tags: n.tags, status: n.status, kind: n.kind, folder: n.folder || '', createdAt: n.createdAt, updatedAt: n.updatedAt } } : { error: 'not found' }
+      /* 0.4.4-A：补 dispatches/schedule/runLog/refNote（派发历史行 + 计划块 + open-by-id 直开执行记录的数据源）；contractType 一并带（计划块 isSched 判据） */
+      return n ? { note: { id: n.id, title: n.title, body: n.body || '', topic: n.topic, tags: n.tags, status: n.status, kind: n.kind, folder: n.folder || '', hidden: !!n.hidden, dispatches: n.dispatches || [], contractType: n.contractType || '', schedule: n.schedule || undefined, runLog: n.runLog || '', refNote: n.refNote || '', inject: !!n.inject, createdAt: n.createdAt, updatedAt: n.updatedAt } } : { error: 'not found' }
     }
     case 'notes-get-batch': {
       const ids = (args && args.ids) || []
@@ -95,7 +99,7 @@ function handleRpc(state, method, args) {
         id: newId(), title: a.title || 'Untitled', body: a.body || '', topic: a.topic || '',
         kind: a.kind || 'note', tags: a.tags || [], status: a.status || 'active', pinned: false,
         inject: !!a.inject, injectRole: a.injectRole || '', injectTo: a.injectTo || [], recall: a.recall !== false,
-        folder: a.folder || '', useCount: 0, sensitive: !!a.sensitive,
+        folder: a.folder || '', useCount: 0, sensitive: !!a.sensitive, hidden: !!a.hidden,
         contractType: a.contractType || '', schedule: a.schedule || undefined,
         createdAt: nowIso(), updatedAt: nowIso(), deleted: false,
       }
@@ -106,7 +110,7 @@ function handleRpc(state, method, args) {
       const n = notes.find(x => x.id === (args && args.id) && !x.deleted)
       if (!n) return { error: 'not found' }
       const a = args || {}
-      for (const k of ['title', 'body', 'topic', 'tags', 'status', 'pinned', 'kind', 'folder', 'inject', 'injectRole', 'injectTo', 'recall', 'sensitive', 'contractType', 'schedule']) {
+      for (const k of ['title', 'body', 'topic', 'tags', 'status', 'pinned', 'kind', 'folder', 'inject', 'injectRole', 'injectTo', 'recall', 'sensitive', 'hidden', 'contractType', 'schedule']) {
         if (k in a) n[k] = a[k]
       }
       n.updatedAt = nowIso()
@@ -152,6 +156,13 @@ function handleRpc(state, method, args) {
         f.name = String(a.name || '').trim()
         return { ok: true }
       }
+      /* 0.4.4-D：set-flags 显隐标记写入通道（{id, hidden}——true 落 / false 摘字段回缺省，与 host folders.js 同口径） */
+      if (a.op === 'set-flags') {
+        const f = state.folders.find(x => x.id === a.id)
+        if (!f) return { error: 'not found' }
+        if (a.hidden === true) f.hidden = true; else delete f.hidden
+        return { ok: true, id: f.id, hidden: f.hidden === true }
+      }
       if (a.op === 'delete') {
         const sub = folderSubtreeIds(state, a.id)
         state.folders = state.folders.filter(x => !sub[x.id])
@@ -192,7 +203,33 @@ function handleRpc(state, method, args) {
     case 'notes-usage-get': return { usage: {} }
     case 'notes-active-sessions': return { sessions: state.sessions.slice() }
     case 'notes-sessions': return { sessions: state.sessions.slice() }
-    case 'notes-dispatch': return { ok: true }
+    case 'notes-dispatch': {
+      /* 0.4.4-A（notes-044-dispatch-receipts）最小对齐 host _dispatch 执行记录链路：登记 dispatches +
+         懒创建执行记录伴生笔记（kind=log + 「执行记录」夹懒建 + refNote 回链 + 📤 派发行 + runLog 软链回写——
+         调度笔记写 schedule.runLog / 普通笔记写顶层 runLog，与 host writeLink 同口径） */
+      const n = notes.find(x => x.id === (args && args.id) && !x.deleted)
+      if (!n) return { error: 'not found' }
+      const rec = { sessionId: String((args && args.sessionId) || ''), sessionName: String((args && args.sessionName) || ''), workspace: String((args && args.workspace) || ''), mode: (args && args.mode) || 'existing', instruction: String((args && args.instruction) || ''), at: nowIso(), msgId: 'note-dispatch-e2e-' + (++idSeq), done: false, dispatchStatus: 'sent' }
+      n.dispatches = (n.dispatches || []).concat([rec])
+      let rl = notes.find(x => x.id === ((n.schedule && n.schedule.runLog) || n.runLog) && !x.deleted)
+      if (!rl) {
+        let fld = state.folders.find(f => f.name === '执行记录')
+        if (!fld) { fld = { id: newId(), name: '执行记录', parent: '', order: state.folders.length, count: 0 }; state.folders.push(fld) }
+        rl = {
+          id: newId(), title: '执行记录 · ' + (n.title || n.id), body: '机器托管笔记（请勿手动清理，由派发管线维护）：e2e mock 说明块。\n\n## 执行记录（自动）\n', topic: n.topic || '',
+          kind: 'log', tags: [], status: 'active', pinned: false, inject: false, injectRole: '', injectTo: [], recall: false, folder: fld.id, useCount: 0,
+          contractType: '', refNote: n.id, dispatches: [], createdAt: nowIso(), updatedAt: nowIso(), deleted: false,
+        }
+        notes.push(rl)
+        if (n.schedule) n.schedule.runLog = rl.id
+        else n.runLog = rl.id
+      }
+      const line = '- 📤 ' + rec.at.slice(0, 19).replace('T', ' ') + ' · → ' + (rec.sessionName || rec.sessionId) + (rec.instruction ? ' · 指令：' + rec.instruction : '') + ' · 单号 ' + rec.msgId.replace('note-dispatch-', '')
+      const rest = String(rl.body || '').split('\n').filter(l => /^- /.test(l))
+      rl.body = '机器托管笔记（请勿手动清理，由派发管线维护）：e2e mock 说明块。\n\n## 执行记录（自动）\n\n' + [line].concat(rest).join('\n') + '\n'
+      n.updatedAt = nowIso(); rl.updatedAt = nowIso()
+      return { ok: true, id: n.id, sessionId: rec.sessionId, sessionName: rec.sessionName, dispatch: rec }
+    }
     case 'notes-export': {
       const dir = String((args && args.dir) || '').trim()
       if (!dir) return { error: 'notes-export.dir 目录不能为空' }

@@ -8,8 +8,8 @@ module.exports = {
   const { NOTES_DIR, NOTES_ROOT_STATIC, admMock, agentsMock, appSrc, clientPkgSrc, llmMock, plugin, protoV2Src, sessionPersistenceMock, sessionQueryMock, sessionTitleMock, workspaceRegistryMock } = S
   // ===== 29. P1 注入增强：时效衰减提醒（staleDays）+ 注入体积预算（injectBudgetChars）=====
   // 契约：settings.json 新增 staleDays（缺省 90，0=关闭）与 injectBudgetChars（缺省 0=不限；约，按字符数近似，不引 token 计算库）；
-  // 目录段普通行对 kind=note/link（参考资料类）且 updatedAt 超期条目行尾追加「 ⚠ N 天未更新」；
-  // 约定桶永不截断、目录段超预算先砍普通行再砍挂载行（从最旧整条省略）+ 尾部提示行；lastInjectChars 每次渲染更新并随 settings-get 回传（设置卡片仪表）。
+  // 0.4.4-E：staleDays ⚠ 标注的唯一注入呈现面（目录普通行）随 catalog 整体拆除——设置键保留（读写兼容不迁移；现存唯一消费方 = 整理建议器过期候选提名）；
+  // 约定桶永不截断、目录段 = 挂载行单源（超预算挂载行内部从最旧整条省略）+ 尾部提示行；lastInjectChars 每次渲染更新并随 settings-get 回传（设置卡片仪表）。
   section('29. P1 注入增强（staleDays 时效标注 + injectBudgetChars 预算截断）')
 
   // ---- 29.1 host 双侧结构契约（host-impl / index.mjs 双包同步）----
@@ -24,11 +24,12 @@ module.exports = {
       assert(s.indexOf('lastInjectChars = full.length') >= 0, label + ' conventionText 每次渲染更新缓存值')
       assert(s.indexOf("if ('staleDays' in patch)") >= 0 && s.indexOf("if ('injectBudgetChars' in patch)") >= 0, label + ' settings-set 处理两个新键')
       assert(s.indexOf('staleDays 需要非负数值') >= 0 && s.indexOf('injectBudgetChars 需要非负数值') >= 0, label + ' 新键校验文案')
-      assert(s.indexOf("(n.kind === 'note' || n.kind === 'link')") >= 0, label + ' ⚠ 标注限 kind=note/link（参考资料类）')
-      assert(s.indexOf("line += ' ⚠ ' + sd + ' 天未更新'") >= 0, label + ' 目录行尾「 ⚠ N 天未更新」标注')
       assert(s.indexOf('约定桶永不截断') >= 0, label + ' 约定桶永不截断（注释约定）')
-      assert(s.indexOf('条目录行超出预算未注入（note_search 可检索）') >= 0, label + ' 预算省略提示行文案（0.4.3③ 目录行口径：普通行+挂载行合计）')
+      assert(s.indexOf('条目录行超出预算未注入（note_search 可检索）') >= 0, label + ' 预算省略提示行文案（0.4.4-E 目录行 = 挂载行口径）')
       assert(s.indexOf('按字符数近似统计，不引 token 计算库') >= 0, label + ' 「约/字符数近似」口径注释')
+      // 0.4.4-E 负向锚：⚠ 时效标注呈现面（目录普通行）随 catalog 整拆消亡；staleDays 设置键保留（注入呈现消费方归零；现存唯一消费方 = 整理建议器过期候选提名）
+      assert(s.indexOf("(n.kind === 'note' || n.kind === 'link')") < 0 && s.indexOf("line += ' ⚠ ' + sd + ' 天未更新'") < 0, label + ' ⚠ 标注装配已拆（目录普通行消亡）')
+      assert(s.indexOf('staleDaysOf') >= 0 && s.indexOf('staleDaysLimit') >= 0, label + ' staleDays helper 保留（staleDaysLimit 消费方 = 整理建议器过期候选提名）')
     }
   })
 
@@ -55,10 +56,9 @@ module.exports = {
     effect: () => {},
   })
   const convCtx9i = contexts9i.find(x => x.name === 'notes:workspace-conventions')
-  const catCtx9i = convCtx9i   // 0.4.3③：目录段并入单一 context（渲染口径同一 text()；普通行仅在 catalogEnabled 开时填充）
+  const catCtx9i = convCtx9i   // 0.4.3③：目录段并入单一 context（渲染口径同一 text()；0.4.4-E 起目录段唯挂载行源）
 
-  await t('staleDays 时效标注：kind=note/link 超期行尾「 ⚠ N 天未更新」；todo/新鲜条目不标', async () => {
-    await handlers9i['notes-settings-set']({ catalogEnabled: true })   // 0.4.3：目录缺省关，时效标注断言前显式开启
+  await t('staleDays 时效标注呈现面随 catalog 拆除：未挂载条目（含超期 note/link）一律不进目录段、注入零 ⚠', async () => {
     const old = new Date(Date.now() - 100 * 86400000).toISOString()
     const fresh = new Date().toISOString()
     const fm = (id, kind, updatedAt) => '---\nid: ' + id + '\ntitle: ' + id + '标题\ntopic: 运维\n' + (kind ? 'kind: ' + kind + '\n' : '') + 'createdAt: "' + updatedAt + '"\nupdatedAt: "' + updatedAt + '"\n---\n\n正文\n'
@@ -66,13 +66,10 @@ module.exports = {
     await fsMock9i.writeText(NOTES_DIR + '\\n-stale-link.md', fm('n-stale-link', 'link', old))
     await fsMock9i.writeText(NOTES_DIR + '\\n-stale-todo.md', fm('n-stale-todo', 'todo', old))
     await fsMock9i.writeText(NOTES_DIR + '\\n-fresh-note.md', fm('n-fresh-note', '', fresh))
-    for (const id of ['n-stale-note', 'n-stale-link', 'n-stale-todo', 'n-fresh-note']) await handlers9i['notes-get']({ id: id })   // 触发解析进 cache（目录段渲染只读 cache）
+    for (const id of ['n-stale-note', 'n-stale-link', 'n-stale-todo', 'n-fresh-note']) await handlers9i['notes-get']({ id: id })   // 触发解析进 cache
     const txt = catCtx9i.text()
-    assert(txt.indexOf('- [n-stale-note] n-stale-note标题 (笔记, 运维) ⚠ 100 天未更新') >= 0, 'note 超期标注（实得：' + txt.split('\n').filter(l => l.indexOf('stale') >= 0 || l.indexOf('fresh') >= 0).join(' | ') + '）')
-    assert(txt.indexOf('- [n-stale-link] n-stale-link标题 (链接, 运维) ⚠ 100 天未更新') >= 0, 'link 超期标注')
-    assert(txt.indexOf('n-stale-todo标题 (待办, 运维) ⚠') < 0, 'todo 不标注（非参考资料类）')
-    assert(txt.indexOf('n-fresh-note标题 (笔记, 运维) ⚠') < 0, '新鲜条目不标注')
-    assert(txt.indexOf('n-stale-todo标题 (待办, 运维)') >= 0 && txt.indexOf('n-fresh-note标题 (笔记, 运维)') >= 0, '未标注条目仍在目录')
+    assert(txt.indexOf('n-stale-note') < 0 && txt.indexOf('n-stale-link') < 0 && txt.indexOf('n-stale-todo') < 0 && txt.indexOf('n-fresh-note') < 0, '未挂载条目（含超期 note/link）一律不进目录段（0.4.4-E 唯挂载行源）')
+    assert(txt.indexOf('⚠') < 0, '注入文本零 ⚠ 标注（注入呈现面已拆；staleDays 仅服务整理建议提名）')
   })
   await t('staleDays 设置往返：落盘回读 → 阈值放宽不标 → 0 关闭 → null 恢复缺省 90 → 非法值报错', async () => {
     let bad = await handlers9i['notes-settings-set']({ staleDays: -1 })
@@ -87,17 +84,16 @@ module.exports = {
     assert.strictEqual(sg.settings.staleDays, 30, 'notes-settings-get 回读一致')
     assert.strictEqual(typeof sg.lastInjectChars, 'number', 'settings-get 回传 lastInjectChars 数值（仪表数据源）')
     await handlers9i['notes-settings-set']({ staleDays: 200 })
-    assert(catCtx9i.text().indexOf('⚠') < 0, '阈值 200：100 天未超期不标注')
+    assert(catCtx9i.text().indexOf('⚠') < 0, '阈值 200：注入零 ⚠（0.4.4-E 起恒零——呈现面已拆）')
     await handlers9i['notes-settings-set']({ staleDays: 0 })
     assert(catCtx9i.text().indexOf('⚠') < 0, '0 = 关闭标注')
     await handlers9i['notes-settings-set']({ staleDays: null })
     const sg2 = await handlers9i['notes-settings-get']({})
     assert(!('staleDays' in sg2.settings), 'null 删除 override（恢复缺省 90）')
-    assert(catCtx9i.text().indexOf('⚠ 100 天未更新') >= 0, '缺省 90 恢复标注')
+    assert(catCtx9i.text().indexOf('⚠') < 0, '恢复缺省后注入仍零 ⚠（设置读写保留，注入呈现消费方已拆）')
   })
   await t('injectBudgetChars 预算截断：资料桶从最旧整条省略 + 提示行；约定桶永不截断；lastInjectChars 随渲染更新', async () => {
-    // 0.4.3③：目录段并入后预算先砍普通行——本测试前半段关掉普通行（catalogEnabled=false）锁定「挂载行内部仍从最旧整条省略」旧语义
-    await handlers9i['notes-settings-set']({ catalogEnabled: false })
+    // 0.4.4-E：目录段 = 挂载行单源（普通行装配已拆），预算省略语义 = 挂载行内部仍从最旧整条省略
     // 约定 1 条（100 字符正文）+ 资料 3 条（各 200 字符正文；R1 最旧，R3 最新——updatedAt 降序的尾部 = 最旧）
     await handlers9i['notes-create']({ title: '预算约定条目', body: 'x'.repeat(100), inject: true, topic: '约定' })
     await handlers9i['notes-create']({ title: '资料一', body: 'a'.repeat(200), inject: true, injectRole: 'reference', topic: '资料' })
@@ -139,28 +135,24 @@ module.exports = {
     assert(bad.error && bad.error.indexOf('injectBudgetChars') >= 0, '负数报错')
     const bad2 = await handlers9i['notes-settings-set']({ injectBudgetChars: 'abc' })
     assert(bad2.error && bad2.error.indexOf('injectBudgetChars') >= 0, '字符串报错')
-    await handlers9i['notes-settings-set']({ catalogEnabled: true })   // 恢复开态（后续断言不依赖，但保持实例收尾口径）
   })
-  await t('0.4.3③ 预算省略顺序：先砍普通行再砍挂载行（挂载行存活）+ 普通行计数入提示', async () => {
-    // 前置：3 条挂载行（资料一/二/三）+ 约定条目在库；catalogEnabled 开 → staleDays 节遗留的 4 条普通行进目录段
-    await handlers9i['notes-settings-set']({ catalogEnabled: true })
-    const fOff = (await handlers9i['notes-settings-set']({ catalogEnabled: false }), convCtx9i.text())   // 仅挂载行形态基线
-    await handlers9i['notes-settings-set']({ catalogEnabled: true })
-    const fOn = convCtx9i.text()
-    assert(fOn.length > fOff.length, '开态比仅挂载行形态多普通行（实得 ' + fOff.length + ' → ' + fOn.length + '）')
-    // 预算 = 仅挂载行形态长度 + 30：普通行整批被砍后必然回到预算内 → 挂载行存活
-    await handlers9i['notes-settings-set']({ injectBudgetChars: fOff.length + 30 })
+  await t('预算省略口径 0.4.4-E：目录段 = 挂载行单源（普通行不存在），省略计数 = 挂载行条数', async () => {
+    // 前置：3 条挂载行（资料一/二/三）+ 约定条目在库；staleDays 节遗留的 4 条普通笔记不进段（catalog 已移除）
+    const fBase = convCtx9i.text()
+    assert(fBase.indexOf('n-stale-note标题') < 0 && fBase.indexOf('n-fresh-note标题') < 0, '普通笔记不进目录段（唯挂载行源，负向锚）')
+    assert(fBase.indexOf('资料一') >= 0 && fBase.indexOf('资料三') >= 0, '前置：3 条挂载行在段')
+    // 预算 = 基线 - 50：挂载行尾部（最旧 = 资料一）整条省略，省略计数 = 挂载行条数
+    await handlers9i['notes-settings-set']({ injectBudgetChars: fBase.length - 50 })
     const f1 = convCtx9i.text()
-    assert(f1.indexOf('资料一') >= 0 && f1.indexOf('资料二') >= 0 && f1.indexOf('资料三') >= 0, '预算压缩：挂载行全部存活（普通行先砍）')
-    assert(f1.indexOf('n-stale-note标题') < 0 && f1.indexOf('n-fresh-note标题') < 0, '普通行整批被砍')
+    assert(f1.indexOf('资料一') < 0 && f1.indexOf('资料二') >= 0 && f1.indexOf('资料三') >= 0, '最旧挂载行整条省略，较新存活')
     const mDrop = f1.match(/…另有 (\d+) 条目录行超出预算未注入（note_search 可检索）/)
-    assert(mDrop && +mDrop[1] >= 4, '省略计数 ≥ 4 条普通行（实得：' + (mDrop && mDrop[1]) + '）')
+    assert(mDrop && +mDrop[1] === 1, '省略计数恰 1 条挂载行（实得：' + (mDrop && mDrop[1]) + '）')
     await handlers9i['notes-settings-set']({ injectBudgetChars: null })
-    assert(convCtx9i.text().indexOf('n-stale-note标题') >= 0, '恢复不限后普通行回来')
+    assert(convCtx9i.text().indexOf('资料一') >= 0, '恢复不限后挂载行回来')
   })
 
   // ---- 29.3 静态包行为（独立 ESM 实例 + 独立 store10i；harness 缺席 → webServer 路由链路）----
-  await t('静态包：staleDays/injectBudgetChars 往返 + ⚠ 标注 + 预算截断 + 约定不截断（rpc 路由链路）', async () => {
+  await t('静态包：staleDays/injectBudgetChars 往返 + 预算截断 + 约定不截断（rpc 路由链路；0.4.4-E ⚠ 呈现面已拆）', async () => {
     const store10i = new Map()
     const fsMock10i = {
       resolve: async (p) => p,
@@ -202,7 +194,6 @@ module.exports = {
     const bad2 = await rpc10i('notes-settings-set', { injectBudgetChars: -1 })
     assert(bad2.body.error && bad2.body.error.indexOf('injectBudgetChars') >= 0, '静态包 injectBudgetChars 非法值报错')
     await rpc10i('notes-settings-set', { staleDays: 15, injectBudgetChars: 3000 })
-    await rpc10i('notes-settings-set', { catalogEnabled: true })   // 0.4.3：目录缺省关，⚠ 标注断言前显式开启
     const onDisk = JSON.parse(store10i.get(path.join(NOTES_ROOT_STATIC, 'settings.json')))
     assert.strictEqual(onDisk.staleDays, 15, '静态包 settings.json 落盘 staleDays:15')
     assert.strictEqual(onDisk.injectBudgetChars, 3000, '静态包 settings.json 落盘 injectBudgetChars:3000')
@@ -210,11 +201,11 @@ module.exports = {
     assert.strictEqual(sg.body.settings.staleDays, 15, '静态包回读 staleDays')
     assert.strictEqual(sg.body.settings.injectBudgetChars, 3000, '静态包回读 injectBudgetChars')
     assert.strictEqual(typeof sg.body.lastInjectChars, 'number', '静态包 settings-get 回传 lastInjectChars')
-    // ⚠ 标注（阈值 15，100 天旧笔记超期）
+    // ⚠ 标注呈现面已拆（0.4.4-E）：100 天旧笔记未挂载 → 不进目录段，零 ⚠
     const old10 = new Date(Date.now() - 100 * 86400000).toISOString()
     await fsMock10i.writeText(path.join(NOTES_ROOT_STATIC, 'n-stale-pkg.md'), '---\nid: n-stale-pkg\ntitle: 静态旧笔记\ntopic: 运维\ncreatedAt: "' + old10 + '"\nupdatedAt: "' + old10 + '"\n---\n\n旧正文\n')
     await rpc10i('notes-get', { id: 'n-stale-pkg' })   // 入 cache
-    assert(catCtx10i.text().indexOf('静态旧笔记 (笔记, 运维) ⚠ 100 天未更新') >= 0, '静态包目录段 ⚠ 标注（实得：' + catCtx10i.text().split('\n').slice(0, 4).join(' | ') + '）')
+    assert(catCtx10i.text().indexOf('静态旧笔记') < 0 && catCtx10i.text().indexOf('⚠') < 0, '静态包目录段零普通行零 ⚠ 标注（0.4.4-E 唯挂载行源）')
     // 预算截断（约定不截断 + 最旧省略 + 提示行）
     await rpc10i('notes-create', { title: '静态约定', body: 'x'.repeat(100), inject: true, topic: '约定' })
     await rpc10i('notes-create', { title: '静态资料一', body: 'a'.repeat(200), inject: true, injectRole: 'reference', topic: '资料' })
@@ -224,8 +215,8 @@ module.exports = {
     const ft = convCtx10i.text()
     assert(ft.indexOf('静态约定') >= 0 && ft.indexOf('x'.repeat(100)) >= 0, '静态包约定桶永不截断')
     assert(ft.indexOf('静态资料一') < 0 && ft.indexOf('静态资料二') < 0, '静态包挂载行全部省略')
-    // 0.4.3③ 合并段口径：省略计数 = 普通行（静态旧笔记 1 条，先砍）+ 挂载行（2 条，后砍）合计
-    assert(ft.indexOf('…另有 3 条目录行超出预算未注入（note_search 可检索）') >= 0, '静态包省略提示行 N=3（1 普通行 + 2 挂载行；实得尾部：' + ft.split('\n').slice(-2).join(' | ') + '）')
+    // 0.4.4-E 目录段 = 挂载行单源：省略计数 = 挂载行 2 条（静态旧笔记未挂载不进段，不再计数）
+    assert(ft.indexOf('…另有 2 条目录行超出预算未注入（note_search 可检索）') >= 0, '静态包省略提示行 N=2（挂载行 2 条；实得尾部：' + ft.split('\n').slice(-2).join(' | ') + '）')
     await rpc10i('notes-settings-set', { injectBudgetChars: null, staleDays: null })
     const sg2 = await rpc10i('notes-settings-get', {})
     assert(!('injectBudgetChars' in sg2.body.settings) && !('staleDays' in sg2.body.settings), '静态包 null 恢复缺省')

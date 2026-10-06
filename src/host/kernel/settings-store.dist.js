@@ -1,5 +1,6 @@
     // ---- 设置持久化（SETTINGS_PATH）：内存缓存 + 启动加载；文件坏/不存在 → {}（容错）----
-    // 通用结构：设置项是 settingsCache 的顶层键（llm 选配 + catalogEnabled 目录索引总开关（缺省 = 关，显式 true 开启）+ staleDays 时效标注 + injectBudgetChars 注入预算 + maxFolderDepth 文件夹嵌套深度上限），client 经 notes-settings-get/set 读写。
+    // 通用结构：设置项是 settingsCache 的顶层键（llm 选配 + staleDays 过期候选阈值 + injectBudgetChars 注入预算 + maxFolderDepth 文件夹嵌套深度上限），client 经 notes-settings-get/set 读写。
+    // 0.4.4-E：catalogEnabled 目录补充行总开关随功能整体拆除退役——存量 settings.json 残留键保留不迁移（惰性死键，settings-set 分支删除后无人读）。
     let settingsCache = {}
     let settingsLoadPromise = null
     function loadSettings() {
@@ -20,8 +21,10 @@
       const p = await fs.resolve(SETTINGS_PATH)
       await fs.writeText(p, JSON.stringify(settingsCache, null, 2), undefined, undefined, getPolicy())
     }
-    // ---- P1 注入增强：时效衰减提醒 + 注入体积预算（settings.json 顶层键，null 删除 override 恢复缺省）----
-    // staleDays：目录行时效标注阈值（天），缺省 90；0 = 关闭。只标注 kind=note/link 的参考资料类条目。
+    // ---- P1 注入增强：时效阈值 + 注入体积预算（settings.json 顶层键，null 删除 override 恢复缺省）----
+    // staleDays：过期候选提名阈值（天），缺省 90；0 = 关闭。
+    // （0.4.4-E：⚠ 注入标注呈现面 = 目录普通行，随 catalog 拆除退役；现存唯一消费方 = 整理建议器 suggestCandidates
+    //   过期未引用提名（memory.js）——本键保留服务该口径：读写兼容、存量不迁移）
     // injectBudgetChars：单次注入体积预算（约，按字符数近似统计，不引 token 计算库），缺省 0 = 不限；
     //   约定桶永不截断；资料桶超预算时从最旧条目开始整条省略，尾部追加提示行。
     // lastInjectChars：最近一次 conventionText 渲染产物的字符数（每次渲染更新缓存值；设置卡片仪表数据源，settings-get 回传）。

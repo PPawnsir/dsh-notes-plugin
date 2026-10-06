@@ -16,6 +16,21 @@ function selectNote(id) {
   if (n) {
     histCount = null; probeHistCount(id);   /* 换笔记重置「历史」入口可见性，随即探测版本计数 */
     loadEdBody(id);
+  } else if (id) {
+    /* 0.4.4-A open-by-id 通道（notes-044-dispatch-receipts 执行记录跳转）：缓存未命中 = 列表未含该笔记
+       （存量 kind=sys 执行记录缺省降噪 / 缓存尚未刷新的在途新建）——notes-get 直开编辑器；
+       不进 notes 缓存（不刷列表/树红线）；失败 toast 不硬跳（防空白编辑器） */
+    rpc('notes-get', { id: id }).then(function (res) {
+      if (selId !== id) return;   /* 迟到响应守卫（同 loadEdBody 口径）：用户已切走零副作用 */
+      if (res && res.note) {
+        histCount = null; probeHistCount(id);
+        edNote = res.note; edBodyLoaded = true; edBodyErr = '';
+        wikiBodies[id] = { body: edNote.body || '', updatedAt: res.note.updatedAt || '' };   /* 双链索引即时新鲜 */
+        degraded = analyzeMarkdown(edNote.body || '');
+        if (edMode === 'rich' && !degraded.ok) edMode = 'source';
+        renderEd();
+      } else toast(t('meta.runLogNotFound', { id: id }));
+    }).catch(function () { if (selId === id) toast(t('meta.runLogNotFound', { id: id })) });
   }
 }
 /* R-1 安全态·正文加载（notes-get 独立成函数，「选中」与横幅「重试」共用）：
@@ -84,7 +99,7 @@ function doSave() {
   var upd = {
     id: selId, title: edNote.title, tags: tags,
     kind: edNote.kind, status: edNote.status, inject: edNote.inject === true,
-    injectTo: edNote.injectTo || [], recall: edNote.recall !== false, sensitive: edNote.sensitive === true
+    injectTo: edNote.injectTo || [], recall: edNote.recall !== false, sensitive: edNote.sensitive === true, hidden: edNote.hidden === true
   };
   /* R-1 正文提交闸：仅 notes-get 成功加载过正文（edBodyLoaded）才允许携带 body（host 对 undefined 保留原内容，防竞态清空正文）；
      已加载基础上清空为空串 = 用户有意为之，附 confirmClearBody:true 显式过 host 空覆盖兜底闸（empty-body-overwrite-guard） */

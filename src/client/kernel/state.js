@@ -61,6 +61,7 @@
     // 子域 hook 内部同名局部绑定（useState 解构/嵌套函数声明）遮蔽本群别名，故子域内部代码逐字不动。
     function setView(v) { return panelBridge.setView(v) }
     function setFilters(v) { return panelBridge.setFilters(v) }
+    function setShowHidden(v) { return panelBridge.setShowHidden(v) }   // 0.4.4-D：显隐开关跨域写入（popovers/filter-pop.js → panel/index.js state）
     function setSortBy(v) { return panelBridge.setSortBy(v) }
     function selectNote(n) { return panelBridge.selectNote(n) }
     function doDelete(id) { return panelBridge.doDelete(id) }

@@ -55,7 +55,7 @@ dsh-notes 把这件事变成可积累的本地资产：
 | 结论聊完就丢 | 面板内 `Enter` 即存为本地 Markdown（`~/.dsh/notes`），选区文字一键摘录，永不出本机 |
 | 笔记越记越乱 | LLM 异步识别主题并回填标题/分类，`kind`（笔记/决策/待办/链接/引用）与 `status`（进行中/置顶/已解决/已取代）两个正交维度 + 虚拟文件夹归档 |
 | agent 不知道约定与资料 | 详情区「⚡ 关闭 / 约定 / 资料」三态分段控件：约定=须遵守的行为规则、资料=事实性补充信息（agent 按需取用），笔记内容按角色分桶注入 Agent 系统提示（`order 130`），范围默认注入所有会话，可限定指定会话 |
-| agent 不知道库里有什么 | 目录段（并入 `order 130` 单一注入段）：挂载行（`- [[id]] 何时查我：…`，增强态）排前、普通行（`- [id] 标题 (类型, 主题)`）排后 + 规划轻推自动进系统提示，不搜索也感知存量；相关条目 `note_get` 拉全文、`note_search` 检索更多 |
+| agent 不知道库里有什么 | 目录段（并入 `order 130` 单一注入段）：挂载行（`- [[id]] 何时查我：…`）是唯一内容源——显式挂载才进段，附规划轻推自动进系统提示；相关条目 `note_get` 拉全文、`note_search` 检索更多（0.4.4-E 起不再平铺全库清单） |
 | 待办没人执行 | 一键把待办派发给任意**活跃**会话（`Agent.send` 注入「召回上下文 + 具体要求」并唤醒对方开始工作），派发历史可标记完成 |
 | 事后找不到 | 面板即时搜索 + 全文兜底并集检索、`note_search` 工具按 tag/topic/kind 过滤、归档按会话或标签合并、软删除可恢复 |
 
@@ -74,9 +74,9 @@ dsh-notes 不只是「一个带面板的笔记插件」——整个产品是**�
 
 **根索引模式**：机器产物不建新面板——数据集中在链接的伴生笔记（RootNote 托管节框架：锚点节 / 行格式 / 幂等 / 裁尾；机器只做节内行级操作，节外零触碰）。实例：定时派发执行记录、记忆档案、注入索引。召回指标是用户裁决的例外通道（0.4.3 验收修复⑤）：遥测属高频机器计数，迁出笔记正文到 `notes/telemetry.json` 机器存储层（内存增量 + 2s 防抖原子落盘 + 容量三闸，单写者 = host 进程），存量「召回遥测（自动）」笔记降级为日评估顺带刷新的人读镜像（热路径零笔记写入），指标汇总经 `notes-recall-stats` RPC 输出到面板。呈现层（0.4.3 验收修复⑥）：注入装配在目录段尾部追加价值信号行（`（本周引用：id×次数｜零引用候选：id｜截至 HH:MM）`——账本快照内存现算、与目录行同版本原子快照、只提存活目录行 id、无快照静默省略、≤200 字符），注入管理面板挂载区出紧凑统计行（挂载 N｜本周引用 Top｜零引用 M，点开见全量分通道统计）——信号行只服务注入呈现，正确性/清理裁决必须走 `notes-recall-stats` 全量或人工（用途分级红线）。原正文零触碰——约定正文是派发载荷，历史一律写进伴生笔记。
 
-**记忆治理三层**（召回保证性分级）：`inject` 全文注入 = 强保证；任务挂载（索引 §1 一行 whenToUse）= 中保证 · 主力通道；索引目录（recall 一行目录）= 弱保证（缺省关，设置卡显式开启）。资料默认不注入——挂载是显式动作。
+**记忆治理两层**（召回保证性分级）：`inject` 全文注入 = 强保证；任务挂载（索引 §1 一行 whenToUse）= 中保证 · 主力通道。资料默认不注入——挂载是显式动作。（原弱保证层「索引目录全库平铺」已于 0.4.4-E 整体移除——全库平铺与「资料=显式挂载」模型冲突。）
 
-**红线**：约定桶全文注入不动；资料默认不注入（任务挂载显式开通）；档案/指标类根笔记永不注入（防套娃）；工作日志与普通笔记同权（可见/可搜索/可编辑/显式 recall=true 可进目录），唯注入硬关——inject 永不可开启（UI 不提供开关 + host 强制纠正双保险）。
+**红线**：约定桶全文注入不动；资料默认不注入（任务挂载显式开通）；档案/指标类根笔记永不注入（防套娃）；工作日志与普通笔记同权（可见/可搜索/可编辑），唯注入硬关——inject 永不可开启（UI 不提供开关 + host 强制纠正双保险）。
 
 ## 安装
 
@@ -106,16 +106,16 @@ dsh plugin --profile web remove dsh-notes-plugin       # 卸载（不删数据�
 - **面板 UI v2**：两栏布局——左侧笔记树（置顶 / 文件夹 / 未分类主题分组，「主题过滤」跨文件夹全局生效），右侧通栏编辑器（标题 + 主题/标签/类型/状态 meta chips 直改）；SVG 图标库 + DSH 设计 token 配色，明暗主题自适应；快速记录卡片 v2（选区预览 + 复制/记录/取消，复制成功即关卡片）
 - **中英文双语界面**：设置卡「语言」项切换 中文 / English（localStorage 持久化，默认中文，切换即全量重渲染）；运行时扁平字典 `src/i18n/zh.js` + `en.js`（双端共源）+ `t(key, {name})` 插值，缺 key 回退中文原文、永不裸 key；check 常驻 i18n 守卫（zh/en key 集一致 + 重复 key 防线 + 字典↔代码引用双向覆盖 + 产物字典抽查），报告尾部输出「未覆盖清单」提示内联中文残留（只提示不阻塞）；host 端 RPC 报错文案本期保持中文
 - **上下文注入（双角色）**：详情区「⚡ 关闭 / 约定 / 资料」三态分段控件（独立字段 `inject` + `injectRole`，不依赖标签）——约定=须遵守的行为规则（每回合注入「用户约定」桶），资料=事实性补充信息（「参考资料」桶，与当前任务相关时按需取用）；范围浮层多选——默认注入所有会话，勾选具体会话则仅限这些会话（会话按工作区分组、显示会话名，自动排除子 agent 与已归档会话）
-- **目录段（recall 通道，0.4.3 起与资料桶合并为单一目录段）**：整篇注入之外的轻量清单——挂载行（注入索引 §1 的 `- [[id]] 何时查我：…`，= 目录行的增强态）排前，普通行（`- [id] 标题 (类型, 主题)`，设置卡片总开关 `catalogEnabled` 缺省关、显式开启后填充）排后，随约定注入同段进系统提示（`order 130`，原 `order 131` 独立块已撤销）并附规划轻推，agent 规划期即知库里有什么；已了结（resolved/superseded）、整篇注入已命中与已挂载的笔记自动排除，普通行 40 条封顶；单条以前沿 `recall: false` 退出目录；注入预算压缩时先砍普通行、挂载行存活（挂载行内部仍从最旧整条省略）；尾部附价值信号行（0.4.3 验收修复⑥：`（本周引用：id×次数｜零引用候选：id｜截至 HH:MM）`，账本快照内存现算、与目录行同版本原子快照，无快照静默省略）
+- **目录段（0.4.3 起与资料桶合并为单一目录段；0.4.4-E 起唯挂载行源）**：整篇注入之外的轻量清单 = 挂载行（注入索引 §1 的 `- [[id]] 何时查我：…`）——资料 = 显式挂载，未挂载笔记不再平铺进段（0.4.4-E 移除「目录段补充未挂载条目」：全库平铺与显式挂载模型冲突，`catalogEnabled` 总开关/预览徽标/catalog 遥测埋点一并退役，存量 settings.json 残留键为惰性死键不迁移；`recall` 字段随之失去消费方，保留 dormant 读写兼容）；挂载行随约定注入同段进系统提示（`order 130`，原 `order 131` 独立块已撤销）并附规划轻推 + 挂载 `note_get` 引导；注入预算压缩时挂载行内部从最旧整条省略；尾部附日志计数提示行与价值信号行（0.4.3 验收修复⑥：`（本周引用：id×次数｜零引用候选：id｜截至 HH:MM）`，账本快照内存现算、与目录行同版本原子快照，无快照静默省略）
 - **注入管理面板**：设置卡片「注入管理 → 管理…」——全库注入三态总览（约定 N / 资料 M / 未注入 K 统计 chips 点击即过滤 + 250ms 防抖搜索）；行内三态 segmented 直改（语义与详情区三态分段控件完全一致；0.4.3 验收修复⑪起单行切「资料」档先弹 whenToUse 编辑框——LLM 草稿预填、确认才落索引行并把笔记翻为资料档、取消零副作用，详情页三态同此链路）；多选批量「设为约定 / 设为资料 / 关闭注入」（confirm 确认，单条失败计数不中断；批量「设为资料」维持静默落缺省挂载行 whenToUse=标题）；注入中在前（约定 > 资料），组内按更新时间降序；日志注入硬关（行内不渲染注入开关、静态标注「日志不参与注入」，批量不可选；host injectForcedOff 强制纠正双保险），敏感笔记行内提示注入自动脱敏，曾注入徽章展示粘性标记；挂载区统计行（0.4.3 验收修复⑥：挂载 N｜本周引用 Top｜零引用 M，复用 `notes-recall-stats` 账本快照，点开见全量分通道召回率，无快照静默省略）
 - **设置卡交互反馈**：标题栏 ✕ 常驻关闭 + dirty 态「保存」（显式确认：全部数值字段先校验，串行落盘「控件值 ≠ 已落盘」的键）/「还原」（回滚到打开时快照）；✕/Esc/点遮罩关闭时有未落盘改动自动兜底 flush 并 toast 确认；原有选择即存 / 失焦即存的自动保存不变
 - **任务派发**：待办一键派发到活跃会话或新建会话，可补充具体要求；派发记录（会话名/要求/时间/是否完成）落在笔记的 `dispatches` 字段里，正文不被污染；目标会话系统提示持续注入该待办直到标记完成；DSH 0.1.7 适配——活跃会话列表走会话元数据缓存（未命中先返回占位 + `titlesPending`，前端 1.5s 轮询补齐），加载从 128s 降到 0.2s
-- **定时派发（约定即调度）**：`contractType: dispatch-schedule` 约定笔记 + front-matter `schedule` 结构化声明（`{at|every, target, action, enabled, anchor?, dow?}`，禁自然语言解析）——host 常驻 30s cron tick（`unref` 不挂进程、重载防双跑、启动补评估），到期复用派发全链路自动派发（派发卡来源标注「定时调度 @标题」，回执走既有链路自动闭环）；状态三层 = front-matter `schedule.lastFiredAt/lastRun/lastError`（机器读写）+ 既有 `dispatches` 历史数组；**执行记录独立笔记（runLog 软链）**：首条回执时懒创建「定时 @标题 · 执行记录」笔记（kind=note 可见可检索，folder/topic 随约定），约定 front-matter `schedule.runLog` 存其 id 软链、详情计划块出「执行记录 ↗」跳转——约定正文一字不动（正文=派发载荷，历史追加会污染下次派发上下文），条目倒序 ≤50 裁尾、同 msgId 幂等去重，删除约定不级联删执行记录（留档）；幂等生命线 = `lastFiredAt` 先落盘再派发，单次 `at` 停机错过启动补发一次、轮询错过对齐下周期不追赶；锚定时刻（周期模式可选 `anchor: 'HH:MM'` 本地时刻 + 每周 `dow: 0-6`）：首触 = 下一个本地锚定时刻，触发序列钉死该时刻不随创建/触发时刻漂移，无 `anchor` 的存量声明保持纯间隔语义（零迁移）；写入红线：`at` 必须未来 / 轮询间隔 ≥5min / `anchor` 严格 HH:MM 且需整天周期 / `dow` 0-6 且仅每周 / 目标会话存活 / `runLog` 须为存在的笔记 id 或空 / 未知字段拒绝
+- **定时派发（约定即调度）**：`contractType: dispatch-schedule` 约定笔记 + front-matter `schedule` 结构化声明（`{at|every, target, action, enabled, anchor?, dow?}`，禁自然语言解析）——host 常驻 30s cron tick（`unref` 不挂进程、重载防双跑、启动补评估），到期复用派发全链路自动派发（派发卡来源标注「定时调度 @标题」，回执走既有链路自动闭环）；状态三层 = front-matter `schedule.lastFiredAt/lastRun/lastError`（机器读写）+ 既有 `dispatches` 历史数组；**执行记录伴生笔记（runLog 软链，0.4.4-A 三表归一）**：派发成功即懒创建「执行记录 · @标题」笔记（kind=log 工作日志型——注入硬关、可见可搜可编辑照常，folder=「执行记录」专用夹），约定 front-matter `schedule.runLog` 存其 id 软链（非调度派发源笔记存顶层 `runLog`；手动派发 📤 / 回执 📥 / 人工闭环 ✅ 行级同篇追加）、详情计划块与 meta 派发历史行出「执行记录 ↗」跳转——约定正文一字不动（正文=派发载荷，历史追加会污染下次派发上下文），条目倒序 ≤50 裁尾、同 msgId 幂等去重，删除约定不级联删执行记录（留档）；幂等生命线 = `lastFiredAt` 先落盘再派发，单次 `at` 停机错过启动补发一次、轮询错过对齐下周期不追赶；锚定时刻（周期模式可选 `anchor: 'HH:MM'` 本地时刻 + 每周 `dow: 0-6`）：首触 = 下一个本地锚定时刻，触发序列钉死该时刻不随创建/触发时刻漂移，无 `anchor` 的存量声明保持纯间隔语义（零迁移）；写入红线：`at` 必须未来 / 轮询间隔 ≥5min / `anchor` 严格 HH:MM 且需整天周期 / `dow` 0-6 且仅每周 / 目标会话存活 / `runLog` 须为存在的笔记 id 或空 / 未知字段拒绝
 - **检索**：面板搜索框（本地即时过滤 + 250ms 防抖全文兜底，取并集）、筛选中心（「筛选(N)」按钮 + 分组 popover——状态组 置顶/已注入/曾注入/敏感 与类型组五 kind 均多选，组内 OR 跨组 AND，激活条件 chips 可单独移除，曾注入按 slim 字段 feature-detect；排序独立控件 时间/引用/相关度，条件与排序持久化记忆）、`note_search` 工具
 - **键盘流**：`Ctrl+K` 搜索（框内 `↓` 直达列表首条命中，保留过滤上下文）、`Alt+N` 新建（`Ctrl+N` 是浏览器保留键「新建窗口」已弃用）、`j/k`/`↑↓` 移动焦点行（可见高亮）、`Enter` 打开、`Esc` 分层（关浮层 → 清搜索并还焦列表 → 关面板）；输入框内不抢键；浮动面板与全窗口页（`/dsh-notes-app`）同款
 - **归档整理（显式）**：标题栏「归档」先 dry-run 预览（`notes-archive-preview`，含引导气泡），勾选速记组后才合并（`notes-archive` 白名单组，host 先全量校验再动手；toast 可撤销一次 `notes-archive-undo`）；手动笔记已摘出自动分组（防误并），用列表「选择」多选合并；原笔记软删除（`.bak` 备份）可恢复
 - **整理建议器**：设置卡片「整理建议」——`notes-suggest` dry-run 零写入提名四类候选：速记归档组 / 过期未引用（kind=note/link 且超 `staleDays` 且从未被 `note_get` 命中）/ 孤儿笔记（无 `[[双链]]` 出链与反向链接、未注入、零引用的普通笔记）/ 日志卫生（工作记忆 v0：超 7 天周聚合 + 超 90 天月聚合提名）；只提名不执行——直达归档预览 / 批量软删（无 confirm，toast 可撤销）/ 孤儿仅展示逐条跳转 / 日志卫生仅展开明细
-- **工作记忆 v0（工作日志沉淀，r3 车道模型）**：设置卡片「工作记忆」区「启用沉淀引导」——创建一条预填约定笔记（`inject=true`、`contractType: memory-guide` 契约身份标记（`tag memory-guide` 兼容发现键）、作用域三档可选），引导 Agent 在任务收尾或你说「记一下今天的工作」时把会话结论写为 `kind=log` 工作日志（模板四节：做了什么/改动/遗留与后续/相关笔记双链）；车道模型：工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看）、记忆管 Agent 自己沉淀什么（自用召回），可同时对同一事件生效，无重叠检查/冲突确认；引导激活期产生的日志 front-matter 自动落 `origin: memory-guide` 溯源；日志与普通笔记同权（0.4.3⑦ 起：默认列表/搜索可见、可打开编辑保存；目录缺省 recall=false 不进、显式 true 豁免），`inject` 硬关闭（面板不提供开关 + host 强制纠正），永不被过期/孤儿清理提名；超窗旧日志由整理建议器「日志卫生」段按 工作区×周/月 提名聚合（只提名不执行，窗口在设置卡片可调）；停用 = 关闭该约定注入（规格 `design/agent-memory-v0.md`）
+- **工作记忆 v0（工作日志沉淀，r3 车道模型）**：设置卡片「工作记忆」区「启用沉淀引导」——创建一条预填约定笔记（`inject=true`、`contractType: memory-guide` 契约身份标记（`tag memory-guide` 兼容发现键）、作用域三档可选），引导 Agent 在任务收尾或你说「记一下今天的工作」时把会话结论写为 `kind=log` 工作日志（模板四节：做了什么/改动/遗留与后续/相关笔记双链）；车道模型：工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看）、记忆管 Agent 自己沉淀什么（自用召回），可同时对同一事件生效，无重叠检查/冲突确认；引导激活期产生的日志 front-matter 自动落 `origin: memory-guide` 溯源；日志与普通笔记同权（0.4.3⑦ 起：默认列表/搜索可见、可打开编辑保存），`inject` 硬关闭（面板不提供开关 + host 强制纠正），永不被过期/孤儿清理提名；超窗旧日志由整理建议器「日志卫生」段按 工作区×周/月 提名聚合（只提名不执行，窗口在设置卡片可调）；停用 = 关闭该约定注入（规格 `design/agent-memory-v0.md`）
 - **编辑器双模式（源码 ⇄ 富文本）**：meta 行两段开关或 `Ctrl+/` 切换——富文本为受限 WYSIWYG（白名单：h1-h3 / 列表 / 引用 / 围栏代码块 / 粗斜体 / 行内码 / 链接（仅 http/https）/ 图片 / 双链，render ⇄ serialize 双向 round-trip 无损，900ms 防抖回写源码）；富文本工具栏（加粗/斜体/链接/图片）+ 粘贴 HTML 白名单清洗（h4-6 降段落、script/style 丢弃）；含白名单外语法时富文本入口置灰 + 横幅给出原因，删净即恢复
 - **富文本门禁放宽**：行内 HTML（`<b>`/`<i>` 等）字面渲染、GFM 表格只读渲染（`contenteditable=false` 原子岛屿，序列化逐字回吐）——不再整篇降级，仅多行 HTML 块 / 嵌套引用等歧义结构才禁用富文本
 - **✨ 整理（AI 按模板重写）**：编辑器 meta 行「整理」按钮——当前草稿经 `notes-ai-organize`（`notes-quick-instruct` 同款 LLM 通道）按 `kind` 模板结构化重写（决策→背景/结论/理由，待办→checkbox，链接→链接/说明，引用→引用块/出处，机器/运维信息→环境/机器清单/账号/门户）；替换后走自动保存，toast 可撤销一次；正文超 12000 字报错引导分段
@@ -124,8 +124,8 @@ dsh plugin --profile web remove dsh-notes-plugin       # 卸载（不删数据�
 - **资产清理**：设置卡片「资产清理」——`notes-assets-prune` 扫描 `assets/` 中未被任何笔记正文引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删），dry-run 预览勾选后才删除；发布版静态包走真删除，开发版为清空占位（0 字节墓碑）
 - **回收站**：侧栏底部「回收站」（面板与全窗口页同入口）——列出软删除的笔记（`notes-list` 参数化 `includeDeleted`），支持**全选/多选 + 批量恢复 / 批量彻底删除**（confirm 明示「不可恢复（含历史版本）」，执行中防重入）；点标题行内**只读预览正文**（Markdown 渲染、零注入面）；逐条「恢复」（`notes-restore`）或「彻底删除」（`notes-purge`，confirm 双确认「彻底删除不可恢复」）；彻底删除仅限已软删除笔记（host 安全闸），`.md` 与归档备份 `.md.bak` 及 `.history/<id>` 快照历史一并移除——发布版静态包走真删除，开发版为清空占位（0 字节墓碑，全链路视作不存在）
 - **多选批量操作**：列表「选择」进入多选态，底部操作条「已选 N 条 | 合并 | 删除 | 取消」——合并走归档预览、删除为软删除进回收站（无 confirm，toast 可撤销；确认强度 = 不可恢复性：软删轻确认、彻底删除保留双确认），0 条勾选时按钮禁用
-- **敏感笔记脱敏**：编辑器 meta 行 🔒 toggle（`sensitive=true`）——注入系统提示时正文按行打码（键名与结构保留、值遮蔽为 `******（敏感，note_get <id> 获取）`，agent 须 `note_get` 取原文；目录注入标题同样打码并加 🔒 标记）；命中密码/密钥模式自动识别——速记直接落 `sensitive=true`，手动创建回传 `sensitiveSuggested` 建议（不强制）
-- **注入增强**：时效衰减提醒（目录行对超 `staleDays`（缺省 90 天，0=关闭）未更新的 note/link 尾注 ⚠）+ 注入体积预算（`injectBudgetChars` 字符预算，超限截断并标注）+ 设置卡片「注入预览」（`notes-inject-preview` 实时渲染注入产物 + 脱敏/时效/截断统计，三档视角：缺省全局 / 工作区并集 / 单会话过滤）+ `injectEver` 曾注入粘性标记（只升不降，驱动筛选中心「曾注入」与列表行徽章）
+- **敏感笔记脱敏**：编辑器 meta 行 🔒 toggle（`sensitive=true`）——注入系统提示时正文按行打码（键名与结构保留、值遮蔽为 `******（敏感，note_get <id> 获取）`，agent 须 `note_get` 取原文）；命中密码/密钥模式自动识别——速记直接落 `sensitive=true`，手动创建回传 `sensitiveSuggested` 建议（不强制）
+- **注入增强**：注入体积预算（`injectBudgetChars` 字符预算，超限截断并标注）+ 设置卡片「注入预览」（`notes-inject-preview` 实时渲染注入产物 + 脱敏/截断统计，三档视角：缺省全局 / 工作区并集 / 单会话过滤）+ `injectEver` 曾注入粘性标记（只升不降，驱动筛选中心「曾注入」与列表行徽章）。时效阈值 `staleDays`（缺省 90 天，0=关闭）自 0.4.4-E 起不再做注入标注（目录行 ⚠ 尾注随「目录补充行」一并移除），仅驱动整理建议器的「过期未引用」候选提名
 - **双链与反向链接**：正文 `[[id或标题]]` 互链（id 精确优先、标题全库精确匹配，解析不到按纯文本）——列表行尾双链标记、富文本内点击跳转目标笔记、详情区「反向链接」面板列出全库指向当前笔记的其他条目（全库惰性索引，未热时提示「索引中…」）
 - **导入 / 导出**：设置卡片「数据」区入口——全库目录快照（含 `folders.json`，不打包不压缩，目录即格式；`.history` 版本历史默认不含，RPC `notes-export` 传 `includeHistory: true` 连带）；「导出单文件…」按范围（全部/文件夹/标签）把笔记拼接为单个自包含 Markdown（每篇 = 标题 + 元信息块 + 正文，可选目录页，图片 base64 内联，可直接分享；单文件超 20MB 告警但仍照常导出）；导入两步式：先预览（新增/相同/不同分类 + 文件夹合并统计）再执行，默认跳过内容不同的冲突、勾选后才覆盖；执行前自动备份（含 `.history`），只增改不删；导入合并 `.history` 仅对新增笔记连带，同 id 冲突跳过历史合并
 - **Token 消耗统计**：设置卡片「用量」区——LLM 通道真实 usage 元数据计量（StreamChunk `usage` 字段，无元数据时按字符估算并标注「约」），当月用量 / 全量累计 / `usageBudgetMonthly` 月度预算提醒（接近与超限分档 toast）；统计落 `usage.json`，RPC `notes-usage-get`
@@ -146,7 +146,7 @@ dsh plugin --profile web remove dsh-notes-plugin       # 卸载（不删数据�
 
 `note_manage` 的 `create` / `update` 另支持 `injectRole`（`'convention'` / `'reference'`，仅 `inject: true` 时有意义，缺省 `convention`）：`convention` = 须遵守的行为规则（「用户约定」桶），`reference` = 事实性补充信息（「参考资料」桶，agent 按需取用）；按 `kind` 推断的建议——`decision`/`todo` → `convention`，`note`/`link`/`quote` → `reference`。
 
-`note_manage` 的 `create` / `update` 另支持 `recall`（布尔，默认 `true`）：置 `false` 把笔记移出目录索引注入（仍可被 `note_search` 检索到），与 `inject` 整篇注入正交。
+`note_manage` 的 `create` / `update` 另支持 `recall`（布尔，默认 `true`）：**dormant 兼容字段**——原控制目录索引注入，该功能已于 0.4.4-E 整体移除（目录段唯挂载行源），字段读写兼容保留但对注入无任何效果（笔记永远可被 `note_search` 检索），0.4.5 清理卡统一裁决退役。
 
 `note_manage { action: 'dispatch', id, targetSessionId? }`：不传 `targetSessionId` 时返回当前活跃会话列表供选择，传了则把该待办注入目标会话并唤醒它开始工作。
 
@@ -163,7 +163,7 @@ dsh plugin --profile web remove dsh-notes-plugin       # 卸载（不删数据�
       2026-09-17T06-02-34.123Z.ab1.cd2.md   # <UTC 时间戳>.<内容 hash>.md（纯文本，不压缩不加密）
   assets/              # 图片资产（base64 文本落盘；正文以 ![](assets/xxx) 相对路径引用；孤儿资产可用「设置 → 资产清理」清理）
   folders.json         # 虚拟文件夹清单 [{id, name, order}]（缺失/损坏自动兜底为空清单，不影响笔记主流程）
-  settings.json        # 面板设置（LLM 模型选配、catalogEnabled 目录注入总开关、staleDays 时效阈值、injectBudgetChars 注入预算等）
+  settings.json        # 面板设置（LLM 模型选配、staleDays 时效阈值、injectBudgetChars 注入预算等；0.4.4-E 起 catalogEnabled 为惰性死键——功能已拆，存量不迁移）
   perf-report.json     # 面板性能遥测（可随时删除）
 ```
 
@@ -184,7 +184,7 @@ status: active         # active/pinned/resolved/superseded
 inject: false          # 是否注入系统提示（注入为上下文总开关）
 injectRole: convention # 注入角色（仅 inject=true 时落盘/生效）：convention=约定·须遵守的行为规则 / reference=资料·事实性补充信息（agent 按需取用）；缺省 convention
 injectTo: []           # 注入范围多选：[] = 所有会话（默认）/ [会话短id,...] = 仅限这些会话（存量 global/workspace 值按所有会话容错）
-recall: true           # 是否进目录索引注入（false 退出目录但仍可搜索；与 inject 正交）
+recall: true           # dormant 兼容字段（0.4.4-E 起目录索引注入已移除，对注入无效果；0.4.5 清理卡裁决退役）
 injectEver: false      # 曾注入粘性标记（inject 曾置 true 即永久 true，只读）
 sensitive: false       # 敏感笔记（注入时正文按行打码脱敏）
 useCount: 0            # 使用遥测（note_get 命中计数，60s 防抖落盘）
@@ -193,7 +193,7 @@ updatedAt: ISO-8601
 sessionId: 来源会话
 cwd: 来源工作目录
 contractType: ""        # 契约分型（"" = 普通笔记；dispatch-schedule = 定时派发约定；其余值系统内部流程管理）
-schedule: {...}        # 定时派发声明 + 机器状态（仅 contractType=dispatch-schedule 落盘，JSON 单行：{at|every, target, action, enabled, anchor?, dow?, lastFiredAt?, lastRun?, lastError?, runLog?}；anchor='HH:MM' 锚定本地时刻，dow=0-6 每周星期几；runLog=执行记录独立笔记 id 软链，首条回执时懒创建回写）
+schedule: {...}        # 定时派发声明 + 机器状态（仅 contractType=dispatch-schedule 落盘，JSON 单行：{at|every, target, action, enabled, anchor?, dow?, lastFiredAt?, lastRun?, lastError?, runLog?}；anchor='HH:MM' 锚定本地时刻，dow=0-6 每周星期几；runLog=执行记录伴生笔记 id 软链（「执行记录 · @标题」，kind=log + 执行记录夹），派发成功即懒创建回写）
 dispatches: []         # 派发历史（会话/要求/时间/done）
 mergedFrom: []         # 归档合并来源 id
 archivedAt: ""
@@ -221,8 +221,8 @@ deleted: "false"       # 软删除标记
 node scripts/build-dist.cjs           # 改完 src/**（client/host/app/shared/styles）后一次性刷新四产物：lib/client.js + lib/styles.css + app.html + index.mjs
 node --check packages/dsh-notes-plugin/index.mjs
 node --check packages/dsh-notes-plugin/lib/client.js
-node check.js                         # 824 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录注入 + 导入导出 + 半独立页 + 双模式编辑器 + 敏感脱敏 + 注入增强 + 遥测/双链 + 快照式历史引擎 + 模块化结构契约 + README.en 双语 + i18n 守卫 + 笔记网络守卫/README 哲学节）
-npm run e2e                           # 浏览器 e2e（Playwright + 内置 mock host，17 用例 90 断言：加载/CRUD/搜索/注入管理与挂载弹框/日志同权/拖拽/回收站/导出/机器档翻档案等；需 chromium 或系统 Chrome）
+node check.js                         # 849 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录段挂载行 + 导入导出 + 半独立页 + 双模式编辑器 + 敏感脱敏 + 注入增强 + 遥测/双链 + 快照式历史引擎 + 模块化结构契约 + README.en 双语 + i18n 守卫 + 笔记网络守卫/README 哲学节）
+npm run e2e                           # 浏览器 e2e（Playwright + 内置 mock host，20 用例 125 断言：加载/CRUD/搜索/注入管理与挂载弹框/日志同权/拖拽/回收站/导出/机器档翻档案等；需 chromium 或系统 Chrome）
 ```
 
 详见 [DEVELOPMENT.md](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/DEVELOPMENT.md)。

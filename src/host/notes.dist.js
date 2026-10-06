@@ -95,9 +95,9 @@
       let folderNorm = ex.folder
       if (folderNorm !== undefined) folderNorm = await _resolveFolderArg(folderNorm)
       // 工作记忆 v0 隐身硬闸（裁决 B①）：kind=log 强制 inject=false（显式传 true 也纠正，返回值 injectForcedOff 告知），
-      // recall 缺省 false（显式 true 豁免——用户/agent 显式选择进目录不算混入）；日志永不进系统提示与目录索引
+      // recall 缺省 false（0.4.4-E 起字段 dormant——目录段唯挂载行源，显式 true 亦无注入效果，读写兼容保留）；日志永不进系统提示与目录索引
       const isLog = (ex.kind || 'note') === 'log'
-      // 0.4.3⑥（notes-043-sys-kind）：kind=sys 系统根笔记——recall 缺省 false（不进目录/默认召回，显式 true 豁免）；
+      // 0.4.3⑥（notes-043-sys-kind）：kind=sys 系统根笔记——recall 缺省 false（dormant 缺省口径保留，0.4.4-E 起无注入效果）；
       //   inject 允许且是核心用途（与 log 的隐身硬闸不同，不做 inject 纠正）
       const isSys = (ex.kind || 'note') === 'sys'
       const injectForcedOff = isLog && ex.inject === true
@@ -126,6 +126,8 @@
         injectRole: ex.injectRole === 'reference' ? 'reference' : 'convention',
         recall: (isLog || isSys) ? (ex.recall === true) : (ex.recall !== false),
         sensitive: ex.sensitive === true,
+        // hidden 隐藏属性（0.4.4-D）：纯 UI 遮罩标记，显式透传（缺省 false）；host 列表/搜索/读写面零过滤——遮罩全在 client/app 渲染层
+        hidden: ex.hidden === true,
         createdAt: ex.createdAt || now, updatedAt: ex.updatedAt || now,
         sessionId: ex.sessionId !== undefined ? ex.sessionId : sc.sessionId,
         cwd: ex.cwd || sc.cwd,
@@ -159,7 +161,7 @@
     // includeDeleted（P1 回收站）：缺省排除软删除；传 true 时 deleted 笔记一并返回（回收站列表数据源，slim 携带 deleted 标记）
     // 日志同权（0.4.3 验收修复⑦，用户裁决推翻 R-6 UI 隐身）：kind=log 与普通笔记同权——默认列表/默认检索均包含（可见/可搜/可编辑）；
     // includeLogs 第 5 参保留向后兼容（旧调用方传 true 语义不变——已恒为包含；显式 kind=log 过滤照常只看日志）；
-    // 唯一保留的边界：注入硬禁（inject 强制 false，_create/_update 闸门 + injectForcedOff 告知）+ 目录 recall 缺省 false（显式 true 豁免进目录，inject.js 目录段承接）
+    // 唯一保留的边界：注入硬禁（inject 强制 false，_create/_update 闸门 + injectForcedOff 告知）+ 目录 recall 缺省 false（0.4.4-E 起 recall 字段 dormant——目录段唯挂载行源，inject.js 无 recall 消费方）
     // sys 缺省降噪（0.4.3 验收修复⑨，用户反馈：记忆档案 12 篇挤爆默认列表）：kind=sys 机器托管笔记（注入索引/记忆档案/执行记录/遥测镜像）
     //   只在「全部」/「未分类」平铺视图排除（folder 缺省或 ''——未分类与全部同族守恒口径：不过滤 = 各文件夹 + 未分类之和）——
     //   显式入口照常显示零变化：kind 过滤 / tag 过滤 / 具体文件夹（非空 id）定向导航；日志同权语义不受影响（⑦ 红线）；
@@ -298,6 +300,8 @@
         note.contractType = ex.contractType
       }
       if (ex.origin !== undefined) note.origin = ex.origin
+      // hidden 隐藏属性（0.4.4-D）：extra 透传，显式传才改（undefined 不动存量值）；纯 UI 遮罩，host 语义零改动
+      if (ex.hidden !== undefined) note.hidden = ex.hidden === true
       // ==== empty-body-overwrite-guard BEGIN ====（R-1 P0 数据丢失兜底；notes.js 与 notes.dist.js 双变体逐字节同步，check 节 46 看守）
       // 判据：body 显式传空串且现存正文非空 → 拒绝静默覆盖，抛错要求调用方显式传 extra.confirmClearBody===true 重试。
       // 选型理由（错得安全 = 失败时停在原状，而不是失败后留备份）：宁拒绝不墓碑——.bak 墓碑方案失败时已破坏现场
@@ -321,7 +325,7 @@
         try { note.workspace = await _wsOfSession(note.sessionId) } catch (e) {}
       }
       await persistNote(note)
-      if (dispatchClosedDs.length) await _schedRunLogAppend(note, dispatchClosedDs)   // 仅 dispatch-schedule 约定生效（内部全量吞异常；约定正文零改动红线不破）
+      if (dispatchClosedDs.length) await _schedRunLogAppend(note, dispatchClosedDs)   // 0.4.4-A 起全笔记生效·三表归一（resolved 回执 📥 行落执行记录伴生笔记；内部全量吞异常；源笔记正文零改动红线不破）
       const r = { id, kind: note.kind, status: note.status, dispatchClosed: dispatchClosed }
       if (injectForcedOff) r.injectForcedOff = true   // 日志隐身硬闸命中告知（kind=log 强制 inject=false）
       return r

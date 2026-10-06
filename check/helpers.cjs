@@ -117,13 +117,34 @@ function createHostMocks() {
     session: { id: 'session-abc12345-0000-0000-0000-000000000000', header: { cwd: 'D:\\deepseek-work' } },
     send: (msg, target, wakeup) => { sentMessages.push({ msg, target, wakeup }) }
   }
+  // 0.4.4-B：agents.create 专属会话 mock——创建的 agent 登记进 createdAgents（agents.get 命中 = live 语义）；
+  //   dispose 摘除（插件重载降级路径演练）；创建即播种持久化日志（persistLogs），与真实 create 的持久化语义一致
+  const createdAgents = new Map()
+  const agentCreateCalls = []
   const agentsMock = {
     currentInitiator: () => ({ sessionId: 'session-abc12345-0000-0000-0000-000000000000', session: { id: 'session-abc12345-0000-0000-0000-000000000000', header: { cwd: 'D:\\deepseek-work' } } }),
     roots: () => [liveAgent],
-    get: (id) => id === 'session-abc12345-0000-0000-0000-000000000000' ? liveAgent : undefined
+    get: (id) => id === 'session-abc12345-0000-0000-0000-000000000000' ? liveAgent : createdAgents.get(id),
+    create: async (opts) => {
+      agentCreateCalls.push(opts)
+      const sid = opts.sessionId
+      const a = { id: sid, session: { id: sid, header: { cwd: (opts.meta && opts.meta.cwd) || '' } }, send: (msg, target, wakeup) => { sentMessages.push({ msg, target, wakeup, via: 'created:' + sid }) } }
+      createdAgents.set(sid, a)
+      if (!persistLogs.has(sid)) persistLogs.set(sid, [])
+      return { agent: a, dispose: async () => { createdAgents.delete(sid) } }
+    }
   }
+  // 0.4.4-B：agentPresets mock（resolve/mount 双方法面；setup 内 mount 语义录制）
+  const agentPresetsMock = { resolve: async (id) => ({ id: id || 'mock-default-preset' }), mount: async (agentCtx, id) => {} }
   const registeredContexts = []
   const systemPromptMock = { context: (c) => { registeredContexts.push(c); return () => {} } }
+  // 0.4.4-B：持久化日志 mock（休眠送达通道演习场）——open('write') 拿写把手（read/append/flush/close 四合约 +
+  //   seq 连续性校验同 assertContiguous）；stat 元数据探针（_schedFire 可送达预检数据源）；
+  //   预置 sub99 一条存量日志（休眠有效目标），arch 一份（归档目标）；agents.create 播种新建会话日志
+  const persistLogs = new Map()
+  persistLogs.set('session-sub9900000-0000-0000-0000-000000000000', [{ type: 'session/end-seed', seq: 0, time: 1758000000000, data: {} }])
+  persistLogs.set('session-arch00000-0000-0000-0000-000000000000', [{ type: 'session/end-seed', seq: 0, time: 1758000000000, data: {} }])
+  const persistOpenCalls = []
   const sessionPersistenceMock = {
     // 返回 SessionPersistenceSnapshot 结构（{header, revision}），模拟 DSH 新版 list() 返回
     list: async () => [
@@ -131,16 +152,36 @@ function createHostMocks() {
       { header: { id: 'session-sub9900000-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T02:00:00.000Z', origin: 'subagent' }, revision: 'r2' },
       { header: { id: 'session-arch00000-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T03:00:00.000Z' }, revision: 'r3' }
     ],
-    inspect: async (id) => ({ meta: { id: id, cwd: 'D:\\deepseek-work' }, events: [{ type: 'session/title', data: { title: '开发会话' } }] })
+    inspect: async (id) => ({ meta: { id: id, cwd: 'D:\\deepseek-work' }, events: [{ type: 'session/title', data: { title: '开发会话' } }] }),
+    stat: async (id) => persistLogs.has(id) ? { header: { id: id, cwd: 'D:\\deepseek-work' }, revision: 'r' } : undefined,
+    open: async (id, access) => {
+      persistOpenCalls.push({ id: id, access: access })
+      if (!persistLogs.has(id)) { const e = new Error('session "' + id + '" not found'); e.name = 'SessionPersistenceNotFoundError'; throw e }
+      const events = persistLogs.get(id)
+      let closed = false
+      return {
+        id: id, access: access,
+        read: async (offset, length) => { const st = offset || 0; return { eventState: 'detached', events: events.slice(st, length === undefined ? events.length : st + length) } },
+        append: async (batch) => { for (const ev of batch) { if (!ev || ev.seq !== events.length) throw new Error('non-contiguous append seq') ; events.push(ev) } },
+        flush: async () => {},
+        close: async () => { closed = true },
+        get closed() { return closed }
+      }
+    }
   }
+  // 0.4.4-B：工作区落账录制（attachSession 只录不_mutate——sessionIds 账目变化会污染后续节的会话清单口径，行为断言看录制表）
+  const attachCalls = []
+  // ws1 账目数组跨 list() 共享（0.4.4-B 节 48/82 需要就地增删 sid 演练「声明期存活、执行期持久化失联」场景；用后必须复位）
+  const ws1SessionIds = ['session-abc12345-0000-0000-0000-000000000000', 'session-sub9900000-0000-0000-0000-000000000000', 'session-arch00000-0000-0000-0000-000000000000']
   const workspaceRegistryMock = {
     archivedSessionIds: ['session-arch00000-0000-0000-0000-000000000000'],
     // 工作区（含 sessionIds，= 左侧列表有效会话数据源）
     list: () => [
-      { id: 'ws1', title: 'deepseek-work', path: 'D:\\deepseek-work', sessionIds: ['session-abc12345-0000-0000-0000-000000000000', 'session-sub9900000-0000-0000-0000-000000000000', 'session-arch00000-0000-0000-0000-000000000000'] }
+      { id: 'ws1', title: 'deepseek-work', path: 'D:\\deepseek-work', sessionIds: ws1SessionIds, attachSession: async (sid) => { attachCalls.push(sid) } }
     ]
   }
-  const sessionTitleMock = { get: (session) => ({ title: '开发会话' }) }
+  const titleRenameCalls = []
+  const sessionTitleMock = { get: (session) => ({ title: '开发会话' }), rename: (session, title) => { titleRenameCalls.push({ id: session && session.id, title: title }); return { title: title, seq: 0 } } }
   // 0.1.7 会话元数据缓存断言用：readTitleSnapshots 调用计数（缓存命中后不应再触发）
   // io.sharedTitleReads 计数器：收进 helpers.io.sharedTitleReads
   const sessionQueryMock = {
@@ -160,13 +201,13 @@ function createHostMocks() {
   const evtListeners = {}   // P3 派发闭环：ctx.on 事件订阅捕获（模拟 agent/status 触发）
   const ctx = {
     fs: fsMock, sandboxPolicy: { resolve: () => ({}) },
-    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: systemPromptMock, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, agentPresets: agentPresetsMock, systemPrompt: systemPromptMock, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
     effect: () => {},
     on: (name, fn) => { (evtListeners[name] = evtListeners[name] || []).push(fn); return () => {} },
   }
   const plugin = new Function('harness', 'pluginDir', hostSrc)(global.harness, DIR)
   plugin.apply(ctx)
-  Object.assign(S, { NOTES_DIR, admMock, agentsMock, ctx, evtListeners, fsMock, handlers, liveAgent, llmMock, plugin, registeredContexts, registeredTools, sentMessages, sessionPersistenceMock, sessionQueryMock, sessionTitleMock, store, systemPromptMock, workspaceRegistryMock })
+  Object.assign(S, { NOTES_DIR, admMock, agentPresetsMock, agentsMock, agentCreateCalls, attachCalls, createdAgents, ctx, evtListeners, fsMock, handlers, liveAgent, llmMock, persistLogs, persistOpenCalls, plugin, registeredContexts, registeredTools, sentMessages, sessionPersistenceMock, sessionQueryMock, sessionTitleMock, store, systemPromptMock, titleRenameCalls, workspaceRegistryMock, ws1SessionIds })
 }
 
 module.exports = {

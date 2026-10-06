@@ -43,9 +43,13 @@
         // P2 使用遥测：列表排序方式（'time'=按更新（缺省，与 host _list 一致）| 'use'=按被引用次数降序 | 'rel'=相关度（搜索时：标题命中>标签>正文，同级 updatedAt 降序））
         // 筛选中心口径：排序是独立控件，与筛选条件正交（互不重置）
         const [sortBy, setSortBy] = React.useState(() => loadFiltersState().sortBy)
+        // 0.4.4-D hidden 隐藏属性（notes-044-hidden-attr）：显隐开关态——开=hidden 项半透明渲染（hid 遮罩样式），关=从树/置顶组/未入夹/主题区滤除；
+        // 纯 UI 遮罩（host _list/_search 零改动，agent 面/读写面天然完整）；localStorage 独立键持久（dsh-notes-show-hidden，kernel/persist.js）；
+        // 与筛选中心条件正交：不计 filterCount、filtersActive 不因其激活、清空筛选不重置
+        const [showHidden, setShowHidden] = React.useState(loadShowHidden)
         // 筛选 popover + 排序菜单已拆出（§6 步骤 E：popovers/filter-pop.js + sort-menu.js——filterOpen/sortOpen 态与浮层 JSX 归各自 hook；
         // filterOpenRef/sortOpenRef 为模块顶层绑定（Esc 直读）；共享点外关闭 effect 随 sort-menu 收容；浮层求值依赖 post-guard 结果经渲染函数入参注入）
-        const { filterOpen, setFilterOpen, renderFilterPop } = usePanelFilterPop({ filters: filters, sortBy: sortBy })
+        const { filterOpen, setFilterOpen, renderFilterPop } = usePanelFilterPop({ filters: filters, sortBy: sortBy, showHidden: showHidden })
         const { sortOpen, setSortOpen, sortMenuEl } = usePanelSortMenu({ sortBy: sortBy, filterOpen: filterOpen })
         // 筛选条件/排序持久化 effect 已随 popovers/filter-pop.js 迁入（筛选中心条件编辑入口收容，hook 内同文，filters/sortBy 经入参注入）
         // searchMatches（host notes-search 命中字段，「相关度」排序数据源）已随 panel/search.js 迁出
@@ -53,7 +57,8 @@
         // 文件夹右键菜单 + 管理动作族已拆出（§6 步骤 E：popovers/folder-menu.js——folders/foldersExpanded/内联输入/重命名/folderMenu 态 +
         // 树 helper 族 + loadFolders + CRUD/reorder/reparent 归 usePanelFolderMenu；folderMenuRef/renamingIdRef/folderInputOpenRef/subFolderForRef
         // 为该模块顶层绑定；Esc 栈/树渲染/面包屑经解构或 kernel 转发别名接入）
-        const { folders, foldersExpanded, folderInputOpen, folderInputText, subFolderFor, renamingId, renameText, setFolderMenu, setFolderInputOpen, setFolderInputText, setSubFolderFor, setRenamingId, setRenameText, loadFolders, folderSubtreeIdsOf, childFoldersOf, rootFolders, folderPathOf, isFolderExpanded, toggleFolder, expandFolder, folderName, openFolderMenu, doCreateFolder, doRenameFolder, doDeleteFolder, doReorderFolder, doReparentFolder, folderMenuEl } = usePanelFolderMenu({ notes: notes, view: view })
+        // 0.4.4-C：filters 入参注入（sysKids 补拉效应的 kind 单档口径门用）；sysKids 解构接入 → 下方树装配点注入 usePanelTree
+        const { folders, foldersExpanded, sysKids, folderInputOpen, folderInputText, subFolderFor, renamingId, renameText, setFolderMenu, setFolderInputOpen, setFolderInputText, setSubFolderFor, setRenamingId, setRenameText, loadFolders, folderSubtreeIdsOf, childFoldersOf, rootFolders, folderPathOf, isFolderExpanded, toggleFolder, expandFolder, folderName, openFolderMenu, doCreateFolder, doRenameFolder, doDeleteFolder, doReorderFolder, doReparentFolder, folderMenuEl } = usePanelFolderMenu({ notes: notes, view: view, filters: filters })
         // 主题过滤行原地展开态（点行主体=展开/收起该主题子列表；object map，session 内有效，不持久化；缺省折叠）
         // 主题过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「主题 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
         // （topicExpanded/topicSecOpen 两态已随 panel/tree.js 迁出）
@@ -173,7 +178,7 @@
         // 搜索/视图/筛选中心条件变化时重置分页 effect 已随 panel/tree.js 迁入（该 hook 内同文，入参注入依赖值）
         // 树渲染/分页/拖拽已拆出（§6 步骤 E：panel/tree.js——visibleCount/dragActive/topicExpanded/topicSecOpen 态 +
         // onListScroll/双向拖拽族/renderTreeEls（内含 renderNoteRow/renderFolderNode）归 usePanelTree；post-guard 求值经 R 入参注入）
-        const { visibleCount, setVisibleCount, onListScroll, renderTreeEls } = usePanelTree({ notes: notes, view: view, filters: filters, searchText: searchText, searchIds: searchIds, folders: folders })
+        const { visibleCount, setVisibleCount, onListScroll, renderTreeEls } = usePanelTree({ notes: notes, view: view, filters: filters, searchText: searchText, searchIds: searchIds, folders: folders, sysKids: sysKids, showHidden: showHidden })
         // 展开态同步到 ref（keydown 闭包读 ref 避免过期；已拆出 modal 的 open 镜像由各模块 setter 别名同步写入）
         // filtersRef 镜像 + 同步 effect 已随 panel/search.js 迁入（该模块顶层绑定 + hook 内同文）
         // 日志同权（0.4.3 验收修复⑦，用户裁决推翻 R-6 UI 隐身）：kind=log 随默认列表直达（host 已收编），
@@ -309,6 +314,7 @@
         panelBridge.toggleScope = toggleScope   // 范围浮层勾选跨域调用（popover → 编辑器域，经 kernel 别名中转）
         // popovers/filter-pop.js + sort-menu.js 回填（kernel 转发别名 → 本桥；筛选/排序状态机滞留本面板——useState 声明被锚定）
         panelBridge.setFilters = setFilters
+        panelBridge.setShowHidden = setShowHidden   // 0.4.4-D：筛选中心「显示隐藏」开关写入桥（popovers/filter-pop.js 经 kernel 别名中转）
         panelBridge.setSortBy = setSortBy
         panelBridge.setFilterOpen = setFilterOpen
         panelBridge.setSortOpen = setSortOpen
@@ -356,6 +362,15 @@
         if (view.type === 'topic') filtered = filtered.filter(n => (n.topic || '') === view.id)
         // 日志同权（0.4.3⑦）：无隐身渲染守卫——日志与普通笔记同一过滤管线（类型组勾选「日志」= 只看日志，与普通 kind 过滤同语义）
         filtered = filtered.filter(n => matchFilters(n, filters))
+        // 0.4.4-D hidden 纯 UI 遮罩：显隐开关关 → hidden 项从求值结果滤除（树/置顶组/未入夹/主题区同管线一并消失）；
+        // OS 语义：note 级 hidden 与 folder 级 hidden 独立判定——父夹 hidden 即其子孙链内笔记一并不可见（hiddenSubtree 子树口径），
+        // 直挂笔记行随 nested 容器消失、置顶聚合/主题区同样不再混入；滤除时机在筛选谓词之后、sysKids 合并（panel/tree.js 同层谓词）之前，与 C 卡零互扰；
+        // 跳转/open-by-id（反向链接/派发执行记录/搜索命中打开）不经本管线，天然常显（编辑器正常渲染 + meta 区 hidden chip 可切回）
+        if (!showHidden) {
+          const hiddenSubtree = {}
+          for (const f of folders) if (f.hidden === true) Object.assign(hiddenSubtree, folderSubtreeIdsOf(f.id))
+          filtered = filtered.filter(n => n.hidden !== true && !hiddenSubtree[(n.folder || '')])
+        }
         // 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0，如仅 topic 命中)，同级 updatedAt 降序；
         // 命中字段优先取 host notes-search 返回的 matches（全文口径），无则按本地字段估算（preview 仅前 200 字，正文命中可能低估）；无搜索词时退化为 host 序
         function relRank(n) {

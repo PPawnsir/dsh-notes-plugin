@@ -36,7 +36,7 @@ module.exports = {
     sandboxPolicy: { resolve: () => ({}) },
     webServer: { register: (r) => { routes2.push(r); return () => {} } },
     tools: { register: (d) => { tools2.push(d); return () => {} } },
-    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: (c) => { contexts2.push(c); return () => {} } }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, agentPresets: S.agentPresetsMock, systemPrompt: { context: (c) => { contexts2.push(c); return () => {} } }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
     effect: () => {},
     on: (name, fn) => { (evtListeners2[name] = evtListeners2[name] || []).push(fn); return () => {} },
   }
@@ -203,20 +203,26 @@ module.exports = {
     const onDisk2 = store2.get(path.join(NOTES_ROOT_STATIC, c.body.id + '.md'))
     assert(onDisk2.indexOf('\ninjectRole: convention\n') >= 0, '静态包 update 后磁盘 front-matter 同步')
   })
-  await t('目录段行为（静态包，并入 order 130）：缺省关普通行不进段 → 显式开启后普通笔记进段、约定去重、标题行+轻推行', async () => {
+  await t('目录段行为（静态包，并入 order 130）：0.4.4-E 唯挂载行源——普通笔记永不进段 + catalog 旧键静默忽略 + 挂载行/标题行/轻推行', async () => {
     const cat = contexts2.find(x => x.name === 'notes:workspace-conventions')
     assert(cat && typeof cat.text === 'function', '单一注入 context 已注册且 text 为函数')
     const dirOf = (s) => { const i = String(s || '').indexOf('本地笔记库目录（'); return i < 0 ? '' : String(s).slice(i) }
-    // 0.4.3 验收修复：catalogEnabled 缺省关——普通行不进段（「静态包资料」上节已改约定桶摘行，此刻无挂载行 → 段整段空）
+    // 0.4.4-E：普通行装配已拆——库内普通笔记不进段（「静态包资料」上节已改约定桶摘行，此刻无挂载行 → 段整段空）
     const off0 = dirOf(cat.text())
-    assert(off0.indexOf('静态包笔记 (笔记') < 0, '缺省关：无 override 普通行不进目录段（实得：' + off0.slice(0, 100) + '）')
-    const en = await rpc2('notes-settings-set', { catalogEnabled: true })
-    assert(en.body && en.body.ok === true, '显式开启成功（实得 ' + JSON.stringify(en.body) + '）')
+    assert(off0.indexOf('静态包笔记') < 0, '普通笔记不进目录段（唯挂载行源；实得：' + off0.slice(0, 100) + '）')
+    // catalogEnabled 已成惰性死键：settings-set 静默忽略（不报错不落键），目录段行为不变
+    const ig = await rpc2('notes-settings-set', { catalogEnabled: true })
+    assert(ig.body && ig.body.ok === true && !ig.body.error, 'catalogEnabled 设置静默忽略（未知键；实得 ' + JSON.stringify(ig.body) + '）')
+    assert(dirOf(cat.text()).indexOf('静态包笔记') < 0, '设置后普通笔记仍不进段（键已死）')
+    // 挂载行进段正向锚：挂载 → 标题行 + §1 行原样 + note_get 引导 + 轻推行
+    const mt = await rpc2('notes-mount', { id: cr2.body.id, whenToUse: '静态包目录段断言' })
+    assert(mt.body && mt.body.ok === true, 'notes-mount 成功（实得 ' + JSON.stringify(mt.body) + '）')
     const txt = dirOf(cat.text())
     assert(txt.indexOf('本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：') === 0, '目录段标题行开头（实得：' + txt.slice(0, 80) + '）')
-    assert(txt.indexOf('- [' + cr2.body.id + '] 静态包笔记 (笔记, 运维)') >= 0, '一行一条格式：- [id] 标题 (kind中文, topic)（实得：' + txt + '）')
-    assert(txt.indexOf('迁移前旧笔记') < 0, 'inject=true 且本会话命中的约定不进目录段（全文已在约定桶，目录去重）')
+    assert(txt.indexOf('- [[' + cr2.body.id + ']] 何时查我：静态包目录段断言') >= 0, '挂载行（§1 原样）进目录段（实得：' + txt + '）')
+    assert(txt.indexOf('（以上为挂载索引行：正文用 note_get <id> 获取）') >= 0, '挂载 note_get 引导行')
     assert(txt.indexOf('规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手') >= 0, '段尾轻推行')
+    assert(txt.indexOf('迁移前旧笔记') < 0, 'inject=true 约定不进目录段（全文已在约定桶）')
   })
   await t('notes-sessions / notes-active-sessions / notes-workspaces 可用', async () => {
     const s1 = await rpc2('notes-sessions', {})
@@ -372,20 +378,22 @@ module.exports = {
   })
   // 虚拟文件夹（静态包运行面）：notes-folders 经 webServer 兜底路由可达 + folder 字段链路 + move 往返
   await t('notes-folders RPC（webServer 路由）：create/list 计数 + folders.json 落盘', async () => {
+    // 0.4.4-A 适配（notes-044-dispatch-receipts）：前置静态包派发测试已懒创建「执行记录」夹——改相对口径（既有不动 + 新增字段一致 + 总数 +1）
+    const preF = ((await rpc2('notes-folders', {})).body.folders) || []
     const c1 = await rpc2('notes-folders', { op: 'create', name: '静态包文件夹' })
     assert(c1.status === 200 && c1.body.ok === true && c1.body.folder && c1.body.folder.id.indexOf('f-') === 0, 'create 返回 f- 前缀 id（实得：' + JSON.stringify(c1.body) + '）')
-    assert.strictEqual(c1.body.folder.order, 0, '首个文件夹 order=0')
+    assert.strictEqual(c1.body.folder.order, preF.length, '首个文件夹 order=既有清单长度（实得 ' + c1.body.folder.order + ' / 既有 ' + preF.length + '）')
     const foldersJsonPath = path.join(NOTES_ROOT_STATIC, 'folders.json')
     assert(store2.has(foldersJsonPath), 'folders.json 已写入 ~/.dsh/notes')
-    assert.deepStrictEqual(JSON.parse(store2.get(foldersJsonPath)), [{ id: c1.body.folder.id, name: '静态包文件夹', order: 0 }], '磁盘清单内容一致')
+    assert.deepStrictEqual(JSON.parse(store2.get(foldersJsonPath)).filter(f => f.id === c1.body.folder.id), [{ id: c1.body.folder.id, name: '静态包文件夹', order: c1.body.folder.order }], '磁盘清单含新条目且字段一致（既有条目不动）')
     const lst = await rpc2('notes-folders', {})
-    assert(lst.body.folders.length === 1 && lst.body.folders[0].id === c1.body.folder.id, 'list 含新文件夹')
+    assert(lst.body.folders.some(f => f.id === c1.body.folder.id) && lst.body.folders.length === preF.length + 1, 'list 含新文件夹（总数 +1）')
     assert.strictEqual(typeof lst.body.unfiled, 'number', 'list 返回 unfiled 计数')
     const bad = await rpc2('notes-folders', { op: 'purge' })
     assert(bad.body.error && bad.body.error.indexOf('未知 op') >= 0, '未知 op 报错')
   })
   await t('静态包 folder 字段链路：create 带 folder → get/list/front-matter 一致 + 过滤', async () => {
-    const fid = (await rpc2('notes-folders', {})).body.folders[0].id
+    const fid = (await rpc2('notes-folders', {})).body.folders.find(f => f.name === '静态包文件夹').id   // 0.4.4-A 适配：按名取夹（「执行记录」夹已占 order 0，不再按下标 [0]）
     const n = await rpc2('notes-create', { title: 'fld-静态包', body: 'x', folder: fid })
     assert(n.body.id, 'notes-create 接受 folder')
     const g = await rpc2('notes-get', { id: n.body.id })
@@ -400,7 +408,7 @@ module.exports = {
     assert.strictEqual(lst.body.folders.find(f => f.id === fid).count, 1, '文件夹计数=1')
   })
   await t('静态包 note_manage move/create 名称解析 + 移出往返', async () => {
-    const fid = (await rpc2('notes-folders', {})).body.folders[0].id
+    const fid = (await rpc2('notes-folders', {})).body.folders.find(f => f.name === '静态包文件夹').id   // 0.4.4-A 适配：按名取夹（同上）
     const tMgr = tools2.find(x => x.name === 'note_manage')
     // create 按名称落位（修复：不再把名称当 id 写入悬空引用）
     const c = await tMgr.execute({ action: 'create', title: 'fld-静态包-mgr', body: 'x', folder: '静态包文件夹' })

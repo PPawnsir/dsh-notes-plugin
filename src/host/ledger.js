@@ -66,6 +66,10 @@
       const logs = {}
       for (const n of all) {
         if ((n.kind || 'note') !== 'log' || n.deleted || n.tombstoned) continue
+        // 0.4.4-A（notes-044-dispatch-receipts）：派发管线「执行记录」伴生笔记（kind=log + refNote 回链源笔记）不计入日志扫描——
+        //   语义分目录裁决的账本面延伸：执行记录=派发回执、工作日志=会话沉淀（两类内容不同目录同理不同账本口径）；
+        //   兼防指令摘要文本误入 [[双链]] 造成假性引用（refs 聚合只认会话沉淀日志）
+        if (n.refNote) continue
         const ds = _ledgerLogDateStr(n)
         const ms = ds ? Date.parse(ds + 'T00:00:00') : NaN
         if (!isFinite(ms) || nowMs - ms > LEDGER_WINDOW_MS || ms - nowMs > LEDGER_WINDOW_MS) continue

@@ -153,7 +153,7 @@ module.exports = {
     assert.strictEqual(gDef.note.sensitive, false, '旧文件无 sensitive 字段缺省 false（零迁移）')
   })
 
-  // --- 注入打码行为（renderInjected：约定桶正文打码 / 目录段普通行标题打码）---
+  // --- 注入打码行为（renderInjected：约定桶正文打码；0.4.4-E 起目录段唯挂载行源，普通行标题打码面消亡）---
   await t('conventionText 对 sensitive=true 笔记正文按行打码 + 尾部计数行', async () => {
     const c = await handlersS['notes-create']({ title: '注入敏感约定', body: '部署密码：Top$ecret99\n第二行普通内容', inject: true, topic: '敏感', sensitive: true })
     const r = await handlersS['notes-conventions']({})
@@ -167,15 +167,12 @@ module.exports = {
     const r = await handlersS['notes-conventions']({})
     assert(r.text.indexOf('code style 规范') >= 0, '普通注入笔记原文呈现')
   })
-  await t('目录段普通行对 sensitive=true 条目标题打码 + 🔒 标记 + 段内计数行', async () => {
-    // inject=false 才进目录段普通行（inject=true 且命中本会话的条目在约定桶已注入全文，目录去重）
-    await handlersS['notes-settings-set']({ catalogEnabled: true })   // 0.4.3：目录缺省关，目录打码断言前显式开启
+  await t('未挂载 sensitive=true 笔记不进目录段（0.4.4-E：目录普通行打码面随 catalog 拆除消亡，天然无泄露面）', async () => {
+    // 0.4.4-E 起目录段唯挂载行源——未挂载条目（含敏感标题）不出现，无需也无法打码
     const c = await handlersS['notes-create']({ title: '敏感目录条目 token: ghp_abc123', body: 'x', topic: '敏感', sensitive: true })
     assert(catS && typeof catS.text === 'function', '单一注入 context 已注册（目录段并入 order 130）')
     const txt = dirPartS(catS.text())
-    assert(txt.indexOf('- [' + c.id + '] 🔒 ') >= 0, '敏感条目带 🔒 标记（实得：' + txt.split('\n').slice(0, 8).join('|') + '）')
-    assert(txt.indexOf('ghp_abc123') < 0, '标题命中敏感模式同样打码')
-    assert(txt.indexOf('条含敏感信息已脱敏，原文用 note_get 按 id 获取') >= 0, '目录段内计数提示行')
+    assert(txt.indexOf('ghp_abc123') < 0 && txt.indexOf(c.id) < 0, '未挂载敏感笔记不进目录段（实得：' + txt.split('\n').slice(0, 8).join('|') + '）')
   })
 
   // --- 自动识别建议 + quick 落敏感 + 归档继承 ---
@@ -221,7 +218,7 @@ module.exports = {
       assert(src.indexOf('args.injectRole, args.sensitive') >= 0, label + ' notes-update / note_manage.update 第 13 位透传')
       assert(src.indexOf('members.some(n => n.sensitive === true)') >= 0, label + ' _mergeGroup 敏感继承')
       assert(src.indexOf('maskSensitiveBody(bodyTrim, n.id)') >= 0, label + ' conventionText 正文打码')
-      assert(src.indexOf('maskSensitiveLine(title, n.id)') >= 0, label + ' 目录段普通行标题打码')
+      assert(src.indexOf('maskSensitiveLine(title, n.id)') < 0, label + ' 目录普通行标题打码随 catalog 拆除（0.4.4-E；maskSensitiveLine 本体保留 = maskSensitiveBody 行引擎）')
       assert(src.indexOf('条含敏感信息已脱敏，原文用 note_get 按 id 获取') >= 0, label + ' 尾部计数提示行')
       assert(src.indexOf('sensitiveSuggested') >= 0, label + ' 敏感建议回传（create/quick/quick-instruct）')
     }

@@ -2,6 +2,9 @@
 /* 0.4.3⑦：「文件视图」（文件夹视图）模式整体拆除——view 取值收窄为 all | topic（树展开即文件夹浏览） */
 function matches(n) {
   if (view.type === 'topic') { if ((n.topic || '') !== view.id) return false }
+  /* 0.4.4-D hidden 纯 UI 遮罩：显隐开关关 → hidden 笔记 + hidden 夹链内笔记滤除（OS 语义：父夹隐藏即子项不可见；
+     note 级/folder 级独立判定；与筛选条件正交——不计 filtersActiveCount）；host 零改动；跳转/open-by-id 不经本函数天然常显 */
+  if (!showHidden && (n.hidden === true || (n.folder && folderHidden(n.folder)))) return false;
   /* 日志同权（0.4.3⑦）：无隐身渲染守卫——日志与普通笔记同一过滤管线（类型组勾选「日志」= 只看日志，matchFilters 同语义） */
   if (!matchFilters(n, filters)) return false;
   if (searchText) {

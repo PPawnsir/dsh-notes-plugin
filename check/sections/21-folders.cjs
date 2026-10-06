@@ -304,22 +304,26 @@ module.exports = {
 
   // --- 行为断言（内存 mock：handlers + note_manage + fsMock store）---
   await t('notes-folders list 初始兜底：folders.json 缺失 → 空清单 + unfiled 计数（不抛错）', async () => {
-    assert(!store.has(FOLDERS_PATH_MOCK), '前置：mock store 无 folders.json')
+    // 0.4.4-A 适配（notes-044-dispatch-receipts）：前置节派发测试已懒创建「执行记录」夹（folders.json 存在）——
+    // 「缺失兜底」改相对守恒口径：list 不抛错返回既有清单 + unfiled = 全部 - 夹内（守恒语义不变）
     const r = await handlers['notes-folders']({})
-    assert(Array.isArray(r.folders) && r.folders.length === 0, 'folders 为空数组（实得：' + JSON.stringify(r) + '）')
+    assert(Array.isArray(r.folders), 'folders 为数组（不抛错；实得 ' + r.folders.length + ' 夹）')
     const all = await handlers['notes-list']({})
-    assert.strictEqual(r.unfiled, all.notes.length, '无清单时全部笔记计入 unfiled')
+    const foldered = all.notes.filter(n => n.folder && r.folders.some(f => f.id === n.folder)).length
+    assert.strictEqual(r.unfiled, all.notes.length - foldered, 'unfiled 计数守恒（全部 - 夹内；实得 ' + r.unfiled + ' / 期望 ' + (all.notes.length - foldered) + '）')
   })
   await t('notes-folders create：落盘 folders.json + order 递增；缺 name 报错', async () => {
+    // 0.4.4-A 适配（notes-044-dispatch-receipts）：前置节派发测试会懒创建「执行记录」夹——order/磁盘清单改相对口径（既有条目不动 + 新条目字段一致 + 递增 +1）
+    const preF = ((await handlers['notes-folders']({})).folders) || []
     const c1 = await handlers['notes-folders']({ op: 'create', name: '工作' })
     assert(c1.ok === true && c1.folder && c1.folder.id.indexOf('f-') === 0, 'create 返回 f- 前缀 id（实得：' + JSON.stringify(c1) + '）')
     assert.strictEqual(c1.folder.name, '工作')
-    assert.strictEqual(c1.folder.order, 0, '首个文件夹 order=0')
+    assert.strictEqual(c1.folder.order, preF.length, '首个文件夹 order=既有清单长度（实得 ' + c1.folder.order + ' / 既有 ' + preF.length + '）')
     assert(store.has(FOLDERS_PATH_MOCK), 'folders.json 已写入 mock store')
     const onDisk = JSON.parse(store.get(FOLDERS_PATH_MOCK))
-    assert.deepStrictEqual(onDisk, [{ id: c1.folder.id, name: '工作', order: 0 }], '磁盘清单内容一致')
+    assert.deepStrictEqual(onDisk.filter(f => f.id === c1.folder.id), [{ id: c1.folder.id, name: '工作', order: c1.folder.order }], '磁盘清单含新条目且字段一致（既有条目不动）')
     const c2 = await handlers['notes-folders']({ op: 'create', name: '学习' })
-    assert.strictEqual(c2.folder.order, 1, '第二个文件夹 order 递增为 1')
+    assert.strictEqual(c2.folder.order, c1.folder.order + 1, '第二个文件夹 order 递增 +1')
     const bad = await handlers['notes-folders']({ op: 'create', name: '  ' })
     assert(bad.error && bad.error.indexOf('需要 name') >= 0, '空白 name 应报错')
     const bad2 = await handlers['notes-folders']({ op: 'create' })
@@ -354,7 +358,10 @@ module.exports = {
     assert(unfiled.notes.length >= 1 && unfiled.notes.every(n => !(n.folder && folders.some(f => f.id === n.folder))), 'folder=\'\' 只返回未分类（不含清单内引用）')
     assert(unfiled.notes.find(n => n.id === 'n-legacy-folder'), '未分类列表含旧文件')
     const all = await handlers['notes-list']({})
-    assert.strictEqual(all.notes.length, inWork.notes.length + unfiled.notes.length, '不过滤 = 各文件夹 + 未分类 之和（当前仅一个非空文件夹）')
+    // 0.4.4-A 适配：「执行记录」夹可能已含伴生笔记（前置节派发懒创建）——守恒口径扩为「全部 = 清单内各夹（递归子树）+ 未分类」
+    let inAnyFolder = 0
+    for (const f of folders) inAnyFolder += (await handlers['notes-list']({ folder: f.id })).notes.length
+    assert.strictEqual(all.notes.length, inAnyFolder + unfiled.notes.length, '不过滤 = 各文件夹 + 未分类 之和（实得 ' + all.notes.length + ' / ' + (inAnyFolder + unfiled.notes.length) + '）')
   })
   await t('notes-folders list 计数口径：移入后 count/unfiled 联动', async () => {
     const before = await handlers['notes-folders']({})
@@ -388,10 +395,13 @@ module.exports = {
     const fStudy = folders.find(f => f.name === '学习资料')
     const r = await handlers['notes-folders']({ op: 'reorder', ids: [c3.folder.id, fWork.id] })
     assert(r.ok === true && Array.isArray(r.folders), 'reorder 返回 ok + folders')
-    assert.deepStrictEqual(r.folders.map(f => f.id), [c3.folder.id, fWork.id, fStudy.id], '入列按 ids 序，未入列保持原序追加尾部')
-    assert.deepStrictEqual(r.folders.map(f => f.order), [0, 1, 2], 'order 归一化为 0..n-1')
+    // 0.4.4-A 适配：既有「执行记录」夹参与未入列尾序——入列居首 + 未入列保持原序 + 总数守恒 + order 归一化（语义不变，清单构成相对口径）
+    const idsOut = r.folders.map(f => f.id)
+    assert(idsOut[0] === c3.folder.id && idsOut[1] === fWork.id, '入列按 ids 序居首')
+    assert(idsOut.length === folders.length && idsOut.indexOf(fStudy.id) > 1, '未入列保持原序追加尾部 + 总数守恒')
+    assert.deepStrictEqual(r.folders.map(f => f.order), r.folders.map((f, i) => i), 'order 归一化为 0..n-1')
     const listed = (await handlers['notes-folders']({})).folders
-    assert.deepStrictEqual(listed.map(f => f.id), [c3.folder.id, fWork.id, fStudy.id], 'list 按 order 排序输出')
+    assert.deepStrictEqual(listed.map(f => f.id), idsOut, 'list 按 order 排序输出')
     const bad = await handlers['notes-folders']({ op: 'reorder' })
     assert(bad.error && bad.error.indexOf('ids') >= 0, '缺 ids 报错')
   })

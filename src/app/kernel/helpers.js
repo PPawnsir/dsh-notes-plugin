@@ -16,6 +16,8 @@ function fname(id) { var f = folders.find(function (x) { return x.id === id }); 
    folderPath(id)=面包屑路径（根→…→当前，悬空/cycle 截断）；rootFolders()=根级清单（无 parent 或 parent 悬空按根级，与 host folderDepth 同口径） */
 function folderKids(pid) { return folders.filter(function (x) { return (x.parent || '') === pid }) }
 function folderSubtree(id) { var out = {}; out[id] = true; var q = [id]; while (q.length) { var c = q.shift(); folders.forEach(function (f) { if ((f.parent || '') === c && !out[f.id]) { out[f.id] = true; q.push(f.id) } }) } return out }
+/* 0.4.4-D hidden（notes-044-hidden-attr）：fid 是否落在 hidden 文件夹链上（自身或任一祖先 hidden=true；parent 链上溯，cycle 防御 visited 截断） */
+function folderHidden(fid) { var seen = {}; var f = folders.find(function (x) { return x.id === fid }); while (f && !seen[f.id]) { seen[f.id] = true; if (f.hidden === true) return true; f = f.parent ? folders.find(function (x) { return x.id === f.parent }) : null } return false }
 function folderPath(id) { var byId = {}; folders.forEach(function (f) { byId[f.id] = f }); var path = [], cur = id, seen = {}; while (cur && byId[cur] && !seen[cur]) { seen[cur] = true; path.unshift(byId[cur]); cur = byId[cur].parent || '' } return path }
 function rootFolders() { var byId = {}; folders.forEach(function (f) { byId[f.id] = f }); return folders.filter(function (f) { return !(f.parent || '') || !byId[f.parent || ''] }) }
 function shortSid(sid) { return sid ? String(sid).replace(/^session-/, '').slice(0, 8) : '' }

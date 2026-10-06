@@ -1,13 +1,13 @@
-// 节 22.5 笔记目录索引注入（静态包 index.mjs 行为）
+// 节 22.5 笔记目录段（静态包 index.mjs 行为；0.4.4-E 唯挂载行源——「目录段补充未挂载条目」整体移除）
 // 拆分自 check.js 单文件（notes-check-split）：节体逐字节保留，仅首尾为机械接线（H=helpers 设施，S=跨节共享状态）。
 module.exports = {
   id: "22.5",
-  title: "22.5 笔记目录索引注入（静态包 index.mjs 行为）",
+  title: "22.5 笔记目录段（静态包 index.mjs 行为；0.4.4-E 唯挂载行源）",
   async run(H, S) {
   const { t, section, assert, fsNative, path, osNative, DIR, SRC_HOST, SRC_CLIENT, SRC_STYLES, INDEX_PATH, bootHostSrc, bootClientSrc, hostSrc, clientSrc, indexSrc, pathToFileURL, io } = H
   const { NOTES_ROOT_STATIC, admMock, agentsMock, ctx, llmMock, sessionPersistenceMock, sessionQueryMock, sessionTitleMock, store, workspaceRegistryMock } = S
   // --- 静态包行为（独立 ESM 实例 + 独立 store；harness 缺席 → webServer 路由 + ctx.tools） ---
-  section('22.5 笔记目录索引注入（静态包 index.mjs 行为）')
+  section('22.5 笔记目录段（静态包 index.mjs 行为；0.4.4-E 唯挂载行源）')
   const store5 = new Map()
   const fsMock5 = {
     resolve: async (p) => p,
@@ -50,42 +50,40 @@ module.exports = {
     assert.strictEqual(contexts5[0].name, 'notes:workspace-conventions', '单一 context 名')
     assert.strictEqual(catCtx5.text(), '', '空库注入为空串（目录段整段空）')
   })
-  await t('静态包目录段行为：缺省关（有笔记不出普通行）→ 显式开启后 create 进目录段 / recall=false 排除 / update 可改', async () => {
+  await t('静态包目录段行为（0.4.4-E 唯挂载行源）：create 不进段 → 挂载行进段（§1 原样）→ recall dormant 读写不影响', async () => {
     const c = await rpc5('notes-create', { title: '静态目录笔记', body: 'x', topic: '开发' })
     assert(c.body.id, 'notes-create 成功')
-    // 0.4.3 验收修复：catalogEnabled 缺省关——无 settings override 时库内有笔记目录段也为空
-    assert.strictEqual(dirPart5(catCtx5.text()), '', '缺省关：无 override 目录段为空（实得长度 ' + catCtx5.text().length + '）')
-    const en = await rpc5('notes-settings-set', { catalogEnabled: true })
-    assert(en.body && en.body.ok === true, '显式开启成功（实得 ' + JSON.stringify(en.body) + '）')
-    let txt = dirPart5(catCtx5.text())
-    assert(txt.indexOf('- [' + c.body.id + '] 静态目录笔记 (笔记, 开发)') >= 0, '新建笔记进目录段（实得：' + txt + '）')
+    // 0.4.4-E：普通行装配已拆——库内有笔记目录段也为空（不再有 settings 开关可填充）
+    assert.strictEqual(dirPart5(catCtx5.text()), '', '目录段整段为空（无挂载行；实得长度 ' + catCtx5.text().length + '）')
+    // 挂载行进段（正向锚）
+    const mt = await rpc5('notes-mount', { id: c.body.id, whenToUse: '静态包目录段断言' })
+    assert(mt.body && mt.body.ok === true, 'notes-mount 成功（实得 ' + JSON.stringify(mt.body) + '）')
+    const txt = dirPart5(catCtx5.text())
+    assert(txt.indexOf('- [[' + c.body.id + ']] 何时查我：静态包目录段断言') >= 0, '挂载行（§1 原样）进目录段（实得：' + txt + '）')
+    assert(txt.indexOf('（以上为挂载索引行：正文用 note_get <id> 获取）') >= 0, '挂载 note_get 引导行归属本段')
+    // recall dormant：update recall=false/true 读写照常（字段保留），目录段行为与 recall 无关（消费方已拆）
     const tMgr5 = tools5b.find(x => x.name === 'note_manage')
-    const c2 = await tMgr5.execute({ action: 'create', title: '静态recall关', body: 'x', recall: false })
-    assert(c2.id && !c2.error, '工具 create recall=false 成功')
-    assert(dirPart5(catCtx5.text()).indexOf('静态recall关') < 0, 'recall=false 不进目录段')
     const u = await tMgr5.execute({ action: 'update', id: c.body.id, recall: false })
     assert(!u.error, '工具 update recall=false 成功')
-    assert(dirPart5(catCtx5.text()).indexOf('静态目录笔记') < 0, 'update recall=false 后出目录段')
     const onDisk = store5.get(path.join(NOTES_ROOT_STATIC, c.body.id + '.md'))
-    assert(onDisk.indexOf('\nrecall: false\n') >= 0, '静态包磁盘 front-matter 同步 recall: false')
+    assert(onDisk.indexOf('\nrecall: false\n') >= 0, '静态包磁盘 front-matter 同步 recall: false（dormant 读写兼容）')
+    assert(dirPart5(catCtx5.text()).indexOf('- [[' + c.body.id + ']]') >= 0, 'recall=false 不影响挂载行（recall 已无目录消费方）')
     await tMgr5.execute({ action: 'update', id: c.body.id, recall: true })
-    assert(dirPart5(catCtx5.text()).indexOf('静态目录笔记') >= 0, 'recall 改回 true 后回目录段')
+    assert(dirPart5(catCtx5.text()).indexOf('- [[' + c.body.id + ']]') >= 0, 'recall 改回 true 挂载行仍在')
   })
-  await t('静态包 catalogEnabled 总开关（notes-settings-set 经 webServer 路由）：false 关 → null 恢复缺省关', async () => {
-    // 前置：目录段处于显式开启态（上一测试）
-    const off = await rpc5('notes-settings-set', { catalogEnabled: false })
-    assert(off.body.ok === true, '关闭成功（实得 ' + JSON.stringify(off.body) + '）')
-    assert.strictEqual(dirPart5(catCtx5.text()), '', '关闭后目录段为空')
-    const onDisk = JSON.parse(store5.get(path.join(NOTES_ROOT_STATIC, 'settings.json')))
-    assert.strictEqual(onDisk.catalogEnabled, false, 'settings.json 落盘 catalogEnabled:false')
+  await t('静态包 settings-set 传 catalogEnabled 静默忽略（经 webServer 路由）：不报错不落盘不改行为', async () => {
+    const before = catCtx5.text()
+    const ig = await rpc5('notes-settings-set', { catalogEnabled: false })
+    assert(ig.body && ig.body.ok === true && !ig.body.error, 'catalogEnabled:false 静默忽略（ok 不报错；实得 ' + JSON.stringify(ig.body) + '）')
+    const ig2 = await rpc5('notes-settings-set', { catalogEnabled: 1 })
+    assert(ig2.body && ig2.body.ok === true && !ig2.body.error, '非布尔值同样静默忽略（旧校验随分支拆除）')
+    const ig3 = await rpc5('notes-settings-set', { catalogEnabled: null })
+    assert(ig3.body && ig3.body.ok === true && !ig3.body.error, 'catalogEnabled:null 静默忽略')
     const sg = await rpc5('notes-settings-get', {})
-    assert.strictEqual(sg.body.settings.catalogEnabled, false, 'settings-get 回读一致')
-    const bad = await rpc5('notes-settings-set', { catalogEnabled: 1 })
-    assert(bad.body.error && bad.body.error.indexOf('catalogEnabled') >= 0, '非布尔值报错')
-    await rpc5('notes-settings-set', { catalogEnabled: null })
-    const sg2 = await rpc5('notes-settings-get', {})
-    assert(!('catalogEnabled' in sg2.body.settings), 'null 删除 override（恢复缺省关）')
-    assert.strictEqual(dirPart5(catCtx5.text()), '', 'null 恢复缺省关后目录段为空（0.4.3 起缺省 = 关）')
+    assert(!('catalogEnabled' in sg.body.settings), 'settings-get 无 catalogEnabled 键（干净库永不落键）')
+    const onDisk = JSON.parse(store5.get(path.join(NOTES_ROOT_STATIC, 'settings.json')))
+    assert(!('catalogEnabled' in onDisk), 'settings.json 不落 catalogEnabled')
+    assert.strictEqual(catCtx5.text(), before, '注入文本不因 catalogEnabled 设置改变（唯挂载行源）')
   })
   }
 }

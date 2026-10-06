@@ -7,6 +7,7 @@ $('fpop').addEventListener('change', function (ev) {
   var sigBefore = listFetchSig();   /* ⑩ 取数口径签名（恰选 1 个 kind）：勾选变化影响 host 取数时静默重拉 */
   if (cb.dataset.ft) filters[cb.dataset.ft] = cb.checked;
   else if (cb.dataset.fk) { var i = filters.kinds.indexOf(cb.dataset.fk); if (cb.checked && i < 0) filters.kinds.push(cb.dataset.fk); if (!cb.checked && i >= 0) filters.kinds.splice(i, 1) }
+  else if (cb.dataset.fh) { showHidden = cb.checked; saveShowHidden(); render(); return }   /* 0.4.4-D：显隐开关（hidden 遮罩）——独立持久键，非筛选条件（不动 filters/取数口径/搜索） */
   saveFilters(); render(); reSearch();   /* 0.4.3⑦：日志同权——勾选「日志」不再触发 includeLogs 重拉（maybeReloadForLogs 已拆） */
   if (listFetchSig() !== sigBefore) loadNotes(true);   /* ⑩「机器」档等单 kind 口径切换 → host kind 通道重取（sys 全库 ↔ 缺省降噪） */
 });

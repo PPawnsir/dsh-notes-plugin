@@ -61,7 +61,7 @@ module.exports = {
   }
   new Function('harness', 'pluginDir', hostSrc)(harnessMock35, DIR).apply(ctx35)
   const convCtx35 = contexts35.find(x => x.name === 'notes:workspace-conventions')
-  const catCtx35 = convCtx35   // 0.4.3③：目录段并入单一 context（catalogEnabled 开时普通行同段渲染）
+  const catCtx35 = convCtx35   // 0.4.3③：目录段并入单一 context（0.4.4-E 起目录段唯挂载行源）
   const hintCount = (s) => (s.match(/图片位于笔记库目录 /g) || []).length
 
   await t('对照：注入笔记正文无图 → 注入文本无提示行', async () => {
@@ -77,13 +77,12 @@ module.exports = {
     assert(conv.indexOf(imgNS.assetsHintLine(NOTES_DIR)) >= 0, '提示行含绝对真实 NOTES_DIR 路径：' + NOTES_DIR + '/assets/')
     assert(conv.indexOf('部署截图') >= 0, '原注入内容不受影响')
   })
-  await t('目录段普通行条目正文含图 → 注入尾部追加提示行（合并段全量恰一次）', async () => {
-    await handlers35['notes-settings-set']({ catalogEnabled: true })   // 0.4.3：目录缺省关，含图目录断言前显式开启
+  await t('未挂载条目正文含图不进目录段（0.4.4-E：catalog 拆除后图片提示行仅约定桶单源，全量恰一次）', async () => {
     await handlers35['notes-create']({ title: '含图目录笔记', body: '看图 ![x](assets/dir-img.png)' })
     const cat = catCtx35.text()
-    assert(cat.indexOf('含图目录笔记') >= 0, '目录段含该条目')
-    // 合并段口径：约定桶（含图约定）与目录段（含图目录笔记）均有图 → 全量只追加一次提示行
-    assert.strictEqual(hintCount(cat), 1, '合并段注入追加一次提示行（约定+目录双来源去重）')
+    assert(cat.indexOf('含图目录笔记') < 0, '未挂载含图笔记不进目录段（唯挂载行源，负向锚）')
+    // 0.4.4-E 口径：提示行数据源只剩约定桶（含图约定）——全量仍只追加一次
+    assert.strictEqual(hintCount(cat), 1, '注入追加一次提示行（约定桶单源）')
     assert(cat.indexOf(imgNS.assetsHintLine(NOTES_DIR)) >= 0, '提示行含绝对 NOTES_DIR 路径')
   })
   await t('派发消息：待办正文含图 → 尾部追加提示行（绝对 NOTES_DIR）；无图对照不追加', async () => {

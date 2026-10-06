@@ -100,7 +100,7 @@ module.exports = {
     assert(rnSrc.indexOf('async function rootNoteEnsureSysKind(') >= 0 && rnSrc.indexOf("n.kind = 'sys'") >= 0, 'rootnote.js rootNoteEnsureSysKind 迁移 helper（只写 kind 元数据）')
     assert(rnSrc.indexOf('if (rl) { if (tpl.kind === \'sys\') await rootNoteEnsureSysKind(rl); return rl }') >= 0, 'rootNoteEnsure 存量托管笔记 sys 归位（仅 sys 模板惰性迁移）')
     const schedSrc = fsNative.readFileSync(path.join(DIR, 'src', 'host', 'schedule.js'), 'utf8')
-    assert(schedSrc.indexOf("      kind: 'sys',") >= 0, 'schedule.js runLog 懒创建 kind=sys')
+    assert(schedSrc.indexOf("      kind: 'log',") >= 0, 'schedule.js runLog 懒创建 kind=log（0.4.4-A 设计修正·用户裁决：执行记录=工作日志型，注入硬关天然适用；存量 sys runLog 零迁移）')
     const idxSrc = fsNative.readFileSync(path.join(DIR, 'src', 'host', 'injectindex.js'), 'utf8')
     assert(idxSrc.indexOf("(n.kind || 'note') === 'sys' && n.title === INJECT_INDEX_TITLE") >= 0, 'idxNoteSync 判定按 kind=sys（标题回退保留）')
     assert(idxSrc.indexOf("{ kind: 'sys', inject: false, recall: false }") >= 0, 'idxEnsure 懒创建 kind=sys')
@@ -307,9 +307,9 @@ module.exports = {
     const PRESET_V2 = '机器托管笔记（请勿删除）：§1 每行 = 一条注入载荷（agent 系统提示会看到此行），格式：- [[笔记id]] 何时查我：<一句话说明何时该读这篇>；可直接编辑冒号后的文案，请保持行首 `- [[id]]` 结构。\n\n## §1 挂载清单\n'
     assert.strictEqual(gIdx73.note.body, PRESET_V2, '新建索引 body 逐字节 = v2 预设（说明块 + §1 单节；实得：' + JSON.stringify(gIdx73.note.body) + '）')
     assert(gIdx73.note.body.indexOf('§2') < 0, '新建索引不含「§2」字样（§2 出预设，指标迁出走卡⑤）')
-    // 无挂载行（且 catalog 缺省关）→ 目录段整段空（不出目录段标题）
+    // 无挂载行（且无日志）→ 目录段整段空（不出目录段标题）
     const f0 = convCtx73.text()
-    assert(f0.indexOf('本地笔记库目录（') < 0, '空 §1 + catalog 关 → 目录段整段空（0.4.3③ 断言①；实得：' + f0.slice(0, 120) + '）')
+    assert(f0.indexOf('本地笔记库目录（') < 0, '空 §1 → 目录段整段空（0.4.4-E：唯挂载行源，无开关可填充；实得：' + f0.slice(0, 120) + '）')
     // 建约定 → 约定桶照常，仍无目录段（约定桶不受管线切换影响）
     const cv = await handlers73['notes-create']({ title: '独立约定E', body: 'E-CONV-BODY', inject: true, topic: '约定' })
     const f1 = convCtx73.text()
@@ -319,7 +319,7 @@ module.exports = {
     const rf = await handlers73['notes-create']({ title: '独立资料F', body: 'F-FULL-BODY', inject: true, injectRole: 'reference', topic: '资料' })
     await handlers73['notes-mount']({ id: rf.id, whenToUse: '何时查我-装配验证' })
     const f2 = convCtx73.text()
-    assert(f2.indexOf('本地笔记库目录（') >= 0 && f2.indexOf('- [[' + rf.id + ']] 何时查我：何时查我-装配验证') >= 0, '目录段含挂载行（catalog 关 + 有挂载行 → 段内仅挂载行，断言②；0.4.3④ 前缀归一）')
+    assert(f2.indexOf('本地笔记库目录（') >= 0 && f2.indexOf('- [[' + rf.id + ']] 何时查我：何时查我-装配验证') >= 0, '目录段含挂载行（段内仅挂载行，0.4.4-E 唯挂载行源；0.4.3④ 前缀归一）')
     // 驳回②回归锁（独立实例同口径）：真实挂载行行首单横线可解析 + 无双横线
     const mountRow73b = f2.split('\n').filter(l => l.indexOf('[[' + rf.id + ']]') >= 0)[0] || ''
     const mm73b = mountRow73b.match(/^- \[\[?(n-[A-Za-z0-9]+)\]\]?/)
@@ -434,17 +434,11 @@ module.exports = {
     const head73 = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'shell', 'head.html'), 'utf8')
     assert(css73.indexOf('.dsh-notes-injprev-hit{') >= 0 && css73.indexOf('.dsh-notes-injprev-hit:hover{') >= 0, 'client styles.css 可点行样式')
     assert(head73.indexOf('.injprev-ln.hit{') >= 0 && head73.indexOf('.injprev-ln.hit:hover{') >= 0, 'app head.html 可点行样式')
-    // 真实管线：共享实例造敏感笔记 → 目录预览含 🔒 行 → 同正则解析 id 正确（catalogEnabled 显式开，测后恢复缺省关）
-    const sg0 = await handlers['notes-settings-get']({})
-    const hadCatalog = !!(sg0.settings && sg0.settings.catalogEnabled === true)
-    await handlers['notes-settings-set']({ catalogEnabled: true })
+    // 真实管线：共享实例造敏感笔记 → 未挂载不进预览目录段（0.4.4-E：catalog 拆除，🔒 普通行场景消亡——天然无泄露面）
     const sn = await handlers['notes-create']({ title: '敏感目录行73 token: ghp_x73', body: 'x', sensitive: true, topic: '敏感' })
     const pv = await handlers['notes-inject-preview']({})
-    const row73 = (pv.catalog || '').split('\n').filter(l => l.indexOf(sn.id) >= 0)[0] || ''
-    assert(row73.indexOf('🔒') >= 0, '敏感行进目录且打码带 🔒（实得：' + row73 + '）')
-    assert(row73.indexOf('ghp_x73') < 0, '打码行不含明文 token')
-    const m73 = row73.match(ROW_RE_73)
-    assert(m73 && m73[1] === sn.id, '🔒 行解析 id 正确（实得 ' + (m73 && m73[1]) + '）')
+    assert((pv.directory || '').indexOf(sn.id) < 0 && (pv.directory || '').indexOf('ghp_x73') < 0, '未挂载敏感笔记不进预览目录段（实得 directory 长度 ' + (pv.directory || '').length + '）')
+    assert(!('catalog' in pv), '预览无 catalog 兼容别名（0.4.4-E 退役）')
     await handlers['notes-delete']({ id: sn.id })
     // 驳回②核心交付回归锁：真实挂载行进预览 directory → 同正则行首解析出 id（=挂载行在预览同段可点）+ 无双横线
     // （此前套件只拿普通行验正则，真实挂载行 `- - [[id]]` 双横线从未被测到——本节起行为级锁死）
@@ -457,7 +451,6 @@ module.exports = {
     assert(mrow73.indexOf('预览点击回归锁') >= 0, '预览挂载行含 whenToUse 文案（§1 行原样进段）')
     assert((pv2.directory || '').indexOf('- - [[') < 0, '预览 directory 无双横线挂载行')
     await handlers['notes-delete']({ id: mnt73.id })
-    if (!hadCatalog) await handlers['notes-settings-set']({ catalogEnabled: null })
   })
 
   // ---- 73.4 0.4.3 验收修复⑪（notes-043-mount-ux-final）：挂载 ⇔ 资料档不变量单点收口（复测③断链修复）----

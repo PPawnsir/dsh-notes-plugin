@@ -8,6 +8,9 @@
     const filterOpenRef = { current: false }
     function usePanelFilterPop(args) {
         const filters = args.filters, sortBy = args.sortBy
+        // 0.4.4-D（notes-044-hidden-attr）：showHidden 显隐开关（panel/index.js 态经入参注入；写入经 kernel 转发别名 setShowHidden +
+        // saveShowHidden 独立键持久——与筛选条件正交，「清空」不重置本开关）
+        const showHidden = args.showHidden === true
         const [filterOpen, setFilterOpen] = React.useState(false)
         React.useEffect(() => { filterOpenRef.current = filterOpen }, [filterOpen])
         // 筛选条件/排序变化即持久化（与 folders-expanded 等现有 localStorage 记忆同口径）
@@ -24,6 +27,11 @@
                   FILTER_KINDS.map(k => e('label', { key: k, className: 'dsh-notes-fg-item' },
                     e('input', { type: 'checkbox', checked: filters.kinds.indexOf(k) >= 0, onChange: (ev) => { setFilters(Object.assign({}, filters, { kinds: ev.target.checked ? filters.kinds.concat(k) : filters.kinds.filter(x => x !== k) })); if (searchDebRef.current) searchDebRef.current() } }),
                     e('span', { className: 'dsh-notes-fg-dot', style: { background: 'var(--nkind-' + k + ')' } }), e('span', { className: 'dsh-notes-fg-fl' }, kindLabel(k)), e('span', { className: 'dsh-notes-fg-cnt' }, String(notes.filter(n => (n.kind || 'note') === k).length)))),
+                  // 0.4.4-D：显示组——「显示隐藏」显隐开关（OS 文件管理对齐；独立持久键，非筛选条件——不计 filterCount/清空不重置）
+                  e('div', { className: 'dsh-notes-fg-h' }, e('span', null, t('filter.displayGroup'))),
+                  e('label', { className: 'dsh-notes-fg-item', 'data-tooltip': t('filter.showHiddenTip') },
+                    e('input', { type: 'checkbox', checked: showHidden, onChange: (ev) => { setShowHidden(ev.target.checked); saveShowHidden(ev.target.checked) } }),
+                    I('eye', 11), e('span', { className: 'dsh-notes-fg-fl' }, t('filter.showHidden'))),
                   e('div', { className: 'dsh-notes-fpop-foot' },
                     e('span', { className: 'dsh-notes-fpop-pcnt' }, t('filter.hitCount', { n: filteredCount })),
                     e('button', { className: 'dsh-notes-pbtn', onClick: () => { setFilters(FILTERS0()); if (searchDebRef.current) searchDebRef.current() } }, t('filter.clear')),

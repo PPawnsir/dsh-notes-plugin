@@ -93,7 +93,7 @@ module.exports = {
   await t('方向断言：跨模块引用序位（img-path-hint ≺ dispatch；dispatch ≺ inject/index；inject ≺ memory；核心域 ≺ server）', () => {
     // 序位 = 可见序（§8.4.2）：消费方必须晚于定义方。钉住关键跨模块依赖，防清单重排引入 TDZ/undefined。
     const pairs = [
-      ['inject/sensitive-helpers.js', 'inject.js', 'maskSensitiveBody/Line → 注入渲染'],
+      ['inject/sensitive-helpers.js', 'inject.js', 'maskSensitiveBody → 注入渲染（0.4.4-E：Line 直调点随 catalog 拆除，Line 本体 = Body 行引擎保留）'],
       ['kernel/settings-store.js', 'inject.js', 'settingsCache/staleDaysLimit → 注入渲染与设置面'],
       ['inject/img-path-hint.js', 'dispatch.js', 'bodyHasImageRef/assetsHintLine → 派发消息'],
       ['dispatch.js', 'inject.js', '_activeSessions → notes-inject-preview 工作区视角'],
@@ -113,7 +113,7 @@ module.exports = {
       ['kernel/telemetry-store.js', 'notes.js', 'note-stats facet → _create 归档继承计数 seed（0.4.3 验收修复⑧ notes-043-stats-unify）'],
       ['recall.js', 'inject/img-path-hint.js', 'recall.js 序位钉住（紧随 ledger，共源登记）'],
       ['recall.js', 'dispatch.js', '_recallRaw mount 通道埋点 → _dispatch（0.4.3+ 卡⑫）'],
-      ['recall.js', 'inject.js', '_recallRaw inject/catalog 通道埋点 → renderInjected（0.4.3+ 卡⑫；0.4.3③ 合并段后同点双通道）'],
+      ['recall.js', 'inject.js', '_recallRaw inject 通道埋点 → renderInjected（0.4.3+ 卡⑫；0.4.4-E catalog 埋点已拆，单通道）'],
       ['kernel/telemetry-store.js', 'inject.js', '遥测内存缓存 _telemetryCache.ledger → 注入价值信号行 _valueSignalLine（0.4.3 验收修复⑥ notes-043-metrics-present）'],
       ['recall.js', 'search.js', '_recallHit search 通道埋点 → notes-search（0.4.3+ 卡⑫）'],
       ['recall.js', 'index.js', '_recallHit note_get 取用埋点 + _recallFlushAgg 卸载 flush（0.4.3+ 卡⑫）'],

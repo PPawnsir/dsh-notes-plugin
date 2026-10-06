@@ -5,8 +5,8 @@
 //   ①存储：五通道事件全部落 kernel/telemetry-store.js（notes/telemetry.json）——receipts（inject/mount/catalog 原始回执 ≤200 裁尾）
 //     + byDay（search/get 日聚合 >90 天剪枝）+ meta + ledger（账本快照派生字段）；内存增量 + 2s 防抖原子落盘 + 卸载 flush；
 //     读失败空桶重建 / 写失败内存续用（静默降级）；体积护栏 TELEMETRY_MAX_BYTES。
-//   ②埋点（点位/口径零变化）：renderInjected 真实渲染路径（inject/catalog，预览不计）/ _dispatch 派发成功 /
-//     notes-search RPC + note_search 工具 / notes-get RPC + note_get 工具；签名去重（集合序）。
+//   ②埋点（点位/口径零变化）：renderInjected 真实渲染路径（inject，预览不计；catalog 通道埋点 0.4.4-E 随目录补充行拆除退役——
+//     通道结构 dormant 保留、永不再产事件）/ _dispatch 派发成功 / notes-search RPC + note_search 工具 / notes-get RPC + note_get 工具；签名去重（集合序）。
 //   ③查询面：notes-recall-stats {sinceDays?} → 五通道分列 {delivered, deliveries, used, uses, rate}（结构不变）+ ledger 新增键
 //     （账本「召回指标」汇总输出本 RPC——面板数据源；索引笔记 §2 通道退役摘除）。
 //   ④遥测笔记降级：存量「召回遥测（自动）」一次性迁移回填 JSON（meta.migratedAt 幂等）→ 降级人读镜像（日评估 cron 顺带刷新，
@@ -86,7 +86,8 @@ module.exports = {
     // 五处埋点锚（点位零变化红线——逐文件看守双侧同步，防单侧漏改）
     const read = (rel) => fsNative.readFileSync(path.join(DIR, 'src', 'host', rel), 'utf8')
     for (const f of ['inject.js', 'inject.dist.js']) {
-      assert(read(f).indexOf("_recallRaw('inject'") >= 0 && read(f).indexOf("_recallRaw('catalog'") >= 0, f + ' inject/catalog 装配埋点在位（先渲染后记账：渲染完成后调用）')
+      assert(read(f).indexOf("_recallRaw('inject'") >= 0, f + ' inject 装配埋点在位（先渲染后记账：渲染完成后调用）')
+      assert(read(f).indexOf("_recallRaw('catalog'") < 0, f + ' catalog 装配埋点已拆（0.4.4-E：目录补充行移除，通道 dormant 零事件）')
     }
     for (const f of ['dispatch.js', 'dispatch.dist.js']) assert(read(f).indexOf("_recallRaw('mount'") >= 0, f + ' mount 派发埋点在位')
     assert(read('search.js').indexOf("_recallHit('search'") >= 0, 'search.js notes-search 埋点在位（共源单份）')
@@ -115,10 +116,10 @@ module.exports = {
     assert(ledSrc.indexOf('_recallStats(') < 0, 'ledger 不再直读 recall 统计（口径经 telemetry.json ledger 键 + notes-recall-stats 汇总）')
   })
 
-  // ---- 78.1 五通道埋点 fixture（共享实例）：inject/catalog/mount 原始回执 + search/get 日聚合各落 telemetry.json 且字段正确 + 热路径零笔记写入 ----
+  // ---- 78.1 通道埋点 fixture（共享实例）：inject/mount 原始回执 + search/get 日聚合各落 telemetry.json 且字段正确 + catalog 零事件 + 热路径零笔记写入 ----
   const uniq = '遥测78-' + Date.now().toString(36)
   let N1 = null, N2 = null, N3 = null
-  await t('五通道埋点 fixture：inject/catalog/mount 原始回执 + search/get 日聚合各落 telemetry.json 且字段正确 + 热路径零笔记写入', async () => {
+  await t('通道埋点 fixture：inject/mount 原始回执 + search/get 日聚合各落 telemetry.json 且字段正确 + catalog 通道零事件（0.4.4-E）+ 热路径零笔记写入', async () => {
     N1 = await handlers['notes-create']({ title: uniq + '-inject', body: uniq + ' 约定正文', inject: true })
     N2 = await handlers['notes-create']({ title: uniq + '-catalog', body: uniq + ' 目录正文' })
     N3 = await handlers['notes-create']({ title: uniq + '-mount', body: uniq + ' 待办正文', kind: 'todo' })
@@ -127,11 +128,10 @@ module.exports = {
     await handlers['notes-list']({})
     const conv = lastCtx('notes:workspace-conventions')
     assert(conv, '注入 context 已注册（前置；0.4.3③ 单一 context）')
-    await handlers['notes-settings-set']({ catalogEnabled: true })   // 0.4.3：catalog 缺省关——遥测 fixture 需显式开启目录通道
-    // ① inject 装配 + ⑤ catalog 目录段普通行装配（真实路径，sidOverride 缺省；同一次渲染双通道各记一行）
+    // ① inject 装配（真实路径，sidOverride 缺省；0.4.4-E：catalog 埋点已拆，单次渲染只记 inject 单通道）
     const convText = conv.text()
     assert(convText.indexOf(N1.id) >= 0, 'N1 进入注入文本（前置；实得长度 ' + convText.length + '）')
-    assert(convText.indexOf(N2.id) >= 0, 'N2 进入目录段普通行（前置）')
+    assert(convText.indexOf(N2.id) < 0, 'N2 未挂载不进注入文本（0.4.4-E 唯挂载行源——目录补充行已移除）')
     // ② mount 任务挂载（派发路径单点）
     const dp = await handlers['notes-dispatch']({ id: N3.id, sessionId: LIVE_SID })
     assert(dp && dp.ok === true, '派发成功（前置；实得 ' + JSON.stringify(dp).slice(0, 120) + '）')
@@ -152,7 +152,7 @@ module.exports = {
     assert(injRows.length === 1 && !!injRows[0].ts, 'inject 原始回执恰 1 条含 N1（实得 ' + injRows.length + '）')
     assert(injRows[0].session === 'abc12345', 'inject 回执带会话短 id（实得 ' + injRows[0].session + '）')
     const catRows = tj.receipts.catalog.filter(r => (r.ids || []).indexOf(N2.id) >= 0)
-    assert(catRows.length === 1 && !!catRows[0].ts, 'catalog 原始回执恰 1 条含 N2（实得 ' + catRows.length + '）')
+    assert(catRows.length === 0 && tj.receipts.catalog.length === 0, 'catalog 通道零回执（0.4.4-E：埋点已拆，通道 dormant；实得 ' + tj.receipts.catalog.length + '）')
     const mntRows = tj.receipts.mount.filter(r => (r.ids || []).indexOf(N3.id) >= 0)
     assert(mntRows.length === 1 && !!mntRows[0].ts, 'mount 原始回执恰 1 条含 N3（实得 ' + mntRows.length + '）')
     assert(mntRows[0].session === 'abc12345', 'mount 回执带目标会话短 id（实得 ' + mntRows[0].session + '）')
@@ -171,15 +171,15 @@ module.exports = {
     const baseInj = base.receipts.inject.filter(r => (r.ids || []).indexOf(N1.id) >= 0).length
     const baseCat = base.receipts.catalog.filter(r => (r.ids || []).indexOf(N2.id) >= 0).length
     const conv = lastCtx('notes:workspace-conventions')
-    conv.text(); conv.text()   // 同 id 集重复装配 → 签名去重不新增（单次渲染同记 inject+catalog 双通道）
-    // 驳回②回归锁：确定性换序——N3 updatedAt 前移至目录段普通行首位（id 集不变、渲染顺序必变），集合序签名判等仍不新增
-    await handlers['notes-update']({ id: N3.id, body: uniq + ' 待办正文 v2' })
+    conv.text(); conv.text()   // 同 id 集重复装配 → 签名去重不新增（0.4.4-E：单次渲染只记 inject 单通道）
+    // 驳回②回归锁：确定性换序——N1 updatedAt 前移至约定桶首位（inject 通道 id 集不变、渲染顺序必变），集合序签名判等仍不新增
+    await handlers['notes-update']({ id: N1.id, body: uniq + ' 约定正文 v2' })
     conv.text()
     await handlers['notes-search']({ query: uniq })   // search 第二次（同日同键）
     await handlers['notes-get']({ id: N2.id })        // get 第三次（同日同键）
     const tj = await readTelemetry()
-    assert(tj.receipts.inject.filter(r => (r.ids || []).indexOf(N1.id) >= 0).length === baseInj, 'inject 同签名重复装配不重复记回执')
-    assert(tj.receipts.catalog.filter(r => (r.ids || []).indexOf(N2.id) >= 0).length === baseCat, 'catalog 同签名重复装配不重复记回执（含同集换序场景）')
+    assert(tj.receipts.inject.filter(r => (r.ids || []).indexOf(N1.id) >= 0).length === baseInj, 'inject 同签名重复装配不重复记回执（含同集换序场景）')
+    assert(tj.receipts.catalog.length === baseCat && baseCat === 0, 'catalog 通道恒零回执（0.4.4-E：埋点已拆，签名去重无从触发）')
     assert(tj.byDay.search[dayStr][N2.id] === 2, 'search 同日同键累加 count=2（实得 ' + (tj.byDay.search[dayStr] || {})[N2.id] + '）')
     assert(tj.byDay.get[dayStr][N2.id] === 3, 'get 同日同键累加 count=3（实得 ' + (tj.byDay.get[dayStr] || {})[N2.id] + '）')
     // 分通道 rate 不变量（共享实例含前节遥测噪声：断结构不变量，不追绝对值——精确值由 78.3 隔离实例锁定）
@@ -216,31 +216,32 @@ module.exports = {
     const mt = await handlersR['notes-mount']({ id: B.id, whenToUse: 'B 资料挂载行' })
     assert(mt && mt.ok === true, 'notes-mount 挂载 B 成功（实得 ' + JSON.stringify(mt).slice(0, 120) + '）')
     const convR = ctxsR.find(c => c.name === 'notes:workspace-conventions')
-    const catR = convR                                                        // 0.4.3③：目录段并入单一 context（catalog 通道 = 目录补充行口径）
-    const convTextR = convR.text()                                            // inject 交付 {A 约定桶, B 挂载行}（catalog 关 → 普通行不记）
+    const convTextR = convR.text()                                            // inject 交付 {A 约定桶, B 挂载行}（0.4.4-E：catalog 通道已拆，普通行永不出段）
     assert(convTextR.indexOf(B.id) >= 0, '目录段渲染含 B 挂载行（前置——Verifier 探针同姿势）')
-    await handlersR['notes-settings-set']({ catalogEnabled: true })           // 0.4.3：catalog 缺省关——隔离实例显式开启目录通道
-    catR.text()                                                             // catalog 交付 {C}（A 注入去重排除；B 已挂载=增强态不进普通行；sys 根笔记 recall=false 不进）
+    assert(convTextR.indexOf(C.id) < 0, 'C 未挂载不进注入文本（0.4.4-E 唯挂载行源）')
     await handlersR['notes-dispatch']({ id: C.id, sessionId: LIVE_SID })      // mount 交付 {C}
-    const sRes = await toolsR['note_search'].execute({ query: tok })          // search 交付 {A,B,C}（工具通道）
-    assert(sRes.count === 3, '隔离库搜索恰 3 条（实得 ' + sRes.count + '）')
+    // 0.4.4-A（notes-044-dispatch-receipts）：派发成功即建「执行记录 · C标题」伴生笔记（kind=log 同权可搜、标题含 tok）——搜索命中 +1
+    const execLogR = (await handlersR['notes-list']({})).notes.find(n => n.refNote === C.id)
+    assert(execLogR && execLogR.kind === 'log', '派发伴生执行记录笔记已建（kind=log + refNote 回链 C）')
+    const sRes = await toolsR['note_search'].execute({ query: tok })          // search 交付 {A,B,C,执行记录}（工具通道）
+    assert(sRes.count === 4, '隔离库搜索恰 4 条（A/B/C + 执行记录伴生笔记；实得 ' + sRes.count + '）')
     await toolsR['note_get'].execute({ id: A.id })                            // get 取用 {A}×1（工具通道）
     const st = await handlersR['notes-recall-stats']({})
     assert(st.ok === true && st.events > 0, '隔离实例遥测有事件（实得 ' + JSON.stringify(st).slice(0, 200) + '）')
     assert(st.noteId === null && st.ledger === null, '隔离新库：无镜像笔记 + 无账本快照（结构键在位、值为空）')
     assert.deepStrictEqual(st.channels.inject, { delivered: 2, deliveries: 2, used: 1, uses: 1, rate: 0.5 }, 'inject 精确：交付 A 约定+B 资料桶×2、A 被取用 → rate=0.5（实得 ' + JSON.stringify(st.channels.inject) + '）')
-    assert.deepStrictEqual(st.channels.catalog, { delivered: 1, deliveries: 1, used: 0, uses: 0, rate: 0 }, 'catalog 精确：交付 C×1（B 已挂载=增强态行，不重复计入普通行通道）、零取用 → rate=0（实得 ' + JSON.stringify(st.channels.catalog) + '）')
+    assert.deepStrictEqual(st.channels.catalog, { delivered: 0, deliveries: 0, used: 0, uses: 0, rate: null }, 'catalog 精确：0.4.4-E 起通道 dormant 恒零交付（埋点已拆）→ rate=null（实得 ' + JSON.stringify(st.channels.catalog) + '）')
     assert.deepStrictEqual(st.channels.mount, { delivered: 1, deliveries: 1, used: 0, uses: 0, rate: 0 }, 'mount 精确：交付 C×1、零取用 → rate=0（实得 ' + JSON.stringify(st.channels.mount) + '）')
-    assert.deepStrictEqual(st.channels.search, { delivered: 3, deliveries: 3, used: 1, uses: 1, rate: 0.333 }, 'search 精确：交付 A/B/C×3、A 被取用 → rate=1/3（实得 ' + JSON.stringify(st.channels.search) + '）')
+    assert.deepStrictEqual(st.channels.search, { delivered: 4, deliveries: 4, used: 1, uses: 1, rate: 0.25 }, 'search 精确：交付 A/B/C/执行记录×4（0.4.4-A 伴生笔记同权可搜）、A 被取用 → rate=1/4（实得 ' + JSON.stringify(st.channels.search) + '）')
     assert.deepStrictEqual(st.channels.get, { delivered: 0, deliveries: 0, used: 1, uses: 1, rate: null }, 'get 精确：纯使用信号 used=1/uses=1/rate=null（实得 ' + JSON.stringify(st.channels.get) + '）')
     // ①recallRaw 内存增量 → 防抖 flush → JSON 落盘内容正确（stats 读前落账后读盘逐字段核对）
     const tjR = JSON.parse(storeR.get(TELEMETRY_FILE))
-    assert(tjR.receipts.inject.length === 1 && tjR.receipts.catalog.length === 1 && tjR.receipts.mount.length === 1, 'receipts 三通道各 1 条回执（实得 ' + JSON.stringify({ i: tjR.receipts.inject.length, c: tjR.receipts.catalog.length, m: tjR.receipts.mount.length }) + '）')
+    assert(tjR.receipts.inject.length === 1 && tjR.receipts.catalog.length === 0 && tjR.receipts.mount.length === 1, 'receipts：inject/mount 各 1 条回执 + catalog 恒零（0.4.4-E 埋点已拆）（实得 ' + JSON.stringify({ i: tjR.receipts.inject.length, c: tjR.receipts.catalog.length, m: tjR.receipts.mount.length }) + '）')
     const injRow = tjR.receipts.inject[0]
     assert(injRow.ids.indexOf(A.id) >= 0 && injRow.ids.indexOf(B.id) >= 0 && injRow.session === 'abc12345' && !!injRow.ts, 'inject 回执含约定 A + 资料桶 B 双 id + 会话短 id（驳回①回归锁；实得 ' + JSON.stringify(injRow) + '）')
-    assert(tjR.receipts.catalog[0].ids.length === 1 && tjR.receipts.catalog[0].ids[0] === C.id, 'catalog 回执恰含 C')
+    assert(tjR.receipts.catalog.length === 0, 'catalog 零回执（0.4.4-E：目录补充行通道拆除）')
     assert(tjR.receipts.mount[0].ids[0] === C.id && tjR.receipts.mount[0].session === 'abc12345', 'mount 回执含 C + 目标会话短 id')
-    assert.deepStrictEqual(tjR.byDay.search[dayStr], (function () { const o = {}; o[A.id] = 1; o[B.id] = 1; o[C.id] = 1; return o })(), 'byDay.search 当日 = {A:1,B:1,C:1}（实得 ' + JSON.stringify(tjR.byDay.search[dayStr]) + '）')
+    assert.deepStrictEqual(tjR.byDay.search[dayStr], (function () { const o = {}; o[A.id] = 1; o[B.id] = 1; o[C.id] = 1; o[execLogR.id] = 1; return o })(), 'byDay.search 当日 = {A:1,B:1,C:1,执行记录:1}（实得 ' + JSON.stringify(tjR.byDay.search[dayStr]) + '）')
     assert.deepStrictEqual(tjR.byDay.get[dayStr], (function () { const o = {}; o[A.id] = 1; return o })(), 'byDay.get 当日 = {A:1}（实得 ' + JSON.stringify(tjR.byDay.get[dayStr]) + '）')
     // 账本快照（卡⑤数据源切换）：refresh → telemetry.json ledger 派生字段 + notes-recall-stats ledger 键汇总输出（面板数据源）；索引零 §2
     const lr = await handlersR['notes-ledger-refresh']({})
@@ -426,7 +427,7 @@ module.exports = {
       assert(fnBlk.indexOf('_recallRaw') < 0 && fnBlk.indexOf('_telemetryAddReceipt') < 0 && fnBlk.indexOf('_telemetryBumpDay') < 0 && fnBlk.indexOf('writeText') < 0, f + ' 信号行纯读零写（埋点/写盘零引用——埋点纪律红线）')
       assert(fnBlk.indexOf('.slice(0, 200)') >= 0, f + ' 信号行 ≤200 字符截断红线')
       assert(src.indexOf('const sigLine = _valueSignalLine(dirIds)') >= 0 && src.indexOf('const sigLine = _valueSignalLine(dirIds)') < src.indexOf("_recallRaw('inject'"), f + ' ⑤先渲染后记账：信号行现算先于 inject 埋点（源码序锚）')
-      assert(src.indexOf('refBlocks.slice(0, refLines.length).map(function (it) { return it.id }).concat(catIds)') >= 0, f + ' ④快照原子性锚：存活目录行 id 集 = 预算省略后挂载行 + 普通行')
+      assert(src.indexOf('const dirIds = refBlocks.slice(0, refLines.length).map(function (it) { return it.id })') >= 0, f + ' ④快照原子性锚：存活目录行 id 集 = 预算省略后挂载行（0.4.4-E 唯挂载行源，无普通行 concat）')
     }
     for (const [src, tag] of [[hostSrc, 'host 产物'], [indexSrc, 'index.mjs']]) {
       assert(src.indexOf('function _valueSignalLine(dirIds)') >= 0 && src.indexOf('const sigLine = _valueSignalLine(dirIds)') >= 0, tag + ' 信号行接入目录段尾部提示行区')

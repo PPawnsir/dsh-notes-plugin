@@ -29,27 +29,38 @@ module.exports = {
     assert(c && c.id && !c.error, '创建调度约定成功（实得 ' + JSON.stringify(c) + '）')
     convA = c.id
     const g0 = await handlers['notes-get']({ id: convA }); bodyA = g0.note.body
-    assert(!g0.note.schedule.runLog, '首条回执前无 runLog 软链（懒创建语义）')
+    assert(!g0.note.schedule.runLog, '首条派发前无 runLog 软链（懒创建语义）')
     const ev = await handlers['notes-schedule-eval']({ now: new Date(Date.now() + 4 * 86400000).toISOString() })
     assert(ev.fired >= 1 && !ev.error, '到期触发（实得 ' + JSON.stringify(ev) + '）')
     const g1 = await handlers['notes-get']({ id: convA })
     const msgId = g1.note.schedule.lastRun.receiptId
     assert(/^note-dispatch-/.test(msgId || ''), '派发已登记 receiptId=msgId')
-    assert(!g1.note.schedule.runLog, '派发后仍不建 runLog——回执落盘时机才懒创建')
+    // 0.4.4-A 三表归一：派发成功即懒创建执行记录笔记 + 📤 派发行（派发历史笔记化），软链回写 schedule.runLog
+    runLogA = g1.note.schedule.runLog
+    assert(runLogA, '派发后即建 runLog 软链（0.4.4-A 起派发历史笔记化：不再等首条回执）')
+    let rl = await handlers['notes-get']({ id: runLogA })
+    assert.strictEqual(rl.note.title, '执行记录 · 定时 巡检runlogA', 'runLog 笔记标题 = 「执行记录 · 约定标题」（0.4.4-A 定稿格式）')
+    assert.strictEqual(rl.note.kind, 'log', 'runLog 笔记 kind=log（0.4.4-A 设计修正·用户裁决：工作日志型——注入硬关天然适用，可见/可搜/可编辑照常）')
+    assert.strictEqual(rl.note.recall, false, 'runLog recall 缺省 false（log 隐身语义：不进目录/默认召回）')
+    assert.strictEqual(rl.note.inject, false, 'runLog inject=false（log 注入硬关 injectForcedOff）')
+    assert.strictEqual(rl.note.topic, '运维', 'runLog 笔记 topic 随约定')
+    assert.strictEqual(rl.note.refNote, convA, 'refNote 回链源笔记（0.4.4-A 双端跳转机器键）')
+    const flds = await handlers['notes-folders']({})
+    const execFolder = (flds.folders || []).filter(f => f.name === '执行记录')[0]
+    assert(execFolder && rl.note.folder === execFolder.id, 'folder=「执行记录」专用夹（folders.json 条目懒创建 ensure；严禁「工作日志」夹）')
+    assert(rl.note.body.indexOf('请勿手动清理，由派发管线维护') >= 0 && rl.note.body.indexOf('## 执行记录（自动）') >= 0, 'runLog 正文含说明块（kind=log 用途注明）+ 自动节标题')
+    let lines = entryLines(rl.note.body)
+    assert(lines.length === 1 && lines[0].indexOf('- 📤 ') === 0, '派发后恰 1 条 📤 派发行（实得 ' + lines.length + '）')
+    assert(lines[0].indexOf('定时调度 @定时 巡检runlogA') >= 0, '派发行含 sourceLabel 来源标注')
+    assert(lines[0].indexOf('note-dispatch-') < 0 && lines[0].indexOf('单号 ') >= 0, '派发行不含完整 msgId（回执族幂等键空间隔离）+ 单号尾段对参')
     fireIdle(); await flush()
     const g2 = await handlers['notes-get']({ id: convA })
-    runLogA = g2.note.schedule.runLog
-    assert(runLogA, 'idle 回执后 schedule.runLog 软链已回写（实得 ' + JSON.stringify(g2.note.schedule) + '）')
+    assert.strictEqual(g2.note.schedule.runLog, runLogA, 'idle 回执后软链不变（同一篇·三表归一）')
     assert.strictEqual(g2.note.body, bodyA, '约定正文逐字节不动（核心红线：派发载荷零污染）')
-    const rl = await handlers['notes-get']({ id: runLogA })
-    assert.strictEqual(rl.note.title, '定时 巡检runlogA · 执行记录', 'runLog 笔记标题 = 约定标题 + 「 · 执行记录」')
-    assert.strictEqual(rl.note.kind, 'sys', 'runLog 笔记 kind=sys（0.4.3⑥ 系统根笔记：recall 缺省 false 不进目录/默认召回，编辑器可见可改）')
-    assert.strictEqual(rl.note.recall, false, 'runLog recall 缺省 false（sys 隐身语义）')
-    assert.strictEqual(rl.note.topic, '运维', 'runLog 笔记 topic 随约定')
-    assert(rl.note.body.indexOf('## 执行记录（自动）') >= 0, 'runLog 正文含自动节标题')
-    const lines = entryLines(rl.note.body)
-    assert(lines.length === 1, '首条回执恰好 1 条目（实得 ' + lines.length + '）')
-    assert(lines[0].indexOf('- ✅ ') === 0 && lines[0].indexOf('回执（idle）') >= 0 && lines[0].indexOf(msgId) >= 0, '条目形态：时刻 + 回执来源 + msgId（实得 ' + lines[0] + '）')
+    rl = await handlers['notes-get']({ id: runLogA })
+    lines = entryLines(rl.note.body)
+    assert(lines.length === 2, '回执后 2 条目（📥+📤；实得 ' + lines.length + '）')
+    assert(lines[0].indexOf('- 📥 ') === 0 && lines[0].indexOf('回执（idle）') >= 0 && lines[0].indexOf(msgId) >= 0, '回执条目形态：📥 + 时刻 + 回执来源 + msgId（实得 ' + lines[0] + '）')
   })
 
   // ===== ② 幂等：重复回执/双通道同 msgId 零重复条目 =====
@@ -64,7 +75,7 @@ module.exports = {
     assert(r && r.ok, '手动标记通道可用（实得 ' + JSON.stringify(r) + '）')
     const g2 = await handlers['notes-get']({ id: runLogA })
     assert.strictEqual(g2.note.body, body0, '同 msgId 幂等去重（条目数不变）')
-    assert.strictEqual(entryLines(g2.note.body).length, 1, '仍 1 条目')
+    assert.strictEqual(entryLines(g2.note.body).length, 2, '仍 2 条目（📥+📤）')
   })
 
   // ===== ③ 倒序追加（最新在前）+ resolved 保底通道同口径 =====
@@ -85,9 +96,11 @@ module.exports = {
     assert(u && u.dispatchClosed === 1, 'resolved 保底回执 1 条（实得 ' + JSON.stringify(u) + '）')
     const rl = await handlers['notes-get']({ id: runLogB })
     const lines = entryLines(rl.note.body)
-    assert(lines.length === 2, '两条目（实得 ' + lines.length + '）')
-    assert(lines[0].indexOf(m2) >= 0 && lines[0].indexOf('回执（resolved）') >= 0, '最新条目在最前（倒序）+ resolved 通道来源标注')
-    assert(lines[1].indexOf(m1) >= 0 && lines[1].indexOf('回执（idle）') >= 0, '旧条目续后')
+    assert(lines.length === 4, '四条目（0.4.4-A 三表归一：📥+📤 各两条同篇；实得 ' + lines.length + '）')
+    assert(lines[0].indexOf('- 📥 ') === 0 && lines[0].indexOf(m2) >= 0 && lines[0].indexOf('回执（resolved）') >= 0, '最新条目在最前（倒序）+ resolved 通道来源标注')
+    assert(lines[1].indexOf('- 📤 ') === 0 && lines[1].indexOf('定时调度 @定时 巡检runlogB') >= 0, '第二条 = 第二次 📤 派发行')
+    assert(lines[2].indexOf('- 📥 ') === 0 && lines[2].indexOf(m1) >= 0 && lines[2].indexOf('回执（idle）') >= 0, '旧回执条目续后')
+    assert(lines[3].indexOf('- 📤 ') === 0, '第四条 = 首次 📤 派发行')
     const g2 = await handlers['notes-get']({ id: convB })
     assert.strictEqual(g2.note.body, 'B 正文', '约定正文仍零改动（resolved 通道同守红线）')
     await handlers['notes-delete']({ id: convB })   // resolved 约定防后续 eval 噪音（tick 不滤 status）
@@ -163,7 +176,7 @@ module.exports = {
     await handlers['notes-delete']({ id: convA })
     const rl = await handlers['notes-get']({ id: runLogA })
     assert(rl && rl.note && !rl.note.deleted, '约定已删，执行记录笔记留档（不级联删除）')
-    assert.strictEqual(rl.note.title, '定时 巡检runlogA · 执行记录', '留档笔记内容完整')
+    assert.strictEqual(rl.note.title, '执行记录 · 定时 巡检runlogA', '留档笔记内容完整（0.4.4-A 定稿标题格式）')
   })
 
   // ===== ⑦ 静态锚点：schedule-runlog 标记块双包逐字节 + 三通道接线 + 四端计划块链接 =====
@@ -188,18 +201,26 @@ module.exports = {
       assert(src.indexOf('await _schedRunLogAppend(note, [ds[i]])') >= 0, tag + ' 手动标记通道')
       // 工具描述同步（agent 面契约）
       assert(src.indexOf('lastError/runLog') >= 0, tag + ' 工具描述机器字段含 runLog')
+      // 0.4.4-A 三表归一：派发通道接线（📤 行写入点）+ kind=log 设计修正 + 执行记录夹 ensure + 说明块
+      assert(src.indexOf("await _schedRunLogAppend(note, [{ _dispatch: true") >= 0, tag + ' 派发通道接线（_dispatch 成功 → 📤 派发行）')
+      assert(src.indexOf("      kind: 'log',") >= 0, tag + ' 0.4.4-A 设计修正：执行记录笔记 kind=log（注入硬关天然适用）')
+      assert(src.indexOf("const EXEC_LOG_FOLDER_NAME = '执行记录'") >= 0 && src.indexOf('async function _execLogFolderEnsure(') >= 0, tag + ' 「执行记录」专用夹懒创建 ensure（严禁「工作日志」夹）')
+      assert(src.indexOf('请勿手动清理，由派发管线维护') >= 0, tag + ' 说明块文案（kind=log 用途 + 派发管线维护声明）')
+      assert(src.indexOf("titleOf: function (note) { return '执行记录 · '") >= 0, tag + ' 0.4.4-A 定稿标题格式「执行记录 · <源笔记标题>」')
+      assert(src.indexOf('rl.refNote = String(note.id)') >= 0, tag + ' writeLink 落 refNote 回链')
     }
-    // 四端计划块「执行记录 ↗」链接
-    for (const pair of [[appSrc, 'app.html'], [protoV2Src, '原型 notes-ui-v2.html']]) {
-      const s = pair[0], label = pair[1]
-      assert(s.indexOf("s.runLog ? '<button") >= 0, label + ' 软链存在才渲染链接（无 runLog 零 DOM 痕迹）')
-      assert(s.indexOf('sched-runlog-act') >= 0 && s.indexOf('执行记录 ↗') >= 0, label + ' 计划块「执行记录 ↗」链接 + 接线标记类')
-      assert(s.indexOf("querySelectorAll('.sched-runlog-act')") >= 0 && s.indexOf('selectNote(rid)') >= 0, label + ' 点击走既有 selectNote 跳转（缓存未命中 toast 守卫）')
-    }
+    // 顶层 runLog 字段管线锚（非调度派发源笔记软链字段）
+    assert(hostSrc.indexOf("(m.runLog ? 'runLog: ' + escYaml(m.runLog) + '\\n' : '')") >= 0, 'buildFM 顶层 runLog 条件行')
+    assert(hostSrc.indexOf("runLog: p.meta.runLog || ''") >= 0 && hostSrc.indexOf("runLog: n.runLog || ''") >= 0, 'noteFromParsed/noteFileContent/slim 顶层 runLog 往返 + 列表下发')
+    // 四端计划块「执行记录 ↗」链接（0.4.4-A：软链统一口径 schedule.runLog || 顶层 runLog + openExecLog 跳转）
+    assert(appSrc.indexOf('s.runLog || n.runLog') >= 0, 'app.html 软链统一口径（schedule.runLog || 顶层 runLog）渲染链接（无 runLog 零 DOM 痕迹）')
+    assert(appSrc.indexOf('sched-runlog-act') >= 0 && appSrc.indexOf('执行记录 ↗') >= 0, 'app.html 计划块「执行记录 ↗」链接 + 接线标记类')
+    assert(appSrc.indexOf("querySelectorAll('.sched-runlog-act')") >= 0 && appSrc.indexOf('openExecLog(') >= 0, 'app.html 点击走 openExecLog 跳转（open-by-id 兜底）')
+    assert(protoV2Src.indexOf("s.runLog ? '<button") >= 0 && protoV2Src.indexOf('sched-runlog-act') >= 0, '原型 计划块「执行记录 ↗」链接（存量形态不动——0.4.4-A 双端口径=client/app）')
     for (const pair of [[clientSrc, 'client 开发版'], [clientPkgSrc, '发布包 lib/client.js']]) {
       const s = pair[0], label = pair[0]
-      assert(s.indexOf('执行记录 ↗') >= 0 && s.indexOf('curNote.schedule.runLog') >= 0, label + ' 计划块执行记录链接')
-      assert(s.indexOf('notes.find(x => x.id === curNote.schedule.runLog)') >= 0, label + ' 点击 selectNote 跳转（缓存守卫）')
+      assert(s.indexOf('执行记录 ↗') >= 0 && s.indexOf('curNote.schedule.runLog || curNote.runLog') >= 0, label + ' 计划块执行记录链接（软链统一口径）')
+      assert(s.indexOf('openExecLog(') >= 0, label + ' 点击 openExecLog 跳转（open-by-id 兜底）')
     }
     // 原型 mock 同步：闸门已知键 + 存在性校验 + 演示数据（n93 软链 n96）
     assert(protoV2Src.indexOf('lastError: 1, runLog: 1') >= 0, '原型 mock 闸门已知键含 runLog')

@@ -16,6 +16,6 @@ function loadNotes(silent) {
     if (res && res.error) throw new Error(res.error);
     if (res && res.notes) notes = res.notes;
     return loadFolders();
-  }).then(function () { ensureWikiIndex(); renderTree(); return true })
+  }).then(function () { ensureWikiIndex(); renderTree(); refreshSysKids(); return true })   /* 0.4.4-C：列表刷新后复核 sysKids（剔除陈旧 + 展开中的夹重拉覆盖；refreshSysKids 定义在 panels/tree.js） */
     .catch(function (e) { if (!silent) toast(t('side.loadFailed', { msg: e && e.message || e })); return false });   /* i18n 覆盖卡F：side.loadFailed */
 }

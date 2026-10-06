@@ -9,6 +9,11 @@
     // dragNoteIdRef/dragFolderIdRef 的 React.useRef 声明原文被 check.js 锚定（21/41 节）——留 hook 内（useRef 不可模块顶层调用）
     function usePanelTree(args) {
         const notes = args.notes, view = args.view, filters = args.filters, searchText = args.searchText, searchIds = args.searchIds, folders = args.folders
+        // 0.4.4-C（notes-044-folder-explicit-view）：sysKids = 文件夹显式展开按需补拉的 sys 子行缓存（popovers/folder-menu.js 托管，{fid:{stamp,rows}}）
+        const sysKids = args.sysKids || {}
+        // 0.4.4-D（notes-044-hidden-attr）：showHidden = 显隐开关（panel/index.js 态，localStorage dsh-notes-show-hidden 持久）；
+        // 关=hidden 文件夹行+nested 容器滤除（OS 语义）且 sysKids 合并层同谓词拦截 hidden 行；开=照常渲染 + hid 遮罩样式（半透明）
+        const showHidden = args.showHidden === true
         // 日志同权（0.4.3 验收修复⑦）：日志随 notes 主缓存直达——按夹日志懒加载 overlay 特化路径（独立 RPC + 合并）已拆除，
         // 展开日志夹与普通夹同一代码路径（零额外请求，卡顿根因消除）；「文件视图」（文件夹视图）模式同卡整体拆除
         // i18n（notes-042-i18n-cov-a 覆盖卡A）：tt = useT()——订阅 langStore，切语言本 hook（随主面板）自渲染；树区文案全走 tt()
@@ -115,7 +120,7 @@
             else if (inFolderCtx && n.topic && n.topic !== '分类中') tail = e('span', { className: 'dsh-notes-note-tp', title: tt('tree.topicTip', { topic: n.topic }) }, n.topic)
             else tail = e('span', { className: 'dsh-notes-note-dt' }, n.updatedAt ? fmtDT(n.updatedAt).slice(5, 10) : '')
             // 多选态：行点击=勾选/取消（不再打开笔记），行首渲染复选框；与搜索/过滤共存（勾选按 noteId 记账，过滤不清选）
-            return e('div', { key: n.id, className: 'dsh-notes-note-row' + (selected === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (flashId === n.id ? ' flash' : '') + (n.status === 'resolved' ? ' resolved' : '') + (n.status === 'superseded' ? ' superseded' : '') + (selMode && selIds[n.id] ? ' pick' : ''), onClick: () => { if (selMode) { toggleSelId(n.id); return } selectNote(n) }, onContextMenu: (ev) => openCtxMenu(ev, n), draggable: true, onDragStart: (ev) => onNoteDragStart(ev, n), onDragEnd: (ev) => onNoteDragEnd(ev) },
+            return e('div', { key: n.id, className: 'dsh-notes-note-row' + (selected === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (flashId === n.id ? ' flash' : '') + (n.status === 'resolved' ? ' resolved' : '') + (n.status === 'superseded' ? ' superseded' : '') + (n.hidden === true ? ' hid' : '') + (selMode && selIds[n.id] ? ' pick' : ''), onClick: () => { if (selMode) { toggleSelId(n.id); return } selectNote(n) }, onContextMenu: (ev) => openCtxMenu(ev, n), draggable: true, onDragStart: (ev) => onNoteDragStart(ev, n), onDragEnd: (ev) => onNoteDragEnd(ev) },
               selMode ? e('input', { type: 'checkbox', className: 'dsh-notes-pick-check', checked: !!selIds[n.id], onChange: () => toggleSelId(n.id), onClick: (ev) => ev.stopPropagation() }) : null,
               // 行首槽位对齐（notes-tree-typography）：caret 槽同宽透明占位（笔记行无折叠箭头）+ 图标槽 16px（kind 色点居中），与文件夹行标题文字起点一致
               e('span', { className: 'dsh-notes-caret-spacer' }),
@@ -128,6 +133,8 @@
               (n.useCount || 0) > 0 ? e('span', { className: 'dsh-notes-note-use dsh-nt', 'data-tooltip': tt('tree.useCountTip', { n: n.useCount }) }, I('quote', 9), String(n.useCount)) : null,
               // 双链标记（P2）：正文含 [[..]] 时行尾显示链接图标（缓存正文优先，preview 兜底）
               hasWikiLinks(n) ? e('span', { className: 'dsh-notes-note-wiki dsh-nt', 'data-tooltip': tt('tree.wikiTip') }, I('link', 9)) : null,
+              // 0.4.4-C：sys 行「机器」chip（文件夹显式展开/机器档可见的机器托管笔记可辨识；复用 fbadge 徽章样式 + meta.kindSys 字典键）
+              (n.kind || 'note') === 'sys' ? e('span', { className: 'dsh-notes-fbadge dsh-nt', 'data-tooltip': tt('tree.sysChipTip') }, tt('meta.kindSys')) : null,
               tail)
           }
           // ===== 侧栏树（原型 renderTree 翻译）：视图头 → 置顶组 → 文件夹组（nested 子笔记）→ 未入夹根级平铺（drop 移出落点）→ 主题全局过滤 =====
@@ -167,8 +174,14 @@
           // 键盘导航顺序 = 渲染顺序（treeIds 按 depth-first 推入）；过滤命中与展开语义按子树（子树含命中 → 自动展开 + 计数=子树命中数，
           // 与 host f.count 子树口径一致；纯计算 OR 不写回 foldersExpanded——清除过滤即恢复手动折叠态）
           function renderFolderNode(f, sink) {
+            // 0.4.4-D：hidden 文件夹在显隐开关关时整节点滤除（行 + nested 子树容器随父夹消失，OS 语义；子文件夹递归与本夹笔记行自然不渲染）
+            if (!showHidden && f.hidden === true) return
             const sub = folderSubtreeIdsOf(f.id)
-            const kids = paged.filter(n => (n.folder || '') === f.id)
+            // 0.4.4-C：合并按需补拉的 sys 子行（置尾从简——sys 行 host 序与主缓存排序口径分离，混排易误导，注释即取舍）；
+            // 过滤/搜索激活时不混入（⑨ 默认列表/搜索降噪零放松：sys 仅「文件夹展开」这一个显式入口放行）；id 去重防御陈旧窗口（kind 变更等）；
+            // 0.4.4-D：同层叠加 hidden 谓词——显隐开关关时 hidden 档案行不混入（开=带 hid 遮罩样式渲染）；与 C 卡合并零互扰
+            const kidsBase = paged.filter(n => (n.folder || '') === f.id)
+            const kids = filtersActive ? kidsBase : kidsBase.concat(((sysKids[f.id] && sysKids[f.id].rows) || []).filter(n => !kidsBase.some(x => x.id === n.id) && (showHidden || n.hidden !== true)))
             const subHits = filtersActive ? filtered.filter(n => sub[(n.folder || '')]).length : 0
             const fOpen = isFolderExpanded(f.id) || (filtersActive && subHits > 0)
             // 计数口径：过滤激活（视图/筛选中心/搜索任一）显示子树命中数（无命中 0）；否则显示子树总数（host count 已递归）
@@ -178,7 +191,7 @@
                   e('span', { className: 'dsh-notes-caret' }, I('chev', 10)),
                   e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
                   e('input', { className: 'dsh-notes-folder-rename', value: renameText, autoFocus: true, onChange: (ev) => setRenameText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doRenameFolder() } else if (ev.key === 'Escape') { ev.preventDefault(); setRenamingId(null) } }, onBlur: () => setRenamingId(null) }))
-              : e('div', { key: 'folder-' + f.id, className: 'dsh-notes-folder-row', onClick: () => { toggleFolder(f.id) }, onContextMenu: (ev) => openFolderMenu(ev, f), draggable: true, onDragStart: (ev) => onFolderDragStart(ev, f), onDragEnd: (ev) => onFolderDragEnd(ev), onDragOver: (ev) => onFolderDragOver(ev, f), onDragLeave: onFolderDragLeave, onDrop: (ev) => onFolderDrop(ev, f) },
+              : e('div', { key: 'folder-' + f.id, className: 'dsh-notes-folder-row' + (f.hidden === true ? ' hid' : ''), onClick: () => { toggleFolder(f.id) }, onContextMenu: (ev) => openFolderMenu(ev, f), draggable: true, onDragStart: (ev) => onFolderDragStart(ev, f), onDragEnd: (ev) => onFolderDragEnd(ev), onDragOver: (ev) => onFolderDragOver(ev, f), onDragLeave: onFolderDragLeave, onDrop: (ev) => onFolderDrop(ev, f) },
                   e('span', { className: 'dsh-notes-caret' + (fOpen ? ' open' : '') + ' dsh-nt', 'data-tooltip': tt('tree.toggleTip'), onClick: (ev) => { ev.stopPropagation(); toggleFolder(f.id) } }, I('chev', 10)),
                   e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
                   e('span', { className: 'dsh-notes-row-nm' }, f.name),

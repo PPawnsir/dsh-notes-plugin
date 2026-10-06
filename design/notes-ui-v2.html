@@ -608,7 +608,7 @@ var _mockNotes = [
   /* 执行记录独立笔记演示（notes-041-sched-runlog）：n93 的 runLog 软链目标——约定正文零改动（派发载荷保持纯净），执行记录独立成笔记 */
   { id: 'n96', title: '定时 每 3 天一轮 UX 巡检 · 执行记录', kind: 'note', topic: '看板反馈', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-10-03T02:05:00.000Z', updatedAt: '2026-10-03T02:05:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '## 执行记录（自动）\n\n- ✅ 2026-10-03 10:05 · 回执（idle）· → 主窗口 · dsh-notes 开发 · note-dispatch-mock-n93\n' },
   { id: 'n94', title: '定时 周报汇总（暂停演示）', kind: 'todo', topic: '数据管线', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-09-28T06:00:00.000Z', updatedAt: '2026-09-29T06:00:00.000Z', sessionId: '', cwd: '', contractType: 'dispatch-schedule', schedule: { at: '2026-10-10T09:00:00', target: 'session-oa123456-0000-0000-0000-000000000000', action: 'dispatch', enabled: false }, dispatches: [], body: '每周五汇总本周数据管线运行周报（暂停中——恢复走注入管理调度任务区）。\n' },
-  { id: 'n95', title: '定时 每日构建状态检查', kind: 'todo', topic: '运维', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-10-02T02:00:00.000Z', updatedAt: '2026-10-04T02:00:00.000Z', sessionId: '', cwd: '', contractType: 'dispatch-schedule', schedule: { every: '1d', anchor: '09:00', target: 'session-work1234-0000-0000-0000-000000000000', action: 'dispatch', enabled: true, lastError: { at: '2026-10-04T02:00:00.000Z', message: '目标会话当前未打开，无法触发工作（目标 live 后下个 tick 自动补发）' }, lastRun: { at: '2026-10-04T02:00:00.000Z', status: 'error', receiptId: '' } }, dispatches: [], body: '每天检查一次 CI 构建状态，失败时定位首要原因。\n' }
+  { id: 'n95', title: '定时 每日构建状态检查', kind: 'todo', topic: '运维', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-10-02T02:00:00.000Z', updatedAt: '2026-10-04T02:00:00.000Z', sessionId: '', cwd: '', contractType: 'dispatch-schedule', schedule: { every: '1d', anchor: '09:00', target: 'session-work1234-0000-0000-0000-000000000000', action: 'dispatch', enabled: true, lastFiredAt: '2026-10-04T02:00:00.000Z', lastRun: { at: '2026-10-04T02:00:00.000Z', status: 'queued', receiptId: 'note-dispatch-mock-n95' } }, dispatches: [{ sessionId: 'session-work1234-0000-0000-0000-000000000000', sessionName: 'oabanner 数据管线', workspace: 'ontology-proj', mode: 'existing', instruction: '', at: '2026-10-04T02:00:00.000Z', done: false, dispatchStatus: 'sent', sourceLabel: '定时调度 @定时 每日构建状态检查', msgId: 'note-dispatch-mock-n95', queued: true }], body: '每天检查一次 CI 构建状态，失败时定位首要原因。\n' }
 ];
 var _mockSettings = {};
 var _mockArchUndo = null;   /* 归档撤销事务（只保留最近一次；契约同 host .archive-undo.json） */
@@ -710,7 +710,9 @@ function _mockSchedGate(raw, contractType, existing) {
       decl.dow = raw.dow;
     }
   }
-  if (enabled !== false && !_mockSessions.some(function (t) { return t.id === target })) return { error: 'schedule.target 目标会话不存在或已归档：' + target };
+  /* 专属会话（0.4.4-B，同 host 闸门）：target='new' 仅周期模式接受——首轮触发自动创建「定时 · 任务名」会话并回写复用；单次 at 无复用场景拒绝；专属目标豁免存活校验（首轮才创建） */
+  if (target === 'new' && !decl.every) return { error: 'schedule.target=\'new\' 专属会话仅周期模式（every）支持——首轮触发自动创建「定时 · 任务名」会话并持久复用；单次 at 请直接指定目标会话 id' };
+  if (enabled !== false && target !== 'new' && !_mockSessions.some(function (t) { return t.id === target })) return { error: 'schedule.target 目标会话不存在或已归档：' + target };
   var ex = existing || {};
   if (ex.lastFiredAt) decl.lastFiredAt = ex.lastFiredAt;
   if (ex.lastRun) decl.lastRun = ex.lastRun;
@@ -927,18 +929,17 @@ function _mockRpc(method, a) {
       estimatedTokens: 420, exactTokens: 2710, calls: 17
     };
   }
-  /* 注入预览 mock（契约同 host notes-inject-preview：纯复用注入渲染产物 + 统计；0.4.3③ 合并目录段）：
-     演示脱敏占位符 / ⚠ 时效标注 / 统计条字段；sessionId 过滤演示——传会话短 id 时多一条「会话定向约定」；
+  /* 注入预览 mock（契约同 host notes-inject-preview：纯复用注入渲染产物 + 统计；0.4.4-E 目录段唯挂载行源）：
+     演示脱敏占位符 / 统计条字段；sessionId 过滤演示——传会话短 id 时多一条「会话定向约定」；
      workspace 视角演示——传工作区标题时多一条「工作区定向约定」（并集口径：该工作区全部会话的注入并集）；
-     目录段 = 挂载行（- [[id]]，增强态）排前 + 普通行（- [id]）排后 */
+     目录段 = 挂载行（- [[id]]，增强态）+ 挂载 note_get 引导 + 日志计数尾行 + 规划轻推 */
   if (method === 'notes-inject-preview') {
     var pc = '以下是注入的上下文笔记（与当前任务无关时忽略）：\n\n用户约定（须遵守）：\n\n- [n-conv1] 代码风格约定\n  缩进两格，命名 camelCase'
       + (a.sessionId ? '\n\n- [n-conv9] 会话 ' + a.sessionId + ' 定向约定\n  仅注入该会话（injectTo 命中演示）' : '')
       + (a.workspace ? '\n\n- [n-conv10] 工作区 ' + a.workspace + ' 定向约定\n  注入该工作区全部会话（injectTo 并集演示）' : '')
       + '\n\n（其中 1 条含敏感信息已脱敏，原文用 note_get 按 id 获取）';
-    var pk = '本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：\n\n- [[n-ref1]] 部署高可用环境时查我\n\n（以上为挂载索引行：正文用 note_get <id> 获取）\n\n- [n1] oa 环境配置 (笔记, 运维) ⚠ 120 天未更新\n- [n5] DSH 插件发布指南 (笔记, 开发)\n- [n7] 🔒 数据库凭证 ******（敏感，note_get n7 获取） (笔记, 运维)\n（其中 1 条含敏感信息已脱敏，原文用 note_get 按 id 获取）\n规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手';
-    var pkCat = '- [n1] oa 环境配置 (笔记, 运维) ⚠ 120 天未更新\n- [n5] DSH 插件发布指南 (笔记, 开发)\n- [n7] 🔒 数据库凭证 ******（敏感，note_get n7 获取） (笔记, 运维)\n（其中 1 条含敏感信息已脱敏，原文用 note_get 按 id 获取）';
-    return { conventions: pc, directory: '\n\n' + pk, catalog: pkCat, stats: { conventionsChars: pc.length, directoryChars: ('\n\n' + pk).length, catalogChars: pkCat.length, totalChars: pc.length + ('\n\n' + pk).length, maskedNotes: 2, staleMarked: 1, budgetTruncated: false, catalogEnabled: true } };
+    var pk = '本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：\n\n- [[n-ref1]] 部署高可用环境时查我\n\n（以上为挂载索引行：正文用 note_get <id> 获取）\n另有 2 条工作日志（kind=log，注入不含），note_search 可检索\n规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手';
+    return { conventions: pc, directory: '\n\n' + pk, stats: { conventionsChars: pc.length, directoryChars: ('\n\n' + pk).length, totalChars: pc.length + ('\n\n' + pk).length, maskedNotes: 1, staleMarked: 0, budgetTruncated: false } };
   }
   if (method === 'notes-export') return { exported: _mockNotes.filter(function (x) { return !x.deleted }).length, foldersFile: true, target: (a.dir || 'D:\\mock') + '\\dsh-notes-export-20260929-203000' };
   if (method === 'notes-import-preview') return { total: 3, same: 1, diff: 1, added: 1, unreadable: 0, folders: { total: 2, new: 1 }, detail: [{ id: 'n1', title: 'oa 环境配置', status: 'same' }, { id: 'n5', title: 'DSH 插件发布指南', status: 'diff' }, { id: 'n-demo', title: '演示新增笔记', status: 'added' }] };
@@ -953,9 +954,14 @@ function _mockRpc(method, a) {
     n = _mockNotes.find(function (x) { return x.id === a.id });
     if (!n || n.deleted) return { error: '笔记已删除' };
     if (!a.sessionId) return { error: '缺少目标会话' };
+    /* 休眠送达（0.4.4-B 原型演示，契约同 host _dispatch 双通道）：清单内非 live → queued 排队送达（下次活动处理）；
+       清单外 → 报错 + needOpen（同 host 不可达口径）；live → 立即触发 */
+    var dts = _mockSessions.find(function (t) { return t.id === a.sessionId });
+    if (!dts) return { error: '目标会话当前未打开，休眠送达失败（会话不存在于持久化存储）。请先打开它，或改用「新建会话」。', needOpen: true };
     var rec = { sessionId: a.sessionId, sessionName: a.sessionName || a.sessionId, workspace: a.workspace || '', mode: a.mode || 'existing', instruction: String(a.instruction || '').trim(), at: _mockNow(), done: false, dispatchStatus: 'sent' };
+    if (!dts.live) rec.queued = true;
     n.dispatches = (n.dispatches || []).concat([rec]); n.updatedAt = _mockNow();
-    return { ok: true, id: n.id, sessionId: a.sessionId, sessionName: rec.sessionName, dispatch: rec };
+    return { ok: true, id: n.id, sessionId: a.sessionId, sessionName: rec.sessionName, queued: rec.queued === true, dispatch: rec };
   }
   if (method === 'notes-dispatch-done') {
     n = _mockNotes.find(function (x) { return x.id === a.id });
@@ -966,7 +972,8 @@ function _mockRpc(method, a) {
   /* 定时派发 mock（notes-034-sched-ui，契约同 host notes-schedule-eval）：{now?} 注入时钟到期评估——
      到期判定同 host schedDueAt（at：lastFiredAt < at <= now；every：now - (lastFiredAt||createdAt) ≥ 间隔；
      every + anchor 锚定时刻（notes-034-sched-time）：now ≥ 锚定序列下一时刻 schedAnchorNextMs，钉死本地 HH:MM 不漂移）；
-     目标非 live 记 lastError 不推进 lastFiredAt（执行红线）；触发 = 登记 dispatches + lastFiredAt/lastRun 回写 */
+     目标不存在记 lastError 不推进 lastFiredAt（执行红线，0.4.4-B 改写：休眠目标走 queued 排队送达不再报错）；
+     target='new' 首轮触发 mock 创建专属会话并回写（0.4.4-B 专属会话复用演示）；触发 = 登记 dispatches + lastFiredAt/lastRun 回写 */
   if (method === 'notes-schedule-eval') {
     var nowMs = a.now !== undefined ? Date.parse(a.now) : Date.now();
     if (!isFinite(nowMs)) return { error: 'notes-schedule-eval: now 非法（期望 ISO 时间串）' };
@@ -983,14 +990,24 @@ function _mockRpc(method, a) {
       }
       if (!due) return;
       var nowIso = new Date(nowMs).toISOString();
+      /* 专属会话（0.4.4-B 原型演示）：target='new' 首轮触发 → mock 创建「定时 · <标题>」会话（入 _mockSessions 即 live）+ target 回写持久复用 */
+      if (s.target === 'new') {
+        var nsid = 'session-mocknew-' + String(nowMs % 100000000);
+        _mockSessions.push({ id: nsid, short: nsid.replace(/^session-/, '').slice(0, 8), name: '定时 · ' + String(x.title || x.id).replace(/^定时\s*·?\s*/, ''), cwd: 'D:\\deepseek-work', workspace: 'deepseek-work', live: true, createdAt: nowIso });
+        x.schedule = Object.assign({}, s, { target: nsid });
+        s = x.schedule;
+      }
       var target = _mockSessions.find(function (t) { return t.id === s.target });
-      if (!target || !target.live) {
-        x.schedule = Object.assign({}, s, { lastError: { at: nowIso, message: '目标会话当前未打开，无法触发工作（目标 live 后下个 tick 自动补发）' }, lastRun: { at: nowIso, status: 'error', receiptId: '' } });
+      /* 执行红线（0.4.4-B 改写）：未知目标才记 lastError 不推进 lastFiredAt；休眠（清单内非 live）走「下次活动送达」排队送达 */
+      if (!target) {
+        x.schedule = Object.assign({}, s, { lastError: { at: nowIso, message: '目标会话当前未打开且持久化不可达，无法触发工作（目标 live 或可送达后下个 tick 自动补发）' }, lastRun: { at: nowIso, status: 'error', receiptId: '' } });
         x.updatedAt = nowIso; ev.errors++; return;
       }
+      var queued = !target.live;
       var rec = { sessionId: s.target, sessionName: target.name || target.short, workspace: target.workspace || '', mode: 'existing', instruction: '', at: nowIso, done: false, dispatchStatus: 'sent', sourceLabel: '定时调度 @' + (x.title || x.id), msgId: 'note-dispatch-mock-' + nowMs };
+      if (queued) rec.queued = true;
       x.dispatches = (x.dispatches || []).concat([rec]);
-      x.schedule = Object.assign({}, s, { lastFiredAt: nowIso, lastRun: { at: nowIso, status: 'sent', receiptId: rec.msgId } });
+      x.schedule = Object.assign({}, s, { lastFiredAt: nowIso, lastRun: { at: nowIso, status: queued ? 'queued' : 'sent', receiptId: rec.msgId } });
       delete x.schedule.lastError;
       x.updatedAt = nowIso; ev.fired++;
     });
@@ -1957,13 +1974,13 @@ function renderMeta() {
     + (function () { var ds = n.dispatches || []; if (!ds.length) return ''; var openN = ds.filter(function (d) { return !isDispDone(d) }).length; return '<span class="meta-chip disp-badge ' + (openN ? 'pending' : 'done') + '" id="mDispBadge" title="' + (openN ? ('派发中：' + openN + ' 条待回执（共 ' + ds.length + ' 条）· 目标会话处理完转 idle 或笔记置 resolved 时自动回执；点击查看派发历史') : ('全部 ' + ds.length + ' 条派发已回执 · 点击查看派发历史')) + '">' + icon(openN ? 'i-play' : 'i-check') + esc(openN ? ('派发中 ' + openN + '/' + ds.length) : '派发已回执') + '</span>' })()
     /* 注入三态（0.4.3⑦ 注入硬关 UI 化）：kind=log 不渲染开关——UI 层不提供日志注入选项（host/mock injectForcedOff 硬闸双保险保留） */
     + ((n.kind || 'note') === 'log'
-      ? '<span class="meta-chip" title="工作日志注入硬禁：host 强制 inject=false；日志同权——可见/可搜索/可编辑，进目录用「目录可见」开关显式开启">' + icon('i-bolt') + '日志不参与注入</span>'
+      ? '<span class="meta-chip" title="工作日志注入硬禁：host 强制 inject=false；日志同权——可见/可搜索/可编辑；目录段唯挂载行源（0.4.4-E：recall 字段 dormant，无目录开关）">' + icon('i-bolt') + '日志不参与注入</span>'
       : '<span class="meta-chip role-seg" id="mRole">' + icon('i-bolt')
       + '<span class="seg' + (role === 'off' ? ' on' : '') + '" data-role="off" title="不注入系统提示">关闭</span>'
       + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="须遵守的行为规则">约定</span>'
       + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="事实性补充信息，Agent 按需取用">资料</span></span>')
     + (role !== 'off' ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="选择注入范围（可多选）">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
-    + '<span class="meta-chip tgl' + (n.recall !== false ? ' on' : '') + '" id="mRecall" title="关闭后不出现在注入给 Agent 的目录中">' + icon('i-eye') + '目录可见</span>'
+    /* 0.4.4-E：「目录可见」chip 随 catalog 整拆消亡（目录段唯挂载行源，recall 字段 dormant——UI 不提供逐条目录开关；与 client/app 0.4.3⑪ 拆除对齐） */
     /* 曾注入徽章（injectEver 粘性标记：单向只升不降，不随关闭回退；当前已注入时由上方注入角色段表达，不重复显示） */
     + (n.injectEver === true && !n.inject ? '<span class="meta-chip" title="曾注入：历史上开启过上下文注入（现已关闭；injectEver 为粘性标记，不随关闭回退）">' + icon('i-clock') + '曾注入</span>' : '')
     + '<span class="meta-sp"></span>'
@@ -1993,7 +2010,7 @@ function renderMeta() {
   });
   var trig = $('scopeTrig');
   if (trig) trig.onclick = function (ev) { ev.stopPropagation(); scopeOpen = !scopeOpen; if (scopeOpen && !sessList.length) pullSessions(); renderScopePanel() };
-  $('mRecall').onclick = function () { edNote.recall = edNote.recall === false; triggerSave(); renderMeta(); toast(edNote.recall !== false ? '已加入 Agent 目录' : '已从 Agent 目录隐藏') };
+  /* 0.4.4-E：mRecall 接线随 chip 一并拆除（recall 字段 dormant，doSave 仍随 edNote 带上存量值） */
   $('mDispatch').onclick = function () { openDispatch() };
   /* P3 派发闭环徽章：点击展开派发历史并滚动到位 */
   var dBadge = $('mDispBadge');
@@ -2387,15 +2404,17 @@ var dState = null;
 function openDispatch() {
   if (draftNote) { toast('草稿尚未落库：输入标题或正文自动保存后再派发'); return }   /* 草稿无真实 id（notes-034-batch3） */
   if (!edNote || !selId) { toast('先选择一条笔记'); return }
-  dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1 };
+  dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false };
   pullActiveSessions();
   renderDispatchModal();
 }
-/* 编辑模式入口（注入管理「调度任务」区 [编辑]）：同弹窗回填既有声明；note = 调度约定笔记 slim（列表已含 schedule，零新 RPC） */
+/* 编辑模式入口（注入管理「调度任务」区 [编辑]）：同弹窗回填既有声明；note = 调度约定笔记 slim（列表已含 schedule，零新 RPC）；
+   0.4.4-B：target='new'（专属会话）回填 schedNew 复选框（级联选择无对应真实条目，sessId 留空） */
 function openDispatchEdit(note) {
   if (!note || !note.schedule) { toast('该笔记没有调度声明'); return }
   var s = note.schedule;
-  dState = { sessId: s.target || '', instr: '', pending: false, sessions: [], pendingSess: [], sched: true, schedMode: 'daily', schedN: 3, schedAt: '', editId: note.id, editNote: note, schedAnchor: '09:00', schedDow: 1 };
+  var isNew = s.target === 'new';
+  dState = { sessId: isNew ? '' : (s.target || ''), instr: '', pending: false, sessions: [], pendingSess: [], sched: true, schedMode: 'daily', schedN: 3, schedAt: '', editId: note.id, editNote: note, schedAnchor: '09:00', schedDow: 1, schedNew: isNew };
   /* 回填：at → 仅一次；every 整天数 → 每天/每周/每 N 天；非整天间隔（front-matter 裸编辑旁路值）归一最近整天，保存按表单覆盖；
      锚定时刻（notes-034-sched-time）：anchor/dow 回填（非法 anchor 回退默认 09:00——裸编辑旁路值防御） */
   if (s.at) { dState.schedMode = 'once'; dState.schedAt = isoToLocalInput(s.at) }
@@ -2449,8 +2468,11 @@ function renderDispatchModal() {
     + '<input class="minput sched-at" id="dSchedAnchor" type="time" value="' + esc(dState.schedAnchor) + '"' + (dState.schedMode === 'once' ? ' style="display:none"' : '') + '>'
     + '<input class="minput sched-at" id="dSchedOnce" type="datetime-local" value="' + esc(dState.schedAt) + '"' + (dState.schedMode === 'once' ? '' : ' style="display:none"') + '>'
     + '<div class="sched-next" id="dSchedNext"></div>'
+    /* 专属会话（0.4.4-B）：周期模式可勾 target='new'——首轮触发 host 自动创建「定时 · 任务名」会话并回写复用；仅一次（at）无复用场景不提供 */
+    + '<label class="sched-opt" id="dSchedNewBox"' + (dState.schedMode === 'once' ? ' style="display:none"' : '') + '><input type="checkbox" id="dSchedNew"' + (dState.schedNew ? ' checked' : '') + '> 专属会话（首轮触发自动创建「定时 · 任务名」，后续复用）</label>'
     + '</div></div>'
-    + '<div id="dispSessHost"></div>'
+    /* 专属会话勾选后隐藏级联选择（目标由 host 首轮创建，无既有会话可选） */
+    + '<div id="dispSessHostWrap"' + (dState.schedNew && (dState.sched || dState.editId) ? ' style="display:none"' : '') + '><div id="dispSessHost"></div></div>'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
     + '<div class="modal-acts"><button class="mbtn" id="dCancel">取消</button><button class="mbtn primary" id="dOk">' + (editing ? '保存排定' : '派发') + '</button></div>'
   );
@@ -2468,8 +2490,12 @@ function renderDispatchModal() {
     $('dSchedDowBox').style.display = this.value === 'weekly' ? '' : 'none';
     $('dSchedAnchor').style.display = this.value === 'once' ? 'none' : '';
     $('dSchedOnce').style.display = this.value === 'once' ? '' : 'none';
+    /* 专属会话复选框仅周期模式提供（host 闸门同口径拒绝 at+'new'）；切到仅一次时自动摘勾并还原生态位 */
+    $('dSchedNewBox').style.display = this.value === 'once' ? 'none' : '';
+    if (this.value === 'once' && dState.schedNew) { dState.schedNew = false; $('dSchedNew').checked = false; $('dispSessHostWrap').style.display = ''; }
     renderSchedNext();
   };
+  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; };
   $('dSchedN').oninput = function () { dState.schedN = this.value; renderSchedNext() };
   $('dSchedDow').onchange = function () { dState.schedDow = parseInt(this.value, 10); renderSchedNext() };
   $('dSchedAnchor').oninput = function () { dState.schedAnchor = this.value; renderSchedNext() };
@@ -2523,13 +2549,14 @@ function renderDispatchSessList() {
   dState.sessions.forEach(function (s) { var w = s.workspace || '其他'; (byWs[w] = byWs[w] || []).push(s) });
   dState.pendingSess.forEach(function (p) { var w = p.workspace || '其他'; (byWs[w] = byWs[w] || []).push({ id: p.id, short: p.short, name: '', pending: true }) });
   var wsKeys = Object.keys(byWs).sort();
-  var h = '<div class="disp-ws">活跃会话 ' + dState.sessions.length + (dState.pendingSess.length ? '（+' + dState.pendingSess.length + ' 标题加载中…）' : '') + ' · 按工作区分组</div>';
-  if (!wsKeys.length) h += '<div class="modal-hint">没有可派发的活跃会话。目标会话需处于打开状态；请先在 DSH 主界面打开，或回 DSH 浮动面板使用「新建会话」派发。</div>';
+  /* 0.4.4-B 双区口径：活跃+休眠均可派发，休眠行标注「下次活动送达」（host 持久化排队，零唤醒） */
+  var h = '<div class="disp-ws">可派发会话 ' + dState.sessions.length + '（活跃+休眠）' + (dState.pendingSess.length ? '（+' + dState.pendingSess.length + ' 标题加载中…）' : '') + ' · 按工作区分组</div>';
+  if (!wsKeys.length) h += '<div class="modal-hint">没有可派发的会话。请先在 DSH 主界面创建一个会话，或回 DSH 浮动面板使用「新建会话」派发；休眠会话可直接派发（下次活动送达）。</div>';
   wsKeys.forEach(function (ws) {
     h += '<div class="disp-ws">' + esc(ws) + '</div>';
     byWs[ws].forEach(function (s) {
       h += '<div class="disp-sess' + (s.pending ? ' dis' : '') + (dState.sessId === s.id ? ' on' : '') + '" data-sid="' + (s.pending ? '' : esc(s.id)) + '">'
-        + (s.live ? '<span class="live" title="live"></span>' : '<span class="live" style="background:var(--nt3)" title="非 live"></span>')
+        + (s.live ? '<span class="live" title="live"></span>' : '<span class="live" style="background:var(--nt3)" title="休眠 · 下次活动送达"></span>')
         + '<span class="nm">' + (s.pending ? esc(s.short) + ' · 标题加载中…' : esc(s.name || s.short)) + '</span>'
         + '<span style="font-size:10px;color:var(--nt3)">' + esc(s.short || '') + '</span></div>';
     });
@@ -2542,7 +2569,8 @@ function renderDispatchSessList() {
 }
 function doDispatchConfirm() {
   if (!dState || dState.pending) return;
-  if (!dState.sessId) { modalErr('请选择目标会话'); return }
+  /* 0.4.4-B：专属会话勾选（schedNew，仅定时形态）免选既有会话（target='new'，首轮触发 host 自动创建） */
+  if (!dState.sessId && !(dState.schedNew && (dState.sched || dState.editId))) { modalErr('请选择目标会话'); return }
   var sess = dState.sessions.find(function (s) { return s.id === dState.sessId });
   /* 定时执行 / 编辑排定分支（notes-034-sched-ui）：创建/更新 dispatch-schedule 约定笔记（表单与 front-matter 同源，无第二份存储） */
   if (dState.sched || dState.editId) {
@@ -2550,7 +2578,7 @@ function doDispatchConfirm() {
     if (f.err) { modalErr(f.err); return }
     var editId = dState.editId;
     /* 编辑保留原 enabled 态（暂停的任务改排定不被意外拉起）；创建默认 enabled=true；周期模式携锚定时刻 anchor/dow（notes-034-sched-time） */
-    var decl = { target: dState.sessId, action: 'dispatch', enabled: editId ? (dState.editNote.schedule.enabled !== false) : true };
+    var decl = { target: dState.schedNew ? 'new' : dState.sessId, action: 'dispatch', enabled: editId ? (dState.editNote.schedule.enabled !== false) : true };
     if (f.decl.at) decl.at = f.decl.at; else { decl.every = f.decl.every; decl.anchor = f.decl.anchor; if (typeof f.decl.dow === 'number') decl.dow = f.decl.dow }
     var nextTxt = fmtDT(new Date(schedDeclNextMs(f.decl, dState.editNote)).toISOString());
     dState.pending = true; $('dOk').disabled = true; $('dOk').textContent = editId ? '保存中…' : '排定中…';
@@ -2583,7 +2611,8 @@ function doDispatchConfirm() {
       return;
     }
     closeModal(); dState = null;
-    toast('已派发待办到「' + (sess ? sess.name : '') + '」（开始处理）');
+    /* 0.4.4-B 休眠送达：queued 时提示排队语义（休眠目标由 host 持久化排队、下次活动送达，零唤醒） */
+    toast(res && res.queued ? '已排队到「' + (sess ? sess.name : '') + '」（休眠会话 · 下次活动送达）' : '已派发待办到「' + (sess ? sess.name : '') + '」（开始处理）');
     refreshSelected(); loadNotes(true);
   }).catch(function (e) {
     dState.pending = false; modalErr('派发失败：' + (e && e.message || e));
@@ -2668,7 +2697,7 @@ function doRestoreHistory() {
 /* 设置卡交互反馈（notes-settings-feedback）：✕ 常驻关闭 + dirty 跟踪「保存」（显式确认 + 兜底 flush）+「还原」回滚。
    dirty 判定口径 = 在途待写（setInflight>0）或 任一控件值 ≠ 打开时快照（setSnap）；
    自动保存（失焦/Enter/选择即存）零改动——「保存」按钮是显式确认 + 未落盘改动的兜底 flush，两者并存 */
-var setSnap = null;      /* 打开时快照 {llmP,llmM,catalog,stale,maxDepth,budget,usageBudget,logWeek,logMonth}（字符串口径同控件值） */
+var setSnap = null;      /* 打开时快照 {llmP,llmM,stale,maxDepth,budget,usageBudget,logWeek,logMonth}（字符串口径同控件值；0.4.4-E：catalog 目录补充行开关随功能整体拆除） */
 var setPersist = null;   /* 已落盘镜像（兜底 flush/还原只写真不同的键） */
 var setInflight = 0;     /* 在途设置写数（>0 = 存在尚未落盘的待写） */
 var setSaving = false;   /* 保存/还原执行中（按钮防重入） */
@@ -2684,7 +2713,7 @@ function openSettings() {
     var settings = res.settings || {};
     var models = res.models || [];
     var l = settings.llm || null;
-    var catalogOn = settings.catalogEnabled !== false;
+    /* 0.4.4-E：catalog 目录补充行总开关随功能整体拆除——设置卡无此控件 */
     /* P1 注入增强：时效衰减提醒阈值（天，缺省 90，0=关闭）+ 注入体积预算（约/字符数，缺省 0=不限）+ 仪表（lastInjectChars） */
     var staleDays = typeof settings.staleDays === 'number' ? settings.staleDays : 90;
     /* 文件夹嵌套深度上限（maxFolderDepth，层；根级=第 1 层，缺省 3，0=不限） */
@@ -2698,7 +2727,7 @@ function openSettings() {
     var lastChars = typeof res.lastInjectChars === 'number' ? res.lastInjectChars : 0;
     var gaugePct = budgetNum > 0 ? Math.min(100, Math.round(lastChars / budgetNum * 100)) : 0;
     /* dirty/还原基准（notes-settings-feedback）：打开时快照 + 已落盘镜像初始化（字符串口径同控件值） */
-    setSnap = { llmP: l ? l.provider : '', llmM: l ? l.model : '', catalog: catalogOn, stale: String(staleDays), maxDepth: String(maxDepth), budget: String(budgetNum), usageBudget: String(usageBudget), logWeek: String(logWeekDays), logMonth: String(logRetentionDays) };
+    setSnap = { llmP: l ? l.provider : '', llmM: l ? l.model : '', stale: String(staleDays), maxDepth: String(maxDepth), budget: String(budgetNum), usageBudget: String(usageBudget), logWeek: String(logWeekDays), logMonth: String(logRetentionDays) };
     setPersist = setSnap;
     var llmCtrl;
     if (models.length) {
@@ -2719,19 +2748,18 @@ function openSettings() {
       '<div class="modal-hint"><b>概念速览</b><br>'
       + '· 注入：笔记正文进入 Agent 的系统提示，每次对话都可见（编辑器注入三态开关控制）；<br>'
       + '· 约定 / 资料：注入的两种角色——约定 = 须遵守的规则；资料 = Agent 按需取用的参考；<br>'
-      + '· 目录注入：只向 Agent 提供全库笔记清单（一行一条），需要全文时它再调取；<br>'
+      + '· 目录注入：只向 Agent 提供已挂载笔记的索引行（一行一条，含「何时查我」），需要全文时它再 note_get 调取；<br>'
       + '· 派发：把待办笔记派给指定会话执行，完成后自动回执闭环。</div>'
       + '<div class="set-row"><div class="set-label">LLM 模型<span class="s">笔记自动分类 / 指令提取使用的模型</span></div><div class="set-ctrl">' + llmCtrl + '</div></div>'
       + '<div class="set-row"><div class="set-label">LLM 用量<span class="s">笔记功能的 token 消耗统计（真实 usage 优先，未回传时按字符估算）；按日累计，usage.json 落盘</span></div><div class="set-ctrl usage" id="setUsageBody"><span class="s">加载中…</span></div></div>'
       + '<div class="set-row"><div class="set-label">用量预算提醒<span class="s">本月 token 消耗超过该值时提醒（仅 toast 提示，不阻断调用）；0 = 关闭</span></div><div class="set-ctrl"><input class="minput" id="setUsageBudget" type="number" min="0" step="1000" style="width:110px" value="' + usageBudget + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">笔记目录注入<span class="s">向 Agent 系统提示注入笔记目录（一行一条），供其规划时参考并按需 note_get 取全文</span></div><div class="set-ctrl"><label class="set-check"><input type="checkbox" id="setCatalog"' + (catalogOn ? ' checked' : '') + '> ' + (catalogOn ? '已开启' : '已关闭') + '</label></div></div>'
-      + '<div class="set-row"><div class="set-label">时效衰减提醒<span class="s">目录行对超过 N 天未更新的笔记/链接追加「 ⚠ N 天未更新」标注（提醒参考资料可能过期）；0 = 关闭</span></div><div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>'
+      + '<div class="set-row"><div class="set-label">时效衰减提醒<span class="s">超过 N 天未更新且未被读取的笔记/链接会在整理建议中提名为过期候选（提醒参考资料可能过期）；0 = 关闭</span></div><div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>'
       + '<div class="set-row"><div class="set-label">文件夹嵌套深度<span class="s">虚拟文件夹最大嵌套层级（根级 = 第 1 层，缺省 3）；新建子文件夹/拖拽换父超限将拒绝并提示；0 = 不限</span></div><div class="set-ctrl"><input class="minput" id="setMaxDepth" type="number" min="0" step="1" style="width:90px" value="' + maxDepth + '"></div></div>'
       + '<div class="set-row"><div class="set-label">注入体积预算<span class="s">单次注入笔记全文的上限（约，按字符数近似）；约定条目永不截断，资料条目从最旧开始省略；0 = 不限</span>'
       + '<span class="s" id="setGaugeT">当前注入约 ' + lastChars + ' 字符' + (budgetNum > 0 ? ' / 预算约 ' + budgetNum + ' 字符' : '（不限）') + '</span>'
       + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div></div>'
       + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">注入预览<span class="s">查看 Agent 实际收到的注入文本（约定 + 目录）：敏感打码 / 时效标注 / 预算截断效果即所见；可按会话过滤</span></div><div class="set-ctrl"><button class="mbtn" id="setInjectPreview">预览…</button></div></div>'
+      + '<div class="set-row"><div class="set-label">注入预览<span class="s">查看 Agent 实际收到的注入文本（约定 + 目录）：敏感打码 / 预算截断效果即所见；可按会话过滤</span></div><div class="set-ctrl"><button class="mbtn" id="setInjectPreview">预览…</button></div></div>'
       + '<div class="set-row"><div class="set-label">注入管理<span class="s">全库注入总览：逐篇三态直改（关闭/约定/资料）+ 多选批量 + 三态过滤/搜索；日志不参与注入（硬关，不提供开关），敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）</span></div><div class="set-ctrl"><button class="mbtn" id="setInjectManager">管理…</button></div></div>'
       + '<div class="set-row"><div class="set-label">数据<span class="s">全库目录快照导出 / 从快照目录导入（只增改不删，导入前自动全量备份）/ 回收站兜底（恢复或彻底删除）</span></div><div class="set-ctrl"><button class="mbtn" id="setExport">导出全部</button><button class="mbtn" id="setImport">导入…</button><button class="mbtn" id="setTrash">回收站</button></div></div>'
       + '<div class="set-row"><div class="set-label">资产清理<span class="s">扫描 assets/ 中未被任何笔记引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删）</span></div><div class="set-ctrl"><button class="mbtn" id="setPrune">清理…</button></div></div>'
@@ -2756,15 +2784,11 @@ function openSettings() {
     };
     var sc = $('setLlmClear');
     if (sc) sc.onclick = function () { saveSettings({ llm: null }, '已恢复跟随当前会话（默认）'); openSettings() };
-    $('setCatalog').onchange = function () {
-      saveSettings({ catalogEnabled: !!this.checked }, this.checked ? '已开启笔记目录注入' : '已关闭笔记目录注入');
-      this.parentNode.lastChild.textContent = this.checked ? ' 已开启' : ' 已关闭';
-    };
     /* P1 时效衰减提醒阈值：失焦/Enter 即保存（非负整数；0 = 关闭；非法输入报错不落盘） */
     $('setStale').onchange = function () {
       var v = String(this.value).trim();
       if (!/^\d+$/.test(v)) { modalErr('时效提醒阈值需为非负整数（0 = 关闭）'); return }
-      saveSettings({ staleDays: parseInt(v, 10) }, +v === 0 ? '已关闭时效衰减提醒' : '已保存：超过 ' + v + ' 天未更新的资料将在目录标注 ⚠');
+      saveSettings({ staleDays: parseInt(v, 10) }, +v === 0 ? '已关闭过期候选提名' : '已保存：超过 ' + v + ' 天未更新的资料将在整理建议中提名为过期候选');
     };
     /* 文件夹嵌套深度上限：失焦/Enter 即保存（非负整数；0 = 不限层数；非法输入报错不落盘） */
     $('setMaxDepth').onchange = function () {
@@ -2838,7 +2862,6 @@ function setDirtyCompute() {
   if (setInflight > 0) return true;
   if ($('setLlmSel') && $('setLlmSel').value !== (setSnap.llmP && setSnap.llmM ? setSnap.llmP + '/' + setSnap.llmM : '')) return true;
   if ($('setLlmP') && ($('setLlmP').value.trim() !== setSnap.llmP || $('setLlmM').value.trim() !== setSnap.llmM)) return true;
-  if ($('setCatalog') && $('setCatalog').checked !== setSnap.catalog) return true;
   var nums = [['setStale', 'stale'], ['setMaxDepth', 'maxDepth'], ['setBudget', 'budget'], ['setUsageBudget', 'usageBudget'], ['setLogWeek', 'logWeek'], ['setLogMonth', 'logMonth']];
   for (var i = 0; i < nums.length; i++) { var el = $(nums[i][0]); if (el && String(el.value).trim() !== setSnap[nums[i][1]]) return true }
   return false;
@@ -2856,7 +2879,6 @@ function setPersistMerge(patch) {
   var n = {}, k;
   for (k in setPersist) n[k] = setPersist[k];
   if ('llm' in patch) { n.llmP = patch.llm ? patch.llm.provider : ''; n.llmM = patch.llm ? patch.llm.model : '' }
-  if ('catalogEnabled' in patch) n.catalog = !!patch.catalogEnabled;
   if ('staleDays' in patch) n.stale = String(patch.staleDays);
   if ('maxFolderDepth' in patch) n.maxDepth = String(patch.maxFolderDepth);
   if ('injectBudgetChars' in patch) n.budget = String(patch.injectBudgetChars);
@@ -2885,10 +2907,9 @@ var SET_NUM_FIELDS = [
 ];
 /* 当前控件值 → 快照对象（保存成功后快照跟进用） */
 function setSnapFromControls() {
-  var s = { llmP: '', llmM: '', catalog: true, stale: '', maxDepth: '', budget: '', usageBudget: '', logWeek: '', logMonth: '' };
+  var s = { llmP: '', llmM: '', stale: '', maxDepth: '', budget: '', usageBudget: '', logWeek: '', logMonth: '' };
   if ($('setLlmSel')) { var v = $('setLlmSel').value; s.llmP = v ? v.split('/')[0] : ''; s.llmM = v ? v.split('/').slice(1).join('/') : '' }
   if ($('setLlmP')) { s.llmP = $('setLlmP').value.trim(); s.llmM = $('setLlmM').value.trim() }
-  if ($('setCatalog')) s.catalog = $('setCatalog').checked;
   for (var i = 0; i < SET_NUM_FIELDS.length; i++) { var el = $(SET_NUM_FIELDS[i][0]); if (el) s[SET_NUM_FIELDS[i][1]] = String(el.value).trim() }
   return s;
 }
@@ -2925,7 +2946,6 @@ function doSettingsRestoreAll() {
   var s = setSnap, p = setPersist;
   var patches = [];
   if (p.llmP !== s.llmP || p.llmM !== s.llmM) patches.push({ llm: (s.llmP && s.llmM) ? { provider: s.llmP, model: s.llmM } : null });
-  if (p.catalog !== s.catalog) patches.push({ catalogEnabled: s.catalog });
   for (var i = 0; i < SET_NUM_FIELDS.length; i++) { if (p[SET_NUM_FIELDS[i][1]] !== s[SET_NUM_FIELDS[i][1]]) { var o = {}; o[SET_NUM_FIELDS[i][2]] = parseInt(s[SET_NUM_FIELDS[i][1]], 10); patches.push(o) } }
   setSaving = true; setDirtyRefresh();
   var seq = Promise.resolve();
@@ -2935,7 +2955,6 @@ function doSettingsRestoreAll() {
     /* UI 复位到打开时快照 */
     if ($('setLlmSel')) $('setLlmSel').value = (s.llmP && s.llmM) ? s.llmP + '/' + s.llmM : '';
     if ($('setLlmP')) { $('setLlmP').value = s.llmP; $('setLlmM').value = s.llmM }
-    if ($('setCatalog')) { $('setCatalog').checked = s.catalog; $('setCatalog').parentNode.lastChild.textContent = s.catalog ? ' 已开启' : ' 已关闭' }
     for (var i = 0; i < SET_NUM_FIELDS.length; i++) { var el = $(SET_NUM_FIELDS[i][0]); if (el) el.value = s[SET_NUM_FIELDS[i][1]] }
     toast('已还原：设置回滚到打开时的状态');
     setDirtyRefresh();
@@ -2995,7 +3014,7 @@ function openMemEnable(from) {
   memEnableState = { scope: 'global', sess: null, wss: {}, sids: {}, pending: false };
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' 启用沉淀引导<span class="sub">工作记忆 v0 · 约定笔记方案</span></div>'
-    + '<div class="modal-hint">将创建一条预填约定笔记「约定：工作日志沉淀（工作记忆 v0）」（inject=true，contractType: memory-guide），引导 Agent 在任务收尾/你示意时把会话结论写为工作日志（kind=log）。工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看），记忆管 Agent 自己沉淀什么（自用召回），两者可同时对同一事件生效，产物重复是设计意图而非冲突。日志与普通笔记同权：可见、可搜索、可编辑；注入硬禁（不提供注入开关），目录缺省不含（详情「目录可见」开关可显式开启）。该约定可见/可改/可停用/可删除；停用后再启用复用同一约定笔记（重新打开注入，不新建第二条）。</div>'
+    + '<div class="modal-hint">将创建一条预填约定笔记「约定：工作日志沉淀（工作记忆 v0）」（inject=true，contractType: memory-guide），引导 Agent 在任务收尾/你示意时把会话结论写为工作日志（kind=log）。工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看），记忆管 Agent 自己沉淀什么（自用召回），两者可同时对同一事件生效，产物重复是设计意图而非冲突。日志与普通笔记同权：可见、可搜索、可编辑；注入硬禁（不提供注入开关），目录缺省不含（0.4.4-E 起目录段唯挂载行源，recall 字段 dormant 无注入效果）。该约定可见/可改/可停用/可删除；停用后再启用复用同一约定笔记（重新打开注入，不新建第二条）。</div>'
     + '<div class="sg-sec"><div class="sg-sec-t">注入范围（作用域）</div>'
     + '<label class="fg-item"><input type="radio" name="memScope" value="global" checked><span class="fl">所有会话（缺省）</span></label>'
     + '<label class="fg-item"><input type="radio" name="memScope" value="workspace"><span class="fl">指定工作区（多选，下方勾选）</span></label>'
@@ -3070,7 +3089,7 @@ function doMemEnable() {
   }).catch(function (e) { if (memEnableState) { modalErr('启用失败：' + (e && e.message || e)); memEnableState.pending = false; $('memOk').disabled = false } });
 }
 /* ================= 注入预览（设置卡片「注入预览」入口）：notes-inject-preview 纯复用 host 注入渲染 =================
-   单段视图（约定段 + 合并目录段：挂载行排前 + 普通行排后）+ 三档视角下拉（全局 / 工作区并集 / 单会话；notes-sessions 数据源）
+   单段视图（约定段 + 合并目录段：挂载行——0.4.4-E 起唯一内容源，无普通行）+ 三档视角下拉（全局 / 工作区并集 / 单会话；notes-sessions 数据源）
    + 底部统计条（总字符/打码/时效标注/预算截断）；文本区只读等宽展示（textContent 赋值，无注入面）。
    视角值编码：'' = 全局；'ws:<工作区标题>' = 工作区并集视角（RPC workspace 参数）；其余 = 会话短 id（sessionId 参数）。
    0.4.3 验收修复③：目录与资料桶合并为单一目录段（双 tab 拆除）。 */
@@ -3114,12 +3133,12 @@ function renderInjectPreview() {
   var st = injectPreviewState, d = st.data;
   var tx = $('injprevText');
   if (tx) {
-    /* 单段渲染：约定段 + 目录段（挂载行排前/普通行排后），同 agent 实际收到的注入全文 */
+    /* 单段渲染：约定段 + 目录段（0.4.4-E 起唯挂载行源，无普通行），同 agent 实际收到的注入全文 */
     var body = d ? ((d.conventions || '') + (d.directory || '')) : '加载中…';
     tx.textContent = body || '（无注入内容）';
   }
   var s = d && d.stats, se = $('injprevStats');
-  if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.directoryChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') + ' · 目录补充行：' + (s.catalogEnabled === true ? '开' : '关') : '';   /* 0.4.3⑫ 目录补充行开关徽标 */
+  if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.directoryChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') : '';   /* 0.4.4-E：目录补充行开关徽标随 catalog 功能整体拆除 */
 }
 /* ================= 注入管理面板（设置卡片「注入管理」入口；notes-inject-manager）=================
    数据源：notes-list {includeLogs:true} slim（inject/injectRole/injectEver/sensitive/kind/injectTo 齐备，零新 RPC；含日志——日志行禁用态展示）；
@@ -3209,7 +3228,7 @@ function renderInjectManager() {
         };
         return '<div class="injmgr-row">'
           + (isLog
-            ? '<span class="injmgr-checkslot" title="工作日志注入硬禁：inject 强制关闭；日志同权——可见/可搜索/可编辑，进目录需显式开启「目录」"></span>'
+            ? '<span class="injmgr-checkslot" title="工作日志注入硬禁：inject 强制关闭；日志同权——可见/可搜索/可编辑；目录段唯挂载行源（0.4.4-E：recall dormant，无逐条目录开关）"></span>'
             : '<span><input type="checkbox" class="trash-check injmgr-check" data-id="' + esc(n.id) + '"' + (st.sel[n.id] ? ' checked' : '') + (st.pending ? ' disabled' : '') + '></span>')
           + '<span class="dot" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>'
           + '<span class="injmgr-ti" title="' + esc(n.title || '无标题') + '">' + esc(n.title || '无标题') + '</span>'
@@ -3217,7 +3236,7 @@ function renderInjectManager() {
           + (n.injectEver === true && !n.inject ? '<span class="injmgr-ever" title="曾注入：历史上开启过上下文注入（现已关闭；injectEver 为粘性标记，不随关闭回退）">' + icon('i-clock', 9) + '曾注入</span>' : '')
           + '<span class="injmgr-scope">' + esc(injMgrScopeLabel(n.injectTo)) + '</span>'
           + (isLog
-            ? '<span class="injmgr-lognote" title="工作日志注入硬禁：inject 强制关闭；日志同权——可见/可搜索/可编辑，进目录需显式开启「目录」">' + icon('i-bolt', 10) + '日志不参与注入</span>'
+            ? '<span class="injmgr-lognote" title="工作日志注入硬禁：inject 强制关闭；日志同权——可见/可搜索/可编辑；目录段唯挂载行源（0.4.4-E：recall dormant，无逐条目录开关）">' + icon('i-bolt', 10) + '日志不参与注入</span>'
             : '<span class="injmgr-seg">' + icon('i-bolt', 10) + seg('off', '关闭', '不注入系统提示') + seg('convention', '约定', '须遵守的行为规则') + seg('reference', '资料', '事实性补充信息，Agent 按需取用') + '</span>')
           + '</div>'
       }).join('') + '</div>';

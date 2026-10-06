@@ -1,7 +1,8 @@
     // ==== rootnote BEGIN ====（0.4.3 内核②：RootNote 托管节框架，notes-043-rootnote。
     // 目标：把「机器托管的根笔记自动节」从 runLog 专属实现提炼为一套通用框架——
     //   RootNoteTpl 模板声明式描述：锚点节标题（'## §名'）/ 行格式（lineOf 消费者注入）/
-    //   排序（newestFirst 新→旧缺省）/ 容量上限（max 裁尾）/ 幂等键（keyOfLine/keyOfEntry 去重）/ 软链键（linkOf/writeLink）。
+    //   排序（newestFirst 新→旧缺省）/ 容量上限（max 裁尾）/ 幂等键（keyOfLine/keyOfEntry 去重）/ 软链键（linkOf/writeLink）/
+    //   preText（0.4.4-A：可选说明块——创建正文 = preText + head 锚点行；pre 区节外零触碰逐字节保留，同 injectindex 说明块先例）。
     // 红线（迁就现状格式，不是反过来）：
     //   ①节外零触碰——锚点节标题行与用户手写备注区逐字节保留；托管笔记其余正文原样；
     //   ②节锚点不存在则创建（首写时 pre 缺省补锚点行）；
@@ -93,7 +94,7 @@
         if (rl2) { if (tpl.kind === 'sys') await rootNoteEnsureSysKind(rl2); return rl2 }
         const cr = await _create(
           tpl.titleOf ? tpl.titleOf(hostNote) : String(hostNote.title || hostNote.id),
-          tpl.head + '\n', [],
+          (tpl.preText || '') + tpl.head + '\n', [],
           tpl.topicOf ? tpl.topicOf(hostNote) : '未分类',
           { kind: tpl.kind || 'note', folder: tpl.folderOf ? tpl.folderOf(hostNote) : undefined }
         )

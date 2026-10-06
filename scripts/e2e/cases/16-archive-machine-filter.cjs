@@ -36,9 +36,10 @@ module.exports = {
           return null
         }, nm)
 
-        /* ① 缺省档（⑨ 降噪）：sys 档案/索引根均不可见；「记忆档案」夹节点在且徽标 = 真实计数 1（③ includeSys 计数） */
-        H.t('缺省档树不含 sys 档案行（⑨ 降噪零放松）', (await rowCnt('e2e 账本记忆')) === 0)
-        H.t('缺省档树不含未入夹 sys 索引根', (await rowCnt('e2e 机器索引根')) === 0)
+        /* ① 缺省档：未入夹 sys 索引根不可见（⑨ 降噪零放松）；「记忆档案」夹徽标 = 真实计数 1（③ includeSys 计数）。
+           0.4.4-C（notes-044-folder-explicit-view）起：文件夹展开 = sys 显式入口——缺省全展开下档案行经按需补拉可见（不再死节点） */
+        await H.waitFor(page, '缺省档「记忆档案」展开即见 sys 档案行（0.4.4-C 显式入口放行）', async () => (await rowCnt('e2e 账本记忆')) === 1)
+        H.t('缺省档树不含未入夹 sys 索引根（⑨ 降噪零放松）', (await rowCnt('e2e 机器索引根')) === 0)
         H.t('缺省档「记忆档案」夹徽标 = 1（③ 计数含 sys，非 count=0 死节点）', (await folderBadge('记忆档案')) === '1', () => '实得徽标 ' + folderBadge('记忆档案'))
         H.t('缺省档普通种子笔记照常可见', (await rowCnt('e2e 种子笔记 A')) === 1)
 
@@ -64,11 +65,11 @@ module.exports = {
         H.t('机器档下普通笔记不入 corpus（恰选单 kind 传 host）', (await rowCnt('e2e 种子笔记 A')) === 0)
         H.t('机器档下「记忆档案」徽标 = 1（过滤态子树命中计数）', (await folderBadge('记忆档案')) === '1', () => '实得徽标 ' + folderBadge('记忆档案'))
 
-        /* ④ 取消勾选 → 回 ⑨ 缺省降噪（档案行消失、种子回来） */
+        /* ④ 取消勾选 → 回缺省档：种子回来；档案行仍在（0.4.4-C：「记忆档案」夹处于展开态 = sys 显式入口，降噪不阻拦查看） */
         await page.click('#fpop input[data-fk="sys"]')
-        await H.waitFor(page, '取消机器档后档案行消失', async () => (await rowCnt('e2e 账本记忆')) === 0)
-        H.t('取消后缺省降噪恢复（sys 行消失）', true)
-        H.t('取消后普通种子笔记恢复可见', (await rowCnt('e2e 种子笔记 A')) === 1)
+        await H.waitFor(page, '取消机器档后普通种子笔记恢复可见', async () => (await rowCnt('e2e 种子笔记 A')) === 1)
+        H.t('取消后档案行仍在（0.4.4-C 文件夹展开入口放行，非机器档专利）', (await rowCnt('e2e 账本记忆')) === 1)
+        H.t('取消后未入夹 sys 索引根仍不可见（⑨ 降噪锚）', (await rowCnt('e2e 机器索引根')) === 0)
 
         H.t('无 console error / pageerror', page.__consoleErrors.length === 0, () => page.__consoleErrors.slice(0, 3).join(' | '))
         await H.screenshot(page, '16-archive-machine-filter')

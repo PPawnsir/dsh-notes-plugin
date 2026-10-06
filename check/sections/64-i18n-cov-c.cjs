@@ -21,14 +21,13 @@ module.exports = {
   const appSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
   const clientPkgSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
   const protoSrc = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
-  // 覆盖卡 C 抽串清单（115 条 settings.* 新增；语言项 settings.language/languageTip 为机制卡既有，复用不入单）
+  // 覆盖卡 C 抽串清单（109 条 settings.* 现存——0.4.4-E 拆除 catalog/catalogTip/catalogOn/catalogOff/enabled/disabled 六键；语言项 settings.language/languageTip 为机制卡既有，复用不入单）
   const KEYS = [
     'settings.closeTip', 'settings.onboardTitle', 'settings.onboardInject', 'settings.onboardRoles', 'settings.onboardCatalog', 'settings.onboardDispatch',
     'settings.followSession', 'settings.followBtn', 'settings.savedSuffix',
     'settings.llm', 'settings.llmTip',
     'settings.usage', 'settings.usageTip', 'settings.usageLine', 'settings.usageCalls', 'settings.usageByFeature', 'settings.usageEstimated', 'settings.usageLoadFailed', 'settings.usageOverBudget',
     'settings.usageBudget', 'settings.usageBudgetTip', 'settings.usageBudgetTipT',
-    'settings.catalog', 'settings.catalogTip', 'settings.enabled', 'settings.disabled',
     'settings.stale', 'settings.staleTip', 'settings.staleTipT',
     'settings.maxDepth', 'settings.maxDepthTip', 'settings.maxDepthTipT',
     'settings.budget', 'settings.budgetTip', 'settings.gaugeTip', 'settings.gaugeCurrent', 'settings.gaugeBudget', 'settings.gaugeUnlimited',
@@ -41,7 +40,7 @@ module.exports = {
     'settings.logWeek', 'settings.logWeekTip', 'settings.logWeekTipT', 'settings.logMonth', 'settings.logMonthTip', 'settings.logMonthTipT',
     'settings.cheatsheet', 'settings.cheatsheetTip', 'settings.cheatsheetTipT', 'settings.viewBtn',
     'settings.saving', 'settings.restoreTip', 'settings.saveTip',
-    'settings.savedLlm', 'settings.restoredFollow', 'settings.llmRequired', 'settings.catalogOn', 'settings.catalogOff',
+    'settings.savedLlm', 'settings.restoredFollow', 'settings.llmRequired',
     'settings.staleInvalid', 'settings.staleOff', 'settings.savedStale', 'settings.maxDepthInvalid', 'settings.maxDepthUnlimited', 'settings.savedMaxDepth', 'settings.budgetInvalid', 'settings.budgetOff', 'settings.savedBudget',
     'settings.logWeekInvalid', 'settings.savedLogWeek', 'settings.logMonthInvalid', 'settings.logMonthOff', 'settings.savedLogMonth',
     'settings.usageBudgetInvalid', 'settings.usageBudgetOff', 'settings.savedUsageBudget',
@@ -50,9 +49,9 @@ module.exports = {
   const grab = (s, v) => new Function(s + '\nreturn ' + v)()
   const zh = grab(zhSrc, 'I18N_ZH'), en = grab(enSrc, 'I18N_EN')
 
-  // ===== ① 字典双向覆盖：115 条 settings.* key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
-  await t('覆盖C 字典双向覆盖：115 条 settings.* key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
-    assert.strictEqual(KEYS.length, 115, '抽串清单条数（实得 ' + KEYS.length + '）')
+  // ===== ① 字典双向覆盖：109 条 settings.* key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
+  await t('覆盖C 字典双向覆盖：109 条 settings.* key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
+    assert.strictEqual(KEYS.length, 109, '抽串清单条数（实得 ' + KEYS.length + '）')
     for (const k of KEYS) {
       assert(typeof zh[k] === 'string' && zh[k], 'zh 缺 key/空值：' + k)
       assert(typeof en[k] === 'string' && en[k], 'en 缺 key/空值：' + k)

@@ -29,10 +29,10 @@ module.exports = {
     // runLog 迁移等价（静态）：schedule-runlog 块改为框架消费者——本地 render 循环上收，模板声明齐备
     const blk = hostSrc.match(/\/\/ ==== schedule-runlog BEGIN ====[\s\S]*?\/\/ ==== schedule-runlog END ====/)
     assert(blk, 'schedule-runlog 标记块在位')
-    assert(blk[0].indexOf('rootNoteAppendEnsured(note, SCHED_RUNLOG_TPL, items)') >= 0, 'runLog 追加走 RootNote 框架组合口')
+    assert(blk[0].indexOf('rootNoteAppendEnsured(note, tpl, items)') >= 0, 'runLog 追加走 RootNote 框架组合口（0.4.4-A：tpl 变量——懒创建路径可覆写 folderOf 归夹）')
     assert(blk[0].indexOf('function schedRunLogRender(') < 0, '本地 render 循环已上收框架（零重复实现）')
-    assert(blk[0].indexOf('const SCHED_RUNLOG_TPL = {') >= 0 && blk[0].indexOf('keyOfEntry: function (d) { return d.msgId }') >= 0, 'runLog 消费者模板：msgId 幂等键声明')
-    assert(blk[0].indexOf('max: SCHED_RUNLOG_MAX') >= 0 && blk[0].indexOf('linkOf: function (note) { return note.schedule && note.schedule.runLog }') >= 0, 'runLog 消费者模板：容量 + schedule.runLog 软链键')
+    assert(blk[0].indexOf('const SCHED_RUNLOG_TPL = {') >= 0 && blk[0].indexOf('keyOfEntry: function (d) { return d._dispatch ? schedRunLogDispatchLine(d) : d.msgId }') >= 0, 'runLog 消费者模板：幂等键声明（0.4.4-A：回执=msgId / 派发=整行渲染）')
+    assert(blk[0].indexOf('max: SCHED_RUNLOG_MAX') >= 0 && blk[0].indexOf("linkOf: function (note) { return (note.schedule && note.schedule.runLog) || note.runLog || '' }") >= 0, 'runLog 消费者模板：容量 + 软链键统一 runLog（0.4.4-A：schedule.runLog 存量继承 / 顶层 runLog）')
   })
 
   // ---- 72.1 框架行为级（vm 沙箱：stub 存储） ----
@@ -160,12 +160,13 @@ module.exports = {
     assert(m2 && m2 !== m1, '第二次触发不同 msgId')
     fireIdle(); await flush()
     const rl = await handlers['notes-get']({ id: rlId })
-    assert.strictEqual(rl.note.title, '定时 巡检rn-equiv · 执行记录', '标题 = 约定标题 + 「 · 执行记录」（框架 titleOf）')
-    assert.strictEqual(rl.note.kind, 'sys', 'kind=sys（0.4.3⑥ runLog 系统根笔记归位）')
-    assert(rl.note.body.indexOf('## 执行记录（自动）') === 0, '锚点节标题在首行（框架 head）')
+    assert.strictEqual(rl.note.title, '执行记录 · 定时 巡检rn-equiv', '标题 = 「执行记录 · 约定标题」（0.4.4-A 定稿格式，框架 titleOf）')
+    assert.strictEqual(rl.note.kind, 'log', 'kind=log（0.4.4-A 设计修正：工作日志型，注入硬关天然适用）')
+    assert(rl.note.body.indexOf('## 执行记录（自动）') >= 0, '锚点节标题在位（框架 head + 0.4.4-A 说明块 preText 前缀）')
     const lines = rl.note.body.split('\n').filter(l => /^- /.test(l))
-    assert.strictEqual(lines.length, 2, '两条目（实得 ' + lines.length + '）')
-    assert(lines[0].indexOf(m2) >= 0 && lines[1].indexOf(m1) >= 0, '倒序（最新在前）——框架 newestFirst 消费')
+    assert.strictEqual(lines.length, 4, '四条目（0.4.4-A 三表归一：📥+📤 各两条同篇；实得 ' + lines.length + '）')
+    assert(lines[0].indexOf(m2) >= 0 && lines[2].indexOf(m1) >= 0, '回执条目倒序（最新在前）——框架 newestFirst 消费')
+    assert(lines[1].indexOf('- 📤 ') === 0 && lines[3].indexOf('- 📤 ') === 0, '派发行同篇（0.4.4-A 派发历史笔记化）')
     const g2 = await handlers['notes-get']({ id: c.id })
     assert.strictEqual(g2.note.body, '等价回归正文（必须逐字节不动）', '约定正文逐字节不动（节外零触碰红线经 runLog 复验）')
     // 幂等重放：重复 idle 零追加

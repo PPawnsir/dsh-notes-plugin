@@ -83,7 +83,16 @@ function reparentFolder(fid, parentId) {
     loadNotes(true);
   }).catch(function (e) { toast(t('fld.moveFailed', { msg: e && e.message || e })) });
 }
-/* 文件夹右键菜单（嵌套：新建子文件夹 / 移回根级（有父级时））；
+/* 0.4.4-D hidden 隐藏属性：文件夹显隐开关（notes-folders op:'set-flags'）——隐藏后该夹行+nested 子树滤除（OS 语义；
+   显隐开关开时半透明渲染可再操作）；host 语义零改动，纯 UI 遮罩 */
+function doSetFolderHidden(f, hidden) {
+  rpc('notes-folders', { op: 'set-flags', id: f.id, hidden: hidden === true }).then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    toast(hidden === true ? t('fld.hiddenToast', { name: f.name }) : t('fld.unhiddenToast', { name: f.name }));
+    loadNotes(true);
+  }).catch(function (e) { toast(t('fld.hideFailed', { msg: e && e.message || e })) });
+}
+/* 文件夹右键菜单（嵌套：新建子文件夹 / 移回根级（有父级时）/ 隐藏此文件夹·取消隐藏（0.4.4-D））；
    0.4.3⑦：文件夹右键「进视图」菜单项随文件视图模式拆除移除（树展开即文件夹浏览） */
 function openFolderMenu(x, y, fid) {
   var f = folders.find(function (z) { return z.id === fid });
@@ -95,6 +104,7 @@ function openFolderMenu(x, y, fid) {
     + '<div class="mi" data-a="up">' + icon('i-up') + t('fld.menuUp') + '</div>'
     + '<div class="mi" data-a="down">' + icon('i-down') + t('fld.menuDown') + '</div>'
     + ((f.parent || '') ? '<div class="mi" data-a="root">' + icon('i-up') + t('fld.menuRoot') + '</div>' : '')
+    + '<div class="mi" data-a="hide">' + icon('i-eye') + (f.hidden === true ? t('fld.menuUnhide') : t('fld.menuHide')) + '</div>'
     + '<div class="mi danger" data-a="del">' + icon('i-trash') + t('common.delete') + '</div></div>';
   var m = $('ctxMenu');
   m.style.left = Math.min(x, innerWidth - 170) + 'px';
@@ -108,6 +118,7 @@ function openFolderMenu(x, y, fid) {
     else if (a === 'up') doReorderFolder(f, -1);
     else if (a === 'down') doReorderFolder(f, 1);
     else if (a === 'root') reparentFolder(f.id, '');
+    else if (a === 'hide') doSetFolderHidden(f, !(f.hidden === true));
     else if (a === 'del') doDeleteFolder(f);
   });
 }

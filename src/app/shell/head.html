@@ -164,6 +164,11 @@
   .note-row .use{display:flex;align-items:center;gap:2px;font-size:10px;color:var(--nt3);flex-shrink:0}
   .note-row .use svg.ic{width:9px;height:9px}
   .note-row.dim{opacity:.45}
+  /* 0.4.4-D hidden 隐藏属性遮罩样式（notes-044-hidden-attr）：显隐开关开时 hidden 行半透明 + 标题虚线下划暗示（开关关时整行滤除不渲染） */
+  .note-row.hid{opacity:.5}
+  .note-row.hid .ti{border-bottom:1px dashed var(--nt3)}
+  .row.head.hid{opacity:.5}
+  .row.head.hid .nm{border-bottom:1px dashed var(--nt3)}
   .nested{margin-left:13px;padding-left:9px;border-left:1px solid var(--nbd-soft)}
   .nested .note-row{padding:3.5px 8px;font-size:12.5px}
   /* 嵌套子文件夹行（notes-nested-folder-ui）：与嵌套笔记行同小字口径（12.5px；同级统一，层级靠缩进+图标表达），行首槽位不变 */
@@ -348,6 +353,9 @@
   .disp-rec-i{margin-top:4px;color:var(--nt2);font-size:11px;white-space:pre-wrap}
   .disp-done-btn{margin-top:5px;font-size:11px;color:var(--nacc-tx);background:transparent;border:1px solid var(--nbd);border-radius:var(--nr-sm);padding:2px 10px;cursor:pointer}
   .disp-done-btn:hover{border-color:var(--nacc)}
+  /* 0.4.4-A（notes-044-dispatch-receipts）：派发历史行尾「执行记录 ↗」按钮（与 done-btn 同族样式，间距分隔） */
+  .disp-log-act{margin-top:5px;margin-left:6px;font-size:11px;color:var(--nacc-tx);background:transparent;border:1px solid var(--nbd);border-radius:var(--nr-sm);padding:2px 10px;cursor:pointer}
+  .disp-log-act:hover{border-color:var(--nacc)}
   /* ===== P3 派发闭环徽章（详情 meta chips 行）：pending=有待回执（橙色脉冲图标），done=全部已回执（灰） ===== */
   .disp-badge{user-select:none}
   .disp-badge.pending{color:var(--nwarn);border-color:var(--nwarn)}

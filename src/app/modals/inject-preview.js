@@ -2,8 +2,9 @@
    单段视图（约定段 pre + 目录段可点行）+ 三档视角下拉（全局 / 工作区并集 / 单会话；notes-sessions 数据源）+ 底部统计条（总字符/打码/时效标注/预算截断）；
    文本区只读（textContent 赋值，无注入面）。
    视角值编码：'' = 全局；'ws:<工作区标题>' = 工作区并集视角（RPC workspace 参数）；其余 = 会话短 id（sessionId 参数）。
-   0.4.3 验收修复③（notes-043-dir-merge）：目录与资料桶合并为单一目录段——挂载行（- [[id]]，增强态）与普通行（- [id]）同段渲染、
-   点击均可开挂载弹层（modal 不叠 modal——先关预览再开）：已挂载 = 编辑模式（notes-mount-list 预填现有文案）；未挂载 = LLM 草稿模式。 */
+   0.4.3 验收修复③（notes-043-dir-merge）：目录与资料桶合并为单一目录段——挂载行（- [[id]]，增强态）渲染、
+   点击可开挂载弹层（modal 不叠 modal——先关预览再开）：已挂载 = 编辑模式（notes-mount-list 预填现有文案）；未挂载 = LLM 草稿模式。
+   0.4.4-E：目录段唯挂载行源（普通行随 catalog 拆除消亡，行解析正则保留双形态兼容）。 */
 var injectPreviewState = { sid: '', data: null };
 function openInjectPreview() {
   injectPreviewState = { sid: '', data: null };
@@ -49,13 +50,13 @@ function renderInjectPreview() {
     if (!d) { tx.textContent = '加载中…' }
     else {
       if (d.conventions) { var pre = document.createElement('pre'); pre.className = 'injprev-conv'; pre.textContent = d.conventions; tx.appendChild(pre) }
-      renderInjPrevDirectory(tx, d.directory || '');   /* 目录段：挂载行与普通行同段可点（补充/编辑 whenToUse） */
+      renderInjPrevDirectory(tx, d.directory || '');   /* 目录段：挂载行可点（补充/编辑 whenToUse；0.4.4-E 唯挂载行源） */
     }
   }
   var s = d && d.stats, se = $('injprevStats');
-  if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.directoryChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') + ' · 目录补充行：' + (s.catalogEnabled === true ? '开' : '关') : '';   /* 0.4.3⑫ 目录补充行开关徽标（stats.catalogEnabled，notes-043-final-polish） */
+  if (se) se.textContent = s ? '总字符 ' + s.totalChars + '（约定 ' + s.conventionsChars + ' / 目录 ' + s.directoryChars + '）· 打码 ' + s.maskedNotes + ' 条 · 时效标注 ' + s.staleMarked + ' 条 · 预算截断 ' + (s.budgetTruncated ? '是' : '否') : '';   /* 0.4.4-E：目录补充行开关徽标随 catalog 功能整体拆除（notes-044-catalog-remove） */
 }
-/* 目录段文本逐行渲染：挂载行 `- [[n-xxx]]` 与普通行 `- [n-xxx]` 均可点（🔒 行 id 在方括号内不受打码影响），
+/* 目录段文本逐行渲染：挂载行 `- [[n-xxx]]` 可点（行解析正则保留 `- [n-xxx]` 双形态兼容；0.4.4-E 起普通行消亡），
    其余行（标题/轻推/计数提示/挂载引导）纯文本；行内容一律 textContent 赋值（无注入面） */
 function renderInjPrevDirectory(tx, text) {
   if (!String(text || '').replace(/\s+/g, '')) {

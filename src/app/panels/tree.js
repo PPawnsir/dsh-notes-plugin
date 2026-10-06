@@ -9,7 +9,7 @@ function noteRow(n, inFolderCtx) {
   else if (inFolderCtx && n.topic) tail += '<span class="tp" title="' + esc(t('tree.topicTip', { topic: n.topic })) + '">' + esc(n.topic) + '</span>';
   else tail += '<span class="tp">' + fmtD(n.updatedAt) + '</span>';
   /* 多选态：行首复选框 + pick 高亮（行点击=勾选，由树事件委托统一处理） */
-  return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + (selMode && selIds[n.id] ? ' pick' : '') + '" data-note="' + n.id + '" draggable="true">'
+  return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + (n.hidden === true ? ' hid' : '') + (selMode && selIds[n.id] ? ' pick' : '') + '" data-note="' + n.id + '" draggable="true">'
     + (selMode ? '<input type="checkbox" class="pick-check"' + (selIds[n.id] ? ' checked' : '') + '>' : '')
     /* 行首槽位对齐：caret 槽同宽占位 + 图标槽（kind 色点居中），与文件夹行标题起点一致 */
     + '<span class="caret-spacer"></span><span class="kind-slot"><span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span></span>'
@@ -21,20 +21,73 @@ function noteRow(n, inFolderCtx) {
     + ((n.useCount || 0) > 0 ? '<span class="use" title="' + esc(t('tree.useCountTip', { n: n.useCount })) + '">' + icon('i-quote', 9) + n.useCount + '</span>' : '')
     /* 双链标记（P2）：正文含 [[..]] 时行尾显示链接图标（缓存正文优先，preview 兜底） */
     + (hasWikiLinks(n) ? '<span class="wikimark" title="' + t('tree.wikiTip') + '">' + icon('i-link', 9) + '</span>' : '')
+    /* 0.4.4-C：sys 行「机器」chip（文件夹显式展开/机器档可见的机器托管笔记可辨识；复用 fbadge 徽章样式 + meta.kindSys 字典键） */
+    + ((n.kind || 'note') === 'sys' ? '<span class="fbadge" title="' + esc(t('tree.sysChipTip')) + '">' + esc(t('meta.kindSys')) + '</span>' : '')
     + tail + '</div>';
+}
+/* ===== 0.4.4-C（notes-044-folder-explicit-view）：文件夹显式展开放行 sys（与 client popovers/folder-menu.js 同构）=====
+   默认列表/搜索降噪（0.4.3⑨）不含 sys——「文件夹展开」是唯一显式放行入口（OS 文件管理逻辑：降噪不阻拦查看）：
+   按需 notes-list {folder:id} 定向补拉该夹**直挂** sys 行（host _list 显式 folder 入口 = ⑨ 保留通道；host folder 过滤为
+   递归子树口径，取回后按直挂过滤，子孙夹 sys 各夹自负）存 sysKids[fid] = { stamp, rows }；非 sys 行忽略（已在主缓存）。
+   惰性红线：仅 折叠→展开 / 列表刷新后复核 触发，且「子树徽标计数(含 sys，0.4.3⑩ folders-count-sys) − 缓存可见数 > 0」
+   才发请求——普通夹/折叠夹恒零请求（69 节② 展开零 RPC 口径对普通夹保持）；折叠不清缓存（stamp 新鲜则再展开零请求）；
+   列表刷新后陈旧条目由 refreshSysKids 剔除/重拉覆盖（防陈旧）。 */
+function folderSysHidden(fid) {
+  var f = null
+  folders.forEach(function (x) { if (x.id === fid) f = x })
+  if (!f) return 0
+  var sub = folderSubtree(fid)
+  var visible = 0
+  notes.forEach(function (n) { if (sub[n.folder || '']) visible++ })
+  return (f.count || 0) - visible
+}
+function ensureSysKids(fid) {
+  if (!fid) return
+  /* kind 单档口径门（0.4.3⑩）：恰选 1 个非 sys kind 时缓存 = host kind 通道子集，与 count 不可比——跳过
+     （「机器」档（sys）缓存已含全库 sys 无需补拉；其余单 kind 档下 sys 行本就不该混入） */
+  if (filters.kinds.length === 1 && filters.kinds[0] !== 'sys') return
+  var ent = sysKids[fid]
+  if (ent && ent.stamp === notes) return   /* 新鲜缓存：同批数据再展开零请求 */
+  if (sysKidsInflight[fid]) return
+  if (folderSysHidden(fid) <= 0) return   /* 无隐藏 sys：普通夹零请求 */
+  sysKidsInflight[fid] = true
+  var stamp = notes   /* 本批取数的数据身份；响应落地时 notes 已换代则条目即陈旧，refreshSysKids 自重拉覆盖 */
+  rpc('notes-list', { folder: fid }).then(function (res) {
+    delete sysKidsInflight[fid]
+    if (res && res.error) return   /* 失败静默降级：sys 行不显示，下次复核重试 */
+    var rows = ((res && res.notes) || []).filter(function (n) { return (n.kind || 'note') === 'sys' && (n.folder || '') === fid })
+    sysKids[fid] = { stamp: stamp, rows: rows }
+    renderTree()
+  }, function () { delete sysKidsInflight[fid] })
+}
+/* 列表刷新后复核（loadNotes 链路收尾调用）：剔除「文件夹已删 / 折叠且陈旧」条目；展开中的夹重拉覆盖（旧行保留到新行落地，不闪断） */
+function refreshSysKids() {
+  var fid
+  for (fid in sysKids) {
+    var exists = false
+    folders.forEach(function (x) { if (x.id === fid) exists = true })
+    if (!exists || (foldOpen[fid] === false && sysKids[fid].stamp !== notes)) delete sysKids[fid]
+  }
+  folders.forEach(function (f) { if (foldOpen[f.id] !== false) ensureSysKids(f.id) })
 }
 /* 嵌套文件夹递归渲染（notes-nested-folder-ui）：depth-first——文件夹行 → 展开时 [子文件夹递归 → 直挂笔记] 包一层 .nested 缩进容器；
    同级同字体/行首槽位对齐沿用排版体系；过滤命中与展开语义按子树（子树含命中 → 自动展开 + 计数=子树命中数，与 host f.count 子树口径一致；
    纯渲染态不写回 foldOpen——清除过滤即恢复手动折叠态）；文件夹行 draggable = 拖拽换父（事件委托见 dragstart/drop） */
 function folderNodeHtml(f, vis, filtering) {
+  /* 0.4.4-D：hidden 文件夹在显隐开关关时整节点滤除（行 + .nested 子树容器随父夹消失，OS 语义；子文件夹递归与本夹笔记行自然不渲染） */
+  if (!showHidden && f.hidden === true) return '';
   var h = '';
   var sub = folderSubtree(f.id);
   var kids = vis.filter(function (n) { return (n.folder || '') === f.id });
+  /* 0.4.4-C：合并按需补拉的 sys 子行（置尾从简——sys 行 host 序与主缓存排序口径分离，混排易误导，注释即取舍）；
+     过滤/搜索激活时不混入（⑨ 默认列表/搜索降噪零放松：sys 仅「文件夹展开」显式入口放行）；id 去重防御陈旧窗口；
+     0.4.4-D：同层叠加 hidden 谓词——显隐开关关时 hidden 档案行不混入（开=带 hid 遮罩样式渲染）；与 C 卡合并零互扰 */
+  if (!filtering && sysKids[f.id]) kids = kids.concat(sysKids[f.id].rows.filter(function (n) { return !kids.some(function (x) { return x.id === n.id }) && (showHidden || n.hidden !== true) }));
   var subHits = filtering ? vis.filter(function (n) { return sub[n.folder || ''] }).length : 0;
   var open = (foldOpen[f.id] !== false) || (filtering && subHits > 0);
   /* 行点击（含名称/图标/caret）= 纯展开/折叠（经典树语义，唯一职责——notes-041b 用户裁决去重）；
      0.4.3⑦：「文件视图」模式拆除——行尾 vfilter 漏斗进视图图标已移除，树展开即文件夹浏览 */
-  h += '<div class="row head" data-fold="' + f.id + '" data-drop="1" draggable="true">'
+  h += '<div class="row head' + (f.hidden === true ? ' hid' : '') + '" data-fold="' + f.id + '" data-drop="1" draggable="true">'
     + '<span class="caret' + (open ? ' open' : '') + '" title="' + t('tree.toggleTip') + '">' + icon('i-chev') + '</span>'
     + '<span class="ic-slot">' + icon('i-folder', 13) + '</span>'
     + '<span class="nm">' + esc(f.name) + '</span><span class="n">' + (filtering ? subHits : (f.count != null ? f.count : kids.length)) + '</span></div>';
@@ -140,6 +193,8 @@ $('tree').addEventListener('click', function (ev) {
      日志同权：纯折叠态翻转，零副作用（原日志定向重拉随 overlay 拆除移除） */
   if (frow) {
     var fid2 = frow.dataset.fold;
+    /* 0.4.4-C：折叠→展开 = sys 显式入口，按需补拉直挂 sys 子行（普通夹/新鲜缓存零请求——ensureSysKids 内部惰性闸） */
+    if (foldOpen[fid2] === false) ensureSysKids(fid2);
     foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); renderTree(); return
   }
   /* 主题过滤区分组头：点击=整区展开/收起（topicSecOpen；列表内主题行原地展开行为不变） */

@@ -52,10 +52,12 @@
         id: n.id, title: n.title, topic: n.topic, workspace: n.workspace, folder: n.folder || '',
         tags: n.tags, kind: n.kind || 'note', status: n.status || 'active',
         inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, sensitive: n.sensitive === true,
+        hidden: n.hidden === true,   // 0.4.4-D：hidden 隐藏属性随 slim 下发（纯 UI 遮罩数据源——面板显隐开关滤除/半透明；列表瘦身不丢字段）
         createdAt: n.createdAt, updatedAt: n.updatedAt,
         sessionId: n.sessionId, cwd: n.cwd, logDate: n.logDate || '', entities: n.entities || [], summarizedAt: n.summarizedAt || '', contractType: n.contractType || '', origin: n.origin || '', schedule: n.schedule || null, mergedFrom: n.mergedFrom,
         dispatches: n.dispatches || [],
         refNote: n.refNote || '',
+        runLog: n.runLog || '',   // 0.4.4-A：执行记录伴生笔记软链（顶层 runLog）随 slim 下发——UI 派发历史行/计划块跳转数据源
         useCount: n.useCount || 0,
         archivedAt: n.archivedAt, deleted: n.deleted === true, preview: String(n.body || '').slice(0, 200)
       }

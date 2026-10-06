@@ -11,6 +11,8 @@ export function apply(ctx) {
     const workspaceRegistry = ctx.get('workspaceRegistry')
     const sessionTitle = ctx.get('sessionTitle')
     const sessionQuery = ctx.get('sessionQuery')
+    // 0.4.4-B：定时派发专属会话创建需挂载默认 preset（工具能力来源）；软依赖 ctx.get + 守卫降级（缺失时专属会话创建报 lastError，主服务不受影响）
+    const agentPresets = ctx.get('agentPresets')
     const NOTES_DIR = NOTES_ROOT
     const disposers = []
     // 动态沙箱 Builtin：harness 是「dynamic Host half」的符号（cordis-host-runner 用 node:vm 注入），

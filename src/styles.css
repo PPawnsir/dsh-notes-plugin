@@ -265,6 +265,11 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-note-row.dragging{opacity:.35}
 .dsh-notes-note-row.resolved .dsh-notes-note-ti{color:var(--nt2);text-decoration:line-through}
 .dsh-notes-note-row.superseded .dsh-notes-note-ti{color:var(--nt3);text-decoration:line-through}
+/* 0.4.4-D hidden 隐藏属性遮罩样式（notes-044-hidden-attr）：显隐开关开时 hidden 行半透明 + 标题虚线下划暗示（开关关时整行滤除不渲染） */
+.dsh-notes-note-row.hid{opacity:.5}
+.dsh-notes-note-row.hid .dsh-notes-note-ti{border-bottom:1px dashed var(--nt3)}
+.dsh-notes-folder-row.hid{opacity:.5}
+.dsh-notes-folder-row.hid .dsh-notes-row-nm{border-bottom:1px dashed var(--nt3)}
 .dsh-notes-kind-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .dsh-notes-note-ti{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .dsh-notes-note-pin{width:10px;height:10px;color:var(--nwarn);margin-right:3px}
@@ -580,6 +585,9 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-dispatch-rec.done .dsh-notes-dispatch-rec-t{color:var(--nt3)}
 .dsh-notes-dispatch-done-btn{margin-top:4px;background:transparent;border:none;border-radius:0;color:var(--nacc);font-size:10px;padding:1px 4px;cursor:pointer;font-family:var(--nfont);transition:color .15s;text-decoration:none}
 .dsh-notes-dispatch-done-btn:hover{text-decoration:underline}
+/* 0.4.4-A（notes-044-dispatch-receipts）：派发历史行尾「执行记录 ↗」按钮（done-btn 同族样式） */
+.dsh-notes-dispatch-log-btn{margin-top:4px;margin-left:6px;background:transparent;border:none;border-radius:0;color:var(--nacc);font-size:10px;padding:1px 4px;cursor:pointer;font-family:var(--nfont);transition:color .15s;text-decoration:none}
+.dsh-notes-dispatch-log-btn:hover{text-decoration:underline}
 /* 派发待处理状态点（橙色圆点） */
 .dsh-notes-dispatch-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--nwarn);margin-right:5px;vertical-align:middle;flex-shrink:0}
 /* ===== P3 派发闭环徽章（详情 meta chips 行）：pending=有待回执（橙色脉冲点），done=全部已回执（灰） ===== */

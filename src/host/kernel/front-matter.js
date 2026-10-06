@@ -17,6 +17,9 @@
         'recall: ' + escYaml(m.recall === false ? 'false' : 'true') + '\n' +
         // sensitive 恒写（true/false 显式落盘，缺省 false）：敏感笔记注入时正文按行打码
         'sensitive: ' + escYaml(m.sensitive === true ? 'true' : 'false') + '\n' +
+        // hidden 条件行（0.4.4-D hidden 隐藏属性，OS 文件管理对齐：纯 UI 遮罩标记——面板显隐开关关时滤除、开时半透明渲染；
+        //   仅 true 落盘（缺省 false 存量零迁移）；host _list/_search/notes-get/note_manage 语义零改动——遮罩全在 client/app 渲染层）
+        (m.hidden === true ? 'hidden: true\n' : '') +
         'createdAt: ' + escYaml(m.createdAt) + '\n' +
         'updatedAt: ' + escYaml(m.updatedAt) + '\n' +
         'sessionId: ' + escYaml(m.sessionId) + '\n' +
@@ -37,6 +40,9 @@
         // refNote 条件行（0.4.3⑥ 效用账本：记忆档案笔记 → 被引用记忆 id 的结构化软链，notes-ledger 懒创建回写；
         // 普通笔记不落此行，存量零迁移）
         (m.refNote ? 'refNote: ' + escYaml(m.refNote) + '\n' : '') +
+        // runLog 条件行（0.4.4-A 派发回执笔记化·三表归一：「执行记录」伴生笔记软链——调度约定笔记存 schedule.runLog
+        // （存量口径不动），非调度派发源笔记存本顶层 runLog 字段；普通笔记不落此行，存量零迁移）
+        (m.runLog ? 'runLog: ' + escYaml(m.runLog) + '\n' : '') +
         // schedule 条件行（定时派发·执行层：contractType=dispatch-schedule 约定笔记的调度声明 + 机器状态——
         // 声明 {at|every, target, action, enabled} + 状态 {lastFiredAt, lastRun{at,status,receiptId}, lastError}；
         // JSON 单行存储同 dispatches 先例；普通笔记不落此行，存量零迁移）

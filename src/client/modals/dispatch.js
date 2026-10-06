@@ -17,7 +17,7 @@
     // 锚定时刻（notes-034-sched-time）：周期三模式各补时刻选择（time input，默认 09:00）——声明携 anchor:'HH:MM'
     // （触发序列钉死本地时刻，不随创建时间漂移）；「每周」另加星期几选择（dow 0-6）；仅一次保持 datetime-local 不变。
     // 校验内联报错（at 未来 / N≥1 / 目标必选；host 红线回显同口径）——禁原生 prompt（R1 反面教材 n-mut46q00c3yw）；定时模式仅已有会话（新建会话无未来目标意义）
-    store.modal.dispatch = createStore({ open: false, activeSessions: [], pending: [], dispatching: false, mode: 'existing', instr: '', wsId: '', sessWs: '', sessId: '', wsList: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1 })
+    store.modal.dispatch = createStore({ open: false, activeSessions: [], pending: [], dispatching: false, mode: 'existing', instr: '', wsId: '', sessWs: '', sessId: '', wsList: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false })
     const dispatchOpenRef = { current: false }   // 派发对话框镜像（titlesPending 轮询重拉的终止条件）
     // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
     function setDispatchOpen(v) { const nv = typeof v === 'function' ? v(dispatchOpenRef.current) : v; dispatchOpenRef.current = nv; store.modal.dispatch.set({ open: nv }) }
@@ -36,6 +36,7 @@
     function setDispatchSchedAt(v) { store.modal.dispatch.set({ schedAt: typeof v === 'function' ? v(store.modal.dispatch.get().schedAt) : v }) }
     function setDispatchSchedAnchor(v) { store.modal.dispatch.set({ schedAnchor: typeof v === 'function' ? v(store.modal.dispatch.get().schedAnchor) : v }) }
     function setDispatchSchedDow(v) { store.modal.dispatch.set({ schedDow: typeof v === 'function' ? v(store.modal.dispatch.get().schedDow) : v }) }
+    function setDispatchSchedNew(v) { store.modal.dispatch.set({ schedNew: typeof v === 'function' ? v(store.modal.dispatch.get().schedNew) : v }) }   // 0.4.4-B：专属会话开关（target='new'）
     // 任务派发：加载活跃会话/工作区 + 打开对话框 + 确认派发
     // 0.1.7 首屏提速：host 对缓存未命中会话先返回占位（titlesPending + pendingSessions），对话框立即渲染
     // （占位条目显示「短id · 标题加载中…」）；仍 pending 则 1.5s 轮询重拉，直到标题补齐或对话框关闭。
@@ -45,15 +46,16 @@
         if (!res) return
         const st = store.modal.dispatch.get()
         let sess = res.sessions
-        /* 编辑模式：目标会话不在活跃清单时补一条合成条目（原目标保持可选；host 落库仍校验存活红线，非 live 只影响执行时刻） */
-        if (sess && st.editId && st.editNote && st.editNote.schedule && !sess.some(s => s.id === st.editNote.schedule.target)) {
+        /* 编辑模式：目标会话不在活跃清单时补一条合成条目（原目标保持可选；host 落库仍校验存活红线，非 live 只影响执行时刻）；
+           0.4.4-B：target='new'（专属会话）不是真实会话 id，跳过合成条目与级联回填（schedNew 复选框承载其编辑态） */
+        if (sess && st.editId && st.editNote && st.editNote.schedule && st.editNote.schedule.target !== 'new' && !sess.some(s => s.id === st.editNote.schedule.target)) {
           const tg = st.editNote.schedule.target
           sess = sess.concat([{ id: tg, short: shortSid(tg), name: t('disp.orphanSessName'), workspace: t('disp.orphanSessWs'), live: false }])
         }
         if (sess) {
           setActiveSessions(sess)
           /* 编辑模式回填：目标会话的工作区级联选择（sessWs + sessId） */
-          if (st.editId && st.editNote && st.editNote.schedule) {
+          if (st.editId && st.editNote && st.editNote.schedule && st.editNote.schedule.target !== 'new') {
             const f = sess.find(s => s.id === st.editNote.schedule.target)
             if (f) { setDispatchSessWs(f.workspace || t('meta.wsOther')); setDispatchSessId(f.id) }
           }
@@ -67,15 +69,16 @@
     }
     function openDispatch() {
       setDispatchInstr(''); setDispatchSessId(''); setDispatchSessWs(''); setDispatchWsId(''); setDispatchMode('existing'); setError('')
-      store.modal.dispatch.set({ sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1 })   // 调度区复位（默认收起 = 立即派发；锚定时刻默认 09:00 / 周一）
+      store.modal.dispatch.set({ sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false })   // 调度区复位（默认收起 = 立即派发；锚定时刻默认 09:00 / 周一；专属会话缺省关）
       loadActiveSessions(); loadWorkspaces(); setDispatchOpen(true)
     }
     // 编辑模式入口（注入管理「调度任务」区 [编辑]，经 panelBridge.openDispatchEdit 中转——modals 禁横向引用）：同弹窗回填既有声明
     function openDispatchEdit(note) {
       if (!note || !note.schedule) { showToast(t('disp.noSchedule')); return }
       const s = note.schedule
-      setDispatchInstr(''); setDispatchSessId(s.target || ''); setDispatchSessWs(''); setDispatchWsId(''); setDispatchMode('existing'); setError('')
-      store.modal.dispatch.set({ editId: note.id, editNote: note, sched: true })
+      const isNew = s.target === 'new'   // 0.4.4-B：专属会话声明回填（复选框承载，级联选择无对应真实条目）
+      setDispatchInstr(''); setDispatchSessId(isNew ? '' : (s.target || '')); setDispatchSessWs(''); setDispatchWsId(''); setDispatchMode('existing'); setError('')
+      store.modal.dispatch.set({ editId: note.id, editNote: note, sched: true, schedNew: isNew })
       /* 回填：at → 仅一次；every 整天数 → 每天/每周/每 N 天；非整天间隔（front-matter 裸编辑旁路值）归一最近整天，保存按表单覆盖；
          锚定时刻（notes-034-sched-time）：anchor/dow 回填（非法 anchor 回退默认 09:00——裸编辑旁路值防御） */
       if (s.at) { store.modal.dispatch.set({ schedMode: 'once', schedAt: isoToLocalInput(s.at), schedN: 3 }) }
@@ -100,17 +103,19 @@
       const dispatchSched = store.modal.dispatch.get().sched
       const dispatchEditId = store.modal.dispatch.get().editId
       const dispatchEditNote = store.modal.dispatch.get().editNote
+      const dispatchSchedNew = store.modal.dispatch.get().schedNew
       if (dispatching) return
       // 定时执行 / 编辑排定分支（notes-034-sched-ui）：创建/更新 dispatch-schedule 约定笔记（表单与 front-matter 同源，无第二份存储）
       if (dispatchSched || dispatchEditId) {
         if (!dispatchEditId && !selected) { setError(t('editor.selectNoteFirst')); return }
-        if (!dispatchSessId) { setError(t('disp.needSession')); return }
+        if (!dispatchSessId && !dispatchSchedNew) { setError(t('disp.needSession')); return }
         const f = schedFormDecl(store.modal.dispatch.get().schedMode, store.modal.dispatch.get().schedN, store.modal.dispatch.get().schedAt, store.modal.dispatch.get().schedAnchor, store.modal.dispatch.get().schedDow)
         if (f.err) { setError(f.err); return }
         setDispatching(true); setError('')
         try {
-          /* 编辑保留原 enabled 态（暂停的任务改排定不被意外拉起）；创建默认 enabled=true；周期模式携锚定时刻 anchor/dow（notes-034-sched-time） */
-          const decl = { target: dispatchSessId, action: 'dispatch', enabled: dispatchEditId ? (dispatchEditNote.schedule.enabled !== false) : true }
+          /* 编辑保留原 enabled 态（暂停的任务改排定不被意外拉起）；创建默认 enabled=true；周期模式携锚定时刻 anchor/dow（notes-034-sched-time）；
+             0.4.4-B：专属会话开关 → target='new'（首轮触发 host 自动创建「定时 · 任务名」会话并回写复用） */
+          const decl = { target: dispatchSchedNew ? 'new' : dispatchSessId, action: 'dispatch', enabled: dispatchEditId ? (dispatchEditNote.schedule.enabled !== false) : true }
           if (f.decl.at) decl.at = f.decl.at; else { decl.every = f.decl.every; decl.anchor = f.decl.anchor; if (typeof f.decl.dow === 'number') decl.dow = f.decl.dow }
           const nextTxt = fmtDT(new Date(schedDeclNextMs(f.decl, dispatchEditNote)).toISOString())
           let res
@@ -148,14 +153,10 @@
           // 已有会话派发
           if (!dispatchSessId) { setError(t('disp.needSession')); setDispatching(false); return }
           const sess = activeSessions.find(s => s.id === dispatchSessId)
-          // 目标未打开（不 live）：先打开激活，等它上线后再注入触发
-          if (sess && !sess.live && sessions && sessions.open) {
-            try { sessions.open(sess.id) } catch (e) {}
-            await timer.timeout(1200)
-          }
+          // 0.4.4-B 休眠送达：目标不 live 不再强开唤醒（零成本送达红线）——host 持久化排队，会话下次活动时处理
           const res = await host.call('notes-dispatch', { id: selected, sessionId: dispatchSessId, sessionName: sess ? sess.name : '', workspace: sess ? sess.workspace : '', mode: 'existing', instruction: dispatchInstr })
           if (res && res.error) { setError(res.error); setDispatching(false); return }
-          showToast(t(sess && !sess.live ? 'disp.dispatchedOpened' : 'disp.dispatched', { name: sess ? sess.name : '' }))
+          showToast(t(res && res.queued ? 'disp.dispatchedQueued' : 'disp.dispatched', { name: sess ? sess.name : '' }))
         }
         setDispatchOpen(false); setDispatchInstr('')
         const g = await host.call('notes-get', { id: selected }); if (g && g.note) panelBridge.setEdBody(g.note.body || '')
@@ -190,6 +191,7 @@
       const dispatchSchedAt = store.modal.dispatch.useSel(s => s.schedAt)
       const dispatchSchedAnchor = store.modal.dispatch.useSel(s => s.schedAnchor)
       const dispatchSchedDow = store.modal.dispatch.useSel(s => s.schedDow)
+      const dispatchSchedNew = store.modal.dispatch.useSel(s => s.schedNew)
       const dispatchEditId = store.modal.dispatch.useSel(s => s.editId)
       const dispatchEditNote = store.modal.dispatch.useSel(s => s.editNote)
       const error = props.error
@@ -217,7 +219,7 @@
               e('label', { className: 'dsh-notes-sched-opt' }, e('input', { type: 'radio', name: 'dTrig', checked: !dispatchSched, onChange: () => setDispatchSched(false) }), ' ' + tt('disp.now')),
               e('label', { className: 'dsh-notes-sched-opt' }, e('input', { type: 'radio', name: 'dTrig', checked: !!dispatchSched, onChange: () => setDispatchSched(true) }), ' ' + tt('disp.scheduled'))),
             schedOn ? e('div', { className: 'dsh-notes-sched-form' },
-              e('select', { className: 'dsh-notes-dispatch-select dsh-notes-sched-sel', value: dispatchSchedMode, onChange: (ev) => setDispatchSchedMode(ev.target.value) },
+              e('select', { className: 'dsh-notes-dispatch-select dsh-notes-sched-sel', value: dispatchSchedMode, onChange: (ev) => { setDispatchSchedMode(ev.target.value); if (ev.target.value === 'once') setDispatchSchedNew(false) } },
                 e('option', { value: 'daily' }, tt('common.schedDaily')),
                 e('option', { value: 'weekly' }, tt('common.schedWeekly')),
                 e('option', { value: 'ndays' }, tt('disp.modeNDays')),
@@ -228,12 +230,15 @@
                 [1, 2, 3, 4, 5, 6, 0].map(d => e('option', { key: d, value: d }, tt('disp.dowOption', { dow: tt('common.dowNames').split('|')[d] || '' })))) : null,
               dispatchSchedMode !== 'once' ? e('input', { className: 'dsh-notes-dispatch-select dsh-notes-sched-at', type: 'time', value: dispatchSchedAnchor, onChange: (ev) => setDispatchSchedAnchor(ev.target.value) }) : null,
               dispatchSchedMode === 'once' ? e('input', { className: 'dsh-notes-dispatch-select dsh-notes-sched-at', type: 'datetime-local', value: dispatchSchedAt, onChange: (ev) => setDispatchSchedAt(ev.target.value) }) : null,
-              e('div', { className: 'dsh-notes-sched-next' + (schedForm && schedForm.err ? ' warn' : '') }, schedForm && schedForm.err ? ('⚠ ' + schedForm.err) : tt('disp.nextTrigger', { time: fmtDT(new Date(schedDeclNextMs(schedForm.decl, dispatchEditNote)).toISOString()) }))) : null),
+              e('div', { className: 'dsh-notes-sched-next' + (schedForm && schedForm.err ? ' warn' : '') }, schedForm && schedForm.err ? ('⚠ ' + schedForm.err) : tt('disp.nextTrigger', { time: fmtDT(new Date(schedDeclNextMs(schedForm.decl, dispatchEditNote)).toISOString()) })),
+              // 专属会话（0.4.4-B）：周期模式可勾 target='new'——首轮触发 host 自动创建「定时 · 任务名」会话并回写复用；仅一次（at）无复用场景不提供
+              dispatchSchedMode !== 'once' ? e('label', { className: 'dsh-notes-sched-opt' }, e('input', { type: 'checkbox', checked: dispatchSchedNew, onChange: (ev) => setDispatchSchedNew(ev.target.checked) }), ' ' + tt('disp.schedNew')) : null) : null),
           // 已有/新建会话切换：定时形态下隐藏（定时仅已有会话——新建会话无未来目标意义）
           schedOn ? null : e('div', { className: 'dsh-notes-dispatch-modes' },
             e('button', { className: 'dsh-notes-dispatch-mode' + (dispatchMode === 'existing' ? ' on' : ''), onClick: () => setDispatchMode('existing') }, tt('disp.modeExisting')),
             e('button', { className: 'dsh-notes-dispatch-mode' + (dispatchMode === 'new' ? ' on' : ''), onClick: () => setDispatchMode('new') }, tt('disp.modeNew'))),
-          (dispatchMode === 'existing' || schedOn) ? e(React.Fragment, null,
+          // 专属会话勾选后隐藏级联选择（目标由 host 首轮创建，无既有会话可选）
+          (dispatchMode === 'existing' || schedOn) && !(schedOn && dispatchSchedNew) ? e(React.Fragment, null,
             e('select', { className: 'dsh-notes-dispatch-select', value: dispatchSessWs, onChange: (ev) => { setDispatchSessWs(ev.target.value); setDispatchSessId('') } },
               e('option', { value: '' }, tt('disp.pickWs')),
               wsList.map(w => e('option', { key: w.id, value: w.title }, w.title))),

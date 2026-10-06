@@ -10,15 +10,17 @@ var dState = null;
 function openDispatch() {
   if (draftNote) { toast(t('disp.draftNotSaved')); return }   /* 草稿无真实 id（notes-034-batch3） */
   if (!edNote || !selId) { toast(t('editor.selectNoteFirst')); return }
-  dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1 };
+  dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false };
   pullActiveSessions();
   renderDispatchModal();
 }
-/* 编辑模式入口（注入管理「调度任务」区 [编辑]）：同弹窗回填既有声明；note = 调度约定笔记 slim（列表已含 schedule，零新 RPC） */
+/* 编辑模式入口（注入管理「调度任务」区 [编辑]）：同弹窗回填既有声明；note = 调度约定笔记 slim（列表已含 schedule，零新 RPC）；
+   0.4.4-B：target='new'（专属会话）回填 schedNew 复选框（级联选择无对应真实条目，sessId 留空） */
 function openDispatchEdit(note) {
   if (!note || !note.schedule) { toast(t('disp.noSchedule')); return }
   var s = note.schedule;
-  dState = { sessId: s.target || '', instr: '', pending: false, sessions: [], pendingSess: [], sched: true, schedMode: 'daily', schedN: 3, schedAt: '', editId: note.id, editNote: note, schedAnchor: '09:00', schedDow: 1 };
+  var isNew = s.target === 'new';
+  dState = { sessId: isNew ? '' : (s.target || ''), instr: '', pending: false, sessions: [], pendingSess: [], sched: true, schedMode: 'daily', schedN: 3, schedAt: '', editId: note.id, editNote: note, schedAnchor: '09:00', schedDow: 1, schedNew: isNew };
   /* 回填：at → 仅一次；every 整天数 → 每天/每周/每 N 天；非整天间隔（front-matter 裸编辑旁路值）归一最近整天，保存按表单覆盖；
      锚定时刻（notes-034-sched-time）：anchor/dow 回填（非法 anchor 回退默认 09:00——裸编辑旁路值防御） */
   if (s.at) { dState.schedMode = 'once'; dState.schedAt = isoToLocalInput(s.at) }
@@ -38,7 +40,8 @@ function pullActiveSessions() {
     if (!res || !dState) return;
     if (res.error) throw new Error(res.error);   /* 显式抛错进 catch（读路径静默群修复） */
     if (res.sessions) dState.sessions = res.sessions;
-    /* 编辑模式：目标会话不在活跃清单时补一条合成条目（原目标保持可选；host 落库仍校验存活红线，非 live 只影响执行时刻） */
+    /* 编辑模式：目标会话不在活跃清单时补一条合成条目（原目标保持可选；host 落库仍校验存活红线，非 live 只影响执行时刻）；
+       0.4.4-B：专属会话编辑态 sessId 为空（schedNew 复选框承载），天然跳过合成条目 */
     if (dState.editId && dState.sessId && !dState.sessions.some(function (s) { return s.id === dState.sessId })) {
       dState.sessions = dState.sessions.concat([{ id: dState.sessId, short: shortSid(dState.sessId), name: t('disp.orphanSessName'), workspace: t('disp.orphanSessWs'), live: false }]);
     }
@@ -72,8 +75,11 @@ function renderDispatchModal() {
     + '<input class="minput sched-at" id="dSchedAnchor" type="time" value="' + esc(dState.schedAnchor) + '"' + (dState.schedMode === 'once' ? ' style="display:none"' : '') + '>'
     + '<input class="minput sched-at" id="dSchedOnce" type="datetime-local" value="' + esc(dState.schedAt) + '"' + (dState.schedMode === 'once' ? '' : ' style="display:none"') + '>'
     + '<div class="sched-next" id="dSchedNext"></div>'
+    /* 专属会话（0.4.4-B）：周期模式可勾 target='new'——首轮触发 host 自动创建「定时 · 任务名」会话并回写复用；仅一次（at）无复用场景不提供 */
+    + '<label class="sched-opt" id="dSchedNewBox"' + (dState.schedMode === 'once' ? ' style="display:none"' : '') + '><input type="checkbox" id="dSchedNew"' + (dState.schedNew ? ' checked' : '') + '> ' + t('disp.schedNew') + '</label>'
     + '</div></div>'
-    + '<div id="dispSessHost"></div>'
+    /* 专属会话勾选后隐藏级联选择（目标由 host 首轮创建，无既有会话可选） */
+    + '<div id="dispSessHostWrap"' + (dState.schedNew && (dState.sched || dState.editId) ? ' style="display:none"' : '') + '><div id="dispSessHost"></div></div>'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
     + '<div class="modal-acts"><button class="mbtn" id="dCancel">' + t('common.cancel') + '</button><button class="mbtn primary" id="dOk">' + (editing ? t('disp.saveSched') : t('disp.ok')) + '</button></div>'
   );
@@ -91,8 +97,12 @@ function renderDispatchModal() {
     $('dSchedDowBox').style.display = this.value === 'weekly' ? '' : 'none';
     $('dSchedAnchor').style.display = this.value === 'once' ? 'none' : '';
     $('dSchedOnce').style.display = this.value === 'once' ? '' : 'none';
+    /* 专属会话复选框仅周期模式提供（host 闸门同口径拒绝 at+'new'）；切到仅一次时自动摘勾并还原生态位 */
+    $('dSchedNewBox').style.display = this.value === 'once' ? 'none' : '';
+    if (this.value === 'once' && dState.schedNew) { dState.schedNew = false; $('dSchedNew').checked = false; $('dispSessHostWrap').style.display = ''; }
     renderSchedNext();
   };
+  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; };
   $('dSchedN').oninput = function () { dState.schedN = this.value; renderSchedNext() };
   $('dSchedDow').onchange = function () { dState.schedDow = parseInt(this.value, 10); renderSchedNext() };
   $('dSchedAnchor').oninput = function () { dState.schedAnchor = this.value; renderSchedNext() };
@@ -165,7 +175,8 @@ function renderSchedNext() {
 }
 function doDispatchConfirm() {
   if (!dState || dState.pending) return;
-  if (!dState.sessId) { modalErr(t('disp.needSession')); return }
+  /* 0.4.4-B：专属会话勾选（schedNew，仅定时形态）免选既有会话（target='new'，首轮触发 host 自动创建） */
+  if (!dState.sessId && !(dState.schedNew && (dState.sched || dState.editId))) { modalErr(t('disp.needSession')); return }
   var sess = dState.sessions.find(function (s) { return s.id === dState.sessId });
   /* 定时执行 / 编辑排定分支（notes-034-sched-ui）：创建/更新 dispatch-schedule 约定笔记（表单与 front-matter 同源，无第二份存储） */
   if (dState.sched || dState.editId) {
@@ -173,7 +184,7 @@ function doDispatchConfirm() {
     if (f.err) { modalErr(f.err); return }
     var editId = dState.editId;
     /* 编辑保留原 enabled 态（暂停的任务改排定不被意外拉起）；创建默认 enabled=true；周期模式携锚定时刻 anchor/dow（notes-034-sched-time） */
-    var decl = { target: dState.sessId, action: 'dispatch', enabled: editId ? (dState.editNote.schedule.enabled !== false) : true };
+    var decl = { target: dState.schedNew ? 'new' : dState.sessId, action: 'dispatch', enabled: editId ? (dState.editNote.schedule.enabled !== false) : true };
     if (f.decl.at) decl.at = f.decl.at; else { decl.every = f.decl.every; decl.anchor = f.decl.anchor; if (typeof f.decl.dow === 'number') decl.dow = f.decl.dow }
     var nextTxt = fmtDT(new Date(schedDeclNextMs(f.decl, dState.editNote)).toISOString());
     dState.pending = true; $('dOk').disabled = true; $('dOk').textContent = editId ? t('settings.saving') : t('disp.savingSched');
@@ -207,7 +218,8 @@ function doDispatchConfirm() {
       return;
     }
     closeModal(); dState = null;
-    toast(t('disp.dispatched', { name: sess ? sess.name : '' }));
+    /* 0.4.4-B 休眠送达：queued 时提示排队语义（页面本无打开会话能力，休眠目标由 host 持久化排队、下次活动送达） */
+    toast(t(res && res.queued ? 'disp.dispatchedQueued' : 'disp.dispatched', { name: sess ? sess.name : '' }));
     refreshSelected(); loadNotes(true);
   }).catch(function (e) {
     dState.pending = false; modalErr(t('disp.failed', { msg: e && e.message || e }));

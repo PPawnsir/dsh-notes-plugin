@@ -1,4 +1,6 @@
-    // ---- 虚拟文件夹：notes/folders.json 登记清单 [{id,name,order,parent?}]；parent=父文件夹 id（缺省=根级，存量数据无 parent 字段零迁移）；笔记 front-matter 的 folder 字段存文件夹 id（缺省 ''=未分类，向后兼容） ----
+    // ---- 虚拟文件夹：notes/folders.json 登记清单 [{id,name,order,parent?,hidden?}]；parent=父文件夹 id（缺省=根级，存量数据无 parent 字段零迁移）；笔记 front-matter 的 folder 字段存文件夹 id（缺省 ''=未分类，向后兼容） ----
+    // hidden（0.4.4-D 隐藏属性，OS 文件管理对齐）：纯 UI 遮罩标记——面板显隐开关关时该夹行+nested 子树容器滤除、开时半透明渲染；
+    //   host 计数/过滤/导出语义零改动（遮罩全在 client/app 渲染层）；仅 true 落对象（缺省 false 存量零迁移）。写入走 op:'set-flags' {id,hidden}。
     const FOLDERS_PATH = NOTES_DIR + '\\folders.json'
 
     function genFolderId() {
@@ -12,7 +14,7 @@
         const ft = await fs.resolve(FOLDERS_PATH)
         const arr = JSON.parse(await fs.readText(ft))
         if (!Array.isArray(arr)) return []
-        return arr.filter(f => f && f.id).map(f => { const o = { id: String(f.id), name: String(f.name || ''), order: typeof f.order === 'number' ? f.order : 0 }; if (f.parent) o.parent = String(f.parent); return o })
+        return arr.filter(f => f && f.id).map(f => { const o = { id: String(f.id), name: String(f.name || ''), order: typeof f.order === 'number' ? f.order : 0 }; if (f.parent) o.parent = String(f.parent); if (f.hidden === true) o.hidden = true; return o })
       } catch (e) { return [] }
     }
 
@@ -93,7 +95,7 @@
     }
 
     // notes-folders RPC 核心：无参/op 缺省 = list（按 order 排序，含各文件夹计数 + unfiled 未分类计数 + parent/depth 嵌套字段供 UI 递归渲染）；
-    // op = create(name,parent?)/rename/delete(id,cascade?)/reorder(ids,parents?)。
+    // op = create(name,parent?)/rename/set-flags(id,hidden)/delete(id,cascade?)/reorder(ids,parents?)。
     // 计数口径：deleted 笔记由 _list 排除不计；folder 指向清单外 id 的笔记计入 unfiled；count 为**递归子树口径**（含全部子孙文件夹内笔记）。
     // 0.4.3⑩（notes-043-archive-folder 第二轮裁决）：计数取 includeSys 机器全量视图——文件夹徽标 = 夹内全部笔记数
     //   （与 folder 定向视图（⑨ 保留通道，含 sys）逐字一致，消除「count=0 但夹内有 sys 档案」的死节点观感；通用计数语义修正，非文件夹特判）；
@@ -123,7 +125,7 @@
             const sub = folderSubtreeIds(f.id, folders)
             let count = 0
             for (const sid in sub) count += direct[sid] || 0
-            return { id: f.id, name: f.name, order: f.order, parent: f.parent || '', depth: folderDepth(f.id, folders), count: count }
+            return { id: f.id, name: f.name, order: f.order, parent: f.parent || '', depth: folderDepth(f.id, folders), count: count, hidden: f.hidden === true }
           })
         return { folders: list, unfiled: unfiled }
       }
@@ -156,6 +158,17 @@
         f.name = name
         await saveFolders(folders)
         return { ok: true, id: a.id, name: name }
+      }
+      if (op === 'set-flags') {
+        // 0.4.4-D hidden 隐藏属性：文件夹显隐标记写入通道（{id, hidden}——true 落 hidden:true / false 摘字段回缺省；存量零迁移）
+        if (!a.id) return { error: 'notes-folders.set-flags 需要 id' }
+        const folders = await loadFolders()
+        const f = folders.find(x => x.id === a.id)
+        if (!f) return { error: '文件夹不存在: ' + a.id }
+        if (a.hidden === true) f.hidden = true
+        else delete f.hidden
+        await saveFolders(folders)
+        return { ok: true, id: a.id, hidden: f.hidden === true }
       }
       if (op === 'delete') {
         if (!a.id) return { error: 'notes-folders.delete 需要 id' }
@@ -206,8 +219,8 @@
         const merged = inList.concat(outList)
         merged.forEach((f, i) => { f.order = i })
         await saveFolders(merged)
-        return { ok: true, folders: merged.map(f => ({ id: f.id, name: f.name, order: f.order, parent: f.parent || '' })) }
+        return { ok: true, folders: merged.map(f => ({ id: f.id, name: f.name, order: f.order, parent: f.parent || '', hidden: f.hidden === true })) }
       }
-      return { error: 'notes-folders: 未知 op：' + String(op) + '（期望 list/create/rename/delete/reorder）' }
+      return { error: 'notes-folders: 未知 op：' + String(op) + '（期望 list/create/rename/set-flags/delete/reorder）' }
     }
 

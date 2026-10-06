@@ -209,7 +209,7 @@ Agent 会话结论是「一次性」的：今天做了什么、改了哪些文�
 
 ### 6.1 默认隐身（裁决 B①，机制化）
 
-> ⚠️ 0.4.3⑦ 已推翻本节隐身口径，现行口径见 README 红线段（日志同权：可见/可搜/可编辑/显式 recall=true 可进目录，唯注入硬关）。
+> ⚠️ 0.4.3⑦ 已推翻本节隐身口径，现行口径见 README 红线段（日志同权：可见/可搜/可编辑，唯注入硬关；0.4.4-E 起目录索引注入整体移除，recall 字段 dormant 读写兼容）。
 
 日志**默认隐身**，日常笔记体验永不因沉淀改变。四条口径全部为 host 侧强制默认值，不是 UI 隐藏：
 
@@ -315,7 +315,7 @@ Agent 会话结论是「一次性」的：今天做了什么、改了哪些文�
 ## 8. ⑥ 隐私边界
 
 1. **内容敏感性**：会话总结可能含凭据/路径/内部信息。三道闸：(a) 引导模板要求 agent 命中 `sensitiveSuggested` 必落 `sensitive: true`；(b) host 自动总结产物自动过 `suggestSensitive` 命中即敏感（速记口径）；(c) 面板 🔒 随时手动补标。
-2. **注入面**：日志 inject 硬 false、recall 默认 false（§6.1），默认零注入面；即便显式 recall=true 进目录，sensitive=true 的标题按行打码 🔒（现有管线自动继承）；目录日志提示行只出计数不出标题。
+2. **注入面**：日志 inject 硬 false、recall 默认 false（§6.1），默认零注入面；0.4.4-E 起目录段唯挂载行源——recall 字段 dormant，显式 recall=true 亦不进目录（目录行标题打码 🔒 呈现面随 catalog 整拆消亡）；目录日志提示行只出计数不出标题。
 3. **用户主权**：日志是普通笔记——筛选中心 kind=日志 专入口可见、可编辑、可删（软删除入回收站可恢复、可彻底删除）；引导约定本身同样可编辑/停用/删除。
 4. **本地性**：Markdown 落 `~/.dsh/notes`，永不出本机（插件既有属性）；host 自动总结的 LLM 调用会把**会话片段**发往所选模型服务商——这是唯一的出机路径，因此：(a) 默认关；(b) 设置项文案明示「开启后将把会话内容摘要发送给当前模型」；(c) 沿用 settings.llm 的 provider/model 选择权，用户可选本地/内部模型。
 
@@ -327,7 +327,7 @@ Agent 会话结论是「一次性」的：今天做了什么、改了哪些文�
 
 | # | 改动 | 说明 |
 | --- | --- | --- |
-| H1 | `KINDS` + `'log'`；`KIND_LABELS_ZH.log='日志'`；`CATALOG_KIND_LABELS.log='日志'` | 三处枚举/标签 |
+| H1 | `KINDS` + `'log'`；`KIND_LABELS_ZH.log='日志'`；~~`CATALOG_KIND_LABELS.log='日志'`~~（0.4.4-E 随 catalog 整拆移除——目录普通行消亡、kind 中文映射无消费方，节 39 负向锚看守） | 两处枚举/标签（第三处已退役） |
 | H2 | `KIND_TEMPLATES.log` = §4.2 模板 | check.js 同源断言扩展 |
 | H3 | front-matter：`logDate`（log 恒写/其他空）、`entities` 条件行 + parseFM 拆分列表 + noteFromParsed 缺省、`summarizedAt` 条件行、`contractType`/`origin` 条件行（r3 契约分型/产物溯源） | §7.2 往返预留 |
 | H4 | 新 RPC `notes-memory-guide {op:'check'→{enabled, already, noteId}（同类唯一性，零写入） \| op:'enable', scope[] → {id}（幂等直建，无 confirmed 闸门） \| op:'status'→{enabled, noteId} \| op:'disable'}` | §5.1 启用流程（r3 车道模型）；status/disable 按 contractType 识别，tag 兼容 |

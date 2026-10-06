@@ -42,6 +42,9 @@ function renderFilterPop() {
     h += '<label class="fg-item"><input type="checkbox" data-fk="' + k + '"' + (filters.kinds.indexOf(k) >= 0 ? ' checked' : '') + '>'
       + '<span class="dot" style="background:' + (KCOLOR[k] || KCOLOR.note) + '"></span><span class="fl">' + kindLabel(k) + '</span><span class="cnt2">' + notes.filter(function (n) { return (n.kind || 'note') === k }).length + '</span></label>';
   });
+  /* 0.4.4-D hidden：显示组——「显示隐藏」显隐开关（OS 文件管理对齐；独立持久键 dsh-notes-app-show-hidden，非筛选条件——不计数/清空不重置） */
+  h += '<div class="fg-h"><span>' + t('filter.displayGroup') + '</span></div>';
+  h += '<label class="fg-item" title="' + esc(t('filter.showHiddenTip')) + '"><input type="checkbox" data-fh="1"' + (showHidden ? ' checked' : '') + '>' + icon('i-eye', 11) + '<span class="fl">' + t('filter.showHidden') + '</span></label>';
   h += '<div class="fpop-foot"><span class="pcnt">' + t('filter.hitCount', { n: notes.filter(matches).length }) + '</span><button class="pbtn" id="popClear">' + t('filter.clear') + '</button><button class="pbtn primary" id="popDone">' + t('filter.done') + '</button></div>';
   p.innerHTML = h;
 }

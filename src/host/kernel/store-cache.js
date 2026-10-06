@@ -47,12 +47,14 @@
         inject: inject,
         injectTo: injectTo,
         injectRole: injectRole,
-        // recall：目录索引准入字段，缺省 true（旧文件无 recall 字段 → 进目录）；显式 false 逐条关闭（与 inject 正交）；
-        // 工作记忆 v0 默认隐身（裁决 B①）：kind=log 缺省 recall=false（日志不进目录；显式 recall=true 允许进目录的豁免保留）
-        // 0.4.3⑥：kind=sys 缺省 recall=false（系统根笔记不进目录注入；显式 true 豁免保留——注入允许是核心用途，与 log 的 inject 硬禁不同）
+        // recall：原目录索引准入字段——0.4.4-E 起目录段唯挂载行源，字段 dormant（读写兼容、无注入效果，0.4.5 清理卡统一裁决退役）；
+        // 缺省 true（旧文件无 recall 字段 → true，向后兼容解析保留）；显式 false 逐条置否（与 inject 正交）；
+        // 工作记忆 v0（裁决 B①）/0.4.3⑥：kind=log/sys 缺省 recall=false（dormant 缺省口径保留）
         recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : ((p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true)),
         // sensitive：敏感内容标记（注入时正文按行打码，键保留值遮蔽），缺省 false（存量零迁移）
         sensitive: p.meta.sensitive === 'true',
+        // hidden：隐藏属性（0.4.4-D，纯 UI 遮罩——面板显隐开关关时滤除/开时半透明渲染；agent 面与读写面天然完整），缺省 false（存量零迁移）
+        hidden: p.meta.hidden === 'true',
         // injectEver：曾注入粘性标记（单向只升不降——inject 曾置 true 即永久 true，关闭不回退），缺省 false（存量零迁移）；
         // 当前 inject=true 蕴含曾注入（旧数据无字段时由现状兜底，保证 injectEver ⊇ inject 不变量）
         injectEver: p.meta.injectEver === 'true' || inject === true,
@@ -69,6 +71,8 @@
         origin: p.meta.origin || '',
         // 效用账本（0.4.3⑥）：记忆档案 → 被引用记忆 id 的结构化软链，缺省 ''（存量零迁移；仅 notes-ledger 懒创建回写）
         refNote: p.meta.refNote || '',
+        // 0.4.4-A 派发回执笔记化：执行记录伴生笔记软链（非调度派发源笔记顶层字段；调度约定走 schedule.runLog），缺省 '' 存量零迁移
+        runLog: p.meta.runLog || '',
         // 定时派发·执行层：调度声明 + 机器状态（dispatch-schedule 约定笔记），缺省 null（存量零迁移；非法 JSON 回退 null 不触发）
         schedule: parseSchedule(p.meta.schedule),
         mergedFrom: p.meta.mergedFrom || [],
@@ -138,9 +142,9 @@
       const meta = {
         id: n.id, title: n.title, topic: n.topic, workspace: n.workspace, folder: n.folder || '',
         tags: n.tags || [], kind: n.kind || 'note', status: n.status || 'active',
-        inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, sensitive: n.sensitive === true,
+        inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, sensitive: n.sensitive === true, hidden: n.hidden === true,
         createdAt: n.createdAt, updatedAt: n.updatedAt,
-        sessionId: n.sessionId, cwd: n.cwd, logDate: n.logDate || '', entities: n.entities || [], summarizedAt: n.summarizedAt || '', contractType: n.contractType || '', origin: n.origin || '', refNote: n.refNote || '', schedule: n.schedule || null, mergedFrom: n.mergedFrom || [],
+        sessionId: n.sessionId, cwd: n.cwd, logDate: n.logDate || '', entities: n.entities || [], summarizedAt: n.summarizedAt || '', contractType: n.contractType || '', origin: n.origin || '', refNote: n.refNote || '', runLog: n.runLog || '', schedule: n.schedule || null, mergedFrom: n.mergedFrom || [],
         dispatches: n.dispatches || [],
         // useCount 不落盘（0.4.3 验收修复⑧字段退役）：统计归 telemetry.json facets.use 单一事实源，buildFM 无此行
         archivedAt: n.archivedAt || '', deleted: n.deleted ? 'true' : 'false'

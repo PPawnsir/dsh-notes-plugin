@@ -1,6 +1,6 @@
 // 节 69. 日志同权 + 展开卡顿修复（0.4.3 验收修复⑦ notes-043-log-firstclass）
 // 前身 = 树展开「含日志的文件夹」懒加载 overlay（notes-041c-tree-log-children，R-6 豁免面）。
-// 2026-10-05 用户裁决推翻 R-6 UI 隐身：日志四可一不可（可见/可搜索/可编辑/可进目录显式；注入硬关）。
+// 2026-10-05 用户裁决推翻 R-6 UI 隐身：日志同权（可见/可搜索/可编辑；注入硬关；0.4.4-E 起目录段唯挂载行源——recall 字段 dormant，无「显式进目录」通道）。
 // 本节锁定：① overlay 特化路径（logOverlay/foldLogLoaded/ensureFoldLogs + 定向 includeLogs RPC + 合并逻辑）四端拆除——
 //   展开日志夹与普通夹同一代码路径（零额外 RPC + 单次渲染 = 卡顿根因消除，修复前基线：旧路径多 1 次全库 RPC + 二次渲染，mock 环境 ≈64×）；
 // ② 展开行为级 eval：日志夹 vs 普通夹同一 handler、RPC spy 恒零、计时 ≤2×（同路径恒成立，防回归引入新特化）；

@@ -19,4 +19,8 @@
     function clampSideW(w, panelW) { return Math.max(200, Math.min(Math.round(panelW * 0.6), Math.round(w))) }
     function loadSideW() { try { const v = parseInt(localStorage.getItem(SIDE_W_KEY), 10); return v >= 200 ? v : null } catch (err) { return null } }
     function saveSideW(w) { try { if (w == null) localStorage.removeItem(SIDE_W_KEY); else localStorage.setItem(SIDE_W_KEY, String(w)) } catch (err) {} }
+    // ===== 0.4.4-D hidden 隐藏属性：显隐开关持久化（dsh-notes-show-hidden；缺省关=隐藏项滤除，开=半透明渲染）=====
+    // 与筛选条件（dsh-notes-filters）正交独立键——清空筛选/重置条件不动本开关；app 侧独立键 dsh-notes-app-show-hidden
+    function loadShowHidden() { try { return localStorage.getItem('dsh-notes-show-hidden') === '1' } catch (err) { return false } }
+    function saveShowHidden(v) { try { localStorage.setItem('dsh-notes-show-hidden', v ? '1' : '0') } catch (err) {} }
     loadEntryState()

@@ -22,6 +22,8 @@ return {
     const workspaceRegistry = ctx.get('workspaceRegistry')
     const sessionTitle = ctx.get('sessionTitle')
     const sessionQuery = ctx.get('sessionQuery')
+    // 0.4.4-B：定时派发专属会话创建需挂载默认 preset（工具能力来源）；软依赖 ctx.get + 守卫降级（缺失时专属会话创建报 lastError，主服务不受影响）
+    const agentPresets = ctx.get('agentPresets')
     // 插件目录由 host 引导壳通过 new Function('harness','pluginDir',...) 注入；缺失时回退（单测/直跑场景）
     const PLUGIN_DIR = typeof pluginDir !== 'undefined' && pluginDir ? pluginDir : 'D:\\deepseek-work\\dsh-notes-plugin'
     const NOTES_DIR = PLUGIN_DIR + '\\notes'

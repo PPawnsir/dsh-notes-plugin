@@ -2,7 +2,7 @@
 /* 设置卡交互反馈（notes-settings-feedback）：✕ 常驻关闭 + dirty 跟踪「保存」（显式确认 + 兜底 flush）+「还原」回滚。
    dirty 判定口径 = 在途待写（setInflight>0）或 任一控件值 ≠ 打开时快照（setSnap）；
    自动保存（失焦/Enter/选择即存）零改动——「保存」按钮是显式确认 + 未落盘改动的兜底 flush，两者并存 */
-var setSnap = null;      /* 打开时快照 {llmP,llmM,catalog,stale,maxDepth,budget,usageBudget,logWeek,logMonth}（字符串口径同控件值） */
+var setSnap = null;      /* 打开时快照 {llmP,llmM,stale,maxDepth,budget,usageBudget,logWeek,logMonth}（字符串口径同控件值；0.4.4-E：catalog 目录补充行开关随功能整体拆除） */
 var setPersist = null;   /* 已落盘镜像（兜底 flush/还原只写真不同的键） */
 var setInflight = 0;     /* 在途设置写数（>0 = 存在尚未落盘的待写） */
 var setSaving = false;   /* 保存/还原执行中（按钮防重入） */
@@ -18,7 +18,7 @@ function openSettings() {
     var settings = res.settings || {};
     var models = res.models || [];
     var l = settings.llm || null;
-    var catalogOn = settings.catalogEnabled === true;   /* 0.4.3 验收修复：目录注入缺省关（显式 true 才开启） */
+    /* 0.4.4-E：catalog 目录补充行总开关随功能整体拆除——设置卡无此控件（host 侧对旧设置键静默忽略，存量不迁移） */
     /* P1 注入增强：时效衰减提醒阈值（天，缺省 90，0=关闭）+ 注入体积预算（约/字符数，缺省 0=不限）+ 仪表（lastInjectChars） */
     var staleDays = typeof settings.staleDays === 'number' ? settings.staleDays : 90;
     /* 文件夹嵌套深度上限（maxFolderDepth，层；根级=第 1 层，缺省 3，0=不限） */
@@ -32,7 +32,7 @@ function openSettings() {
     var lastChars = typeof res.lastInjectChars === 'number' ? res.lastInjectChars : 0;
     var gaugePct = budgetNum > 0 ? Math.min(100, Math.round(lastChars / budgetNum * 100)) : 0;
     /* dirty/还原基准（notes-settings-feedback）：打开时快照 + 已落盘镜像初始化（字符串口径同控件值） */
-    setSnap = { llmP: l ? l.provider : '', llmM: l ? l.model : '', catalog: catalogOn, stale: String(staleDays), maxDepth: String(maxDepth), budget: String(budgetNum), usageBudget: String(usageBudget), logWeek: String(logWeekDays), logMonth: String(logRetentionDays) };
+    setSnap = { llmP: l ? l.provider : '', llmM: l ? l.model : '', stale: String(staleDays), maxDepth: String(maxDepth), budget: String(budgetNum), usageBudget: String(usageBudget), logWeek: String(logWeekDays), logMonth: String(logRetentionDays) };
     setPersist = setSnap;
     var llmCtrl;
     if (models.length) {
@@ -60,7 +60,6 @@ function openSettings() {
       + '<div class="set-row"><div class="set-label">' + t('settings.llm') + '<span class="s">' + t('settings.llmTip') + '</span></div><div class="set-ctrl">' + llmCtrl + '</div></div>'
       + '<div class="set-row"><div class="set-label">' + t('settings.usage') + '<span class="s">' + t('settings.usageTip') + '</span></div><div class="set-ctrl usage" id="setUsageBody"><span class="s">' + t('common.loading') + '</span></div></div>'
       + '<div class="set-row"><div class="set-label">' + t('settings.usageBudget') + '<span class="s">' + t('settings.usageBudgetTip') + '</span></div><div class="set-ctrl"><input class="minput" id="setUsageBudget" type="number" min="0" step="1000" style="width:110px" value="' + usageBudget + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.catalog') + '<span class="s">' + t('settings.catalogTip') + '</span></div><div class="set-ctrl"><label class="set-check"><input type="checkbox" id="setCatalog"' + (catalogOn ? ' checked' : '') + '> ' + (catalogOn ? t('settings.enabled') : t('settings.disabled')) + '</label></div></div>'
       + '<div class="set-row"><div class="set-label">' + t('settings.stale') + '<span class="s">' + t('settings.staleTip') + '</span></div><div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>'
       + '<div class="set-row"><div class="set-label">' + t('settings.maxDepth') + '<span class="s">' + t('settings.maxDepthTip') + '</span></div><div class="set-ctrl"><input class="minput" id="setMaxDepth" type="number" min="0" step="1" style="width:90px" value="' + maxDepth + '"></div></div>'
       + '<div class="set-row"><div class="set-label">' + t('settings.budget') + '<span class="s">' + t('settings.budgetTip') + '</span>'
@@ -97,10 +96,6 @@ function openSettings() {
     };
     var sc = $('setLlmClear');
     if (sc) sc.onclick = function () { saveSettings({ llm: null }, t('settings.restoredFollow')); openSettings() };
-    $('setCatalog').onchange = function () {
-      saveSettings({ catalogEnabled: !!this.checked }, this.checked ? t('settings.catalogOn') : t('settings.catalogOff'));
-      this.parentNode.lastChild.textContent = this.checked ? ' ' + t('settings.enabled') : ' ' + t('settings.disabled');
-    };
     /* P1 时效衰减提醒阈值：失焦/Enter 即保存（非负整数；0 = 关闭；非法输入报错不落盘） */
     $('setStale').onchange = function () {
       var v = String(this.value).trim();
@@ -179,7 +174,6 @@ function setDirtyCompute() {
   if (setInflight > 0) return true;
   if ($('setLlmSel') && $('setLlmSel').value !== (setSnap.llmP && setSnap.llmM ? setSnap.llmP + '/' + setSnap.llmM : '')) return true;
   if ($('setLlmP') && ($('setLlmP').value.trim() !== setSnap.llmP || $('setLlmM').value.trim() !== setSnap.llmM)) return true;
-  if ($('setCatalog') && $('setCatalog').checked !== setSnap.catalog) return true;
   var nums = [['setStale', 'stale'], ['setMaxDepth', 'maxDepth'], ['setBudget', 'budget'], ['setUsageBudget', 'usageBudget'], ['setLogWeek', 'logWeek'], ['setLogMonth', 'logMonth']];
   for (var i = 0; i < nums.length; i++) { var el = $(nums[i][0]); if (el && String(el.value).trim() !== setSnap[nums[i][1]]) return true }
   return false;
@@ -197,7 +191,6 @@ function setPersistMerge(patch) {
   var n = {}, k;
   for (k in setPersist) n[k] = setPersist[k];
   if ('llm' in patch) { n.llmP = patch.llm ? patch.llm.provider : ''; n.llmM = patch.llm ? patch.llm.model : '' }
-  if ('catalogEnabled' in patch) n.catalog = !!patch.catalogEnabled;
   if ('staleDays' in patch) n.stale = String(patch.staleDays);
   if ('maxFolderDepth' in patch) n.maxDepth = String(patch.maxFolderDepth);
   if ('injectBudgetChars' in patch) n.budget = String(patch.injectBudgetChars);
@@ -227,10 +220,9 @@ var SET_NUM_FIELDS = [
 ];
 /* 当前控件值 → 快照对象（保存成功后快照跟进用） */
 function setSnapFromControls() {
-  var s = { llmP: '', llmM: '', catalog: true, stale: '', maxDepth: '', budget: '', usageBudget: '', logWeek: '', logMonth: '' };
+  var s = { llmP: '', llmM: '', stale: '', maxDepth: '', budget: '', usageBudget: '', logWeek: '', logMonth: '' };
   if ($('setLlmSel')) { var v = $('setLlmSel').value; s.llmP = v ? v.split('/')[0] : ''; s.llmM = v ? v.split('/').slice(1).join('/') : '' }
   if ($('setLlmP')) { s.llmP = $('setLlmP').value.trim(); s.llmM = $('setLlmM').value.trim() }
-  if ($('setCatalog')) s.catalog = $('setCatalog').checked;
   for (var i = 0; i < SET_NUM_FIELDS.length; i++) { var el = $(SET_NUM_FIELDS[i][0]); if (el) s[SET_NUM_FIELDS[i][1]] = String(el.value).trim() }
   return s;
 }
@@ -267,7 +259,6 @@ function doSettingsRestoreAll() {
   var s = setSnap, p = setPersist;
   var patches = [];
   if (p.llmP !== s.llmP || p.llmM !== s.llmM) patches.push({ llm: (s.llmP && s.llmM) ? { provider: s.llmP, model: s.llmM } : null });
-  if (p.catalog !== s.catalog) patches.push({ catalogEnabled: s.catalog });
   for (var i = 0; i < SET_NUM_FIELDS.length; i++) { if (p[SET_NUM_FIELDS[i][1]] !== s[SET_NUM_FIELDS[i][1]]) { var o = {}; o[SET_NUM_FIELDS[i][2]] = parseInt(s[SET_NUM_FIELDS[i][1]], 10); patches.push(o) } }
   setSaving = true; setDirtyRefresh();
   var seq = Promise.resolve();
@@ -277,7 +268,6 @@ function doSettingsRestoreAll() {
     /* UI 复位到打开时快照 */
     if ($('setLlmSel')) $('setLlmSel').value = (s.llmP && s.llmM) ? s.llmP + '/' + s.llmM : '';
     if ($('setLlmP')) { $('setLlmP').value = s.llmP; $('setLlmM').value = s.llmM }
-    if ($('setCatalog')) { $('setCatalog').checked = s.catalog; $('setCatalog').parentNode.lastChild.textContent = s.catalog ? ' ' + t('settings.enabled') : ' ' + t('settings.disabled') }
     for (var i = 0; i < SET_NUM_FIELDS.length; i++) { var el = $(SET_NUM_FIELDS[i][0]); if (el) el.value = s[SET_NUM_FIELDS[i][1]] }
     toast(t('settings.restoredAll'));
     setDirtyRefresh();

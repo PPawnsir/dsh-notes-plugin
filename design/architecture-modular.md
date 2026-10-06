@@ -71,7 +71,7 @@ src/styles.css     (72KB)                    package.json / cordis.patch.yml
 | 文件夹树 | CRUD + reorder + reparent + 双向拖拽（note→folder / folder→parent / unfiled 落点）+ 折叠态 | 1273–1314, 1327–1412, 1425–1493 |
 | 编辑器交互 | setRoleSeg / toggleSens / toggleScope / switchMode / syncFromRich / scheduleRichSync(900ms) / scheduleDegAnalyze(450ms) / keepSel+restoreSel / toolbarAction / updateToolbarState / insertSanitizedHtml / compressImageData(>1MB 转 JPEG) / pickImageFile / openImgModal+doUploadImage / insertImageMd / doInsertLink | 1530–1855 |
 | 会话/工作区 | loadActiveSessions / loadWorkspaces / openDispatch | 1857–1873 |
-| 设置卡 | openSettings / maybeToastUsageBudget / settingsSetQuiet / setPersistMerge / 9 个单项 saveSettings*（Llm/Catalog/Stale/MaxDepth/Budget/UsageBudget/LlmManual/LogWeek/LogRetention）/ saveSettingsAll / restoreSettingsAll / flushSettingsPending / closeSettings（dirty=setSnap+setInflight 双轨） | 1874–2096 |
+| 设置卡 | openSettings / maybeToastUsageBudget / settingsSetQuiet / setPersistMerge / 8 个单项 saveSettings*（Llm/Stale/MaxDepth/Budget/UsageBudget/LlmManual/LogWeek/LogRetention；Catalog 项 0.4.4-E 随「目录补充行」整拆）/ saveSettingsAll / restoreSettingsAll / flushSettingsPending / closeSettings（dirty=setSnap+setInflight 双轨） | 1874–2096 |
 | 工作记忆 | memScopeResolve / openMemEnable / doMemEnable / doMemDisable / memViewNote | 2097–2145 |
 | 数据导出 | openExport+doExport / openSExport+doSExport / openImport+doImportPreview+doImportExecute | 2146–2216 |
 | 派发 | doDispatchConfirm / doDispatchDone | 2217–2258 |

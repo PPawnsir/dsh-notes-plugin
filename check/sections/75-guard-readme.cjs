@@ -3,7 +3,7 @@
 //   ②死链行标记——查图（notes-graph：to 不存在）检出手造死挂载行 + 清理后归零（行为级 fixture）；③「待补」占位行清单——
 //   全库正文扫描挂 S.guardPending 报告尾部打印（复用 §68 未覆盖清单模式：只提示不阻塞，--core/--only 照常统计）；
 //   ④README 哲学节——「笔记网络」定名与两问句 / 四类边表 / 根索引模式（数据集中在链接的伴生笔记、原正文零触碰，四实例）/
-//   记忆治理三层（inject=强 / 任务挂载=中 / 索引目录=弱）+ 总纲红线条款在 README 有对应句；中英双版 + sync-pkg-readme 四文件同步断言。
+//   记忆治理两层（inject=强 / 任务挂载=中；0.4.4-E 起弱保证层「索引目录全库平铺」整体移除，README 以移除注记留痕）+ 总纲红线条款在 README 有对应句；中英双版 + sync-pkg-readme 四文件同步断言。
 module.exports = {
   id: "75",
   title: "75. 守卫扩展（索引行格式 lint / 死链行标记 / 待补清单）+ README 哲学节（笔记网络）（notes-043-guard）",
@@ -135,19 +135,19 @@ module.exports = {
     const s = fsNative.readFileSync(path.join(DIR, 'scripts', 'sync-pkg-readme.cjs'), 'utf8')
     assert(s.indexOf("'README.en.md'") >= 0, 'sync-pkg-readme.cjs 已扩为四文件同步（zh + en 双双入包）')
   })
-  await t('README 哲学节（中文版）：「笔记网络」定名 + 裁决两问句 + 四类边表 + 根索引模式（伴生笔记/零触碰/四实例）+ 记忆治理三层', () => {
+  await t('README 哲学节（中文版）：「笔记网络」定名 + 裁决两问句 + 四类边表 + 根索引模式（伴生笔记/零触碰/四实例）+ 记忆治理两层（0.4.4-E 移除弱层目录平铺）', () => {
     for (const a of ['## 设计哲学：笔记网络', '不断生长的笔记引用网络', '它的节点是什么', '它的边是什么']) assert(ROOT_ZH.indexOf(a) >= 0, 'zh 缺哲学节锚点：' + a)
     // 四类边表（双链/软链/索引挂载/派发挂载，各成表行）
     for (const e of ['| 双链 |', '| 软链 |', '| 索引挂载 |', '| 派发挂载 |']) assert(ROOT_ZH.indexOf(e) >= 0, 'zh 四类边表缺行：' + e)
     // 根索引模式：数据集中在链接的伴生笔记 + 原正文零触碰 + 四实例点名
     for (const a of ['根索引模式', '伴生笔记', '原正文零触碰', '执行记录', '记忆档案', '召回指标', '注入索引']) assert(ROOT_ZH.indexOf(a) >= 0, 'zh 根索引模式缺锚点：' + a)
-    // 记忆治理三层（召回保证性分级，口径 [[n-mutuleeetvxd]] 逐字）
-    for (const a of ['记忆治理三层', 'inject', '任务挂载', '索引目录', '强保证', '中保证', '弱保证']) assert(ROOT_ZH.indexOf(a) >= 0, 'zh 记忆治理三层缺锚点：' + a)
+    // 记忆治理两层（召回保证性分级；0.4.4-E 起弱保证层「索引目录全库平铺」整体移除——README 以移除注记留痕）
+    for (const a of ['记忆治理两层', 'inject', '任务挂载', '强保证', '中保证', '0.4.4-E 整体移除']) assert(ROOT_ZH.indexOf(a) >= 0, 'zh 记忆治理两层缺锚点：' + a)
   })
   await t('总纲红线条款在 README 有对应句（四条红线逐条落字）+ README.en 哲学节镜像（英文版同锚）', () => {
     // 0.4.3⑦：第四条红线由「日志默认隐身」改为「日志同权 + 注入硬关」（R-6 UI 隐身推翻，锚点同步演进）
     for (const a of ['约定桶全文注入不动', '资料默认不注入', '档案', '指标', '永不注入', '注入硬关']) assert(ROOT_ZH.indexOf(a) >= 0, 'zh 红线对应句缺锚点：' + a)
-    for (const a of ['## Design Philosophy: The Note Network', 'What are its nodes', 'What are its edges', 'Wiki link', 'Soft link', 'Index mount', 'Dispatch mount', 'Root-index pattern', 'Memory governance tiers', 'strong guarantee', 'medium guarantee', 'weak guarantee']) assert(ROOT_EN.indexOf(a) >= 0, 'en 哲学节缺锚点：' + a)
+    for (const a of ['## Design Philosophy: The Note Network', 'What are its nodes', 'What are its edges', 'Wiki link', 'Soft link', 'Index mount', 'Dispatch mount', 'Root-index pattern', 'Memory governance tiers', 'strong guarantee', 'medium guarantee', 'removed entirely in 0.4.4-E']) assert(ROOT_EN.indexOf(a) >= 0, 'en 哲学节缺锚点：' + a)
     for (const e of ['| Wiki link |', '| Soft link |', '| Index mount |', '| Dispatch mount |']) assert(ROOT_EN.indexOf(e) >= 0, 'en 四类边表缺行：' + e)
     for (const a of ['execution log', 'memory archive', 'recall metrics', 'injection index']) assert(ROOT_EN.indexOf(a) >= 0, 'en 根索引四实例缺锚点：' + a)
   })

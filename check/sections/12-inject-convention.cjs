@@ -27,7 +27,7 @@ module.exports = {
     assert(r.text.indexOf('以下是注入的上下文笔记（与当前任务无关时忽略）：') === 0, '新文案引导词开头（实得：' + r.text.slice(0, 60) + '）')
     assert(r.text.indexOf('用户约定（须遵守）：') >= 0, '缺省 injectRole=convention 进约定桶')
     assert(r.text.indexOf('- [' + cConv.id + '] 本工作区约定') >= 0, '桶内条目格式 - [id] 标题')
-    assert(r.text.indexOf('本地笔记库目录（') < 0, '单桶命中时只输出该桶标题（无挂载行且 catalog 关 → 目录段整段空，0.4.3③）')
+    assert(r.text.indexOf('本地笔记库目录（') < 0, '单桶命中时只输出该桶标题（无挂载行且无日志 → 目录段整段空，0.4.4-E）')
     assert(r.text.indexOf('已记录的约定') < 0, '新文案不含旧引导词「已记录的约定」')
     assert(r.text.indexOf('记录会话') < 0 && r.text.indexOf('记录于会话') < 0, '新文案不含会话归属标注')
     assert(r.text.indexOf('工作区「') < 0, '新文案不含工作区归属标签')

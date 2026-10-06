@@ -97,6 +97,8 @@ export function apply(ctx) {
     const workspaceRegistry = ctx.get('workspaceRegistry')
     const sessionTitle = ctx.get('sessionTitle')
     const sessionQuery = ctx.get('sessionQuery')
+    // 0.4.4-B：定时派发专属会话创建需挂载默认 preset（工具能力来源）；软依赖 ctx.get + 守卫降级（缺失时专属会话创建报 lastError，主服务不受影响）
+    const agentPresets = ctx.get('agentPresets')
     const NOTES_DIR = NOTES_ROOT
     const disposers = []
     // 动态沙箱 Builtin：harness 是「dynamic Host half」的符号（cordis-host-runner 用 node:vm 注入），
@@ -201,6 +203,9 @@ export function apply(ctx) {
         'recall: ' + escYaml(m.recall === false ? 'false' : 'true') + '\n' +
         // sensitive 恒写（true/false 显式落盘，缺省 false）：敏感笔记注入时正文按行打码
         'sensitive: ' + escYaml(m.sensitive === true ? 'true' : 'false') + '\n' +
+        // hidden 条件行（0.4.4-D hidden 隐藏属性，OS 文件管理对齐：纯 UI 遮罩标记——面板显隐开关关时滤除、开时半透明渲染；
+        //   仅 true 落盘（缺省 false 存量零迁移）；host _list/_search/notes-get/note_manage 语义零改动——遮罩全在 client/app 渲染层）
+        (m.hidden === true ? 'hidden: true\n' : '') +
         'createdAt: ' + escYaml(m.createdAt) + '\n' +
         'updatedAt: ' + escYaml(m.updatedAt) + '\n' +
         'sessionId: ' + escYaml(m.sessionId) + '\n' +
@@ -221,6 +226,9 @@ export function apply(ctx) {
         // refNote 条件行（0.4.3⑥ 效用账本：记忆档案笔记 → 被引用记忆 id 的结构化软链，notes-ledger 懒创建回写；
         // 普通笔记不落此行，存量零迁移）
         (m.refNote ? 'refNote: ' + escYaml(m.refNote) + '\n' : '') +
+        // runLog 条件行（0.4.4-A 派发回执笔记化·三表归一：「执行记录」伴生笔记软链——调度约定笔记存 schedule.runLog
+        // （存量口径不动），非调度派发源笔记存本顶层 runLog 字段；普通笔记不落此行，存量零迁移）
+        (m.runLog ? 'runLog: ' + escYaml(m.runLog) + '\n' : '') +
         // schedule 条件行（定时派发·执行层：contractType=dispatch-schedule 约定笔记的调度声明 + 机器状态——
         // 声明 {at|every, target, action, enabled} + 状态 {lastFiredAt, lastRun{at,status,receiptId}, lastError}；
         // JSON 单行存储同 dispatches 先例；普通笔记不落此行，存量零迁移）
@@ -291,7 +299,8 @@ export function apply(ctx) {
     }
 
     // ---- 设置持久化（SETTINGS_PATH）：内存缓存 + 启动加载；文件坏/不存在 → {}（容错）----
-    // 通用结构：设置项是 settingsCache 的顶层键（llm 选配 + catalogEnabled 目录索引总开关（缺省 = 关，显式 true 开启）+ staleDays 时效标注 + injectBudgetChars 注入预算 + maxFolderDepth 文件夹嵌套深度上限），client 经 notes-settings-get/set 读写。
+    // 通用结构：设置项是 settingsCache 的顶层键（llm 选配 + staleDays 过期候选阈值 + injectBudgetChars 注入预算 + maxFolderDepth 文件夹嵌套深度上限），client 经 notes-settings-get/set 读写。
+    // 0.4.4-E：catalogEnabled 目录补充行总开关随功能整体拆除退役——存量 settings.json 残留键保留不迁移（惰性死键，settings-set 分支删除后无人读）。
     let settingsCache = {}
     let settingsLoadPromise = null
     function loadSettings() {
@@ -312,8 +321,10 @@ export function apply(ctx) {
       const p = await fs.resolve(SETTINGS_PATH)
       await fs.writeText(p, JSON.stringify(settingsCache, null, 2), undefined, undefined, getPolicy())
     }
-    // ---- P1 注入增强：时效衰减提醒 + 注入体积预算（settings.json 顶层键，null 删除 override 恢复缺省）----
-    // staleDays：目录行时效标注阈值（天），缺省 90；0 = 关闭。只标注 kind=note/link 的参考资料类条目。
+    // ---- P1 注入增强：时效阈值 + 注入体积预算（settings.json 顶层键，null 删除 override 恢复缺省）----
+    // staleDays：过期候选提名阈值（天），缺省 90；0 = 关闭。
+    // （0.4.4-E：⚠ 注入标注呈现面 = 目录普通行，随 catalog 拆除退役；现存唯一消费方 = 整理建议器 suggestCandidates
+    //   过期未引用提名（memory.js）——本键保留服务该口径：读写兼容、存量不迁移）
     // injectBudgetChars：单次注入体积预算（约，按字符数近似统计，不引 token 计算库），缺省 0 = 不限；
     //   约定桶永不截断；资料桶超预算时从最旧条目开始整条省略，尾部追加提示行。
     // lastInjectChars：最近一次 conventionText 渲染产物的字符数（每次渲染更新缓存值；设置卡片仪表数据源，settings-get 回传）。
@@ -901,12 +912,14 @@ export function apply(ctx) {
         inject: inject,
         injectTo: injectTo,
         injectRole: injectRole,
-        // recall：目录索引准入字段，缺省 true（旧文件无 recall 字段 → 进目录）；显式 false 逐条关闭（与 inject 正交）；
-        // 工作记忆 v0 默认隐身（裁决 B①）：kind=log 缺省 recall=false（日志不进目录；显式 recall=true 允许进目录的豁免保留）
-        // 0.4.3⑥：kind=sys 缺省 recall=false（系统根笔记不进目录注入；显式 true 豁免保留——注入允许是核心用途，与 log 的 inject 硬禁不同）
+        // recall：原目录索引准入字段——0.4.4-E 起目录段唯挂载行源，字段 dormant（读写兼容、无注入效果，0.4.5 清理卡统一裁决退役）；
+        // 缺省 true（旧文件无 recall 字段 → true，向后兼容解析保留）；显式 false 逐条置否（与 inject 正交）；
+        // 工作记忆 v0（裁决 B①）/0.4.3⑥：kind=log/sys 缺省 recall=false（dormant 缺省口径保留）
         recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : ((p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true)),
         // sensitive：敏感内容标记（注入时正文按行打码，键保留值遮蔽），缺省 false（存量零迁移）
         sensitive: p.meta.sensitive === 'true',
+        // hidden：隐藏属性（0.4.4-D，纯 UI 遮罩——面板显隐开关关时滤除/开时半透明渲染；agent 面与读写面天然完整），缺省 false（存量零迁移）
+        hidden: p.meta.hidden === 'true',
         // injectEver：曾注入粘性标记（单向只升不降——inject 曾置 true 即永久 true，关闭不回退），缺省 false（存量零迁移）；
         // 当前 inject=true 蕴含曾注入（旧数据无字段时由现状兜底，保证 injectEver ⊇ inject 不变量）
         injectEver: p.meta.injectEver === 'true' || inject === true,
@@ -923,6 +936,8 @@ export function apply(ctx) {
         origin: p.meta.origin || '',
         // 效用账本（0.4.3⑥）：记忆档案 → 被引用记忆 id 的结构化软链，缺省 ''（存量零迁移；仅 notes-ledger 懒创建回写）
         refNote: p.meta.refNote || '',
+        // 0.4.4-A 派发回执笔记化：执行记录伴生笔记软链（非调度派发源笔记顶层字段；调度约定走 schedule.runLog），缺省 '' 存量零迁移
+        runLog: p.meta.runLog || '',
         // 定时派发·执行层：调度声明 + 机器状态（dispatch-schedule 约定笔记），缺省 null（存量零迁移；非法 JSON 回退 null 不触发）
         schedule: parseSchedule(p.meta.schedule),
         mergedFrom: p.meta.mergedFrom || [],
@@ -994,9 +1009,9 @@ export function apply(ctx) {
       const meta = {
         id: n.id, title: n.title, topic: n.topic, workspace: n.workspace, folder: n.folder || '',
         tags: n.tags || [], kind: n.kind || 'note', status: n.status || 'active',
-        inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, sensitive: n.sensitive === true,
+        inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, sensitive: n.sensitive === true, hidden: n.hidden === true,
         createdAt: n.createdAt, updatedAt: n.updatedAt,
-        sessionId: n.sessionId, cwd: n.cwd, logDate: n.logDate || '', entities: n.entities || [], summarizedAt: n.summarizedAt || '', contractType: n.contractType || '', origin: n.origin || '', schedule: n.schedule || null, mergedFrom: n.mergedFrom || [],
+        sessionId: n.sessionId, cwd: n.cwd, logDate: n.logDate || '', entities: n.entities || [], summarizedAt: n.summarizedAt || '', contractType: n.contractType || '', origin: n.origin || '', refNote: n.refNote || '', runLog: n.runLog || '', schedule: n.schedule || null, mergedFrom: n.mergedFrom || [],
         dispatches: n.dispatches || [],
         // useCount 不落盘（0.4.3 验收修复⑧字段退役）：统计归 telemetry.json facets.use 单一事实源，buildFM 无此行
         archivedAt: n.archivedAt || '', deleted: n.deleted ? 'true' : 'false'
@@ -1315,16 +1330,20 @@ export function apply(ctx) {
         id: n.id, title: n.title, topic: n.topic, workspace: n.workspace, folder: n.folder || '',
         tags: n.tags, kind: n.kind || 'note', status: n.status || 'active',
         inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, sensitive: n.sensitive === true,
+        hidden: n.hidden === true,   // 0.4.4-D：hidden 隐藏属性随 slim 下发（纯 UI 遮罩数据源——面板显隐开关滤除/半透明；列表瘦身不丢字段）
         createdAt: n.createdAt, updatedAt: n.updatedAt,
         sessionId: n.sessionId, cwd: n.cwd, logDate: n.logDate || '', entities: n.entities || [], summarizedAt: n.summarizedAt || '', contractType: n.contractType || '', origin: n.origin || '', schedule: n.schedule || null, mergedFrom: n.mergedFrom,
         dispatches: n.dispatches || [],
         refNote: n.refNote || '',
+        runLog: n.runLog || '',   // 0.4.4-A：执行记录伴生笔记软链（顶层 runLog）随 slim 下发——UI 派发历史行/计划块跳转数据源
         useCount: n.useCount || 0,
         archivedAt: n.archivedAt, deleted: n.deleted === true, preview: String(n.body || '').slice(0, 200)
       }
     }
 
-    // ---- 虚拟文件夹：~/.dsh/notes/folders.json 登记清单 [{id,name,order,parent?}]；parent=父文件夹 id（缺省=根级，存量数据无 parent 字段零迁移）；笔记 front-matter 的 folder 字段存文件夹 id（缺省 ''=未分类，向后兼容） ----
+    // ---- 虚拟文件夹：~/.dsh/notes/folders.json 登记清单 [{id,name,order,parent?,hidden?}]；parent=父文件夹 id（缺省=根级，存量数据无 parent 字段零迁移）；笔记 front-matter 的 folder 字段存文件夹 id（缺省 ''=未分类，向后兼容） ----
+    // hidden（0.4.4-D 隐藏属性，OS 文件管理对齐）：纯 UI 遮罩标记——面板显隐开关关时该夹行+nested 子树容器滤除、开时半透明渲染；
+    //   host 计数/过滤/导出语义零改动（遮罩全在 client/app 渲染层）；仅 true 落对象（缺省 false 存量零迁移）。写入走 op:'set-flags' {id,hidden}。
     // .json 后缀不进笔记列表（_list 只认 .md），与 settings.json 同理落在同目录天然不污染列表。
     const FOLDERS_PATH = path.join(NOTES_ROOT, 'folders.json')
 
@@ -1339,7 +1358,7 @@ export function apply(ctx) {
         const ft = await fs.resolve(FOLDERS_PATH)
         const arr = JSON.parse(await fs.readText(ft))
         if (!Array.isArray(arr)) return []
-        return arr.filter(f => f && f.id).map(f => { const o = { id: String(f.id), name: String(f.name || ''), order: typeof f.order === 'number' ? f.order : 0 }; if (f.parent) o.parent = String(f.parent); return o })
+        return arr.filter(f => f && f.id).map(f => { const o = { id: String(f.id), name: String(f.name || ''), order: typeof f.order === 'number' ? f.order : 0 }; if (f.parent) o.parent = String(f.parent); if (f.hidden === true) o.hidden = true; return o })
       } catch (e) { return [] }
     }
 
@@ -1420,7 +1439,7 @@ export function apply(ctx) {
     }
 
     // notes-folders RPC 核心：无参/op 缺省 = list（按 order 排序，含各文件夹计数 + unfiled 未分类计数 + parent/depth 嵌套字段供 UI 递归渲染）；
-    // op = create(name,parent?)/rename/delete(id,cascade?)/reorder(ids,parents?)。
+    // op = create(name,parent?)/rename/set-flags(id,hidden)/delete(id,cascade?)/reorder(ids,parents?)。
     // 计数口径：deleted 笔记由 _list 排除不计；folder 指向清单外 id 的笔记计入 unfiled；count 为**递归子树口径**（含全部子孙文件夹内笔记）。
     // 0.4.3⑩（notes-043-archive-folder 第二轮裁决）：计数取 includeSys 机器全量视图——文件夹徽标 = 夹内全部笔记数
     //   （与 folder 定向视图（⑨ 保留通道，含 sys）逐字一致，消除「count=0 但夹内有 sys 档案」的死节点观感；通用计数语义修正，非文件夹特判）；
@@ -1450,7 +1469,7 @@ export function apply(ctx) {
             const sub = folderSubtreeIds(f.id, folders)
             let count = 0
             for (const sid in sub) count += direct[sid] || 0
-            return { id: f.id, name: f.name, order: f.order, parent: f.parent || '', depth: folderDepth(f.id, folders), count: count }
+            return { id: f.id, name: f.name, order: f.order, parent: f.parent || '', depth: folderDepth(f.id, folders), count: count, hidden: f.hidden === true }
           })
         return { folders: list, unfiled: unfiled }
       }
@@ -1483,6 +1502,17 @@ export function apply(ctx) {
         f.name = name
         await saveFolders(folders)
         return { ok: true, id: a.id, name: name }
+      }
+      if (op === 'set-flags') {
+        // 0.4.4-D hidden 隐藏属性：文件夹显隐标记写入通道（{id, hidden}——true 落 hidden:true / false 摘字段回缺省；存量零迁移）
+        if (!a.id) return { error: 'notes-folders.set-flags 需要 id' }
+        const folders = await loadFolders()
+        const f = folders.find(x => x.id === a.id)
+        if (!f) return { error: '文件夹不存在: ' + a.id }
+        if (a.hidden === true) f.hidden = true
+        else delete f.hidden
+        await saveFolders(folders)
+        return { ok: true, id: a.id, hidden: f.hidden === true }
       }
       if (op === 'delete') {
         if (!a.id) return { error: 'notes-folders.delete 需要 id' }
@@ -1533,9 +1563,9 @@ export function apply(ctx) {
         const merged = inList.concat(outList)
         merged.forEach((f, i) => { f.order = i })
         await saveFolders(merged)
-        return { ok: true, folders: merged.map(f => ({ id: f.id, name: f.name, order: f.order, parent: f.parent || '' })) }
+        return { ok: true, folders: merged.map(f => ({ id: f.id, name: f.name, order: f.order, parent: f.parent || '', hidden: f.hidden === true })) }
       }
-      return { error: 'notes-folders: 未知 op：' + String(op) + '（期望 list/create/rename/delete/reorder）' }
+      return { error: 'notes-folders: 未知 op：' + String(op) + '（期望 list/create/rename/set-flags/delete/reorder）' }
     }
 
     // 由 sessionId 推导工作区名：live 走 agents 的 header.cwd，非 live 走 persistence/sessionQuery 快照。
@@ -1635,9 +1665,9 @@ export function apply(ctx) {
       let folderNorm = ex.folder
       if (folderNorm !== undefined) folderNorm = await _resolveFolderArg(folderNorm)
       // 工作记忆 v0 隐身硬闸（裁决 B①）：kind=log 强制 inject=false（显式传 true 也纠正，返回值 injectForcedOff 告知），
-      // recall 缺省 false（显式 true 豁免——用户/agent 显式选择进目录不算混入）；日志永不进系统提示与目录索引
+      // recall 缺省 false（0.4.4-E 起字段 dormant——目录段唯挂载行源，显式 true 亦无注入效果，读写兼容保留）；日志永不进系统提示与目录索引
       const isLog = (ex.kind || 'note') === 'log'
-      // 0.4.3⑥（notes-043-sys-kind）：kind=sys 系统根笔记——recall 缺省 false（不进目录/默认召回，显式 true 豁免）；
+      // 0.4.3⑥（notes-043-sys-kind）：kind=sys 系统根笔记——recall 缺省 false（dormant 缺省口径保留，0.4.4-E 起无注入效果）；
       //   inject 允许且是核心用途（与 log 的隐身硬闸不同，不做 inject 纠正）
       const isSys = (ex.kind || 'note') === 'sys'
       const injectForcedOff = isLog && ex.inject === true
@@ -1666,6 +1696,8 @@ export function apply(ctx) {
         injectRole: ex.injectRole === 'reference' ? 'reference' : 'convention',
         recall: (isLog || isSys) ? (ex.recall === true) : (ex.recall !== false),
         sensitive: ex.sensitive === true,
+        // hidden 隐藏属性（0.4.4-D）：纯 UI 遮罩标记，显式透传（缺省 false）；host 列表/搜索/读写面零过滤——遮罩全在 client/app 渲染层
+        hidden: ex.hidden === true,
         createdAt: ex.createdAt || now, updatedAt: ex.updatedAt || now,
         sessionId: ex.sessionId !== undefined ? ex.sessionId : sc.sessionId,
         cwd: ex.cwd || sc.cwd,
@@ -1699,7 +1731,7 @@ export function apply(ctx) {
     // includeDeleted（P1 回收站）：缺省排除软删除；传 true 时 deleted 笔记一并返回（回收站列表数据源，slim 携带 deleted 标记）
     // 日志同权（0.4.3 验收修复⑦，用户裁决推翻 R-6 UI 隐身）：kind=log 与普通笔记同权——默认列表/默认检索均包含（可见/可搜/可编辑）；
     // includeLogs 第 5 参保留向后兼容（旧调用方传 true 语义不变——已恒为包含；显式 kind=log 过滤照常只看日志）；
-    // 唯一保留的边界：注入硬禁（inject 强制 false，_create/_update 闸门 + injectForcedOff 告知）+ 目录 recall 缺省 false（显式 true 豁免进目录，inject.js 目录段承接）
+    // 唯一保留的边界：注入硬禁（inject 强制 false，_create/_update 闸门 + injectForcedOff 告知）+ 目录 recall 缺省 false（0.4.4-E 起 recall 字段 dormant——目录段唯挂载行源，inject.js 无 recall 消费方）
     // sys 缺省降噪（0.4.3 验收修复⑨，用户反馈：记忆档案 12 篇挤爆默认列表）：kind=sys 机器托管笔记（注入索引/记忆档案/执行记录/遥测镜像）
     //   只在「全部」/「未分类」平铺视图排除（folder 缺省或 ''——未分类与全部同族守恒口径：不过滤 = 各文件夹 + 未分类之和）——
     //   显式入口照常显示零变化：kind 过滤 / tag 过滤 / 具体文件夹（非空 id）定向导航；日志同权语义不受影响（⑦ 红线）；
@@ -1838,6 +1870,8 @@ export function apply(ctx) {
         note.contractType = ex.contractType
       }
       if (ex.origin !== undefined) note.origin = ex.origin
+      // hidden 隐藏属性（0.4.4-D）：extra 透传，显式传才改（undefined 不动存量值）；纯 UI 遮罩，host 语义零改动
+      if (ex.hidden !== undefined) note.hidden = ex.hidden === true
       // ==== empty-body-overwrite-guard BEGIN ====（R-1 P0 数据丢失兜底；notes.js 与 notes.dist.js 双变体逐字节同步，check 节 46 看守）
       // 判据：body 显式传空串且现存正文非空 → 拒绝静默覆盖，抛错要求调用方显式传 extra.confirmClearBody===true 重试。
       // 选型理由（错得安全 = 失败时停在原状，而不是失败后留备份）：宁拒绝不墓碑——.bak 墓碑方案失败时已破坏现场
@@ -1861,7 +1895,7 @@ export function apply(ctx) {
         try { note.workspace = await _wsOfSession(note.sessionId) } catch (e) {}
       }
       await persistNote(note)
-      if (dispatchClosedDs.length) await _schedRunLogAppend(note, dispatchClosedDs)   // 仅 dispatch-schedule 约定生效（内部全量吞异常；约定正文零改动红线不破）
+      if (dispatchClosedDs.length) await _schedRunLogAppend(note, dispatchClosedDs)   // 0.4.4-A 起全笔记生效·三表归一（resolved 回执 📥 行落执行记录伴生笔记；内部全量吞异常；源笔记正文零改动红线不破）
       const r = { id, kind: note.kind, status: note.status, dispatchClosed: dispatchClosed }
       if (injectForcedOff) r.injectForcedOff = true   // 日志隐身硬闸命中告知（kind=log 强制 inject=false）
       return r
@@ -2252,7 +2286,7 @@ export function apply(ctx) {
       try {
         const ctErr = schedPublicContractTypeError(args && args.contractType)   // 定时派发：公共写入口 contractType 白名单（'' / dispatch-schedule）
         if (ctErr) return { error: ctErr }
-        return await _create(args.title, args.body, args.tags, args.topic, { kind: args.kind, status: args.status, inject: args.inject, injectRole: args.injectRole, injectTo: args.injectTo, folder: args.folder, recall: args.recall, sensitive: args.sensitive, logDate: args.logDate, entities: args.entities, summarizedAt: args.summarizedAt, contractType: args.contractType, origin: args.origin, schedule: args.schedule })
+        return await _create(args.title, args.body, args.tags, args.topic, { kind: args.kind, status: args.status, inject: args.inject, injectRole: args.injectRole, injectTo: args.injectTo, folder: args.folder, recall: args.recall, sensitive: args.sensitive, hidden: args.hidden, logDate: args.logDate, entities: args.entities, summarizedAt: args.summarizedAt, contractType: args.contractType, origin: args.origin, schedule: args.schedule })
       } catch (e) { return { error: String(e.message || e) } }
     }))
     // R-1：confirmClearBody 透传 _update 空正文覆盖兜底闸（body:'' 覆盖非空正文需显式确认，见 notes.dist.js empty-body-overwrite-guard 块）
@@ -2260,7 +2294,7 @@ export function apply(ctx) {
       try {
         const ctErr = schedPublicContractTypeError(args && args.contractType)   // 定时派发：公共写入口 contractType 白名单（'' / dispatch-schedule）
         if (ctErr) return { error: ctErr }
-        return await _update(args.id, args.title, args.body, args.tags, args.topic, args.kind, args.status, args.inject, args.injectTo, args.folder, args.recall, args.injectRole, args.sensitive, { logDate: args.logDate, entities: args.entities, summarizedAt: args.summarizedAt, contractType: args.contractType, origin: args.origin, schedule: args.schedule, confirmClearBody: args.confirmClearBody === true })
+        return await _update(args.id, args.title, args.body, args.tags, args.topic, args.kind, args.status, args.inject, args.injectTo, args.folder, args.recall, args.injectRole, args.sensitive, { logDate: args.logDate, entities: args.entities, summarizedAt: args.summarizedAt, contractType: args.contractType, origin: args.origin, schedule: args.schedule, hidden: args.hidden, confirmClearBody: args.confirmClearBody === true })
       } catch (e) { return { error: String(e.message || e) } }
     }))
     disposers.push(handle('notes-quick', async (args) => {
@@ -2658,7 +2692,8 @@ export function apply(ctx) {
     // ==== rootnote BEGIN ====（0.4.3 内核②：RootNote 托管节框架，notes-043-rootnote。
     // 目标：把「机器托管的根笔记自动节」从 runLog 专属实现提炼为一套通用框架——
     //   RootNoteTpl 模板声明式描述：锚点节标题（'## §名'）/ 行格式（lineOf 消费者注入）/
-    //   排序（newestFirst 新→旧缺省）/ 容量上限（max 裁尾）/ 幂等键（keyOfLine/keyOfEntry 去重）/ 软链键（linkOf/writeLink）。
+    //   排序（newestFirst 新→旧缺省）/ 容量上限（max 裁尾）/ 幂等键（keyOfLine/keyOfEntry 去重）/ 软链键（linkOf/writeLink）/
+    //   preText（0.4.4-A：可选说明块——创建正文 = preText + head 锚点行；pre 区节外零触碰逐字节保留，同 injectindex 说明块先例）。
     // 红线（迁就现状格式，不是反过来）：
     //   ①节外零触碰——锚点节标题行与用户手写备注区逐字节保留；托管笔记其余正文原样；
     //   ②节锚点不存在则创建（首写时 pre 缺省补锚点行）；
@@ -2750,7 +2785,7 @@ export function apply(ctx) {
         if (rl2) { if (tpl.kind === 'sys') await rootNoteEnsureSysKind(rl2); return rl2 }
         const cr = await _create(
           tpl.titleOf ? tpl.titleOf(hostNote) : String(hostNote.title || hostNote.id),
-          tpl.head + '\n', [],
+          (tpl.preText || '') + tpl.head + '\n', [],
           tpl.topicOf ? tpl.topicOf(hostNote) : '未分类',
           { kind: tpl.kind || 'note', folder: tpl.folderOf ? tpl.folderOf(hostNote) : undefined }
         )
@@ -3078,6 +3113,10 @@ export function apply(ctx) {
       const logs = {}
       for (const n of all) {
         if ((n.kind || 'note') !== 'log' || n.deleted || n.tombstoned) continue
+        // 0.4.4-A（notes-044-dispatch-receipts）：派发管线「执行记录」伴生笔记（kind=log + refNote 回链源笔记）不计入日志扫描——
+        //   语义分目录裁决的账本面延伸：执行记录=派发回执、工作日志=会话沉淀（两类内容不同目录同理不同账本口径）；
+        //   兼防指令摘要文本误入 [[双链]] 造成假性引用（refs 聚合只认会话沉淀日志）
+        if (n.refNote) continue
         const ds = _ledgerLogDateStr(n)
         const ms = ds ? Date.parse(ds + 'T00:00:00') : NaN
         if (!isFinite(ms) || nowMs - ms > LEDGER_WINDOW_MS || ms - nowMs > LEDGER_WINDOW_MS) continue
@@ -3626,17 +3665,55 @@ export function apply(ctx) {
     }
 
 
+    // 休眠送达通道（0.4.4-B，notes-044-dormant-dispatch）：目标非 live 时，向其持久化日志追加 durable inbox splice
+    // （agent/inbox/spliced，与 live send(msg,'next-turn') 的落盘记录同形态）——零唤醒零成本：不启动 agent，
+    // 会话下次活动（用户打开/恢复）时由 loop 认领该消息开始处理；GUI 打开时即显示为排队消息。
+    // 落盘前折叠 inbox 现状求精确 splice start（dsh-agent-loop inboxProjectionDefinition 对 start>length 拒绝，
+    // 错写会让会话恢复即抛 invalid persisted inbox splice——必须全量读日志现算，无更便宜通道）。
+    // 幂等：同 msgId 已在队列则跳过追加（inbox 折叠对重复 pending id 拒绝，重复写入会毁掉恢复路径）。
+    // 失败一律 { error, needOpen:true }（含「未打开」字样供调度链 lastError 口径与 UI 提示复用）。
+    async function _queueDormantDispatch(sid, msg) {
+      const fail = function (why) { return { error: '目标会话当前未打开，休眠送达失败（' + why + '）。请先打开它，或改用「新建会话」。', needOpen: true } }
+      if (!sessionPersistence || typeof sessionPersistence.open !== 'function') return fail('宿主无 sessionPersistence.open 能力')
+      let handle = null
+      try { handle = await sessionPersistence.open(sid, 'write') } catch (e) { return fail('会话不存在于持久化存储或写锁被占用：' + String(e && e.message || e)) }
+      try {
+        const rd = await handle.read(0)
+        const events = (rd && rd.events) || []
+        // 折叠 durable inbox（同 loop 投影口径：agent/inbox/spliced 标准 splice 语义，越界钳位容错）
+        const inbox = { 'next-turn': [], 'next-step': [] }
+        for (const ev of events) {
+          if (!ev || ev.type !== 'agent/inbox/spliced') continue
+          const d = ev.data || {}
+          const list = inbox[d.target]
+          if (!Array.isArray(list)) continue
+          const start = Math.max(0, Math.min(typeof d.start === 'number' && isFinite(d.start) ? Math.trunc(d.start) : list.length, list.length))
+          const rm = typeof d.removedCount === 'number' && isFinite(d.removedCount) ? Math.min(Math.max(Math.trunc(d.removedCount), 0), list.length - start) : 0
+          const ins = Array.isArray(d.inserted) ? d.inserted : []
+          inbox[d.target] = list.slice(0, start).concat(ins, list.slice(start + rm))
+        }
+        const dup = inbox['next-turn'].concat(inbox['next-step']).some(function (m) { return m && m.id === msg.id })
+        if (!dup) {
+          await handle.append([{ type: 'agent/inbox/spliced', seq: events.length, time: Date.now(), data: { target: 'next-turn', start: inbox['next-turn'].length, inserted: [msg] } }])
+          await handle.flush()   // 耐久屏障：flush 落定后崩溃也送达
+        }
+        return { ok: true }
+      } catch (e) {
+        return fail('日志追加异常：' + String(e && e.message || e))
+      } finally { try { if (handle) await handle.close() } catch (e) {} }
+    }
+
     // 任务派发（共享）：主动注入上下文 + 触发对话——agent.send 一条消息到目标会话，
     // source 标记为 { kind:'plugin', form:'recall' }（todo 作为"召回的上下文"，区别于用户指令/系统提示拼接），
     // wakeup=true 保证触发该会话 agent 去获取并处理这条上下文（可见反应，不污染系统提示）。
+    // 双通道（0.4.4-B）：live 命中走现行 send 立即触发；未命中走休眠送达（_queueDormantDispatch 持久化排队，
+    // 「下次活动送达」语义——不主动唤醒休眠会话），返回 queued:true + dispatches 记录带 queued 布尔。
     // opts: { sessionId, sessionName, workspace, mode('existing'|'new'), instruction, sourceLabel（派发来源标注，定时调度传 '定时调度 @约定标题'，进消息尾行与 dispatches 记录） }
     async function _dispatch(id, opts) {
       const o = opts || {}
       const note = await _get(id)
       if (note.deleted) return { error: '笔记已删除' }
       if (!o.sessionId) return { error: '缺少目标会话' }
-      const target = agents && agents.get ? agents.get(o.sessionId) : undefined
-      if (!target || typeof target.send !== 'function') return { error: '目标会话当前未打开，无法触发工作。请先打开它，或改用「新建会话」。', needOpen: true }
       const instruction = String(o.instruction || '').trim()
       const text = '【笔记插件 · 派发的待办上下文】\n\n【待办】' + (note.title || 'Untitled') + '\n' + String(note.body || note.title || '').trim() + (instruction ? '\n\n【派发方补充的要求】\n' + instruction : '') + '\n\n—— 以上是笔记插件派发给你的待办上下文（recall' + (o.sourceLabel ? '，来源：' + o.sourceLabel : '') + '）。请获取此上下文并开始处理。完成后请调用 note_manage（action: \'update\', id: \'' + note.id + '\', status: \'resolved\'）了结该笔记，系统会自动回执派发状态（dispatchStatus→done）。' + (bodyHasImageRef(note.body) ? '\n\n' + assetsHintLine(NOTES_ROOT) : '')
       const msg = {
@@ -3648,7 +3725,16 @@ export function apply(ctx) {
         // SessionFormatError 并炸掉目标会话当前轮次；v3→v4 迁移映射为 plugin:dsh-notes，直接写迁移后形态
         source: { kind: 'plugin:dsh-notes', form: 'recall' }
       }
-      target.send(msg, 'next-turn', true)
+      // 双通道分流（0.4.4-B）：live → send 立即触发；非 live → 休眠送达（持久化排队，下次活动送达）
+      const target = agents && agents.get ? agents.get(o.sessionId) : undefined
+      let queued = false
+      if (target && typeof target.send === 'function') {
+        target.send(msg, 'next-turn', true)
+      } else {
+        const q = await _queueDormantDispatch(o.sessionId, msg)
+        if (q.error) return q
+        queued = true
+      }
       // 派发历史：作为笔记属性记录（不改正文）；P3 起带 dispatchStatus（'sent'|'done'）状态机字段，done 布尔保留兼容旧 client
       const rec = {
         sessionId: o.sessionId,
@@ -3662,6 +3748,9 @@ export function apply(ctx) {
         done: false,
         dispatchStatus: 'sent'
       }
+      // queued 布尔（0.4.4-B）：休眠送达标记——仅 queued 时落键（存量/live 记录零字段变化，向后兼容）；
+      // 回执闭环沿用 dispatch-loop（会话活动处理完该消息转 idle → 自动回执 done）
+      if (queued) rec.queued = true
       if (o.sourceLabel) rec.sourceLabel = o.sourceLabel
       note.dispatches = (note.dispatches || []).concat([rec])
       note.updatedAt = new Date().toISOString()
@@ -3669,7 +3758,10 @@ export function apply(ctx) {
       // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：mount 通道交付事件——笔记作为待办上下文挂载进目标任务会话
       // （notes-dispatch / note_manage.dispatch / 定时派发 _schedFire 三入口同走本单点；签名含会话——换会话重派计独立交付）
       _recallRaw('mount', [note.id], shortSid(o.sessionId))
-      return { ok: true, id: note.id, sessionId: o.sessionId, sessionName: rec.sessionName, dispatch: rec }
+      // 0.4.4-A（notes-044-dispatch-receipts）派发回执笔记化·三表归一：派发事件本身落「执行记录」伴生笔记 📤 行（派发历史笔记化）——
+      //   懒创建 + runLog 软链回写（调度约定 schedule.runLog 存量继承 / 非调度笔记顶层 runLog）；观察面产物异常内部全吞，不扩散派发主链路
+      await _schedRunLogAppend(note, [{ _dispatch: true, at: rec.at, sessionId: o.sessionId, sessionName: rec.sessionName, instruction: instruction, sourceLabel: o.sourceLabel || '', msgId: rec.msgId, queued: queued }])
+      return { ok: true, id: note.id, sessionId: o.sessionId, sessionName: rec.sessionName, queued: queued, dispatch: rec }
     }
 
     // 标记一条派发待办为完成（手动闭环通道；P3 起写 dispatchStatus='done' + doneAt + receipt='manual'，done 布尔同步保留）
@@ -3729,7 +3821,7 @@ export function apply(ctx) {
         if (_closeOpenDispatches(n, 'idle', sid, closedDs) > 0) {
           n.updatedAt = new Date().toISOString()
           try { await persistNote(n, { history: false }) } catch (e) { console.error('notes: dispatch receipt persist failed', n.id, e) }
-          await _schedRunLogAppend(n, closedDs)   // 仅 dispatch-schedule 约定生效（内部全量吞异常；约定正文零改动红线不破）
+          await _schedRunLogAppend(n, closedDs)   // 0.4.4-A 起全笔记生效·三表归一（内部全量吞异常；源笔记正文零改动红线不破）
         }
       }
     }
@@ -3795,12 +3887,20 @@ export function apply(ctx) {
     //   ⑦锚定时刻（notes-034-sched-time）：every 可配 anchor:'HH:MM'（本地墙钟时刻，触发序列钉死该时刻不随创建/触发时刻漂移；
     //     需整天间隔——子日间隔锚定语义有歧义一律拒绝）；weekly 另配 dow:0-6（星期几，0=周日；需搭配 anchor 且 every=1w）。
     //     无 anchor 的存量 every 声明保持纯间隔语义（锚点 lastFiredAt||createdAt）——存量零迁移兼容。
+    //   ⑧专属会话 + 休眠送达（0.4.4-B，notes-044-dormant-dispatch）：target='new'（仅周期模式）= 首轮触发创建「定时 · <标题>」
+    //     专属会话并随幂等生命线回写 target=新 sid（持久复用，后续轮次同 sid）；执行红线由「目标 live」改写为「目标可送达」——
+    //     live 直通 / 持久化可达（stat 命中）走 _dispatch 休眠送达通道（durable inbox 排队，下次活动送达，零唤醒）；
+    //     两路皆不可达才记 lastError 不推进 lastFiredAt（补发语义不变）。lastRun.status 新增 queued 枚举（休眠送达标记）。
     // 序位说明（§8.4.2 例外备案）：本模块消费 dispatch.js 的 _dispatch 故置于其后；notes.js 的 _create/_update 经函数声明提升
     //   调用本模块的 _schedValidateWrite/SCHEDULE_CONTRACT_TYPE——全部为运行期（RPC 调用时）引用，apply 执行期零触碰，无 TDZ 风险。
     const SCHED_TICK_MS = 30 * 1000              // 常驻 tick 周期（裁决②）
     const SCHED_MIN_INTERVAL_MS = 5 * 60 * 1000  // 校验红线：轮询间隔 ≥5min
     const SCHED_ERR_RETRY_MS = 5 * 60 * 1000     // 执行失败 lastError 刷写节流（防 30s tick 对同一故障反复写盘）
     const SCHEDULE_CONTRACT_TYPE = 'dispatch-schedule'   // 契约身份标记（front-matter contractType，调度声明的主识别键）
+    // 专属会话目标字面量（0.4.4-B，notes-044-dormant-dispatch）：schedule.target='new' = 周期任务专属会话——
+    //   首轮触发时 agents.create 创建「定时 · <任务名>」会话并回写 target=新 sid（持久复用），后续轮次 live 直发/休眠送达复用同一会话。
+    //   仅周期模式（every）接受；存量真实 sid 声明零迁移兼容（'new' 是保留字面量，绝非合法会话 id 形态——session-* 前缀约束天然隔离）。
+    const SCHED_TARGET_NEW = 'new'
 
     // every 声明 → 毫秒：number 直给（毫秒）；字符串 '<n>m|<n>h|<n>d|<n>w'（分钟/小时/天/周）。非法 → null
     function schedEveryMs(every) {
@@ -3901,6 +4001,8 @@ export function apply(ctx) {
           value.dow = raw.dow
         }
       }
+      // 专属会话（0.4.4-B）：target='new' 仅周期模式（every）接受——首轮触发自动创建并回写复用；单次 at 无复用场景一律拒绝（错得安全）
+      if (target === SCHED_TARGET_NEW && !value.every) return { error: 'schedule.target=\'new\' 专属会话仅周期模式（every）支持——首轮触发自动创建「定时 · 任务名」会话并持久复用；单次 at 请直接指定目标会话 id' }
       return { value: value }
     }
 
@@ -3934,8 +4036,9 @@ export function apply(ctx) {
       const chk = schedCheckDecl(raw, Date.now())
       if (chk.error) return { error: chk.error }
       const decl = chk.value
-      // 校验红线③目标存活：enabled=false（停用/暂停）豁免——暂停操作随时可落，不因目标漂移锁死治理面
-      if (decl.enabled !== false) {
+      // 校验红线③目标存活：enabled=false（停用/暂停）豁免——暂停操作随时可落，不因目标漂移锁死治理面；
+      //   target='new'（0.4.4-B 专属会话）同豁免——首轮触发时才创建，声明期无目标可校验
+      if (decl.enabled !== false && decl.target !== SCHED_TARGET_NEW) {
         const aliveErr = await _schedTargetAliveErr(decl.target)
         if (aliveErr) return { error: aliveErr }
       }
@@ -4004,32 +4107,101 @@ export function apply(ctx) {
       try { await persistNote(n, { history: false }) } catch (e) { console.error('notes: schedule lastError persist failed', noteId, e) }
     }
 
-    // 单笔记触发：执行红线（目标 live）→ 标记 lastFiredAt 落盘（幂等生命线，先于派发）→ _dispatch 全链路 → lastRun 回写
+    // 专属会话创建（0.4.4-B）：agents.create 真实 agent（走注册 factory——持久化写把手 + 会话注册一体），
+    //   setup 内 agentPresets.mount 绑定默认 preset（同 session-controller composeAgent 口径——无 preset 的裸 agent 无工具能力）；
+    //   workspace.attachSession 落账（GUI 左侧列表可见性——工作区 sessionIds 经 header cwd 校验归组）；
+    //   sessionTitle.rename 命名「定时 · <任务名>」（观察面，失败不阻塞主链路）。
+    //   归属模型（实测结论）：create 经调用方 fiber 归属——插件重载/卸载会 dispose 该 agent，但会话日志已持久化，
+    //   退化为休眠态（GUI 可见、用户打开即复活），后续触发由休眠送达通道（_queueDormantDispatch）承接，优雅降级不丢任务。
+    //   返回 { sessionId, handle, name } | { error }；失败方负责回收半成品（handle.dispose），调用方零清理负担。
+    async function _schedCreateDedicatedSession(note) {
+      if (!agents || typeof agents.create !== 'function') return { error: '宿主不支持 agents.create（无法创建专属会话）' }
+      if (!agentPresets || typeof agentPresets.resolve !== 'function' || typeof agentPresets.mount !== 'function') return { error: 'agentPresets 服务缺失（专属会话需挂载默认 preset 获得工具能力）' }
+      // 工作区归属：note.workspace 标题命中优先（笔记创建时自会话上下文自动填充），缺省回落首个工作区
+      const wl = workspaceRegistry && workspaceRegistry.list ? workspaceRegistry.list() || [] : []
+      if (!wl.length) return { error: '无可用工作区（专属会话无处归属）' }
+      let ws = null
+      const wtitle = String((note && note.workspace) || '').trim()
+      if (wtitle) { for (const w of wl) { if (w && (w.title || '') === wtitle) { ws = w; break } } }
+      if (!ws) ws = wl[0]
+      const cwd = String((ws && ws.path) || '').trim()
+      if (!cwd) return { error: '工作区缺 path（专属会话无 cwd 不可创建）' }
+      const name = '定时 · ' + String((note && note.title) || '任务').replace(/^定时\s*·?\s*/, '')
+      let presetId
+      try { const p = await agentPresets.resolve(); presetId = p && p.id } catch (e) { return { error: 'preset 解析失败：' + String(e && e.message || e) } }
+      const sel = adm && typeof adm.currentSelection === 'function' ? adm.currentSelection() : null
+      const sid = 'session-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
+      let handle = null
+      try {
+        handle = await agents.create({
+          sessionId: sid,
+          agentOptions: sel ? { provider: sel.provider, model: sel.model } : {},
+          meta: presetId ? { cwd: cwd, agentPreset: presetId } : { cwd: cwd },
+          setup: function (agentCtx) { return agentPresets.mount(agentCtx, presetId) }
+        })
+      } catch (e) { return { error: 'agents.create 失败：' + String(e && e.message || e) } }
+      // GUI 可见性落账（致命）：失败回收 agent 报错（lastFiredAt 未推进，下 tick 重试创建）
+      try { if (typeof ws.attachSession === 'function') await ws.attachSession(sid) } catch (e) {
+        try { if (handle && typeof handle.dispose === 'function') await handle.dispose() } catch (e2) {}
+        return { error: '工作区落账失败：' + String(e && e.message || e) }
+      }
+      // 命名（非致命观察面：失败时 GUI 显示缺省标题，不阻塞派发）
+      try { if (sessionTitle && typeof sessionTitle.rename === 'function' && handle && handle.agent && handle.agent.session) sessionTitle.rename(handle.agent.session, name) } catch (e) {}
+      return { sessionId: sid, handle: handle, name: name }
+    }
+
+    // 单笔记触发：专属会话首轮创建（target='new'）→ 可送达预检 → 标记 lastFiredAt 落盘（幂等生命线，先于派发）→ _dispatch 全链路 → lastRun 回写
     async function _schedFire(note, nowMs) {
       const nowIso = new Date(nowMs).toISOString()
       const sched = note.schedule
-      // 执行红线：派发经 agent.send 触发工作，目标必须 live；未 live → 记 lastError（节流）不推进 lastFiredAt——目标上线后下个 tick 自动补发
-      const target = agents && agents.get ? agents.get(sched.target) : undefined
-      if (!target || typeof target.send !== 'function') {
-        await _schedMarkError(note.id, '目标会话当前未打开，无法触发工作（目标 live 后下个 tick 自动补发）', nowMs, true)
+      // 专属会话（0.4.4-B）：target='new' → 首轮触发先创建「定时 · <标题>」会话，target 回写随幂等生命线同事务落盘（持久复用）
+      let created = null
+      let effTarget = sched.target
+      if (sched.target === SCHED_TARGET_NEW) {
+        created = await _schedCreateDedicatedSession(note)
+        if (!created || created.error) {
+          await _schedMarkError(note.id, '专属会话创建失败：' + (created && created.error || 'unknown'), nowMs, true)
+          return false   // 不推进 lastFiredAt——下个 tick 自动重试创建
+        }
+        effTarget = created.sessionId
+      } else {
+        // 执行红线（0.4.4-B 改写：目标 live ⟹ 可送达）：live 直通；非 live 探持久化可达（stat 命中 = 休眠送达可排队）——
+        //   两路皆不可达 → 记 lastError（节流）不推进 lastFiredAt（目标上线/可送达后下个 tick 自动补发）
+        const target = agents && agents.get ? agents.get(effTarget) : undefined
+        if (!target || typeof target.send !== 'function') {
+          let reachable = false
+          try { reachable = !!(sessionPersistence && typeof sessionPersistence.stat === 'function' && (await sessionPersistence.stat(effTarget))) } catch (e) {}
+          if (!reachable) {
+            await _schedMarkError(note.id, '目标会话当前未打开且持久化不可达，无法触发工作（目标 live 或可送达后下个 tick 自动补发）', nowMs, true)
+            return false
+          }
+        }
+      }
+      // 幂等生命线：先推进 lastFiredAt 落盘再派发（专属会话首轮：target=新 sid 同事务回写）——进程在「派发后、lastRun 回写前」崩溃最多漏记一次 lastRun，绝不重发同一触发
+      const marked = await loadNote(note.id)
+      if (!marked || marked.deleted || marked.tombstoned || !marked.schedule || (marked.contractType || '') !== SCHEDULE_CONTRACT_TYPE) {
+        if (created && created.handle && typeof created.handle.dispose === 'function') { try { await created.handle.dispose() } catch (e) {} }
         return false
       }
-      // 幂等生命线：先推进 lastFiredAt 落盘再派发——进程在「派发后、lastRun 回写前」崩溃最多漏记一次 lastRun，绝不重发同一触发
-      const marked = await loadNote(note.id)
-      if (!marked || marked.deleted || marked.tombstoned || !marked.schedule || (marked.contractType || '') !== SCHEDULE_CONTRACT_TYPE) return false
       const markedSched = Object.assign({}, marked.schedule, { lastFiredAt: nowIso })
+      if (created) markedSched.target = created.sessionId   // 专属会话持久复用锚点：次轮起按真实 sid 走 live/休眠双通道
       delete markedSched.lastError   // lastError 仅失败记：进入成功路径即摘除（不留空串脏键）
       marked.schedule = markedSched
       marked.updatedAt = nowIso
-      try { await persistNote(marked, { history: false }) } catch (e) { console.error('notes: schedule lastFiredAt mark failed', note.id, e); return false }
-      const r = await _dispatch(note.id, { sessionId: sched.target, mode: 'existing', sourceLabel: '定时调度 @' + (marked.title || note.title || note.id) })
+      try { await persistNote(marked, { history: false }) } catch (e) {
+        console.error('notes: schedule lastFiredAt mark failed', note.id, e)
+        if (created && created.handle && typeof created.handle.dispose === 'function') { try { await created.handle.dispose() } catch (e2) {} }   // 落盘失败回收新建 agent（防孤儿 live 会话）
+        return false
+      }
+      const r = await _dispatch(note.id, { sessionId: effTarget, sessionName: created ? created.name : undefined, mode: 'existing', sourceLabel: '定时调度 @' + (marked.title || note.title || note.id) })
       if (r && r.error) {
         await _schedMarkError(note.id, '派发执行失败：' + r.error, nowMs, false)
         return false
       }
-      // 状态三层①：lastRun{at,status,receiptId}（receiptId = 派发消息 msgId，与 dispatches 记录关联；回执闭环走既有 dispatch-loop 链路）
+      // 状态三层①：lastRun{at,status,receiptId}（status：sent=live 直发 / queued=休眠送达·下次活动处理（0.4.4-B 新增枚举值，存量 sent/error 不变）；
+      //   receiptId = 派发消息 msgId，与 dispatches 记录关联；回执闭环走既有 dispatch-loop 链路）
       const done = await loadNote(note.id)
-      const doneSched = Object.assign({}, done.schedule, { lastRun: { at: nowIso, status: 'sent', receiptId: (r.dispatch && r.dispatch.msgId) || '' } })
+      const doneSched = Object.assign({}, done.schedule, { lastRun: { at: nowIso, status: r && r.queued ? 'queued' : 'sent', receiptId: (r.dispatch && r.dispatch.msgId) || '' } })
       delete doneSched.lastError   // lastError 仅失败记：派发成功摘除
       done.schedule = doneSched
       done.updatedAt = nowIso
@@ -4090,18 +4262,28 @@ export function apply(ctx) {
     ;(async function () { try { await _schedTickGuarded(Date.now()) } catch (e) {} })()
     // ==== schedule-exec END ====
 
-    // ==== schedule-runlog BEGIN ====（notes-041-sched-runlog：执行记录独立笔记 + schedule.runLog 软链。
+    // ==== schedule-runlog BEGIN ====（notes-041-sched-runlog：执行记录独立笔记 + schedule.runLog 软链；
+    //   0.4.4-A notes-044-dispatch-receipts 升级·三表归一：执行记录 = 派发历史 = 调度回执 同一篇伴生笔记——
+    //   每篇派发源笔记 ≤1 篇「执行记录 · <源笔记标题>」（设计修正·用户最新裁决 2026-10-05：kind=log 工作日志型——
+    //   注入硬关天然适用（回执永不进系统提示）、可见/可搜/可编辑照常 + folder='执行记录' 专用文件夹（懒创建 ensure；
+    //   严禁放「工作日志」夹——工作日志=会话沉淀、执行记录=派发回执，语义不同分目录存放）+ refNote=源笔记 id 回链 +
+    //   软链字段统一 runLog：调度约定存 schedule.runLog（存量直接继承零迁移），非调度派发源笔记存顶层 runLog front-matter 条件行）。
     // 设计红线（用户裁决 2026-10-04 晚）：约定正文零改动——克隆体约定正文=派发载荷（整体注入 target 会话），
-    //   历史追加会无限膨胀并污染下次派发上下文；执行记录落独立笔记（title「<约定标题> · 执行记录」，kind=sys 机器托管——
-    //   0.4.3⑥ notes-043-sys-kind：recall 缺省 false 不进目录/默认召回，编辑器可见可改，批量删除红字警示豁免面收口；
-    //   存量 kind=note 的 runLog 经 rootNoteEnsureSysKind 惰性迁移，只写 kind 元数据正文零变化），约定 front-matter schedule.runLog 存其 id 软链；
+    //   历史追加会无限膨胀并污染下次派发上下文；执行记录落独立笔记（0.4.4-A 起 kind=log——recall 缺省 false 不进目录/默认召回、
+    //   inject 硬闸强制 false（injectForcedOff）；存量 kind=sys 的 runLog 零迁移原样留档，软链指针无关 kind 照常命中），
+    //   front-matter 软链存其 id；
     //   回执落盘时机（idle 事件 / resolved 保底 / 手动标记完成三通道共用）懒创建并追加条目；条目倒序（最新在前）≤50 裁尾；
     //   幂等：同 msgId（=lastRun.receiptId）条目已存在跳过；删除约定不级联删 runLog（留档）。
+    // 0.4.4-A 行型三族：📤 派发行（_dispatch 成功即落——派发历史笔记化）/ 📥 回执行（idle/resolved 真实回执）/ ✅ 人工闭环行
+    //   （_dispatchDone 手动标记）；dispatches[] 数组与 dispatchStatus 状态机零改动（结构化状态给闭环逻辑，笔记行给人读——双载体正交）。
     // 写入纪律：runLog 笔记创建/追加与 runLog 软链回写都是机器自动产物——persistNote { history:false } 不产生历史快照；
-    //   软链回写直改 schedule 不经 _update 声明闸门（避免目标存活等声明校验阻塞回执链路；声明改写时 runLog 由 _schedValidateWrite 延续存量）。
+    //   软链回写直改 schedule/runLog 不经 _update 声明闸门（避免目标存活等声明校验阻塞回执链路；声明改写时 runLog 由 _schedValidateWrite 延续存量）。
     // 序位：本块跨模块调用点（dispatch.js/notes.js）经函数声明提升在运行期引用，apply 执行期零触碰，无 TDZ 风险（同 _schedValidateWrite 先例）。
     const SCHED_RUNLOG_MAX = 50                        // 条目容量红线：倒序保留最新 50 条裁尾
     const SCHED_RUNLOG_HEAD = '## 执行记录（自动）'     // runLog 笔记正文的自动管理节标题
+    const EXEC_LOG_FOLDER_NAME = '执行记录'             // 0.4.4-A 设计修正：伴生笔记专用文件夹（懒创建 ensure folders.json 条目；严禁复用「工作日志」夹）
+    // 说明块（预设首行，RootNote pre 区逐字节保留）：机器托管声明 + kind=log 用途 + 行型契约 + 可编辑边界
+    const EXEC_LOG_GUIDE = '机器托管笔记（请勿手动清理，由派发管线维护）：本笔记 = 派发源笔记的执行记录（0.4.4-A 三表归一：派发历史/调度回执/执行记录同一篇；kind=log 工作日志型——注入硬关天然适用，回执永不进系统提示）。行型：📤 派发（带（下次活动送达）后缀 = 休眠会话排队送达，0.4.4-B）/ 📥 回执 / ✅ 人工闭环；可直接编辑备注，请保持条目行首 `- 📤/📥/✅` 结构。\n\n'
     // 条目时间戳：ISO → 本地 YYYY-MM-DD HH:MM（人读优先；与调度 at 声明同口径的本地墙钟语义）
     function schedRunLogTs(iso) {
       const ms = Date.parse(iso || '')
@@ -4110,9 +4292,31 @@ export function apply(ctx) {
       const p = function (n) { return (n < 10 ? '0' : '') + n }
       return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
     }
-    // 条目行：- ✅ {本地时刻} · 回执（{idle|resolved|manual}）· → {会话名|短id} · {msgId}
+    // 派发行时间戳（0.4.4-A）：秒级精度——同分钟连发可区分（行幂等键成分；崩溃重放同秒同文天然去重）
+    function schedRunLogTsS(iso) {
+      const ms = Date.parse(iso || '')
+      if (!isFinite(ms)) return String(iso || '')
+      const d = new Date(ms)
+      const p = function (n) { return (n < 10 ? '0' : '') + n }
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
+    }
+    // 回执条目行：- 📥 {本地时刻} · 回执（{idle|resolved}）· → {会话名|短id} · {msgId}（真实回执）；人工闭环 = ✅（回执（manual））。
+    //   0.4.4-A 起真实回执前缀 ✅→📥（设计「📥 回执：<会话> <时间>」）；存量 ✅ 行零迁移原样保留（msgId 幂等键跨新旧行型同口径）
     function schedRunLogLine(d) {
-      return '- ✅ ' + schedRunLogTs(d.doneAt) + ' · 回执（' + (d.receipt || 'manual') + '）· → ' + (d.sessionName || shortSid(d.sessionId) || '?') + ' · ' + d.msgId
+      return '- ' + (d.receipt === 'manual' ? '✅' : '📥') + ' ' + schedRunLogTs(d.doneAt) + ' · 回执（' + (d.receipt || 'manual') + '）· → ' + (d.sessionName || shortSid(d.sessionId) || '?') + ' · ' + d.msgId
+    }
+    // 派发条目行（0.4.4-A 派发历史笔记化）：- 📤 {本地时刻·秒级} · → {会话名|短id}[（下次活动送达）][ · 指令：{摘要≤40字}][ · {sourceLabel}] · 单号 {msgId 尾段}。
+    //   （下次活动送达）后缀（0.4.4-B）：休眠送达（queued）派发专属标注——目标会话未 live，消息已持久化排队，会话下次活动时处理。
+    //   红线：行内绝不出现完整 msgId（note-dispatch-* 前缀形态）——keyOfLine 的 msgId 提取与正文 indexOf 幂等去重专属回执族，
+    //   派发行混入完整 msgId 会让同 msgId 回执行被误吞；单号尾段 = 行幂等键成分（同秒连发区分 + 崩溃重放同 msgId 去重）兼人读派发↔回执对参
+    function schedRunLogDispatchLine(d) {
+      let l = '- 📤 ' + schedRunLogTsS(d.at) + ' · → ' + (d.sessionName || shortSid(d.sessionId) || '?') + (d.queued ? '（下次活动送达）' : '')
+      const instr = String(d.instruction || '').replace(/[\r\n]+/g, ' ').trim()
+      if (instr) l += ' · 指令：' + (instr.length > 40 ? instr.slice(0, 40) + '…' : instr)
+      if (d.sourceLabel) l += ' · ' + String(d.sourceLabel)
+      const tail = String(d.msgId || '')
+      if (tail) l += ' · 单号 ' + (tail.indexOf('note-dispatch-') === 0 ? tail.slice(14) : tail)
+      return l
     }
     // 正文重写已上收 RootNote 托管节框架（0.4.3 内核②，notes-043-rootnote）：锚点补建/幂等去重/裁尾/备注区保留
     //   由 src/host/rootnote.js rootNoteRender 统一实现——runLog 是首个消费者，行为等价迁移（节 59 断言不改语义仍全绿 = 等价证明）。
@@ -4121,36 +4325,74 @@ export function apply(ctx) {
       head: SCHED_RUNLOG_HEAD,
       max: SCHED_RUNLOG_MAX,
       newestFirst: true,
-      // 行幂等键：行内 note-dispatch-* msgId（缺省退整行）
+      // 行幂等键：回执族 = 行内 note-dispatch-* msgId；派发行（无 msgId）= 整行（秒级时刻+会话+指令摘要区分连发）
       keyOfLine: function (l) { const m = l.match(/(note-dispatch-\S+)/); return m ? m[1] : l },
-      // 条目幂等键：msgId（=lastRun.receiptId）——与正文 indexOf 命中同口径
-      keyOfEntry: function (d) { return d.msgId },
-      lineOf: function (d) { return schedRunLogLine(d) },
-      linkOf: function (note) { return note.schedule && note.schedule.runLog },
-      // 软链回写 schedule.runLog：直读最新笔记对象防 tick 在途改写被覆盖（机器状态回写，不产生历史快照）
+      // 条目幂等键：回执 = msgId（=lastRun.receiptId）——与正文 indexOf 命中同口径；派发 = 整行渲染（正文子串命中同口径）
+      keyOfEntry: function (d) { return d._dispatch ? schedRunLogDispatchLine(d) : d.msgId },
+      lineOf: function (d) { return d._dispatch ? schedRunLogDispatchLine(d) : schedRunLogLine(d) },
+      // 软链键统一 runLog（0.4.4-A 裁决·三表归一）：调度约定读 schedule.runLog（存量继承），非调度派发源笔记读顶层 runLog
+      linkOf: function (note) { return (note.schedule && note.schedule.runLog) || note.runLog || '' },
+      // 软链回写：调度约定写 schedule.runLog、非调度写顶层 runLog（直读最新笔记对象防 tick 在途改写被覆盖；机器状态回写零历史快照）；
+      //   顺手给执行记录笔记落 refNote=源笔记 id 回链（0.4.4-A 设计① 双端跳转的机器键；同 { history:false } 口径）
       writeLink: async function (note, rlId) {
         const fresh = await loadNote(note.id)
-        if (fresh && !fresh.deleted && !fresh.tombstoned && fresh.schedule) {
-          fresh.schedule = Object.assign({}, fresh.schedule, { runLog: rlId })
+        if (fresh && !fresh.deleted && !fresh.tombstoned) {
+          if (fresh.schedule) fresh.schedule = Object.assign({}, fresh.schedule, { runLog: rlId })
+          else fresh.runLog = rlId
           fresh.updatedAt = new Date().toISOString()
           try { await persistNote(fresh, { history: false }) } catch (e) { console.error('notes: schedule runLog link persist failed', note.id, e) }
         }
+        try {
+          const rl = await rootNoteResolve(rlId)
+          if (rl && String(rl.refNote || '') !== String(note.id)) {
+            rl.refNote = String(note.id)
+            rl.updatedAt = new Date().toISOString()
+            await persistNote(rl, { history: false })
+          }
+        } catch (e) {}
       },
-      titleOf: function (note) { return String(note.title || note.id) + ' · 执行记录' },
-      kind: 'sys',
-      folderOf: function (note) { return note.folder || undefined },
+      titleOf: function (note) { return '执行记录 · ' + String(note.title || note.id) },
+      // 0.4.4-A 设计修正（用户最新裁决）：kind=log 工作日志型——注入硬关天然适用（injectForcedOff 强制 inject=false、
+      //   recall 缺省 false），可见/可搜/可编辑照常；存量 kind=sys runLog 零迁移（软链指针无关 kind 照常命中）
+      kind: 'log',
+      // 说明块（preText）：创建正文 = 机器托管声明 + 锚点节（RootNote pre 区逐字节保留）
+      preText: EXEC_LOG_GUIDE,
+      // folder 设计修正（0.4.4-A）：'执行记录' 专用夹——缺省未分类（undefined）；_schedRunLogAppend 懒创建路径先 ensure 夹条目再覆写为夹 id
+      folderOf: function (note) { return undefined },
       topicOf: function (note) { return note.topic || '未分类' }
     }
-    // 回执落盘挂钩（三通道共用：dispatch.js _receiptDispatchesForSession idle 事件 / _dispatchDone 手动标记、notes.js _update resolved 保底）。
-    //   仅 dispatch-schedule 约定生效（其余笔记零开销直通返回）；schedule.runLog 空/失效 → 懒创建执行记录笔记并回写软链；条目追加幂等。
-    //   异常全量吞掉——执行记录是观察面产物，任何故障绝不扩散到回执主链路（同 tick 吞异常裁决）。
+    // 执行记录文件夹 ensure（0.4.4-A 设计修正②）：「执行记录」专用文件夹懒创建——resolveFolderRef 命中（id/名称双通道）直接复用；
+    //   未命中经 rootNoteCreateLock 串行化创建 + 锁内双检（并发首建竞态消除；同 ledger「记忆档案」_ledgerArchiveFolderEnsure 先例）。
+    //   红线：必须在 rootNoteAppendEnsured 的创建锁之外调用（嵌套同链 = 自死锁，rootnote 红线③）；失败 → '' 降级未分类，不扩散主链路。
+    async function _execLogFolderEnsure() {
+      try {
+        const hit = await resolveFolderRef(EXEC_LOG_FOLDER_NAME)
+        if (hit && hit.id) return hit.id
+        return await rootNoteCreateLock(async function () {
+          const again = await resolveFolderRef(EXEC_LOG_FOLDER_NAME)   // 锁内双检：并发 ensure 前者产物已落 folders.json，命中即复用
+          if (again && again.id) return again.id
+          const c = await _folders({ op: 'create', name: EXEC_LOG_FOLDER_NAME })
+          return (c && c.ok && c.folder) ? c.folder.id : ''
+        })
+      } catch (e) { return '' }
+    }
+    // 执行记录落盘挂钩（0.4.4-A 起全笔记生效·三表归一；四通道共用：dispatch.js _dispatch 派发 📤 / _receiptDispatchesForSession
+    //   idle 事件 📥 / _dispatchDone 手动标记 ✅ / notes.js _update resolved 保底 📥）。
+    //   软链空/失效 → 懒创建执行记录笔记并回写软链；条目追加幂等；异常全量吞掉——执行记录是观察面产物，任何故障绝不扩散派发/回执主链路。
     async function _schedRunLogAppend(note, entries) {
       try {
-        if (!note || (note.contractType || '') !== SCHEDULE_CONTRACT_TYPE || !note.schedule) return
-        const items = (entries || []).filter(function (d) { return d && d.msgId })
+        if (!note || !note.id) return
+        const items = (entries || []).filter(function (d) { return d && (d.msgId || d._dispatch) })
         if (!items.length) return
-        // RootNote 框架组合口：懒创建（首条回执）+ 幂等追加 + ≤50 裁尾 + 落盘 { history:false }——异常吞在下方
-        await rootNoteAppendEnsured(note, SCHED_RUNLOG_TPL, items)
+        let tpl = SCHED_RUNLOG_TPL
+        // 懒创建路径才 ensure 归夹（0.4.4-A 设计修正：folder='执行记录' 专用夹——folders.json 条目懒创建；
+        //   在 rootNoteAppendEnsured 创建锁外求值（嵌套同链 = 自死锁红线不触）；ensure 失败 → '' 降级未分类）
+        if (!((note.schedule && note.schedule.runLog) || note.runLog)) {
+          const fid = await _execLogFolderEnsure()
+          if (fid) tpl = Object.assign({}, SCHED_RUNLOG_TPL, { folderOf: function () { return fid } })
+        }
+        // RootNote 框架组合口：懒创建（首条派发/回执）+ 幂等追加 + ≤50 裁尾 + 落盘 { history:false }——异常吞在下方
+        await rootNoteAppendEnsured(note, tpl, items)
       } catch (e) { console.error('notes: schedule runLog append failed', note && note.id, e) }
     }
     // ==== schedule-runlog END ====
@@ -4173,30 +4415,27 @@ export function apply(ctx) {
       return false
     }
 
-    // 上下文注入（约定桶 + 单一目录段）：从常驻内存 cache 同步读取 inject=true 笔记，按 injectRole 分桶注入 agent 系统提示。
+    // 上下文注入（约定桶 + 目录段）：从常驻内存 cache 同步读取 inject=true 笔记，按 injectRole 分桶注入 agent 系统提示。
     // text 是同步函数（systemPrompt 契约），故不能 await _list()，必须读 cache。
     // 是否注入：inject 布尔字段（noteFromParsed 已对旧数据回退到 convention 标签）；
     // 注入范围由笔记的 injectTo 字段决定（命中语义见 conventionHit）。
     // 分桶：injectRole='convention' → 用户约定（须遵守，全文注入，红线零触碰）；挂载行 = 注入索引根笔记 §1 逐行（0.4.3⑤ 管线载荷）。
-    // 0.4.3 验收修复③（notes-043-dir-merge）：目录与资料桶合并为单一「笔记目录」段（order 130 唯一 context，原 order 131 撤销）——
-    //   挂载行排前（§1 行原样进段 = 目录行的增强态/载荷）；普通目录行排后（catalogEnabled===true 才填充，缺省关，
-    //   排除已挂载 id/已注入约定/deleted/resolved/superseded/recall=false 口径全保留）；预算省略顺序 = 先砍普通行、再砍挂载行
-    //   （挂载行内部仍 updatedAt 降序从旧整条省略）；尾部提示行（价值信号行[0.4.3⑥]/截断省略计数/脱敏/日志计数/note_get 引导/轻推）归属本段尾部；
-    //   catalog 关且无挂载行 → 目录段整段为空。约定桶与索引 §1 行格式零变化（红线）。
+    // 0.4.4-E（notes-044-catalog-remove）：「目录段补充未挂载条目」整体移除——全库平铺普通行与「资料=显式挂载」模型冲突，
+    //   挂载行（注入索引 §1 管线载荷）是目录段唯一内容源；catalogEnabled 设置分支/UI 开关/预览徽标/catalog 遥测埋点/catalog 兼容别名一并退役
+    //   （用户 settings.json 存量 catalogEnabled 键保留不迁移 = 惰性死键无人读；recall 字段随之失去最后消费方，保留 dormant 读写兼容，
+    //   0.4.5 清理卡统一裁决退役；staleDays 的 ⚠ 注入标注呈现面随普通行拆除——现存唯一消费方 = 整理建议器过期候选提名（memory.js suggestCandidates））。
+    // 目录段语义：挂载行排前（§1 行原样进段）+ 挂载 note_get 引导 + 尾部提示行（价值信号行[0.4.3⑥]/预算省略计数/约定脱敏计数/日志计数尾行/规划轻推）；
+    //   无挂载行且无日志 → 目录段整段为空。约定桶与索引 §1 行格式零变化（红线）。
     // 文案不再标注工作区归属与来源会话：大量笔记由 agent 快速记录产生，归属标注对注入方无意义。
     // sidOverride（注入预览 RPC 专用）：不传 = 真实注入路径（取当前会话，行为不变）；传 '' = 「全局」视角（只命中 injectTo=[] 的笔记）；
     // 传会话短 id = 按该会话 injectTo 命中过滤；传会话短 id 数组 = 工作区并集视角（workspace 参数，命中集合内任一会话即视为命中）。
-    // renderInjected 返回 { full, conventions, directory, catalog }：full = order 130 注入全文（conventionText 口径）；
-    //   conventions = 约定段文本（引导词 + 约定桶）；directory = 目录段文本（含尾部提示行）；
-    //   catalog = 兼容别名 = directory 中普通行部分（notes-inject-preview 旧字段保留，0.4.3③ 起语义 = 目录补充行）。
-    // CATALOG_LIMIT：普通目录行封顶（挂载行=载荷不受此限）；CATALOG_KIND_LABELS：kind 中文映射（0.4.3⑥ +sys 系统根笔记）
-    const CATALOG_LIMIT = 40
-    const CATALOG_KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '系统' }
+    // renderInjected 返回 { full, conventions, directory }：full = order 130 注入全文（conventionText 口径）；
+    //   conventions = 约定段文本（引导词 + 约定桶）；directory = 目录段文本（含尾部提示行）。
     // 注入价值信号行（0.4.3 验收修复⑥ notes-043-metrics-present，三层架构收口之呈现层）：
     // 数据源 = telemetry 内存缓存的账本快照（_telemetryCache.ledger——cron/手动 _ledgerRefresh 经 _telemetrySetLedger 写入）：
     //   同步读内存权威，零磁盘零 await（renderInjected 同步契约守住）；存储未加载/无快照/快照无命中 → 整行省略（静默降级，不占位不报错）。
     // 快照原子性（构造性保证，节 78 断言④看守）：本行与本次渲染目录行在同一同步装配时刻现算，提及 id 一律过滤到
-    //   存活目录行 id 集（预算省略后挂载行 + 目录普通行）——信号行与目录行构造性同版本；约定桶全文条目不进目录行 → 不出现。
+    //   存活目录行 id 集（预算省略后挂载行——0.4.4-E 起目录段唯挂载行源）——信号行与目录行构造性同版本；约定桶全文条目不进目录行 → 不出现。
     // 埋点纪律：纯读零写（零 _recallRaw/_telemetry 写入）——render→record 顺序不变，本次装配自排除（信号反映装配前存量快照）。
     // 用途分级红线：本行只服务注入呈现（Top3 + 零引用候选首条紧凑信号，≤200 字符截断）；正确性判断/清理裁决必须走
     //   notes-recall-stats 全量或人工（README 治理节明示）。
@@ -4225,7 +4464,7 @@ export function apply(ctx) {
       } catch (e) { return '' }
     }
     function renderInjected(sidOverride) {
-      const EMPTY = { full: '', conventions: '', directory: '', catalog: '' }
+      const EMPTY = { full: '', conventions: '', directory: '' }
       lastConvStats.masked = 0; lastConvStats.budgetTruncated = false
       lastCatStats.masked = 0; lastCatStats.stale = 0
       try {
@@ -4259,55 +4498,12 @@ export function apply(ctx) {
           .map(function (l) { const n = cache.get(l.id); return { id: l.id, raw: l.raw, ts: (n && !n.deleted && !n.tombstoned && n.updatedAt) || '' } })
           .sort(function (a, b) { return (b.ts || '').localeCompare(a.ts || '') })
         const refLines = refBlocks.map(function (it) { return it.raw })
-        // 挂载 id 集：普通目录行去重（已挂载条目 = 增强态行排前，不以普通行重复出现）
-        const mountedIds = {}
-        for (const rb of refBlocks) mountedIds[rb.id] = true
-        // ---- 目录段普通行（面板总开关 settings.json，缺省关——显式 true 才填充；0.4.3 验收修复卡①白名单语义沿用）----
-        // 准入口径不变：排除 deleted、status=resolved/superseded（已了结不进目录）、recall=false（逐条关闭）、
-        // 约定注入去重（inject=true 且本会话命中 → 全文已在约定桶）、已挂载 id（增强态排前）；
-        // 排序 pinned 优先 → updatedAt 降序（注入无工作区维度）；日志只出计数提示行（recall 缺省 false 不含日志，不刷屏）
-        const catLines = []
-        const catIds = []
-        let catShown = []
+        // 日志计数尾行（段尾提示，0.4.4-E 保留）：原 catalog 普通行分支内的计数随拆除移到段装配层，口径放宽为全量未删除日志——
+        // recall=true 显式豁免进目录的通道已随 catalog 拆除（目录段唯挂载行源），计数尾行是日志存在性的唯一注入面提示
         let logCount = 0
-        let overflowCount = 0
-        let catMasked = 0   // 目录普通行标题打码计数（sensitive=true 同样按行打码防标题泄值 + 🔒 标记；尾部提示行）
-        let staleCount = 0   // 预览统计：被 ⚠ 时效标注的条目数
-        if (settingsCache && settingsCache.catalogEnabled === true) {
-          const pool = []
-          for (const n of cache.values()) {
-            if (n.deleted) continue
-            if ((n.kind || 'note') === 'log' && n.recall !== true) { logCount++; continue }   // 日志同权（0.4.3⑦）：目录缺省不含（recall 缺省 false）；显式 recall=true 按普通条目进目录（可进目录·显式豁免）
-            if (n.status === 'resolved' || n.status === 'superseded') continue   // 已了结的笔记不进目录
-            if (n.recall === false) continue                                     // recall=false 逐条关闭
-            if (n.inject === true && conventionHit(n, ws, curSid)) continue      // 约定注入去重（全文已在约定桶）
-            if (mountedIds[n.id]) continue                                       // 已挂载去重（增强态行排前，不重复出现）
-            pool.push(n)
-          }
-          pool.sort((x, y) => {
-            const px = x.status === 'pinned' ? 1 : 0
-            const py = y.status === 'pinned' ? 1 : 0
-            if (px !== py) return py - px                                        // pinned 优先
-            return (y.updatedAt || '').localeCompare(x.updatedAt || '')          // 更新时间降序
-          })
-          catShown = pool.slice(0, CATALOG_LIMIT)
-          overflowCount = pool.length - catShown.length
-          // P1 时效衰减提醒：kind=note/link（参考资料类）且 updatedAt 距今超过 staleDays（缺省 90 天，0=关闭）的行尾追加 ⚠ 标注
-          const staleLimit = staleDaysLimit()
-          for (const n of catShown) {
-            const kl = CATALOG_KIND_LABELS[n.kind] || CATALOG_KIND_LABELS.note
-            let title = String(n.title || 'Untitled').replace(/[\r\n]+/g, ' ')   // 一行一条：标题换行收拢
-            let mark = ''
-            if (n.sensitive === true) { catMasked++; title = maskSensitiveLine(title, n.id); mark = '🔒 ' }
-            let line = '- [' + n.id + '] ' + mark + title + ' (' + kl + ', ' + (n.topic || '未分类') + ')'
-            const sd = staleDaysOf(n.updatedAt, (n.kind === 'note' || n.kind === 'link') ? staleLimit : 0)
-            if (sd > 0) { staleCount++; line += ' ⚠ ' + sd + ' 天未更新' }
-            catLines.push(line)
-            catIds.push(n.id)
-          }
-        }
-        // 空判：约定零命中 + 无挂载行 + 目录段无普通行/无日志计数 → 整段为空不注入（catalog 关且无挂载行 → 目录段整段空）
-        if (conventions.length === 0 && refLines.length === 0 && catLines.length === 0 && logCount === 0) { if (sidOverride === undefined) lastInjectChars = 0; return EMPTY }
+        for (const n of cache.values()) { if (!n.deleted && (n.kind || 'note') === 'log') logCount++ }
+        // 空判：约定零命中 + 无挂载行 + 无日志计数 → 整段为空不注入
+        if (conventions.length === 0 && refLines.length === 0 && logCount === 0) { if (sidOverride === undefined) lastInjectChars = 0; return EMPTY }
         // 敏感脱敏：sensitive=true 的约定正文按行打码（键保留值遮蔽，见 sensitive-helpers 块），计数用于尾部提示行
         let maskedCount = 0
         const block = (n) => {
@@ -4317,65 +4513,51 @@ export function apply(ctx) {
         }
         const head = '以下是注入的上下文笔记（与当前任务无关时忽略）：'
         const convPart = conventions.length ? '\n\n用户约定（须遵守）：\n\n' + conventions.map(block).join('\n\n') : ''
-        // 目录段拼装（预算省略循环反复重算，故为函数）：挂载行排前 + 挂载 note_get 引导 + 普通行排后 + 溢出/脱敏/日志计数 + 规划轻推行
+        // 目录段拼装（预算省略循环反复重算，故为函数）：挂载行 + 挂载 note_get 引导 + 日志计数尾行 + 规划轻推行
         const dirBody = () => {
-          if (refLines.length === 0 && catLines.length === 0 && logCount === 0) return ''
+          if (refLines.length === 0 && logCount === 0) return ''
           let d = '\n\n本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：\n\n'
           if (refLines.length) d += refLines.join('\n') + '\n\n（以上为挂载索引行：正文用 note_get <id> 获取）'
-          if (catLines.length) d += (refLines.length ? '\n\n' : '') + catLines.join('\n')
-          if (overflowCount > 0 && catLines.length > 0) d += '\n…另有 ' + overflowCount + ' 条较早笔记，用 note_search 检索'
-          if (catMasked > 0 && catLines.length > 0) d += '\n（其中 ' + catMasked + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）'
-          if (logCount > 0) d += '\n另有 ' + logCount + ' 条工作日志（kind=log，目录缺省不含），note_search 可检索'
+          if (logCount > 0) d += '\n另有 ' + logCount + ' 条工作日志（kind=log，注入不含），note_search 可检索'
           d += '\n规划任务前，若目录中有相关笔记（尤其待办/决策），建议先 note_get 读取再动手'
           return d
         }
-        // P1 注入体积预算（约，按字符数近似统计，不引 token 计算库）：约定桶永不截断；目录段省略顺序 = 先砍普通行（尾部=较旧），
-        // 再砍挂载行（内部仍 updatedAt 降序从旧整条省略），直至总长度回到预算内或目录段为空；省略计数在尾部提示行告知（note_search 可检索原文）
+        // P1 注入体积预算（约，按字符数近似统计，不引 token 计算库）：约定桶永不截断；目录段 = 挂载行单源（0.4.4-E），
+        // 超预算时挂载行内部仍 updatedAt 降序从旧整条省略，直至总长度回到预算内或目录段为空；省略计数在尾部提示行告知（note_search 可检索原文）
         const budget = injectBudgetChars()
-        let droppedCat = 0
         let droppedRefs = 0
         if (budget > 0) {
-          while ((catLines.length > 0 || refLines.length > 0) && (head + convPart + dirBody()).length > budget) {
-            if (catLines.length > 0) { catLines.pop(); catIds.pop(); droppedCat++ }
-            else { refLines.pop(); droppedRefs++ }
-          }
+          while (refLines.length > 0 && (head + convPart + dirBody()).length > budget) { refLines.pop(); droppedRefs++ }
         }
         const convText = head + convPart
         let full = convText + dirBody()
         if (full.length > 4000) full = full.slice(0, 4000) + '\n\n（内容过长已截断）'
-        // 尾部提示行恒定可见（截断之后追加）：价值信号行（卡⑥，先渲染后记账——本行纯读内存快照，随后的 _recallRaw 才记账）+ 预算省略计数（普通行+挂载行合计）+ 约定脱敏计数 + 图片路径消歧
-        const droppedTotal = droppedCat + droppedRefs
-        // 快照原子性锚（卡⑥）：存活目录行 id 集 = 预算省略后挂载行（refBlocks 前 refLines.length 项）+ 目录普通行 catIds；
+        // 尾部提示行恒定可见（截断之后追加）：价值信号行（卡⑥，先渲染后记账——本行纯读内存快照，随后的 _recallRaw 才记账）+ 预算省略计数（挂载行）+ 约定脱敏计数 + 图片路径消歧
+        // 快照原子性锚（卡⑥）：存活目录行 id 集 = 预算省略后挂载行（refBlocks 前 refLines.length 项——0.4.4-E 起目录段唯挂载行源）；
         //   信号行与目录行同一同步装配时刻现算，构造性同版本（节 78 断言④：信号行 id ⊆ 本集）
-        const dirIds = refBlocks.slice(0, refLines.length).map(function (it) { return it.id }).concat(catIds)
+        const dirIds = refBlocks.slice(0, refLines.length).map(function (it) { return it.id })
         const sigLine = _valueSignalLine(dirIds)
         let tailLines = sigLine ? '\n\n' + sigLine : ''
-        if (droppedTotal > 0) tailLines += '\n\n…另有 ' + droppedTotal + ' 条目录行超出预算未注入（note_search 可检索）'
+        if (droppedRefs > 0) tailLines += '\n\n…另有 ' + droppedRefs + ' 条目录行超出预算未注入（note_search 可检索）'
         if (maskedCount > 0) tailLines += '\n\n（其中 ' + maskedCount + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）'
-        // 图片路径消歧（img-path-hint 块）：实际注入的约定正文或目录段普通行条目正文含 assets/ 图片引用时，尾部追加一次绝对路径提示（合并段后全量只出一次）
-        if (conventions.some(function (n) { return bodyHasImageRef(n.body) }) || catShown.some(function (n) { return bodyHasImageRef(n.body) })) tailLines += '\n\n' + assetsHintLine(NOTES_ROOT)
+        // 图片路径消歧（img-path-hint 块）：实际注入的约定正文含 assets/ 图片引用时，尾部追加一次绝对路径提示（全量只出一次）
+        if (conventions.some(function (n) { return bodyHasImageRef(n.body) })) tailLines += '\n\n' + assetsHintLine(NOTES_ROOT)
         full += tailLines
-        // 预览统计：约定脱敏条数 + 预算截断标记（目录段有省略即视为截断）+ 目录打码/时效标注计数；预览渲染不触碰 lastInjectChars
-        lastConvStats.masked = maskedCount; lastConvStats.budgetTruncated = droppedTotal > 0
-        lastCatStats.masked = catMasked; lastCatStats.stale = staleCount   // 预览统计（notes-inject-preview）
+        // 预览统计：约定脱敏条数 + 预算截断标记（目录段有省略即视为截断）；预览渲染不触碰 lastInjectChars；
+        // lastCatStats（原目录普通行打码/时效计数）随 0.4.4-E catalog 拆除恒 0（stats.maskedNotes/staleMarked 字段保留 = 约定桶口径）
+        lastConvStats.masked = maskedCount; lastConvStats.budgetTruncated = droppedRefs > 0
         if (sidOverride === undefined) lastInjectChars = full.length   // 注入体积缓存：真实注入渲染才更新（设置卡片仪表数据源）
         // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：真实注入路径才记（预览 sidOverride 不计），签名去重 + 静默降级（recall-telemetry 块）；
-        // 0.4.3③ 合并段口径：inject 通道 ids = 约定 + 存活挂载行 id 集（refLines 尾部省略 → 存活 = refBlocks 前 refLines.length 项）；
-        // catalog 通道 ids = 实际渲染普通行 id 集（语义 = 目录补充行通道，两侧不混计；空集 _recallRaw 自动不记）
+        // inject 通道 ids = 约定 + 存活挂载行 id 集（refLines 尾部省略 → 存活 = refBlocks 前 refLines.length 项）；
+        // 0.4.4-E：catalog 通道埋点随「目录补充行」拆除退役（recall.js 通道结构保留 dormant，永不再产事件）
         if (sidOverride === undefined) {
           _recallRaw('inject', conventions.map(function (n) { return n.id }).concat(refBlocks.slice(0, refLines.length).map(function (it) { return it.id })), curSid)
-          _recallRaw('catalog', catIds, curSid)
         }
-        // 预览拆分：conventions = 约定段（截断口径）；directory = 目录段 + 尾部提示行（totalChars = 两者之和保持）；
-        // catalog 兼容别名 = 目录段普通行部分（含溢出/脱敏/日志计数行）
+        // 预览拆分：conventions = 约定段（截断口径）；directory = 目录段 + 尾部提示行（totalChars = 两者之和保持）
         const convShown = full.slice(0, Math.min(convText.length, full.length))
         const dirShown = full.slice(convShown.length)
-        let catAlias = catLines.join('\n')
-        if (overflowCount > 0 && catLines.length > 0) catAlias += '\n…另有 ' + overflowCount + ' 条较早笔记，用 note_search 检索'
-        if (catMasked > 0 && catLines.length > 0) catAlias += '\n（其中 ' + catMasked + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）'
-        if (logCount > 0) catAlias += (catAlias ? '\n' : '') + '另有 ' + logCount + ' 条工作日志（kind=log，目录缺省不含），note_search 可检索'
-        return { full: full, conventions: convShown, directory: dirShown, catalog: catAlias }
-      } catch (e) { return { full: '', conventions: '', directory: '', catalog: '' } }
+        return { full: full, conventions: convShown, directory: dirShown }
+      } catch (e) { return { full: '', conventions: '', directory: '' } }
     }
     function conventionText(sidOverride) { return renderInjected(sidOverride).full }
 
@@ -4388,14 +4570,13 @@ export function apply(ctx) {
     // 0.4.3③ 起附 conventions/directory 分段（text = 全文 = conventions + directory，向后兼容）
     disposers.push(handle('notes-conventions', async () => { const r = renderInjected(); return { text: r.full, conventions: r.conventions, directory: r.directory } }))
     // 注入预览（设置卡片「注入预览」modal 数据源）：纯复用 renderInjected 渲染产物 + 统计，不重写拼装。
-    // 返回结构 0.4.3③：{ conventions, directory, stats }；catalog 字段保留为兼容别名 = directory 中普通行部分（目录补充行）。
+    // 返回结构 0.4.4-E：{ conventions, directory, stats }（0.4.3③ 的 catalog 兼容别名 + stats.catalogEnabled/catalogChars
+    // 随「目录补充行」整体拆除退役——目录段唯挂载行源，无普通行可别名）。
     // 三档视角：args.sessionId（会话 id/短 id）= 单会话 injectTo 命中口径（conventionHit 同一口径）；
     // args.workspace（工作区标题，notes-sessions 的 workspace 字段）= 该工作区全部会话的注入并集（会话短 id 集合与 injectTo 求交）；
     // 两者缺省 = 「全局」视角（sidOverride=''，只命中 injectTo=[] / 存量 global/workspace 的笔记）。
     // sessionId 与 workspace 互斥、同传时 sessionId 优先；workspace 经 _activeSessions 解析（与 UI 下拉同一数据源 notes-sessions，pending 占位会话同计入——标题未补齐不影响命中）。
-    // 预览渲染不更新 lastInjectChars（仪表只反映真实注入）；统计取自同步渲染的 lastConvStats/lastCatStats（无竞态）。
-    // 0.4.3 验收修复⑫（notes-043-final-polish）：stats + catalogEnabled 布尔——预览统计条「目录补充行：开/关」徽标数据源
-    // （与 renderInjected 目录普通行填充读同一 settingsCache 口径，显式 true 才为开；stats 尾加字段，存量消费方零破坏）。
+    // 预览渲染不更新 lastInjectChars（仪表只反映真实注入）；统计取自同步渲染的 lastConvStats/lastCatStats（无竞态；lastCatStats 恒 0 = 原目录普通行统计随拆除归零）。
     disposers.push(handle('notes-inject-preview', async (args) => {
       try {
         const sid = args && args.sessionId ? shortSid(String(args.sessionId)) : ''
@@ -4412,16 +4593,13 @@ export function apply(ctx) {
         return {
           conventions: r.conventions,
           directory: r.directory,
-          catalog: r.catalog,
           stats: {
             conventionsChars: r.conventions.length,
             directoryChars: r.directory.length,
-            catalogChars: r.catalog.length,
             totalChars: r.full.length,
             maskedNotes: lastConvStats.masked + lastCatStats.masked,
             staleMarked: lastCatStats.stale,
-            budgetTruncated: lastConvStats.budgetTruncated,
-            catalogEnabled: !!(settingsCache && settingsCache.catalogEnabled === true)
+            budgetTruncated: lastConvStats.budgetTruncated
           }
         }
       } catch (e) { return { error: String(e.message || e) } }
@@ -4433,7 +4611,9 @@ export function apply(ctx) {
       try { await loadSettings(); return { settings: settingsCache, models: await listAvailableModels(), lastInjectChars: lastInjectChars } }
       catch (e) { return { settings: settingsCache || {}, models: [], lastInjectChars: lastInjectChars, error: String(e.message || e) } }
     }))
-    // 设置保存（client 选择即保存）：浅合并顶层键；llm 为 null 恢复跟随会话；catalogEnabled 为 null 恢复缺省关
+    // 设置保存（client 选择即保存）：白名单顶层键；llm 为 null 恢复跟随会话；
+    // 0.4.4-E：catalogEnabled 分支已随「目录补充行」拆除——该键现为未知键静默忽略（不报错不落盘）；
+    // 用户存量 settings.json 残留的 catalogEnabled:true 保留不迁移（惰性死键无人读，加载即躺在 settingsCache 但无任何消费方）
     disposers.push(handle('notes-settings-set', async (args) => {
       try {
         await loadSettings()
@@ -4448,13 +4628,9 @@ export function apply(ctx) {
             settingsCache.llm = { provider: provider, model: model }
           }
         }
-        // 目录索引注入总开关：布尔直存；null/undefined 删除 override（缺省 = 关，显式 true 才开启）
-        if ('catalogEnabled' in patch) {
-          if (patch.catalogEnabled === null || patch.catalogEnabled === undefined) delete settingsCache.catalogEnabled
-          else if (typeof patch.catalogEnabled === 'boolean') settingsCache.catalogEnabled = patch.catalogEnabled
-          else return { error: 'notes-settings-set: catalogEnabled 需要布尔值（或 null 恢复缺省关）' }
-        }
-        // P1 时效衰减提醒阈值（天）：非负数值取整直存；null/undefined 删除 override（缺省 90）；0 = 关闭标注
+        // P1 时效阈值（天）：非负数值取整直存；null/undefined 删除 override（缺省 90）；0 = 关闭
+        // （0.4.4-E：⚠ 注入标注呈现面 = 目录普通行，已随 catalog 拆除；现存唯一消费方 = 整理建议器过期候选提名
+        //   （memory.js suggestCandidates）——设置行保留服务该口径，读写兼容不迁移）
         if ('staleDays' in patch) {
           if (patch.staleDays === null || patch.staleDays === undefined) delete settingsCache.staleDays
           else if (typeof patch.staleDays === 'number' && isFinite(patch.staleDays) && patch.staleDays >= 0) settingsCache.staleDays = Math.floor(patch.staleDays)
@@ -4898,7 +5074,7 @@ export function apply(ctx) {
     }
     // 引导模板全文（§5.2）：时机/写法/同权口径（0.4.3⑦ 日志同权）/检索入口 + 【分工边界】必需段落（车道内容分工：日志只收工作结论，反馈仍走反馈约定——
     // 车道并行语义下两边可对同一事件各自产出，分工段约定的是「各车道收什么内容」，非冲突检测）
-    const MEMORY_GUIDE_BODY = '【工作约定】会话工作沉淀（工作记忆 v0）\n\n在以下时机把本会话的工作结论沉淀为工作日志（note_manage，kind=log）：\n- 一个任务或阶段完成时（尤其看板任务验收/上线后）；\n- 用户显式说「记一下 / 沉淀一下 / 写工作日志」时；\n- 会话明显收尾（用户道别、长时间无新指令前的最后回合）。\n\n写法：\n1. 先 note_manage list（kind=log）查本会话今天是否已有日志：\n   有 → update 追加一节「## HH:mm 续」；无 → create（模板骨架见 KIND_TEMPLATES.log）。\n2. folder 传「工作日志」。日志与普通笔记同权：可见/可搜索/可编辑；\n   注入硬禁（无需也不能开 inject）；目录索引缺省不含——recall 保持默认（显式 true 可进目录）。\n3. 返回 sensitiveSuggested=true 时必须补 sensitive: true。\n4. 「相关笔记」一节用 [[n-xxxxxxxx]] 双链引用本库笔记。\n5. 查历史工作日志：note_search 直接检索（日志已在默认搜索内；传 kind=log 只看日志）。\n\n【分工边界】本约定只管「会话工作结论沉淀」（做了什么/改了什么/遗留什么）。\n产品使用问题与体验反馈**不写入工作日志**——若同时注入了「看板反馈」\n「笔记反馈」类约定，那些内容按那些约定记到对应文件夹。两者正交、\n互不替代、互不合并。\n'
+    const MEMORY_GUIDE_BODY = '【工作约定】会话工作沉淀（工作记忆 v0）\n\n在以下时机把本会话的工作结论沉淀为工作日志（note_manage，kind=log）：\n- 一个任务或阶段完成时（尤其看板任务验收/上线后）；\n- 用户显式说「记一下 / 沉淀一下 / 写工作日志」时；\n- 会话明显收尾（用户道别、长时间无新指令前的最后回合）。\n\n写法：\n1. 先 note_manage list（kind=log）查本会话今天是否已有日志：\n   有 → update 追加一节「## HH:mm 续」；无 → create（模板骨架见 KIND_TEMPLATES.log）。\n2. folder 传「工作日志」。日志与普通笔记同权：可见/可搜索/可编辑；\n   注入硬禁（无需也不能开 inject）；目录索引缺省不含（0.4.4-E 起目录段唯挂载行源；recall 字段 dormant——读写兼容但无注入效果，保持默认即可）。\n3. 返回 sensitiveSuggested=true 时必须补 sensitive: true。\n4. 「相关笔记」一节用 [[n-xxxxxxxx]] 双链引用本库笔记。\n5. 查历史工作日志：note_search 直接检索（日志已在默认搜索内；传 kind=log 只看日志）。\n\n【分工边界】本约定只管「会话工作结论沉淀」（做了什么/改了什么/遗留什么）。\n产品使用问题与体验反馈**不写入工作日志**——若同时注入了「看板反馈」\n「笔记反馈」类约定，那些内容按那些约定记到对应文件夹。两者正交、\n互不替代、互不合并。\n'
     async function _memoryGuide(args) {
       const a = args || {}
       const op = a.op || 'status'
@@ -5536,7 +5712,7 @@ export function apply(ctx) {
     // RPC 层保持 handler 不变（client panel 仍在用）；工具只面向 Agent，瘦身 schema。
     regTool({
       name: 'note_search',
-      description: 'Search local notes by free-text query (matches title/body/topic/tags), with optional tag, topic, kind, folder, sensitive, and inject filters. When a query is given, each result carries a matches array telling which fields matched (title/tags/body — relevance: title > tags > body). Returns slim notes (no body) for fast triage — call note_get for the full body of a specific id. Work logs (kind=log) are first-class: default results INCLUDE them (visible/searchable/editable like any note) — pass kind=log to see only work logs; only injection is hard-disabled for logs and catalog inclusion stays explicit (recall:true). Machine-managed sys notes (kind=sys: inject index, memory archives「记忆档案」, schedule execution logs, telemetry mirror) are excluded from default unfiltered results — pass kind=sys (or a tag/folder filter) to see them. Tip: when planning a task, picking an approach, or making decisions, consider searching this notes library first for related decisions, todos, and context recorded in earlier sessions — it may already contain the conclusions you need.',
+      description: 'Search local notes by free-text query (matches title/body/topic/tags), with optional tag, topic, kind, folder, sensitive, and inject filters. When a query is given, each result carries a matches array telling which fields matched (title/tags/body — relevance: title > tags > body). Returns slim notes (no body) for fast triage — call note_get for the full body of a specific id. Work logs (kind=log) are first-class: default results INCLUDE them (visible/searchable/editable like any note) — pass kind=log to see only work logs; injection is hard-disabled for logs (no toggle, host-enforced). Machine-managed sys notes (kind=sys: inject index, memory archives「记忆档案」, telemetry mirror) are excluded from default unfiltered results — pass kind=sys (or a tag/folder filter) to see them. Dispatch execution-record companion notes「执行记录 · <源标题>」(0.4.4-A) are kind=log in folder「执行记录」— first-class visible/searchable/editable like other logs, injection hard-disabled, maintained by the dispatch pipeline (do not manually clean up). Tip: when planning a task, picking an approach, or making decisions, consider searching this notes library first for related decisions, todos, and context recorded in earlier sessions — it may already contain the conclusions you need.',
       parameters: {
         type: 'object',
         properties: {
@@ -5596,21 +5772,22 @@ export function apply(ctx) {
     regTool({
       name: 'note_manage',
       description: 'Single tool for create/list/update/delete/restore/archive. Pick an action and supply its required fields. The Agent should prefer this for any non-search CRUD: one tool means one decision point and one schema to learn.\n\n' +
-        'Fields kind (what it is) and status (its lifecycle) are orthogonal: kind ∈ note/decision/todo/link/quote/log (default note); status ∈ active/pinned/resolved/superseded (default active). kind=log is a work log (工作日志): first-class in list/search/edit (visible by default) — inject is force-disabled (hard gate, true is corrected with injectForcedOff in the response) and recall defaults false (catalog exclusion; explicit recall:true admits a log to the catalog); put work logs in folder「工作日志」.\n' +
+        'Fields kind (what it is) and status (its lifecycle) are orthogonal: kind ∈ note/decision/todo/link/quote/log (default note); status ∈ active/pinned/resolved/superseded (default active). kind=log is a work log (工作日志): first-class in list/search/edit (visible by default) — inject is force-disabled (hard gate, true is corrected with injectForcedOff in the response) and recall defaults false (the recall field is dormant — see below); put work logs in folder「工作日志」.\n' +
         'inject (boolean) controls whether the note is injected into the system prompt as context — an explicit field, NOT a tag. injectRole ("convention"|"reference", default "convention") picks the injection bucket: convention = user rules to follow; reference = background facts to consult only when relevant to the current task. Rule of thumb — infer from kind: decision/todo → convention, note/link/quote → reference. injectTo (string[]) is the injection scope, a multi-select list: [] or omitted=all sessions (default), or session short-ids like ["99f2b674","7f8b49e6"] to restrict the scope.\n\n' +
-        'recall (boolean) controls whether the note appears in the notes catalog — a one-line-per-note index injected into the system prompt (right after conventions) so you know what the library holds without searching; default true. Set false to hide a note from the catalog (it stays searchable via note_search). Orthogonal to inject; notes with status resolved/superseded never appear in the catalog.\n\n' +
-        'sensitive (boolean) marks the note as containing secrets (passwords/tokens/keys); default false. When true, injected text (conventions/catalog) masks secret-looking lines — keys and structure are kept, only values are hidden as ******（敏感，note_get <id> 获取）— so agents must call note_get for the original. Create/quick responses may return sensitiveSuggested: true when the body matches secret patterns; quick-capture notes are auto-flagged sensitive instead.\n\n' +
-        'folder (string) assigns a note to a virtual folder: pass a folder id or an exact folder name — a name is normalized to its folder id on write, and an unknown id/name is rejected with an error (never silently filed as unfiled); "" or omitted = unfiled (未分类). Folders (name/order/parent) are managed via the notes-folders RPC (list/create/rename/delete/reorder): folders NEST via a parent field (maxFolderDepth setting caps the depth, default 3, 0 = unlimited), any folder filter is a recursive subtree match (a folder includes notes in all its descendant folders), and deleting a folder that still has child folders or notes requires explicit cascade:true — the folder structure is removed for good while its notes are soft-deleted into the trash and can be restored (restored notes fall back to unfiled when their folder is gone).\n\n' +
+        'recall (boolean, default true) is a DORMANT compatibility field: it used to control the notes catalog index (a one-line-per-note flat library listing injected into the system prompt), which was removed entirely in 0.4.4-E — the injected directory section now carries mounted index lines only (a note enters it solely via an explicit mount in the injection index). The field is still accepted and stored (read/write compatible) but has no effect on injection; every note stays searchable via note_search regardless.\n\n' +
+        'sensitive (boolean) marks the note as containing secrets (passwords/tokens/keys); default false. When true, injected text (conventions) masks secret-looking lines — keys and structure are kept, only values are hidden as ******（敏感，note_get <id> 获取）— so agents must call note_get for the original. Create/quick responses may return sensitiveSuggested: true when the body matches secret patterns; quick-capture notes are auto-flagged sensitive instead.\n\n' +
+        'hidden (boolean, default false) is the OS-style hidden attribute (0.4.4-D): hidden notes are masked out of the notes panel tree/lists only — a pure client-side UI filter governed by the panel「显示隐藏」toggle (localStorage-persisted). Agents and all read/write paths are UNAFFECTED: note_search/note_get/note_manage see hidden notes exactly like normal ones, and opening a hidden note via backlink/dispatch/search hit renders and edits normally. Folders carry the same flag via the notes-folders RPC op:\'set-flags\' { id, hidden } (a hidden folder masks its row and its nested subtree from the tree).\n\n' +
+        'folder (string) assigns a note to a virtual folder: pass a folder id or an exact folder name — a name is normalized to its folder id on write, and an unknown id/name is rejected with an error (never silently filed as unfiled); "" or omitted = unfiled (未分类). Folders (name/order/parent/hidden) are managed via the notes-folders RPC (list/create/rename/delete/reorder/set-flags): folders NEST via a parent field (maxFolderDepth setting caps the depth, default 3, 0 = unlimited), any folder filter is a recursive subtree match (a folder includes notes in all its descendant folders), and deleting a folder that still has child folders or notes requires explicit cascade:true — the folder structure is removed for good while its notes are soft-deleted into the trash and can be restored (restored notes fall back to unfiled when their folder is gone).\n\n' +
         'Actions:\n' +
-        '- create: { title, body, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, folder?, sessionId?, cwd?, workspace?, logDate? }\n' +
+        '- create: { title, body, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, hidden?, folder?, sessionId?, cwd?, workspace?, logDate? }\n' +
         '- list: { tag?, topic?, kind?, folder?, includeLogs? } (no id/title/body needed; work logs kind=log are first-class and included by default — includeLogs is a kept no-op for backward compatibility; machine notes kind=sys are excluded from the default unfiltered list — pass kind:\'sys\', tag, or folder to see them)\n' +
-        '- update: { id, title?, body?, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, confirmClearBody? } (setting body to "" while the stored body is non-empty is REJECTED unless confirmClearBody:true — R-1 data-loss guard against silent empty-body overwrite; setting status to "resolved" auto-closes the dispatch loop: all open entries in the note\'s dispatches are marked dispatchStatus=done with doneAt — use this to report completion of a dispatched todo)\n' +
+        '- update: { id, title?, body?, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, hidden?, confirmClearBody? } (setting body to "" while the stored body is non-empty is REJECTED unless confirmClearBody:true — R-1 data-loss guard against silent empty-body overwrite; setting status to "resolved" auto-closes the dispatch loop: all open entries in the note\'s dispatches are marked dispatchStatus=done with doneAt — use this to report completion of a dispatched todo)\n' +
         '- move: { id, folder } (move note into a virtual folder — folders nest, so any folder id at any depth is valid; folder = folder id or exact folder name, "" = move out to unfiled)\n' +
         '- delete: { id } (soft delete; restorable via restore)\n' +
         '- restore: { id } (undo delete/archive)\n' +
         '- archive: { groups? } (explicit archive, undoable once via the notes-archive-undo RPC). groups = whitelist [{memberIds:[noteId,...], title?}]: merge exactly those groups (memberIds must all exist and not be deleted; title overrides the default group title). Without groups: merge ONLY quick-capture notes grouped by session. Behavior change: manual notes are NEVER auto-grouped by tag anymore — pass explicit groups to merge them (preview quick groups first via the notes-archive-preview RPC).\n' +
-        '- dispatch: { id, targetSessionId?, targetSessionName?, instruction? } (assemble the todo context plus your instruction into one user message and send it to a live session as a real task; the handoff is recorded in the note\'s dispatches property with dispatchStatus=sent. Omit targetSessionId to list live sessions. Closed loop: when the target session reports completion via update status=resolved, open dispatches auto-flip to dispatchStatus=done; an idle transition of the target session also writes a receipt.)\n' +
-        'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual, and a lazily-created execution-log note「定时 @标题 · 执行记录」is soft-linked via schedule.runLog — the convention body itself is NEVER appended to (it is the dispatch payload; history would bloat and pollute future dispatch contexts). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived; unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status,receiptId}/lastError/runLog) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
+        '- dispatch: { id, targetSessionId?, targetSessionName?, instruction? } (assemble the todo context plus your instruction into one user message and send it to a live session as a real task — or, when the target session is dormant (not live but persisted), queue it into the session\'s durable inbox with ZERO wake: it is delivered and processed on the session\'s next activity (the dispatch record carries queued:true in that case — 0.4.4-B); the handoff is recorded in the note\'s dispatches property with dispatchStatus=sent, and a 📤 line is appended to the note\'s lazily-created execution-log companion note「执行记录 · <标题>」(kind=log in folder「执行记录」— injection hard-disabled, visible/searchable/editable as usual; soft-linked via schedule.runLog for schedule conventions / top-level runLog field otherwise — 0.4.4-A 三表归一). Omit targetSessionId to list dispatchable sessions (live flag per entry — live:false entries are dormant and get queued delivery). Closed loop: when the target session reports completion via update status=resolved, open dispatches auto-flip to dispatchStatus=done; an idle transition of the target session also writes a receipt.)\n' +
+        'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual, and a lazily-created execution-log note「执行记录 · @标题」is soft-linked via schedule.runLog — shared with manual dispatches of the same note (dispatch 📤 lines + receipt 📥/✅ lines land in one note) — the convention body itself is NEVER appended to (it is the dispatch payload; history would bloat and pollute future dispatch contexts). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived — OR the reserved literal target: \'new\' (periodic mode only — 0.4.4-B dedicated session: the first fire auto-creates a session named 定时 · <title> in the note\'s workspace, writes schedule.target back to the new sid, and every later round reuses that session via live-send or dormant queued delivery); unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status(sent|queued|error),receiptId}/lastError/runLog) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
       parameters: {
         type: 'object',
         properties: {
@@ -5622,21 +5799,22 @@ export function apply(ctx) {
           confirmClearBody: { type: 'boolean', description: 'Explicit confirmation (update only): required when setting body to "" while the stored body is non-empty — R-1 data-loss guard rejects silent empty-body overwrite without it.' },
           topic: { type: 'string', description: 'Topic (create/update; defaults to 未分类)' },
           tags: { type: 'array', items: { type: 'string' }, description: 'Tags (create/update)' },
-          kind: { type: 'string', enum: KINDS, description: 'Kind (create/update): note/decision/todo/link/quote/log/sys; default note. log = work log（同权：默认列表/搜索可见可编辑；inject 强制关闭，recall 缺省 false 目录缺省不含）; sys = 机器托管笔记（缺省列表/检索降噪排除，显式 kind=sys/tag/folder 过滤可见——一般由系统内部创建，手写请改用其他 kind）' },
+          kind: { type: 'string', enum: KINDS, description: 'Kind (create/update): note/decision/todo/link/quote/log/sys; default note. log = work log（同权：默认列表/搜索可见可编辑；inject 强制关闭，recall 缺省 false 注入目录恒不含）; sys = 机器托管笔记（缺省列表/检索降噪排除，显式 kind=sys/tag/folder 过滤可见——一般由系统内部创建，手写请改用其他 kind）' },
           status: { type: 'string', enum: STATUSES, description: 'Status (create/update): active/pinned/resolved/superseded; default active' },
           inject: { type: 'boolean', description: 'Inject into system prompt as context (create/update); default false. Setting inject=true permanently marks injectEver=true (sticky "ever injected" flag — later turning inject off never unsets it; injectEver is read-only and appears in list/get output).' },
           injectRole: { type: 'string', enum: ['convention', 'reference'], description: 'Injection role: convention=rules to follow | reference=background facts to consult as needed; default convention' },
           injectTo: { type: 'array', items: { type: 'string' }, description: 'Injection scope multi-select: [] or omitted=all sessions (default), or session short-ids like ["99f2b674","7f8b49e6"] to restrict' },
-          recall: { type: 'boolean', description: 'Recall in the notes catalog index (create/update); default true. Set false to hide from the catalog (still searchable via note_search).' },
+          recall: { type: 'boolean', description: 'Dormant compatibility field (create/update); default true. The catalog index it once fed was removed in 0.4.4-E (directory section = mounted lines only) — the value is stored/read back unchanged but has no injection effect; notes stay searchable via note_search regardless.' },
           sensitive: { type: 'boolean', description: 'Sensitive-content flag (create/update); default false. When true, injected text masks secret-looking lines (keys kept, values hidden as ******（敏感，note_get <id> 获取）); agents call note_get for the original.' },
+          hidden: { type: 'boolean', description: 'Hidden flag (create/update); default false. Pure UI mask (0.4.4-D): hidden notes are filtered from the panel tree/lists only when the「显示隐藏」toggle is off; search/get/agent faces are unaffected. Folders: notes-folders RPC op:\'set-flags\' { id, hidden }.' },
           folder: { type: 'string', description: 'Virtual folder (create/move/list filter): folder id or exact folder name (a name is normalized to its id on write; unknown id/name is rejected); "" = unfiled (未分类). Folders nest via parent (maxFolderDepth setting, default 3); a list filter matches the whole subtree recursively (notes in descendant folders included).' },
           // 定时派发·执行层（dispatch-schedule 声明字段；公共写入口 contractType 白名单 '' / dispatch-schedule）
           contractType: { type: 'string', description: 'Contract type (create/update): public writes allow only \'dispatch-schedule\' (scheduled-dispatch convention, must pair with schedule) or \'\' to clear; other contract types are system-managed' },
-          schedule: { type: ['object', 'null'], description: 'Scheduled-dispatch declaration (create/update; requires contractType=\'dispatch-schedule\'): { at?: LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 (one-shot, must be future; Z/±offset rejected) | every?: \'30m\'/\'12h\'/\'3d\'/\'1w\' or ms (>=5min), anchor?: \'HH:MM\' LOCAL time (periodic only, whole-day interval; pins firing to that time of day, no drift), dow?: 0-6 (weekly only, 0=Sunday, requires every:\'1w\' + anchor), target: sessionId (workspace session, not archived), action?: \'dispatch\', enabled?: boolean }. Host-managed machine fields lastFiredAt/lastRun/lastError/runLog are preserved across declaration edits (runLog = soft-link id of the lazily-created execution-log note; pass an existing note id to relink, \'\' to unlink). null clears the declaration (pair with contractType: \'\').' },
+          schedule: { type: ['object', 'null'], description: 'Scheduled-dispatch declaration (create/update; requires contractType=\'dispatch-schedule\'): { at?: LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 (one-shot, must be future; Z/±offset rejected) | every?: \'30m\'/\'12h\'/\'3d\'/\'1w\' or ms (>=5min), anchor?: \'HH:MM\' LOCAL time (periodic only, whole-day interval; pins firing to that time of day, no drift), dow?: 0-6 (weekly only, 0=Sunday, requires every:\'1w\' + anchor), target: sessionId (workspace session, not archived) or \'new\' (periodic only: auto-create a dedicated 定时 · <title> session on first fire, then reuse it — 0.4.4-B), action?: \'dispatch\', enabled?: boolean }. Host-managed machine fields lastFiredAt/lastRun/lastError/runLog are preserved across declaration edits (runLog = soft-link id of the lazily-created execution-log note; pass an existing note id to relink, \'\' to unlink). null clears the declaration (pair with contractType: \'\').' },
           // archive 字段（显式归档白名单）
           groups: { type: 'array', items: { type: 'object', properties: { memberIds: { type: 'array', items: { type: 'string' } }, title: { type: 'string' } }, required: ['memberIds'] }, description: 'Archive whitelist (archive action only): [{memberIds:[noteId,...], title?}] — merge exactly these groups. Omitted = merge only quick-capture groups; manual notes are NEVER auto-grouped by tag (behavior change).' },
           // dispatch 字段
-          targetSessionId: { type: 'string', description: 'Dispatch target: a live session id (dispatch). Omit to list live sessions.' },
+          targetSessionId: { type: 'string', description: 'Dispatch target: a live session id, or a dormant (persisted) session id — dormant targets are queued into the durable inbox and delivered on the session\'s next activity without waking it (0.4.4-B). Omit to list dispatchable sessions (live flag per entry).' },
           targetSessionName: { type: 'string', description: 'Dispatch target display name (dispatch, optional)' },
           instruction: { type: 'string', description: 'Dispatch: your concrete instruction appended to the todo context (dispatch, optional)' },
           // list 字段
@@ -5669,13 +5847,13 @@ export function apply(ctx) {
             const r = await _create(args.title, args.body, args.tags, args.topic, {
               sessionId: args.sessionId, cwd: args.cwd, workspace: args.workspace,
               kind: args.kind, status: args.status, inject: args.inject, injectRole: args.injectRole, injectTo: args.injectTo,
-              folder: folder, recall: args.recall, sensitive: args.sensitive, logDate: args.logDate, contractType: args.contractType, schedule: args.schedule
+              folder: folder, recall: args.recall, sensitive: args.sensitive, hidden: args.hidden, logDate: args.logDate, contractType: args.contractType, schedule: args.schedule
             })
             const out = { action: 'create', id: r.id, topic: r.topic, kind: r.kind, status: r.status, message: 'Note created' }
             // 敏感模式自动识别建议透传（create 不强制落 sensitive，由调用方决策）
             if (r.sensitiveSuggested) { out.sensitiveSuggested = true; out.message += '（检测到疑似敏感信息，建议 sensitive: true 开启注入脱敏）' }
             // 日志隐身硬闸命中告知（kind=log 强制 inject=false、recall 缺省 false）
-            if (r.injectForcedOff) { out.injectForcedOff = true; out.message += '（kind=log 工作日志不参与注入：inject 已强制关闭——日志同权可见/可搜/可编辑，目录需显式 recall:true）' }
+            if (r.injectForcedOff) { out.injectForcedOff = true; out.message += '（kind=log 工作日志不参与注入：inject 已强制关闭——日志同权可见/可搜/可编辑）' }
             return out
           }
           if (action === 'list') {
@@ -5702,7 +5880,7 @@ export function apply(ctx) {
             // 定时派发：公共写入口 contractType 白名单（'' / dispatch-schedule；其余契约类型系统内部管理）
             const ctErr1 = schedPublicContractTypeError(args.contractType)
             if (ctErr1) return { error: ctErr1 }
-            const r = await _update(args.id, args.title, args.body, args.tags, args.topic, args.kind, args.status, args.inject, args.injectTo, undefined, args.recall, args.injectRole, args.sensitive, { confirmClearBody: args.confirmClearBody === true, contractType: args.contractType, schedule: args.schedule })
+            const r = await _update(args.id, args.title, args.body, args.tags, args.topic, args.kind, args.status, args.inject, args.injectTo, undefined, args.recall, args.injectRole, args.sensitive, { confirmClearBody: args.confirmClearBody === true, contractType: args.contractType, schedule: args.schedule, hidden: args.hidden })
             // P3 派发闭环：resolved 联动回执了派发时在消息里明示（agent 可感知闭环已发生）
             // 工作记忆 v0：kind=log 隐身硬闸命中时告知（inject 被强制关闭）
             return { action: 'update', id: args.id, kind: r.kind, status: r.status, dispatchClosed: r.dispatchClosed || 0, injectForcedOff: r.injectForcedOff === true, message: 'Note updated' + (r.dispatchClosed ? '；已自动回执 ' + r.dispatchClosed + ' 条派发（dispatchStatus→done）' : '') + (r.injectForcedOff ? '（kind=log 工作日志不参与注入：inject 已强制关闭）' : '') }
@@ -5768,13 +5946,13 @@ export function apply(ctx) {
           if (action === 'dispatch') {
             if (!args.id) return { error: 'note_manage.dispatch 需要 id' }
             if (!args.targetSessionId) {
-              // 未指定目标：返回当前活跃主会话列表（含名字）供 agent 选择（_activeSessions 新形态：取 .sessions）
-              const list = (await _activeSessions()).sessions.map(s => ({ sessionId: s.id, short: s.short, name: s.name, workspace: s.workspace }))
-              return { action: 'dispatch', needTarget: true, activeSessions: list, message: '请用 targetSessionId 指定目标活跃会话' }
+              // 未指定目标：返回当前可派发会话列表（活跃 + 休眠双区，0.4.4-B；live 字段区分，休眠目标走「下次活动送达」排队）
+              const list = (await _activeSessions()).sessions.map(s => ({ sessionId: s.id, short: s.short, name: s.name, workspace: s.workspace, live: s.live !== false }))
+              return { action: 'dispatch', needTarget: true, activeSessions: list, message: '请用 targetSessionId 指定目标会话（live:false = 休眠会话，派发将持久化排队、下次活动送达）' }
             }
             const r = await _dispatch(args.id, { sessionId: args.targetSessionId, sessionName: args.targetSessionName, instruction: args.instruction, mode: 'existing' })
             if (r.error) return { error: r.error }
-            return { action: 'dispatch', id: args.id, sessionId: r.sessionId, message: '已派发到「' + r.sessionName + '」' + (args.instruction ? '（含具体要求）' : '') }
+            return { action: 'dispatch', id: args.id, sessionId: r.sessionId, queued: r.queued === true, message: '已派发到「' + r.sessionName + '」' + (r.queued ? '（休眠会话：已持久化排队，下次活动送达）' : '') + (args.instruction ? '（含具体要求）' : '') }
           }
           return { error: 'note_manage: 未知 action：' + String(action) + '（期望 create/list/update/move/delete/restore/archive/dispatch）' }
         } catch (e) { return { error: String(e.message || e) } }

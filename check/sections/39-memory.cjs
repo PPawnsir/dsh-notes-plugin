@@ -1,7 +1,7 @@
 // 节 39. 工作记忆 v0 Phase 1（kind=log + 日志同权 + 启用流程 + 日志卫生）
 // 拆分自 check.js 单文件（notes-check-split）：节体逐字节保留，仅首尾为机械接线（H=helpers 设施，S=跨节共享状态）。
-// 0.4.3 验收修复⑦（notes-043-log-firstclass，2026-10-05 用户裁决推翻 R-6 UI 隐身）：日志四可一不可——
-// 可见（默认列表）/可搜索（默认检索）/可编辑/可进目录（显式 recall=true）；注入 ✗ 硬关（injectForcedOff 机制 + UI 不提供开关）。
+// 0.4.3 验收修复⑦（notes-043-log-firstclass，2026-10-05 用户裁决推翻 R-6 UI 隐身）：日志同权——
+// 可见（默认列表）/可搜索（默认检索）/可编辑；注入 ✗ 硬关（injectForcedOff 机制 + UI 不提供开关）；目录 ✗（0.4.4-E 起目录段唯挂载行源，recall 字段 dormant——显式 true 亦不进目录）。
 module.exports = {
   id: "39",
   title: "39. 工作记忆 v0 Phase 1（kind=log + 日志同权（0.4.3⑦）+ 启用流程 + 日志卫生）",
@@ -9,18 +9,18 @@ module.exports = {
   const { t, section, assert, fsNative, path, osNative, DIR, SRC_HOST, SRC_CLIENT, SRC_STYLES, INDEX_PATH, bootHostSrc, bootClientSrc, hostSrc, clientSrc, indexSrc, pathToFileURL, io } = H
   const { NOTES_DIR, NOTES_ROOT_STATIC, admMock, agentsMock, appSrc, clientPkgSrc, findTool, g, llmMock, mkFsMockImp, plugin, protoV2Src, r1, r2, sessionPersistenceMock, sessionQueryMock, sessionTitleMock, sugNS, workspaceRegistryMock } = S
   // ===== 39. 工作记忆 v0 Phase 1（kind=log 沉淀链路 + 日志同权（0.4.3⑦）+ 启用流程 + 日志卫生提名 + 四端同步）=====
-  // 规格 = design/agent-memory-v0.md + 0.4.3⑦ 修订：① kind=log 模板/枚举/永不被清理提名 ② 同权（列表/搜索/编辑同权）+ 注入硬禁 + recall 缺省 false（目录缺省不含）
+  // 规格 = design/agent-memory-v0.md + 0.4.3⑦ 修订：① kind=log 模板/枚举/永不被清理提名 ② 同权（列表/搜索/编辑同权）+ 注入硬禁 + recall 缺省 false（注入目录恒不含）
   // ③ 启用流程（notes-memory-guide，r3 车道模型：check 同类唯一性（零写入）/ enable 无确认闸门直建预填约定 contractType=memory-guide + 作用域 / disable 关 inject / status 单一事实源 / kind=log origin 自动溯源）
   // ④ 日志卫生提名（suggest 第四类 logHygieneCandidates：周聚合 >7 天 / 月聚合 >90 天，只提名不执行，v0 仅展示明细）
   section('39. 工作记忆 v0 Phase 1（kind=log + 日志同权（0.4.3⑦）+ 启用流程 + 日志卫生）')
 
   // ---- 39.1 host 双侧静态契约（host-impl.js ⇄ index.mjs 双包同步）----
-  await t('host 双侧：kind=log 枚举三处 + KIND_TEMPLATES.log 四节模板（§4.2）', () => {
+  await t('host 双侧：kind=log 枚举两处 + KIND_TEMPLATES.log 四节模板（§4.2；0.4.4-E CATALOG_KIND_LABELS 随 catalog 拆除）', () => {
     for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
       const s = pair[1], label = pair[0]
       assert(s.indexOf("const KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log', 'sys']") >= 0, label + ' KINDS 含 log（0.4.3⑥ +sys）')
       assert(s.indexOf("quote: '引用', log: '日志'") >= 0, label + ' 中文标签映射含 log:日志')
-      assert(s.indexOf("const CATALOG_KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '系统' }") >= 0, label + ' CATALOG_KIND_LABELS 含 log（0.4.3⑥ +sys）')
+      assert(s.indexOf('CATALOG_KIND_LABELS') < 0, label + ' CATALOG_KIND_LABELS 已拆（0.4.4-E：目录普通行消亡，kind 中文映射无消费方）')
       assert(s.indexOf("'## 做了什么\\n\\n（本会话完成的任务/阶段，一句话一条）") >= 0, label + ' log 模板「做了什么」节')
       assert(s.indexOf('## 改动\\n\\n（改动的文件/配置/数据，路径 + 一句话）') >= 0, label + ' log 模板「改动」节')
       assert(s.indexOf('## 遗留与后续') >= 0 && s.indexOf('## 相关笔记\\n\\n（[[n-xxxxxxxx]] 双链引用本库相关笔记；无则空）') >= 0, label + ' log 模板「遗留与后续/相关笔记」节（双链占位）')
@@ -48,23 +48,23 @@ module.exports = {
       const s = pair[1], label = pair[0]
       assert(s.indexOf("const isLog = (ex.kind || 'note') === 'log'") >= 0, label + ' _create isLog 判定')
       assert(s.indexOf('inject: isLog ? false : ex.inject === true,') >= 0, label + ' _create inject 硬 false（显式 true 也纠正）')
-      assert(s.indexOf('recall: (isLog || isSys) ? (ex.recall === true) : (ex.recall !== false),') >= 0, label + ' _create recall 缺省 false（显式 true 豁免保留；0.4.3⑥ +isSys 同口径）')
+      assert(s.indexOf('recall: (isLog || isSys) ? (ex.recall === true) : (ex.recall !== false),') >= 0, label + ' _create recall 缺省 false（显式 true 字段保留——0.4.4-E 起 dormant 无注入效果；0.4.3⑥ +isSys 同口径）')
       assert(s.indexOf("if (effKind === 'log' && inject === true) { note.inject = false; injectForcedOff = true }") >= 0, label + ' _update inject 硬闸纠正')
       assert(s.indexOf("if (effKind === 'log' && note.inject !== false) { note.inject = false; injectForcedOff = true }") >= 0, label + ' _update kind-only 补闸（0.4.3⑦ 第三轮：强制纠正移出 inject 显式传值包裹，不传 inject 仅改 kind 同样过闸；双变体同构锚）')
       assert(s.indexOf('if (injectForcedOff) r.injectForcedOff = true') >= 0, label + ' 响应 injectForcedOff 告知（create/update 同款）')
       assert(s.indexOf("(p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true") >= 0, label + ' noteFromParsed：存量/外部直写 log/sys 缺省 recall=false')
     }
   })
-  await t('host 双侧：_list/_search 日志同权（默认列表/检索含 kind=log）+ 目录缺省不含（recall 显式豁免）+ 目录尾部日志计数提示行', () => {
+  await t('host 双侧：_list/_search 日志同权（默认列表/检索含 kind=log）+ 注入目录恒不含（0.4.4-E：recall 豁免通道随 catalog 拆除）+ 目录尾部日志计数提示行', () => {
     for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
       const s = pair[1], label = pair[0]
       assert(s.indexOf('async function _list(tag, kind, folder, includeDeleted, includeLogs, includeSys)') >= 0, label + ' _list 六参签名（includeLogs 第 5 参向后兼容 no-op；includeSys 第 6 参机器全量视图 0.4.3⑨）')
       assert(s.indexOf('const effLogs =') < 0, label + ' 0.4.3⑦：effLogs/R-6 隐式召回机制已拆（日志同权，默认即含）')
       assert(s.indexOf("if (note.kind === 'log' && !effLogs") < 0 && s.indexOf("if (cn.kind === 'log' && !effLogs") < 0, label + ' _list 默认排除 log 行已移除（目录主循环 + 并集防御双处）')
       assert(s.indexOf('_list(tag, kind, folder, undefined, true)') >= 0, label + ' _search 默认含 log（同权）+ tag/kind 透传 _list 同一过滤管线（0.4.3⑨ sys 缺省降噪：显式 kind/tag 入口语义不变）')
-      assert(s.indexOf(' 条工作日志（kind=log，目录缺省不含），note_search 可检索') >= 0, label + ' 目录尾部日志计数提示行（有日志恒出现，只出计数不出标题）')
-      assert(s.indexOf("(n.kind || 'note') === 'log' && n.recall !== true) { logCount++; continue }") >= 0, label + ' 目录缺省不含日志 + 显式 recall=true 豁免进目录（可进目录·显式）')
-      assert(s.indexOf("catLines.length === 0 && logCount === 0") >= 0, label + ' 目录段空态判定连带日志计数（0.4.3③ 合并段空判）')
+      assert(s.indexOf(' 条工作日志（kind=log，注入不含），note_search 可检索') >= 0, label + ' 目录尾部日志计数提示行（有日志恒出现，只出计数不出标题；0.4.4-E 口径=注入恒不含）')
+      assert(s.indexOf("if (!n.deleted && (n.kind || 'note') === 'log') logCount++") >= 0, label + ' 日志计数移到段装配层全量计数（0.4.4-E：recall=true 豁免进目录通道随 catalog 拆除）')
+      assert(s.indexOf("refLines.length === 0 && logCount === 0") >= 0, label + ' 目录段空态判定连带日志计数（0.4.4-E 空判：无挂载行且无日志）')
     }
   })
   await t('host 双侧：notes-memory-guide RPC + 引导模板 §5.2 要点 + r3 车道模型（契约分型 + 无重叠检测 + origin 打标）+ 日志永不被清理提名', () => {
@@ -148,7 +148,7 @@ module.exports = {
   await t('kind=log recall 显式 true 豁免 + 普通 note 不受隐身影响（recall 缺省 true / inject 照常）', async () => {
     const lg = await handlersM['notes-create']({ title: '日志-目录豁免', body: 'x', kind: 'log', recall: true })
     const g = await handlersM['notes-get']({ id: lg.id })
-    assert(g.note.recall === true && g.note.inject === false, '显式 recall=true 允许进目录（豁免保留），inject 仍硬 false')
+    assert(g.note.recall === true && g.note.inject === false, '显式 recall=true 字段原样存储（dormant，0.4.4-E 起不再进目录），inject 仍硬 false')
     const nm = await handlersM['notes-create']({ title: '普通笔记M', body: 'x', inject: true })
     const gn = await handlersM['notes-get']({ id: nm.id })
     assert(gn.note.recall === true && gn.note.inject === true, '普通笔记 recall/inject 口径不变（向后兼容）')
@@ -196,16 +196,15 @@ module.exports = {
     const g3 = await handlersM['notes-get']({ id: lg.id })
     assert(g3.note.inject === true && g3.note.injectEver === true, '普通语义恢复（injectEver 粘性照常）')
   })
-  await t('目录段尾部日志计数提示行（并入 order 130，有日志恒出现；只出计数不出标题）+ recall=true 日志进目录（0.4.3⑦ 显式豁免）', async () => {
-    await handlersM['notes-settings-set']({ catalogEnabled: true })   // 0.4.3：目录缺省关，日志计数提示行断言前显式开启
+  await t('目录段尾部日志计数提示行（并入 order 130，有日志恒出现；只出计数不出标题；0.4.4-E 起全量计数——recall=true 豁免进目录通道已拆）', async () => {
     const cat = contextsM.find(c => c.name === 'notes:workspace-conventions')
     assert(cat && typeof cat.text === 'function', '单一注入 context 已注册（0.4.3③ 目录段并入 order 130，order 131 撤销）')
     const txt = cat.text()
-    const m = txt.match(/另有 (\d+) 条工作日志（kind=log，目录缺省不含），note_search 可检索/)
-    // 此刻实例内 2 条 log：「工作日志 · 测试」（recall=false → 只计计数行）；「日志-目录豁免」（recall=true → 0.4.3⑦ 显式豁免，以普通条目进目录不计数）；「改注入演示」已转 kind=note
-    assert(m && +m[1] === 1, '目录段尾部日志计数提示行（recall=false 计数=1；实得计数 ' + (m && m[1]) + '）')
+    const m = txt.match(/另有 (\d+) 条工作日志（kind=log，注入不含），note_search 可检索/)
+    // 此刻实例内 2 条 log：「工作日志 · 测试」（recall=false）+「日志-目录豁免」（recall=true——0.4.3⑦ 豁免进目录通道已随 catalog 拆除，归入全量计数）；「改注入演示」已转 kind=note
+    assert(m && +m[1] === 2, '目录段尾部日志计数提示行（全量计数=2；实得计数 ' + (m && m[1]) + '）')
     assert(txt.indexOf('工作日志 · 测试') < 0, '提示行不含日志标题（天然无泄露面）')
-    assert(txt.indexOf('日志-目录豁免') >= 0, 'recall=true 日志以普通条目进目录（可进目录·显式豁免落地）')
+    assert(txt.indexOf('日志-目录豁免') < 0, 'recall=true 日志不再进目录段（豁免通道随 catalog 拆除，注入恒不含）')
   })
   await t('update 硬闸补漏（0.4.3⑦ 第三轮驳回修复）：kind-only 更新（不传 inject）存量 inject=true 强制纠正 + 注入预览不含正文', async () => {
     // verifier 实证缺口（gate-probe E/F）：notes-create({inject:true}) → notes-update({id,kind:'log'}) 旧码落盘 inject=true 且正文进注入文本

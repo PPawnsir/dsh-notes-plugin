@@ -11,8 +11,9 @@
     function setInjectPreviewSid(v) { store.modal.injectPreview.set({ sid: typeof v === 'function' ? v(store.modal.injectPreview.get().sid) : v }) }
     // ===== 注入预览（设置卡片「注入预览」入口）：notes-inject-preview 纯复用 host 注入渲染（约定段 + 合并目录段），
     // 单段只读展示（约定文本 pre + 目录段可点行）+ 三档视角下拉（全局 / 工作区并集 / 单会话；sessList 数据源）+ 底部统计条（总字符/打码/时效标注/预算截断）=====
-    // 0.4.3 验收修复③（notes-043-dir-merge）：目录与资料桶合并为单一目录段——挂载行（- [[id]]，增强态）与普通行（- [id]）同段渲染、
-    // 点击均可开挂载弹层（panelBridge.openMountModal 中转，modals 禁横向引用；modal 不叠 modal——先关预览再开）：
+    // 0.4.3 验收修复③（notes-043-dir-merge）：目录与资料桶合并为单一目录段——挂载行（- [[id]]，增强态）渲染、
+    // 点击可开挂载弹层（panelBridge.openMountModal 中转，modals 禁横向引用；modal 不叠 modal——先关预览再开）；
+    // 0.4.4-E：目录段唯挂载行源（普通行随 catalog 拆除消亡，行解析正则保留双形态兼容）——
     // 已挂载 = 编辑模式（notes-mount-list 预填现有文案）；未挂载 = LLM 草稿模式（notes-when-suggest 预填，失败回退标题）
     function openMountFromPreview(id) {
       if (!id) return
@@ -24,7 +25,7 @@
         if (panelBridge.openMountModal) panelBridge.openMountModal({ id: id, title: g.note.title || id, existing: line ? line.when : undefined })
       }).catch(err => showToast(t('inj.mountFailed', { msg: String(err.message || err) })))
     }
-    // 目录段文本 → 行节点数组：挂载行 `- [[n-xxx]]` 与普通行 `- [n-xxx]` 均可点（🔒 行 id 在方括号内不受打码影响），
+    // 目录段文本 → 行节点数组：挂载行 `- [[n-xxx]]` 可点（行解析正则保留 `- [n-xxx]` 双形态兼容），
     // 其余行（标题/轻推/计数提示/挂载引导）纯文本
     function injPrevDirectoryRows(text, tt) {
       if (!String(text || '').trim()) return [e('div', { key: 'empty', className: 'dsh-notes-injprev-ln' }, '（无目录内容）')]
@@ -78,9 +79,9 @@
               ? e('div', { className: 'dsh-notes-data-hint' }, '加载中…')
               : e('div', { className: 'dsh-notes-injprev-text' },
                   (d.conventions || '') ? e('pre', { className: 'dsh-notes-injprev-conv' }, d.conventions) : null,
-                  injPrevDirectoryRows(d.directory || '', tt)),   // 目录段：挂载行与普通行同段可点（补充/编辑 whenToUse）
+                  injPrevDirectoryRows(d.directory || '', tt)),   // 目录段：挂载行可点（补充/编辑 whenToUse；0.4.4-E 唯挂载行源）
             stats ? e('div', { className: 'dsh-notes-injprev-stats' },
-              '总字符 ' + stats.totalChars + '（约定 ' + stats.conventionsChars + ' / 目录 ' + stats.directoryChars + '）· 打码 ' + stats.maskedNotes + ' 条 · 时效标注 ' + stats.staleMarked + ' 条 · 预算截断 ' + (stats.budgetTruncated ? '是' : '否') + ' · 目录补充行：' + (stats.catalogEnabled === true ? '开' : '关')) : null,   // 0.4.3⑫ 目录补充行开关徽标（stats.catalogEnabled，notes-043-final-polish）
+              '总字符 ' + stats.totalChars + '（约定 ' + stats.conventionsChars + ' / 目录 ' + stats.directoryChars + '）· 打码 ' + stats.maskedNotes + ' 条 · 时效标注 ' + stats.staleMarked + ' 条 · 预算截断 ' + (stats.budgetTruncated ? '是' : '否')) : null,   // 0.4.4-E：目录补充行开关徽标随 catalog 功能整体拆除（notes-044-catalog-remove）
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
             e('div', { className: 'dsh-notes-dispatch-actions' },
               e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => setInjectPreviewOpen(false) }, '关闭'))))

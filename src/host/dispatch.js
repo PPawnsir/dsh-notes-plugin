@@ -93,17 +93,55 @@
     }
 
 
+    // 休眠送达通道（0.4.4-B，notes-044-dormant-dispatch）：目标非 live 时，向其持久化日志追加 durable inbox splice
+    // （agent/inbox/spliced，与 live send(msg,'next-turn') 的落盘记录同形态）——零唤醒零成本：不启动 agent，
+    // 会话下次活动（用户打开/恢复）时由 loop 认领该消息开始处理；GUI 打开时即显示为排队消息。
+    // 落盘前折叠 inbox 现状求精确 splice start（dsh-agent-loop inboxProjectionDefinition 对 start>length 拒绝，
+    // 错写会让会话恢复即抛 invalid persisted inbox splice——必须全量读日志现算，无更便宜通道）。
+    // 幂等：同 msgId 已在队列则跳过追加（inbox 折叠对重复 pending id 拒绝，重复写入会毁掉恢复路径）。
+    // 失败一律 { error, needOpen:true }（含「未打开」字样供调度链 lastError 口径与 UI 提示复用）。
+    async function _queueDormantDispatch(sid, msg) {
+      const fail = function (why) { return { error: '目标会话当前未打开，休眠送达失败（' + why + '）。请先打开它，或改用「新建会话」。', needOpen: true } }
+      if (!sessionPersistence || typeof sessionPersistence.open !== 'function') return fail('宿主无 sessionPersistence.open 能力')
+      let handle = null
+      try { handle = await sessionPersistence.open(sid, 'write') } catch (e) { return fail('会话不存在于持久化存储或写锁被占用：' + String(e && e.message || e)) }
+      try {
+        const rd = await handle.read(0)
+        const events = (rd && rd.events) || []
+        // 折叠 durable inbox（同 loop 投影口径：agent/inbox/spliced 标准 splice 语义，越界钳位容错）
+        const inbox = { 'next-turn': [], 'next-step': [] }
+        for (const ev of events) {
+          if (!ev || ev.type !== 'agent/inbox/spliced') continue
+          const d = ev.data || {}
+          const list = inbox[d.target]
+          if (!Array.isArray(list)) continue
+          const start = Math.max(0, Math.min(typeof d.start === 'number' && isFinite(d.start) ? Math.trunc(d.start) : list.length, list.length))
+          const rm = typeof d.removedCount === 'number' && isFinite(d.removedCount) ? Math.min(Math.max(Math.trunc(d.removedCount), 0), list.length - start) : 0
+          const ins = Array.isArray(d.inserted) ? d.inserted : []
+          inbox[d.target] = list.slice(0, start).concat(ins, list.slice(start + rm))
+        }
+        const dup = inbox['next-turn'].concat(inbox['next-step']).some(function (m) { return m && m.id === msg.id })
+        if (!dup) {
+          await handle.append([{ type: 'agent/inbox/spliced', seq: events.length, time: Date.now(), data: { target: 'next-turn', start: inbox['next-turn'].length, inserted: [msg] } }])
+          await handle.flush()   // 耐久屏障：flush 落定后崩溃也送达
+        }
+        return { ok: true }
+      } catch (e) {
+        return fail('日志追加异常：' + String(e && e.message || e))
+      } finally { try { if (handle) await handle.close() } catch (e) {} }
+    }
+
     // 任务派发（共享）：主动注入上下文 + 触发对话——agent.send 一条消息到目标会话，
     // source 标记为 { kind:'plugin', form:'recall' }（todo 作为"召回的上下文"，区别于用户指令/系统提示拼接），
     // wakeup=true 保证触发该会话 agent 去获取并处理这条上下文（可见反应，不污染系统提示）。
+    // 双通道（0.4.4-B）：live 命中走现行 send 立即触发；未命中走休眠送达（_queueDormantDispatch 持久化排队，
+    // 「下次活动送达」语义——不主动唤醒休眠会话），返回 queued:true + dispatches 记录带 queued 布尔。
     // opts: { sessionId, sessionName, workspace, mode('existing'|'new'), instruction, sourceLabel（派发来源标注，定时调度传 '定时调度 @约定标题'，进消息尾行与 dispatches 记录） }
     async function _dispatch(id, opts) {
       const o = opts || {}
       const note = await _get(id)
       if (note.deleted) return { error: '笔记已删除' }
       if (!o.sessionId) return { error: '缺少目标会话' }
-      const target = agents && agents.get ? agents.get(o.sessionId) : undefined
-      if (!target || typeof target.send !== 'function') return { error: '目标会话当前未打开，无法触发工作。请先打开它，或改用「新建会话」。', needOpen: true }
       const instruction = String(o.instruction || '').trim()
       const text = '【笔记插件 · 派发的待办上下文】\n\n【待办】' + (note.title || 'Untitled') + '\n' + String(note.body || note.title || '').trim() + (instruction ? '\n\n【派发方补充的要求】\n' + instruction : '') + '\n\n—— 以上是笔记插件派发给你的待办上下文（recall' + (o.sourceLabel ? '，来源：' + o.sourceLabel : '') + '）。请获取此上下文并开始处理。完成后请调用 note_manage（action: \'update\', id: \'' + note.id + '\', status: \'resolved\'）了结该笔记，系统会自动回执派发状态（dispatchStatus→done）。' + (bodyHasImageRef(note.body) ? '\n\n' + assetsHintLine(NOTES_DIR) : '')
       const msg = {
@@ -115,7 +153,16 @@
         // SessionFormatError 并炸掉目标会话当前轮次；v3→v4 迁移映射为 plugin:dsh-notes，直接写迁移后形态
         source: { kind: 'plugin:dsh-notes', form: 'recall' }
       }
-      target.send(msg, 'next-turn', true)
+      // 双通道分流（0.4.4-B）：live → send 立即触发；非 live → 休眠送达（持久化排队，下次活动送达）
+      const target = agents && agents.get ? agents.get(o.sessionId) : undefined
+      let queued = false
+      if (target && typeof target.send === 'function') {
+        target.send(msg, 'next-turn', true)
+      } else {
+        const q = await _queueDormantDispatch(o.sessionId, msg)
+        if (q.error) return q
+        queued = true
+      }
       // 派发历史：作为笔记属性记录（不改正文）；P3 起带 dispatchStatus（'sent'|'done'）状态机字段，done 布尔保留兼容旧 client
       const rec = {
         sessionId: o.sessionId,
@@ -129,6 +176,9 @@
         done: false,
         dispatchStatus: 'sent'
       }
+      // queued 布尔（0.4.4-B）：休眠送达标记——仅 queued 时落键（存量/live 记录零字段变化，向后兼容）；
+      // 回执闭环沿用 dispatch-loop（会话活动处理完该消息转 idle → 自动回执 done）
+      if (queued) rec.queued = true
       if (o.sourceLabel) rec.sourceLabel = o.sourceLabel
       note.dispatches = (note.dispatches || []).concat([rec])
       note.updatedAt = new Date().toISOString()
@@ -136,7 +186,10 @@
       // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：mount 通道交付事件——笔记作为待办上下文挂载进目标任务会话
       // （notes-dispatch / note_manage.dispatch / 定时派发 _schedFire 三入口同走本单点；签名含会话——换会话重派计独立交付）
       _recallRaw('mount', [note.id], shortSid(o.sessionId))
-      return { ok: true, id: note.id, sessionId: o.sessionId, sessionName: rec.sessionName, dispatch: rec }
+      // 0.4.4-A（notes-044-dispatch-receipts）派发回执笔记化·三表归一：派发事件本身落「执行记录」伴生笔记 📤 行（派发历史笔记化）——
+      //   懒创建 + runLog 软链回写（调度约定 schedule.runLog 存量继承 / 非调度笔记顶层 runLog）；观察面产物异常内部全吞，不扩散派发主链路
+      await _schedRunLogAppend(note, [{ _dispatch: true, at: rec.at, sessionId: o.sessionId, sessionName: rec.sessionName, instruction: instruction, sourceLabel: o.sourceLabel || '', msgId: rec.msgId, queued: queued }])
+      return { ok: true, id: note.id, sessionId: o.sessionId, sessionName: rec.sessionName, queued: queued, dispatch: rec }
     }
 
     // 标记一条派发待办为完成（手动闭环通道；P3 起写 dispatchStatus='done' + doneAt + receipt='manual'，done 布尔同步保留）
@@ -196,7 +249,7 @@
         if (_closeOpenDispatches(n, 'idle', sid, closedDs) > 0) {
           n.updatedAt = new Date().toISOString()
           try { await persistNote(n, { history: false }) } catch (e) { console.error('notes: dispatch receipt persist failed', n.id, e) }
-          await _schedRunLogAppend(n, closedDs)   // 仅 dispatch-schedule 约定生效（内部全量吞异常；约定正文零改动红线不破）
+          await _schedRunLogAppend(n, closedDs)   // 0.4.4-A 起全笔记生效·三表归一（内部全量吞异常；源笔记正文零改动红线不破）
         }
       }
     }

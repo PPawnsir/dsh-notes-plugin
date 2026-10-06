@@ -38,9 +38,9 @@ module.exports = {
     assert(clientSrc.indexOf('if (settingsOpenRef.current) { if (settingsFlushRef.current) settingsFlushRef.current(); setSettingsOpen(false); return }') >= 0, 'Esc = ✕ 同义（先兜底 flush 再关）')
     assert(clientSrc.indexOf('onMouseDown: (ev) => { if (ev.target === ev.currentTarget) closeSettings() }') >= 0, '点遮罩同口径（保留收起行为 + flush）')
     assert(clientSrc.indexOf('React.useEffect(() => { settingsFlushRef.current = flushSettingsPending })') >= 0, 'Esc 闭包经 ref 读最新 flush（防过期）')
-    // ⑦ 存量零破坏：失焦/Enter 即存 + 勾选/选择即存链路原样保留
+    // ⑦ 存量零破坏：失焦/Enter 即存 + 选择即存链路原样保留（0.4.4-E：目录补充行勾选开关已随 catalog 功能整拆）
     assert(clientSrc.indexOf("onBlur: saveSettingsStale, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsStale() }") >= 0, '时效行失焦/Enter 即存保留')
-    assert(clientSrc.indexOf('onChange: (ev) => { const v = !!ev.target.checked; setSetCatalog(v); saveSettingsCatalog(v) }') >= 0, '目录开关勾选即存保留')
+    assert(clientSrc.indexOf('setSetCatalog') < 0 && clientSrc.indexOf('saveSettingsCatalog') < 0, '目录开关链路已拆（0.4.4-E 负向锚）')
     assert(clientSrc.indexOf('onBlur: saveSettingsLogRetention') >= 0 && clientSrc.indexOf('onBlur: saveSettingsUsageBudget') >= 0, '日志窗口/用量预算失焦即存保留')
     // ⑧ 发布包同步（build-dist 产物）
     for (const k of ['dsh-notes-settings-close', 'dsh-notes-settings-save', 'dsh-notes-settings-restore', 'settingsSetQuiet', 'setPersistMerge', 'flushSettingsPending', 'saveSettingsAll', 'restoreSettingsAll', 'closeSettings', 'setDirty', '设置已保存', '已还原：设置回滚到打开时的状态', 'SET_NUM_FIELDS']) {

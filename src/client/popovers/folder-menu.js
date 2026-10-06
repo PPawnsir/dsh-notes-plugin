@@ -17,6 +17,12 @@
         // 虚拟文件夹树：清单走 notes-folders RPC（list/create/rename/delete/reorder）；折叠态持久化 localStorage
         const [folders, setFolders] = React.useState([])
         const [foldersExpanded, setFoldersExpanded] = React.useState(loadFoldersExpanded)
+        // ===== 0.4.4-C（notes-044-folder-explicit-view）：文件夹展开 = sys 显式入口（默认降噪不阻拦查看，OS 文件管理逻辑）=====
+        // sysKids[fid] = { stamp, rows }：该夹**直挂**的 kind=sys slim 行（host _list 显式 folder 入口 = ⑨ 保留放行通道；
+        // 子孙夹 sys 由各夹自身展开时拉取，host folder 过滤为递归子树口径故取回后按直挂过滤）；非 sys 行忽略（已在 paged 主缓存）。
+        // stamp = 取数时 notes 缓存身份——折叠不清缓存（同批数据再展开零请求）；列表刷新后陈旧条目由下方效应剔除/重拉（防陈旧）
+        const [sysKids, setSysKids] = React.useState({})
+        const sysKidsInflightRef = React.useRef({})   // 补拉在途去重闸：effect 重入/快速连点同一夹不并发重复请求
         const [folderInputOpen, setFolderInputOpen] = React.useState(false)   // 文件夹分组头 ＋ → 内联输入（根级新建）
         const [folderInputText, setFolderInputText] = React.useState('')
         const [subFolderFor, setSubFolderFor] = React.useState(null)   // 「新建子文件夹」内联输入的父文件夹 id（null=关闭；输入行渲染在该父夹的子内容容器首位）
@@ -81,6 +87,50 @@
             return next
           })
         }
+        // 0.4.4-C 按需补拉效应：依赖 展开态/列表缓存/文件夹清单——折叠→展开、列表刷新（loadNotes/notifyNotesChanged 链路）、
+        // 清单到达 都触发本效应复核。惰性红线：仅「当前展开 + 无新鲜缓存 + 子树徽标计数(含 sys，0.4.3⑩ folders-count-sys)
+        // − 缓存可见数 > 0（=子树藏有降噪不可见 sys）」的夹发 notes-list {folder:id} 定向请求——普通夹/折叠夹恒零请求
+        //（0.4.3⑦ 展开零 RPC 口径对普通夹保持）；缺省全展开（foldersExpanded=null）物化为全量展开集，首载即覆盖「记忆档案」场景
+        React.useEffect(() => {
+          // kind 单档口径门（0.4.3⑩）：恰选 1 个非 sys kind 时缓存 = host kind 通道子集，与 count 不可比——跳过
+          //（「机器」档（sys）缓存已含全库 sys 无需补拉；其余单 kind 档下 sys 行本就不该混入）
+          const kf = (args.filters && args.filters.kinds) || []
+          if (kf.length === 1 && kf[0] !== 'sys') return
+          const openSet = {}
+          const expandedIds = foldersExpanded === null ? folders.map(f => f.id) : foldersExpanded
+          expandedIds.forEach(id => { openSet[id] = true })
+          // 防陈旧清理：文件夹已删 → 剔除；折叠且数据陈旧（notes 已刷新换代）→ 剔除
+          //（展开中的陈旧条目不清——随下方重拉覆盖，旧行保留到新行落地，不闪断）
+          setSysKids(prev => {
+            let changed = false
+            const next = {}
+            for (const fid in prev) {
+              if (!folders.some(f => f.id === fid)) { changed = true; continue }
+              if (!openSet[fid] && prev[fid].stamp !== notes) { changed = true; continue }
+              next[fid] = prev[fid]
+            }
+            return changed ? next : prev
+          })
+          for (const fid of expandedIds) {
+            if (fid === PINNED_KEY) continue   // 置顶聚合组非真实文件夹
+            const f = folders.find(x => x.id === fid)
+            if (!f) continue
+            const ent = sysKids[fid]
+            if (ent && ent.stamp === notes) continue   // 新鲜缓存：同批数据再展开零请求（折叠不清缓存口径）
+            if (sysKidsInflightRef.current[fid]) continue
+            const sub = folderSubtreeIdsOf(fid)
+            let visible = 0
+            for (const n of notes) if (sub[n.folder || '']) visible++
+            if ((f.count || 0) - visible <= 0) continue   // 无隐藏 sys：普通夹零请求（kids 与 0.4.3 口径逐字等价）
+            sysKidsInflightRef.current[fid] = true
+            const stamp = notes   // 本批取数的数据身份；响应落地时 notes 已换代则条目即陈旧，下轮本效应自重拉覆盖
+            host.call('notes-list', { folder: fid }).then(res => {
+              delete sysKidsInflightRef.current[fid]
+              const rows = ((res && res.notes) || []).filter(n => (n.kind || 'note') === 'sys' && (n.folder || '') === fid)
+              setSysKids(prev => Object.assign({}, prev, { [fid]: { stamp: stamp, rows: rows } }))
+            }, () => { delete sysKidsInflightRef.current[fid] })   // 失败静默降级：sys 行不显示，下次复核重试
+          }
+        }, [foldersExpanded, notes, folders])
         // 文件夹项右键菜单：与笔记行菜单同坐标换算（面板内绝对定位；两菜单互斥）
         function openFolderMenu(ev, f) {
           ev.preventDefault(); ev.stopPropagation()
@@ -180,6 +230,17 @@
         }
         // 笔记行右键「移动到文件夹」：notes-update 只改 folder 字段；'' = 移出到未分类
         function folderName(fid) { const f = folders.find(x => x.id === fid); return f ? f.name : '' }
+        // 0.4.4-D hidden 隐藏属性：文件夹显隐开关（notes-folders op:'set-flags'）——隐藏后该夹行+nested 子树滤除（OS 语义；
+        // 显隐开关开时半透明渲染可再操作）；host 语义零改动，纯 UI 遮罩
+        async function doSetFolderHidden(f, hidden) {
+          setFolderMenu(null)
+          try {
+            const res = await host.call('notes-folders', { op: 'set-flags', id: f.id, hidden: hidden === true })
+            if (res && res.error) { setError(res.error); return }
+            showToast(hidden === true ? t('fld.hiddenToast', { name: f.name }) : t('fld.unhiddenToast', { name: f.name }))
+            await loadFolders()
+          } catch (err) { setError(String(err.message || err)) }
+        }
         // 文件夹右键菜单：点击菜单外部关闭（与笔记行菜单共用 .dsh-notes-ctxmenu 样式）
         React.useEffect(() => {
           if (!folderMenu) return
@@ -199,11 +260,13 @@
             e('button', { className: 'dsh-notes-ctxmenu-item', disabled: folderMenuIdx <= 0, onClick: () => doReorderFolder(folderMenu.folder, -1) }, t('fld.menuUp')),
             e('button', { className: 'dsh-notes-ctxmenu-item', disabled: folderMenuIdx < 0 || folderMenuIdx >= folderMenuSibs.length - 1, onClick: () => doReorderFolder(folderMenu.folder, 1) }, t('fld.menuDown')),
             (folderMenu.folder.parent || '') ? e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; setFolderMenu(null); doReparentFolder(mf.id, '') } }, t('fld.menuRoot')) : null,
+            // 0.4.4-D：隐藏此文件夹 / 取消隐藏（hidden 属性，OS 文件管理对齐；隐藏项显隐由筛选中心「显示隐藏」开关总控）
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const mf = folderMenu.folder; doSetFolderHidden(mf, !(mf.hidden === true)) } }, I('eye', 12), folderMenu.folder.hidden === true ? t('fld.menuUnhide') : t('fld.menuHide')),
             e('div', { className: 'dsh-notes-ctxmenu-sep' }),
             e('button', { className: 'dsh-notes-ctxmenu-item danger', onClick: () => doDeleteFolder(folderMenu.folder) }, t('fld.menuDeleteFolder')))
           : null
         return {
-          folders: folders, foldersExpanded: foldersExpanded, folderInputOpen: folderInputOpen, folderInputText: folderInputText,
+          folders: folders, foldersExpanded: foldersExpanded, sysKids: sysKids, folderInputOpen: folderInputOpen, folderInputText: folderInputText,
           subFolderFor: subFolderFor, folderMenu: folderMenu, renamingId: renamingId, renameText: renameText,
           setFolderInputOpen: setFolderInputOpen, setFolderInputText: setFolderInputText, setSubFolderFor: setSubFolderFor,
           setFolderMenu: setFolderMenu, setRenamingId: setRenamingId, setRenameText: setRenameText,

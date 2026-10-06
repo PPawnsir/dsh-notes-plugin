@@ -1,19 +1,20 @@
     // ===== modal: settings —— 设置卡片（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出；D2 收尾模块，序位最末）=====
     // provides: store.modal.settings / settingsOpenRef / usageBudgetRef / setPersistRef / settingsFlushRef / setSettingsOpen / setSettingsData /
-    //           setSetLlmProvider / setSetLlmModel / setSetCatalog / setSetStale / setSetBudget / setUsageData / setSetUsageBudget /
+    //           setSetLlmProvider / setSetLlmModel / setSetStale / setSetBudget / setUsageData / setSetUsageBudget /
     //           setSetSaving / setSetLogWeek / setSetLogRetention / openSettings / maybeToastUsageBudget /
-    //           settingsSetQuiet / setPersistMerge / saveSettings*（Llm/Catalog/Stale/MaxDepth/Budget/UsageBudget/LlmManual/LogWeek/LogRetention）/
+    //           settingsSetQuiet / setPersistMerge / saveSettings*（Llm/Stale/MaxDepth/Budget/UsageBudget/LlmManual/LogWeek/LogRetention）/
     //           SET_NUM_FIELDS / saveSettingsAll / restoreSettingsAll / flushSettingsPending / closeSettings / SettingsModal
     // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/format.js（fmtTok）、kernel/icons.js（e/I）、kernel/bus.js（showToast）、
     //        kernel/i18n.js（langStore/useT/setLang——语言项，notes-042-i18n-mech）、
     //        modals/export.js + export-single.js + import.js + trash.js + prune.js + suggest.js + inject-preview.js + inject-manager.js + memory-guide.js
     //        + cheatsheet.js（设置行入口 open*/do*/memViewNote 与 setMemStatus——序位在前可见，非横向引用）
-    // state 托管：open/data/llmProvider/llmModel/catalog/stale/budget/usageData/usageBudget/saving/logWeek/logRetention
+    // state 托管：open/data/llmProvider/llmModel/stale/budget/usageData/usageBudget/saving/logWeek/logRetention
+    // （0.4.4-E：catalog 目录补充行开关随功能整体拆除——设置卡无此控件，host settings-set 对旧设置键静默忽略）
     // 迁入 store.modal.settings 切片；maxDepth/snap/inflight 因 check 锚定其 useState 声明原文滞留 whole.js（同 newNoteKind 先例）——
     // 组件经 props 注入，模块函数经 panelBridge.setMaxDepth/setSetMaxDepth/setSnap/setSetSnap/setInflight/setSetInflight 中转；
     // settingsOpenRef（Esc 栈）/usageBudgetRef（预算判定）/setPersistRef（已落盘镜像）/settingsFlushRef（Esc 兜底 flush）
     // 为模块级单例（plain object 与 useRef 等价——面板为 shell.overlay 单例）；whole.js 经 panelBridge.setSettingsOpen 回填别名中转互斥关闭
-    store.modal.settings = createStore({ open: false, data: null, llmProvider: '', llmModel: '', catalog: true, stale: '90', budget: '0', usageData: null, usageBudget: '0', saving: false, logWeek: '7', logRetention: '90' })
+    store.modal.settings = createStore({ open: false, data: null, llmProvider: '', llmModel: '', stale: '90', budget: '0', usageData: null, usageBudget: '0', saving: false, logWeek: '7', logRetention: '90' })
     const settingsOpenRef = { current: false }   // 设置卡片镜像（Esc 优先关设置卡片）
     const usageBudgetRef = { current: 0 }   // 预算镜像 ref：usage-get 与 settings-get 并发放射，toast 判定读 ref 防闭包过期
     const setPersistRef = { current: null }   // 已落盘值镜像（兜底 flush/还原只写真不同的键）
@@ -23,7 +24,6 @@
     function setSettingsData(v) { store.modal.settings.set({ data: typeof v === 'function' ? v(store.modal.settings.get().data) : v }) }
     function setSetLlmProvider(v) { store.modal.settings.set({ llmProvider: typeof v === 'function' ? v(store.modal.settings.get().llmProvider) : v }) }
     function setSetLlmModel(v) { store.modal.settings.set({ llmModel: typeof v === 'function' ? v(store.modal.settings.get().llmModel) : v }) }
-    function setSetCatalog(v) { store.modal.settings.set({ catalog: typeof v === 'function' ? v(store.modal.settings.get().catalog) : v }) }
     function setSetStale(v) { store.modal.settings.set({ stale: typeof v === 'function' ? v(store.modal.settings.get().stale) : v }) }
     function setSetBudget(v) { store.modal.settings.set({ budget: typeof v === 'function' ? v(store.modal.settings.get().budget) : v }) }
     function setUsageData(v) { store.modal.settings.set({ usageData: typeof v === 'function' ? v(store.modal.settings.get().usageData) : v }) }
@@ -47,7 +47,6 @@
         setSettingsData(res)
         const l = res.settings && res.settings.llm
         if (l && l.provider && l.model) { setSetLlmProvider(l.provider); setSetLlmModel(l.model) }
-        setSetCatalog(!!(res.settings && res.settings.catalogEnabled === true))   // 目录注入总开关：缺省关（显式 true 才开启）
         setSetStale(String(res.settings && typeof res.settings.staleDays === 'number' ? res.settings.staleDays : 90))   // 时效提醒阈值：缺省 90
         panelBridge.setSetMaxDepth(String(res.settings && typeof res.settings.maxFolderDepth === 'number' ? res.settings.maxFolderDepth : 3))   // 文件夹嵌套深度上限：缺省 3（0=不限）
         setSetBudget(String(res.settings && typeof res.settings.injectBudgetChars === 'number' ? res.settings.injectBudgetChars : 0))   // 注入预算：缺省 0=不限
@@ -58,7 +57,6 @@
         // dirty/还原基准（notes-settings-feedback）：打开时快照（UI 形态字符串口径，与控件受控值同构）+ 已落盘镜像初始化
         const snap0 = {
           llmP: (l && l.provider && l.model) ? l.provider : '', llmM: (l && l.provider && l.model) ? l.model : '',
-          catalog: !!(res.settings && res.settings.catalogEnabled === true),
           stale: String(res.settings && typeof res.settings.staleDays === 'number' ? res.settings.staleDays : 90),
           maxDepth: String(res.settings && typeof res.settings.maxFolderDepth === 'number' ? res.settings.maxFolderDepth : 3),
           budget: String(res.settings && typeof res.settings.injectBudgetChars === 'number' ? res.settings.injectBudgetChars : 0),
@@ -99,7 +97,6 @@
       const p = setPersistRef.current; if (!p) return
       const n = Object.assign({}, p)
       if ('llm' in patch) { n.llmP = patch.llm ? patch.llm.provider : ''; n.llmM = patch.llm ? patch.llm.model : '' }
-      if ('catalogEnabled' in patch) n.catalog = !!patch.catalogEnabled
       if ('staleDays' in patch) n.stale = String(patch.staleDays)
       if ('maxFolderDepth' in patch) n.maxDepth = String(patch.maxFolderDepth)
       if ('injectBudgetChars' in patch) n.budget = String(patch.injectBudgetChars)
@@ -112,12 +109,6 @@
     function saveSettingsLlm(llm) {
       settingsSetQuiet({ llm: llm }).then(() => {
         showToast(llm ? t('settings.savedLlm', { name: llm.provider + ' / ' + llm.model }) : t('settings.restoredFollow'))
-      }).catch(err => setError(String(err.message || err)))
-    }
-    // 目录注入总开关：勾选即保存（只传布尔 catalogEnabled；host 侧 null 才是恢复缺省关，这里不用）
-    function saveSettingsCatalog(enabled) {
-      settingsSetQuiet({ catalogEnabled: enabled }).then(() => {
-        showToast(enabled ? t('settings.catalogOn') : t('settings.catalogOff'))
       }).catch(err => setError(String(err.message || err)))
     }
     // P1 时效衰减提醒阈值：失焦/Enter 即保存（非负整数；0 = 关闭；非法输入报错不落盘）
@@ -216,7 +207,6 @@
       const setLogRetention = store.modal.settings.get().logRetention
       const setLlmProvider = store.modal.settings.get().llmProvider
       const setLlmModel = store.modal.settings.get().llmModel
-      const setCatalog = store.modal.settings.get().catalog
       const settingsData = store.modal.settings.get().data
       if (setSaving || !setSnap) return
       const vals = { stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention }
@@ -233,7 +223,7 @@
       seq.then(() => {
         setSetSaving(false)
         // 快照跟进到当前控件值（显式确认完成 → dirty 复位，保存按钮回禁用态）
-        panelBridge.setSetSnap({ llmP: setLlmProvider, llmM: setLlmModel, catalog: setCatalog, stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention })
+        panelBridge.setSetSnap({ llmP: setLlmProvider, llmM: setLlmModel, stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention })
         usageBudgetRef.current = parseInt(setUsageBudget.trim(), 10)
         showToast(t('settings.savedAll'))
       }, err => { setSetSaving(false); setError(t('common.saveFailed', { msg: String(err && err.message || err) })) })
@@ -246,14 +236,13 @@
       const s = setSnap, p = setPersistRef.current || s
       const patches = []
       if (p.llmP !== s.llmP || p.llmM !== s.llmM) patches.push({ llm: (s.llmP && s.llmM) ? { provider: s.llmP, model: s.llmM } : null })
-      if (p.catalog !== s.catalog) patches.push({ catalogEnabled: s.catalog })
       for (const f of SET_NUM_FIELDS) { if (p[f[0]] !== s[f[0]]) { const o = {}; o[f[1]] = parseInt(s[f[0]], 10); patches.push(o) } }
       setSetSaving(true)
       let seq = Promise.resolve()
       for (const pt of patches) seq = seq.then(() => settingsSetQuiet(pt))
       seq.then(() => {
         setSetSaving(false)
-        setSetLlmProvider(s.llmP); setSetLlmModel(s.llmM); setSetCatalog(s.catalog)
+        setSetLlmProvider(s.llmP); setSetLlmModel(s.llmM)
         setSetStale(s.stale); panelBridge.setSetMaxDepth(s.maxDepth); setSetBudget(s.budget)
         setSetUsageBudget(s.usageBudget); setSetLogWeek(s.logWeek); setSetLogRetention(s.logRetention)
         usageBudgetRef.current = parseInt(s.usageBudget, 10)
@@ -296,7 +285,6 @@
       const settingsData = store.modal.settings.useSel(s => s.data)
       const setLlmProvider = store.modal.settings.useSel(s => s.llmProvider)
       const setLlmModel = store.modal.settings.useSel(s => s.llmModel)
-      const setCatalog = store.modal.settings.useSel(s => s.catalog)
       const setStale = store.modal.settings.useSel(s => s.stale)
       const setBudget = store.modal.settings.useSel(s => s.budget)
       const usageData = store.modal.settings.useSel(s => s.usageData)
@@ -320,7 +308,7 @@
       return settingsOpen ? (() => {
         // dirty 判定口径：存在在途未落盘待写（setInflight>0）或 任一控件值 ≠ 打开时快照
         const setDirty = setInflight > 0 || (setSnap ? (
-          setLlmProvider !== setSnap.llmP || setLlmModel !== setSnap.llmM || setCatalog !== setSnap.catalog ||
+          setLlmProvider !== setSnap.llmP || setLlmModel !== setSnap.llmM ||
           setStale !== setSnap.stale || setMaxDepth !== setSnap.maxDepth || setBudget !== setSnap.budget ||
           setUsageBudget !== setSnap.usageBudget || setLogWeek !== setSnap.logWeek || setLogRetention !== setSnap.logRetention) : false)
         const modelList = (settingsData && settingsData.models) || []
@@ -343,10 +331,6 @@
               e('input', { className: 'dsh-notes-settings-input', placeholder: 'provider', value: setLlmProvider, onChange: (ev) => setSetLlmProvider(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
               e('input', { className: 'dsh-notes-settings-input', placeholder: 'model', value: setLlmModel, onChange: (ev) => setSetLlmModel(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
               (setLlmProvider || setLlmModel) ? e('button', { className: 'dsh-notes-settings-clear', onClick: () => { setSetLlmProvider(''); setSetLlmModel(''); saveSettingsLlm(null) } }, tt('settings.followSession')) : null)
-        // 目录注入总开关控件：checkbox 勾选即保存（catalogEnabled，缺省关）；label 挂 tooltip 说明注入形态
-        const catalogControl = e('label', { className: 'dsh-notes-settings-checkwrap dsh-nt', 'data-tooltip': tt('settings.catalogTip') },
-          e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: setCatalog, onChange: (ev) => { const v = !!ev.target.checked; setSetCatalog(v); saveSettingsCatalog(v) } }),
-          setCatalog ? tt('settings.enabled') : tt('settings.disabled'))
         // P1 时效衰减提醒控件：数值输入（天），失焦/Enter 即保存；0 = 关闭
         const staleControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1, value: setStale, 'data-tooltip': tt('settings.staleTipT'), onChange: (ev) => setSetStale(ev.target.value), onBlur: saveSettingsStale, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsStale() } })
         // 文件夹嵌套深度上限控件（同 staleDays 输入交互）：数值输入（层），失焦/Enter 即保存；0 = 不限层数
@@ -412,7 +396,6 @@
           { key: 'llm', label: tt('settings.llm'), sub: tt('settings.llmTip'), control: llmControl },
           { key: 'usage', label: tt('settings.usage'), sub: tt('settings.usageTip'), control: usageControl },
           { key: 'usagebudget', label: tt('settings.usageBudget'), sub: tt('settings.usageBudgetTip'), control: usageBudgetControl },
-          { key: 'catalog', label: tt('settings.catalog'), sub: tt('settings.catalogTip'), control: catalogControl },
           { key: 'stale', label: tt('settings.stale'), sub: tt('settings.staleTip'), control: staleControl },
           { key: 'maxdepth', label: tt('settings.maxDepth'), sub: tt('settings.maxDepthTip'), control: maxDepthControl },
           { key: 'budget', label: tt('settings.budget'), sub: tt('settings.budgetTip'), control: budgetControl },

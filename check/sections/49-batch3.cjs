@@ -243,7 +243,7 @@ module.exports = {
     for (const pair of [['app.html', APP_SRC49], ['原型', PROTO49], ['client', clientSrc], ['发布包 client', CLIENT_PKG49]]) {
       assert(pair[1].indexOf('概念速览') >= 0, pair[0] + ' 设置卡概念速览块')
       assert(pair[1].indexOf('约定 = 须遵守的规则；资料 = Agent 按需取用的参考') >= 0, pair[0] + ' 约定/资料 一行说明')
-      assert(pair[1].indexOf('目录注入：只向 Agent 提供全库笔记清单') >= 0, pair[0] + ' 目录注入 一行说明')
+      assert(pair[1].indexOf('目录注入：只向 Agent 提供已挂载笔记的索引行') >= 0, pair[0] + ' 目录注入 一行说明（0.4.4-E 唯挂载行源口径）')
       assert(pair[1].indexOf('派发：把待办笔记派给指定会话执行，完成后自动回执闭环') >= 0, pair[0] + ' 派发 一行说明')
     }
   })

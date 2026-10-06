@@ -30,7 +30,8 @@ module.exports = {
   const appSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
   const clientPkgSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
   const protoSrc = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
-  // 覆盖卡 E 抽串清单（151 条 = disp.* 50 + arch.* 26 + common.restoredBatch 1 + trash.* 18 + sugg.* 26 + newnote.* 12 + cheat.* 12 + fld.* 6；key=表面.语义）
+  // 覆盖卡 E 抽串清单（152 条 = disp.* 51 + arch.* 26 + common.restoredBatch 1 + trash.* 18 + sugg.* 26 + newnote.* 12 + cheat.* 12 + fld.* 6；key=表面.语义）
+  //   0.4.4-B（notes-044-dormant-dispatch）：disp.dispatchedOpened 退役（休眠不再强开唤醒）→ disp.dispatchedQueued 接班；新增 disp.schedNew（专属会话复选框）
   const KEYS = [
     'disp.title', 'disp.editTitle', 'disp.sub', 'disp.editSub', 'disp.subCounts',
     'disp.draftNotSaved', 'disp.noSchedule', 'disp.noBody', 'disp.instrPlaceholder', 'disp.now',
@@ -39,7 +40,8 @@ module.exports = {
     'disp.needWorkspace', 'disp.noWsService', 'disp.sessSummary', 'disp.sessPending', 'disp.noSessions',
     'disp.notLive', 'disp.notLiveSuffix', 'disp.orphanSessName', 'disp.orphanSessWs', 'disp.nextTrigger',
     'disp.schedNeedAt', 'disp.schedAtFuture', 'disp.schedNeedAnchor', 'disp.schedNInvalid', 'disp.schedDone',
-    'disp.schedUpdated', 'disp.schedFailed', 'disp.needOpenHint', 'disp.dispatched', 'disp.dispatchedOpened',
+    'disp.schedUpdated', 'disp.schedFailed', 'disp.needOpenHint', 'disp.dispatched', 'disp.dispatchedQueued',
+    'disp.schedNew',
     'disp.newSessDone', 'disp.failed', 'disp.markedDone', 'disp.pickWs', 'disp.pickSess',
     'disp.noSessInWs', 'disp.pickWsFirst', 'disp.pickWsNew', 'disp.modeExisting', 'disp.modeNew',
     'arch.title', 'arch.sub', 'arch.hint', 'arch.hintClient', 'arch.manualHint',
@@ -71,9 +73,9 @@ module.exports = {
   const grab = (s, v) => new Function(s + '\nreturn ' + v)()
   const zh = grab(zhSrc, 'I18N_ZH'), en = grab(enSrc, 'I18N_EN')
 
-  // ===== ① 字典双向覆盖：151 条 key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
-  await t('覆盖E 字典双向覆盖：151 条 disp/arch/trash/sugg/newnote/cheat/fld/common key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
-    assert.strictEqual(KEYS.length, 151, '抽串清单条数（实得 ' + KEYS.length + '）')
+  // ===== ① 字典双向覆盖：152 条 key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
+  await t('覆盖E 字典双向覆盖：152 条 disp/arch/trash/sugg/newnote/cheat/fld/common key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
+    assert.strictEqual(KEYS.length, 152, '抽串清单条数（实得 ' + KEYS.length + '）')
     for (const k of KEYS) {
       assert(typeof zh[k] === 'string' && zh[k], 'zh 缺 key/空值：' + k)
       assert(typeof en[k] === 'string' && en[k], 'en 缺 key/空值：' + k)
@@ -134,14 +136,14 @@ module.exports = {
   })
 
   // ===== ③ 行为级：eval 字典 + app i18n 块——取值/插值/en 态逐条非裸 key =====
-  await t('行为级：覆盖E key 双语取值 + {name} 插值 + en 态 151 条逐条非裸 key', () => {
+  await t('行为级：覆盖E key 双语取值 + {name} 插值 + en 态 152 条逐条非裸 key', () => {
     const helpersSrc = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'kernel', 'helpers.js'), 'utf8')
     const i18nBlock = helpersSrc.match(/\/\* ==== i18n-mech BEGIN ====[\s\S]*?\/\* ==== i18n-mech END ==== \*\//)[0]
     const mk = (stored) => new Function('localStorage', 'render', zhSrc + '\n' + enSrc + '\n' + i18nBlock + '\nreturn { t: t }')({ getItem: () => stored, setItem: () => {} }, () => {})
     const a = mk(null)
     assert.strictEqual(a.t('disp.title'), '派发待办', 'zh 派发标题')
     assert.strictEqual(a.t('disp.schedDone', { time: '2026-10-05 09:00' }), '已排定，下次：2026-10-05 09:00', 'zh 排定 toast 插值')
-    assert.strictEqual(a.t('disp.sessSummary', { n: 3, pending: '' }), '活跃会话 3 · 按工作区分组', 'zh 会话摘要嵌套片段插值')
+    assert.strictEqual(a.t('disp.sessSummary', { n: 3, pending: '' }), '可派发会话 3（活跃+休眠） · 按工作区分组', 'zh 会话摘要嵌套片段插值（0.4.4-B 双区口径）')
     assert.strictEqual(a.t('disp.dowOption', { dow: '一' }), '周一', 'zh 星期几选项')
     assert(a.t('trash.purgeConfirm', { title: '旧笔记' }).indexOf('彻底删除不可恢复：「旧笔记」') === 0, 'zh purge confirm 插值')
     assert.strictEqual(a.t('arch.okCount', { n: 2 }), '归档所选（2 组）', 'zh 归档计数插值')

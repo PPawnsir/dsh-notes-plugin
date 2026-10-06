@@ -40,6 +40,8 @@ function renderMeta() {
       + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="' + t('meta.roleReferenceTip') + '">' + t('tree.roleReference') + '</span></span>')
     + (role !== 'off' ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="' + t('meta.scopeTip') + '">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
     + '<span class="meta-chip tgl' + (n.sensitive === true ? ' on' : '') + '" id="mSens" title="' + t('meta.sensTip') + '">' + icon('i-lock') + t('meta.sens') + '</span>'
+    /* 0.4.4-D hidden chip（eye 图标）：隐藏中=列表/树不显示（跳转与搜索打开不受影响）；点击切回 */
+    + '<span class="meta-chip tgl' + (n.hidden === true ? ' on' : '') + '" id="mHidden" title="' + t('meta.hiddenTip') + '">' + icon('i-eye') + t('meta.hidden') + '</span>'
     /* 曾注入徽章（injectEver 粘性标记：单向只升不降，不随关闭回退；当前已注入时由上方注入角色段表达，不重复显示） */
     + (n.injectEver === true && !n.inject ? '<span class="meta-chip" title="' + t('meta.injectEverTip') + '">' + icon('i-clock') + t('meta.injectEver') + '</span>' : '')
     + '<span class="meta-sp"></span>'
@@ -104,6 +106,7 @@ function renderMeta() {
   if (trig) trig.onclick = function (ev) { ev.stopPropagation(); scopeOpen = !scopeOpen; if (scopeOpen && !sessList.length) pullSessions(); renderScopePanel() };
   /* 「目录可见」chip 已拆除（0.4.3 验收修复⑪：目录注入缺省关后开关无感知作用）；host recall 字段与目录过滤逻辑保留（chip 拆除≠字段退役，doSave 仍随 edNote 带上原值） */
   $('mSens').onclick = function () { edNote.sensitive = edNote.sensitive !== true; triggerSave(); renderMeta(); toast(edNote.sensitive === true ? t('meta.sensOn') : t('meta.sensOff')) };
+  $('mHidden').onclick = function () { edNote.hidden = edNote.hidden !== true; triggerSave(); renderMeta(); toast(edNote.hidden === true ? t('meta.hiddenOn') : t('meta.hiddenOff')) };   /* 0.4.4-D：hidden chip 切换（纯 UI 遮罩字段，自动保存透传 notes-update） */
   $('mDispatch').onclick = function () { openDispatch() };
   /* P3 派发闭环徽章：点击展开派发历史并滚动到位 */
   var dBadge = $('mDispBadge');
@@ -130,13 +133,10 @@ function renderMeta() {
       else if (act === 'del') doInjSchedDel(n);
     };
   });
-  /* 执行记录跳转（notes-041-sched-runlog）：计划块「执行记录 ↗」→ 既有 selectNote 选中链路跳 runLog 软链笔记；缓存未命中 toast 不硬跳（防空白编辑器） */
+  /* 执行记录跳转（notes-041-sched-runlog / 0.4.4-A 三表归一）：计划块「执行记录 ↗」→ openExecLog 打开执行记录笔记
+     （软链统一 runLog：调度约定 schedule.runLog / 非调度顶层 runLog；缓存未命中由 selectNote open-by-id 兜底直开） */
   $('edMeta').querySelectorAll('.sched-runlog-act').forEach(function (el) {
-    el.onclick = function () {
-      var rid = el.getAttribute('data-rid');
-      if (notes.some(function (x) { return x.id === rid })) selectNote(rid);
-      else toast(t('meta.runLogNotFound', { id: rid }));
-    };
+    el.onclick = function () { openExecLog(el.getAttribute('data-rid')) };
   });
   /* 双模式两段开关点击（降级态点富文本段 → toast 原因，不切换） */
   var ms = $('modeSeg');
@@ -182,9 +182,10 @@ function schedPlanHtml(n, list) {
       + schedBadgeHtml(n)
       + (paused ? '<span class="sched-badge off">' + t('meta.schedPaused') + '</span>' : '')
       /* 原地操作行（notes-041-sched-plan-edit）：编辑/暂停恢复/删除复用注入管理 doInjSched* handler（接线在 renderMeta .sched-plan-act，零新逻辑）；
-         执行记录 ↗（notes-041-sched-runlog）：schedule.runLog 软链存在时出跳转链接（接线在 renderMeta .sched-runlog-act），约定正文保持纯净 */
+         执行记录 ↗（notes-041-sched-runlog / 0.4.4-A）：runLog 软链存在时出跳转链接（接线在 renderMeta .sched-runlog-act；
+         软链统一口径 = schedule.runLog || 顶层 runLog——手动派发先行建篇时指针在顶层），约定正文保持纯净 */
       + '<span class="sched-acts">'
-      + (s.runLog ? '<button class="mbtn sched-act sched-runlog-act" data-rid="' + esc(s.runLog) + '" title="' + t('meta.runLogTip', { id: esc(s.runLog) }) + '">' + t('meta.runLog') + '</button>' : '')
+      + (function () { var rlId = s.runLog || n.runLog || ''; return rlId ? '<button class="mbtn sched-act sched-runlog-act" data-rid="' + esc(rlId) + '" title="' + t('meta.runLogTip', { id: esc(rlId) }) + '">' + t('meta.runLog') + '</button>' : '' })()
       + '<button class="mbtn sched-act sched-plan-act" data-act="edit" title="' + t('meta.schedEditTip') + '">' + t('meta.edit') + '</button>'
       + '<button class="mbtn sched-act sched-plan-act" data-act="toggle" title="' + (paused ? t('meta.schedResumeTip') : t('meta.schedPauseTip')) + '">' + (paused ? t('meta.resume') : t('meta.pause')) + '</button>'
       + '<button class="mbtn sched-act sched-plan-act" data-act="del" title="' + t('meta.schedDelTip') + '">' + t('common.delete') + '</button>'
@@ -257,6 +258,9 @@ function renderDispatches() {
   var ds = edNote.dispatches || [];
   if (!ds.length) { host.innerHTML = ''; return }
   var open = host.dataset.open === '1';
+  /* 0.4.4-A（notes-044-dispatch-receipts）三表归一：执行记录伴生笔记软链（调度约定 schedule.runLog / 非调度顶层 runLog）——
+     派发历史行行尾「执行记录 ↗」按钮跳该笔记（openExecLog；缓存未命中由 selectNote open-by-id 兜底直开） */
+  var execLogId = edNote.runLog || (edNote.schedule && edNote.schedule.runLog) || '';
   var h = '<div class="disp-t" id="dispT">' + (open ? '▼' : '▶') + ' ' + t('meta.dispHistory', { n: ds.length }) + '</div>';
   if (open) {
     ds.map(function (d, i) { return { d: d, i: i } }).reverse().forEach(function (r) {
@@ -265,7 +269,8 @@ function renderDispatches() {
         + (isDispDone(d) ? '✓ ' : '<span class="dot"></span>') + esc(d.sessionName || d.sessionId)
         + '<span class="disp-rec-m">' + (isDispDone(d) ? t('meta.dispStDone') : t('meta.dispStPending')) + ' · ' + (d.mode === 'new' ? t('meta.dispNew') : (d.workspace || t('meta.dispExisting'))) + (d.at ? ' · ' + fmtDT(d.at) : '') + '</span></div>'
         + (d.instruction ? '<div class="disp-rec-i">' + t('meta.dispInstruction', { text: esc(d.instruction) }) + '</div>' : '')
-        + (!isDispDone(d) ? '<button class="disp-done-btn" data-di="' + r.i + '">' + t('meta.dispMarkDone') + '</button>' : '') + '</div>';
+        + (!isDispDone(d) ? '<button class="disp-done-btn" data-di="' + r.i + '">' + t('meta.dispMarkDone') + '</button>' : '')
+        + (execLogId ? '<button class="disp-log-act" data-rid="' + esc(execLogId) + '" title="' + t('meta.runLogTip', { id: esc(execLogId) }) + '">' + t('meta.runLog') + '</button>' : '') + '</div>';
     });
   }
   host.innerHTML = h;
@@ -278,6 +283,16 @@ function renderDispatches() {
       }).catch(function (e) { toast(t('meta.opFailed', { msg: e && e.message || e })) });
     };
   });
+  /* 0.4.4-A：派发历史行尾「执行记录 ↗」接线（→ 执行记录伴生笔记） */
+  host.querySelectorAll('.disp-log-act').forEach(function (b) {
+    b.onclick = function () { openExecLog(b.getAttribute('data-rid')) };
+  });
+}
+/* 0.4.4-A（notes-044-dispatch-receipts）执行记录跳转共用入口：派发历史行尾按钮 + 计划块「执行记录 ↗」——
+   走 selectNote 选中链路（0.4.4-A 起 selectNote 内置 open-by-id 兜底：缓存未命中 = 存量 sys 执行记录/在途新建，notes-get 直开不硬跳） */
+function openExecLog(rid) {
+  if (!rid) return;
+  selectNote(rid);
 }
 function renderEdFoot() {
   var n = edNote; if (!n || !$('edCreated')) return;

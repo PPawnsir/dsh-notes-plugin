@@ -26,6 +26,7 @@
         // 「目录可见」chip 已拆除（0.4.3 验收修复⑪ notes-043-mount-ux-final：目录注入缺省关后开关无感知作用）——
         //   host recall 字段/缺省/目录开关过滤逻辑保留（chip 拆除≠字段退役）；doSave 不再携带 recall（undefined=host 保留存量值）
         const [edSens, setEdSens] = React.useState(false)   // 敏感标记（sensitive 字段，缺省 false；开启后注入系统提示时正文按行打码）
+        const [edHidden, setEdHidden] = React.useState(false)   // 0.4.4-D 隐藏标记（hidden 字段，缺省 false；开启后列表/树遮罩滤除，跳转/搜索打开不受影响）
         const [edScope, setEdScope] = React.useState([])
         const [savedAt, setSavedAt] = React.useState(0)
         // ===== 双模式编辑器 v3（原型 design/notes-editor-v3.html）：源码 textarea ⇄ 富文本受限 WYSIWYG =====
@@ -38,6 +39,9 @@
         // 富文本同步态徽标（工具栏右侧）：false=已同步源码 / true=编辑中（防抖未回写）；同值 setState React 自动 bail，逐击键调无重渲染开销
         const [richSyncing, setRichSyncing] = React.useState(false)
         const [dispatchHistoryOpen, setDispatchHistoryOpen] = React.useState(false)   // 派发历史折叠态：默认折叠，点标题行展开
+        // 0.4.4-A open-by-id 旁路（notes-044-dispatch-receipts 执行记录跳转）：缓存未命中的笔记（存量 kind=sys 执行记录缺省降噪 /
+        //   在途新建列表未刷新）经 notes-get 直开后挂本旁路供渲染层回退——不进 notes 缓存（不刷列表/树红线）
+        const [openByIdNote, setOpenByIdNote] = React.useState(null)
         // ===== 派发计划块 + 关联调度清单（notes-034-sched-detail）：本笔记是 dispatch-schedule 约定 → meta 尾部计划块；
         // 关联调度 = 标题去「定时」前缀匹配的其他调度约定（≤5 条，点击 selectNote 跳转）；数据源 = notes slim 缓存（contractType/schedule 字段，零新 RPC）=====
         // schedPeerCacheRef/schedPeerTriedRef = log 型调度约定（front-matter 裸编辑旁路）会话级按需一次 includeLogs 兜底缓存
@@ -75,6 +79,7 @@
         const edStatusRef = React.useRef('active')
         const edRoleRef = React.useRef('off')
         const edSensRef = React.useRef(false)
+        const edHiddenRef = React.useRef(false)   // 0.4.4-D hidden 镜像（自动保存 debounce 读最新值）
         const edScopeRef = React.useRef([])
         const autoSaveRef = React.useRef(null)
         React.useEffect(() => { histCountRef.current = histCount }, [histCount])
@@ -87,11 +92,25 @@
           keepQuickRef.current = (n.tags || []).indexOf('quick') >= 0
           setEdTags((n.tags || []).filter(t => t !== 'quick').join(', '))
           setEdKind(n.kind || 'note'); setEdStatus(n.status || 'active'); setEdRole(n.inject ? (n.injectRole || 'convention') : 'off'); setEdScope(n.injectTo || []); setEdSens(n.sensitive === true)
+          setEdHidden(n.hidden === true)   // 0.4.4-D：hidden 状态回填（open-by-id 旁路笔记同口径——跳转打开 hidden 笔记编辑器/meta chip 正常渲染）
           setEdBody('')
           setDegraded({ ok: true, reasons: [] })   // 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果）
           histCountRef.current = null; setHistCount(null)   // 换笔记重置「历史」入口可见性，随即探测版本计数
+          // 0.4.4-A：open-by-id 旁路登记——缓存外笔记（执行记录跳转 notes-get 直开产物）挂旁路供 curNote 回退；缓存内选中清零
+          setOpenByIdNote(notes.some(x => x.id === n.id) ? null : n)
           probeHistCount(n.id)
           loadEdBody(n.id)
+        }
+        // 0.4.4-A 执行记录跳转共用入口（派发历史行尾按钮 + 计划块「执行记录 ↗」）：缓存命中直接 selectNote；
+        //   未命中（存量 sys 执行记录缺省降噪/在途新建）→ notes-get 直开（open-by-id 通道，selectNote 内登记 openByIdNote 旁路）
+        function openExecLog(rid) {
+          if (!rid) return
+          const hit = notes.find(x => x.id === rid)
+          if (hit) { selectNote(hit); return }
+          host.call('notes-get', { id: rid }).then(res => {
+            if (res && res.note) selectNote(res.note)
+            else showToast(tt('meta.runLogNotFound', { id: rid }))
+          }).catch(() => showToast(tt('meta.runLogNotFound', { id: rid })))
         }
         // R-1 安全态·正文加载（notes-get 独立成函数，「选中」与横幅「重试」共用）：
         // 成功 → edBodyLoadedRef=true（doSave 唯一放行点）；失败（res.error / 空响应 / 网络异常）→ edLoadErr 安全态
@@ -135,7 +154,7 @@
           setError('')
           const tags = (edTagsRef.current || '').split(/[,，;；]/).map(s => s.trim()).filter(Boolean)
           if (keepQuickRef.current && tags.indexOf('quick') < 0) tags.push('quick')
-          const upd = { id: id, title: edTitleRef.current, tags: tags, kind: edKindRef.current, status: edStatusRef.current, inject: edRoleRef.current !== 'off', injectTo: edScopeRef.current, sensitive: edSensRef.current === true }
+          const upd = { id: id, title: edTitleRef.current, tags: tags, kind: edKindRef.current, status: edStatusRef.current, inject: edRoleRef.current !== 'off', injectTo: edScopeRef.current, sensitive: edSensRef.current === true, hidden: edHiddenRef.current === true }
           // R-1 正文提交闸：仅 notes-get 成功加载过正文（edBodyLoadedRef）才携带 body（host 对 undefined 保留原内容，防竞态清空正文）；
           // 已加载基础上清空为空串 = 用户有意为之，附 confirmClearBody:true 显式过 host 空覆盖兜底闸（empty-body-overwrite-guard）
           if (edBodyLoadedRef.current) { upd.body = edBodyRef.current; if (upd.body === '') upd.confirmClearBody = true }
@@ -298,6 +317,8 @@
         }
         // 敏感开关：独立字段 sensitive（缺省 false；开启后注入系统提示时正文按行打码，键保留值遮蔽，Agent 用 note_get 取原文）
         function toggleSens() { setEdSens(!edSens); triggerAutoSave() }
+        // 0.4.4-D 隐藏开关：独立字段 hidden（缺省 false；开启后列表/树遮罩滤除——纯 UI 遮罩，跳转/搜索打开/agent 面不受影响）
+        function toggleHidden() { setEdHidden(!edHidden); triggerAutoSave() }
         // 范围多选：切换某个会话短 id 的选中态（缺省=所有会话；存量 'global'/'workspace' 值在首次勾选时规范化掉，host 端仍容错）
         // 归一比对（notes-034-injectto-norm）：勾选态以 scopeHas 为准（存量长 id 也算已勾选）；取消勾选连同长 id 存量一并移除，保存落短 id（host 侧另有写入归一兜底）
         function toggleScope(key) {
@@ -545,6 +566,7 @@
         edStatusRef.current = edStatus
         edRoleRef.current = edRole
         edSensRef.current = edSens
+        edHiddenRef.current = edHidden   // 0.4.4-D hidden 镜像同步
         edScopeRef.current = edScope
         // 双模式编辑器 ref 镜像（keydown/effect 闭包读最新值）
         editorModeRef.current = editorMode
@@ -563,8 +585,8 @@
           const scopeOpen = R.scopeOpen
           // 是否注入为上下文：由 inject + injectRole 双字段推出的三态决定（off 之外即注入中，不依赖标签）
           const isInjected = edRole !== 'off'
-          // 当前选中笔记（编辑器区多处用）
-          const curNote = notes.find(n => n.id === selected) || null
+          // 当前选中笔记（编辑器区多处用）；0.4.4-A：open-by-id 旁路回退（缓存未命中的执行记录笔记直开渲染）
+          const curNote = notes.find(n => n.id === selected) || (openByIdNote && openByIdNote.id === selected ? openByIdNote : null)
           const curFolderName = curNote && curNote.folder ? folderName(curNote.folder) : ''
           const curTopicName = curNote && curNote.topic && curNote.topic !== '分类中' ? curNote.topic : ''
           // 主题全局过滤跳转（面包屑主题段 + 主题 chip 跳钮共用）：未识别主题时提示不跳转
@@ -574,6 +596,8 @@
             showToast(tt('meta.filteredByTopic', { name: curTopicName }))
           }
           const curDispatches = (curNote && curNote.dispatches) || []
+          // 0.4.4-A（notes-044-dispatch-receipts）三表归一：执行记录伴生笔记软链（调度约定 schedule.runLog / 非调度顶层 runLog）——派发历史行尾「执行记录 ↗」跳转目标
+          const curExecLogId = (curNote && (curNote.runLog || (curNote.schedule && curNote.schedule.runLog))) || ''
           // P3 派发闭环：待回执条数（驱动详情 meta 徽章）
           const dispatchOpenCount = curDispatches.filter(d => !isDispatchDone(d)).length
           // ===== 派发计划块 + 关联调度清单（notes-034-sched-detail）：同 app.html renderMeta 尾部同款 =====
@@ -644,6 +668,8 @@
               // 曾注入徽章（injectEver 粘性标记：单向只升不降，不随关闭回退；当前已注入时由上方注入角色段表达，不重复显示）
               curNote.injectEver === true && !isInjected ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.injectEverTip') }, I('clock', 11), tt('meta.injectEver')) : null,
               e('span', { className: 'dsh-notes-meta-chip tgl' + (edSens ? ' on' : ''), onClick: toggleSens, 'data-tooltip': tt('meta.sensTip') }, I('lock', 11), tt('meta.sens')),
+              // 0.4.4-D hidden chip（eye 图标）：隐藏中=列表/树不显示（跳转与搜索打开不受影响）；点击切回
+              e('span', { className: 'dsh-notes-meta-chip tgl' + (edHidden ? ' on' : ''), onClick: toggleHidden, 'data-tooltip': tt('meta.hiddenTip') }, I('eye', 11), tt('meta.hidden')),
               e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.tagsTipClient') },
                 I('tag', 11),
                 e('input', { className: 'dsh-notes-meta-tags-input', placeholder: tt('meta.tagsTip'), value: edTags, onChange: (ev) => { setEdTags(ev.target.value); triggerAutoSave() } })),
@@ -673,8 +699,9 @@
                   // 原地操作行（notes-041-sched-plan-edit）：编辑/暂停恢复/删除复用注入管理 doInjSched* handler（模块级同链路，零复制逻辑）；
                   // 操作后就地刷新——toggle/del：handler 内 loadNotes（curNote 由 notes 缓存派生随刷）；edit：保存后 loadNotes 同口径
                   e('span', { className: 'dsh-notes-sched-acts' },
-                    // 执行记录 ↗（notes-041-sched-runlog）：schedule.runLog 软链存在时出跳转链接（selectNote 跳执行记录笔记；缓存未命中 toast 不硬跳）
-                    curNote.schedule.runLog ? e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': tt('meta.runLogTip', { id: curNote.schedule.runLog }), onClick: () => { const t = notes.find(x => x.id === curNote.schedule.runLog); if (t) selectNote(t); else showToast(tt('meta.runLogNotFound', { id: curNote.schedule.runLog })) } }, tt('meta.runLog')) : null,
+                    // 执行记录 ↗（notes-041-sched-runlog / 0.4.4-A 三表归一）：runLog 软链存在时出跳转链接（软链统一口径 =
+                    //   schedule.runLog || 顶层 runLog——手动派发先行建篇时指针在顶层；openExecLog：缓存未命中走 open-by-id 直开）
+                    (curNote.schedule.runLog || curNote.runLog) ? e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': tt('meta.runLogTip', { id: curNote.schedule.runLog || curNote.runLog }), onClick: () => openExecLog(curNote.schedule.runLog || curNote.runLog) }, tt('meta.runLog')) : null,
                     e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': tt('meta.schedEditTip'), onClick: () => doInjSchedEdit(curNote) }, tt('meta.edit')),
                     e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': curNote.schedule.enabled === false ? tt('meta.schedResumeTip') : tt('meta.schedPauseTip'), onClick: () => doInjSchedToggle(curNote) }, curNote.schedule.enabled === false ? tt('meta.resume') : tt('meta.pause')),
                     e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': tt('meta.schedDelTip'), onClick: () => doInjSchedDel(curNote) }, tt('common.delete')))) : null,
@@ -695,7 +722,9 @@
                 e('span', { className: 'dsh-notes-dispatch-rec-t' }, isDispatchDone(d) ? [I('check', 10, 'dsh-notes-hist-done'), ' ' + (d.sessionName || d.sessionId)] : [e('span', { key: 'dot', className: 'dsh-notes-dispatch-dot' }), ' ' + (d.sessionName || d.sessionId)]),
                 e('span', { className: 'dsh-notes-dispatch-rec-m' }, (isDispatchDone(d) ? tt('meta.dispStDone') : tt('meta.dispStPending')) + ' · ' + (d.mode === 'new' ? tt('meta.dispNew') : (d.workspace || tt('meta.dispExisting'))) + (d.at ? ' · ' + fmtDT(d.at).slice(5) : ''))),
               d.instruction ? e('div', { className: 'dsh-notes-dispatch-rec-i' }, tt('meta.dispInstruction', { text: d.instruction })) : null,
-              !isDispatchDone(d) ? e('button', { className: 'dsh-notes-dispatch-done-btn', onClick: () => doDispatchDone(origIdx) }, tt('meta.dispMarkDone')) : null)) : null)
+              !isDispatchDone(d) ? e('button', { className: 'dsh-notes-dispatch-done-btn', onClick: () => doDispatchDone(origIdx) }, tt('meta.dispMarkDone')) : null,
+              // 0.4.4-A：派发历史行尾「执行记录 ↗」按钮（→ 执行记录伴生笔记；openExecLog 内含 open-by-id 兜底）
+              curExecLogId ? e('button', { className: 'dsh-notes-dispatch-log-btn dsh-nt', 'data-tooltip': tt('meta.runLogTip', { id: curExecLogId }), onClick: () => openExecLog(curExecLogId) }, tt('meta.runLog')) : null)) : null)
           : null,
           // 降级横幅（原型 .deg）：检测到白名单外语法时提示（富文本入口同步置灰），删净后实时恢复
           !degraded.ok ? e('div', { className: 'dsh-notes-deg' },
