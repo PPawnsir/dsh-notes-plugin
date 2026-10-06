@@ -31,7 +31,8 @@ function noteRow(n, inFolderCtx) {
    递归子树口径，取回后按直挂过滤，子孙夹 sys 各夹自负）存 sysKids[fid] = { stamp, rows }；非 sys 行忽略（已在主缓存）。
    惰性红线：仅 折叠→展开 / 列表刷新后复核 触发，且「子树徽标计数(含 sys，0.4.3⑩ folders-count-sys) − 缓存可见数 > 0」
    才发请求——普通夹/折叠夹恒零请求（69 节② 展开零 RPC 口径对普通夹保持）；折叠不清缓存（stamp 新鲜则再展开零请求）；
-   列表刷新后陈旧条目由 refreshSysKids 剔除/重拉覆盖（防陈旧）。 */
+   列表刷新后陈旧条目由 refreshSysKids 剔除/重拉覆盖（防陈旧）。
+   0.4.5-B：机器档（恰选 sys 单档）豁免 count 差值闸——主缓存即全库 sys（⑩ kind 通道），该夹直挂 sys 行缓存已有且恒新鲜，恒跳过。 */
 function folderSysHidden(fid) {
   var f = null
   folders.forEach(function (x) { if (x.id === fid) f = x })
@@ -53,6 +54,11 @@ function ensureSysKids(fid) {
   var ent = sysKids[fid]
   if (ent && ent.stamp === notes) return   /* 新鲜缓存：同批数据再展开零请求 */
   if (sysKidsInflight[fid]) return
+  /* 0.4.5-B（notes-045-ux-polish）：机器档（恰选 sys 单档）跳过条件只看「缓存已有该夹 sys 行且 stamp 新鲜」（上行即达），不再用
+     count 差值——主缓存 = 全库 sys（⑩ kind 通道），该夹直挂 sys 行缓存已有且随 notes 换代恒新鲜；混合夹 count 含普通笔记而
+     folderSysHidden 的缓存可见数是 sys-only 口径，差值实为隐藏普通笔记数 → 误度量多发一次定向请求；且 filtering 态
+     folderNodeHtml 合并层不消费 sysKids，补拉恒为纯浪费。与 client popovers/folder-menu.js 同口径 */
+  if (filters.kinds.length === 1 && filters.kinds[0] === 'sys') return
   if (folderSysHidden(fid) <= 0) return   /* 无隐藏 sys：普通夹零请求 */
   sysKidsInflight[fid] = true
   var stamp = notes   /* 本批取数的数据身份；响应落地时 notes 已换代则条目即陈旧，refreshSysKids 自重拉覆盖 */

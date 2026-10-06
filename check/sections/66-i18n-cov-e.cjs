@@ -30,8 +30,10 @@ module.exports = {
   const appSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
   const clientPkgSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
   const protoSrc = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
-  // 覆盖卡 E 抽串清单（152 条 = disp.* 51 + arch.* 26 + common.restoredBatch 1 + trash.* 18 + sugg.* 26 + newnote.* 12 + cheat.* 12 + fld.* 6；key=表面.语义）
+  // 覆盖卡 E 抽串清单（162 条 = disp.* 52 + arch.* 26 + common.restoredBatch 1 + trash.* 18 + sugg.* 35 + newnote.* 12 + cheat.* 12 + fld.* 6；key=表面.语义）
+  //   0.4.5-C（notes-045-governance-suggester）：sugg.* 26→35——遥测两段（零引用挂载/高频取用未挂载）标题 + 摘除/改文案/挂载动作 + confirm/toast/失败/取用计数行
   //   0.4.4-B（notes-044-dormant-dispatch）：disp.dispatchedOpened 退役（休眠不再强开唤醒）→ disp.dispatchedQueued 接班；新增 disp.schedNew（专属会话复选框）
+  //   0.4.5-B（notes-045-ux-polish）：新增 disp.schedNewTarget（target='new' 调度目标位人话文案「首轮自动创建专属会话」，四展示点）
   const KEYS = [
     'disp.title', 'disp.editTitle', 'disp.sub', 'disp.editSub', 'disp.subCounts',
     'disp.draftNotSaved', 'disp.noSchedule', 'disp.noBody', 'disp.instrPlaceholder', 'disp.now',
@@ -41,7 +43,7 @@ module.exports = {
     'disp.notLive', 'disp.notLiveSuffix', 'disp.orphanSessName', 'disp.orphanSessWs', 'disp.nextTrigger',
     'disp.schedNeedAt', 'disp.schedAtFuture', 'disp.schedNeedAnchor', 'disp.schedNInvalid', 'disp.schedDone',
     'disp.schedUpdated', 'disp.schedFailed', 'disp.needOpenHint', 'disp.dispatched', 'disp.dispatchedQueued',
-    'disp.schedNew',
+    'disp.schedNew', 'disp.schedNewTarget',
     'disp.newSessDone', 'disp.failed', 'disp.markedDone', 'disp.pickWs', 'disp.pickSess',
     'disp.noSessInWs', 'disp.pickWsFirst', 'disp.pickWsNew', 'disp.modeExisting', 'disp.modeNew',
     'arch.title', 'arch.sub', 'arch.hint', 'arch.hintClient', 'arch.manualHint',
@@ -61,6 +63,8 @@ module.exports = {
     'sugg.orphanEmpty', 'sugg.secLogHg', 'sugg.tierWeekly', 'sugg.tierMonthly', 'sugg.logHgMeta',
     'sugg.detail', 'sugg.sessSeg', 'sugg.logHgEmpty', 'sugg.criteria', 'sugg.criteriaClient',
     'sugg.softDeleted',
+    'sugg.secZeroRef', 'sugg.secHot', 'sugg.unmount', 'sugg.editWhen', 'sugg.mount',
+    'sugg.hotMeta', 'sugg.unmountConfirm', 'sugg.unmounted', 'sugg.unmountFailed',
     'newnote.draftToast', 'newnote.createdToast', 'newnote.flushedToast', 'newnote.failed', 'newnote.title',
     'newnote.titlePlaceholder', 'newnote.kindLabel', 'newnote.templateHint', 'newnote.freeHint', 'newnote.create',
     'newnote.creating', 'newnote.created',
@@ -73,9 +77,9 @@ module.exports = {
   const grab = (s, v) => new Function(s + '\nreturn ' + v)()
   const zh = grab(zhSrc, 'I18N_ZH'), en = grab(enSrc, 'I18N_EN')
 
-  // ===== ① 字典双向覆盖：152 条 key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
-  await t('覆盖E 字典双向覆盖：152 条 disp/arch/trash/sugg/newnote/cheat/fld/common key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
-    assert.strictEqual(KEYS.length, 152, '抽串清单条数（实得 ' + KEYS.length + '）')
+  // ===== ① 字典双向覆盖：162 条 key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
+  await t('覆盖E 字典双向覆盖：162 条 disp/arch/trash/sugg/newnote/cheat/fld/common key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
+    assert.strictEqual(KEYS.length, 162, '抽串清单条数（实得 ' + KEYS.length + '）')
     for (const k of KEYS) {
       assert(typeof zh[k] === 'string' && zh[k], 'zh 缺 key/空值：' + k)
       assert(typeof en[k] === 'string' && en[k], 'en 缺 key/空值：' + k)
@@ -136,7 +140,7 @@ module.exports = {
   })
 
   // ===== ③ 行为级：eval 字典 + app i18n 块——取值/插值/en 态逐条非裸 key =====
-  await t('行为级：覆盖E key 双语取值 + {name} 插值 + en 态 152 条逐条非裸 key', () => {
+  await t('行为级：覆盖E key 双语取值 + {name} 插值 + en 态 162 条逐条非裸 key', () => {
     const helpersSrc = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'kernel', 'helpers.js'), 'utf8')
     const i18nBlock = helpersSrc.match(/\/\* ==== i18n-mech BEGIN ====[\s\S]*?\/\* ==== i18n-mech END ==== \*\//)[0]
     const mk = (stored) => new Function('localStorage', 'render', zhSrc + '\n' + enSrc + '\n' + i18nBlock + '\nreturn { t: t }')({ getItem: () => stored, setItem: () => {} }, () => {})
@@ -148,6 +152,8 @@ module.exports = {
     assert(a.t('trash.purgeConfirm', { title: '旧笔记' }).indexOf('彻底删除不可恢复：「旧笔记」') === 0, 'zh purge confirm 插值')
     assert.strictEqual(a.t('arch.okCount', { n: 2 }), '归档所选（2 组）', 'zh 归档计数插值')
     assert.strictEqual(a.t('sugg.logHgMeta', { tier: '周聚合', n: 4 }), '周聚合 · 4 条', 'zh 日志卫生行插值')
+    assert.strictEqual(a.t('sugg.hotMeta', { d: 14, n: 5 }), '近 14 天取用 5 次', 'zh 高频取用行插值（0.4.5-C）')
+    assert(a.t('sugg.unmountConfirm', { title: '旧挂载' }).indexOf('摘除挂载：旧挂载？') === 0, 'zh 摘除挂载 confirm 插值（0.4.5-C）')
     assert.strictEqual(a.t('fld.errDup', { name: '工作' }), '同级已存在同名文件夹「工作」', 'zh 重名校验插值')
     const b = mk('en')
     assert.strictEqual(b.t('disp.title'), 'Dispatch todo', 'en 派发标题')
@@ -155,6 +161,8 @@ module.exports = {
     assert.strictEqual(b.t('disp.dowOption', { dow: 'Mon' }), 'Mon', 'en 星期几选项（无前缀）')
     assert.strictEqual(b.t('arch.okCount', { n: 2 }), 'Archive selected (2 groups)', 'en 归档计数插值')
     assert.strictEqual(b.t('sugg.staleDays', { n: 5 }), 'no update for 5 days', 'en 过期天数插值')
+    assert.strictEqual(b.t('sugg.hotMeta', { d: 14, n: 5 }), '5 uses in 14d', 'en 高频取用行插值（0.4.5-C）')
+    assert.strictEqual(b.t('sugg.secZeroRef'), 'Zero-signal mounts', 'en 零引用挂载段标题（0.4.5-C）')
     assert.strictEqual(b.t('fld.errDup', { name: 'work' }), 'A folder named "work" already exists at this level', 'en 重名校验插值')
     assert.strictEqual(b.t('cheat.kSearch'), 'Focus the search box', 'en 速查表行')
     for (const k of KEYS) assert(b.t(k) !== k, 'en 态不得裸 key：' + k)

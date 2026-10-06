@@ -498,6 +498,23 @@
   .sched-badge.off{color:var(--nwarn);border-color:transparent;background:rgba(229,181,103,.12)}
   .sched-acts{display:inline-flex;gap:4px;flex-shrink:0}
   .sched-act{padding:1px 9px;font-size:10.5px}
+  /* 约定体检区（0.4.5-G notes-045-conflict-check）：注入管理面板内联结果区（不叠 modal）；徽章红=疑似冲突 / 黄=疑似取代 */
+  .conflict-sec{border:1px solid var(--nbd-soft);border-radius:var(--nr-md);margin-bottom:10px}
+  .conflict-sec-t{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--nt2);padding:7px 9px;border-bottom:1px solid var(--nbd-soft)}
+  .conflict-sec-t .sub{font-weight:400;color:var(--nt3);font-size:10px;margin-left:4px}
+  .conflict-sec .modal-hint{padding:7px 9px;margin-bottom:2px}
+  .conflict-sec .modal-err{margin:7px 9px}
+  .conflict-run{margin-left:auto;padding:1px 9px;font-size:10.5px;color:var(--nacc-tx);flex-shrink:0}
+  .conflict-row{display:flex;align-items:center;gap:8px;padding:6px 9px;font-size:11.5px;border-bottom:1px solid var(--nbd-soft);flex-wrap:wrap}
+  .conflict-row:last-child{border-bottom:none}
+  .conflict-badge{display:inline-flex;align-items:center;font-size:10px;border-radius:10px;padding:0 7px;flex-shrink:0;white-space:nowrap}
+  .conflict-badge.con{color:var(--ndanger);background:rgba(229,115,79,.12)}
+  .conflict-badge.sup{color:var(--nwarn);background:rgba(229,181,103,.12)}
+  .conflict-pair{display:inline-flex;align-items:center;gap:2px;min-width:0;flex:1;font-weight:600}
+  .conflict-ti{max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .conflict-reason{flex-basis:100%;font-size:10.5px;color:var(--nt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .conflict-acts{display:inline-flex;gap:4px;flex-shrink:0}
+  .conflict-act{padding:1px 9px;font-size:10.5px}
   /* 详情派发计划块（notes-034-sched-detail）：meta 区尾部全宽行（flex-basis:100% 自成一行）+ 关联调度清单行 */
   .sched-plan{flex-basis:100%;border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:2px 0;font-size:11.5px;margin-top:2px}
   .sched-plan-row{display:flex;align-items:center;gap:8px;padding:4px 9px;border-bottom:1px solid var(--nbd-soft)}

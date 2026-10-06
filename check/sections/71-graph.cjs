@@ -79,6 +79,16 @@ module.exports = {
     assert(gb.back.some(e => e.type === 'softref' && e.from === rS.id), 'B 反向含 softref 入边')
   })
 
+  // ---- 71.2b 顶层 runLog 软链边（0.4.5 收编：0.4.4-A 派发后执行记录懒创建回写顶层 runLog，真实管线驱动）----
+  await t('建图：顶层 runLog 软链边（meta.key=runLog，与 schedule.runLog 双键独立成边）', async () => {
+    const gA2 = await handlers['notes-get']({ id: tAid })
+    assert(gA2.note && gA2.note.runLog, '派发后源笔记顶层 runLog 软链已回写（执行记录懒创建）')
+    const gt = await handlers['notes-graph']({ id: tAid, type: 'softref' })
+    assert(gt.counts.out === 1 && gt.out[0].to === gA2.note.runLog && gt.out[0].meta.key === 'runLog', 'A→执行记录 顶层 runLog softref 边（实得 ' + JSON.stringify(gt.out) + '）')
+    const gl = await handlers['notes-graph']({ id: gA2.note.runLog, type: 'softref' })
+    assert(gl.back.some(e => e.from === tAid), '执行记录反向含顶层 runLog 入边')
+  })
+
   // ---- 71.3 增量维护：删节点级联 + 死链 + 恢复复活 ----
   await handlers['notes-delete']({ id: tBid })
   await t('增量：删节点级联——出边清零 + 指向它的边全部置死（含 softref），RPC exists=false', async () => {

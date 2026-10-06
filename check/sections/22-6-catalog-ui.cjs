@@ -40,7 +40,7 @@ module.exports = {
     }
   })
   // 0.4.3 验收修复⑪（notes-043-mount-ux-final）：详情页「目录可见」chip 拆除——目录注入缺省关后逐条开关无感知作用；
-  //   0.4.4-E 起 chip 拆除的宿主功能整体移除：host recall 字段/store-cache 缺省解析保留（dormant，0.4.5 清理卡裁决），
+  //   0.4.4-E 起 chip 拆除的宿主功能整体移除：host recall 字段/store-cache 缺省解析保留（0.4.5-A 写侧退役落地：buildFM 停写，解析保留），
   //   目录普通行过滤逻辑随 catalog 整拆消亡；client doSave 不携带 recall（undefined = host patch 语义保留存量值）
   await t('编辑器逐条「目录可见」开关已拆除（0.4.3⑪ chip 退役；0.4.4-E 起 recall 字段 dormant 保留）', () => {
     assert(clientSrc.indexOf('edRecall') < 0, 'client editor 无 edRecall state/ref 残留')
@@ -59,9 +59,9 @@ module.exports = {
     for (const k of ["'meta.recall':", "'meta.recallTip':", "'meta.recallTipNote':", "'meta.recallOn':", "'meta.recallOff':"]) {
       assert(zh.indexOf(k) < 0 && en.indexOf(k) < 0, 'i18n 双端无孤儿键 ' + k)
     }
-    // host 字段 dormant 红线：store-cache recall 缺省解析保留（0.4.5 清理卡统一裁决退役）；
+    // host 字段 deprecated 红线：store-cache recall 缺省解析保留（0.4.5-A notes-045-debt-host 写侧退役落地——buildFM 停写、读侧兼容）；
     // 目录普通行 recall=false 过滤已随 catalog 整拆消亡（消费方归零）
-    assert(hostSrc.indexOf("recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : ((p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true)),") >= 0, 'host noteFromParsed recall 缺省解析保留（字段 dormant 不退役）')
+    assert(hostSrc.indexOf("recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : ((p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true)),") >= 0, 'host noteFromParsed recall 缺省解析保留（写侧退役不动解析）')
     assert(hostSrc.indexOf('if (n.recall === false) continue') < 0, 'host 目录普通行 recall=false 过滤随 catalog 整拆消亡（0.4.4-E）')
   })
   await t('开关样式类三处同步（client-impl + 发布包 client.js + styles.css；checkwrap 系列仍服务导入/导出单文件勾选框）', () => {

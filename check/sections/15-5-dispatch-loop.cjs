@@ -53,7 +53,7 @@ module.exports = {
     g = await handlers['notes-get']({ id: c.id })
     const d = g.note.dispatches[0]
     assert(d.dispatchStatus === 'done' && d.receipt === 'idle' && d.doneAt, 'idle 回执 dispatchStatus=done + receipt=idle（实得 ' + JSON.stringify(d) + '）')
-    assert(g.note.status === 'active', 'idle 回执不自动 resolved 笔记（语义完成归保底联动）')
+    assert(g.note.status === 'active', 'idle 回执不自动 resolved 笔记（0.4.5-I 起语义完成归 idle 回执；resolved 仅手动兜底）')
   })
   await t('事件回执不误伤：只回执该会话的派发；无 agent 的 payload 静默跳过', async () => {
     const c = await handlers['notes-create']({ title: '闭环E', body: 'x', kind: 'todo' })
@@ -89,12 +89,15 @@ module.exports = {
       assert(src.indexOf("dispatchStatus: 'sent'") >= 0, tag + ' 派发登记 dispatchStatus=sent')
     }
   })
-  await t('派发消息含完成回执指引（引导 agent resolved 闭环）', async () => {
+  // 0.4.5-I（notes-045-periodic-no-resolve）：派发消息不再引导 agent resolved（全量统一）——闭环归 idle 空闲回执，resolved 仅手动兜底
+  await t('派发消息不再引导 resolved（0.4.5-I：含「不要修改笔记状态」+ 空闲自动回执说明）', async () => {
     const c = await handlers['notes-create']({ title: '闭环F', body: '做F事', kind: 'todo' })
     const before = sentMessages.length
     await handlers['notes-dispatch']({ id: c.id, sessionId: 'session-abc12345-0000-0000-0000-000000000000', sessionName: '开发会话' })
     const m = sentMessages[sentMessages.length - 1]
-    assert(sentMessages.length === before + 1 && m.msg.content[0].text.indexOf("note_manage") >= 0 && m.msg.content[0].text.indexOf("status: 'resolved'") >= 0 && m.msg.content[0].text.indexOf(c.id) >= 0, '派发消息应引导 agent 完成后 note_manage update resolved（含笔记 id）')
+    const text = m.msg.content[0].text
+    assert(sentMessages.length === before + 1 && text.indexOf('处理完即可，**不要**修改笔记状态（保持原样）') >= 0 && text.indexOf('空闲时自动回执') >= 0, '派发消息含「不要修改笔记状态」+ 空闲自动回执说明（0.4.5-I）')
+    assert(text.indexOf("status: 'resolved'") < 0 && text.indexOf('了结该笔记') < 0 && text.indexOf('完成后请调用') < 0, '派发消息零 resolved 指示（旧模板串清零）')
   })
   await t('详情徽章三端落地（client-impl / app.html / 原型）+ 样式（styles.css / lib/styles.css）', () => {
     assert(clientSrc.indexOf('isDispatchDone') >= 0 && clientSrc.indexOf('dsh-notes-dispatch-badge') >= 0, 'client-impl 派发徽章 + isDispatchDone')

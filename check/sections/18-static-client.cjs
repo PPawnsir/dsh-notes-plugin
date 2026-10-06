@@ -172,6 +172,7 @@ module.exports = {
     const need = [
       'conversation.session.header.actions', 'shell.overlay',      // 三个 Slot 注册点
       'dsh-notes-hdr-btn', 'dsh-notes-fab', 'dsh-notes-floating',  // 头部按钮 / 悬浮气泡 / 浮窗面板
+      'dsh-notes-injbadge',                                        // 0.4.5-H 会话头部注入清单徽标（88 节主锚）
       'dsh-notes-titlebar', 'dsh-notes-app', 'dsh-notes-side', 'dsh-notes-quick-input',
       'dsh-notes-fchip', 'dsh-notes-sec-h', 'dsh-notes-folder-row', 'dsh-notes-note-row',
       'dsh-notes-nested', 'dsh-notes-fbadge', 'dsh-notes-topic-row', 'dsh-notes-side-foot',
@@ -203,18 +204,18 @@ module.exports = {
     assert.strictEqual(loaded.applied, true, 'apply 应执行到结束（slots/timer 就绪）')
     assert.strictEqual(loaded.module.name, 'dsh-notes-plugin', 'name = dsh-notes-plugin')
     assert.deepStrictEqual(loaded.module.inject, ['slots', 'timer', 'sessions', 'workspaces'], "inject = ['slots','timer','sessions','workspaces']")
-    // 4 个 Slot 注入点（header / fab / panel / selection）
-    assert.strictEqual(loaded.slots.injections.length, 4, '应注册 4 个 Slot 注入点（实得 ' + loaded.slots.injections.length + '）')
-    assert.deepStrictEqual(loaded.slots.registered.map(r => r.id).sort(), ['dsh-notes-btn', 'dsh-notes-fab', 'dsh-notes-panel', 'dsh-notes-selection'], '4 个注册 id')
+    // 5 个 Slot 注入点（header×2：笔记按钮 + 0.4.5-H 注入徽标 / fab / panel / selection）
+    assert.strictEqual(loaded.slots.injections.length, 5, '应注册 5 个 Slot 注入点（实得 ' + loaded.slots.injections.length + '）')
+    assert.deepStrictEqual(loaded.slots.registered.map(r => r.id).sort(), ['dsh-notes-btn', 'dsh-notes-fab', 'dsh-notes-injected-badge', 'dsh-notes-panel', 'dsh-notes-selection'], '5 个注册 id')
     // 渲染 HeaderBtn：React.createElement 树必须能构建（含 hook 调用）
     const headerRegister = loaded.slots.registered.find(r => r.id === 'dsh-notes-btn')
     const tree = headerRegister.render({ sessionId: 'session-abcdefgh-0000' })
     assert(tree && tree.type, 'HeaderBtn 渲染出元素树')
     assert(elCount > 0, 'createElement 被调用（实得 ' + elCount + '）')
-    // 卸载：fiber effect cleanup 应把 4 个 slots.inject 全部释放
+    // 卸载：fiber effect cleanup 应把 5 个 slots.inject 全部释放
     assert.strictEqual(loaded.slots.disposed, 0, '卸载前未释放')
     loaded.cleanup()
-    assert.strictEqual(loaded.slots.disposed, 4, '卸载时释放 4 个 slots.inject（实得 ' + loaded.slots.disposed + '）')
+    assert.strictEqual(loaded.slots.disposed, 5, '卸载时释放 5 个 slots.inject（实得 ' + loaded.slots.disposed + '）')
     assert(loaded.effectsCleaned >= 1, 'ctx.effect 清理执行（实得 ' + loaded.effectsCleaned + '）')
   })
   await t('lib/client.js 快速记录卡片 v2（复制按钮 + primary 样式类）', () => {

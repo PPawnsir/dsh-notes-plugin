@@ -115,7 +115,7 @@ dsh plugin --profile web remove dsh-notes-plugin       # 卸载（不删数据�
 - **检索**：面板搜索框（本地即时过滤 + 250ms 防抖全文兜底，取并集）、筛选中心（「筛选(N)」按钮 + 分组 popover——状态组 置顶/已注入/曾注入/敏感 与类型组五 kind 均多选，组内 OR 跨组 AND，激活条件 chips 可单独移除，曾注入按 slim 字段 feature-detect；排序独立控件 时间/引用/相关度，条件与排序持久化记忆）、`note_search` 工具
 - **键盘流**：`Ctrl+K` 搜索（框内 `↓` 直达列表首条命中，保留过滤上下文）、`Alt+N` 新建（`Ctrl+N` 是浏览器保留键「新建窗口」已弃用）、`j/k`/`↑↓` 移动焦点行（可见高亮）、`Enter` 打开、`Esc` 分层（关浮层 → 清搜索并还焦列表 → 关面板）；输入框内不抢键；浮动面板与全窗口页（`/dsh-notes-app`）同款
 - **归档整理（显式）**：标题栏「归档」先 dry-run 预览（`notes-archive-preview`，含引导气泡），勾选速记组后才合并（`notes-archive` 白名单组，host 先全量校验再动手；toast 可撤销一次 `notes-archive-undo`）；手动笔记已摘出自动分组（防误并），用列表「选择」多选合并；原笔记软删除（`.bak` 备份）可恢复
-- **整理建议器**：设置卡片「整理建议」——`notes-suggest` dry-run 零写入提名四类候选：速记归档组 / 过期未引用（kind=note/link 且超 `staleDays` 且从未被 `note_get` 命中）/ 孤儿笔记（无 `[[双链]]` 出链与反向链接、未注入、零引用的普通笔记）/ 日志卫生（工作记忆 v0：超 7 天周聚合 + 超 90 天月聚合提名）；只提名不执行——直达归档预览 / 批量软删（无 confirm，toast 可撤销）/ 孤儿仅展示逐条跳转 / 日志卫生仅展开明细
+- **整理建议器**：设置卡片「整理建议」——`notes-suggest` dry-run 零写入提名六类候选：速记归档组 / 过期未引用（kind=note/link 且超 `staleDays` 且从未被 `note_get` 命中）/ 孤儿笔记（无 `[[双链]]` 出链与反向链接、未注入、零引用的普通笔记）/ 日志卫生（工作记忆 v0：超 7 天周聚合 + 超 90 天月聚合提名）/ 零引用挂载（0.4.5-C 遥测驱动：注入索引 §1 挂载笔记近 14 天五通道——注入/派发挂载/检索/取用/目录——零事件，新建未满窗口期豁免；动作=摘除挂载（不删笔记）或改文案）/ 高频取用未挂载（0.4.5-C：近 14 天检索+取用 ≥3 次且未挂载的进行中 note/link，豁免面同孤儿；动作=挂载，LLM 预填文案）；只提名不执行——直达归档预览 / 批量软删（无 confirm，toast 可撤销）/ 孤儿仅展示逐条跳转 / 日志卫生仅展开明细 / 遥测两段复用既有通道（摘除=关注入联动摘行，挂载=MountModal）且遥测缺失时静默为空
 - **工作记忆 v0（工作日志沉淀，r3 车道模型）**：设置卡片「工作记忆」区「启用沉淀引导」——创建一条预填约定笔记（`inject=true`、`contractType: memory-guide` 契约身份标记（`tag memory-guide` 兼容发现键）、作用域三档可选），引导 Agent 在任务收尾或你说「记一下今天的工作」时把会话结论写为 `kind=log` 工作日志（模板四节：做了什么/改动/遗留与后续/相关笔记双链）；车道模型：工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看）、记忆管 Agent 自己沉淀什么（自用召回），可同时对同一事件生效，无重叠检查/冲突确认；引导激活期产生的日志 front-matter 自动落 `origin: memory-guide` 溯源；日志与普通笔记同权（0.4.3⑦ 起：默认列表/搜索可见、可打开编辑保存），`inject` 硬关闭（面板不提供开关 + host 强制纠正），永不被过期/孤儿清理提名；超窗旧日志由整理建议器「日志卫生」段按 工作区×周/月 提名聚合（只提名不执行，窗口在设置卡片可调）；停用 = 关闭该约定注入（规格 `design/agent-memory-v0.md`）
 - **编辑器双模式（源码 ⇄ 富文本）**：meta 行两段开关或 `Ctrl+/` 切换——富文本为受限 WYSIWYG（白名单：h1-h3 / 列表 / 引用 / 围栏代码块 / 粗斜体 / 行内码 / 链接（仅 http/https）/ 图片 / 双链，render ⇄ serialize 双向 round-trip 无损，900ms 防抖回写源码）；富文本工具栏（加粗/斜体/链接/图片）+ 粘贴 HTML 白名单清洗（h4-6 降段落、script/style 丢弃）；含白名单外语法时富文本入口置灰 + 横幅给出原因，删净即恢复
 - **富文本门禁放宽**：行内 HTML（`<b>`/`<i>` 等）字面渲染、GFM 表格只读渲染（`contenteditable=false` 原子岛屿，序列化逐字回吐）——不再整篇降级，仅多行 HTML 块 / 嵌套引用等歧义结构才禁用富文本
@@ -147,7 +147,7 @@ dsh plugin --profile web remove dsh-notes-plugin       # 卸载（不删数据�
 
 `note_manage` 的 `create` / `update` 另支持 `injectRole`（`'convention'` / `'reference'`，仅 `inject: true` 时有意义，缺省 `convention`）：`convention` = 须遵守的行为规则（「用户约定」桶），`reference` = 事实性补充信息（「参考资料」桶，agent 按需取用）；按 `kind` 推断的建议——`decision`/`todo` → `convention`，`note`/`link`/`quote` → `reference`。
 
-`note_manage` 的 `create` / `update` 另支持 `recall`（布尔，默认 `true`）：**dormant 兼容字段**——原控制目录索引注入，该功能已于 0.4.4-E 整体移除（目录段唯挂载行源），字段读写兼容保留但对注入无任何效果（笔记永远可被 `note_search` 检索），0.4.5 清理卡统一裁决退役。
+`note_manage` 的 `create` / `update` 另支持 `recall`（布尔，默认 `true`）：**已退役兼容字段（deprecated，0.4.5-A 写侧退役）**——原控制目录索引注入，该功能已于 0.4.4-E 整体移除（目录段唯挂载行源）；入参仍接受、存量 front-matter 行照常解析（读写兼容，存量零迁移零删除），但新写不再落盘，对注入无任何效果（笔记永远可被 `note_search` 检索）。
 
 `note_manage { action: 'dispatch', id, targetSessionId? }`：不传 `targetSessionId` 时返回当前活跃会话列表供选择，传了则把该待办注入目标会话并唤醒它开始工作。
 
@@ -185,7 +185,7 @@ status: active         # active/pinned/resolved/superseded
 inject: false          # 是否注入系统提示（注入为上下文总开关）
 injectRole: convention # 注入角色（仅 inject=true 时落盘/生效）：convention=约定·须遵守的行为规则 / reference=资料·事实性补充信息（agent 按需取用）；缺省 convention
 injectTo: []           # 注入范围多选：[] = 所有会话（默认）/ [会话短id,...] = 仅限这些会话（存量 global/workspace 值按所有会话容错）
-recall: true           # dormant 兼容字段（0.4.4-E 起目录索引注入已移除，对注入无效果；0.4.5 清理卡裁决退役）
+                       # （recall 行已退役：0.4.5-A 起不再写入；存量文件的 recall 行保留并照常解析，对注入无效果）
 injectEver: false      # 曾注入粘性标记（inject 曾置 true 即永久 true，只读）
 sensitive: false       # 敏感笔记（注入时正文按行打码脱敏）
 useCount: 0            # 使用遥测（note_get 命中计数，60s 防抖落盘）

@@ -70,11 +70,13 @@
       }
       return { link: link, mount: mount }
     }
-    // softref 提取：schedule.runLog 软链（自链排除；目标不存在同样计死链）
+    // softref 提取：执行记录软链——schedule.runLog（调度派发源）+ 顶层 runLog（0.4.4-A 非调度派发源的执行记录伴生笔记软链）；
+    //   自链排除；目标不存在同样计死链；两键独立成边（meta.key 区分来源）
     function _graphSoftrefOccs(n) {
-      if (!(n.schedule && n.schedule.runLog && String(n.schedule.runLog) !== n.id)) return []
-      const rl = String(n.schedule.runLog)
-      return [{ target: rl, meta: { key: 'schedule.runLog' } }]
+      const out = []
+      if (n.schedule && n.schedule.runLog && String(n.schedule.runLog) !== n.id) out.push({ target: String(n.schedule.runLog), meta: { key: 'schedule.runLog' } })
+      if (n.runLog && String(n.runLog) !== n.id) out.push({ target: String(n.runLog), meta: { key: 'runLog' } })
+      return out
     }
     // dispatch 提取：派发记录（to = session:<sessionId> 会话命名空间，不属笔记库；status 为记录时点快照，done 布尔向后兼容）
     function _graphDispatchOccs(n) {

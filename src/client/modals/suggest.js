@@ -13,17 +13,20 @@
     function setSuggestData(v) { store.modal.suggest.set({ data: typeof v === 'function' ? v(store.modal.suggest.get().data) : v }) }
     function setSuggestPending(v) { store.modal.suggest.set({ pending: typeof v === 'function' ? v(store.modal.suggest.get().pending) : v }) }
     function setLogHgExpand(v) { store.modal.suggest.set({ logHgExpand: typeof v === 'function' ? v(store.modal.suggest.get().logHgExpand) : v }) }
-    // ===== 整理建议（设置卡片「整理建议」行入口）：notes-suggest（dry-run 零写入）四段式 modal =====
-    // 契约：{ archiveCandidates:速记组（结构与 notes-archive-preview 同源）, staleCandidates:过期未引用, orphanCandidates:孤儿（仅展示）, logHygieneCandidates:{weekly,monthly}:日志卫生（工作记忆 v0，仅展示明细）, generatedAt }
+    // ===== 整理建议（设置卡片「整理建议」行入口）：notes-suggest（dry-run 零写入）六段式 modal =====
+    // 契约：{ archiveCandidates:速记组（结构与 notes-archive-preview 同源）, staleCandidates:过期未引用, orphanCandidates:孤儿（仅展示）, logHygieneCandidates:{weekly,monthly}:日志卫生（工作记忆 v0，仅展示明细）,
+    //        zeroRefMountCandidates:零引用挂载（0.4.5-C 遥测驱动：近 14 天五通道零事件的 §1 挂载笔记，动作=摘除挂载/改文案）,
+    //        hotUnmountedCandidates:高频取用未挂载（窗口内检索+取用 ≥3 次且未挂载，动作=挂载）, telemetryWindowDays, generatedAt }
     // 红线：只提名不自动执行——速记组「去归档」直达归档预览对话框；过期未引用「一键批量软删除」无 confirm 直接逐条 notes-delete（软删可恢复，撤销 toast 兜底——确认强度 = 不可恢复性，notes-034-c-confirm）；
-    // 孤儿候选是启发式判定（可能误伤），不提供批量操作，逐条跳转人工过目；日志卫生 v0 仅展开明细（聚合执行留待 Phase 2，日志只聚合不淘汰）。
+    // 孤儿候选是启发式判定（可能误伤），不提供批量操作，逐条跳转人工过目；日志卫生 v0 仅展开明细（聚合执行留待 Phase 2，日志只聚合不淘汰）；
+    // 遥测两段空态不渲染（遥测缺失静默为空），摘除挂载 confirm 后走 notes-update inject:false 既有通道（host _idxSyncMount 联动摘 §1 行，零新 RPC 面，不删笔记），挂载/改文案复用 MountModal。
     function openSuggest() {
       setSuggestData(null); setSuggestPending(false); setError('')
       panelBridge.setSettingsOpen(false); setSuggestOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
       loadSuggest()
     }
     function loadSuggest() {
-      const empty = { archiveCandidates: [], staleCandidates: [], orphanCandidates: [], logHygieneCandidates: { weekly: [], monthly: [] } }
+      const empty = { archiveCandidates: [], staleCandidates: [], orphanCandidates: [], logHygieneCandidates: { weekly: [], monthly: [] }, zeroRefMountCandidates: [], hotUnmountedCandidates: [] }
       host.call('notes-suggest', {}).then(res => {
         if (res && res.error) { setError(res.error); setSuggestData(empty); return }
         setSuggestData(res || empty)
@@ -33,11 +36,31 @@
     function suggestGoArchive() { setSuggestOpen(false); openArchive() }
     // 孤儿「查看」：关建议框 → 双链跳转同款（目标被当前视图/kind/置顶过滤藏掉时退回「全部」再选中）
     function suggestViewNote(id) { setSuggestOpen(false); jumpToWikiTarget(id) }
+    // 摘除挂载（0.4.5-C 零引用挂载动作）：confirm（重挂载需手工 → 给一次确认）→ notes-update inject:false 既有通道
+    //   （host _idxSyncMount 联动摘 §1 行，挂载⇔资料不变量同口径，零新 RPC 面；不删笔记）→ toast + 刷新建议/列表
+    async function suggestUnmount(n) {
+      if (!n || store.modal.suggest.get().pending) return
+      if (!window.confirm(t('sugg.unmountConfirm', { title: n.title || n.id }))) return
+      try {
+        const res = await host.call('notes-update', { id: n.id, inject: false })
+        if (res && res.error) { setError(res.error); return }
+        showToast(t('sugg.unmounted', { title: n.title || n.id }))
+        await panelBridge.loadNotes(true); notifyNotesChanged()
+        loadSuggest()
+      } catch (err) { setError(String(err.message || err)) }
+    }
+    // 挂载/改文案（0.4.5-C 遥测候选动作）：modal 不叠 modal——先关建议框再开 MountModal（挂载 = LLM 草稿模式；
+    //   改文案 = 编辑模式预填现 when 文案）；确认回调重开建议框（继续收割其余候选），跳过/取消零副作用不回开。
+    //   MountModal 经 panelBridge.openMountModal 中转（modals 禁横向引用，与 inject-preview 同款姿势）
+    function suggestMountNote(n) { setSuggestOpen(false); if (panelBridge.openMountModal) panelBridge.openMountModal({ id: n.id, title: n.title || n.id }, { onConfirmed: () => openSuggest() }) }
+    function suggestEditWhen(n) { setSuggestOpen(false); if (panelBridge.openMountModal) panelBridge.openMountModal({ id: n.id, title: n.title || n.id, existing: n.when || '' }, { onConfirmed: () => openSuggest() }) }
     // 整理建议对话框宿主（设置卡片「整理建议」行入口；复用归档预览的列表样式）：
-    // 四段式——① 可整理的速记组（「去归档」直达归档预览对话框，数据与 notes-archive-preview 同源）
+    // 六段式——① 可整理的速记组（「去归档」直达归档预览对话框，数据与 notes-archive-preview 同源）
     //          ② 过期未引用（超 staleDays 且 useCount=0；「一键批量软删除」直接逐条 notes-delete，撤销 toast 兜底）
     //          ③ 可能无用（孤儿候选：启发式判定可能误伤，仅展示逐条「查看」跳转，不提供批量操作）
     //          ④ 日志卫生（工作记忆 v0：超窗日志 周/月 聚合提名——只提名不执行，v0 「明细」展开逐条「查看」）
+    //          ⑤ 零引用挂载（0.4.5-C 遥测驱动：摘除挂载/改文案双动作，空态不渲染）
+    //          ⑥ 高频取用未挂载（挂载动作 → MountModal LLM 草稿预填，空态不渲染）
     function SuggestModal(props) {
       const tt = useT()   // i18n 覆盖卡E：订阅 langStore，切语言本卡自渲染（模块级 handler 走 t() 直读当下语言态）
       const suggestOpen = store.modal.suggest.useSel(s => s.open)
@@ -82,7 +105,11 @@
         // 工作记忆 v0 日志卫生（第四段）：周聚合/月聚合两组提名（只提名不执行——v0 仅展示明细，聚合执行留待 Phase 2）
         const logHg = (d && d.logHygieneCandidates) || { weekly: [], monthly: [] }
         const logHgGroups = logHg.weekly.map(g => ({ g: g, tier: tt('sugg.tierWeekly') })).concat(logHg.monthly.map(g => ({ g: g, tier: tt('sugg.tierMonthly') })))
-        const allEmpty = d !== null && arch.length === 0 && stale.length === 0 && orphans.length === 0 && logHgGroups.length === 0
+        // 0.4.5-C 遥测两段：零引用挂载 / 高频取用未挂载（遥测缺失静默为空 → 空态不渲染）
+        const zeroRef = (d && d.zeroRefMountCandidates) || []
+        const hot = (d && d.hotUnmountedCandidates) || []
+        const winDays = (d && d.telemetryWindowDays) || 14
+        const allEmpty = d !== null && arch.length === 0 && stale.length === 0 && orphans.length === 0 && logHgGroups.length === 0 && zeroRef.length === 0 && hot.length === 0
         return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget && !suggestPending) setSuggestOpen(false) } },
           e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal dsh-notes-arch-modal dsh-notes-suggest-modal' },
             e('div', { className: 'dsh-notes-settings-modal-t' }, I('sparkle', 14), ' ' + tt('settings.suggest'), e('span', { className: 'dsh-notes-imgup-sub' }, tt('sugg.sub'))),
@@ -137,6 +164,23 @@
                                   e('span', { className: 'dsh-notes-arch-meta' }, (m.logDate || '—') + (m.sessionId ? tt('sugg.sessSeg', { id: String(m.sessionId).replace(/^session-/, '').slice(0, 8) }) : '')),
                                   e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(m.id) }, tt('sugg.view'))))) : null)))
                         : e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.logHgEmpty'))),
+                    // ⑤ 零引用挂载（0.4.5-C 遥测驱动）：近 14 天五通道零事件的 §1 挂载笔记——「改文案」（MountModal 编辑模式）/「摘除挂载」（confirm 后 notes-update inject:false，不删笔记）；空态不渲染
+                    zeroRef.length ? e('div', { className: 'dsh-notes-suggest-sec' },
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, tt('sugg.secZeroRef'), e('span', { className: 'dsh-notes-suggest-sec-n' }, tt('sugg.countItems', { n: zeroRef.length }))),
+                      e('div', { className: 'dsh-notes-arch-list' },
+                        zeroRef.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
+                          e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
+                          e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || tt('meta.uncategorized')) + (n.when ? ' · ' + n.when : '')),
+                          e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestEditWhen(n) }, tt('sugg.editWhen')),
+                          e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestUnmount(n) }, tt('sugg.unmount')))))) : null,
+                    // ⑥ 高频取用未挂载：窗口内检索+取用 ≥3 次且未挂载——「挂载」（MountModal LLM 草稿预填）；空态不渲染
+                    hot.length ? e('div', { className: 'dsh-notes-suggest-sec' },
+                      e('div', { className: 'dsh-notes-suggest-sec-t' }, tt('sugg.secHot'), e('span', { className: 'dsh-notes-suggest-sec-n' }, tt('sugg.countItems', { n: hot.length }))),
+                      e('div', { className: 'dsh-notes-arch-list' },
+                        hot.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
+                          e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
+                          e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || tt('meta.uncategorized')) + ' · ' + tt('sugg.hotMeta', { d: winDays, n: n.hits })),
+                          e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestMountNote(n) }, tt('sugg.mount')))))) : null,
                     e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.criteriaClient'))),
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
             e('div', { className: 'dsh-notes-dispatch-actions' },

@@ -21,6 +21,8 @@ module.exports = [
   'kernel/perf.js',
   'kernel/css-loader.js',
   'kernel/drag.js',
+  // triggers/mentions.js：0.4.5-E @ 引用笔记源（kernel 之后——依赖 bus/i18n/constants 序位在前；独立于 modals/panels 的宿主接线模块）
+  'triggers/mentions.js',
   'modals/link.js',
   'modals/image.js',
   'modals/merge.js',
@@ -49,6 +51,7 @@ module.exports = [
   'popovers/sort-menu.js',
   'panels/entries/header-button.js',
   'panels/entries/fab.js',
+  'panels/entries/injected-badge.js',
   'panels/panel/search.js',
   'panels/panel/wiki.js',
   'panels/panel/tree.js',

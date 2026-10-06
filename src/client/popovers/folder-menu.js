@@ -92,12 +92,15 @@
         // 0.4.4-C 按需补拉效应：依赖 展开态/列表缓存/文件夹清单——折叠→展开、列表刷新（loadNotes/notifyNotesChanged 链路）、
         // 清单到达 都触发本效应复核。惰性红线：仅「当前展开 + 无新鲜缓存 + 子树徽标计数(含 sys，0.4.3⑩ folders-count-sys)
         // − 缓存可见数 > 0（=子树藏有降噪不可见 sys）」的夹发 notes-list {folder:id} 定向请求——普通夹/折叠夹恒零请求
-        //（0.4.3⑦ 展开零 RPC 口径对普通夹保持）；缺省全展开（foldersExpanded=null）物化为全量展开集，首载即覆盖「记忆档案」场景
+        //（0.4.3⑦ 展开零 RPC 口径对普通夹保持）；缺省全展开（foldersExpanded=null）物化为全量展开集，首载即覆盖「记忆档案」场景；
+        // 0.4.5-B：机器档（恰选 sys）豁免 count 差值闸——主缓存即全库 sys（该夹直挂 sys 行已有且恒新鲜），恒跳过（消混合夹误度量多发）
         React.useEffect(() => {
           // kind 单档口径门（0.4.3⑩）：恰选 1 个非 sys kind 时缓存 = host kind 通道子集，与 count 不可比——跳过
           //（「机器」档（sys）缓存已含全库 sys 无需补拉；其余单 kind 档下 sys 行本就不该混入）
           const kf = (args.filters && args.filters.kinds) || []
           if (kf.length === 1 && kf[0] !== 'sys') return
+          // 0.4.5-B（notes-045-ux-polish）：机器档 = 恰选 sys 单档（⑩ kind 通道主缓存 = 全库 sys）
+          const machineOnly = kf.length === 1 && kf[0] === 'sys'
           const openSet = {}
           const expandedIds = foldersExpanded === null ? folders.map(f => f.id) : foldersExpanded
           expandedIds.forEach(id => { openSet[id] = true })
@@ -123,6 +126,11 @@
             const ent = sysKids[fid]
             if (ent && ent.stamp === notes) continue   // 新鲜缓存：同批数据再展开零请求（折叠不清缓存口径）
             if (sysKidsInflightRef.current[fid]) continue
+            // 0.4.5-B：机器档跳过条件只看「缓存已有该夹 sys 行且 stamp 新鲜」（上行即达），不再用 count 差值——
+            // 主缓存 = 全库 sys（⑩ kind 通道），该夹直挂 sys 行缓存已有且随 notes 换代恒新鲜；混合夹 count 含普通笔记
+            // 而 visible 是 sys-only 缓存数，差值实为隐藏普通笔记数 → 误度量多发一次定向请求；且过滤激活时树合并层
+            // 不消费 sysKids（panel/tree.js filtersActive 口径），补拉结果恒为主缓存子集 = 纯浪费。app panels/tree.js 同口径
+            if (machineOnly) continue
             const sub = folderSubtreeIdsOf(fid)
             let visible = 0
             for (const n of notes) if (sub[n.folder || '']) visible++

@@ -9,7 +9,7 @@ module.exports = {
   // ===== 17. P2 静态包 host 全链路（ESM import + webServer RPC 路由 + tools） =====
   section('17. P2 静态包 host 全链路（ESM import + webServer RPC 路由）')
   const NOTES_ROOT_STATIC = path.join(osNative.homedir(), '.dsh', 'notes')
-  const LEGACY_NOTES_STATIC = path.join('D:\\deepseek-work\\dsh-notes-plugin', 'notes')
+  const LEGACY_NOTES_STATIC = path.join('D:\\deepseek-work\\dsh-notes-plugin', 'notes')   // 镜像产品侧硬编码 src/host/head.js LEGACY_PLUGIN_DIR（发布包迁移源），非仓路径勿随 DIR 改
   const store2 = new Map()
   const fsMock2 = {
     resolve: async (p) => p,
@@ -233,7 +233,7 @@ module.exports = {
     const s2 = await rpc2('notes-active-sessions', {})
     assert(Array.isArray(s2.body.sessions), 'active-sessions 数组')
     const s3 = await rpc2('notes-workspaces', {})
-    assert(s3.body.workspaces.length === 1 && s3.body.workspaces[0].cwd === 'D:\\deepseek-work', 'workspaces 映射')
+    assert(s3.body.workspaces.length === 1 && s3.body.workspaces[0].cwd === path.dirname(DIR), 'workspaces 映射')
   })
   await t('notes-active-sessions 缓存命中：再次调用零 readTitleSnapshots 增量（静态包模块级缓存）', async () => {
     // 上一个测试的 notes-sessions 冷调用已后台填充缓存；此处再调必须全命中

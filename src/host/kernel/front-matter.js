@@ -14,7 +14,9 @@
         // injectEver 恒写（true/false 显式落盘，缺省 false）：曾注入粘性标记——一旦 inject 置 true 即永久 true，后续关闭 inject 不回退（侧栏「曾注入」过滤/行徽章数据源）
         'injectEver: ' + escYaml(m.injectEver === true ? 'true' : 'false') + '\n' +
         'injectTo: ' + (m.injectTo || []).map(escYaml).join(', ') + '\n' +
-        'recall: ' + escYaml(m.recall === false ? 'false' : 'true') + '\n' +
+        // recall 字段写侧退役（0.4.5-A notes-045-debt-host，0.4.4-E 遗留裁决落地）：buildFM 不再写此行——
+        //   新笔记无此字段；存量文件该行保留无害、parseFM/noteFromParsed 解析保留（读写兼容红线：存量零迁移零删除）、
+        //   字段随下次真实保存自然脱落；note_manage schema 入参保留（deprecated，见工具描述）
         // sensitive 恒写（true/false 显式落盘，缺省 false）：敏感笔记注入时正文按行打码
         'sensitive: ' + escYaml(m.sensitive === true ? 'true' : 'false') + '\n' +
         // hidden 条件行（0.4.4-D hidden 隐藏属性，OS 文件管理对齐：纯 UI 遮罩标记——面板显隐开关关时滤除、开时半透明渲染；

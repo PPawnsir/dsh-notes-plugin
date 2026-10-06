@@ -1,5 +1,5 @@
 // DSH 笔记插件回归测试套件 —— runner（模块化拆分：check/helpers.cjs + check/sections/*.cjs，notes-check-split）
-// 架构：check.js = runner（模式解析 + CORE 名单 + 节注册表 + 收尾总结 + i18n 未覆盖清单尾部打印）；check/helpers.cjs = 共享设施（t/section/mock 工厂/计数器）；check/sections/*.cjs = 93 节断言体（逐字节迁移）。
+// 架构：check.js = runner（模式解析 + CORE 名单 + 节注册表 + 收尾总结 + i18n 未覆盖清单尾部打印）；check/helpers.cjs = 共享设施（t/section/mock 工厂/计数器）；check/sections/*.cjs = 95 节断言体（逐字节迁移）。
 // 测试：host 全链路逻辑（内存 mock fs/llm）+ 工具 schema 校验 + 实现源码结构断言。不触碰真实笔记目录。
 const H = require('./check/helpers.cjs')
 const { state, io, S } = H
@@ -21,7 +21,7 @@ const CORE = new Set([
   'token 语义映射 bg-layer 系 + 鲜蓝强调（开发版/发布包/原型/app.html 四处同步）',
   'T1.1 工具瘦身 9→3',
   'index.mjs 是 ESM（export name/inject/apply，无 bootstrap return）',
-  'index.mjs 保留 47 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest',
+  'index.mjs 保留 48 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest + 约定体检 notes-conflict-check',
   '两栏布局骨架（侧栏 + 编辑器通栏）',
   'note_search 已注册',
   'note_get 已注册',
@@ -43,7 +43,7 @@ const CORE = new Set([
   'preview：速记按 sessionId 分组（≥2），手动/单条/已删不进组，dry-run 零写入',
   '无 groups 归档：只合速记组 + 默认标题 + .bak 备份 + undo 事务落盘',
   'undo 往返：成员批量还原 + 归档笔记软删 + undo 清空；二次 undo → undone=0',
-  'host-impl 应用成功（47 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest）',
+  'host-impl 应用成功（48 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest + 约定体检 notes-conflict-check）',
   'manage.create 返回 id',
   'manage.archive 显式 groups 合并手动组（白名单 + title 覆盖）',
   'kind 默认 note（向后兼容）',
@@ -287,6 +287,12 @@ const SECTIONS = [
   require('./check/sections/84-organize-instruct.cjs'),   // 84. 0.4.4-F AI 整理可选追加指令（弹卡引导 + prompt 条件插入 + 空路径逐字节等价，notes-044-organize-instruct）
   require('./check/sections/85-sys-folder-attr.cjs'),   // 85. 0.4.4-G 自动沉淀文件夹 sys 机器属性（folder 级 sys + 懒迁移墓碑 + 双通道树显隐 + 右键标记/摘除，双端，notes-044-sys-folders）
   require('./check/sections/86-reopen-body-reload.cjs'),   // 86. 0.4.4-H 重开笔记面板正文空白修复（富文本重开回填 + 选中存活未加载自动补拉，R-1 不动，notes-044-reopen-body-reload）
+  require('./check/sections/87-ux-polish.cjs'),   // 87. 0.4.5-B UX 打磨（target='new' 新文案四展示点 disp.schedNewTarget + 机器档混合夹惰性闸口径修正，notes-045-ux-polish）
+  require('./check/sections/88-session-injected-badge.cjs'),   // 88. 0.4.5-H 会话头部注入清单徽标（📎N + 明细浮层 + 直达笔记，零新增 RPC，notes-045-session-injected-view）
+  require('./check/sections/89-at-mention.cjs'),   // 89. 0.4.5-E @ 引用笔记（输入框 @ 菜单注册笔记源：chip 落文 + serialize 内联正文直达 Agent，notes-045-at-mention）
+  require('./check/sections/90-conflict-check.cjs'),   // 90. 0.4.5-G 约定体检（LLM 冲突/取代检测 + 人工裁决内联区，notes-045-conflict-check）
+  require('./check/sections/91-dispatch-no-resolve.cjs'),   // 91. 0.4.5-I 派发完成不再标记已解决（全量统一：消息去 resolved 指示 + idle 回执接管闭环 + resolved 手动兜底保留，notes-045-periodic-no-resolve）
+  require('./check/sections/92-export-one.cjs'),   // 92. 0.4.5-F 详情页一键导出单篇 MD（meta 导出按钮 + Blob 下载 + 文件名清洗 + 图片引用提示，notes-045-export-one）
 ]
 
 async function main() {

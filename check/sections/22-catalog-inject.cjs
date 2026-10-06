@@ -2,7 +2,8 @@
 // 拆分自 check.js 单文件（notes-check-split）：节体逐字节保留，仅首尾为机械接线（H=helpers 设施，S=跨节共享状态）。
 // 0.4.3 验收修复③（notes-043-dir-merge）：目录与资料桶合并为单一目录段并入 order 130 context，原 notes:catalog order 131 撤销。
 // 0.4.4-E（notes-044-catalog-remove）：全库平铺普通行与「资料=显式挂载」模型冲突，整体拆除——catalogEnabled 设置分支/UI 控件/
-//   预览徽标/catalog 遥测埋点/catalog 兼容别名/CATALOG_LIMIT 封顶一并退役；recall 字段随之失去最后消费方，保留 dormant（读写兼容，0.4.5 清理卡统一裁决）。
+//   预览徽标/catalog 遥测埋点/catalog 兼容别名/CATALOG_LIMIT 封顶一并退役；recall 字段随之失去最后消费方——
+//   0.4.5-A（notes-045-debt-host）写侧退役落地：buildFM 不再写 recall 行，存量行解析保留（读写兼容红线），工具描述标 deprecated。
 module.exports = {
   id: "22",
   title: "22. 笔记目录段（0.4.4-E：唯挂载行源，catalog 补充行已移除；host 双侧同步）",
@@ -35,14 +36,15 @@ module.exports = {
       assert(src.indexOf('function conventionHit(n, ws, curSid)') >= 0, label + ' conventionHit 共用命中判定（约定注入）')
     }
   })
-  await t('双侧 recall 字段链路（buildFM / noteFromParsed / persistNote / slim / _update / 工具 schema；0.4.4-E 起 dormant 保留）', () => {
+  await t('双侧 recall 字段链路（0.4.5-A 写侧退役：buildFM 停写 + persistNote 不带；noteFromParsed / slim / _update / 工具 schema 读侧保留 + 描述 deprecated 锚）', () => {
     for (const pair of [['host-impl', hostSrc], ['index.mjs', indexSrc]]) {
       const label = pair[0], src = pair[1]
-      assert(/'recall: ' \+ escYaml\(m\.recall === false \? 'false' : 'true'\)/.test(src), label + ' buildFM 写 recall 行')
-      assert(src.indexOf("recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : ((p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true)),") >= 0, label + ' noteFromParsed 读 recall（缺省 true；工作记忆 v0：kind=log 缺省 false，显式 true 豁免；0.4.3⑥ +sys 同口径）')
-      assert((src.match(/recall: n\.recall !== false/g) || []).length >= 2, label + ' persistNote 与 slim 均带 recall')
+      assert(!/'recall: ' \+ escYaml/.test(src), label + ' buildFM 不再写 recall 行（0.4.5-A 写侧退役，notes-045-debt-host）')
+      assert(src.indexOf("recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : ((p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true)),") >= 0, label + ' noteFromParsed 读 recall（缺省 true；工作记忆 v0：kind=log 缺省 false，显式 true 豁免；0.4.3⑥ +sys 同口径——解析保留红线）')
+      assert((src.match(/recall: n\.recall !== false/g) || []).length === 1, label + ' 仅 slim 读侧带 recall（persistNote 写侧退役不再携带；实得 ' + (src.match(/recall: n\.recall !== false/g) || []).length + ' 处）')
       assert(/if \(recall !== undefined\) note\.recall = recall !== false/.test(src), label + ' _update 显式传 recall 才改（undefined 不动）')
       assert(/recall: \{ type: 'boolean'/.test(src), label + ' note_manage schema 含 recall 参数')
+      assert(src.indexOf('DEPRECATED compatibility field') >= 0, label + ' 工具描述 recall 标 deprecated（dormant→deprecated 措辞升级，0.4.5-A）')
       assert(src.indexOf("handle('notes-settings-set'") >= 0, label + ' notes-settings-set 在位（0.4.4-E：catalogEnabled 分支已拆，该键为未知键静默忽略）')
     }
   })
@@ -204,30 +206,40 @@ module.exports = {
     assert(conv.indexOf('本区约定不入目录') >= 0 && conv.indexOf('约定全文已注入') >= 0, '约定全文确实注入（约定桶红线零触碰）')
     assert(dir.indexOf('- [n-') < 0, '目录段零普通行形态（- [id] 行已消亡，唯 - [[id]] 挂载行）')
   })
-  await t('recall 字段 front-matter 往返 + 缺省 true（dormant 读写兼容）', async () => {
+  await t('recall 写侧退役落盘口径 + 读侧缺省 true（0.4.5-A：新建/更新均不写 recall 行；内存视图语义不变）', async () => {
     const onDisk1 = store3.get(NOTES_DIR + '\\' + cn1.id + '.md')
-    assert(onDisk1.indexOf('\nrecall: true\n') >= 0, '缺省写 recall: true')
+    assert(onDisk1.indexOf('\nrecall:') < 0, '缺省创建不落 recall 行（写侧退役）')
     const onDisk6 = store3.get(NOTES_DIR + '\\' + cn6.id + '.md')
-    assert(onDisk6.indexOf('\nrecall: false\n') >= 0, 'create recall=false 写 recall: false')
+    assert(onDisk6.indexOf('\nrecall:') < 0, 'create recall=false 同样不落盘（入参仍接受，磁盘不再持久化该字段）')
     const g = await handlers3['notes-get']({ id: cn1.id })
-    assert.strictEqual(g.note.recall, true, 'notes-get 返回 recall=true（缺省）')
+    assert.strictEqual(g.note.recall, true, 'notes-get 返回 recall=true（缺省，读侧视图不变）')
+    const g6 = await handlers3['notes-get']({ id: cn6.id })
+    assert.strictEqual(g6.note.recall, false, 'create recall=false 内存视图生效（deprecated 入参读回兼容）')
     assert.strictEqual(g.note.inject, false, 'recall 与 inject 正交（缺省 recall=true 不影响 inject）')
   })
-  await t('note_manage update 可改 recall（dormant 字段读写兼容；目录段行为与 recall 无关——消费方已随 catalog 拆除）', async () => {
+  await t('note_manage update 可改 recall（deprecated 入参读写兼容；目录段行为与 recall 无关——消费方已随 catalog 拆除）', async () => {
     const u1 = await tMgr3.execute({ action: 'update', id: cn1.id, recall: false })
-    assert(!u1.error, 'update recall=false 成功')
+    assert(!u1.error, 'update recall=false 成功（入参仍接受）')
     const onDisk = store3.get(NOTES_DIR + '\\' + cn1.id + '.md')
-    assert(onDisk.indexOf('\nrecall: false\n') >= 0, '磁盘 front-matter 同步为 recall: false')
+    assert(onDisk.indexOf('\nrecall:') < 0, '磁盘 front-matter 不写 recall 行（0.4.5-A 写侧退役）')
+    assert((await handlers3['notes-get']({ id: cn1.id })).note.recall === false, 'update recall=false 内存视图生效')
     await tMgr3.execute({ action: 'update', id: cn1.id, recall: true })
     assert((await handlers3['notes-get']({ id: cn1.id })).note.recall === true, 'recall 改回 true（字段读写兼容保留）')
-    assert(dirPart(convCtx3.text()).indexOf('目录笔记甲') < 0, 'recall=true 也不进目录段（0.4.4-E：recall 失去最后消费方，dormant 待 0.4.5 清理卡裁决）')
+    assert(dirPart(convCtx3.text()).indexOf('目录笔记甲') < 0, 'recall=true 也不进目录段（0.4.4-E：recall 失去最后消费方；0.4.5-A 写侧退役落地）')
   })
-  await t('旧文件无 recall 字段缺省 true（向后兼容解析保留；不进目录段）', async () => {
+  await t('旧文件无 recall 字段缺省 true + 存量 recall:false 行解析保留（向后兼容红线；不进目录段）', async () => {
     const legacyId = 'n-legacy-recall'
     await fsMock3.writeText(NOTES_DIR + '\\' + legacyId + '.md', '---\nid: ' + legacyId + '\ntitle: 旧版无recall笔记\ntopic: 运维\ncreatedAt: "2026-01-01T00:00:00.000Z"\nupdatedAt: "2026-01-01T00:00:00.000Z"\n---\n\n旧正文\n')
     const g = await handlers3['notes-get']({ id: legacyId })   // 触发解析进 cache
     assert.strictEqual(g.note.recall, true, '旧文件解析缺省 recall=true')
     assert(dirPart(convCtx3.text()).indexOf('旧版无recall笔记') < 0, '无 recall 字段的旧笔记同样不进目录段（catalog 已移除）')
+    // 存量兼容往返红线（0.4.5-A）：存量文件 recall:false 行保留不迁移不删除，解析侧照常读出 false
+    const legacyId2 = 'n-legacy-recall2'
+    await fsMock3.writeText(NOTES_DIR + '\\' + legacyId2 + '.md', '---\nid: ' + legacyId2 + '\ntitle: 存量recall关闭笔记\ntopic: 运维\nrecall: false\ncreatedAt: "2026-01-01T00:00:00.000Z"\nupdatedAt: "2026-01-01T00:00:00.000Z"\n---\n\n旧正文2\n')
+    const g2 = await handlers3['notes-get']({ id: legacyId2 })
+    assert.strictEqual(g2.note.recall, false, '存量 recall:false 行解析保留（读写兼容红线：零迁移零删除）')
+    const rawDisk2 = store3.get(NOTES_DIR + '\\' + legacyId2 + '.md')
+    assert(rawDisk2.indexOf('\nrecall: false\n') >= 0, '存量 recall 行原样保留在盘上（读路径零改写）')
   })
   await t('note_manage schema 含 recall 参数', () => {
     assert(tMgr3.parameters.properties.recall && tMgr3.parameters.properties.recall.type === 'boolean', 'recall boolean 参数存在')

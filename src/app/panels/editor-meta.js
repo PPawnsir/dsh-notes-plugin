@@ -28,7 +28,7 @@ function renderMeta() {
     + '<span class="meta-chip" title="' + t('meta.tagsTip') + '">' + icon('i-filter') + '<input id="mTagsInput" size="10" placeholder="' + t('meta.tagsPlaceholder') + '" value="' + esc(tagsStr) + '"></span>'
     + (fname(n.folder) ? '<span class="meta-chip">' + icon('i-folder') + esc(fname(n.folder)) + '</span>' : '')
     /* 使用遥测（P2）：详情 meta chip「被引用 N 次」（0 次不显示） */
-    + ((n.useCount || 0) > 0 ? '<span class="meta-chip" title="' + t('meta.useCountTip') + '">' + icon('i-quote') + t('meta.useCount', { n: n.useCount }) + '</span>' : '')
+    + ((n.useCount || 0) > 0 ? '<span class="meta-chip" title="' + t('meta.useCountTip', { n: n.useCount }) + '">' + icon('i-quote') + t('meta.useCount', { n: n.useCount }) + '</span>' : '')
     /* P3 派发闭环徽章：有派发记录时聚合显示（pending=有待回执 / done=全部已回执），点击展开派发历史 */
     + (function () { var ds = n.dispatches || []; if (!ds.length) return ''; var openN = ds.filter(function (d) { return !isDispDone(d) }).length; return '<span class="meta-chip disp-badge ' + (openN ? 'pending' : 'done') + '" id="mDispBadge" title="' + (openN ? t('meta.dispPendingTip', { open: openN, total: ds.length }) : t('meta.dispDoneTip', { total: ds.length })) + '">' + icon(openN ? 'i-play' : 'i-check') + esc(openN ? t('meta.dispPending', { open: openN, total: ds.length }) : t('meta.dispDone')) + '</span>' })()
     /* 注入三态（0.4.3⑦ 注入硬关 UI 化）：kind=log 不渲染开关——UI 层不提供日志注入选项（host injectForcedOff 硬闸双保险保留） */
@@ -60,6 +60,8 @@ function renderMeta() {
     + (n.sessionId ? '<span class="meta-act" id="mSrc" title="' + t('meta.sourceTip') + '">' + icon('i-ext') + t('meta.source') + '</span>' : '')
     /* 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数） */
     + ((histCount || 0) > 0 ? '<span class="meta-act" id="mHist" title="' + t('meta.histTip', { n: histCount }) + '">' + icon('i-clock') + t('meta.history') + '</span>' : '')
+    /* 0.4.5-F（notes-045-export-one）：一键导出单篇 MD（Blob 浏览器下载，零新 RPC；正文原样） */
+    + '<span class="meta-act" id="mExport" title="' + t('meta.exportTip') + '">' + icon('i-down') + t('meta.export') + '</span>'
     + '<span class="meta-act' + (isPinned(n) ? ' on' : '') + '" id="mPin" title="' + (isPinned(n) ? t('meta.unpin') : t('meta.pin')) + '">' + icon('i-pin') + '</span>'
     + '<span class="meta-act danger" id="mDel" title="' + t('meta.delTip') + '">' + icon('i-trash') + '</span>'
     + spHtml;
@@ -117,6 +119,7 @@ function renderMeta() {
   /* 历史版本面板入口（无版本时入口不渲染，需守卫） */
   var mH = $('mHist');
   if (mH) mH.onclick = function () { openHistory() };
+  $('mExport').onclick = function () { doExportOne() };   /* 0.4.5-F：一键导出单篇 MD（Blob 浏览器下载） */
   $('mPin').onclick = function () { edNote.status = isPinned(edNote) ? 'active' : 'pinned'; triggerSave(); renderMeta(); renderTree(); toast(isPinned(edNote) ? t('meta.pinnedToast') : t('meta.unpinnedToast')) };
   $('mDel').onclick = function () { doDeleteNote(edNote.id) };
   /* 关联调度跳转（notes-034-sched-detail）：点击行进既有 selectNote 选中链路（目标必在 notes 缓存——关联清单数据源即缓存） */
@@ -177,7 +180,8 @@ function schedPlanHtml(n, list) {
     h += '<div class="sched-plan-row' + (paused ? ' paused' : '') + '">'
       + '<span class="sched-plan-t">' + icon('i-clock', 11) + t('meta.schedPlan') + '</span>'
       + '<span class="sched-freq">' + esc(schedFreqLabel(s)) + '</span>'
-      + '<span class="sched-target" title="' + esc(s.target || '') + '">→ ' + esc(shortSid(s.target)) + '</span>'
+      /* 0.4.5-B（notes-045-ux-polish）：target='new' 专属会话目标位显示人话文案（首轮回写真实 sid 后自动恢复「→ 截短」，零迁移；纯展示层） */
+      + '<span class="sched-target" title="' + esc(s.target || '') + '">' + (s.target === 'new' ? esc(t('disp.schedNewTarget')) : '→ ' + esc(shortSid(s.target))) + '</span>'
       + '<span class="sched-nf">' + esc(schedNextLabel(n)) + '</span>'
       + schedBadgeHtml(n)
       + (paused ? '<span class="sched-badge off">' + t('meta.schedPaused') + '</span>' : '')
@@ -335,5 +339,31 @@ function doDeleteNote(id) {
       }
     });
   }).catch(function (e) { toast(t('meta.deleteFailed', { msg: e && e.message || e })) });
+}
+/* ===== 0.4.5-F 详情页一键导出单篇 MD（notes-045-export-one）：meta「导出」按钮 → 浏览器下载 <标题>.md =====
+   纯前端 Blob 下载（零新 RPC）；正文原样不改写（不加 front-matter、不擅自加 H1）；与 notes-export-single（目录落盘拼接）互不替代：
+   本按钮 = 单篇快速导出，设置卡 = 批量拼接分享。
+   文件名清洗：非法字符 /\:*?"<>| → -；空标题回退「无标题」
+   （\x22 = 双引号：与 client 同构——build-dist 提取器不认正则字面量内的裸引号，转义书写保配平） */
+function exportFileName(title) {
+  /* host 落库无题为 'Untitled'（notes.js 缺省），导出文件名按本地化的「无标题」归一（F 卡 verifier 观察 a 收口） */
+  var t0 = String(title || '').trim(); if (t0 === 'Untitled') t0 = '';
+  var base = t0.replace(/[\\/:*?\x22<>|]/g, '-').trim();
+  return (base || t('tree.untitled')) + '.md';
+}
+function doExportOne() {
+  if (!edNote) return;
+  if (edMode === 'rich' && richDirty) syncFromRich('导出前同步');   /* 富文本在途编辑先落回源码（导出对象是 edNote.body 源码文本；0.4.4-F 整理同款守卫） */
+  var body = edNote.body || '';
+  var fname = exportFileName(edNote.title);
+  var blob = new Blob([body], { type: 'text/markdown;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { try { URL.revokeObjectURL(url) } catch (e) {} }, 1000);
+  toast(t('meta.exportedToast', { name: fname }));
+  /* 含本地图片相对引用（![](assets/…)）→ 下载后提示未内联（不阻塞下载；内联分享走设置→导出单文件） */
+  if (/!\[[^\]]*\]\(\s*assets\//.test(body)) toast(t('meta.exportImgWarn'));
 }
 

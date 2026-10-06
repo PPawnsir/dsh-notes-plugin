@@ -2153,6 +2153,100 @@ export function apply(ctx) {
       }
     }
 
+    // ==== conflict-check BEGIN ====（0.4.5-G 约定体检 notes-045-conflict-check：LLM 对全部注入中约定两两检测冲突/被取代对，只提名不执行——裁决动作在人）
+    // （与开发版 host-impl.js 双边同步，逻辑逐行一致）
+    // 背景：约定多了会打架（真实事故：日志隐身约定 vs 后来的同权裁决并存）。本通道提名「疑似冲突/疑似被取代」对，
+    //   人工在注入管理面板内联结果区裁决（标 A/B 已取代 = notes-update status='superseded'；保留两者 = 会话内 dismiss）。
+    // 通道：notes-when-suggest 同款 llm.stream + resolveLlmSelection（设置 LLM 优先，缺省跟随会话），temperature 0，8s Promise.race 超时。
+    // 数据集谓词（行为级断言锁定）：inject=true && injectRole=convention（缺省值等同 convention） && !deleted ——
+    //   _list 六参全开（含 sys：谓词即唯一选择口径，sys 降噪不在此生效）；<2 条 → { ok:true, pairs:[] } 零 LLM 调用。
+    // 红线：①敏感笔记正文经 maskSensitiveBody 按行打码后才进 prompt（键留值遮，占位符引导 note_get 自取）；
+    //   ②只提名不执行——本函数零写入，status 翻转只能由用户点击触发 notes-update；
+    //   ③手动触发（注入管理面板「约定体检」按钮），v0 不进 cron/启动装配。
+    // 计量口径（0.4.5-G 裁决）：低频手动治理功能沿用 when-suggest 豁免先例——不进 llm-usage 计量（USAGE_FEATURES 三功能口径不动，
+    //   故直接迭代 llm.stream 而非 streamMetered；注册面能加 conflict 键，但计量口径变更会连带 usage 报表/UI/断言面漂移，本期注释注明暂不计量）。
+    // 输出容错：剥离 ```json 围栏 → JSON.parse 失败/非数组 → { error }；逐条校验——幻觉 id（不在数据集）/aId=bId/非法 relation 条目静默过滤，
+    //   reason 归一空白截断 200 字；同一无序对去重（先见者留）。
+    const CONFLICT_CHECK_TIMEOUT_MS = 8000        // 与 when-suggest 同款 8s 超时
+    const CONFLICT_BODY_MAX_CHARS = 2000          // 单条约定正文入 prompt 上限（超出截断标注，防 token 爆）
+    const CONFLICT_REASON_MAX_CHARS = 200         // reason 归一截断上限（防御性，UI 单行呈现）
+    async function _conflictCheck(args) {
+      if (!llm) return { error: 'LLM 不可用（宿主无 llm 服务）' }
+      let all = []
+      try { all = await _list(undefined, undefined, undefined, false, true, true) } catch (e) { return { error: String(e.message || e) } }
+      const conv = (all || []).filter(n => n && n.inject === true && !n.deleted && (n.injectRole || 'convention') === 'convention')
+      if (conv.length < 2) return { ok: true, pairs: [], total: conv.length }
+      await loadSettings()
+      const sel = resolveLlmSelection()
+      if (!sel || !sel.provider || !sel.model) return { error: '未配置笔记 LLM 且无会话模型可跟随（可在设置卡片选配）' }
+      // 数据集落 prompt：id + 标题（去换行）+ 正文（敏感打码 / 超长截断）
+      const items = conv.map(n => {
+        const rawBody = String(n.body || '')
+        const safeBody = n.sensitive === true ? maskSensitiveBody(rawBody, n.id) : rawBody
+        const clipped = safeBody.length > CONFLICT_BODY_MAX_CHARS ? safeBody.slice(0, CONFLICT_BODY_MAX_CHARS) + '\n…（正文截断）' : safeBody
+        return { id: n.id, title: String(n.title || n.id).replace(/[\r\n]+/g, ' '), body: clipped }
+      })
+      const listing = items.map((it, i) => '【约定 ' + (i + 1) + '】id=' + it.id + '\n标题：' + it.title + '\n正文：\n' + (it.body.trim() || '（空）')).join('\n\n')
+      const prompt =
+        '下面是 ' + items.length + ' 条正在注入到 AI 系统提示的「约定」笔记（每条 = id + 标题 + 正文）。\n' +
+        '请两两检查它们之间是否存在以下关系：\n' +
+        '1. conflict（疑似冲突）：两条约定给出相互矛盾、不可兼得的指令（同一事项一个要求做、一个要求不做，或规则互相打架）；\n' +
+        '2. supersede（疑似取代）：同一主题下一条约定明显更新/覆盖了另一条，旧条继续注入会造成歧义。\n' +
+        '只报告有实际内容依据的对子，不要猜测；一条约定可出现在多个对子中；没有就输出空数组 []。\n' +
+        '输出：JSON 数组，每个元素 {"aId":"<id>","bId":"<id>","relation":"conflict"或"supersede","reason":"<用约定自身的语言一句话说明依据>"}。\n' +
+        '只输出 JSON 数组本身，不要输出解释、前言或代码围栏。\n\n' +
+        listing + '\n\n只输出 JSON 数组：'
+      let timer = null
+      const timeout = new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error('conflict-check 超时（8s）')), CONFLICT_CHECK_TIMEOUT_MS); if (timer && typeof timer.unref === 'function') timer.unref() })
+      let text = ''
+      try {
+        await Promise.race([(async () => {
+          for await (const chunk of llm.stream({
+            provider: sel.provider,
+            model: sel.model,
+            messages: [{
+              id: 'conflict-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+              role: 'user',
+              content: [{ type: 'text', text: prompt }],
+              source: { kind: 'user' }
+            }],
+            system: '你是笔记约定治理助手。检查注入中的约定笔记两两之间的冲突与取代关系，只输出 JSON 数组。',
+            temperature: 0
+          })) {
+            if (chunk && chunk.type === 'text-delta') text += chunk.text
+            if (chunk && chunk.type === 'finish') break
+          }
+        })(), timeout])
+      } catch (e) {
+        console.error('notes: conflictCheck failed', e)
+        return { error: String(e.message || e) }
+      } finally { if (timer) clearTimeout(timer) }
+      // 输出容错：剥离整段 ```json/``` 围栏（模型偶发包代码块）；JSON.parse 失败/非数组 → error
+      let raw = String(text || '').trim()
+      const fence = raw.match(/^```(?:json)?\s*\r?\n([\s\S]*?)\r?\n?```\s*$/)
+      if (fence) raw = fence[1].trim()
+      let arr = null
+      try { arr = JSON.parse(raw) } catch (e) { return { error: 'LLM 输出非合法 JSON：' + String(e.message || e) } }
+      if (!Array.isArray(arr)) return { error: 'LLM 输出非 JSON 数组' }
+      const byId = {}
+      for (const it of items) byId[it.id] = it
+      const pairs = []
+      const seen = {}
+      for (const p of arr) {
+        if (!p || typeof p !== 'object' || Array.isArray(p)) continue
+        const aId = String(p.aId || ''), bId = String(p.bId || '')
+        if (!byId[aId] || !byId[bId] || aId === bId) continue   // 幻觉 id / 自配对过滤（防御性，不计 error）
+        const relation = p.relation === 'conflict' ? 'conflict' : (p.relation === 'supersede' ? 'supersede' : '')
+        if (!relation) continue
+        const key = (aId < bId ? aId + '|' + bId : bId + '|' + aId) + '|' + relation
+        if (seen[key]) continue   // 同一无序对同关系去重（先见者留）
+        seen[key] = true
+        const reason = String(p.reason || '').replace(/\s+/g, ' ').trim().slice(0, CONFLICT_REASON_MAX_CHARS)
+        pairs.push({ aId: aId, bId: bId, aTitle: byId[aId].title, bTitle: byId[bId].title, relation: relation, reason: reason })
+      }
+      return { ok: true, pairs: pairs, total: conv.length }
+    }
+    // ==== conflict-check END ====
     async function _delete(id) {
       const note = Object.assign({}, await loadNote(id))
       note.deleted = true
@@ -2406,6 +2500,15 @@ export function apply(ctx) {
       } catch (e) { return { error: String(e.message || e) } }
     }))
     // ==== when-suggest END ====
+
+    // ==== conflict-check BEGIN ====（0.4.5-G 约定体检 notes-045-conflict-check：server.js 与 server.dist.js 本块逐字节一致，check 节 90 看守）
+    // notes-conflict-check {} → LLM 对全部注入中约定（inject=true && injectRole=convention && !deleted）两两检测冲突/被取代对，返回 { ok, pairs:[{aId,bId,aTitle,bTitle,relation,reason}], total }。
+    // 只提名不执行：本通道零写入——「标已取代」裁决动作由 client 走既有 notes-update status='superseded'；敏感笔记正文打码后才进 prompt（maskSensitiveBody，llm/conflict.js 内）；
+    //   <2 条约定 → { ok, pairs: [] } 零 LLM 调用；LLM 不可用/未配置/超时（8s）/输出非合法 JSON → { error }（client 内联回显，不阻断面板）。
+    disposers.push(handle('notes-conflict-check', async (args) => {
+      try { return await _conflictCheck(args || {}) } catch (e) { return { error: String(e.message || e) } }
+    }))
+    // ==== conflict-check END ====
 
     // POC 存活探测（P1 骨架遗留，包内 lib/client.js 的「笔记POC」按钮消费；非 host-impl 迁移 RPC 之一）
     disposers.push(handle('notes-ping', async (args) => ({ ok: true, pong: Date.now(), echo: (args && typeof args === 'object') ? args : null })))
@@ -3745,7 +3848,10 @@ export function apply(ctx) {
       if (note.deleted) return { error: '笔记已删除' }
       if (!o.sessionId) return { error: '缺少目标会话' }
       const instruction = String(o.instruction || '').trim()
-      const text = '【笔记插件 · 派发的待办上下文】\n\n【待办】' + (note.title || 'Untitled') + '\n' + String(note.body || note.title || '').trim() + (instruction ? '\n\n【派发方补充的要求】\n' + instruction : '') + '\n\n—— 以上是笔记插件派发给你的待办上下文（recall' + (o.sourceLabel ? '，来源：' + o.sourceLabel : '') + '）。请获取此上下文并开始处理。完成后请调用 note_manage（action: \'update\', id: \'' + note.id + '\', status: \'resolved\'）了结该笔记，系统会自动回执派发状态（dispatchStatus→done）。' + (bodyHasImageRef(note.body) ? '\n\n' + assetsHintLine(NOTES_ROOT) : '')
+      // 0.4.5-I（notes-045-periodic-no-resolve，用户裁决 2026-10-06 两轮合并）：派发完成不再指示目标 agent 把笔记标记已解决——
+      //   周期/一次性定时/手动三形态全量统一（循环任务 resolved 语义困扰 + 已有执行历史）；闭环交给 idle 空闲回执
+      //   （dispatchStatus→done + 执行记录伴生笔记 📥 行照落），resolved 保底联动机制保留为手动兜底（notes.js _update 不动）。
+      const text = '【笔记插件 · 派发的待办上下文】\n\n【待办】' + (note.title || 'Untitled') + '\n' + String(note.body || note.title || '').trim() + (instruction ? '\n\n【派发方补充的要求】\n' + instruction : '') + '\n\n—— 以上是笔记插件派发给你的待办上下文（recall' + (o.sourceLabel ? '，来源：' + o.sourceLabel : '') + '）。请获取此上下文并开始处理。处理完即可，**不要**修改笔记状态（保持原样）；系统会在你会话空闲时自动回执本轮完成（派发记录与执行记录自动闭环）。' + (bodyHasImageRef(note.body) ? '\n\n' + assetsHintLine(NOTES_ROOT) : '')
       const msg = {
         id: 'note-dispatch-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         role: 'user',
@@ -5950,12 +6056,12 @@ export function apply(ctx) {
         'Actions:\n' +
         '- create: { title, body, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, hidden?, folder?, sessionId?, cwd?, workspace?, logDate? }\n' +
         '- list: { tag?, topic?, kind?, folder?, includeLogs? } (no id/title/body needed; work logs kind=log are first-class and included by default — includeLogs is a kept no-op for backward compatibility; machine notes kind=sys are excluded from the default unfiltered list — pass kind:\'sys\', tag, or folder to see them)\n' +
-        '- update: { id, title?, body?, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, hidden?, confirmClearBody? } (setting body to "" while the stored body is non-empty is REJECTED unless confirmClearBody:true — R-1 data-loss guard against silent empty-body overwrite; setting status to "resolved" auto-closes the dispatch loop: all open entries in the note\'s dispatches are marked dispatchStatus=done with doneAt — use this to report completion of a dispatched todo)\n' +
+        '- update: { id, title?, body?, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, hidden?, confirmClearBody? } (setting body to "" while the stored body is non-empty is REJECTED unless confirmClearBody:true — R-1 data-loss guard against silent empty-body overwrite; setting status to "resolved" auto-closes the dispatch loop: all open entries in the note\'s dispatches are marked dispatchStatus=done with doneAt — kept as a manual fallback（手动兜底）to force-close the loop; since 0.4.5-I dispatched todos no longer ask the target session to resolve the note — the target session\'s idle transition closes the receipt automatically)\n' +
         '- move: { id, folder } (move note into a virtual folder — folders nest, so any folder id at any depth is valid; folder = folder id or exact folder name, "" = move out to unfiled)\n' +
         '- delete: { id } (soft delete; restorable via restore)\n' +
         '- restore: { id } (undo delete/archive)\n' +
         '- archive: { groups? } (explicit archive, undoable once via the notes-archive-undo RPC). groups = whitelist [{memberIds:[noteId,...], title?}]: merge exactly those groups (memberIds must all exist and not be deleted; title overrides the default group title). Without groups: merge ONLY quick-capture notes grouped by session. Behavior change: manual notes are NEVER auto-grouped by tag anymore — pass explicit groups to merge them (preview quick groups first via the notes-archive-preview RPC).\n' +
-        '- dispatch: { id, targetSessionId?, targetSessionName?, instruction? } (assemble the todo context plus your instruction into one user message and send it to a live session as a real task — or, when the target session is dormant (not live but persisted), queue it into the session\'s durable inbox with ZERO wake: it is delivered and processed on the session\'s next activity (the dispatch record carries queued:true in that case — 0.4.4-B); the handoff is recorded in the note\'s dispatches property with dispatchStatus=sent, and a 📤 line is appended to the note\'s lazily-created execution-log companion note「执行记录 · <标题>」(kind=log in folder「执行记录」— injection hard-disabled, visible/searchable/editable as usual; soft-linked via schedule.runLog for schedule conventions / top-level runLog field otherwise — 0.4.4-A 三表归一). Omit targetSessionId to list dispatchable sessions (live flag per entry — live:false entries are dormant and get queued delivery). Closed loop: when the target session reports completion via update status=resolved, open dispatches auto-flip to dispatchStatus=done; an idle transition of the target session also writes a receipt.)\n' +
+        '- dispatch: { id, targetSessionId?, targetSessionName?, instruction? } (assemble the todo context plus your instruction into one user message and send it to a live session as a real task — or, when the target session is dormant (not live but persisted), queue it into the session\'s durable inbox with ZERO wake: it is delivered and processed on the session\'s next activity (the dispatch record carries queued:true in that case — 0.4.4-B); the handoff is recorded in the note\'s dispatches property with dispatchStatus=sent, and a 📤 line is appended to the note\'s lazily-created execution-log companion note「执行记录 · <标题>」(kind=log in folder「执行记录」— injection hard-disabled, visible/searchable/editable as usual; soft-linked via schedule.runLog for schedule conventions / top-level runLog field otherwise — 0.4.4-A 三表归一). Omit targetSessionId to list dispatchable sessions (live flag per entry — live:false entries are dormant and get queued delivery). Closed loop: closed via idle-transition receipt of the target session — an idle transition auto-flips that session\'s open dispatches to dispatchStatus=done and writes the receipt (dormant queued deliveries close the same way on next-activity idle, zero wake 零唤醒排队同理); update status=resolved remains available as a manual fallback（手动兜底）that force-closes all open dispatches of the note — since 0.4.5-I dispatch messages no longer instruct the target session to resolve the note.)\n' +
         'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual, and a lazily-created execution-log note「执行记录 · @标题」is soft-linked via schedule.runLog — shared with manual dispatches of the same note (dispatch 📤 lines + receipt 📥/✅ lines land in one note) — the convention body itself is NEVER appended to (it is the dispatch payload; history would bloat and pollute future dispatch contexts). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived — OR the reserved literal target: \'new\' (periodic mode only — 0.4.4-B dedicated session: the first fire auto-creates a session named 定时 · <title> in the note\'s workspace, writes schedule.target back to the new sid, and every later round reuses that session via live-send or dormant queued delivery); unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status(sent|queued|error),receiptId}/lastError/runLog) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
       parameters: {
         type: 'object',

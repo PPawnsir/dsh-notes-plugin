@@ -143,7 +143,10 @@
       if (note.deleted) return { error: '笔记已删除' }
       if (!o.sessionId) return { error: '缺少目标会话' }
       const instruction = String(o.instruction || '').trim()
-      const text = '【笔记插件 · 派发的待办上下文】\n\n【待办】' + (note.title || 'Untitled') + '\n' + String(note.body || note.title || '').trim() + (instruction ? '\n\n【派发方补充的要求】\n' + instruction : '') + '\n\n—— 以上是笔记插件派发给你的待办上下文（recall' + (o.sourceLabel ? '，来源：' + o.sourceLabel : '') + '）。请获取此上下文并开始处理。完成后请调用 note_manage（action: \'update\', id: \'' + note.id + '\', status: \'resolved\'）了结该笔记，系统会自动回执派发状态（dispatchStatus→done）。' + (bodyHasImageRef(note.body) ? '\n\n' + assetsHintLine(NOTES_ROOT) : '')
+      // 0.4.5-I（notes-045-periodic-no-resolve，用户裁决 2026-10-06 两轮合并）：派发完成不再指示目标 agent 把笔记标记已解决——
+      //   周期/一次性定时/手动三形态全量统一（循环任务 resolved 语义困扰 + 已有执行历史）；闭环交给 idle 空闲回执
+      //   （dispatchStatus→done + 执行记录伴生笔记 📥 行照落），resolved 保底联动机制保留为手动兜底（notes.js _update 不动）。
+      const text = '【笔记插件 · 派发的待办上下文】\n\n【待办】' + (note.title || 'Untitled') + '\n' + String(note.body || note.title || '').trim() + (instruction ? '\n\n【派发方补充的要求】\n' + instruction : '') + '\n\n—— 以上是笔记插件派发给你的待办上下文（recall' + (o.sourceLabel ? '，来源：' + o.sourceLabel : '') + '）。请获取此上下文并开始处理。处理完即可，**不要**修改笔记状态（保持原样）；系统会在你会话空闲时自动回执本轮完成（派发记录与执行记录自动闭环）。' + (bodyHasImageRef(note.body) ? '\n\n' + assetsHintLine(NOTES_ROOT) : '')
       const msg = {
         id: 'note-dispatch-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         role: 'user',

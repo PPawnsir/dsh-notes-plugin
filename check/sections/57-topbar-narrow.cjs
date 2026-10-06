@@ -41,11 +41,11 @@ module.exports = {
     assert(/<button class="tbtn ico-only" id="btnTheme" title="切换主题[^"]*"><svg class="ic"><use href="#i-theme"\/><\/svg><span class="tb-t">切换主题<\/span><\/button>/.test(appSrc), 'app.html btnTheme 应为 ico-only + i-theme 图标 + title 提示 + tb-t 文字')
     assert(/<a class="tbtn ico-only" href="\/" id="btnHome" title="返回 DSH 主界面"><svg class="ic"><use href="#i-home"\/><\/svg><span class="tb-t">DSH 主界面<\/span><\/a>/.test(appSrc), 'app.html DSH 主界面链接应为 ico-only + tb-t 文字（id=btnHome 供 i18n 覆盖卡A renderChrome 接线）')
     assert(/<button class="tbtn" id="btnRefresh"[^>]*><svg class="ic"><use href="#i-refresh"\/><\/svg><span class="tb-t">刷新<\/span><\/button>/.test(appSrc), 'app.html btnRefresh 保文字（无 ico-only，文字包 tb-t）')
-    assert(/<button class="tbtn" id="btnArchive"[^>]*><svg class="ic"><use href="#i-check"\/><\/svg><span class="tb-t">速记<\/span><\/button>/.test(appSrc), 'app.html btnArchive 保文字（无 ico-only，文字包 tb-t）')
+    assert(/<button class="tbtn" id="btnArchive"[^>]*><svg class="ic"><use href="#i-check"\/><\/svg><span class="tb-t">速记合并<\/span><\/button>/.test(appSrc), 'app.html btnArchive 保文字（无 ico-only，文字包 tb-t；0.4.5-D 改名速记合并）')
     assert(appSrc.indexOf('id="i-theme"') >= 0, 'app.html 缺 i-theme 图标 symbol')
     // 原型：按钮同构（第 4 枚为 proto-tag mock 标签，无 ico-only）
     assert(/<button class="tbtn ico-only" id="btnTheme" title="切换主题[^"]*"><svg class="ic"><use href="#i-theme"\/><\/svg><span class="tb-t">切换主题<\/span><\/button>/.test(protoSrc), '原型 btnTheme 应为 ico-only + i-theme 图标 + tb-t 文字')
-    assert(/<button class="tbtn" id="btnRefresh"[^>]*><svg class="ic"><use href="#i-refresh"\/><\/svg><span class="tb-t">刷新<\/span>/.test(protoSrc) && /<button class="tbtn" id="btnArchive"[^>]*><svg class="ic"><use href="#i-check"\/><\/svg><span class="tb-t">速记<\/span>/.test(protoSrc), '原型 刷新/速记 保文字（tb-t）')
+    assert(/<button class="tbtn" id="btnRefresh"[^>]*><svg class="ic"><use href="#i-refresh"\/><\/svg><span class="tb-t">刷新<\/span>/.test(protoSrc) && /<button class="tbtn" id="btnArchive"[^>]*><svg class="ic"><use href="#i-check"\/><\/svg><span class="tb-t">速记合并<\/span>/.test(protoSrc), '原型 刷新/速记合并 保文字（tb-t；0.4.5-D 改名）')
     assert(protoSrc.indexOf('id="i-theme"') >= 0, '原型缺 i-theme 图标 symbol')
     // 计数闸：ico-only 恰好 = app 2（切换主题+DSH 主界面）/ 原型 1（切换主题），防误标扩散
     assert((appSrc.match(/class="tbtn ico-only"/g) || []).length === 2, 'app.html ico-only 按钮应恰好 2 枚')

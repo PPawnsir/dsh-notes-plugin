@@ -402,6 +402,23 @@
   .sched-badge.off{color:var(--nwarn);border-color:transparent;background:rgba(229,181,103,.12)}
   .sched-acts{display:inline-flex;gap:4px;flex-shrink:0}
   .sched-act{padding:1px 9px;font-size:10.5px}
+  /* 约定体检区（0.4.5-G notes-045-conflict-check）：注入管理面板内联结果区（不叠 modal）；徽章红=疑似冲突 / 黄=疑似取代 */
+  .conflict-sec{border:1px solid var(--nbd-soft);border-radius:var(--nr-md);margin-bottom:10px}
+  .conflict-sec-t{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--nt2);padding:7px 9px;border-bottom:1px solid var(--nbd-soft)}
+  .conflict-sec-t .sub{font-weight:400;color:var(--nt3);font-size:10px;margin-left:4px}
+  .conflict-sec .modal-hint{padding:7px 9px;margin-bottom:2px}
+  .conflict-sec .modal-err{margin:7px 9px}
+  .conflict-run{margin-left:auto;padding:1px 9px;font-size:10.5px;color:var(--nacc-tx);flex-shrink:0}
+  .conflict-row{display:flex;align-items:center;gap:8px;padding:6px 9px;font-size:11.5px;border-bottom:1px solid var(--nbd-soft);flex-wrap:wrap}
+  .conflict-row:last-child{border-bottom:none}
+  .conflict-badge{display:inline-flex;align-items:center;font-size:10px;border-radius:10px;padding:0 7px;flex-shrink:0;white-space:nowrap}
+  .conflict-badge.con{color:var(--ndanger);background:rgba(229,115,79,.12)}
+  .conflict-badge.sup{color:var(--nwarn);background:rgba(229,181,103,.12)}
+  .conflict-pair{display:inline-flex;align-items:center;gap:2px;min-width:0;flex:1;font-weight:600}
+  .conflict-ti{max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .conflict-reason{flex-basis:100%;font-size:10.5px;color:var(--nt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .conflict-acts{display:inline-flex;gap:4px;flex-shrink:0}
+  .conflict-act{padding:1px 9px;font-size:10.5px}
   /* 详情派发计划块（notes-034-sched-detail）：meta 区尾部全宽行（flex-basis:100% 自成一行）+ 关联调度清单行 */
   .sched-plan{flex-basis:100%;border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:2px 0;font-size:11.5px;margin-top:2px}
   .sched-plan-row{display:flex;align-items:center;gap:8px;padding:4px 9px;border-bottom:1px solid var(--nbd-soft)}
@@ -509,7 +526,7 @@
   <span class="sp"></span>
   <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新/速记保文字 -->
   <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg><span class="tb-t">刷新</span></button>
-  <button class="tbtn" id="btnArchive" title="速记合并：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）"><svg class="ic"><use href="#i-check"/></svg><span class="tb-t">速记</span></button>
+  <button class="tbtn" id="btnArchive" title="把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）"><svg class="ic"><use href="#i-check"/></svg><span class="tb-t">速记合并</span></button>
   <button class="tbtn ico-only" id="btnTheme" title="切换主题（暗色/亮色）"><svg class="ic"><use href="#i-theme"/></svg><span class="tb-t">切换主题</span></button>
   <span class="tbtn proto-tag" style="cursor:default;color:var(--nt3)">交互原型 · 内存 mock 数据（UI 与 app.html 一致）</span>
 </div>
@@ -582,6 +599,9 @@ var _mockNotes = [
  { id: 'n5', title: 'DSH 插件发布指南', kind: 'note', topic: 'DSH 插件开发', folder: 'f2', status: 'active', inject: false, injectTo: [], recall: true, tags: ['dsh'], createdAt: '2026-09-22T07:00:00.000Z', updatedAt: '2026-09-22T07:00:00.000Z', sessionId: 'session-live001-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', dispatches: [], body: '包结构 → cordis.patch.yml → npm publish → 市场收录完整链路。' },
  { id: 'n6', title: '客户端插件可用性红线', kind: 'note', topic: 'DSH 插件开发', folder: 'f2', status: 'active', inject: true, injectRole: 'reference', injectTo: [], recall: true, tags: [], useCount: 3, createdAt: '2026-09-22T06:00:00.000Z', updatedAt: '2026-09-22T06:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '上下文切换后的在途响应覆盖 · 渲染 bailout · 时区偏移。可用性要求是底线。' },
  { id: 'n7', title: '不动工约定', kind: 'decision', topic: '其他', folder: '', status: 'pinned', inject: true, injectTo: ['global'], recall: true, tags: [], createdAt: '2026-09-26T02:00:00.000Z', updatedAt: '2026-09-26T02:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '调研讨论阶段，用户没有明确指令前不要编辑工程文件或工程数据；可查找文件、写脚本验证。' },
+ /* 0.4.5-G 约定体检演示（notes-045-conflict-check）：两条同主题约定——旧「隐身」口径 vs 新「同权」裁决（真实历史事故镜像），体检 mock 提名二者为「疑似取代」对 */
+ { id: 'n-cf1', title: '约定：工作日志隐身（旧版口径）', kind: 'note', topic: '约定', folder: '', status: 'active', inject: true, injectRole: 'convention', injectTo: [], recall: true, tags: [], createdAt: '2026-09-20T02:00:00.000Z', updatedAt: '2026-09-20T02:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '【工作约定】工作日志属于机器辅助信息：默认不出现在列表与检索中，不参与注入，目录不收录。' },
+ { id: 'n-cf2', title: '约定：工作日志同权（0.4.3⑦ 裁决）', kind: 'note', topic: '约定', folder: '', status: 'active', inject: true, injectRole: 'convention', injectTo: [], recall: true, tags: [], createdAt: '2026-10-04T02:00:00.000Z', updatedAt: '2026-10-04T02:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '【工作约定】工作日志与普通笔记同权：可见、可搜索、可编辑——唯注入硬关（永不进系统提示）。本裁决推翻旧「隐身」口径。' },
  { id: 'n8', title: 'TODO: oabanner 兼容评估', kind: 'todo', topic: '数据管线', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-09-17T03:00:00.000Z', updatedAt: '2026-09-17T03:00:00.000Z', sessionId: 'session-work1234-0000-0000-0000-000000000000', cwd: 'D:\\ontology-proj', dispatches: [{ sessionId: 'session-work1234-0000-0000-0000-000000000000', sessionName: 'oabanner 数据管线', workspace: 'ontology-proj', mode: 'existing', instruction: '先出字段 diff 清单再评估', at: '2026-09-28T10:20:00.000Z', done: false, dispatchStatus: 'sent' }], body: '拿到新增字段清单（新旧 JSON key diff）；检查 ingest.py 对未知字段的容忍度。' },
  { id: 'n9', title: 'TODO: 数据推演形态 C', kind: 'note', topic: 'modeling-workbench', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-09-17T02:00:00.000Z', updatedAt: '2026-09-17T02:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: 'C 形态（时序外推）暂缓，待数据窗口积累后评估。' },
  { id: 'n10', title: 'TODO: semantica 收编主仓库', kind: 'note', topic: '工程结构', folder: 'f3', status: 'active', inject: false, injectTo: [], recall: true, tags: [], injectEver: true, createdAt: '2026-09-16T02:00:00.000Z', updatedAt: '2026-09-16T02:00:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '上游克隆带自己的 .git，主仓库通过 sys.path.insert 引用，属历史偶然状态。' },
@@ -1162,6 +1182,16 @@ function _mockRpc(method, a) {
     var tpl = KIND_TEMPLATES[a.kind] || '';
     return { ok: true, body: (tpl ? tpl + '\n' : '') + (oInstr ? '> 追加指令：' + oInstr.replace(/\s+/g, ' ') + '\n\n' : '') + ab.trim() + '\n', kind: a.kind || 'note' };
   }
+  if (method === 'notes-conflict-check') {
+    /* 0.4.5-G 约定体检 mock（notes-045-conflict-check，契约同 host：{} → { ok, pairs:[{aId,bId,aTitle,bTitle,relation,reason}], total } / {error}）：
+       原型无 LLM——数据集谓词与 host 同口径（inject=true && injectRole=convention && !deleted），<2 条空态；
+       演示收敛口径：已被标记 superseded 的约定不再参与提名（裁决后重跑见空态，演示闭环）；固定提名首两条活跃约定为「疑似取代」对 */
+    var cconv = _mockNotes.filter(function (x) { return !x.deleted && x.inject === true && (x.injectRole || 'convention') === 'convention' });
+    if (cconv.length < 2) return { ok: true, pairs: [], total: cconv.length };
+    var live = cconv.filter(function (x) { return (x.status || 'active') !== 'superseded' });
+    if (live.length < 2) return { ok: true, pairs: [], total: cconv.length };
+    return { ok: true, total: cconv.length, pairs: [{ aId: live[0].id, bId: live[1].id, aTitle: live[0].title, bTitle: live[1].title, relation: 'supersede', reason: '同主题（工作日志可见性）：后者明确推翻前者的「隐身」口径，旧条继续注入会造成歧义（原型 mock 演示数据）。' }] };
+  }
   if (method === 'notes-assets-prune') {
     /* 二期 孤儿资产清理 mock（契约同 host）：扫全部笔记正文 assets/<name> 引用（含软删除笔记，宁留勿删），
        dryRun 缺省 true 零写入预览；执行按 files 白名单从 _mockAssets 移除（模拟真删除） */
@@ -1518,7 +1548,7 @@ function noteRow(n, inFolderCtx) {
     /* 曾注入徽章（injectEver 粘性标记：历史上开启过注入、现已关闭；已注入由 bolt 表达不重复显示；不满足不渲染） */
     + (!n.inject && n.injectEver === true ? '<span class="injevr" title="曾注入：历史上开启过上下文注入（现已关闭）">' + icon('i-clock', 9) + '</span>' : '')
     /* 使用遥测（P2）：被引用徽章（0 次不显示） */
-    + ((n.useCount || 0) > 0 ? '<span class="use" title="被 Agent 引用（note_get 命中）' + n.useCount + ' 次">' + icon('i-quote', 9) + n.useCount + '</span>' : '')
+    + ((n.useCount || 0) > 0 ? '<span class="use" title="被 AI 查阅过 ' + n.useCount + ' 次">' + icon('i-quote', 9) + n.useCount + '</span>' : '')
     + tail + '</div>';
 }
 /* 嵌套文件夹递归渲染（notes-nested-folder-ui）：depth-first——文件夹行 → 展开时 [子文件夹递归 → 直挂笔记] 包一层 .nested 缩进容器；
@@ -1974,6 +2004,28 @@ function renderCrumb() {
     el.onclick = function () { var fid = el.getAttribute('data-fid'); folderPath(fid).forEach(function (af) { foldOpen[af.id] = true }); saveFoldOpen(); render() };
   });
 }
+/* ===== 0.4.5-F 详情页一键导出单篇 MD（notes-045-export-one）：meta「导出」按钮 → 浏览器下载 <标题>.md =====
+   纯前端 Blob 下载（零新 RPC）；正文原样不改写（不加 front-matter、不擅自加 H1）；文件名清洗：非法字符 /\:*?"<>| → -；空标题回退「无标题」。
+   （原型无双模式编辑器——正文恒源码态 edNote.body，无需富文本同步守卫；与 notes-export-single 目录落盘拼接互不替代） */
+function exportFileName(title) {
+  var t0 = String(title || '').trim(); if (t0 === 'Untitled') t0 = '';   /* host 无题缺省 'Untitled' → 本地化「无标题」归一（同构） */
+  var base = t0.replace(/[\\/:*?\x22<>|]/g, '-').trim();   /* \x22 = 双引号（与 client/app 同构口径） */
+  return (base || '无标题') + '.md';
+}
+function doExportOne() {
+  if (!edNote) return;
+  var body = edNote.body || '';
+  var fname = exportFileName(edNote.title);
+  var blob = new Blob([body], { type: 'text/markdown;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { try { URL.revokeObjectURL(url) } catch (e) {} }, 1000);
+  toast('已导出 ' + fname);
+  /* 含本地图片相对引用（![](assets/…)）→ 下载后提示未内联（不阻塞下载；内联分享走设置→导出单文件） */
+  if (/!\[[^\]]*\]\(\s*assets\//.test(body)) toast('正文含本地图片引用未内联，需要内联分享请用设置→导出单文件');
+}
 function renderMeta() {
   var n = edNote; if (!n) return;
   var tagsStr = n._tagsStr != null ? n._tagsStr : (n.tags || []).filter(function (t) { return t !== 'quick' }).join(', ');
@@ -1988,20 +2040,20 @@ function renderMeta() {
     + Object.keys(KIND).filter(function (k) { return k !== 'sys' || k === (n.kind || 'note') }).map(function (k) { return '<option value="' + k + '"' + (k === (n.kind || 'note') ? ' selected' : '') + '>' + KIND[k] + '</option>' }).join('') + '</select></span>'   /* 0.4.3⑩：sys 为机器托管 kind——仅当前笔记已是 sys 时渲染该选项（显示保真），人工不可转入 */
     + '<span class="meta-chip" title="状态"><select id="statusSel">'
     + ['active', 'resolved', 'superseded'].map(function (s) { return '<option value="' + s + '"' + (s === (isPinned(n) ? 'active' : n.status || 'active') ? ' selected' : '') + '>' + STATUS_LABEL[s] + '</option>' }).join('') + '</select></span>'
-    + '<span class="meta-chip" title="主题（host LLM 可异步回填；改后自动保存）">' + icon('i-topic') + '<input id="mTopicInput" size="8" placeholder="主题" value="' + esc(n.topic === '分类中' ? '' : (n.topic || '')) + '"></span>'
+    + '<span class="meta-chip" title="主题（自动识别，可直接改；改后自动保存）">' + icon('i-topic') + '<input id="mTopicInput" size="8" placeholder="主题" value="' + esc(n.topic === '分类中' ? '' : (n.topic || '')) + '"></span>'
     + '<span class="meta-chip" title="标签，逗号分隔">' + icon('i-filter') + '<input id="mTagsInput" size="10" placeholder="标签…" value="' + esc(tagsStr) + '"></span>'
     + (fname(n.folder) ? '<span class="meta-chip">' + icon('i-folder') + esc(fname(n.folder)) + '</span>' : '')
     /* 使用遥测（P2）：详情 meta chip「被引用 N 次」（0 次不显示） */
-    + ((n.useCount || 0) > 0 ? '<span class="meta-chip" title="使用遥测：被 Agent 引用（note_get 命中）次数">' + icon('i-quote') + '被引用 ' + n.useCount + ' 次</span>' : '')
+    + ((n.useCount || 0) > 0 ? '<span class="meta-chip" title="被 AI 查阅过 ' + n.useCount + ' 次">' + icon('i-quote') + '被引用 ' + n.useCount + ' 次</span>' : '')
     /* P3 派发闭环徽章：有派发记录时聚合显示（pending=有待回执 / done=全部已回执），点击展开派发历史 */
-    + (function () { var ds = n.dispatches || []; if (!ds.length) return ''; var openN = ds.filter(function (d) { return !isDispDone(d) }).length; return '<span class="meta-chip disp-badge ' + (openN ? 'pending' : 'done') + '" id="mDispBadge" title="' + (openN ? ('派发中：' + openN + ' 条待回执（共 ' + ds.length + ' 条）· 目标会话处理完转 idle 或笔记置 resolved 时自动回执；点击查看派发历史') : ('全部 ' + ds.length + ' 条派发已回执 · 点击查看派发历史')) + '">' + icon(openN ? 'i-play' : 'i-check') + esc(openN ? ('派发中 ' + openN + '/' + ds.length) : '派发已回执') + '</span>' })()
+    + (function () { var ds = n.dispatches || []; if (!ds.length) return ''; var openN = ds.filter(function (d) { return !isDispDone(d) }).length; return '<span class="meta-chip disp-badge ' + (openN ? 'pending' : 'done') + '" id="mDispBadge" title="' + (openN ? ('派发中：' + openN + ' 条待完成（共 ' + ds.length + ' 条）· 对方处理完会自动标记完成，也可手动标记；点击查看派发历史') : ('全部 ' + ds.length + ' 条派发已回执 · 点击查看派发历史')) + '">' + icon(openN ? 'i-play' : 'i-check') + esc(openN ? ('派发中 ' + openN + '/' + ds.length) : '派发已回执') + '</span>' })()
     /* 注入三态（0.4.3⑦ 注入硬关 UI 化）：kind=log 不渲染开关——UI 层不提供日志注入选项（host/mock injectForcedOff 硬闸双保险保留） */
     + ((n.kind || 'note') === 'log'
       ? '<span class="meta-chip" title="工作日志注入硬禁：host 强制 inject=false；日志同权——可见/可搜索/可编辑；目录段唯挂载行源（0.4.4-E：recall 字段 dormant，无目录开关）">' + icon('i-bolt') + '日志不参与注入</span>'
       : '<span class="meta-chip role-seg" id="mRole">' + icon('i-bolt')
       + '<span class="seg' + (role === 'off' ? ' on' : '') + '" data-role="off" title="不注入系统提示">关闭</span>'
-      + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="须遵守的行为规则">约定</span>'
-      + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="事实性补充信息，Agent 按需取用">资料</span></span>')
+      + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="每次对话都自动放进 AI 的必读规则（须遵守）">约定</span>'
+      + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="不进提示词；只在 AI 的笔记目录挂一行索引，它需要时按索引来读">资料</span></span>')
     + (role !== 'off' ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="选择注入范围（可多选）">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
     /* 0.4.4-E：「目录可见」chip 随 catalog 整拆消亡（目录段唯挂载行源，recall 字段 dormant——UI 不提供逐条目录开关；与 client/app 0.4.3⑪ 拆除对齐） */
     /* 曾注入徽章（injectEver 粘性标记：单向只升不降，不随关闭回退；当前已注入时由上方注入角色段表达，不重复显示） */
@@ -2013,6 +2065,8 @@ function renderMeta() {
     + (n.sessionId ? '<span class="meta-act" id="mSrc" title="来源会话">' + icon('i-ext') + '来源</span>' : '')
     /* 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数） */
     + ((histCount || 0) > 0 ? '<span class="meta-act" id="mHist" title="历史版本（' + histCount + ' 个快照）：预览 / 一键恢复（恢复前当前版自动快照，可再撤销）">' + icon('i-clock') + '历史</span>' : '')
+    /* 0.4.5-F（notes-045-export-one）：一键导出单篇 MD（Blob 浏览器下载；正文原样，图片引用不内联） */
+    + '<span class="meta-act" id="mExport" title="导出为 Markdown 文件（正文原样下载；本地图片引用不内联）">' + icon('i-down') + '导出</span>'
     + '<span class="meta-act' + (isPinned(n) ? ' on' : '') + '" id="mPin" title="' + (isPinned(n) ? '取消置顶' : '置顶') + '">' + icon('i-pin') + '</span>'
     + '<span class="meta-act danger" id="mDel" title="删除（软删除，可撤销/由 Agent 恢复）">' + icon('i-trash') + '</span>'
     + spHtml;
@@ -2044,6 +2098,7 @@ function renderMeta() {
   /* 历史版本面板入口（无版本时入口不渲染，需守卫） */
   var mH = $('mHist');
   if (mH) mH.onclick = function () { openHistory() };
+  $('mExport').onclick = function () { doExportOne() };   /* 0.4.5-F：一键导出单篇 MD（Blob 浏览器下载） */
   $('mPin').onclick = function () { edNote.status = isPinned(edNote) ? 'active' : 'pinned'; triggerSave(); renderMeta(); renderTree(); toast(isPinned(edNote) ? '已置顶' : '已取消置顶') };
   $('mDel').onclick = function () { doDeleteNote(edNote.id) };
   /* 关联调度跳转（notes-034-sched-detail）：点击行进既有 selectNote 选中链路（目标必在 notes 缓存——关联清单数据源即缓存） */
@@ -2098,7 +2153,7 @@ function schedPlanHtml(n, list) {
     h += '<div class="sched-plan-row' + (paused ? ' paused' : '') + '">'
       + '<span class="sched-plan-t">' + icon('i-clock', 11) + '派发计划</span>'
       + '<span class="sched-freq">' + esc(schedFreqLabel(s)) + '</span>'
-      + '<span class="sched-target" title="' + esc(s.target || '') + '">→ ' + esc(shortSid(s.target)) + '</span>'
+      + '<span class="sched-target" title="' + esc(s.target || '') + '">' + (s.target === 'new' ? '首轮自动创建专属会话' : '→ ' + esc(shortSid(s.target))) + '</span>'
       + '<span class="sched-nf">' + esc(schedNextLabel(n)) + '</span>'
       + schedBadgeHtml(n)
       + (paused ? '<span class="sched-badge off">已暂停</span>' : '')
@@ -2470,7 +2525,7 @@ function renderDispatchModal() {
   var n = dState.editNote || edNote;
   var editing = !!dState.editId;
   openModal(
-    '<div class="modal-t">' + icon(editing ? 'i-clock' : 'i-play', 13) + (editing ? ' 编辑定时任务' : ' 派发待办') + '<span class="sub">' + (editing ? '调度声明与 front-matter 同源 · 保存即改排定' : '注入上下文并触发目标会话处理 · 新建会话派发请回 DSH 面板') + '</span></div>'
+    '<div class="modal-t">' + icon(editing ? 'i-clock' : 'i-play', 13) + (editing ? ' 编辑定时任务' : ' 派发待办') + '<span class="sub">' + (editing ? '调度声明与 front-matter 同源 · 保存即改排定' : '把这条待办派给选中的会话处理 · 新建会话派发请回 DSH 主面板') + '</span></div>'
     + '<div class="disp-todo"><div class="disp-todo-t">' + esc(n.title || 'Untitled') + '</div><div class="disp-todo-b">' + esc(String(n.preview || n.body || '').trim().slice(0, 200) || '（无正文）') + '</div></div>'
     + (editing ? '' : '<textarea class="minput" id="dInstr" rows="3" placeholder="补充具体要求 / 指令（可选）…"></textarea>')
     /* 调度区（默认收起 = 立即派发，手动派发零干扰；编辑模式固定定时形态，不再给「立即派发」岔路） */
@@ -2776,9 +2831,9 @@ function openSettings() {
       + '<div class="set-row"><div class="set-label">LLM 模型<span class="s">笔记自动分类 / 指令提取使用的模型</span></div><div class="set-ctrl">' + llmCtrl + '</div></div>'
       + '<div class="set-row"><div class="set-label">LLM 用量<span class="s">笔记功能的 token 消耗统计（真实 usage 优先，未回传时按字符估算）；按日累计，usage.json 落盘</span></div><div class="set-ctrl usage" id="setUsageBody"><span class="s">加载中…</span></div></div>'
       + '<div class="set-row"><div class="set-label">用量预算提醒<span class="s">本月 token 消耗超过该值时提醒（仅 toast 提示，不阻断调用）；0 = 关闭</span></div><div class="set-ctrl"><input class="minput" id="setUsageBudget" type="number" min="0" step="1000" style="width:110px" value="' + usageBudget + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">时效衰减提醒<span class="s">超过 N 天未更新且未被读取的笔记/链接会在整理建议中提名为过期候选（提醒参考资料可能过期）；0 = 关闭</span></div><div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>'
+      + '<div class="set-row"><div class="set-label">过期内容提醒<span class="s">超过 N 天未更新且未被读取的笔记/链接会在整理建议中提名为过期候选（提醒参考资料可能过期）；0 = 关闭</span></div><div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>'
       + '<div class="set-row"><div class="set-label">文件夹嵌套深度<span class="s">虚拟文件夹最大嵌套层级（根级 = 第 1 层，缺省 3）；新建子文件夹/拖拽换父超限将拒绝并提示；0 = 不限</span></div><div class="set-ctrl"><input class="minput" id="setMaxDepth" type="number" min="0" step="1" style="width:90px" value="' + maxDepth + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">注入体积预算<span class="s">单次注入笔记全文的上限（约，按字符数近似）；约定条目永不截断，资料条目从最旧开始省略；0 = 不限</span>'
+      + '<div class="set-row"><div class="set-label">注入体积预算<span class="s">每次注入给 AI 的笔记内容上限（字符数，约）；约定条目永不截断，资料目录从旧到新省略；0 = 不限</span>'
       + '<span class="s" id="setGaugeT">当前注入约 ' + lastChars + ' 字符' + (budgetNum > 0 ? ' / 预算约 ' + budgetNum + ' 字符' : '（不限）') + '</span>'
       + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div></div>'
       + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>'
@@ -3037,7 +3092,7 @@ function openMemEnable(from) {
   memEnableState = { scope: 'global', sess: null, wss: {}, sids: {}, pending: false };
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' 启用沉淀引导<span class="sub">工作记忆 v0 · 约定笔记方案</span></div>'
-    + '<div class="modal-hint">将创建一条预填约定笔记「约定：工作日志沉淀（工作记忆 v0）」（inject=true，contractType: memory-guide），引导 Agent 在任务收尾/你示意时把会话结论写为工作日志（kind=log）。工作记忆是独立于笔记约定的并行通道——约定管你怎么记（给人看），记忆管 Agent 自己沉淀什么（自用召回），两者可同时对同一事件生效，产物重复是设计意图而非冲突。日志与普通笔记同权：可见、可搜索、可编辑；注入硬禁（不提供注入开关），目录缺省不含（0.4.4-E 起目录段唯挂载行源，recall 字段 dormant 无注入效果）。该约定可见/可改/可停用/可删除；停用后再启用复用同一约定笔记（重新打开注入，不新建第二条）。</div>'
+    + '<div class="modal-hint">将创建一条约定笔记「约定：工作日志沉淀」并注入到所选范围的会话——引导 AI 在任务收尾时把工作结论写成工作日志。日志可见可搜可编辑，但不会进入 AI 提示词。约定笔记本身可见/可改/可停用/可删除；停用后再启用复用同一条，不会重复创建。</div>'
     + '<div class="sg-sec"><div class="sg-sec-t">注入范围（作用域）</div>'
     + '<label class="fg-item"><input type="radio" name="memScope" value="global" checked><span class="fl">所有会话（缺省）</span></label>'
     + '<label class="fg-item"><input type="radio" name="memScope" value="workspace"><span class="fl">指定工作区（多选，下方勾选）</span></label>'
@@ -3178,12 +3233,13 @@ function injMgrScopeLabel(injectTo) { var arr = (injectTo || []).filter(function
 function openInjectManager(from) {
   /* 单层返回栈（notes-041-settings-back）：from='settings'（设置卡「管理…」入口）时存档来源 + 当前 .modal 滚动位置，关闭后自动回设置卡 */
   var backScroll = from === 'settings' && $('modal') ? $('modal').scrollTop : 0;
-  injMgrState = { list: null, filter: 'all', search: '', q: '', sel: {}, pending: false };
+  injMgrState = { list: null, filter: 'all', search: '', q: '', sel: {}, pending: false, conflict: null };
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' 注入管理<span class="sub">全库注入总览 · 单行直改 / 多选批量 · 日志不参与注入 · 调度任务区（定时派发）</span></div>'
     + '<div class="injmgr-bar"><div class="injmgr-chips" id="injMgrChips"></div>'
     + '<input class="injmgr-search" id="injMgrSearch" placeholder="搜索标题 / 主题 / 标签…"></div>'
     + '<div id="injSchedHost"></div>'
+    + '<div id="injConflictHost"></div>'
     + '<div id="injMgrBody"><div class="modal-hint">加载中…</div></div>'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
     + '<div class="modal-acts"><button class="mbtn" id="injMgrClose">关闭</button></div>'
@@ -3229,6 +3285,7 @@ function renderInjectManager() {
   }).join('');
   chips.querySelectorAll('.injmgr-chip').forEach(function (el) { el.onclick = function () { st.filter = el.getAttribute('data-f'); renderInjectManager() } });
   renderInjSched();   /* 调度任务区（notes-034-sched-ui）：与注入总览同面板同数据源 */
+  renderInjConflict();   /* 约定体检区（0.4.5-G notes-045-conflict-check）：内联结果区，不叠 modal */
   if (!st.list) return;
   var shown = injMgrShownList();
   if (!shown.length) { body.innerHTML = '<div class="modal-hint">' + (list.length ? '无匹配笔记（调整过滤或搜索词）。' : '笔记库为空。') + '</div>'; return }
@@ -3260,7 +3317,7 @@ function renderInjectManager() {
           + '<span class="injmgr-scope">' + esc(injMgrScopeLabel(n.injectTo)) + '</span>'
           + (isLog
             ? '<span class="injmgr-lognote" title="工作日志注入硬禁：inject 强制关闭；日志同权——可见/可搜索/可编辑；目录段唯挂载行源（0.4.4-E：recall dormant，无逐条目录开关）">' + icon('i-bolt', 10) + '日志不参与注入</span>'
-            : '<span class="injmgr-seg">' + icon('i-bolt', 10) + seg('off', '关闭', '不注入系统提示') + seg('convention', '约定', '须遵守的行为规则') + seg('reference', '资料', '事实性补充信息，Agent 按需取用') + '</span>')
+            : '<span class="injmgr-seg">' + icon('i-bolt', 10) + seg('off', '关闭', '不注入系统提示') + seg('convention', '约定', '每次对话都自动放进 AI 的必读规则（须遵守）') + seg('reference', '资料', '不进提示词；只在 AI 的笔记目录挂一行索引，它需要时按索引来读') + '</span>')
           + '</div>'
       }).join('') + '</div>';
   $('injMgrAll').onchange = toggleInjMgrAll;
@@ -3307,7 +3364,7 @@ function renderInjSched() {
       return '<div class="sched-row' + (paused ? ' paused' : '') + '" data-id="' + esc(n.id) + '">'
         + '<span class="sched-row-t" title="' + esc(n.title || '无标题') + '">' + esc(n.title || '无标题') + '</span>'
         + '<span class="sched-freq">' + esc(schedFreqLabel(s)) + '</span>'
-        + '<span class="sched-target" title="' + esc(s.target || '') + '">→ ' + esc(shortSid(s.target)) + '</span>'
+        + '<span class="sched-target" title="' + esc(s.target || '') + '">' + (s.target === 'new' ? '首轮自动创建专属会话' : '→ ' + esc(shortSid(s.target))) + '</span>'
         + '<span class="sched-nf">' + esc(schedNextLabel(n)) + '</span>'
         + schedBadgeHtml(n)
         + (paused ? '<span class="sched-badge off">已暂停</span>' : '')
@@ -3329,6 +3386,98 @@ function renderInjSched() {
       else if (act === 'del') doInjSchedDel(n);
     };
   });
+}
+/* ===== 约定体检（0.4.5-G notes-045-conflict-check）：LLM 两两检测注入中约定的冲突/被取代对——只提名不执行，人工裁决 =====
+   injMgrState.conflict 形态：null=未跑 / {running:true} / {error:msg} / {pairs:[{aId,bId,aTitle,bTitle,relation,reason}], total, acting?}；
+   红线：modal 不叠 modal——结果区为面板内联展开区（injConflictHost 插槽）；「标已取代」= notes-update status='superseded'（注入不动）+ 行移除；
+   「保留两者」= 本次会话内 dismiss（纯本地行移除，零 RPC）；面板重开即复位。原型不双语：文案硬编码 zh（与 zh 字典同文，check 节 90 锚定）。 */
+function injConflictPairKey(p) { return p.aId + '|' + p.bId + '|' + p.relation }
+function renderInjConflict() {
+  var host = $('injConflictHost'); if (!host || !injMgrState || !injMgrState.list) return;
+  var cf = injMgrState.conflict;
+  var running = !!(cf && cf.running), actingKey = (cf && cf.acting) || '';
+  var h = '<div class="conflict-sec"><div class="conflict-sec-t">' + icon('i-warn', 12) + ' 约定体检<span class="sub">LLM 两两检测注入中约定的冲突/取代 · 只提名不执行</span>'
+    + '<button class="mbtn conflict-run" id="injConflictRun" title="对全部注入中的约定做 LLM 两两冲突/取代检测（手动触发；敏感笔记正文打码后参与）"' + ((running || actingKey || injMgrState.pending) ? ' disabled' : '') + '>'
+    + (running ? '检测中…' : (cf ? '重新体检' : '开始体检')) + '</button></div>';
+  if (cf) {
+    if (cf.running) h += '<div class="modal-hint">LLM 正在两两比对约定，约需几秒…</div>';
+    else if (cf.error) h += '<div class="modal-err" style="display:block">体检失败：' + esc(cf.error) + '</div>';
+    else if (!(cf.pairs || []).length) h += '<div class="modal-hint">未发现疑似冲突或取代的约定对（已检测 ' + (cf.total || 0) + ' 条约定）。</div>';
+    else {
+      h += cf.pairs.map(function (p) {
+        return '<div class="conflict-row" data-pk="' + esc(injConflictPairKey(p)) + '">'
+          + '<span class="conflict-badge ' + (p.relation === 'supersede' ? 'sup' : 'con') + '">' + (p.relation === 'supersede' ? '疑似取代' : '疑似冲突') + '</span>'
+          + '<span class="conflict-pair"><span class="conflict-ti" title="' + esc(p.aTitle) + '">' + esc(p.aTitle) + '</span> ⇄ <span class="conflict-ti" title="' + esc(p.bTitle) + '">' + esc(p.bTitle) + '</span></span>'
+          + (p.reason ? '<span class="conflict-reason" title="' + esc(p.reason) + '">' + esc(p.reason) + '</span>' : '')
+          + '<span class="conflict-acts">'
+          + '<button class="mbtn conflict-act" data-act="supA" title="把「' + esc(p.aTitle) + '」标记为已被取代（status→superseded；注入状态不变，可在详情区调整）"' + (actingKey ? ' disabled' : '') + '>标 A 已取代</button>'
+          + '<button class="mbtn conflict-act" data-act="supB" title="把「' + esc(p.bTitle) + '」标记为已被取代（status→superseded；注入状态不变，可在详情区调整）"' + (actingKey ? ' disabled' : '') + '>标 B 已取代</button>'
+          + '<button class="mbtn conflict-act" data-act="keep" title="本条不构成问题——本次面板会话内移除（零写入，不产生任何改动）"' + (actingKey ? ' disabled' : '') + '>保留两者</button>'
+          + '</span></div>';
+      }).join('');
+    }
+  }
+  host.innerHTML = h + '</div>';
+  $('injConflictRun').onclick = function () { doInjConflictCheck() };
+  host.querySelectorAll('.conflict-act').forEach(function (el) {
+    el.onclick = function () {
+      var pk = el.parentNode.parentNode.getAttribute('data-pk');
+      var cf2 = injMgrState && injMgrState.conflict;
+      var p = cf2 && (cf2.pairs || []).find(function (x) { return injConflictPairKey(x) === pk });
+      if (!p) return;
+      var act = el.getAttribute('data-act');
+      if (act === 'supA') doInjConflictSupersede(p, 'a');
+      else if (act === 'supB') doInjConflictSupersede(p, 'b');
+      else doInjConflictDismiss(p);
+    };
+  });
+}
+function doInjConflictCheck() {
+  var cf = injMgrState && injMgrState.conflict;
+  if (!injMgrState || (cf && (cf.running || cf.acting))) return;
+  injMgrState.conflict = { running: true }; renderInjConflict();
+  rpc('notes-conflict-check', {}).then(function (res) {
+    if (!injMgrState) return;   /* 面板已关：丢弃迟到响应 */
+    if (res && res.error) { injMgrState.conflict = { error: res.error }; renderInjConflict(); return }
+    injMgrState.conflict = { pairs: (res && res.pairs) || [], total: (res && res.total) || 0 };
+    renderInjConflict();
+  }).catch(function (e) {
+    if (!injMgrState) return;
+    injMgrState.conflict = { error: String(e && e.message || e) }; renderInjConflict();
+  });
+}
+/* 标 A/B 已取代：notes-update status='superseded'（既有通道，零新写入口）→ 成功后行移除 + toast + 后台刷新对齐；失败保留行可重试 */
+function doInjConflictSupersede(p, which) {
+  var cf = injMgrState && injMgrState.conflict;
+  if (!cf || cf.running || cf.acting) return;
+  var id = which === 'b' ? p.bId : p.aId, title = which === 'b' ? p.bTitle : p.aTitle;
+  var pk = injConflictPairKey(p);
+  injMgrState.conflict = Object.assign({}, cf, { acting: pk }); renderInjConflict();
+  rpc('notes-update', { id: id, status: 'superseded' }).then(function (res) {
+    if (!injMgrState) return;
+    var cur = injMgrState.conflict;
+    if (res && res.error) {
+      injMgrState.conflict = cur ? Object.assign({}, cur, { acting: '' }) : cur;
+      renderInjConflict(); modalErr(res.error); return;
+    }
+    toast('已标记取代：' + title + '（注入状态不变）');
+    if (cur && cur.pairs) injMgrState.conflict = Object.assign({}, cur, { acting: '', pairs: cur.pairs.filter(function (x) { return injConflictPairKey(x) !== pk }) });
+    renderInjConflict();
+    loadNotes(true);
+  }).catch(function (e) {
+    if (!injMgrState) return;
+    var cur = injMgrState.conflict;
+    if (cur) { injMgrState.conflict = Object.assign({}, cur, { acting: '' }); renderInjConflict(); }
+    modalErr('操作失败：' + (e && e.message || e));
+  });
+}
+/* 保留两者 = 本次会话内 dismiss：纯本地行移除（零 RPC 零副作用） */
+function doInjConflictDismiss(p) {
+  var cf = injMgrState && injMgrState.conflict;
+  if (!cf || !cf.pairs || cf.acting) return;
+  var pk = injConflictPairKey(p);
+  injMgrState.conflict = Object.assign({}, cf, { pairs: cf.pairs.filter(function (x) { return injConflictPairKey(x) !== pk }) });
+  renderInjConflict();
 }
 /* 编辑 = 回填派发弹窗（modal 不叠 modal：先关注入管理再开编辑态派发弹窗；清返回栈——调度编辑回填是新链路，关闭不回设置卡） */
 function doInjSchedEdit(n) { modalBackTo = null; closeModal(); injMgrState = null; openDispatchEdit(n) }

@@ -48,7 +48,8 @@
         inject: inject,
         injectTo: injectTo,
         injectRole: injectRole,
-        // recall：原目录索引准入字段——0.4.4-E 起目录段唯挂载行源，字段 dormant（读写兼容、无注入效果，0.4.5 清理卡统一裁决退役）；
+        // recall：原目录索引准入字段——0.4.4-E 起目录段唯挂载行源，字段失去最后消费方；0.4.5-A（notes-045-debt-host）写侧退役落地
+        //   （buildFM 不再写 recall 行，存量文件该行保留不迁移、本处解析保留 = 读写兼容红线；无注入效果）；
         // 缺省 true（旧文件无 recall 字段 → true，向后兼容解析保留）；显式 false 逐条置否（与 inject 正交）；
         // 工作记忆 v0（裁决 B①）/0.4.3⑥：kind=log/sys 缺省 recall=false（dormant 缺省口径保留）
         recall: p.meta.recall === 'true' ? true : (p.meta.recall === 'false' ? false : ((p.meta.kind === 'log' || p.meta.kind === 'sys') ? false : true)),
@@ -145,11 +146,12 @@
       const meta = {
         id: n.id, title: n.title, topic: n.topic, workspace: n.workspace, folder: n.folder || '',
         tags: n.tags || [], kind: n.kind || 'note', status: n.status || 'active',
-        inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', recall: n.recall !== false, sensitive: n.sensitive === true, hidden: n.hidden === true,
+        inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true, injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention', sensitive: n.sensitive === true, hidden: n.hidden === true,
         createdAt: n.createdAt, updatedAt: n.updatedAt,
         sessionId: n.sessionId, cwd: n.cwd, logDate: n.logDate || '', entities: n.entities || [], summarizedAt: n.summarizedAt || '', contractType: n.contractType || '', origin: n.origin || '', refNote: n.refNote || '', runLog: n.runLog || '', schedule: n.schedule || null, mergedFrom: n.mergedFrom || [],
         dispatches: n.dispatches || [],
         // useCount 不落盘（0.4.3 验收修复⑧字段退役）：统计归 telemetry.json facets.use 单一事实源，buildFM 无此行
+        // recall 不落盘（0.4.5-A notes-045-debt-host 写侧退役）：buildFM 无此行；内存视图保留（slim 读侧下发不变），存量行解析保留
         archivedAt: n.archivedAt || '', deleted: n.deleted ? 'true' : 'false'
       }
       return buildFM(meta) + (n.body || '')

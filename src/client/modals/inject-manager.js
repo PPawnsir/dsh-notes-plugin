@@ -6,7 +6,7 @@
     // state 托管：open/list/filter/search/q/sel/pending 迁入 store.modal.injMgr 切片；injMgrOpenRef 为 Esc 栈同步镜像 + injMgrSearchRef/injMgrSearchDebRef
     // 搜索防抖镜像（模块级单例，防抖 effect 挂 InjMgrModal 组件）；列表刷新经 panelBridge.loadNotes 中转；与设置卡片互斥经 panelBridge.setSettingsOpen 中转
     // 单层返回栈（notes-041-settings-back）：injMgrBackRef 记录来源（仅设置卡入口传 'settings'），统一关闭入口 closeInjMgr 在关闭后回设置卡（经 panelBridge.openSettings 中转）
-    store.modal.injMgr = createStore({ open: false, list: null, filter: 'all', search: '', q: '', sel: {}, pending: false, rstats: null, rstatsOpen: false })
+    store.modal.injMgr = createStore({ open: false, list: null, filter: 'all', search: '', q: '', sel: {}, pending: false, rstats: null, rstatsOpen: false, conflict: null })
     const injMgrOpenRef = { current: false }          // 注入管理面板镜像（Esc 优先关）
     const injMgrBackRef = { current: null }           // 单层返回栈镜像（notes-041-settings-back）：'settings' = 从设置卡进入，关闭后自动回设置卡
     const injMgrSearchRef = { current: '' }           // 搜索框即时值镜像（防抖回调读 ref 防闭包过期；plain object 与 useRef 等价——面板为 shell.overlay 单例）
@@ -21,6 +21,58 @@
     function setInjMgrPending(v) { store.modal.injMgr.set({ pending: typeof v === 'function' ? v(store.modal.injMgr.get().pending) : v }) }
     function setInjMgrRstats(v) { store.modal.injMgr.set({ rstats: typeof v === 'function' ? v(store.modal.injMgr.get().rstats) : v }) }   // 挂载区统计行数据源切片（0.4.3 验收修复⑥）
     function setInjMgrRstatsOpen(v) { store.modal.injMgr.set({ rstatsOpen: typeof v === 'function' ? v(store.modal.injMgr.get().rstatsOpen) : v }) }
+    function setInjMgrConflict(v) { store.modal.injMgr.set({ conflict: typeof v === 'function' ? v(store.modal.injMgr.get().conflict) : v }) }   // 约定体检结果区切片（0.4.5-G notes-045-conflict-check）
+    // ===== 约定体检（0.4.5-G notes-045-conflict-check）：LLM 两两检测注入中约定的冲突/被取代对——只提名不执行，人工裁决 =====
+    // conflict 切片形态：null=未跑 / {running:true} / {error:msg} / {pairs:[{aId,bId,aTitle,bTitle,relation,reason}], total, acting?}
+    // 红线：modal 不叠 modal——结果区为面板内联展开区（不开第二层弹层）；「标已取代」= notes-update status='superseded'（注入不动，用户自行决定是否关注入）+ 行移除；
+    //   「保留两者」= 本次会话内 dismiss（纯本地行移除，零 RPC 零副作用）；面板关闭重开即复位（conflict:null，dismiss 不跨面板会话持久）。
+    function injConflictPairKey(p) { return p.aId + '|' + p.bId + '|' + p.relation }
+    async function doInjConflictCheck() {
+      const cf = store.modal.injMgr.get().conflict
+      if (cf && (cf.running || cf.acting)) return
+      setInjMgrConflict({ running: true }); setError('')
+      try {
+        const res = await host.call('notes-conflict-check', {})
+        if (!injMgrOpenRef.current) return   // 面板已关：丢弃迟到响应（同 MountModal 迟到草稿口径）
+        if (res && res.error) { setInjMgrConflict({ error: res.error }); return }
+        setInjMgrConflict({ pairs: (res && res.pairs) || [], total: (res && res.total) || 0 })
+      } catch (err) {
+        if (!injMgrOpenRef.current) return
+        setInjMgrConflict({ error: String(err.message || err) })
+      }
+    }
+    // 标 A/B 已取代：notes-update status='superseded'（既有通道，零新写入口）→ 成功后行移除 + toast + 后台刷新对齐；失败保留行可重试
+    async function doInjConflictSupersede(pair, which) {
+      const cf = store.modal.injMgr.get().conflict
+      if (!cf || cf.running || cf.acting) return
+      const id = which === 'b' ? pair.bId : pair.aId
+      const title = which === 'b' ? pair.bTitle : pair.aTitle
+      const pk = injConflictPairKey(pair)
+      setInjMgrConflict(Object.assign({}, cf, { acting: pk })); setError('')
+      try {
+        const res = await host.call('notes-update', { id: id, status: 'superseded' })
+        const cur = store.modal.injMgr.get().conflict
+        if (res && res.error) {
+          if (cur) setInjMgrConflict(Object.assign({}, cur, { acting: '' }))
+          if (injMgrOpenRef.current) setError(res.error); else showToast(t('inj.conflictOpFailed', { msg: res.error }))
+          return
+        }
+        showToast(t('inj.conflictSupDone', { title: title }))
+        if (cur && cur.pairs) setInjMgrConflict(Object.assign({}, cur, { acting: '', pairs: cur.pairs.filter(p => injConflictPairKey(p) !== pk) }))
+        panelBridge.loadNotes(true); notifyNotesChanged()
+      } catch (err) {
+        const cur = store.modal.injMgr.get().conflict
+        if (cur) setInjMgrConflict(Object.assign({}, cur, { acting: '' }))
+        if (injMgrOpenRef.current) setError(String(err.message || err)); else showToast(t('inj.conflictOpFailed', { msg: String(err.message || err) }))
+      }
+    }
+    // 保留两者 = 本次会话内 dismiss：纯本地行移除（零 RPC）
+    function doInjConflictDismiss(pair) {
+      const cf = store.modal.injMgr.get().conflict
+      if (!cf || !cf.pairs || cf.acting) return
+      const pk = injConflictPairKey(pair)
+      setInjMgrConflict(Object.assign({}, cf, { pairs: cf.pairs.filter(p => injConflictPairKey(p) !== pk) }))
+    }
     // 分通道召回率行（挂载区统计点开全量，0.4.3 验收修复⑥ notes-043-metrics-present）：交付通道 `ch used/delivered·pct%`
     // （无交付 → `ch —`）+ get 取用计数——机器通道名原文输出（遥测通道是机器标识符，不进 i18n；口径同 host _recallFmtChannels）
     function injMgrChanLine(channels) {
@@ -102,6 +154,7 @@
     function openInjectManager(from) {
       setInjMgrList(null); setInjMgrFilter('all'); setInjMgrSearch(''); setInjMgrQ(''); setInjMgrSel({}); setInjMgrPending(false); setError('')
       setInjMgrRstats(null); setInjMgrRstatsOpen(false)   // 挂载区统计行复位（重新拉取账本快照）
+      setInjMgrConflict(null)   // 约定体检区复位（0.4.5-G：重开面板清零上轮结果/dismiss 态）
       injMgrSearchRef.current = ''
       injMgrBackRef.current = from === 'settings' ? 'settings' : null   // 单层返回栈：记录来源（仅设置卡入口传 'settings'）
       panelBridge.setSettingsOpen(false); setInjMgrOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入/注入预览同款）
@@ -176,6 +229,7 @@
       const injMgrPending = store.modal.injMgr.useSel(s => s.pending)
       const injMgrRstats = store.modal.injMgr.useSel(s => s.rstats)         // 挂载区统计行：notes-recall-stats 账本快照（卡⑥）
       const injMgrRstatsOpen = store.modal.injMgr.useSel(s => s.rstatsOpen) // 点开才见全量（分通道 + 快照明细展开态）
+      const injMgrConflict = store.modal.injMgr.useSel(s => s.conflict)     // 约定体检结果区（0.4.5-G notes-045-conflict-check）
       const error = props.error
       const tt = useT()   // i18n 覆盖卡D：订阅 langStore，切语言本卡自渲染（模块级 handler 走 t() 直读当下语言态）
       // 注入管理面板搜索防抖（250ms，与列表搜索同口径）：输入即更新受控值，防抖后才落过滤词 injMgrQ
@@ -290,7 +344,8 @@
                       return e('div', { key: n.id, className: 'dsh-notes-sched-row' + (paused ? ' paused' : '') },
                         e('span', { className: 'dsh-notes-sched-row-t', title: n.title || tt('tree.untitled') }, n.title || tt('tree.untitled')),
                         e('span', { className: 'dsh-notes-sched-freq' }, schedFreqLabel(s)),
-                        e('span', { className: 'dsh-notes-sched-target dsh-nt', 'data-tooltip': s.target || '' }, '→ ' + shortSid(s.target)),
+                        // 0.4.5-B（notes-045-ux-polish）：target='new' 目标位显示人话文案（首轮回写真实 sid 自动恢复「→ 截短」，零迁移；纯展示层）
+                        e('span', { className: 'dsh-notes-sched-target dsh-nt', 'data-tooltip': s.target || '' }, s.target === 'new' ? tt('disp.schedNewTarget') : '→ ' + shortSid(s.target)),
                         e('span', { className: 'dsh-notes-sched-nf' }, schedNextLabel(n)),
                         schedBadgeEl(n),
                         paused ? e('span', { className: 'dsh-notes-sched-badge off' }, tt('meta.schedPaused')) : null,
@@ -300,6 +355,32 @@
                           e('button', { className: 'dsh-notes-sched-act dsh-nt', 'data-tooltip': tt('meta.schedDelTip'), disabled: injMgrPending, onClick: () => doInjSchedDel(n) }, tt('common.delete'))))
                     }))
             })(),
+            // 约定体检区（0.4.5-G notes-045-conflict-check）：LLM 两两检测注入中约定的冲突/被取代对——只提名不执行，人工裁决三动作。
+            //   内联展开区（modal 不叠 modal 红线：注入管理本身是 modal，结果区不开第二层）；裁决动作落 notes-update status='superseded'（注入不动）
+            injMgrList === null ? null : e('div', { className: 'dsh-notes-conflict-sec' },
+              e('div', { className: 'dsh-notes-conflict-sec-t' },
+                I('warn', 12), ' ' + tt('inj.conflictTitle'), e('span', { className: 'dsh-notes-sched-sec-sub' }, tt('inj.conflictTitleSub')),
+                e('button', { className: 'dsh-notes-conflict-run dsh-nt', 'data-tooltip': tt('inj.conflictRunTip'), disabled: !!(injMgrConflict && (injMgrConflict.running || injMgrConflict.acting)) || injMgrPending, onClick: () => doInjConflictCheck() },
+                  injMgrConflict && injMgrConflict.running ? tt('inj.conflictRunning') : (injMgrConflict ? tt('inj.conflictRerun') : tt('inj.conflictRun')))),
+              !injMgrConflict ? null
+                : injMgrConflict.running ? e('div', { className: 'dsh-notes-data-hint' }, tt('inj.conflictRunningHint'))
+                : injMgrConflict.error ? e('div', { className: 'dsh-notes-dispatch-err' }, tt('inj.conflictError', { msg: injMgrConflict.error }))
+                : (injMgrConflict.pairs || []).length === 0 ? e('div', { className: 'dsh-notes-data-hint' }, tt('inj.conflictEmpty', { n: injMgrConflict.total || 0 }))
+                : injMgrConflict.pairs.map(p => {
+                    const pk = injConflictPairKey(p)
+                    const acting = injMgrConflict.acting === pk
+                    return e('div', { key: pk, className: 'dsh-notes-conflict-row' },
+                      e('span', { className: 'dsh-notes-conflict-badge ' + (p.relation === 'supersede' ? 'sup' : 'con') }, p.relation === 'supersede' ? tt('inj.conflictRelSupersede') : tt('inj.conflictRelConflict')),
+                      e('span', { className: 'dsh-notes-conflict-pair' },
+                        e('span', { className: 'dsh-notes-conflict-ti', title: p.aTitle }, p.aTitle),
+                        ' ⇄ ',
+                        e('span', { className: 'dsh-notes-conflict-ti', title: p.bTitle }, p.bTitle)),
+                      p.reason ? e('span', { className: 'dsh-notes-conflict-reason dsh-nt', 'data-tooltip': p.reason }, p.reason) : null,
+                      e('span', { className: 'dsh-notes-conflict-acts' },
+                        e('button', { className: 'dsh-notes-conflict-act dsh-nt', 'data-tooltip': tt('inj.conflictSupATip', { title: p.aTitle }), disabled: acting || !!injMgrConflict.acting, onClick: () => doInjConflictSupersede(p, 'a') }, tt('inj.conflictSupA')),
+                        e('button', { className: 'dsh-notes-conflict-act dsh-nt', 'data-tooltip': tt('inj.conflictSupBTip', { title: p.bTitle }), disabled: acting || !!injMgrConflict.acting, onClick: () => doInjConflictSupersede(p, 'b') }, tt('inj.conflictSupB')),
+                        e('button', { className: 'dsh-notes-conflict-act dsh-nt', 'data-tooltip': tt('inj.conflictKeepTip'), disabled: acting || !!injMgrConflict.acting, onClick: () => doInjConflictDismiss(p) }, tt('inj.conflictKeep'))))
+                  })),
             injMgrList === null
               ? e('div', { className: 'dsh-notes-data-hint' }, tt('common.loading'))
               : shown.length === 0

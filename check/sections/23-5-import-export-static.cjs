@@ -23,7 +23,8 @@ module.exports = {
         get: (name) => ({ agents: agentsMock, systemPrompt: { context: () => () => {} } })[name],
         effect: () => {},
       })
-      assert.strictEqual(Object.keys(handlers7).length, 48, '静态包注册 48 个 RPC（47 + notes-ping；47 含工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest），实得 ' + Object.keys(handlers7).length)
+      assert.strictEqual(Object.keys(handlers7).length, 49, '静态包注册 49 个 RPC（48 + notes-ping；48 含工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest + 约定体检 notes-conflict-check），实得 ' + Object.keys(handlers7).length)
+      assert(typeof handlers7['notes-conflict-check'] === 'function', '静态包 notes-conflict-check handler 存在（0.4.5-G 约定体检，notes-045-conflict-check）')
       assert(typeof handlers7['notes-when-suggest'] === 'function', '静态包 notes-when-suggest handler 存在（0.4.3 验收修复 notes-043-preview-when-edit）')
       assert(typeof handlers7['notes-recall-stats'] === 'function', '静态包 notes-recall-stats handler 存在（0.4.3+ 卡⑫ 统一召回遥测，notes-043-inject-receipt）')
       assert(typeof handlers7['notes-ledger-refresh'] === 'function', '静态包 notes-ledger-refresh handler 存在（0.4.3⑥ 效用账本，notes-043-ledger）')

@@ -12,7 +12,7 @@ module.exports = {
   section('26. 显式归档 UI（引导气泡 + 预览对话框 + toast 撤销 + 多选合并）')
   const protoV2Src = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
   await t('归档按钮改为预览入口 + 引导 tooltip（开发版 + 发布包）', () => {
-    const TIP = '速记合并：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）'   /* notes-034-batch3：顶栏按钮改名「速记」（与 modal/执行层真归档语义区分），tooltip 同步 */
+    const TIP = '把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）'   /* notes-034-batch3：顶栏按钮改名（与 modal/执行层真归档语义区分），tooltip 同步；0.4.5-D：按钮再改名「速记合并」，tooltip 去掉冗余首句 */
     for (const pair of [['client-impl', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
       assert(pair[1].indexOf("onClick: openArchive, 'data-tooltip': tt('topbar.archiveTip')") >= 0, pair[0] + ' 速记按钮 → openArchive + 引导 tooltip（i18n 覆盖卡A 起走 t() 字典）')
       assert(pair[1].indexOf(" }, tt('topbar.archive'))") >= 0, pair[0] + ' 按钮可见 label=速记（t(topbar.archive) 字典值）')
@@ -82,7 +82,7 @@ module.exports = {
     }
   })
   await t('app.html 同款：归档按钮（引导 title）+ 预览对话框 + 多选合并 + toast 撤销 + Esc', () => {
-    assert(appSrc.indexOf('id="btnArchive"') >= 0 && appSrc.indexOf('速记合并：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）') >= 0, 'app.html 速记按钮 + 引导 title（notes-034-batch3 改名）')
+    assert(appSrc.indexOf('id="btnArchive"') >= 0 && appSrc.indexOf('把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）') >= 0, 'app.html 速记合并按钮 + 引导 title（notes-034-batch3 改名；0.4.5-D 首句微调）')
     assert(appSrc.indexOf("rpc('notes-archive-preview', {})") >= 0, 'app.html 预览走 notes-archive-preview')
     assert(appSrc.indexOf('归档预览') >= 0 && appSrc.indexOf('arch-list') >= 0 && appSrc.indexOf('arch-members') >= 0, 'app.html 预览对话框结构（组列表+成员明细）')
     assert(appSrc.indexOf('归档所选（') >= 0 && appSrc.indexOf('手动笔记不受影响；如需合并手动笔记，请在列表多选后右键合并。') >= 0, 'app.html 确认计数 + 手动笔记提示')
@@ -95,7 +95,7 @@ module.exports = {
     assert(appSrc.indexOf('.selbar{') >= 0 && appSrc.indexOf('.arch-list{') >= 0, 'app.html selbar/arch 样式')
   })
   await t('原型 notes-ui-v2.html 硬性同步：归档按钮 tooltip + 预览对话框 + 多选操作条 + mock 归档 RPC', () => {
-    assert(protoV2Src.indexOf('id="btnArchive"') >= 0 && protoV2Src.indexOf('速记合并：把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）') >= 0, '原型速记按钮 tooltip 引导文案同步（notes-034-batch3 改名）')
+    assert(protoV2Src.indexOf('id="btnArchive"') >= 0 && protoV2Src.indexOf('把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）') >= 0, '原型速记合并按钮 tooltip 引导文案同步（notes-034-batch3 改名；0.4.5-D 首句微调）')
     assert(protoV2Src.indexOf('归档预览') >= 0 && protoV2Src.indexOf('arch-list') >= 0 && protoV2Src.indexOf('归档所选（') >= 0, '原型归档预览对话框示意同步')
     assert(protoV2Src.indexOf('id="btnSelMode"') >= 0 && protoV2Src.indexOf('id="selbar"') >= 0 && protoV2Src.indexOf('selbarN') >= 0, '原型多选合并操作条示意同步')
     for (const m of ['notes-archive-preview', 'notes-archive-undo']) assert(protoV2Src.indexOf("method === '" + m + "'") >= 0, '原型 mock 含 ' + m)

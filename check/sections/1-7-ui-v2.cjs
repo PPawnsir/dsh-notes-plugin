@@ -215,7 +215,7 @@ module.exports = {
         assert(src.indexOf("t('meta.roleOffTip')") >= 0 && src.indexOf("t('meta.roleConventionTip')") >= 0 && src.indexOf("t('meta.roleReferenceTip')") >= 0, tag + ' 三段 tooltip 走 t()（覆盖卡B）')
       } else {
         assert(src.indexOf('>关闭</span>') >= 0 && src.indexOf('>约定</span>') >= 0 && src.indexOf('>资料</span>') >= 0, tag + ' 三段位文案')
-        assert(src.indexOf('title="不注入系统提示"') >= 0 && src.indexOf('title="须遵守的行为规则"') >= 0 && src.indexOf('title="事实性补充信息，Agent 按需取用"') >= 0, tag + ' 三段 tooltip')
+        assert(src.indexOf('title="不注入系统提示"') >= 0 && src.indexOf('title="每次对话都自动放进 AI 的必读规则（须遵守）"') >= 0 && src.indexOf('title="不进提示词；只在 AI 的笔记目录挂一行索引，它需要时按索引来读"') >= 0, tag + ' 三段 tooltip（0.4.5-D 人话化：tooltip 说清点击后果）')
       }
       assert(src.indexOf("var role = n.inject ? (n.injectRole === 'reference' ? 'reference' : 'convention') : 'off'") >= 0, tag + ' renderMeta 三态映射（存量 inject=true 无 role 缺省 convention）')
       assert(src.indexOf("if (upd.inject) upd.injectRole = edNote.injectRole === 'reference' ? 'reference' : 'convention'") >= 0, tag + ' doSave 非 off 才带 injectRole（payload 禁 undefined）')
@@ -283,7 +283,7 @@ module.exports = {
     const pkgClient = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
     for (const [css, tag] of [[cssDev, 'styles.css'], [cssPkg, '发布包 lib/styles.css']]) {
       // 头部按钮 = 原型 .hbtn 描边胶囊：inline-flex / gap 6px / padding 5px 11px / 1px var(--nbd) / radius 8px / 透明底
-      assert(/\.dsh-notes-floating,\.dsh-notes-fab,\.dsh-notes-hdr-btn\{/.test(css), tag + ' token 作用域须含 .dsh-notes-hdr-btn（头部按钮在 DSH 文档流内，不在面板里）')
+      assert(/\.dsh-notes-floating,\.dsh-notes-fab,\.dsh-notes-hdr-btn,\.dsh-notes-injbadge\{/.test(css), tag + ' token 作用域须含 .dsh-notes-hdr-btn（头部按钮在 DSH 文档流内，不在面板里；0.4.5-H 起扩列 .dsh-notes-injbadge 注入徽标同域）')
       const hdr = (css.match(/(?:^|\n)\.dsh-notes-hdr-btn\{([^}]*)\}/) || [])[1] || ''
       assert(/gap:6px/.test(hdr) && /padding:5px 11px/.test(hdr) && /border-radius:8px/.test(hdr) && /border:1px solid var\(--nbd\)/.test(hdr) && /background:transparent/.test(hdr) && /color:var\(--nt2\)/.test(hdr), tag + ' 头部按钮 v2 描边胶囊基态（实得：' + hdr + '）')
       assert(/\.dsh-notes-hdr-btn:hover\{[^}]*var\(--nbg-hover\)[^}]*var\(--ntx\)/.test(css), tag + ' 头部按钮 hover=nbg-hover 底 + ntx 字')

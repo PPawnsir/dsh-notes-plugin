@@ -24,8 +24,9 @@
     // 分桶：injectRole='convention' → 用户约定（须遵守，全文注入，红线零触碰）；挂载行 = 注入索引根笔记 §1 逐行（0.4.3⑤ 管线载荷）。
     // 0.4.4-E（notes-044-catalog-remove）：「目录段补充未挂载条目」整体移除——全库平铺普通行与「资料=显式挂载」模型冲突，
     //   挂载行（注入索引 §1 管线载荷）是目录段唯一内容源；catalogEnabled 设置分支/UI 开关/预览徽标/catalog 遥测埋点/catalog 兼容别名一并退役
-    //   （用户 settings.json 存量 catalogEnabled 键保留不迁移 = 惰性死键无人读；recall 字段随之失去最后消费方，保留 dormant 读写兼容，
-    //   0.4.5 清理卡统一裁决退役；staleDays 的 ⚠ 注入标注呈现面随普通行拆除——现存唯一消费方 = 整理建议器过期候选提名（memory.js suggestCandidates））。
+    //   （用户 settings.json 存量 catalogEnabled 键保留不迁移 = 惰性死键无人读；recall 字段随之失去最后消费方——
+    //   0.4.5-A（notes-045-debt-host）写侧退役落地：buildFM 不再写 recall 行，存量行解析保留 = 读写兼容；
+    //   staleDays 的 ⚠ 注入标注呈现面随普通行拆除——现存唯一消费方 = 整理建议器过期候选提名（memory.js suggestCandidates））。
     // 目录段语义：挂载行排前（§1 行原样进段）+ 挂载 note_get 引导 + 尾部提示行（价值信号行[0.4.3⑥]/预算省略计数/约定脱敏计数/日志计数尾行/规划轻推）；
     //   无挂载行且无日志 → 目录段整段为空。约定桶与索引 §1 行格式零变化（红线）。
     // 文案不再标注工作区归属与来源会话：大量笔记由 agent 快速记录产生，归属标注对注入方无意义。

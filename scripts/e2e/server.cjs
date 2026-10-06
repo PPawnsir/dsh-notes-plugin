@@ -247,6 +247,16 @@ function handleRpc(state, method, args) {
       return { ok: true, body: '## 已整理\n\n[指令:' + (oiInstr || '(无)') + ']\n\n' + oiBody + '\n', kind: (args && args.kind) || 'note' }
     }
     case 'notes-memory-guide': return { guide: '' }
+    case 'notes-conflict-check': {
+      /* 0.4.5-G（notes-045-conflict-check）约定体检 mock（契约同 host：{} → { ok, pairs:[{aId,bId,aTitle,bTitle,relation,reason}], total }）：
+         数据集谓词同 host（inject=true && injectRole=convention && !deleted），<2 条空态零提名；
+         演示收敛口径：已 superseded 的约定不再参与提名（裁决后重跑见空态闭环）；固定提名前两条活跃约定为「疑似冲突」对 */
+      const conv = notes.filter(n => !n.deleted && n.inject === true && (n.injectRole || 'convention') === 'convention')
+      if (conv.length < 2) return { ok: true, pairs: [], total: conv.length }
+      const live = conv.filter(n => (n.status || 'active') !== 'superseded')
+      if (live.length < 2) return { ok: true, pairs: [], total: conv.length }
+      return { ok: true, total: conv.length, pairs: [{ aId: live[0].id, bId: live[1].id, aTitle: live[0].title, bTitle: live[1].title, relation: 'conflict', reason: 'e2e mock：两条约定对同一事项的指令互相矛盾（演示数据）。' }] }
+    }
     case 'notes-ping': return { ok: true }
     default: return { ok: true }
   }

@@ -209,19 +209,129 @@
       weekly.sort(byKey); monthly.sort(byKey)
       return { weekly: weekly, monthly: monthly }
     }
+    // ---- 遥测驱动候选（0.4.5-C 治理建议器 v0：遥测消费端首卡——纯函数，遥测快照/挂载行/窗口下沿全部由调用方注入，可 eval 单测）----
+    // 两个新候选类（只提名不执行红线同 stale/orphan；信号=启发式，清理裁决=全量+人工）：
+    //   zeroRefMountCandidates（零引用挂载）：注入索引 §1 挂载行 id 集 ∩ 窗口内五通道（inject/mount/catalog 原始回执 + search/get 日聚合）
+    //     零事件 → 建议「摘除挂载」（不删笔记）或「改文案」。豁免：①窗口内任一通道有事件即跳过（约定桶高频笔记 inject 通道有事件，
+    //     天然豁免成立）；②新建未满窗口期——挂载时间戳无独立数据源，以笔记 createdAt 兜底口径：createdAt ≥ 窗口下沿（或无法解析）
+    //     不提名（遥测未覆盖其完整生命周期，宁缺勿滥）；③死挂载行（目标已删/不在全量集）不提名（死链清理由图内核/守卫面负责）。
+    //   hotUnmountedCandidates（高频取用未挂载）：窗口内 get+search 合计 ≥ hotMin（v0 缺省 3 次/14 天——常量先行+注释口径，
+    //     后续可 settings 化）∩ 未在 §1 ∩ inject=false（已注入不提名——约定桶高频笔记豁免位）∩ kind=note/link；
+    //     status≠active / quick 速记 / mergedFrom 归档产物豁免面同 orphanCandidates（防误伤同一哲学）。
+    //     数据源 = byDay 高频双通道窗口聚合（facets.use 是全期总计数、无窗口维度，不作本判定数据源——口径注释锁定）。
+    // 静默降级红线：t（遥测快照）缺失/损坏/非法 → 两类候选皆空数组（零异常上抛；stale/orphan 等既有输出零影响）。
+    const SUGGEST_TELEM_WINDOW_DAYS = 14   // 遥测窗口缺省 14 天（v0 常量；调用方可经 opts.windowDays 覆写）
+    const SUGGEST_TELEM_HOT_MIN = 3        // 高频阈值：窗口内 get+search 合计 ≥3 才提名（2 不提名/3 提名——边界语义锁定）
+    const SUGGEST_TELEM_HOT_LIMIT = 20     // 高频候选上限（提名而非穷尽，与孤儿同哲学；取用降序保最热的在前）
+    // 窗口内事件计数聚合（纯函数）：events = 五通道合计（零引用判据）；useHits = get+search 合计（高频判据）。
+    //   fromMs = 原始回执 ts 窗口下沿（含）；fromDay = 日聚合本地日键下沿（含，YYYY-MM-DD 字符串比较，空串 = byDay 全量兜底）
+    function suggestTelemWindowCounts(t, fromMs, fromDay) {
+      const events = {}, useHits = {}
+      if (!t || typeof t !== 'object') return { events: events, useHits: useHits }
+      const receipts = t.receipts && typeof t.receipts === 'object' ? t.receipts : {}
+      for (const ch of ['inject', 'mount', 'catalog']) {
+        const arr = Array.isArray(receipts[ch]) ? receipts[ch] : []
+        for (const r of arr) {
+          const ms = Date.parse(r && r.ts)
+          if (!isFinite(ms) || ms < fromMs) continue
+          const ids = Array.isArray(r.ids) ? r.ids : []
+          for (const id0 of ids) { const id = String(id0); events[id] = (events[id] || 0) + 1 }
+        }
+      }
+      const byDay = t.byDay && typeof t.byDay === 'object' ? t.byDay : {}
+      for (const ch of ['search', 'get']) {
+        const days = byDay[ch] && typeof byDay[ch] === 'object' ? byDay[ch] : {}
+        for (const d of Object.keys(days)) {
+          if (d < fromDay) continue
+          const bucket = days[d]
+          if (!bucket || typeof bucket !== 'object') continue
+          for (const id of Object.keys(bucket)) {
+            const cnt = Math.max(0, Math.floor(Number(bucket[id]) || 0))
+            if (!cnt) continue
+            events[id] = (events[id] || 0) + cnt
+            useHits[id] = (useHits[id] || 0) + cnt
+          }
+        }
+      }
+      return { events: events, useHits: useHits }
+    }
+    // 两候选类判定（纯函数）：all = 未删除全量笔记；mountLines = idxLinesSync() 形态 [{ id, when }]；opts = { windowDays, hotMin, nowMs, fromDay }
+    function suggestTelemetryCandidates(all, mountLines, t, opts) {
+      if (!t || typeof t !== 'object') return { zeroRefMountCandidates: [], hotUnmountedCandidates: [] }   // 静默降级红线：遥测缺失/损坏 → 两类皆空
+      const o = opts || {}
+      const windowDays = Math.max(1, Math.floor(o.windowDays || SUGGEST_TELEM_WINDOW_DAYS))
+      const hotMin = Math.max(1, Math.floor(o.hotMin || SUGGEST_TELEM_HOT_MIN))
+      const nowMs = o.nowMs || Date.now()
+      const fromMs = nowMs - windowDays * 86400000
+      const fromDay = typeof o.fromDay === 'string' ? o.fromDay : ''
+      const counts = suggestTelemWindowCounts(t, fromMs, fromDay)
+      const byId = {}
+      for (const n of all || []) byId[String(n.id)] = n
+      // ① 零引用挂载：§1 挂载行 ∩ 窗口内五通道零事件（豁免面见块头口径）
+      const zeroRef = []
+      const mountSet = {}
+      for (const l of mountLines || []) {
+        const id = String(l && l.id || '')
+        if (!id || mountSet[id]) continue
+        mountSet[id] = true
+        const n = byId[id]
+        if (!n || n.deleted) continue                          // 死挂载行不提名
+        if ((counts.events[id] || 0) > 0) continue             // 窗口内任一通道事件即豁免
+        const cms = Date.parse(n.createdAt || '')
+        if (!isFinite(cms) || cms >= fromMs) continue          // 新建未满窗口期豁免（createdAt 兜底口径；不可解析同样豁免）
+        zeroRef.push({ id: id, title: n.title, topic: n.topic || '', when: String(l.when || ''), updatedAt: n.updatedAt || '' })
+      }
+      zeroRef.sort((x, y) => String(x.updatedAt || '').localeCompare(String(y.updatedAt || '')))   // 最旧在前（与孤儿同序）
+      // ② 高频取用未挂载：窗口内 get+search ≥ hotMin ∩ 未挂载 ∩ inject=false ∩ kind=note/link ∩ orphan 豁免面
+      const hot = []
+      for (const n of all || []) {
+        const id = String(n.id)
+        if (mountSet[id]) continue
+        const k = n.kind || 'note'
+        if (k !== 'note' && k !== 'link') continue             // log/sys/todo/decision/quote 豁免（orphan 面同哲学；log/sys 双保险）
+        if ((n.status || 'active') !== 'active') continue
+        if (n.inject === true) continue                        // 已注入笔记不提名（约定桶高频笔记天然豁免位）
+        if ((n.tags || []).indexOf('quick') >= 0) continue
+        if ((n.mergedFrom || []).length > 0) continue
+        const hits = counts.useHits[id] || 0
+        if (hits < hotMin) continue
+        hot.push({ id: id, title: n.title, topic: n.topic || '', hits: hits, updatedAt: n.updatedAt || '' })
+      }
+      hot.sort((x, y) => (y.hits - x.hits) || String(x.id).localeCompare(String(y.id)))   // 取用降序（并列按 id 稳定序）
+      return { zeroRefMountCandidates: zeroRef, hotUnmountedCandidates: hot.slice(0, SUGGEST_TELEM_HOT_LIMIT) }
+    }
     // ==== suggest-helpers END ====
 
-    // 整理建议（notes-suggest，dry-run 零写入）：返回 { archiveCandidates, staleCandidates, orphanCandidates, logHygieneCandidates, generatedAt }
+    // 整理建议（notes-suggest，dry-run 零写入）：返回 { archiveCandidates, staleCandidates, orphanCandidates, logHygieneCandidates,
+    //   zeroRefMountCandidates, hotUnmountedCandidates, telemetryWindowDays, generatedAt }
     // archiveCandidates 内聚复用 _archivePreview——速记组结构与 notes-archive-preview 完全同源，
     // client「去归档」直达归档预览对话框对接的正是同一批组（dry-run 非热路径，二次 _list 走缓存）。
     // logHygieneCandidates（工作记忆 v0 §6.3）：日志卫生两级聚合提名（周 >7 天 / 月 >90 天，设置键 logWeekAfterDays/logRetentionDays 可调），
     // 只提名不执行——v0 面板仅展示明细，合并执行（机械拼接 + 概览索引）走归档白名单通道留待 Phase 2。
+    // zeroRefMountCandidates / hotUnmountedCandidates（0.4.5-C 治理建议器 v0 遥测消费端）：判定内核 = suggestTelemetryCandidates 纯函数
+    // （口径/豁免面见 suggest-helpers 块头注释）；只提名不执行——摘除挂载复用 notes-update inject:false 既有通道（_idxSyncMount 联动摘行），
+    // 挂载/改文案复用 MountModal（LLM 预填 notes-when-suggest），均人工确认才动作。
     async function _suggest() {
       await loadSettings()   // 幂等（缓存 promise）：确保 staleDays 用户 override 已加载生效
       const all = await _list(undefined, undefined, undefined, undefined, true)   // 治理路径显式包含日志（隐身只作用于日常浏览/默认搜索；stale/orphan 内核已排除 kind=log）
       const pv = await _archivePreview()
       const c = suggestCandidates(all, staleDaysLimit())
-      return { archiveCandidates: pv.quickGroups, staleCandidates: c.staleCandidates, orphanCandidates: c.orphanCandidates, logHygieneCandidates: suggestLogHygiene(all, logWeekAfterDaysLimit(), logRetentionDaysLimit()), generatedAt: new Date().toISOString() }
+      // 遥测驱动两类候选（只读消费）：读前落账（_recallFlushAgg——防抖 pending 与在途回执先 flush 再统计，notes-recall-stats 同款自洽读）。
+      //   可用性闸门：meta.lastFlush 缺失 = 遥测从未落账（新装库零事件 / telemetry.json 缺失 / 损坏自愈空桶）→ 两类候选静默为空
+      //   （防「空遥测库上全量旧挂载被误提名零引用」）；计算异常同样静默降级——stale/orphan 等既有候选零影响（静默降级红线）。
+      let telem = { zeroRefMountCandidates: [], hotUnmountedCandidates: [] }
+      try {
+        await _recallFlushAgg()
+        const t0 = _telemetryCache
+        if (t0 && t0.meta && t0.meta.lastFlush) {
+          const nowMs = Date.now()
+          telem = suggestTelemetryCandidates(all, idxLinesSync(), t0, {
+            windowDays: SUGGEST_TELEM_WINDOW_DAYS, hotMin: SUGGEST_TELEM_HOT_MIN, nowMs: nowMs,
+            fromDay: _recallDay(nowMs - (SUGGEST_TELEM_WINDOW_DAYS - 1) * 86400000)   // 日聚合窗口下沿（含当日共 14 天，notes-recall-stats 同口径）
+          })
+        }
+      } catch (e) { /* 静默降级：遥测故障不扩散整理建议主输出 */ }
+      return { archiveCandidates: pv.quickGroups, staleCandidates: c.staleCandidates, orphanCandidates: c.orphanCandidates, logHygieneCandidates: suggestLogHygiene(all, logWeekAfterDaysLimit(), logRetentionDaysLimit()), zeroRefMountCandidates: telem.zeroRefMountCandidates, hotUnmountedCandidates: telem.hotUnmountedCandidates, telemetryWindowDays: SUGGEST_TELEM_WINDOW_DAYS, generatedAt: new Date().toISOString() }
     }
 
     // 合并一组笔记为一条归档笔记：正文按 updatedAt 升序拼接（## 日期 分节），原笔记先 .bak 备份再软删除。
@@ -356,7 +466,8 @@
     disposers.push(handle('notes-archive-undo', async () => {
       try { return await _archiveUndo() } catch (e) { return { error: String(e.message || e) } }
     }))
-    // 整理建议（dry-run 零写入）：四类候选（速记组/过期未引用/孤儿/日志卫生）——只提名不执行；过期未引用的批量软删由 client confirm 后逐条 notes-delete
+    // 整理建议（dry-run 零写入）：六类候选（速记组/过期未引用/孤儿/日志卫生/零引用挂载/高频取用未挂载——后两类 0.4.5-C 遥测驱动）——
+    // 只提名不执行；过期未引用的批量软删由 client confirm 后逐条 notes-delete；遥测两类动作复用既有通道（notes-update 关注入 / MountModal）
     disposers.push(handle('notes-suggest', async () => {
       try { return await _suggest() } catch (e) { return { error: String(e.message || e) } }
     }))

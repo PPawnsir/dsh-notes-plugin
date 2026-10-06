@@ -13,13 +13,14 @@ function injMgrScopeLabel(injectTo) { var arr = (injectTo || []).filter(function
 function openInjectManager(from) {
   /* 单层返回栈（notes-041-settings-back）：from='settings'（设置卡「管理…」入口）时存档来源 + 当前 .modal 滚动位置，关闭后自动回设置卡 */
   var backScroll = from === 'settings' && $('modal') ? $('modal').scrollTop : 0;
-  injMgrState = { list: null, filter: 'all', search: '', q: '', sel: {}, pending: false, rstats: null, rstatsOpen: false };
+  injMgrState = { list: null, filter: 'all', search: '', q: '', sel: {}, pending: false, rstats: null, rstatsOpen: false, conflict: null };
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + t('settings.injManager') + '<span class="sub">' + t('inj.titleSub') + '</span></div>'
     + '<div class="injmgr-bar"><div class="injmgr-chips" id="injMgrChips"></div>'
     + '<input class="injmgr-search" id="injMgrSearch" placeholder="' + t('inj.searchPlaceholder') + '"></div>'
     + '<div id="injSchedHost"></div>'
     + '<div id="injMntStats"></div>'
+    + '<div id="injConflictHost"></div>'
     + '<div id="injMgrBody"><div class="modal-hint">' + t('common.loading') + '</div></div>'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
     + '<div class="modal-acts"><button class="mbtn" id="injMgrClose">' + t('common.close') + '</button></div>'
@@ -83,6 +84,99 @@ function renderInjMntStats() {
   host.innerHTML = h;
   $('injMntStatsRow').onclick = function () { if (injMgrState) { injMgrState.rstatsOpen = !injMgrState.rstatsOpen; renderInjMntStats() } };
 }
+/* ===== 约定体检（0.4.5-G notes-045-conflict-check）：LLM 两两检测注入中约定的冲突/被取代对——只提名不执行，人工裁决 =====
+   injMgrState.conflict 形态：null=未跑 / {running:true} / {error:msg} / {pairs:[{aId,bId,aTitle,bTitle,relation,reason}], total, acting?}；
+   红线：modal 不叠 modal——结果区为面板内联展开区（injConflictHost 插槽，不开第二层弹层）；
+   「标 A/B 已取代」= notes-update status='superseded'（注入不动——用户自行决定是否关注入）+ 行移除；「保留两者」= 本次会话内 dismiss（纯本地行移除，零 RPC）；
+   面板重开即复位（openInjectManager conflict:null——dismiss 不跨面板会话持久）。 */
+function injConflictPairKey(p) { return p.aId + '|' + p.bId + '|' + p.relation }
+function renderInjConflict() {
+  var host = $('injConflictHost'); if (!host || !injMgrState || !injMgrState.list) return;
+  var cf = injMgrState.conflict;
+  var running = !!(cf && cf.running), actingKey = (cf && cf.acting) || '';
+  var h = '<div class="conflict-sec"><div class="conflict-sec-t">' + icon('i-warn', 12) + ' ' + t('inj.conflictTitle') + '<span class="sub">' + t('inj.conflictTitleSub') + '</span>'
+    + '<button class="mbtn conflict-run" id="injConflictRun" title="' + esc(t('inj.conflictRunTip')) + '"' + ((running || actingKey || injMgrState.pending) ? ' disabled' : '') + '>'
+    + (running ? t('inj.conflictRunning') : (cf ? t('inj.conflictRerun') : t('inj.conflictRun'))) + '</button></div>';
+  if (cf) {
+    if (cf.running) h += '<div class="modal-hint">' + t('inj.conflictRunningHint') + '</div>';
+    else if (cf.error) h += '<div class="modal-err" style="display:block">' + esc(t('inj.conflictError', { msg: cf.error })) + '</div>';
+    else if (!(cf.pairs || []).length) h += '<div class="modal-hint">' + esc(t('inj.conflictEmpty', { n: cf.total || 0 })) + '</div>';
+    else {
+      h += cf.pairs.map(function (p) {
+        return '<div class="conflict-row" data-pk="' + esc(injConflictPairKey(p)) + '">'
+          + '<span class="conflict-badge ' + (p.relation === 'supersede' ? 'sup' : 'con') + '">' + (p.relation === 'supersede' ? t('inj.conflictRelSupersede') : t('inj.conflictRelConflict')) + '</span>'
+          + '<span class="conflict-pair"><span class="conflict-ti" title="' + esc(p.aTitle) + '">' + esc(p.aTitle) + '</span> ⇄ <span class="conflict-ti" title="' + esc(p.bTitle) + '">' + esc(p.bTitle) + '</span></span>'
+          + (p.reason ? '<span class="conflict-reason" title="' + esc(p.reason) + '">' + esc(p.reason) + '</span>' : '')
+          + '<span class="conflict-acts">'
+          + '<button class="mbtn conflict-act" data-act="supA" title="' + esc(t('inj.conflictSupATip', { title: p.aTitle })) + '"' + (actingKey ? ' disabled' : '') + '>' + t('inj.conflictSupA') + '</button>'
+          + '<button class="mbtn conflict-act" data-act="supB" title="' + esc(t('inj.conflictSupBTip', { title: p.bTitle })) + '"' + (actingKey ? ' disabled' : '') + '>' + t('inj.conflictSupB') + '</button>'
+          + '<button class="mbtn conflict-act" data-act="keep" title="' + esc(t('inj.conflictKeepTip')) + '"' + (actingKey ? ' disabled' : '') + '>' + t('inj.conflictKeep') + '</button>'
+          + '</span></div>';
+      }).join('');
+    }
+  }
+  host.innerHTML = h + '</div>';
+  $('injConflictRun').onclick = function () { doInjConflictCheck() };
+  host.querySelectorAll('.conflict-act').forEach(function (el) {
+    el.onclick = function () {
+      var pk = el.parentNode.parentNode.getAttribute('data-pk');
+      var cf2 = injMgrState && injMgrState.conflict;
+      var p = cf2 && (cf2.pairs || []).find(function (x) { return injConflictPairKey(x) === pk });
+      if (!p) return;
+      var act = el.getAttribute('data-act');
+      if (act === 'supA') doInjConflictSupersede(p, 'a');
+      else if (act === 'supB') doInjConflictSupersede(p, 'b');
+      else doInjConflictDismiss(p);
+    };
+  });
+}
+function doInjConflictCheck() {
+  var cf = injMgrState && injMgrState.conflict;
+  if (!injMgrState || (cf && (cf.running || cf.acting))) return;
+  injMgrState.conflict = { running: true }; renderInjConflict();
+  rpc('notes-conflict-check', {}).then(function (res) {
+    if (!injMgrState) return;   /* 面板已关：丢弃迟到响应（同挂载弹层迟到草稿口径） */
+    if (res && res.error) { injMgrState.conflict = { error: res.error }; renderInjConflict(); return }
+    injMgrState.conflict = { pairs: (res && res.pairs) || [], total: (res && res.total) || 0 };
+    renderInjConflict();
+  }).catch(function (e) {
+    if (!injMgrState) return;
+    injMgrState.conflict = { error: String(e && e.message || e) }; renderInjConflict();
+  });
+}
+/* 标 A/B 已取代：notes-update status='superseded'（既有通道，零新写入口）→ 成功后行移除 + toast + 后台刷新对齐；失败保留行可重试 */
+function doInjConflictSupersede(p, which) {
+  var cf = injMgrState && injMgrState.conflict;
+  if (!cf || cf.running || cf.acting) return;
+  var id = which === 'b' ? p.bId : p.aId, title = which === 'b' ? p.bTitle : p.aTitle;
+  var pk = injConflictPairKey(p);
+  injMgrState.conflict = Object.assign({}, cf, { acting: pk }); renderInjConflict();
+  rpc('notes-update', { id: id, status: 'superseded' }).then(function (res) {
+    if (!injMgrState) return;
+    var cur = injMgrState.conflict;
+    if (res && res.error) {
+      injMgrState.conflict = cur ? Object.assign({}, cur, { acting: '' }) : cur;
+      renderInjConflict(); modalErr(res.error); return;
+    }
+    toast(t('inj.conflictSupDone', { title: title }));
+    if (cur && cur.pairs) injMgrState.conflict = Object.assign({}, cur, { acting: '', pairs: cur.pairs.filter(function (x) { return injConflictPairKey(x) !== pk }) });
+    renderInjConflict();
+    loadNotes(true);
+  }).catch(function (e) {
+    if (!injMgrState) return;
+    var cur = injMgrState.conflict;
+    if (cur) { injMgrState.conflict = Object.assign({}, cur, { acting: '' }); renderInjConflict(); }
+    modalErr(t('inj.conflictOpFailed', { msg: e && e.message || e }));
+  });
+}
+/* 保留两者 = 本次会话内 dismiss：纯本地行移除（零 RPC 零副作用） */
+function doInjConflictDismiss(p) {
+  var cf = injMgrState && injMgrState.conflict;
+  if (!cf || !cf.pairs || cf.acting) return;
+  var pk = injConflictPairKey(p);
+  injMgrState.conflict = Object.assign({}, cf, { pairs: cf.pairs.filter(function (x) { return injConflictPairKey(x) !== pk }) });
+  renderInjConflict();
+}
 /* 当前过滤视图（排序：注入中在前（约定 > 资料 > 未注入），组内 updatedAt 降序；三态过滤 + 搜索词本地过滤） */
 function injMgrShownList() {
   var st = injMgrState; if (!st || !st.list) return [];
@@ -105,6 +199,7 @@ function renderInjectManager() {
   chips.querySelectorAll('.injmgr-chip').forEach(function (el) { el.onclick = function () { st.filter = el.getAttribute('data-f'); renderInjectManager() } });
   renderInjSched();   /* 调度任务区（notes-034-sched-ui）：与注入总览同面板同数据源 */
   renderInjMntStats();   /* 挂载区统计行（0.4.3 验收修复⑥）：notes-recall-stats 账本快照，无快照整区省略 */
+  renderInjConflict();   /* 约定体检区（0.4.5-G notes-045-conflict-check）：内联结果区，不叠 modal */
   if (!st.list) return;
   var shown = injMgrShownList();
   if (!shown.length) { body.innerHTML = '<div class="modal-hint">' + (list.length ? t('inj.noMatch') : t('inj.emptyLib')) + '</div>'; return }
@@ -183,7 +278,8 @@ function renderInjSched() {
       return '<div class="sched-row' + (paused ? ' paused' : '') + '" data-id="' + esc(n.id) + '">'
         + '<span class="sched-row-t" title="' + esc(n.title || t('tree.untitled')) + '">' + esc(n.title || t('tree.untitled')) + '</span>'
         + '<span class="sched-freq">' + esc(schedFreqLabel(s)) + '</span>'
-        + '<span class="sched-target" title="' + esc(s.target || '') + '">→ ' + esc(shortSid(s.target)) + '</span>'
+        /* 0.4.5-B（notes-045-ux-polish）：target='new' 专属会话目标位显示人话文案（首轮回写真实 sid 后自动恢复「→ 截短」，零迁移；纯展示层） */
+        + '<span class="sched-target" title="' + esc(s.target || '') + '">' + (s.target === 'new' ? esc(t('disp.schedNewTarget')) : '→ ' + esc(shortSid(s.target))) + '</span>'
         + '<span class="sched-nf">' + esc(schedNextLabel(n)) + '</span>'
         + schedBadgeHtml(n)
         + (paused ? '<span class="sched-badge off">' + t('meta.schedPaused') + '</span>' : '')

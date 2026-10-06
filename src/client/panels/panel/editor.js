@@ -244,6 +244,33 @@
           applyOrganizedBody(u.body)
           showToast(tt('editor.organizeUndone'))
         }
+        // ===== 0.4.5-F 详情页一键导出单篇 MD（notes-045-export-one）：meta「导出」按钮 → 浏览器下载 <标题>.md =====
+        // 纯前端 Blob 下载（零新 RPC）；正文原样不改写（不加 front-matter、不擅自加 H1）；与 notes-export-single（目录落盘拼接）互不替代：
+        //   本按钮 = 单篇快速导出，设置卡 = 批量拼接分享。
+        // 文件名清洗：非法字符 /\:*?"<>| → -；空标题回退「无标题」
+        // （\x22 = 双引号：build-dist 提取器不认正则字面量内的裸引号，转义书写保配平）
+        function exportFileName(title) {
+          // host 落库无题为 'Untitled'（notes.js 缺省），导出文件名按本地化的「无标题」归一（F 卡 verifier 观察 a 收口）
+          let t0 = String(title || '').trim(); if (t0 === 'Untitled') t0 = ''
+          const base = t0.replace(/[\\/:*?\x22<>|]/g, '-').trim()
+          return (base || tt('tree.untitled')) + '.md'
+        }
+        function doExportOne() {
+          if (!selectedRef.current) return
+          // 富文本在途编辑先序列化落回源码（导出对象是 edBody 源码文本；0.4.4-F 整理同款守卫）
+          if (editorModeRef.current === 'rich' && richDirtyRef.current) syncFromRich('导出前同步')
+          const body = edBodyRef.current || ''
+          const fname = exportFileName(edTitleRef.current)
+          const blob = new Blob([body], { type: 'text/markdown;charset=utf-8' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url; a.download = fname
+          document.body.appendChild(a); a.click(); a.remove()
+          setTimeout(() => { try { URL.revokeObjectURL(url) } catch (err) {} }, 1000)
+          showToast(tt('meta.exportedToast', { name: fname }))
+          // 含本地图片相对引用（![](assets/…)）→ 下载后提示未内联（不阻塞下载；内联分享走设置→导出单文件）
+          if (/!\[[^\]]*\]\(\s*assets\//.test(body)) showToast(tt('meta.exportImgWarn'))
+        }
         // ===== 历史版本面板（notes-history-ui）：「历史」入口探测 + 列表/预览/恢复链路 =====
         // 入口可见性探测：选中笔记后拉版本计数（notes-history 是轻量列表 RPC，零正文明文）；0 版本不显示入口。
         // doSave 完成后仅在 0→1 转折点补探一次（首次真实保存产生首份快照），其余保存不增 RPC。
@@ -662,7 +689,7 @@
                 e('span', { className: 'dsh-notes-meta-jump dsh-nt', 'data-tooltip': tt('meta.topicFilterTip'), onClick: jumpToTopicFilter }, I('filter', 10))),
               curFolderName ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.folderTip') }, I('folder', 11), curFolderName) : null,
               // 使用遥测（P2）：详情 meta chip「被引用 N 次」（0 次不显示）
-              (curNote.useCount || 0) > 0 ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.useCountTip') }, I('quote', 11), tt('meta.useCount', { n: curNote.useCount })) : null,
+              (curNote.useCount || 0) > 0 ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.useCountTip', { n: curNote.useCount }) }, I('quote', 11), tt('meta.useCount', { n: curNote.useCount })) : null,
               // P3 派发闭环徽章：有派发记录时聚合显示（pending=有待回执 / done=全部已回执），点击展开派发历史
               curDispatches.length ? e('span', { className: 'dsh-notes-meta-chip dsh-notes-dispatch-badge ' + (dispatchOpenCount ? 'pending' : 'done'), onClick: () => setDispatchHistoryOpen(true), 'data-tooltip': dispatchOpenCount ? tt('meta.dispPendingTip', { open: dispatchOpenCount, total: curDispatches.length }) : tt('meta.dispDoneTip', { total: curDispatches.length }) },
                 I(dispatchOpenCount ? 'play' : 'check', 11),
@@ -700,6 +727,8 @@
               curNote.sessionId ? e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: () => jumpToSession(curNote.sessionId), 'data-tooltip': tt('meta.sourceJumpTip') }, I('ext', 12), tt('meta.source')) : null,
               // 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数）
               (histCount || 0) > 0 ? e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); openHistory() }, 'data-tooltip': tt('meta.histTip', { n: histCount }) }, I('clock', 12), tt('meta.history')) : null,
+              // 0.4.5-F（notes-045-export-one）：一键导出单篇 MD（Blob 浏览器下载，零新 RPC；正文原样）
+              e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); doExportOne() }, 'data-tooltip': tt('meta.exportTip') }, I('down', 12), tt('meta.export')),
               e('span', { className: 'dsh-notes-meta-act' + (edStatus === 'pinned' ? ' on' : '') + ' dsh-nt', onClick: () => { setEdStatus(edStatus === 'pinned' ? 'active' : 'pinned'); triggerAutoSave() }, 'data-tooltip': edStatus === 'pinned' ? tt('meta.unpin') : tt('meta.pin') }, I('pin', 12)),
               e('span', { className: 'dsh-notes-meta-act danger dsh-nt', onClick: () => doDelete(selected), 'data-tooltip': tt('meta.delTipClient') }, I('trash', 12)),
               // 派发计划块 + 关联调度清单（notes-034-sched-detail）：meta 尾部全宽行；无调度笔记零渲染（null = 零 DOM 痕迹红线）
@@ -707,7 +736,8 @@
                 curIsSched ? e('div', { className: 'dsh-notes-sched-plan-row' + (curNote.schedule.enabled === false ? ' paused' : '') },
                   e('span', { className: 'dsh-notes-sched-plan-t' }, I('clock', 10), tt('meta.schedPlan')),
                   e('span', { className: 'dsh-notes-sched-freq' }, schedFreqLabel(curNote.schedule)),
-                  e('span', { className: 'dsh-notes-sched-target dsh-nt', 'data-tooltip': curNote.schedule.target || '' }, '→ ' + shortSid(curNote.schedule.target)),
+                  // 0.4.5-B（notes-045-ux-polish）：target='new' 目标位显示人话文案（首轮回写真实 sid 自动恢复「→ 截短」，零迁移；纯展示层）
+                  e('span', { className: 'dsh-notes-sched-target dsh-nt', 'data-tooltip': curNote.schedule.target || '' }, curNote.schedule.target === 'new' ? tt('disp.schedNewTarget') : '→ ' + shortSid(curNote.schedule.target)),
                   e('span', { className: 'dsh-notes-sched-nf' }, schedPlanNextLabel(curNote)),
                   schedPlanBadgeEl(curNote),
                   curNote.schedule.enabled === false ? e('span', { className: 'dsh-notes-sched-badge off' }, tt('meta.schedPaused')) : null,

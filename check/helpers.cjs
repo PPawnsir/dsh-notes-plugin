@@ -10,7 +10,10 @@ const osNative = require('os')
 const assert = require('assert')
 const { pathToFileURL } = require('url')
 
-const DIR = 'D:\\deepseek-work\\dsh-notes-plugin'
+const DIR = path.join(__dirname, '..')   // 0.4.5-A（notes-045-debt-host）：硬编码绝对路径相对化——隔离实验环境可移植
+// 工作区 mock 路径（liveAgent/currentInitiator/sessionPersistence/workspaceRegistry fixture 的 cwd/path）：
+//   取插件仓父目录（本仓常态 = D:\deepseek-work），随仓迁移自动跟随；断言侧用 path.dirname(DIR) 同口径
+const WS_DIR = path.dirname(DIR)
 // 开发版源码集中在 src/（v0.3 工程整理）；路径引用统一收敛为以下常量，断言体内不再散落拼路径
 // P2·5：src/host/** 模块树终态（whole.js 余量清零，续切为 server/dispatch/inject/memory/search/transfer/index；
 // 本常量仅为历史锚点保留（断言体不读它），指向尾模块 index.js（收口装配：工具层 + 启动收尾）
@@ -65,7 +68,7 @@ function section(name) { if (state.CORE_MODE || state.ONLY_MODE) { state.pending
 function createHostMocks() {
   const store = new Map()
   // io.reads/io.writes 计数器：收进 helpers.io（io.reads / io.writes），断言侧同口径读取
-  const NOTES_DIR = 'D:\\deepseek-work\\dsh-notes-plugin\\notes'
+  const NOTES_DIR = path.join(DIR, 'notes')   // 0.4.5-A：随 DIR 相对化（原硬编码 D:\deepseek-work\dsh-notes-plugin\notes）
   const fsMock = {
     resolve: async (p) => p,
     stat: async (p) => (p === NOTES_DIR ? { dir: true } : (store.has(p) ? { file: true } : null)),
@@ -114,7 +117,7 @@ function createHostMocks() {
   const sentMessages = []
   const liveAgent = {
     id: 'session-abc12345-0000-0000-0000-000000000000',
-    session: { id: 'session-abc12345-0000-0000-0000-000000000000', header: { cwd: 'D:\\deepseek-work' } },
+    session: { id: 'session-abc12345-0000-0000-0000-000000000000', header: { cwd: WS_DIR } },
     send: (msg, target, wakeup) => { sentMessages.push({ msg, target, wakeup }) }
   }
   // 0.4.4-B：agents.create 专属会话 mock——创建的 agent 登记进 createdAgents（agents.get 命中 = live 语义）；
@@ -122,7 +125,7 @@ function createHostMocks() {
   const createdAgents = new Map()
   const agentCreateCalls = []
   const agentsMock = {
-    currentInitiator: () => ({ sessionId: 'session-abc12345-0000-0000-0000-000000000000', session: { id: 'session-abc12345-0000-0000-0000-000000000000', header: { cwd: 'D:\\deepseek-work' } } }),
+    currentInitiator: () => ({ sessionId: 'session-abc12345-0000-0000-0000-000000000000', session: { id: 'session-abc12345-0000-0000-0000-000000000000', header: { cwd: WS_DIR } } }),
     roots: () => [liveAgent],
     get: (id) => id === 'session-abc12345-0000-0000-0000-000000000000' ? liveAgent : createdAgents.get(id),
     create: async (opts) => {
@@ -148,12 +151,12 @@ function createHostMocks() {
   const sessionPersistenceMock = {
     // 返回 SessionPersistenceSnapshot 结构（{header, revision}），模拟 DSH 新版 list() 返回
     list: async () => [
-      { header: { id: 'session-abc12345-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T01:00:00.000Z' }, revision: 'r1' },
-      { header: { id: 'session-sub9900000-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T02:00:00.000Z', origin: 'subagent' }, revision: 'r2' },
-      { header: { id: 'session-arch00000-0000-0000-0000-000000000000', cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T03:00:00.000Z' }, revision: 'r3' }
+      { header: { id: 'session-abc12345-0000-0000-0000-000000000000', cwd: WS_DIR, createdAt: '2026-09-16T01:00:00.000Z' }, revision: 'r1' },
+      { header: { id: 'session-sub9900000-0000-0000-0000-000000000000', cwd: WS_DIR, createdAt: '2026-09-16T02:00:00.000Z', origin: 'subagent' }, revision: 'r2' },
+      { header: { id: 'session-arch00000-0000-0000-0000-000000000000', cwd: WS_DIR, createdAt: '2026-09-16T03:00:00.000Z' }, revision: 'r3' }
     ],
-    inspect: async (id) => ({ meta: { id: id, cwd: 'D:\\deepseek-work' }, events: [{ type: 'session/title', data: { title: '开发会话' } }] }),
-    stat: async (id) => persistLogs.has(id) ? { header: { id: id, cwd: 'D:\\deepseek-work' }, revision: 'r' } : undefined,
+    inspect: async (id) => ({ meta: { id: id, cwd: WS_DIR }, events: [{ type: 'session/title', data: { title: '开发会话' } }] }),
+    stat: async (id) => persistLogs.has(id) ? { header: { id: id, cwd: WS_DIR }, revision: 'r' } : undefined,
     open: async (id, access) => {
       persistOpenCalls.push({ id: id, access: access })
       if (!persistLogs.has(id)) { const e = new Error('session "' + id + '" not found'); e.name = 'SessionPersistenceNotFoundError'; throw e }
@@ -177,7 +180,7 @@ function createHostMocks() {
     archivedSessionIds: ['session-arch00000-0000-0000-0000-000000000000'],
     // 工作区（含 sessionIds，= 左侧列表有效会话数据源）
     list: () => [
-      { id: 'ws1', title: 'deepseek-work', path: 'D:\\deepseek-work', sessionIds: ws1SessionIds, attachSession: async (sid) => { attachCalls.push(sid) } }
+      { id: 'ws1', title: 'deepseek-work', path: WS_DIR, sessionIds: ws1SessionIds, attachSession: async (sid) => { attachCalls.push(sid) } }
     ]
   }
   const titleRenameCalls = []
@@ -186,16 +189,22 @@ function createHostMocks() {
   // io.sharedTitleReads 计数器：收进 helpers.io.sharedTitleReads
   const sessionQueryMock = {
     // 批量读 title + header（origin/cwd/createdAt）
+    // 0.4.5-A（notes-045-debt-host ③ 孤儿专属会话探测）：title 改为 rename-aware——sessionTitle.rename 录制表
+    //   内该 sid 的最新命名优先返回（缺省「开发会话」），供 schedule.js 按标题「定时 · <任务名>」探测既有专属会话
     readTitleSnapshots: async (sids) => {
       io.sharedTitleReads++
-      return (sids || []).map(sid => ({
-        sessionId: sid,
-        status: 'fulfilled',
-        value: {
-          session: { id: sid, cwd: 'D:\\deepseek-work', createdAt: '2026-09-16T01:00:00.000Z', origin: sid.indexOf('sub99') >= 0 ? 'subagent' : undefined },
-          title: { title: '开发会话' }
+      return (sids || []).map(sid => {
+        let title = '开发会话'
+        for (let i = titleRenameCalls.length - 1; i >= 0; i--) { if (titleRenameCalls[i] && titleRenameCalls[i].id === sid) { title = titleRenameCalls[i].title; break } }
+        return {
+          sessionId: sid,
+          status: 'fulfilled',
+          value: {
+            session: { id: sid, cwd: WS_DIR, createdAt: '2026-09-16T01:00:00.000Z', origin: sid.indexOf('sub99') >= 0 ? 'subagent' : undefined },
+            title: { title: title }
+          }
         }
-      }))
+      })
     }
   }
   const evtListeners = {}   // P3 派发闭环：ctx.on 事件订阅捕获（模拟 agent/status 触发）

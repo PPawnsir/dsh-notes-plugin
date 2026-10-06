@@ -50,7 +50,7 @@ module.exports = {
     assert.strictEqual(contexts5[0].name, 'notes:workspace-conventions', '单一 context 名')
     assert.strictEqual(catCtx5.text(), '', '空库注入为空串（目录段整段空）')
   })
-  await t('静态包目录段行为（0.4.4-E 唯挂载行源）：create 不进段 → 挂载行进段（§1 原样）→ recall dormant 读写不影响', async () => {
+  await t('静态包目录段行为（0.4.4-E 唯挂载行源）：create 不进段 → 挂载行进段（§1 原样）→ recall deprecated 读写兼容', async () => {
     const c = await rpc5('notes-create', { title: '静态目录笔记', body: 'x', topic: '开发' })
     assert(c.body.id, 'notes-create 成功')
     // 0.4.4-E：普通行装配已拆——库内有笔记目录段也为空（不再有 settings 开关可填充）
@@ -61,12 +61,12 @@ module.exports = {
     const txt = dirPart5(catCtx5.text())
     assert(txt.indexOf('- [[' + c.body.id + ']] 何时查我：静态包目录段断言') >= 0, '挂载行（§1 原样）进目录段（实得：' + txt + '）')
     assert(txt.indexOf('（以上为挂载索引行：正文用 note_get <id> 获取）') >= 0, '挂载 note_get 引导行归属本段')
-    // recall dormant：update recall=false/true 读写照常（字段保留），目录段行为与 recall 无关（消费方已拆）
+    // recall deprecated（0.4.5-A 写侧退役）：update recall=false/true 入参照常接受（内存视图生效），磁盘不再落 recall 行；目录段行为与 recall 无关（消费方已拆）
     const tMgr5 = tools5b.find(x => x.name === 'note_manage')
     const u = await tMgr5.execute({ action: 'update', id: c.body.id, recall: false })
     assert(!u.error, '工具 update recall=false 成功')
     const onDisk = store5.get(path.join(NOTES_ROOT_STATIC, c.body.id + '.md'))
-    assert(onDisk.indexOf('\nrecall: false\n') >= 0, '静态包磁盘 front-matter 同步 recall: false（dormant 读写兼容）')
+    assert(onDisk.indexOf('\nrecall:') < 0, '静态包磁盘 front-matter 不写 recall 行（0.4.5-A 写侧退役）')
     assert(dirPart5(catCtx5.text()).indexOf('- [[' + c.body.id + ']]') >= 0, 'recall=false 不影响挂载行（recall 已无目录消费方）')
     await tMgr5.execute({ action: 'update', id: c.body.id, recall: true })
     assert(dirPart5(catCtx5.text()).indexOf('- [[' + c.body.id + ']]') >= 0, 'recall 改回 true 挂载行仍在')

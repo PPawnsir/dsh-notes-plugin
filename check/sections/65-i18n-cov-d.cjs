@@ -117,6 +117,11 @@ module.exports = {
     assert.strictEqual(a.t('mem.wsLabel', { name: 'deepseek-work', n: 5 }), 'deepseek-work（5 个会话）', 'zh 工作区行双参插值')
     assert.strictEqual(a.t('inj.schedDelConfirm', { title: '定时 巡检' }).indexOf('删除定时任务「定时 巡检」？') === 0, true, 'zh 删除 confirm 插值')
     assert.strictEqual(a.t('common.dowNames'), '日|一|二|三|四|五|六', 'zh 星期名管道串')
+    // 0.4.5-D（notes-045-copy-plain）用户面禁字段名负向锚：mem.enableHint 双端不得暴露 inject=/contractType/injectTo 字段名黑话
+    for (const bad of ['inject=', 'contractType', 'injectTo']) {
+      assert(zh['mem.enableHint'].indexOf(bad) < 0 && en['mem.enableHint'].indexOf(bad) < 0, 'mem.enableHint 用户面禁字段名（0.4.5-D）：' + bad)
+    }
+    assert(zh['mem.enableHint'].indexOf('不会进入 AI 提示词') >= 0 && zh['mem.enableHint'].indexOf('不会重复创建') >= 0, 'mem.enableHint 新口径锚（0.4.5-D：说清点击后果 + 停用复用不重复创建）')
     const b = mk('en')
     assert.strictEqual(b.t('inj.chipConvention', { n: 3 }), 'Convention 3', 'en {n} 插值')
     assert.strictEqual(b.t('inj.batchConfirm', { label: 'Set as convention', n: 2, effect: 'be injected as convention (must follow).' }), 'Set as convention (batch): the 2 selected notes will be injected as convention (must follow).\nProceed?', 'en batchConfirm 三参插值')

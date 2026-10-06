@@ -224,18 +224,18 @@ module.exports = {
   })
 
   // ---- 29.4 client 设置卡片（client-impl + 发布包 lib/client.js 同步 + 仪表样式）----
-  await t('设置卡片：「时效衰减提醒」+「注入体积预算」两行（失焦/Enter 即保存 + 仪表 + 「约」文案）', () => {
-    assert(/key: 'stale', label: tt\('settings\.stale'\)/.test(clientSrc), 'settingsRows 含「时效衰减提醒」行（覆盖卡 C 起 label 走 tt() 字典）')
+  await t('设置卡片：「过期内容提醒」+「注入体积预算」两行（失焦/Enter 即保存 + 仪表 + 「约」文案）（0.4.5-D 时效行改名）', () => {
+    assert(/key: 'stale', label: tt\('settings\.stale'\)/.test(clientSrc), 'settingsRows 含「过期内容提醒」行（覆盖卡 C 起 label 走 tt() 字典；0.4.5-D 改名）')
     assert(/key: 'budget', label: tt\('settings\.budget'\)/.test(clientSrc), 'settingsRows 含「注入体积预算」行（覆盖卡 C 起 label 走 tt() 字典）')
     assert(clientSrc.indexOf('提醒参考资料可能过期') >= 0, '时效行 sub 说明文案')
-    assert(clientSrc.indexOf('约定条目永不截断，资料条目从最旧开始省略') >= 0, '预算行 sub 说明文案（约定不截断）')
+    assert(clientSrc.indexOf('约定条目永不截断，资料目录从旧到新省略') >= 0, '预算行 sub 说明文案（约定不截断；0.4.5-D 人话化）')
     assert(/function saveSettingsStale\(\)[\s\S]*?settingsSetQuiet\(\{ staleDays: v \}\)/.test(clientSrc), '时效阈值走 settings-set 通道传 staleDays（settingsSetQuiet 低层通道）')
     assert(/function saveSettingsBudget\(\)[\s\S]*?settingsSetQuiet\(\{ injectBudgetChars: v \}\)/.test(clientSrc), '预算走 settings-set 通道传 injectBudgetChars（settingsSetQuiet 低层通道）')
     assert(clientSrc.indexOf("setSetStale(String(res.settings && typeof res.settings.staleDays === 'number' ? res.settings.staleDays : 90))") >= 0, 'openSettings 回读 staleDays（缺省 90）')
     assert(clientSrc.indexOf("setSetBudget(String(res.settings && typeof res.settings.injectBudgetChars === 'number' ? res.settings.injectBudgetChars : 0))") >= 0, 'openSettings 回读 injectBudgetChars（缺省 0）')
     assert(clientSrc.indexOf('settingsData.lastInjectChars') >= 0 && clientSrc.indexOf('当前注入约 ') >= 0, '仪表读 lastInjectChars + 「约」文案')
     assert(clientSrc.indexOf('dsh-notes-inject-gauge') >= 0 && clientSrc.indexOf('dsh-notes-inject-gauge-bar') >= 0, '仪表条结构类')
-    for (const k of ['时效衰减提醒', '注入体积预算', 'saveSettingsStale', 'saveSettingsBudget', 'dsh-notes-inject-gauge', '当前注入约 ', 'staleDays', 'injectBudgetChars']) {
+    for (const k of ['过期内容提醒', '注入体积预算', 'saveSettingsStale', 'saveSettingsBudget', 'dsh-notes-inject-gauge', '当前注入约 ', 'staleDays', 'injectBudgetChars']) {
       assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺 ' + k + '（需先跑 scripts/build-dist.cjs）')
     }
     const cssDev9 = fsNative.readFileSync(SRC_STYLES, 'utf8')
@@ -251,7 +251,7 @@ module.exports = {
       const s = pair[1], label = pair[0]
       assert(s.indexOf('id="setStale"') >= 0 && s.indexOf('id="setBudget"') >= 0, label + ' 两个数值输入')
       assert(s.indexOf('saveSettings({ staleDays: parseInt(v, 10) }') >= 0 && s.indexOf('saveSettings({ injectBudgetChars: parseInt(v, 10) }') >= 0, label + ' 失焦即保存链路')
-      assert(s.indexOf('时效衰减提醒') >= 0 && s.indexOf('注入体积预算') >= 0, label + ' 两行标签')
+      assert(s.indexOf('过期内容提醒') >= 0 && s.indexOf('注入体积预算') >= 0, label + ' 两行标签（0.4.5-D 时效行改名）')
       assert(s.indexOf('当前注入约 ') >= 0 && s.indexOf('setGaugeBar') >= 0, label + ' 仪表文案 + 仪表条')
       assert(s.indexOf('提醒参考资料可能过期') >= 0 && s.indexOf('约定条目永不截断') >= 0, label + ' 说明文案（过期提醒 / 约定不截断）')
       assert(s.indexOf('lastInjectChars') >= 0, label + ' 读 settings-get 的 lastInjectChars')

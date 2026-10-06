@@ -74,8 +74,9 @@ module.exports = {
     effect: () => {},
   }
   new Function('harness', 'pluginDir', hostSrc)(harnessMock6, DIR).apply(ctx6)
-  await t('开发版注册 47 个 RPC（含 notes-export / notes-export-single / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge + P3 单文件导出 + notes-inject-preview 注入预览 + notes-suggest 整理建议 + notes-usage-get 用量统计 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest）', () => {
-    assert.strictEqual(Object.keys(handlers6).length, 47, '实得 ' + Object.keys(handlers6).length)
+  await t('开发版注册 48 个 RPC（含 notes-export / notes-export-single / notes-import-preview / notes-import / notes-asset-upload；另含归档 preview/undo + ai-organize/assets-prune 并行重构 + P1 notes-purge + P3 单文件导出 + notes-inject-preview 注入预览 + notes-suggest 整理建议 + notes-usage-get 用量统计 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest + 约定体检 notes-conflict-check）', () => {
+    assert.strictEqual(Object.keys(handlers6).length, 48, '实得 ' + Object.keys(handlers6).length)
+    assert(typeof handlers6['notes-conflict-check'] === 'function', 'notes-conflict-check handler 存在（0.4.5-G 约定体检，notes-045-conflict-check）')
     assert(typeof handlers6['notes-when-suggest'] === 'function', 'notes-when-suggest handler 存在（0.4.3 验收修复 notes-043-preview-when-edit）')
     assert(typeof handlers6['notes-recall-stats'] === 'function', 'notes-recall-stats handler 存在（0.4.3+ 卡⑫ 统一召回遥测，notes-043-inject-receipt）')
     assert(typeof handlers6['notes-ledger-refresh'] === 'function', 'notes-ledger-refresh handler 存在（0.4.3⑥ 效用账本，notes-043-ledger）')

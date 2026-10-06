@@ -4,6 +4,7 @@
 // settings-store/telemetry-store/store-cache/persist 为双包变体，发布版侧以 .dist.js 后缀登记）。
 // 0.4.3 验收修复⑤：kernel/telemetry-store.js（遥测机器存储层）紧随 settings-store（同 JSON sidecar 先例），recall/ledger/transfer 运行时消费。
 // P2·4 RPC 核心域抽出：folders.js / notes.js / history-trash·trash.js / llm·organize.js。
+// 0.4.5-G（notes-045-conflict-check）：llm/conflict.js 紧随 llm/organize.js（约定体检 _conflictCheck，消费 _list/resolveLlmSelection/maskSensitiveBody——三者序位均在前）。
 // P2·5 收口：whole.js 续切完毕——server（RPC 基础设施 handle/perf + 核心注册表 + notes-css/notes-src 源下发）/
 // dispatch（会话元数据 + 派发闭环）/ schedule（定时派发·执行层：声明校验 + 常驻 cron tick + 状态三层）/
 // inject（注入渲染 + 设置面 settings-get/set/usage-get）/
@@ -24,6 +25,7 @@
 'folders.js'
 'notes.js'
 'llm/organize.js'
+'llm/conflict.js'
 'history-trash/trash.js'
 'server.js'
 'graph.js'

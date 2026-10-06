@@ -6,7 +6,7 @@
 /* 映射口径（DSH 0.1.7 实测）：npanel=一级层面（亮 #fff / 暗 #232324）、nbg=页面底（亮 #fff / 暗 #151517）、
    nbg-raise=二级层面（暗 #2c2c2e）、nbg-hover=官方交互 hover、nbd=border-l2、nbd-soft=border-l3、
    nt3=label-tertiary、nacc=业务主色鲜蓝（亮 #4176e6 / 暗 #7aaaff，曾误绑中性品牌色导致暗色选中态发灰） */
-.dsh-notes-floating,.dsh-notes-fab,.dsh-notes-hdr-btn{
+.dsh-notes-floating,.dsh-notes-fab,.dsh-notes-hdr-btn,.dsh-notes-injbadge{
   /* 背景（v2：npanel=卡片面 / nbg=容器底 / nbg-raise=输入与徽章的抬升面） */
   --npanel:var(--dsw-alias-bg-layer-1, #ffffff);       /* 侧栏/编辑器面板背景（一级层面） */
   --nbg:var(--dsw-alias-bg-base, #ececef);             /* app 容器底（页面底；亮色与面板同为 #fff，由下方 color-mix 派生层次） */
@@ -47,7 +47,8 @@
 /* 暗色主题 FAB 阴影加重（DSH 以 body[data-ds-dark-theme] 切换，亮色不命中保持轻阴影） */
 body[data-ds-dark-theme] .dsh-notes-floating,
 body[data-ds-dark-theme] .dsh-notes-fab,
-body[data-ds-dark-theme] .dsh-notes-hdr-btn{
+body[data-ds-dark-theme] .dsh-notes-hdr-btn,
+body[data-ds-dark-theme] .dsh-notes-injbadge{
   --nshadow-fab:0 10px 28px rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.25);
   --nok:#56c88f;                                       /* 暗色成功绿（原型暗色实机值） */
 }
@@ -77,7 +78,7 @@ body[data-ds-dark-theme] .dsh-notes-hdr-btn{
    （仅亮色覆盖；暗色三层 token 本身即正确层次 #151517/#232324/#2c2c2e，不覆盖，否则容器会比面板更亮）。
    color-mix 不可用时回退到上方 var() 兜底值（浅色口径）。 */
 @supports (color: color-mix(in srgb, #fff, transparent)){
-  .dsh-notes-floating,.dsh-notes-fab,.dsh-notes-hdr-btn{
+  .dsh-notes-floating,.dsh-notes-fab,.dsh-notes-hdr-btn,.dsh-notes-injbadge{
     --nbg-sel:color-mix(in srgb, var(--nacc) 14%, transparent);
     --ntx-soft:color-mix(in srgb, var(--ntx) 88%, transparent);
     --nacc-tx:color-mix(in srgb, var(--nacc) 78%, var(--ntx));
@@ -89,6 +90,7 @@ body[data-ds-dark-theme] .dsh-notes-hdr-btn{
   body:not([data-ds-dark-theme]) .dsh-notes-floating,
   body:not([data-ds-dark-theme]) .dsh-notes-fab,
   body:not([data-ds-dark-theme]) .dsh-notes-hdr-btn,
+  body:not([data-ds-dark-theme]) .dsh-notes-injbadge,
   body:not([data-ds-dark-theme]) .dsh-notes-cap{
     --nbg:color-mix(in srgb, var(--ntx) 6%, var(--npanel));
     --nbg-raise:color-mix(in srgb, var(--ntx) 4%, var(--npanel));
@@ -109,6 +111,20 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 .dsh-notes-hdr-btn:hover{background:var(--nbg-hover);color:var(--ntx)}
 .dsh-notes-hdr-btn.active{background:var(--nbg-sel);border-color:transparent;color:var(--nacc);font-weight:600}
 .dsh-notes-hdr-ic{display:inline-flex;align-items:center;pointer-events:none}
+
+/* ===== 会话头部注入清单徽标（0.4.5-H）：📎N 胶囊（复用 hdr-btn 描边胶囊基座）+ 明细浮层 ===== */
+/* 宿主壳区域（会话头部），令牌经上方 .dsh-notes-injbadge 作用域声明注入；浮层绝对定位锚在徽标包壳上 */
+.dsh-notes-injbadge{position:relative;display:inline-flex;vertical-align:middle;font-family:var(--nfont)}
+.dsh-notes-injbadge-btn{gap:4px;padding:5px 8px}
+.dsh-notes-injbadge-ic{font-size:11px;line-height:1;pointer-events:none}
+.dsh-notes-injbadge-n{font-variant-numeric:tabular-nums;font-weight:600;pointer-events:none}
+.dsh-notes-injbadge-pop{position:absolute;top:calc(100% + 4px);right:0;z-index:1200;min-width:240px;max-width:320px;max-height:300px;overflow-y:auto;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:var(--nshadow);padding:6px;animation:dshNotesPopIn .12s ease}
+.dsh-notes-injbadge-pop-t{font-size:12px;font-weight:600;color:var(--ntx);padding:2px 6px 6px;border-bottom:1px solid var(--nbd-soft);margin-bottom:4px}
+.dsh-notes-injbadge-sec{font-size:11px;color:var(--nt3);padding:6px 6px 2px}
+.dsh-notes-injbadge-row{padding:5px 8px;border-radius:6px;cursor:pointer}
+.dsh-notes-injbadge-row:hover{background:var(--nbg-hover)}
+.dsh-notes-injbadge-row-t{font-size:12px;color:var(--ntx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsh-notes-injbadge-row-s{font-size:11px;color:var(--nt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
 
 /* ===== 悬浮气泡入口（v2 卡片式 44px：面板底+描边+阴影，note SVG 22px + 右下 kind 三色点；可拖拽、点击展开；无角标） ===== */
 /* 规格来源：design/notes-ui-v2.html Shell 入口小节 .fabg（G 大图标版定稿） */
@@ -422,6 +438,24 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-sched-act{background:transparent;border:1px solid var(--nbd);border-radius:6px;color:var(--nt2);font-size:10.5px;padding:1px 9px;cursor:pointer;font-family:var(--nfont)}
 .dsh-notes-sched-act:hover{border-color:var(--nacc);color:var(--ntx)}
 .dsh-notes-sched-act:disabled{opacity:.45;cursor:not-allowed}
+/* 约定体检区（0.4.5-G notes-045-conflict-check）：注入管理面板内联结果区（不叠 modal）；徽章红=疑似冲突 / 黄=疑似取代 */
+.dsh-notes-conflict-sec{border:1px solid var(--nbd-soft);border-radius:8px;margin-bottom:10px}
+.dsh-notes-conflict-sec-t{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--nt2);padding:7px 9px;border-bottom:1px solid var(--nbd-soft)}
+.dsh-notes-conflict-run{margin-left:auto;background:transparent;border:1px solid var(--nbd);border-radius:6px;color:var(--nacc-tx);font-size:10.5px;padding:1px 9px;cursor:pointer;font-family:var(--nfont);flex-shrink:0}
+.dsh-notes-conflict-run:hover{border-color:var(--nacc);color:var(--ntx)}
+.dsh-notes-conflict-run:disabled{opacity:.45;cursor:not-allowed}
+.dsh-notes-conflict-row{display:flex;align-items:center;gap:8px;padding:6px 9px;font-size:11.5px;border-bottom:1px solid var(--nbd-soft);flex-wrap:wrap}
+.dsh-notes-conflict-row:last-child{border-bottom:none}
+.dsh-notes-conflict-badge{display:inline-flex;align-items:center;font-size:10px;border-radius:10px;padding:0 7px;flex-shrink:0;white-space:nowrap}
+.dsh-notes-conflict-badge.con{color:var(--ndanger);background:rgba(229,115,79,.12)}
+.dsh-notes-conflict-badge.sup{color:var(--nwarn);background:rgba(229,181,103,.12)}
+.dsh-notes-conflict-pair{display:inline-flex;align-items:center;gap:2px;min-width:0;flex:1;color:var(--ntx);font-weight:600}
+.dsh-notes-conflict-ti{max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsh-notes-conflict-reason{flex-basis:100%;font-size:10.5px;color:var(--nt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsh-notes-conflict-acts{display:inline-flex;gap:4px;flex-shrink:0}
+.dsh-notes-conflict-act{background:transparent;border:1px solid var(--nbd);border-radius:6px;color:var(--nt2);font-size:10.5px;padding:1px 9px;cursor:pointer;font-family:var(--nfont)}
+.dsh-notes-conflict-act:hover{border-color:var(--nacc);color:var(--ntx)}
+.dsh-notes-conflict-act:disabled{opacity:.45;cursor:not-allowed}
 /* 详情派发计划块（notes-034-sched-detail）：meta 区尾部全宽行（flex-basis:100% 自成一行）+ 关联调度清单行 */
 .dsh-notes-sched-plan{flex-basis:100%;border:1px solid var(--nbd-soft);border-radius:8px;padding:2px 0;font-size:11.5px;margin-top:2px}
 .dsh-notes-sched-plan-row{display:flex;align-items:center;gap:8px;padding:4px 9px;border-bottom:1px solid var(--nbd-soft)}
