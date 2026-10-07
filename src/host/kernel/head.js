@@ -24,6 +24,9 @@ return {
     const sessionQuery = ctx.get('sessionQuery')
     // 0.4.4-B：定时派发专属会话创建需挂载默认 preset（工具能力来源）；软依赖 ctx.get + 守卫降级（缺失时专属会话创建报 lastError，主服务不受影响）
     const agentPresets = ctx.get('agentPresets')
+    // 0.4.7（notes-047-sched-preset）：专属会话权限预设——settings-get 增带 defaultPreset（派发弹窗权限下拉预填数据源）+
+    //   声明 preset 创建透传（permissionPresets.set）；软依赖 ctx.get + 守卫降级（服务缺席 → settings-get 省略该键 / 透传静默跳过，绝不炸创建）
+    const permissionPresets = ctx.get('permissionPresets')
     // 插件目录由 host 引导壳通过 new Function('harness','pluginDir',...) 注入；缺失时回退（单测/直跑场景）
     const PLUGIN_DIR = typeof pluginDir !== 'undefined' && pluginDir ? pluginDir : 'D:\\deepseek-work\\dsh-notes-plugin'
     const NOTES_DIR = PLUGIN_DIR + '\\notes'

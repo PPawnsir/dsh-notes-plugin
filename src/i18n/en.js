@@ -580,6 +580,9 @@ var I18N_EN = {
   'disp.schedNewTarget': 'Auto-created dedicated session on first fire',
   'disp.schedModelDefault': 'Default model (follow host selection)',   /* 0.4.6-G: dedicated-session model dropdown default option (empty value = no model/provider in declaration) */
   'disp.schedModelTip': 'Dedicated session model: {model}',            /* 0.4.6-G: schedule-row model annotation tooltip + dropdown title */
+  'disp.schedPresetFull': 'Full access (danger-full-access)',          /* 0.4.7: dedicated-session permission dropdown option 1 (always concrete values, no "inherit" option — display-layer explicitness) */
+  'disp.schedPresetRestricted': 'Restricted (workspace-write)',        /* 0.4.7: dedicated-session permission dropdown option 2 */
+  'disp.schedPresetTip': 'Dedicated session permission preset (mounted at first-fire creation)',  /* 0.4.7: permission dropdown title */
   'disp.newSessDone': 'New session created; the todo was injected and processing started',
   'disp.failed': 'Dispatch failed: {msg}',
   'disp.markedDone': 'Marked as done',

@@ -645,7 +645,7 @@ var _mockNotes = [
   { id: 'n95', title: '定时 每日构建状态检查', kind: 'todo', topic: '运维', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-10-02T02:00:00.000Z', updatedAt: '2026-10-04T02:00:00.000Z', sessionId: '', cwd: '', contractType: 'dispatch-schedule', schedule: { every: '1d', anchor: '09:00', target: 'session-work1234-0000-0000-0000-000000000000', action: 'dispatch', enabled: true, lastFiredAt: '2026-10-04T02:00:00.000Z', lastRun: { at: '2026-10-04T02:00:00.000Z', status: 'queued', receiptId: 'note-dispatch-mock-n95' } }, dispatches: [{ sessionId: 'session-work1234-0000-0000-0000-000000000000', sessionName: 'oabanner 数据管线', workspace: 'ontology-proj', mode: 'existing', instruction: '', at: '2026-10-04T02:00:00.000Z', done: false, dispatchStatus: 'sent', sourceLabel: '定时调度 @定时 每日构建状态检查', msgId: 'note-dispatch-mock-n95', queued: true }], body: '每天检查一次 CI 构建状态，失败时定位首要原因。\n' },
   /* 专属会话模型档位演示（0.4.6-G，notes-046-sched-model）：n97 target='new' + provider/model 声明——调度任务区/计划块行出模型标注，
      编辑回填派发弹窗可见模型下拉选中态（mock notes-settings-get 清单含 kimi/kimi-k3） */
-  { id: 'n97', title: '定时 每日竞品舆情轻量扫描', kind: 'todo', topic: '运维', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-10-04T03:00:00.000Z', updatedAt: '2026-10-04T03:00:00.000Z', sessionId: '', cwd: '', contractType: 'dispatch-schedule', schedule: { every: '1d', anchor: '08:30', target: 'new', action: 'dispatch', enabled: true, provider: 'kimi', model: 'kimi-k3' }, dispatches: [], body: '每天早上扫描竞品舆情要点（轻量模型档位演示——专属会话创建时按声明档位配模型）。\n' }
+  { id: 'n97', title: '定时 每日竞品舆情轻量扫描', kind: 'todo', topic: '运维', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-10-04T03:00:00.000Z', updatedAt: '2026-10-04T03:00:00.000Z', sessionId: '', cwd: '', contractType: 'dispatch-schedule', schedule: { every: '1d', anchor: '08:30', target: 'new', action: 'dispatch', enabled: true, provider: 'kimi', model: 'kimi-k3', preset: 'workspace-write' }, dispatches: [], body: '每天早上扫描竞品舆情要点（轻量模型档位演示——专属会话创建时按声明档位配模型；0.4.7 权限档位演示：preset=workspace-write 受限档，编辑回填弹窗可见权限下拉选中态）。\n' }
 ];
 var _mockSettings = {};
 var _mockArchUndo = null;   /* 归档撤销事务（只保留最近一次；契约同 host .archive-undo.json） */
@@ -702,9 +702,9 @@ function _mockSchedGate(raw, contractType, existing) {
     return { value: null };
   }
   if ((contractType || '') !== 'dispatch-schedule') return { error: 'schedule 字段仅允许 contractType=dispatch-schedule 的约定笔记（错得安全：能力声明必须显式契约分型）' };
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow?, model?, provider? }' };
-  var known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, model: 1, provider: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1, declaredAt: 1 };
-  for (var k in raw) { if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled/model/provider；错得安全：能力声明必须无歧义）' } }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow?, model?, provider?, preset? }' };
+  var known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, model: 1, provider: 1, preset: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1, declaredAt: 1 };
+  for (var k in raw) { if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled/model/provider/preset；错得安全：能力声明必须无歧义）' } }
   var at = raw.at !== undefined && raw.at !== null && raw.at !== '' ? String(raw.at).trim() : '';
   var every = raw.every !== undefined && raw.every !== null && raw.every !== '' ? raw.every : undefined;
   /* 锚定时刻（notes-034-sched-time）：anchor='HH:MM' 本地时刻 / dow=0-6 星期几（weekly）——空串/null 视为未声明（同 host） */
@@ -761,6 +761,13 @@ function _mockSchedGate(raw, contractType, existing) {
     if (!_mv || !_pv) return { error: 'schedule.model/provider 不能是空白字符串（错得安全：能力声明必须无歧义）' };
     decl.model = _mv; decl.provider = _pv;
   }
+  /* 专属会话权限预设（0.4.7，同 host 闸门，notes-047-sched-preset）：preset 枚举收窄两值 danger-full-access|workspace-write（无 inherit——
+     显示层显式化裁决：声明即具体档）；空串/null 视为未声明（同 anchor 口径，存量零迁移）；仅 target='new' 首触创建时消费 */
+  var _pr = raw.preset !== undefined && raw.preset !== null && raw.preset !== '' ? String(raw.preset).trim() : '';
+  if (_pr) {
+    if (_pr !== 'danger-full-access' && _pr !== 'workspace-write') return { error: 'schedule.preset 非法：' + JSON.stringify(raw.preset) + '（期望 danger-full-access | workspace-write 两值之一——错得安全：能力声明必须无歧义）' };
+    decl.preset = _pr;
+  }
   if (enabled !== false && target !== 'new' && !_mockSessions.some(function (t) { return t.id === target })) return { error: 'schedule.target 目标会话不存在或已归档：' + target };
   var ex = existing || {};
   if (ex.lastFiredAt) decl.lastFiredAt = ex.lastFiredAt;
@@ -772,11 +779,11 @@ function _mockSchedGate(raw, contractType, existing) {
     else if (!_mockNotes.some(function (x) { return x.id === raw.runLog && !x.deleted })) return { error: 'schedule.runLog 必须是存在的笔记 id 或空（实得 ' + raw.runLog + '）' };
     else decl.runLog = raw.runLog;
   } else if (ex.runLog) decl.runLog = ex.runLog;
-  /* declaredAt 声明重锚（0.4.6-F，同 host _schedValidateWrite，notes-046-sched-anchor）：声明九键（at/every/anchor/dow/target/action/enabled + 0.4.6-G model/provider）
+  /* declaredAt 声明重锚（0.4.6-F，同 host _schedValidateWrite，notes-046-sched-anchor）：声明十键（at/every/anchor/dow/target/action/enabled + 0.4.6-G model/provider + 0.4.7 preset）
      任一变更或首次写入 → 刷新当前时刻；声明未变更的改写延续存量 declaredAt，缺省不留字段（到期回退 createdAt，存量零迁移）；
      输入携带的 declaredAt 不直接采信（机器字段剥离，上方 decl 逐字段重建天然不含） */
   var _dchg = !existing;
-  if (!_dchg) { var _dkeys = ['at', 'every', 'anchor', 'dow', 'target', 'action', 'enabled', 'model', 'provider']; for (var _dk = 0; _dk < _dkeys.length; _dk++) { var _kk = _dkeys[_dk]; var _av = decl[_kk] == null || decl[_kk] === '' ? '' : String(decl[_kk]); var _bv = ex[_kk] == null || ex[_kk] === '' ? '' : String(ex[_kk]); if (_av !== _bv) { _dchg = true; break } } }
+  if (!_dchg) { var _dkeys = ['at', 'every', 'anchor', 'dow', 'target', 'action', 'enabled', 'model', 'provider', 'preset']; for (var _dk = 0; _dk < _dkeys.length; _dk++) { var _kk = _dkeys[_dk]; var _av = decl[_kk] == null || decl[_kk] === '' ? '' : String(decl[_kk]); var _bv = ex[_kk] == null || ex[_kk] === '' ? '' : String(ex[_kk]); if (_av !== _bv) { _dchg = true; break } } }
   if (_dchg) decl.declaredAt = new Date().toISOString(); else if (ex.declaredAt) decl.declaredAt = ex.declaredAt;
   return { value: decl };
 }
@@ -955,7 +962,7 @@ function _mockRpc(method, a) {
     setTimeout(function () { qn.topic = '运维'; if (qn.title === '速记') qn.title = '页面速记 · 运维'; qn.updatedAt = _mockNow() }, 1200);
     return { id: qid, topic: qn.topic, title: qn.title, kind: qn.kind, merged: false };
   }
-  if (method === 'notes-settings-get') return { settings: JSON.parse(JSON.stringify(_mockSettings)), models: [{ provider: 'kimi', model: 'kimi-k3', label: 'Kimi / kimi-k3' }, { provider: 'deepseek', model: 'deepseek-chat', label: 'DeepSeek / deepseek-chat' }], lastInjectChars: 2480 /* P1 注入体积仪表演示值（约，字符数） */ };
+  if (method === 'notes-settings-get') return { settings: JSON.parse(JSON.stringify(_mockSettings)), models: [{ provider: 'kimi', model: 'kimi-k3', label: 'Kimi / kimi-k3' }, { provider: 'deepseek', model: 'deepseek-chat', label: 'DeepSeek / deepseek-chat' }], lastInjectChars: 2480 /* P1 注入体积仪表演示值（约，字符数） */, permissionPresets: { defaultPreset: 'danger-full-access' } /* 0.4.7 权限下拉预填数据源（同 host settings-get 增带键） */ };
   if (method === 'notes-settings-set') { Object.keys(a).forEach(function (k) { if (a[k] === null || a[k] === undefined) delete _mockSettings[k]; else _mockSettings[k] = a[k] }); return { ok: true, settings: JSON.parse(JSON.stringify(_mockSettings)) } }
   /* LLM 用量统计 mock（notes-token-stats，契约同 host notes-usage-get）：
      today/week/month 从固定演示 daily 按本地日期动态计算（与 host usageReport 同口径），allTime 含 daily 之外的历史累计；
@@ -2557,10 +2564,17 @@ function openCheatsheet() {
    校验内联报错（at 未来 / N≥1 / 目标必选；host 红线回显同口径）——禁原生 prompt（R1 反面教材 n-mut46q00c3yw） */
 var dState = null;
 var schedModelsCache = null;   /* 模型清单会话级缓存（0.4.6-G，notes-046-sched-model）：开弹窗即取缓存渲染，后台刷新对齐 mock */
+var schedPresetCache = null;   /* 默认权限预设会话级缓存（0.4.7，notes-047-sched-preset）：settings-get 响应 permissionPresets.defaultPreset；读不到 → null（预填兜底完全权限） */
+/* 权限下拉预填值（0.4.7 显示层显式化）：存量声明 preset 优先（编辑态回填）；缺省 = 宿主默认档映射；读不到 → 完全权限兜底 */
+function schedPresetPrefill(editSched) {
+  var p = editSched && editSched.preset;
+  if (p === 'workspace-write' || p === 'danger-full-access') return p;
+  return schedPresetCache || 'danger-full-access';
+}
 function openDispatch() {
   if (draftNote) { toast('草稿尚未落库：输入标题或正文自动保存后再派发'); return }   /* 草稿无真实 id（notes-034-batch3） */
   if (!edNote || !selId) { toast('先选择一条笔记'); return }
-  dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false, schedModel: '', schedModels: schedModelsCache || [] };
+  dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false, schedModel: '', schedModels: schedModelsCache || [], schedPreset: schedPresetPrefill(null) };
   pullActiveSessions();
   pullSchedModels();
   renderDispatchModal();
@@ -2571,8 +2585,9 @@ function openDispatchEdit(note) {
   if (!note || !note.schedule) { toast('该笔记没有调度声明'); return }
   var s = note.schedule;
   var isNew = s.target === 'new';
-  /* 0.4.6-G：模型档位回填（provider/model 成对落库 → 合成 provider/model 选中值；缺省空 = 跟随宿主默认） */
-  dState = { sessId: isNew ? '' : (s.target || ''), instr: '', pending: false, sessions: [], pendingSess: [], sched: true, schedMode: 'daily', schedN: 3, schedAt: '', editId: note.id, editNote: note, schedAnchor: '09:00', schedDow: 1, schedNew: isNew, schedModel: (s.provider && s.model) ? s.provider + '/' + s.model : '', schedModels: schedModelsCache || [] };
+  /* 0.4.6-G：模型档位回填（provider/model 成对落库 → 合成 provider/model 选中值；缺省空 = 跟随宿主默认）；
+     0.4.7：权限档位回填——存量 preset 优先；存量无键按宿主默认档预填显示（显示层显式化、存储层零迁移：保存才显式落键） */
+  dState = { sessId: isNew ? '' : (s.target || ''), instr: '', pending: false, sessions: [], pendingSess: [], sched: true, schedMode: 'daily', schedN: 3, schedAt: '', editId: note.id, editNote: note, schedAnchor: '09:00', schedDow: 1, schedNew: isNew, schedModel: (s.provider && s.model) ? s.provider + '/' + s.model : '', schedModels: schedModelsCache || [], schedPreset: schedPresetPrefill(s) };
   /* 回填：at → 仅一次；every 整天数 → 每天/每周/每 N 天；非整天间隔（front-matter 裸编辑旁路值）归一最近整天，保存按表单覆盖；
      锚定时刻（notes-034-sched-time）：anchor/dow 回填（非法 anchor 回退默认 09:00——裸编辑旁路值防御） */
   if (s.at) { dState.schedMode = 'once'; dState.schedAt = isoToLocalInput(s.at) }
@@ -2594,7 +2609,25 @@ function pullSchedModels() {
   rpc('notes-settings-get', {}).then(function (res) {
     if (!res || !dState) return;
     if (res.models && res.models.length) { schedModelsCache = res.models; dState.schedModels = res.models; renderSchedModelSel() }
+    /* 0.4.7：同一响应的 permissionPresets.defaultPreset 通道（零新 RPC）——权限下拉预填刷新（仅未改离预填基准且非编辑态存量 preset 时跟随） */
+    var dp = res.permissionPresets && res.permissionPresets.defaultPreset;
+    var v = (dp === 'workspace-write' || dp === 'danger-full-access') ? dp : 'danger-full-access';
+    var prev = schedPresetCache; schedPresetCache = v;
+    if (dState && !(dState.editNote && dState.editNote.schedule && dState.editNote.schedule.preset) && dState.schedPreset === (prev || 'danger-full-access')) { dState.schedPreset = v; renderSchedPresetSel() }
   }).catch(function () {});
+}
+/* 权限下拉渲染（0.4.7，notes-047-sched-preset）：专属会话勾选 + 周期模式即显示（静态两档 + defaultPreset 预填，无清单依赖常显）；
+   恒两档具体值 完全权限/受限，无「继承默认」选项（显示层显式化裁决） */
+function renderSchedPresetSel() {
+  var box = $('dSchedPresetBox'); if (!box || !dState) return;
+  var show = dState.schedNew && dState.schedMode !== 'once';
+  box.style.display = show ? '' : 'none';
+  if (!show) { box.innerHTML = ''; return }
+  box.innerHTML = '<select class="minput sched-sel" id="dSchedPreset" title="专属会话权限预设">'
+    + '<option value="danger-full-access"' + (dState.schedPreset === 'danger-full-access' ? ' selected' : '') + '>完全权限（danger-full-access）</option>'
+    + '<option value="workspace-write"' + (dState.schedPreset === 'workspace-write' ? ' selected' : '') + '>受限（workspace-write）</option>'
+    + '</select>';
+  $('dSchedPreset').onchange = function () { dState.schedPreset = this.value };
 }
 /* 模型下拉渲染（0.4.6-G）：专属会话勾选 + 周期模式 + 清单非空三条件齐备才显示（缺一隐藏，静默降级）；
    存量声明值不在清单内（模型已下架等）→ 补合成条目回显防丢档 */
@@ -2656,6 +2689,8 @@ function renderDispatchModal() {
     + '<label class="sched-opt" id="dSchedNewBox"' + (dState.schedMode === 'once' ? ' style="display:none"' : '') + '><input type="checkbox" id="dSchedNew"' + (dState.schedNew ? ' checked' : '') + '> 专属会话（首轮触发自动创建「定时 · 任务名」，后续复用）</label>'
     /* 专属会话模型下拉宿主（0.4.6-G）：勾选专属会话且清单非空才显示（renderSchedModelSel 驱动，静默降级） */
     + '<span id="dSchedModelBox" style="display:none"></span>'
+    /* 专属会话权限下拉宿主（0.4.7）：勾选专属会话即显示（renderSchedPresetSel 驱动，无清单依赖常显） */
+    + '<span id="dSchedPresetBox" style="display:none"></span>'
     + '</div></div>'
     /* 专属会话勾选后隐藏级联选择（目标由 host 首轮创建，无既有会话可选） */
     + '<div id="dispSessHostWrap"' + (dState.schedNew && (dState.sched || dState.editId) ? ' style="display:none"' : '') + '><div id="dispSessHost"></div></div>'
@@ -2680,15 +2715,17 @@ function renderDispatchModal() {
     $('dSchedNewBox').style.display = this.value === 'once' ? 'none' : '';
     if (this.value === 'once' && dState.schedNew) { dState.schedNew = false; $('dSchedNew').checked = false; $('dispSessHostWrap').style.display = ''; }
     renderSchedModelSel();   /* 0.4.6-G：模式切换联动模型下拉显隐（仅一次无专属会话 → 同隐） */
+    renderSchedPresetSel();   /* 0.4.7：模式切换联动权限下拉显隐（同模型下拉口径） */
     renderSchedNext();
   };
-  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; renderSchedModelSel(); };   /* 0.4.6-G：勾选专属会话才出模型下拉 */
+  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; renderSchedModelSel(); renderSchedPresetSel(); };   /* 0.4.6-G：勾选专属会话才出模型下拉；0.4.7：同出权限下拉 */
   $('dSchedN').oninput = function () { dState.schedN = this.value; renderSchedNext() };
   $('dSchedDow').onchange = function () { dState.schedDow = parseInt(this.value, 10); renderSchedNext() };
   $('dSchedAnchor').oninput = function () { dState.schedAnchor = this.value; renderSchedNext() };
   $('dSchedOnce').oninput = function () { dState.schedAt = this.value; renderSchedNext() };
   renderSchedNext();
   renderSchedModelSel();   /* 0.4.6-G：编辑模式回填/缓存清单就位时首轮渲染 */
+  renderSchedPresetSel();   /* 0.4.7：权限下拉首轮渲染（预填态就位） */
   renderDispatchSessList();
 }
 /* 表单 → schedule 声明片段（{at|every} + 周期模式锚定 anchor:'HH:MM'（weekly 另带 dow），notes-034-sched-time；target/enabled 由确认路径补）：返回 { decl } | { err }（内联报错文案与 host 红线同口径） */
@@ -2773,6 +2810,10 @@ function doDispatchConfirm() {
     /* 0.4.6-G：专属会话 + 已选模型档位 → 声明携 provider/model（成对；缺省空 = 跟随宿主默认，声明零字段）；
        编辑模式保留存量档位（首轮回写后 target=真实 sid、复选框摘勾下拉隐藏，schedModel 仍持回填值——表单与 front-matter 同源，防丢档同 anchor/dow 先例） */
     if (dState.schedModel && (dState.schedNew || editId)) { var mp = dState.schedModel.split('/'); decl.provider = mp[0]; decl.model = mp.slice(1).join('/') }
+    /* 0.4.7（notes-047-sched-preset）：专属会话勾选 → preset 键总是显式落盘（恒具体两档，无 inherit——显示层显式化裁决）；
+       编辑模式存量 preset 防丢档透传（下拉已隐时原值回传，同 model 先例）；存量无键且未勾专属 → 不落键（存储层零迁移） */
+    if (dState.schedNew) decl.preset = dState.schedPreset;
+    else if (editId && dState.editNote.schedule.preset) decl.preset = dState.editNote.schedule.preset;
     var nextTxt = fmtDT(new Date(schedDeclNextMs(f.decl, dState.editNote)).toISOString());
     dState.pending = true; $('dOk').disabled = true; $('dOk').textContent = editId ? '保存中…' : '排定中…';
     var req;

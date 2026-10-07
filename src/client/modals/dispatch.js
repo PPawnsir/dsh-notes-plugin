@@ -2,7 +2,7 @@
     // provides: store.modal.dispatch / dispatchOpenRef / setDispatchOpen / setActiveSessions / setDispatchPending / setDispatching /
     //           setDispatchMode / setDispatchInstr / setDispatchWsId / setDispatchSessWs / setDispatchSessId / setWsList /
     //           setDispatchSched / setDispatchSchedMode / setDispatchSchedN / setDispatchSchedAt / setDispatchSchedAnchor / setDispatchSchedDow /
-    //           setDispatchSchedModel / loadActiveSessions / loadWorkspaces / openDispatch / openDispatchEdit / doDispatchConfirm / doDispatchDone / DispatchModal
+    //           setDispatchSchedModel / setDispatchSchedPreset / loadActiveSessions / loadWorkspaces / openDispatch / openDispatchEdit / doDispatchConfirm / doDispatchDone / DispatchModal
     // needs: kernel/state.js（store/createStore/panelBridge/setError 别名/selectedRef）、kernel/icons.js（e/I）、
     //        kernel/format.js（shortSid/fmtDT/schedEveryMs/schedFreqLabel/schedNextMs/isoToLocalInput/schedAnchorMs/schedAnchorNextMs/schedFormDecl/schedDeclNextMs）、
     //        kernel/bus.js（showToast/notifyNotesChanged）、kernel/bootstrap.js（timer/sessions/workspaces 服务接入）
@@ -20,7 +20,12 @@
     // 专属会话模型档位（0.4.6-G，notes-046-sched-model）：专属会话复选框勾选时出模型下拉（数据源 = notes-settings-get 的
     //   models 清单通道，与设置卡同通道零新 RPC；清单缺席 → 下拉隐藏静默降级），选中值以 provider/model 拆分随声明提交
     //   （缺省空 = 跟随宿主默认选择）；编辑模式回填 s.provider/s.model（清单外存量值补合成条目防丢档）
-    store.modal.dispatch = createStore({ open: false, activeSessions: [], pending: [], dispatching: false, mode: 'existing', instr: '', wsId: '', sessWs: '', sessId: '', wsList: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false, schedModel: '', schedModels: [] })
+    // 专属会话权限预设（0.4.7，notes-047-sched-preset，主窗口裁决「显示层显式化」）：专属会话勾选时出权限下拉——
+    //   恒两档具体值 完全权限（danger-full-access）/ 受限（workspace-write），无「继承默认」概念（用户看到的永远是具体值）；
+    //   打开弹窗预填 = 当前 defaultPreset 对应档（数据源 = notes-settings-get 响应的 permissionPresets 键，与模型清单同一次调用零新 RPC；
+    //   读不到 → 预填完全权限兜底）；勾选专属会话创建时 preset 键总是显式落盘；编辑模式回填存量 preset（存量无键 = 按 defaultPreset 预填显示，
+    //   保存才显式化——显示层显式化、存储层零迁移）；编辑模式存量 preset 防丢档透传（同 model 先例）
+    store.modal.dispatch = createStore({ open: false, activeSessions: [], pending: [], dispatching: false, mode: 'existing', instr: '', wsId: '', sessWs: '', sessId: '', wsList: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false, schedModel: '', schedModels: [], schedPreset: 'danger-full-access' })
     const dispatchOpenRef = { current: false }   // 派发对话框镜像（titlesPending 轮询重拉的终止条件）
     // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
     function setDispatchOpen(v) { const nv = typeof v === 'function' ? v(dispatchOpenRef.current) : v; dispatchOpenRef.current = nv; store.modal.dispatch.set({ open: nv }) }
@@ -41,12 +46,29 @@
     function setDispatchSchedDow(v) { store.modal.dispatch.set({ schedDow: typeof v === 'function' ? v(store.modal.dispatch.get().schedDow) : v }) }
     function setDispatchSchedNew(v) { store.modal.dispatch.set({ schedNew: typeof v === 'function' ? v(store.modal.dispatch.get().schedNew) : v }) }   // 0.4.4-B：专属会话开关（target='new'）
     function setDispatchSchedModel(v) { store.modal.dispatch.set({ schedModel: typeof v === 'function' ? v(store.modal.dispatch.get().schedModel) : v }) }   // 0.4.6-G：专属会话模型档位选中值（'provider/model'，空 = 跟随宿主默认）
+    function setDispatchSchedPreset(v) { store.modal.dispatch.set({ schedPreset: typeof v === 'function' ? v(store.modal.dispatch.get().schedPreset) : v }) }   // 0.4.7：专属会话权限档位选中值（恒两档具体值，无 inherit）
     // 模型清单会话级缓存（0.4.6-G）：开弹窗即取缓存渲染，后台刷新对齐 host；通道缺席/失败 → schedModels 空 → 下拉隐藏（静默降级红线）
     let schedModelsCache = null
+    // 默认权限预设会话级缓存（0.4.7）：settings-get 响应 permissionPresets.defaultPreset；读不到 → null（预填兜底完全权限）
+    let schedPresetCache = null
+    // 权限下拉预填值（0.4.7 显示层显式化）：存量声明 preset 优先（编辑态回填）；缺省 = 宿主默认档映射；读不到 → 完全权限兜底
+    function schedPresetPrefill(editSched) {
+      const p = editSched && editSched.preset
+      if (p === 'workspace-write' || p === 'danger-full-access') return p
+      return schedPresetCache || 'danger-full-access'
+    }
     async function loadSchedModels() {
       try {
         const res = await host.call('notes-settings-get', {})
         if (res && res.models && res.models.length) { schedModelsCache = res.models; store.modal.dispatch.set({ schedModels: res.models }) }
+        // 0.4.7：同一响应的 permissionPresets.defaultPreset 通道（零新 RPC）——权限下拉预填刷新：
+        //   仅当当前值仍是上次预填基准（用户未改离）且非「编辑态存量 preset」时跟随宿主默认（存量声明显式值优先，防丢档优先级最高）
+        const dp = res && res.permissionPresets && res.permissionPresets.defaultPreset
+        const v = (dp === 'workspace-write' || dp === 'danger-full-access') ? dp : 'danger-full-access'
+        const prev = schedPresetCache
+        schedPresetCache = v
+        const st = store.modal.dispatch.get()
+        if (st.open && !(st.editNote && st.editNote.schedule && st.editNote.schedule.preset) && st.schedPreset === (prev || 'danger-full-access')) store.modal.dispatch.set({ schedPreset: v })
       } catch (e) {}
     }
     // 任务派发：加载活跃会话/工作区 + 打开对话框 + 确认派发
@@ -81,7 +103,7 @@
     }
     function openDispatch() {
       setDispatchInstr(''); setDispatchSessId(''); setDispatchSessWs(''); setDispatchWsId(''); setDispatchMode('existing'); setError('')
-      store.modal.dispatch.set({ sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false, schedModel: '', schedModels: schedModelsCache || [] })   // 调度区复位（默认收起 = 立即派发；锚定时刻默认 09:00 / 周一；专属会话缺省关；模型档位缺省跟随宿主默认）
+      store.modal.dispatch.set({ sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false, schedModel: '', schedModels: schedModelsCache || [], schedPreset: schedPresetPrefill(null) })   // 调度区复位（默认收起 = 立即派发；锚定时刻默认 09:00 / 周一；专属会话缺省关；模型档位缺省跟随宿主默认；权限档位预填宿主默认档，0.4.7）
       loadActiveSessions(); loadWorkspaces(); loadSchedModels(); setDispatchOpen(true)
     }
     // 编辑模式入口（注入管理「调度任务」区 [编辑]，经 panelBridge.openDispatchEdit 中转——modals 禁横向引用）：同弹窗回填既有声明
@@ -91,7 +113,8 @@
       const isNew = s.target === 'new'   // 0.4.4-B：专属会话声明回填（复选框承载，级联选择无对应真实条目）
       setDispatchInstr(''); setDispatchSessId(isNew ? '' : (s.target || '')); setDispatchSessWs(''); setDispatchWsId(''); setDispatchMode('existing'); setError('')
       // 0.4.6-G：模型档位回填（provider/model 成对落库 → 合成 provider/model 选中值；缺省空 = 跟随宿主默认）
-      store.modal.dispatch.set({ editId: note.id, editNote: note, sched: true, schedNew: isNew, schedModel: (s.provider && s.model) ? s.provider + '/' + s.model : '', schedModels: schedModelsCache || [] })
+      // 0.4.7：权限档位回填——存量 preset 优先；存量无键按宿主默认档预填显示（显示层显式化、存储层零迁移：保存才落键）
+      store.modal.dispatch.set({ editId: note.id, editNote: note, sched: true, schedNew: isNew, schedModel: (s.provider && s.model) ? s.provider + '/' + s.model : '', schedModels: schedModelsCache || [], schedPreset: schedPresetPrefill(s) })
       /* 回填：at → 仅一次；every 整天数 → 每天/每周/每 N 天；非整天间隔（front-matter 裸编辑旁路值）归一最近整天，保存按表单覆盖；
          锚定时刻（notes-034-sched-time）：anchor/dow 回填（非法 anchor 回退默认 09:00——裸编辑旁路值防御） */
       if (s.at) { store.modal.dispatch.set({ schedMode: 'once', schedAt: isoToLocalInput(s.at), schedN: 3 }) }
@@ -134,6 +157,10 @@
           //   编辑模式保留存量档位（首轮回写后 target=真实 sid、复选框摘勾下拉隐藏，schedModel 仍持回填值——表单与 front-matter 同源，防丢档同 anchor/dow 先例）
           const dispatchSchedModel = store.modal.dispatch.get().schedModel
           if (dispatchSchedModel && (dispatchSchedNew || dispatchEditId)) { const mp = dispatchSchedModel.split('/'); decl.provider = mp[0]; decl.model = mp.slice(1).join('/') }
+          // 0.4.7（notes-047-sched-preset）：专属会话勾选 → preset 键总是显式落盘（恒具体两档，无 inherit——显示层显式化裁决）；
+          //   编辑模式存量 preset 防丢档透传（下拉已隐时原值回传，同 model 先例）；存量无键且未勾专属 → 不落键（存储层零迁移）
+          if (dispatchSchedNew) decl.preset = store.modal.dispatch.get().schedPreset
+          else if (dispatchEditId && dispatchEditNote.schedule && dispatchEditNote.schedule.preset) decl.preset = dispatchEditNote.schedule.preset
           const nextTxt = fmtDT(new Date(schedDeclNextMs(f.decl, dispatchEditNote)).toISOString())
           let res
           if (dispatchEditId) res = await host.call('notes-update', { id: dispatchEditId, schedule: decl })
@@ -211,6 +238,7 @@
       const dispatchSchedNew = store.modal.dispatch.useSel(s => s.schedNew)
       const dispatchSchedModel = store.modal.dispatch.useSel(s => s.schedModel)
       const dispatchSchedModels = store.modal.dispatch.useSel(s => s.schedModels)
+      const dispatchSchedPreset = store.modal.dispatch.useSel(s => s.schedPreset)
       const dispatchEditId = store.modal.dispatch.useSel(s => s.editId)
       const dispatchEditNote = store.modal.dispatch.useSel(s => s.editNote)
       const error = props.error
@@ -256,7 +284,12 @@
               (dispatchSchedNew && dispatchSchedMode !== 'once' && dispatchSchedModels.length > 0) ? e('select', { className: 'dsh-notes-dispatch-select dsh-notes-sched-sel', 'data-tooltip': tt('disp.schedModelTip', { model: dispatchSchedModel || tt('disp.schedModelDefault') }), value: (dispatchSchedModel && dispatchSchedModels.some(m => m.provider + '/' + m.model === dispatchSchedModel)) ? dispatchSchedModel : (dispatchSchedModel || ''), onChange: (ev) => setDispatchSchedModel(ev.target.value) },
                 e('option', { value: '' }, tt('disp.schedModelDefault')),
                 dispatchSchedModels.map(m => e('option', { key: m.provider + '/' + m.model, value: m.provider + '/' + m.model }, m.label || (m.provider + '/' + m.model))),
-                (dispatchSchedModel && !dispatchSchedModels.some(m => m.provider + '/' + m.model === dispatchSchedModel)) ? e('option', { key: '__stale', value: dispatchSchedModel }, dispatchSchedModel) : null) : null) : null),
+                (dispatchSchedModel && !dispatchSchedModels.some(m => m.provider + '/' + m.model === dispatchSchedModel)) ? e('option', { key: '__stale', value: dispatchSchedModel }, dispatchSchedModel) : null) : null,
+              // 专属会话权限下拉（0.4.7，notes-047-sched-preset）：勾选专属会话即显示（数据源 = 静态两档 + defaultPreset 预填，
+              //   无清单依赖不随 models 缺席降级——可见性缺口补全的常驻入口）；恒两档具体值，无「继承默认」选项
+              (dispatchSchedNew && dispatchSchedMode !== 'once') ? e('select', { className: 'dsh-notes-dispatch-select dsh-notes-sched-sel', 'data-tooltip': tt('disp.schedPresetTip'), value: dispatchSchedPreset, onChange: (ev) => setDispatchSchedPreset(ev.target.value) },
+                e('option', { value: 'danger-full-access' }, tt('disp.schedPresetFull')),
+                e('option', { value: 'workspace-write' }, tt('disp.schedPresetRestricted'))) : null) : null),
           // 已有/新建会话切换：定时形态下隐藏（定时仅已有会话——新建会话无未来目标意义）
           schedOn ? null : e('div', { className: 'dsh-notes-dispatch-modes' },
             e('button', { className: 'dsh-notes-dispatch-mode' + (dispatchMode === 'existing' ? ' on' : ''), onClick: () => setDispatchMode('existing') }, tt('disp.modeExisting')),

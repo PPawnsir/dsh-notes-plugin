@@ -99,6 +99,9 @@ export function apply(ctx) {
     const sessionQuery = ctx.get('sessionQuery')
     // 0.4.4-B：定时派发专属会话创建需挂载默认 preset（工具能力来源）；软依赖 ctx.get + 守卫降级（缺失时专属会话创建报 lastError，主服务不受影响）
     const agentPresets = ctx.get('agentPresets')
+    // 0.4.7（notes-047-sched-preset）：专属会话权限预设——settings-get 增带 defaultPreset（派发弹窗权限下拉预填数据源）+
+    //   声明 preset 创建透传（permissionPresets.set）；软依赖 ctx.get + 守卫降级（服务缺席 → settings-get 省略该键 / 透传静默跳过，绝不炸创建）
+    const permissionPresets = ctx.get('permissionPresets')
     const NOTES_DIR = NOTES_ROOT
     const disposers = []
     // 动态沙箱 Builtin：harness 是「dynamic Host half」的符号（cordis-host-runner 用 node:vm 注入），
@@ -4083,6 +4086,12 @@ export function apply(ctx) {
     //   ⑩专属会话模型档位（0.4.6-G，notes-046-sched-model）：schedule 声明增可选 model/provider（成对出现、非空字符串；
     //     合法性不联网校验——创建时 agents.create 失败即落 lastError）。declared model/provider 透传 _schedCreateDedicatedSession
     //     的 agentOptions（覆盖宿主默认选择）；缺省 = 现状默认模型（存量零迁移）。声明变更比对键随之扩为九键（重锚口径不变）。
+    //   ⑪专属会话权限预设（0.4.7，notes-047-sched-preset）：schedule 声明增第 10 键 preset——枚举 'danger-full-access'|'workspace-write'
+    //     两值（无 inherit——主窗口裁决「显示层显式化」：用户看到的永远是具体档；缺省/null/空串 = 未声明，存量零迁移、宿主 pin 默认不动）。
+    //     创建透传：_schedCreateDedicatedSession 在 agents.create + 工作区落账成功后调 permissionPresets.set(会话, preset)
+    //     覆盖 session/created 钉入的默认档；服务缺席静默跳过、set 失败落 lastError 不阻塞派发主链（presetError 上浮 _schedFire 成功路径记观察面）。
+    //     settings-get 响应增带 permissionPresets.defaultPreset（弹窗权限下拉预填数据源，零新 RPC；读不到键整体省略优雅降级）。
+    //     声明变更比对键随之扩为十键（重锚口径不变）。
     // 序位说明（§8.4.2 例外备案）：本模块消费 dispatch.js 的 _dispatch 故置于其后；notes.js 的 _create/_update 经函数声明提升
     //   调用本模块的 _schedValidateWrite/SCHEDULE_CONTRACT_TYPE——全部为运行期（RPC 调用时）引用，apply 执行期零触碰，无 TDZ 风险。
     const SCHED_TICK_MS = 30 * 1000              // 常驻 tick 周期（裁决②）
@@ -4168,12 +4177,12 @@ export function apply(ctx) {
     // 声明纯校验（同步部分：形状/未知键/动作/at 未来/every 下限；目标存活为异步部分由 _schedValidateWrite 补）。
     // 返回 { value: 归一化声明 } | { error }；机器状态字段（lastFiredAt/lastRun/lastError）容忍输入但剥离（由既有值延续，见 _schedValidateWrite）
     function schedCheckDecl(raw, nowMs) {
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow?, model?, provider? }' }
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow?, model?, provider?, preset? }' }
       // runLog（notes-041-sched-runlog）：执行记录独立笔记 id 软链——机器字段（回执链路懒创建回写），已知键容忍输入，闸门校验/延续见 _schedValidateWrite
       // declaredAt（0.4.6-F，notes-046-sched-anchor）：声明重锚时刻——机器字段（闸门赋值/延续），同列已知键容忍输入但剥离（防伪声明注入锚点）
-      const known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, model: 1, provider: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1, declaredAt: 1 }
+      const known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, model: 1, provider: 1, preset: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1, declaredAt: 1 }
       for (const k of Object.keys(raw)) {
-        if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled/model/provider；错得安全：能力声明必须无歧义）' }
+        if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled/model/provider/preset；错得安全：能力声明必须无歧义）' }
       }
       const at = raw.at !== undefined && raw.at !== null && raw.at !== '' ? String(raw.at).trim() : ''
       const every = raw.every !== undefined && raw.every !== null && raw.every !== '' ? raw.every : undefined
@@ -4234,14 +4243,22 @@ export function apply(ctx) {
         if (!mv || !pv) return { error: 'schedule.model/provider 不能是空白字符串（错得安全：能力声明必须无歧义）' }
         value.model = mv; value.provider = pv
       }
+      // 专属会话权限预设（0.4.7，notes-047-sched-preset）：preset 枚举收窄两值 'danger-full-access'|'workspace-write'
+      //   （主窗口裁决：无 inherit——声明即具体档，显示层显式化）；空串/null 视为未声明（同 anchor 口径，存量零迁移）。
+      //   白名单校验拒非法值（错得安全）；仅 target='new' 首触创建时消费（permissionPresets.set 透传），其余目标声明为惰性键
+      const presetRaw = raw.preset !== undefined && raw.preset !== null && raw.preset !== '' ? String(raw.preset).trim() : ''
+      if (presetRaw) {
+        if (presetRaw !== 'danger-full-access' && presetRaw !== 'workspace-write') return { error: 'schedule.preset 非法：' + JSON.stringify(raw.preset) + '（期望 danger-full-access | workspace-write 两值之一——错得安全：能力声明必须无歧义）' }
+        value.preset = presetRaw
+      }
       return { value: value }
     }
 
-    // 声明字段等价比对（0.4.6-F，notes-046-sched-anchor）：at/every/anchor/dow/target/action/enabled 七键 + 0.4.6-G model/provider 九键——
-    //   undefined/null/空串归一为空串比对；任一差异 = 声明变更（declaredAt 重锚触发条件）。
+    // 声明字段等价比对（0.4.6-F，notes-046-sched-anchor）：at/every/anchor/dow/target/action/enabled 七键 + 0.4.6-G model/provider 九键
+    //   + 0.4.7 preset 十键（notes-047-sched-preset）——undefined/null/空串归一为空串比对；任一差异 = 声明变更（declaredAt 重锚触发条件）。
     //   归一化声明（action/enabled 由闸门补齐缺省）与存量比对时，存量缺键（如裸编辑旁路未带 action）按变更处理——保守刷新安全向。
     function schedDeclChanged(decl, ex) {
-      const keys = ['at', 'every', 'anchor', 'dow', 'target', 'action', 'enabled', 'model', 'provider']
+      const keys = ['at', 'every', 'anchor', 'dow', 'target', 'action', 'enabled', 'model', 'provider', 'preset']
       for (const k of keys) {
         const a = decl[k], b = ex && ex[k]
         const an = (a === undefined || a === null || a === '') ? '' : String(a)
@@ -4293,7 +4310,7 @@ export function apply(ctx) {
       if (ex.lastFiredAt) decl.lastFiredAt = ex.lastFiredAt
       if (ex.lastRun) decl.lastRun = ex.lastRun
       if (ex.lastError) decl.lastError = ex.lastError
-      // declaredAt（0.4.6-F，notes-046-sched-anchor 声明重锚）：声明字段（schedDeclChanged 九键，0.4.6-G 扩 model/provider）任一变更或首次写入 → 刷新为当前时刻
+      // declaredAt（0.4.6-F，notes-046-sched-anchor 声明重锚）：声明字段（schedDeclChanged 十键，0.4.6-G 扩 model/provider、0.4.7 扩 preset）任一变更或首次写入 → 刷新为当前时刻
       //   （到期锚点由陈旧 createdAt 改为本次声明时刻，修「编辑存量约定当天误触发」；输入携带的 declaredAt 已被 schedCheckDecl 剥离，
       //   此处纯机器赋值/延续，伪声明无法注入锚点）；声明未变更的改写延续存量 declaredAt，存量缺省不留字段（到期回退 createdAt，零迁移）
       if (!existingSched || schedDeclChanged(decl, ex)) decl.declaredAt = new Date(nowMs).toISOString()
@@ -4371,7 +4388,9 @@ export function apply(ctx) {
     //   命中即复用其 sid 返回（reused:true，handle=null——非本轮创建，调用方回收路径跳过），未命中才新建（防重复建会话）。
     //   归属模型（实测结论）：create 经调用方 fiber 归属——插件重载/卸载会 dispose 该 agent，但会话日志已持久化，
     //   退化为休眠态（GUI 可见、用户打开即复活），后续触发由休眠送达通道（_queueDormantDispatch）承接，优雅降级不丢任务。
-    //   返回 { sessionId, handle, name } | { error }；失败方负责回收半成品（handle.dispose），调用方零清理负担。
+    //   返回 { sessionId, handle, name, presetError } | { error }；失败方负责回收半成品（handle.dispose），调用方零清理负担。
+    //   presetError（0.4.7，notes-047-sched-preset）：声明 preset 透传 permissionPresets.set 的失败上浮（空串=未声明/成功/服务缺席静默跳过）——
+    //   非致命观察面，由 _schedFire 成功路径落 lastError（派发主链不阻塞）。
     async function _schedCreateDedicatedSession(note) {
       if (!agents || typeof agents.create !== 'function') return { error: '宿主不支持 agents.create（无法创建专属会话）' }
       if (!agentPresets || typeof agentPresets.resolve !== 'function' || typeof agentPresets.mount !== 'function') return { error: 'agentPresets 服务缺失（专属会话需挂载默认 preset 获得工具能力）' }
@@ -4430,9 +4449,19 @@ export function apply(ctx) {
         try { if (handle && typeof handle.dispose === 'function') await handle.dispose() } catch (e2) {}
         return { error: '工作区落账失败：' + String(e && e.message || e) }
       }
+      // 0.4.7（notes-047-sched-preset）：声明权限预设透传——preset 已声明时调 permissionPresets.set 覆盖 session/created 钉入的默认档
+      //   （宿主服务 dsh-permission-presets：set(session, name) 编程接口，dsh-experimental-auto-review 同先例；Session 实例取 handle.agent.session，
+      //   与上方 rename 同一取法）。服务缺席/方法缺失静默跳过（优雅降级红线：绝不炸创建）；set 失败上浮 presetError，
+      //   由 _schedFire 成功路径落 lastError 观察面——不阻塞派发主链（会话已建成，权限档位失败不值得毒死任务）。
+      //   孤儿复用路径（reused:true，handle=null）不补挂：该会话非本轮创建，其权限态归既有轮次/用户手动管理。
+      const declPreset = (function () { const sc = (note && note.schedule) || {}; return (typeof sc.preset === 'string' && sc.preset) ? sc.preset : '' })()
+      let presetError = ''
+      if (declPreset && permissionPresets && typeof permissionPresets.set === 'function' && handle && handle.agent && handle.agent.session) {
+        try { permissionPresets.set(handle.agent.session, declPreset) } catch (e) { presetError = String(e && e.message || e) }
+      }
       // 命名（非致命观察面：失败时 GUI 显示缺省标题，不阻塞派发）
       try { if (sessionTitle && typeof sessionTitle.rename === 'function' && handle && handle.agent && handle.agent.session) sessionTitle.rename(handle.agent.session, name) } catch (e) {}
-      return { sessionId: sid, handle: handle, name: name }
+      return { sessionId: sid, handle: handle, name: name, presetError: presetError }
     }
 
     // 单笔记触发：专属会话首轮创建（target='new'）→ 可送达预检 → 标记 lastFiredAt 落盘（幂等生命线，先于派发）→ _dispatch 全链路 → lastRun 回写
@@ -4488,6 +4517,9 @@ export function apply(ctx) {
       const done = await loadNote(note.id)
       const doneSched = Object.assign({}, done.schedule, { lastRun: { at: nowIso, status: r && r.queued ? 'queued' : 'sent', receiptId: (r.dispatch && r.dispatch.msgId) || '' } })
       delete doneSched.lastError   // lastError 仅失败记：派发成功摘除
+      // 0.4.7（notes-047-sched-preset）：权限预设透传失败观察面——派发主链已成功（lastRun sent/queued 不动），
+      //   presetError 落 lastError 仅作观测（下轮成功路径摘除；非致命，不重试不毒死任务）
+      if (created && created.presetError) doneSched.lastError = { at: nowIso, message: '权限预设挂载失败（派发主链不受影响）：' + created.presetError }
       done.schedule = doneSched
       done.updatedAt = nowIso
       try { await persistNote(done, { history: false }) } catch (e) { console.error('notes: schedule lastRun persist failed', note.id, e) }
@@ -4893,9 +4925,22 @@ export function apply(ctx) {
 
     // 设置读取（设置卡片数据源）：settings 内存缓存（确保已加载）+ 可用模型列表（探不到为空数组，client 退化手输）
     // + lastInjectChars（最近一次注入体积，约/字符数——设置卡片仪表数据源，conventionText 每次渲染更新）
+    // 0.4.7（notes-047-sched-preset）：响应增带 permissionPresets.defaultPreset——派发弹窗专属会话权限下拉的预填数据源
+    //   （宿主 dsh-permission-presets 服务，零新 RPC）；服务缺席/getter 异常 → 键整体省略（优雅降级：client 读不到即按完全权限兜底预填，不渲染异常态）
     disposers.push(handle('notes-settings-get', async () => {
-      try { await loadSettings(); return { settings: settingsCache, models: await listAvailableModels(), lastInjectChars: lastInjectChars } }
-      catch (e) { return { settings: settingsCache || {}, models: [], lastInjectChars: lastInjectChars, error: String(e.message || e) } }
+      let pp
+      try { const dp = permissionPresets && permissionPresets.defaultPreset; if (typeof dp === 'string' && dp) pp = { defaultPreset: dp } } catch (e) {}
+      try {
+        await loadSettings()
+        const out = { settings: settingsCache, models: await listAvailableModels(), lastInjectChars: lastInjectChars }
+        if (pp) out.permissionPresets = pp
+        return out
+      }
+      catch (e) {
+        const out = { settings: settingsCache || {}, models: [], lastInjectChars: lastInjectChars, error: String(e.message || e) }
+        if (pp) out.permissionPresets = pp
+        return out
+      }
     }))
     // 设置保存（client 选择即保存）：白名单顶层键；llm 为 null 恢复跟随会话；
     // 0.4.4-E：catalogEnabled 分支已随「目录补充行」拆除——该键现为未知键静默忽略（不报错不落盘）；
@@ -6203,7 +6248,7 @@ export function apply(ctx) {
         '- restore: { id } (undo delete/archive)\n' +
         '- archive: { groups? } (explicit archive, undoable once via the notes-archive-undo RPC). groups = whitelist [{memberIds:[noteId,...], title?}]: merge exactly those groups (memberIds must all exist and not be deleted; title overrides the default group title). Without groups: merge ONLY quick-capture notes grouped by session. Behavior change: manual notes are NEVER auto-grouped by tag anymore — pass explicit groups to merge them (preview quick groups first via the notes-archive-preview RPC).\n' +
         '- dispatch: { id, targetSessionId?, targetSessionName?, instruction? } (assemble the todo context plus your instruction into one user message and send it to a live session as a real task — or, when the target session is dormant (not live but persisted), queue it into the session\'s durable inbox with ZERO wake: it is delivered and processed on the session\'s next activity (the dispatch record carries queued:true in that case — 0.4.4-B); the handoff is recorded in the note\'s dispatches property with dispatchStatus=sent, and a 📤 line is appended to the note\'s lazily-created execution-log companion note「执行记录 · <标题>」(kind=log in folder「执行记录」— injection hard-disabled, visible/searchable/editable as usual; soft-linked via schedule.runLog for schedule conventions / top-level runLog field otherwise — 0.4.4-A 三表归一). Omit targetSessionId to list dispatchable sessions (live flag per entry — live:false entries are dormant and get queued delivery). Closed loop: closed via idle-transition receipt of the target session — an idle transition auto-flips that session\'s open dispatches to dispatchStatus=done and writes the receipt (dormant queued deliveries close the same way on next-activity idle, zero wake 零唤醒排队同理); update status=resolved remains available as a manual fallback（手动兜底）that force-closes all open dispatches of the note — since 0.4.5-I dispatch messages no longer instruct the target session to resolve the note.)\n' +
-        'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow?, provider?, model? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual, and a lazily-created execution-log note「执行记录 · @标题」is soft-linked via schedule.runLog — shared with manual dispatches of the same note (dispatch 📤 lines + receipt 📥/✅ lines land in one note) — the convention body itself is NEVER appended to (it is the dispatch payload; history would bloat and pollute future dispatch contexts). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived — OR the reserved literal target: \'new\' (periodic mode only — 0.4.4-B dedicated session: the first fire auto-creates a session named 定时 · <title> in the note\'s workspace, writes schedule.target back to the new sid, and every later round reuses that session via live-send or dormant queued delivery); model/provider: optional dedicated-session model pair (0.4.6-G — declare BOTH or NEITHER, non-empty strings; on target:\'new\' first fire they are passed to agents.create agentOptions, overriding the host default model selection — omitted = host default, zero migration; validity is NOT probed at declaration time, an invalid pair surfaces as schedule.lastError at fire time); unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status(sent|queued|error),receiptId}/lastError/runLog/declaredAt) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
+        'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow?, provider?, model?, preset? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual, and a lazily-created execution-log note「执行记录 · @标题」is soft-linked via schedule.runLog — shared with manual dispatches of the same note (dispatch 📤 lines + receipt 📥/✅ lines land in one note) — the convention body itself is NEVER appended to (it is the dispatch payload; history would bloat and pollute future dispatch contexts). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived — OR the reserved literal target: \'new\' (periodic mode only — 0.4.4-B dedicated session: the first fire auto-creates a session named 定时 · <title> in the note\'s workspace, writes schedule.target back to the new sid, and every later round reuses that session via live-send or dormant queued delivery); model/provider: optional dedicated-session model pair (0.4.6-G — declare BOTH or NEITHER, non-empty strings; on target:\'new\' first fire they are passed to agents.create agentOptions, overriding the host default model selection — omitted = host default, zero migration; validity is NOT probed at declaration time, an invalid pair surfaces as schedule.lastError at fire time); preset: optional dedicated-session permission preset (0.4.7 — exactly \'danger-full-access\' | \'workspace-write\', no inherit; on target:\'new\' first fire it is applied via permissionPresets.set right after agents.create, overriding the host-pinned default preset — omitted = host default, zero migration; unknown values rejected at the write gate; service absent or set failure = schedule.lastError note, dispatch never blocked); unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status(sent|queued|error),receiptId}/lastError/runLog/declaredAt) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
       parameters: {
         type: 'object',
         properties: {
@@ -6226,7 +6271,7 @@ export function apply(ctx) {
           folder: { type: 'string', description: 'Virtual folder (create/move/list filter): folder id or exact folder name (a name is normalized to its id on write; unknown id/name is rejected); "" = unfiled (未分类). Folders nest via parent (maxFolderDepth setting, default 3); a list filter matches the whole subtree recursively (notes in descendant folders included).' },
           // 定时派发·执行层（dispatch-schedule 声明字段；公共写入口 contractType 白名单 '' / dispatch-schedule）
           contractType: { type: 'string', description: 'Contract type (create/update): public writes allow only \'dispatch-schedule\' (scheduled-dispatch convention, must pair with schedule) or \'\' to clear; other contract types are system-managed' },
-          schedule: { type: ['object', 'null'], description: 'Scheduled-dispatch declaration (create/update; requires contractType=\'dispatch-schedule\'): { at?: LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 (one-shot, must be future; Z/±offset rejected) | every?: \'30m\'/\'12h\'/\'3d\'/\'1w\' or ms (>=5min), anchor?: \'HH:MM\' LOCAL time (periodic only, whole-day interval; pins firing to that time of day, no drift), dow?: 0-6 (weekly only, 0=Sunday, requires every:\'1w\' + anchor), target: sessionId (workspace session, not archived) or \'new\' (periodic only: auto-create a dedicated 定时 · <title> session on first fire, then reuse it — 0.4.4-B), action?: \'dispatch\', enabled?: boolean, provider?: + model?: dedicated-session model pair (0.4.6-G: BOTH or NEITHER, non-empty strings; passed to agents.create agentOptions on first-fire creation of a target:\'new\' session, overriding the host default selection; not probed at declaration time — invalid pair surfaces as lastError at fire time) }. Host-managed machine fields lastFiredAt/lastRun/lastError/runLog/declaredAt are preserved across declaration edits (declaredAt = declaration anchor timestamp, refreshed only when declaration fields at/every/anchor/dow/target/action/enabled/model/provider change — periodic due-anchor is lastFiredAt||declaredAt||createdAt; runLog = soft-link id of the lazily-created execution-log note; pass an existing note id to relink, \'\' to unlink). null clears the declaration (pair with contractType: \'\').' },
+          schedule: { type: ['object', 'null'], description: 'Scheduled-dispatch declaration (create/update; requires contractType=\'dispatch-schedule\'): { at?: LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 (one-shot, must be future; Z/±offset rejected) | every?: \'30m\'/\'12h\'/\'3d\'/\'1w\' or ms (>=5min), anchor?: \'HH:MM\' LOCAL time (periodic only, whole-day interval; pins firing to that time of day, no drift), dow?: 0-6 (weekly only, 0=Sunday, requires every:\'1w\' + anchor), target: sessionId (workspace session, not archived) or \'new\' (periodic only: auto-create a dedicated 定时 · <title> session on first fire, then reuse it — 0.4.4-B), action?: \'dispatch\', enabled?: boolean, provider?: + model?: dedicated-session model pair (0.4.6-G: BOTH or NEITHER, non-empty strings; passed to agents.create agentOptions on first-fire creation of a target:\'new\' session, overriding the host default selection; not probed at declaration time — invalid pair surfaces as lastError at fire time), preset?: \'danger-full-access\' | \'workspace-write\' (0.4.7: dedicated-session permission preset — applied via permissionPresets.set right after agents.create on target:\'new\' first-fire creation, overriding the host-pinned default preset; omitted = host default, zero migration for existing declarations; unknown values rejected at the write gate; service absent/failure degrades to schedule.lastError, never blocks dispatch) }. Host-managed machine fields lastFiredAt/lastRun/lastError/runLog/declaredAt are preserved across declaration edits (declaredAt = declaration anchor timestamp, refreshed only when declaration fields at/every/anchor/dow/target/action/enabled/model/provider/preset change — periodic due-anchor is lastFiredAt||declaredAt||createdAt; runLog = soft-link id of the lazily-created execution-log note; pass an existing note id to relink, \'\' to unlink). null clears the declaration (pair with contractType: \'\').' },
           // archive 字段（显式归档白名单）
           groups: { type: 'array', items: { type: 'object', properties: { memberIds: { type: 'array', items: { type: 'string' } }, title: { type: 'string' } }, required: ['memberIds'] }, description: 'Archive whitelist (archive action only): [{memberIds:[noteId,...], title?}] — merge exactly these groups. Omitted = merge only quick-capture groups; manual notes are NEVER auto-grouped by tag (behavior change).' },
           // dispatch 字段

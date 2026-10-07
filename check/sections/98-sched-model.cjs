@@ -78,15 +78,15 @@ module.exports = {
     await handlers['notes-delete']({ id: ok.id })
   })
 
-  // ===== ①·b 声明变更九键：model/provider 变更触发 declaredAt 重锚，未变更改写延续 =====
-  await t('声明比对九键：model/provider 变更刷新 declaredAt（重锚），等价重提交延续（0.4.6-F 口径扩键）', async () => {
+  // ===== ①·b 声明变更十键：model/provider 变更触发 declaredAt 重锚，未变更改写延续 =====
+  await t('声明比对十键：model/provider 变更刷新 declaredAt（重锚），等价重提交延续（0.4.6-F 口径扩键，0.4.7 扩 preset）', async () => {
     const c = await handlers['notes-create']({ title: '重锚档位约定', body: 'x', contractType: 'dispatch-schedule', schedule: { every: '3d', target: 'new', provider: 'kimi', model: 'kimi-k3' } })
     assert(c && c.id && !c.error, '创建成功')
     const g1 = await handlers['notes-get']({ id: c.id })
     const d1 = g1.note.schedule.declaredAt
     assert(typeof d1 === 'string' && d1, '首次写入 declaredAt=now（实得 ' + d1 + '）')
     await new Promise(r => setTimeout(r, 30))
-    // 等价重提交（声明九键全同）→ declaredAt 延续
+    // 等价重提交（声明十键全同）→ declaredAt 延续
     const u1 = await handlers['notes-update']({ id: c.id, schedule: { every: '3d', target: 'new', provider: 'kimi', model: 'kimi-k3' } })
     assert(u1 && !u1.error, '等价重提交放行')
     const g2 = await handlers['notes-get']({ id: c.id })
@@ -206,7 +206,7 @@ module.exports = {
     // 原型同步：闸门 + 下拉 + 标注 + 演示数据（n97 专属会话 + 档位）
     assert(protoV2Src.indexOf('function pullSchedModels()') >= 0 && protoV2Src.indexOf('id="dSchedModelBox"') >= 0, '原型模型下拉接线')
     assert(protoV2Src.indexOf('hasModel !== hasProvider') >= 0 && protoV2Src.indexOf('成对出现') >= 0, '原型 mock 闸门成对校验')
-    assert(protoV2Src.indexOf("var _dkeys = ['at', 'every', 'anchor', 'dow', 'target', 'action', 'enabled', 'model', 'provider']") >= 0, '原型声明比对九键')
+    assert(protoV2Src.indexOf("var _dkeys = ['at', 'every', 'anchor', 'dow', 'target', 'action', 'enabled', 'model', 'provider', 'preset']") >= 0, '原型声明比对十键（0.4.7 扩 preset，notes-047-sched-preset）')
     assert(protoV2Src.indexOf("class=\"sched-model\"") >= 0, '原型调度行模型标注')
     assert(/id: 'n97'[\s\S]*?target: 'new'[\s\S]*?provider: 'kimi', model: 'kimi-k3'/.test(protoV2Src), '原型演示数据 n97 专属会话 + 模型档位')
     // 样式四端（app head.html / client styles.css / 原型）
@@ -226,11 +226,11 @@ module.exports = {
   })
 
   // ===== ④ host 双包锚点 + 工具描述（index.js±dist → host-impl.js + index.mjs） =====
-  await t('host 双包 + 工具描述锚点：闸门/透传/九键/缺省回落 + note_manage schedule 条目 model/provider 说明', () => {
+  await t('host 双包 + 工具描述锚点：闸门/透传/十键/缺省回落 + note_manage schedule 条目 model/provider 说明', () => {
     for (const [s, label] of [[hostSrc, 'host-impl'], [indexSrc, 'index.mjs']]) {
       assert(s.indexOf('hasModel !== hasProvider') >= 0 && s.indexOf('schedule.model 与 schedule.provider 必须成对出现') >= 0, label + ' 成对校验闸门在位')
-      assert(s.indexOf('model: 1, provider: 1') >= 0, label + ' 已知键清单含 model/provider')
-      assert(s.indexOf("'at', 'every', 'anchor', 'dow', 'target', 'action', 'enabled', 'model', 'provider'") >= 0, label + ' 声明比对九键')
+      assert(s.indexOf('model: 1, provider: 1, preset: 1') >= 0, label + ' 已知键清单含 model/provider/preset（0.4.7 扩键）')
+      assert(s.indexOf("'at', 'every', 'anchor', 'dow', 'target', 'action', 'enabled', 'model', 'provider', 'preset'") >= 0, label + ' 声明比对十键（0.4.7 扩 preset）')
       assert(s.indexOf('const declSel = (function ()') >= 0 && s.indexOf('const sel = declSel || (adm') >= 0, label + ' 创建透传：声明档位优先 + 缺省回落 adm')
       assert(s.indexOf('agentOptions: sel ? { provider: sel.provider, model: sel.model } : {}') >= 0, label + ' agentOptions 形态不变')
       // 0.4.5 热修锚回归（动 agents.create 调用面后 setup 契约不动）

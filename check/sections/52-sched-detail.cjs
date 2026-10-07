@@ -229,8 +229,10 @@ module.exports = {
     new Function('ns2',
       'var dState = null; var modalBackTo = null; var injMgrState = { pending: false };\n'
       + 'var schedModelsCache = null; function pullSchedModels(){}\n'   /* 0.4.6-G：openDispatchEdit 新增模型档位依赖打桩（notes-046-sched-model） */
+      + 'var schedPresetCache = "workspace-write";\n'   /* 0.4.7：openDispatchEdit 权限预填数据源桩（宿主默认档=受限；真码 schedPresetPrefill 提取自 appSrc，notes-047-sched-preset） */
       + 'function toast(m){ ns2.lastToast = m }\nfunction closeModal(){ ns2.closed++ }\nfunction pullActiveSessions(){}\nfunction renderDispatchModal(){ ns2.rendered++ }\n'
       + 'function isoToLocalInput(v){ return v }\nfunction schedAnchorMs(a){ return a === "09:00" ? 32400000 : null }\nfunction schedEveryMs(e){ return e === "1d" ? 86400000 : null }\n'
+      + grabFn(appSrc, 'schedPresetPrefill', 'app.html') + '\n'
       + grabFn(appSrc, 'openDispatchEdit', 'app.html') + '\n'
       + grabLine52(appSrc, 'function doInjSchedEdit(n)') + '\n'
       + 'ns2.doInjSchedEdit = doInjSchedEdit; ns2.getD = function () { return dState }; ns2.getBack = function () { return modalBackTo }; ns2.getInj = function () { return injMgrState }')(ns2)
@@ -239,6 +241,11 @@ module.exports = {
     assert(ns2.rendered === 1, '点击编辑 → 调度表单打开（renderDispatchModal 调用）')
     const d = ns2.getD()
     assert(d && d.editId === 'n-s1' && d.sched === true && d.schedMode === 'daily' && d.schedAnchor === '09:00' && d.sessId === 'session-abc', '编辑回填：editId + 定时形态 + 频率/锚点/目标回填（实得 ' + JSON.stringify(d && { editId: d.editId, sched: d.sched, mode: d.schedMode, anchor: d.schedAnchor, sess: d.sessId }) + '）')
+    // 0.4.7（notes-047-sched-preset）：权限档位回填行为级——存量无 preset 键 → 按宿主默认档预填（显示层显式化、存储层零迁移：保存才落键）
+    assert(d.schedPreset === 'workspace-write', '存量无 preset → 预填宿主默认档（实得 ' + d.schedPreset + '）')
+    ns2.doInjSchedEdit({ id: 'n-s2', title: '定时 巡检2', contractType: 'dispatch-schedule', schedule: { every: '1d', anchor: '09:00', target: 'new', preset: 'danger-full-access' } })
+    const d2 = ns2.getD()
+    assert(d2 && d2.schedPreset === 'danger-full-access' && d2.schedNew === true, '存量 preset 显式值优先回填（防丢档优先级最高，实得 ' + (d2 && d2.schedPreset) + '）')
     // ⑦ client（开发版 + 发布包）：计划行三按钮复用 doInjSched*（curNote）+ handler 模块级提升 + 删除清选中
     for (const pair of [['client 开发版', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
       const s = pair[1], label = pair[0]

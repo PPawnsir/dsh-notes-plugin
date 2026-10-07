@@ -210,9 +210,22 @@
 
     // 设置读取（设置卡片数据源）：settings 内存缓存（确保已加载）+ 可用模型列表（探不到为空数组，client 退化手输）
     // + lastInjectChars（最近一次注入体积，约/字符数——设置卡片仪表数据源，conventionText 每次渲染更新）
+    // 0.4.7（notes-047-sched-preset）：响应增带 permissionPresets.defaultPreset——派发弹窗专属会话权限下拉的预填数据源
+    //   （宿主 dsh-permission-presets 服务，零新 RPC）；服务缺席/getter 异常 → 键整体省略（优雅降级：client 读不到即按完全权限兜底预填，不渲染异常态）
     disposers.push(handle('notes-settings-get', async () => {
-      try { await loadSettings(); return { settings: settingsCache, models: await listAvailableModels(), lastInjectChars: lastInjectChars } }
-      catch (e) { return { settings: settingsCache || {}, models: [], lastInjectChars: lastInjectChars, error: String(e.message || e) } }
+      let pp
+      try { const dp = permissionPresets && permissionPresets.defaultPreset; if (typeof dp === 'string' && dp) pp = { defaultPreset: dp } } catch (e) {}
+      try {
+        await loadSettings()
+        const out = { settings: settingsCache, models: await listAvailableModels(), lastInjectChars: lastInjectChars }
+        if (pp) out.permissionPresets = pp
+        return out
+      }
+      catch (e) {
+        const out = { settings: settingsCache || {}, models: [], lastInjectChars: lastInjectChars, error: String(e.message || e) }
+        if (pp) out.permissionPresets = pp
+        return out
+      }
     }))
     // 设置保存（client 选择即保存）：白名单顶层键；llm 为 null 恢复跟随会话；
     // 0.4.4-E：catalogEnabled 分支已随「目录补充行」拆除——该键现为未知键静默忽略（不报错不落盘）；

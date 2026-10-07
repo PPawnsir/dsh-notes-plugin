@@ -582,6 +582,9 @@ var I18N_ZH = {
   'disp.schedNewTarget': '首轮自动创建专属会话',
   'disp.schedModelDefault': '默认模型（跟随宿主当前选择）',   /* 0.4.6-G：专属会话模型下拉缺省项（空值 = 声明不带 model/provider） */
   'disp.schedModelTip': '专属会话模型档位：{model}',          /* 0.4.6-G：调度行模型标注 tooltip + 下拉 title */
+  'disp.schedPresetFull': '完全权限（danger-full-access）',   /* 0.4.7：专属会话权限下拉档一（恒具体值，无「继承默认」选项——显示层显式化） */
+  'disp.schedPresetRestricted': '受限（workspace-write）',    /* 0.4.7：专属会话权限下拉档二 */
+  'disp.schedPresetTip': '专属会话权限预设（首轮创建时按声明档位挂载）',  /* 0.4.7：权限下拉 title */
   'disp.newSessDone': '已新建会话，待办已注入并开始处理',
   'disp.failed': '派发失败：{msg}',
   'disp.markedDone': '已标记完成',

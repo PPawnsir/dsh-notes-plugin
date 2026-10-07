@@ -139,6 +139,14 @@ function createHostMocks() {
   }
   // 0.4.4-B：agentPresets mock（resolve/mount 双方法面；setup 内 mount 语义录制）
   const agentPresetsMock = { resolve: async (id) => ({ id: id || 'mock-default-preset' }), mount: async (agentCtx, id) => {} }
+  // 0.4.7（notes-047-sched-preset）：permissionPresets mock——defaultPreset getter（settings-get 增带数据源，ppState.defaultPreset 可变；
+  //   '__throw' = getter 异常演练优雅降级）+ set(session, name) 调用录制（创建透传断言；ppState.failSet=true 注入故障演练 lastError 降级）
+  const ppState = { defaultPreset: 'danger-full-access', failSet: false }
+  const permissionPresetSetCalls = []
+  const permissionPresetsMock = {
+    get defaultPreset() { if (ppState.defaultPreset === '__throw') throw new Error('mock defaultPreset unreadable'); return ppState.defaultPreset },
+    set: (session, name) => { if (ppState.failSet) throw new Error('mock permission set failed'); permissionPresetSetCalls.push({ id: session && session.id, name: name }) }
+  }
   const registeredContexts = []
   const systemPromptMock = { context: (c) => { registeredContexts.push(c); return () => {} } }
   // 0.4.4-B：持久化日志 mock（休眠送达通道演习场）——open('write') 拿写把手（read/append/flush/close 四合约 +
@@ -210,13 +218,13 @@ function createHostMocks() {
   const evtListeners = {}   // P3 派发闭环：ctx.on 事件订阅捕获（模拟 agent/status 触发）
   const ctx = {
     fs: fsMock, sandboxPolicy: { resolve: () => ({}) },
-    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, agentPresets: agentPresetsMock, systemPrompt: systemPromptMock, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+    get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, agentPresets: agentPresetsMock, permissionPresets: permissionPresetsMock, systemPrompt: systemPromptMock, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
     effect: () => {},
     on: (name, fn) => { (evtListeners[name] = evtListeners[name] || []).push(fn); return () => {} },
   }
   const plugin = new Function('harness', 'pluginDir', hostSrc)(global.harness, DIR)
   plugin.apply(ctx)
-  Object.assign(S, { NOTES_DIR, admMock, agentPresetsMock, agentsMock, agentCreateCalls, attachCalls, createdAgents, ctx, evtListeners, fsMock, handlers, liveAgent, llmMock, persistLogs, persistOpenCalls, plugin, registeredContexts, registeredTools, sentMessages, sessionPersistenceMock, sessionQueryMock, sessionTitleMock, store, systemPromptMock, titleRenameCalls, workspaceRegistryMock, ws1SessionIds })
+  Object.assign(S, { NOTES_DIR, admMock, agentPresetsMock, agentsMock, agentCreateCalls, attachCalls, createdAgents, ctx, evtListeners, fsMock, handlers, liveAgent, llmMock, permissionPresetsMock, permissionPresetSetCalls, ppState, persistLogs, persistOpenCalls, plugin, registeredContexts, registeredTools, sentMessages, sessionPersistenceMock, sessionQueryMock, sessionTitleMock, store, systemPromptMock, titleRenameCalls, workspaceRegistryMock, ws1SessionIds })
 }
 
 module.exports = {

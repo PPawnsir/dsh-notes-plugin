@@ -33,6 +33,12 @@
     //   ⑩专属会话模型档位（0.4.6-G，notes-046-sched-model）：schedule 声明增可选 model/provider（成对出现、非空字符串；
     //     合法性不联网校验——创建时 agents.create 失败即落 lastError）。declared model/provider 透传 _schedCreateDedicatedSession
     //     的 agentOptions（覆盖宿主默认选择）；缺省 = 现状默认模型（存量零迁移）。声明变更比对键随之扩为九键（重锚口径不变）。
+    //   ⑪专属会话权限预设（0.4.7，notes-047-sched-preset）：schedule 声明增第 10 键 preset——枚举 'danger-full-access'|'workspace-write'
+    //     两值（无 inherit——主窗口裁决「显示层显式化」：用户看到的永远是具体档；缺省/null/空串 = 未声明，存量零迁移、宿主 pin 默认不动）。
+    //     创建透传：_schedCreateDedicatedSession 在 agents.create + 工作区落账成功后调 permissionPresets.set(会话, preset)
+    //     覆盖 session/created 钉入的默认档；服务缺席静默跳过、set 失败落 lastError 不阻塞派发主链（presetError 上浮 _schedFire 成功路径记观察面）。
+    //     settings-get 响应增带 permissionPresets.defaultPreset（弹窗权限下拉预填数据源，零新 RPC；读不到键整体省略优雅降级）。
+    //     声明变更比对键随之扩为十键（重锚口径不变）。
     // 序位说明（§8.4.2 例外备案）：本模块消费 dispatch.js 的 _dispatch 故置于其后；notes.js 的 _create/_update 经函数声明提升
     //   调用本模块的 _schedValidateWrite/SCHEDULE_CONTRACT_TYPE——全部为运行期（RPC 调用时）引用，apply 执行期零触碰，无 TDZ 风险。
     const SCHED_TICK_MS = 30 * 1000              // 常驻 tick 周期（裁决②）
@@ -118,12 +124,12 @@
     // 声明纯校验（同步部分：形状/未知键/动作/at 未来/every 下限；目标存活为异步部分由 _schedValidateWrite 补）。
     // 返回 { value: 归一化声明 } | { error }；机器状态字段（lastFiredAt/lastRun/lastError）容忍输入但剥离（由既有值延续，见 _schedValidateWrite）
     function schedCheckDecl(raw, nowMs) {
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow?, model?, provider? }' }
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow?, model?, provider?, preset? }' }
       // runLog（notes-041-sched-runlog）：执行记录独立笔记 id 软链——机器字段（回执链路懒创建回写），已知键容忍输入，闸门校验/延续见 _schedValidateWrite
       // declaredAt（0.4.6-F，notes-046-sched-anchor）：声明重锚时刻——机器字段（闸门赋值/延续），同列已知键容忍输入但剥离（防伪声明注入锚点）
-      const known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, model: 1, provider: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1, declaredAt: 1 }
+      const known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, model: 1, provider: 1, preset: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1, declaredAt: 1 }
       for (const k of Object.keys(raw)) {
-        if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled/model/provider；错得安全：能力声明必须无歧义）' }
+        if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled/model/provider/preset；错得安全：能力声明必须无歧义）' }
       }
       const at = raw.at !== undefined && raw.at !== null && raw.at !== '' ? String(raw.at).trim() : ''
       const every = raw.every !== undefined && raw.every !== null && raw.every !== '' ? raw.every : undefined
@@ -184,14 +190,22 @@
         if (!mv || !pv) return { error: 'schedule.model/provider 不能是空白字符串（错得安全：能力声明必须无歧义）' }
         value.model = mv; value.provider = pv
       }
+      // 专属会话权限预设（0.4.7，notes-047-sched-preset）：preset 枚举收窄两值 'danger-full-access'|'workspace-write'
+      //   （主窗口裁决：无 inherit——声明即具体档，显示层显式化）；空串/null 视为未声明（同 anchor 口径，存量零迁移）。
+      //   白名单校验拒非法值（错得安全）；仅 target='new' 首触创建时消费（permissionPresets.set 透传），其余目标声明为惰性键
+      const presetRaw = raw.preset !== undefined && raw.preset !== null && raw.preset !== '' ? String(raw.preset).trim() : ''
+      if (presetRaw) {
+        if (presetRaw !== 'danger-full-access' && presetRaw !== 'workspace-write') return { error: 'schedule.preset 非法：' + JSON.stringify(raw.preset) + '（期望 danger-full-access | workspace-write 两值之一——错得安全：能力声明必须无歧义）' }
+        value.preset = presetRaw
+      }
       return { value: value }
     }
 
-    // 声明字段等价比对（0.4.6-F，notes-046-sched-anchor）：at/every/anchor/dow/target/action/enabled 七键 + 0.4.6-G model/provider 九键——
-    //   undefined/null/空串归一为空串比对；任一差异 = 声明变更（declaredAt 重锚触发条件）。
+    // 声明字段等价比对（0.4.6-F，notes-046-sched-anchor）：at/every/anchor/dow/target/action/enabled 七键 + 0.4.6-G model/provider 九键
+    //   + 0.4.7 preset 十键（notes-047-sched-preset）——undefined/null/空串归一为空串比对；任一差异 = 声明变更（declaredAt 重锚触发条件）。
     //   归一化声明（action/enabled 由闸门补齐缺省）与存量比对时，存量缺键（如裸编辑旁路未带 action）按变更处理——保守刷新安全向。
     function schedDeclChanged(decl, ex) {
-      const keys = ['at', 'every', 'anchor', 'dow', 'target', 'action', 'enabled', 'model', 'provider']
+      const keys = ['at', 'every', 'anchor', 'dow', 'target', 'action', 'enabled', 'model', 'provider', 'preset']
       for (const k of keys) {
         const a = decl[k], b = ex && ex[k]
         const an = (a === undefined || a === null || a === '') ? '' : String(a)
@@ -243,7 +257,7 @@
       if (ex.lastFiredAt) decl.lastFiredAt = ex.lastFiredAt
       if (ex.lastRun) decl.lastRun = ex.lastRun
       if (ex.lastError) decl.lastError = ex.lastError
-      // declaredAt（0.4.6-F，notes-046-sched-anchor 声明重锚）：声明字段（schedDeclChanged 九键，0.4.6-G 扩 model/provider）任一变更或首次写入 → 刷新为当前时刻
+      // declaredAt（0.4.6-F，notes-046-sched-anchor 声明重锚）：声明字段（schedDeclChanged 十键，0.4.6-G 扩 model/provider、0.4.7 扩 preset）任一变更或首次写入 → 刷新为当前时刻
       //   （到期锚点由陈旧 createdAt 改为本次声明时刻，修「编辑存量约定当天误触发」；输入携带的 declaredAt 已被 schedCheckDecl 剥离，
       //   此处纯机器赋值/延续，伪声明无法注入锚点）；声明未变更的改写延续存量 declaredAt，存量缺省不留字段（到期回退 createdAt，零迁移）
       if (!existingSched || schedDeclChanged(decl, ex)) decl.declaredAt = new Date(nowMs).toISOString()
@@ -321,7 +335,9 @@
     //   命中即复用其 sid 返回（reused:true，handle=null——非本轮创建，调用方回收路径跳过），未命中才新建（防重复建会话）。
     //   归属模型（实测结论）：create 经调用方 fiber 归属——插件重载/卸载会 dispose 该 agent，但会话日志已持久化，
     //   退化为休眠态（GUI 可见、用户打开即复活），后续触发由休眠送达通道（_queueDormantDispatch）承接，优雅降级不丢任务。
-    //   返回 { sessionId, handle, name } | { error }；失败方负责回收半成品（handle.dispose），调用方零清理负担。
+    //   返回 { sessionId, handle, name, presetError } | { error }；失败方负责回收半成品（handle.dispose），调用方零清理负担。
+    //   presetError（0.4.7，notes-047-sched-preset）：声明 preset 透传 permissionPresets.set 的失败上浮（空串=未声明/成功/服务缺席静默跳过）——
+    //   非致命观察面，由 _schedFire 成功路径落 lastError（派发主链不阻塞）。
     async function _schedCreateDedicatedSession(note) {
       if (!agents || typeof agents.create !== 'function') return { error: '宿主不支持 agents.create（无法创建专属会话）' }
       if (!agentPresets || typeof agentPresets.resolve !== 'function' || typeof agentPresets.mount !== 'function') return { error: 'agentPresets 服务缺失（专属会话需挂载默认 preset 获得工具能力）' }
@@ -380,9 +396,19 @@
         try { if (handle && typeof handle.dispose === 'function') await handle.dispose() } catch (e2) {}
         return { error: '工作区落账失败：' + String(e && e.message || e) }
       }
+      // 0.4.7（notes-047-sched-preset）：声明权限预设透传——preset 已声明时调 permissionPresets.set 覆盖 session/created 钉入的默认档
+      //   （宿主服务 dsh-permission-presets：set(session, name) 编程接口，dsh-experimental-auto-review 同先例；Session 实例取 handle.agent.session，
+      //   与上方 rename 同一取法）。服务缺席/方法缺失静默跳过（优雅降级红线：绝不炸创建）；set 失败上浮 presetError，
+      //   由 _schedFire 成功路径落 lastError 观察面——不阻塞派发主链（会话已建成，权限档位失败不值得毒死任务）。
+      //   孤儿复用路径（reused:true，handle=null）不补挂：该会话非本轮创建，其权限态归既有轮次/用户手动管理。
+      const declPreset = (function () { const sc = (note && note.schedule) || {}; return (typeof sc.preset === 'string' && sc.preset) ? sc.preset : '' })()
+      let presetError = ''
+      if (declPreset && permissionPresets && typeof permissionPresets.set === 'function' && handle && handle.agent && handle.agent.session) {
+        try { permissionPresets.set(handle.agent.session, declPreset) } catch (e) { presetError = String(e && e.message || e) }
+      }
       // 命名（非致命观察面：失败时 GUI 显示缺省标题，不阻塞派发）
       try { if (sessionTitle && typeof sessionTitle.rename === 'function' && handle && handle.agent && handle.agent.session) sessionTitle.rename(handle.agent.session, name) } catch (e) {}
-      return { sessionId: sid, handle: handle, name: name }
+      return { sessionId: sid, handle: handle, name: name, presetError: presetError }
     }
 
     // 单笔记触发：专属会话首轮创建（target='new'）→ 可送达预检 → 标记 lastFiredAt 落盘（幂等生命线，先于派发）→ _dispatch 全链路 → lastRun 回写
@@ -438,6 +464,9 @@
       const done = await loadNote(note.id)
       const doneSched = Object.assign({}, done.schedule, { lastRun: { at: nowIso, status: r && r.queued ? 'queued' : 'sent', receiptId: (r.dispatch && r.dispatch.msgId) || '' } })
       delete doneSched.lastError   // lastError 仅失败记：派发成功摘除
+      // 0.4.7（notes-047-sched-preset）：权限预设透传失败观察面——派发主链已成功（lastRun sent/queued 不动），
+      //   presetError 落 lastError 仅作观测（下轮成功路径摘除；非致命，不重试不毒死任务）
+      if (created && created.presetError) doneSched.lastError = { at: nowIso, message: '权限预设挂载失败（派发主链不受影响）：' + created.presetError }
       done.schedule = doneSched
       done.updatedAt = nowIso
       try { await persistNote(done, { history: false }) } catch (e) { console.error('notes: schedule lastRun persist failed', note.id, e) }
