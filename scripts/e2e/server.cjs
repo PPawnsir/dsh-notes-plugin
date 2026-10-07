@@ -257,6 +257,42 @@ function handleRpc(state, method, args) {
       if (live.length < 2) return { ok: true, pairs: [], total: conv.length }
       return { ok: true, total: conv.length, pairs: [{ aId: live[0].id, bId: live[1].id, aTitle: live[0].title, bTitle: live[1].title, relation: 'conflict', reason: 'e2e mock：两条约定对同一事项的指令互相矛盾（演示数据）。' }] }
     }
+    case 'notes-suggest': {
+      /* 0.4.6-C（用例㉘ notes-046-ux-discovery）：固定候选集——过期未引用 2 条 + 孤儿 1 条 → 顶栏「建议」徽标计数 = 3（六段合计口径，与其余用例共享状态零耦合） */
+      /* 0.4.6-E（用例㉚ notes-046-suggest-flow）：state._suggestHot 可注入高频未挂载候选（默认空 = 零耦合；用例㉚ 自行设置/清理） */
+      return {
+        archiveCandidates: [],
+        staleCandidates: [
+          { id: 'sg-stale-1', title: 'e2e 过期示例甲', topic: '', staleDays: 120 },
+          { id: 'sg-stale-2', title: 'e2e 过期示例乙', topic: '', staleDays: 100 },
+        ],
+        orphanCandidates: [{ id: 'sg-orph-1', title: 'e2e 孤儿示例', topic: '' }],
+        logHygieneCandidates: { weekly: [], monthly: [] },
+        zeroRefMountCandidates: [],
+        hotUnmountedCandidates: Array.isArray(state._suggestHot) ? state._suggestHot.slice() : [],
+        telemetryWindowDays: 14, generatedAt: nowIso(),
+      }
+    }
+    /* 0.4.6-E（用例㉚）：状态化挂载登记——_mounts[id]=whenToUse（幂等换文案同 key 覆盖）；
+       挂载成功后从 _suggestHot 摘除该候选（模拟 host 真实收敛：已挂载不再提名高频未挂载） */
+    case 'notes-mount': {
+      const mid = String((args && args.id) || '')
+      if (!mid) return { error: 'not found' }
+      state._mounts = state._mounts || {}
+      state._mounts[mid] = String((args && args.whenToUse) || '')
+      if (Array.isArray(state._suggestHot)) state._suggestHot = state._suggestHot.filter(h => h.id !== mid)
+      return { ok: true }
+    }
+    case 'notes-mount-list': return { lines: Object.keys(state._mounts || {}).map(id => ({ id: id, when: state._mounts[id] })) }
+    /* 0.4.6-E（用例㉚）：账本快照 fixture——ledger.mountTotal 定格 0（快照陈旧语义， cron 节拍不随挂载动作）+
+       lastFlush（截至时刻数据源）+ mountNow = 实时挂载计数（每次打开注入管理即新鲜） */
+    case 'notes-recall-stats': {
+      return {
+        ok: true, noteId: null, sinceDays: 7, fromDay: '', events: 0, channels: {},
+        ledger: { at: state._ledgerAt || nowIso(), trigger: 'cron', mountTotal: 0, weekLogs: 0, weekRefs: 0, top: [], zeroRefCount: 0, zeroRef: [], useRank: [] },
+        lastFlush: nowIso(), mountNow: Object.keys(state._mounts || {}).length,
+      }
+    }
     case 'notes-ping': return { ok: true }
     default: return { ok: true }
   }
@@ -271,14 +307,23 @@ function startServer(port) {
         let buf = ''
         req.on('data', c => { buf += c })
         req.on('end', () => {
-          let out
+          let out, m2 = ''
           try {
             const req2 = JSON.parse(buf || '{}')
+            m2 = req2.method
             out = handleRpc(state, req2.method, req2.args)
           } catch (e) { out = { error: String(e && e.message || e) } }
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify(out))
+          /* 0.4.6-A（节 26 用例）：state._delays[method] = ms 可注入人工延迟，演习 RPC 尖刺期「正文在途窗」 */
+          const send = () => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(out)) }
+          const delay = (state._delays && state._delays[m2]) || 0
+          if (delay) setTimeout(send, delay); else send()
         })
+        return
+      }
+      /* e2e mock 资产路由（0.4.6-A）：GET /dsh-notes/asset?file=assets/<name> → 1px PNG 统一下发（对齐真机路由形态，内容无关） */
+      if (req.method === 'GET' && (req.url || '').indexOf('/dsh-notes/asset') === 0) {
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' })
+        res.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'))
         return
       }
       if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html' || req.url === '/app.html')) {

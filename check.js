@@ -1,5 +1,5 @@
 // DSH 笔记插件回归测试套件 —— runner（模块化拆分：check/helpers.cjs + check/sections/*.cjs，notes-check-split）
-// 架构：check.js = runner（模式解析 + CORE 名单 + 节注册表 + 收尾总结 + i18n 未覆盖清单尾部打印）；check/helpers.cjs = 共享设施（t/section/mock 工厂/计数器）；check/sections/*.cjs = 95 节断言体（逐字节迁移）。
+// 架构：check.js = runner（模式解析 + CORE 名单 + 节注册表 + 收尾总结 + i18n 未覆盖清单尾部打印）；check/helpers.cjs = 共享设施（t/section/mock 工厂/计数器）；check/discover.cjs = 节注册自动发现（0.4.6-I 起，数值元组排序契约）；check/sections/*.cjs = 节断言体（逐字节迁移，自动发现注册）。
 // 测试：host 全链路逻辑（内存 mock fs/llm）+ 工具 schema 校验 + 实现源码结构断言。不触碰真实笔记目录。
 const H = require('./check/helpers.cjs')
 const { state, io, S } = H
@@ -71,6 +71,7 @@ const CORE = new Set([
   'index.mjs 是 scripts/concat-host.cjs 的产物且可复现（src/host/** 按 manifest.dist.js 逐字节拼接）',
   '内核函数可提取（esc/renderMarkdown/serializeRich/analyzeMarkdown/sanitizeFragment）',
   '往返保真：白名单 Markdown render→serialize→render 不变（10 用例，含原型自测 7 条 + 场景 A/C 正文）',
+  '0.4.6-A 内核性能闸：病态语料 renderMarkdown 全量 < 500ms（正则灾难回溯常驻防线）',
   'XSS 红线：渲染全量转义 + 图片仅 assets/ 前缀放行（javascript:/外链/引号注入全拒绝）',
   'notes-folders create：落盘 folders.json + order 递增；缺 name 报错',
   'folder 字段数据往返：create 带 folder → get/list/磁盘 front-matter 一致',
@@ -174,6 +175,9 @@ const CORE = new Set([
   // 83. 0.4.4-B 休眠送达 + 专属会话（notes-044-dormant-dispatch：常驻 --core 防双通道/专属会话生命周期回归）
   '休眠目标派发 → queued:true + durable inbox splice 落盘（agent/inbox/spliced 同 live send 形态）+ 执行记录行注（下次活动送达）',
   '专属会话全生命周期：首轮创建「定时 · 任务名」+ target 回写 → 二轮复用同 sid（零新建）→ 休眠降级 queued 送达',
+  // 94. 0.4.6-B RPC 韧性层（notes-046-rpc-resilience：常驻 --core 防挂起假死回归——超时结构化/提示条/落地页空态）
+  '0.4.6-B rpc 超时 → 结构化 {error} + toast 不静默（AbortController 行为级）',
+  '0.4.6-B rpc 挂起提示条：>RPC_SLOW_MS 出现 / 落定消失（并发归并同一条）',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====
@@ -184,116 +188,13 @@ const ONLY_ENV = process.env.CHECK_ONLY
 const ONLY = (ONLY_ARG ? ONLY_ARG.slice('--only='.length) : (ONLY_ENV || '')).split(',').map(s => s.trim()).filter(Boolean)
 const ONLY_MODE = ONLY.length > 0
 
-// 节注册表（顺序即执行顺序，与拆分前单文件逐节一致）
-const SECTIONS = [
-  require('./check/sections/1-static.cjs'),   // 1. 静态校验（syntax + 结构）
-  require('./check/sections/1-2-static-pkg.cjs'),   // 1.2 P2 静态包 host（packages/dsh-notes/index.mjs）静态校验
-  require('./check/sections/1-5-list-lazy.cjs'),   // 1.5 T1.2 列表懒加载分页
-  require('./check/sections/1-6-keyboard.cjs'),   // 1.6 T1.4 键盘快捷键
-  require('./check/sections/1-7-ui-v2.cjs'),   // 1.7 UI v2 client 渲染结构（两栏 + 主题全局过滤 + SVG 图标）
-  require('./check/sections/1-8-new-note-modal.cjs'),   // 1.8 新建笔记 modal（＋ / Alt+N 输标题创建）
-  require('./check/sections/2-host-mock.cjs'),   // 2. Host 全链路逻辑（内存 mock）
-  require('./check/sections/3-tool-schema.cjs'),   // 3. 工具 schema 校验
-  require('./check/sections/4-core-rpc.cjs'),   // 4. 核心 RPC 行为
-  require('./check/sections/5-quick.cjs'),   // 5. 快速记录：合并窗口 + 异步分类
-  require('./check/sections/6-search.cjs'),   // 6. 搜索
-  require('./check/sections/7-trash-soft.cjs'),   // 7. 软删除 + 恢复
-  require('./check/sections/8-archive-smoke.cjs'),   // 8. 显式归档：行为变更冒烟（手动笔记不再自动分组）
-  require('./check/sections/8-5-archive-matrix.cjs'),   // 8.5 显式归档行为矩阵（独立实例）
-  require('./check/sections/9-startup-perf.cjs'),   // 9. 启动 + 遥测
-  require('./check/sections/10-tool-manage.cjs'),   // 10. note_manage 工具：六种 action 路由
-  require('./check/sections/11-kind-status.cjs'),   // 11. T2.1 kind + T2.2 status 字段
-  require('./check/sections/12-inject-convention.cjs'),   // 12. T2.3 工作区约定自动注入
-  require('./check/sections/13-inject-to.cjs'),   // 13. injectTo 注入范围（多选数组）
-  require('./check/sections/14-sessions.cjs'),   // 14. notes-sessions 会话名
-  require('./check/sections/15-dispatch.cjs'),   // 15. 任务派发（系统提示注入形式）
-  require('./check/sections/15-5-dispatch-loop.cjs'),   // 15.5 P3 派发闭环（调研 + 状态回写）
-  require('./check/sections/16-quick-instruct.cjs'),   // 16. T3 选区指令记录（notes-quick-instruct）
-  require('./check/sections/16-5-session-meta-cache.cjs'),   // 16.5 0.1.7 会话元数据缓存（派发会话列表提速）
-  require('./check/sections/17-static-host.cjs'),   // 17. P2 静态包 host 全链路（ESM import + webServer RPC 路由）
-  require('./check/sections/17-5-settings.cjs'),   // 17.5 设置持久化 + LLM 模型选配（settings RPC + 设置卡片）
-  require('./check/sections/18-static-client.cjs'),   // 18. P3 静态包 client（packages/dsh-notes/lib/client.js）
-  require('./check/sections/19-editor-kernel.cjs'),   // 19. 双模式编辑器 v3 内核（往返保真 + XSS + 降级）
-  require('./check/sections/20-ctxmenu.cjs'),   // 20. 列表项右键菜单（ctxmenu）
-  require('./check/sections/21-folders.cjs'),   // 21. 虚拟文件夹（folder 字段 + folders.json + notes-folders + move）
-  require('./check/sections/22-catalog-inject.cjs'),   // 22. 笔记目录索引注入（recall 通道，host 双侧同步）
-  require('./check/sections/22-5-catalog-static.cjs'),   // 22.5 笔记目录索引注入（静态包 index.mjs 行为）
-  require('./check/sections/22-6-catalog-ui.cjs'),   // 22.6 笔记目录注入 client UI 开关（catalogEnabled 总开关 + recall 逐条）
-  require('./check/sections/23-import-export.cjs'),   // 23. 笔记导入/导出（目录快照 + 预览分类 + 全量备份 + 覆盖策略 + folders 合并）
-  require('./check/sections/23-5-import-export-static.cjs'),   // 23.5 笔记导入/导出（静态包 index.mjs 行为）
-  require('./check/sections/23-6-export-single.cjs'),   // 23.6 P3 单文件导出（scope 拼接 + 图片内联 + 体积告警 + 双包同步）
-  require('./check/sections/24-app-html.cjs'),   // 24. 半独立笔记页 /dsh-notes-app（app.html v2 定稿改造 + webServer GET 路由）
-  require('./check/sections/25-editor-dual.cjs'),   // 25. 双模式编辑器 v3 双端落地（三端同步 + 结构 + 图片契约 + 原型回写）
-  require('./check/sections/26-archive-ui.cjs'),   // 26. 显式归档 UI（引导气泡 + 预览对话框 + toast 撤销 + 多选合并）
-  require('./check/sections/27-phase2.cjs'),   // 27. 二期增强（AI 整理 + kind 骨架 + 资产清理 + 图片压缩）
-  require('./check/sections/27-5-sensitive.cjs'),   // 27.5 敏感信息脱敏注入（sensitive 字段 + 注入打码 + 识别建议）
-  require('./check/sections/28-trash.cjs'),   // 28. P1 回收站（trash 列表 + 恢复/彻底删除 + notes-purge）
-  require('./check/sections/29-inject-enhance.cjs'),   // 29. P1 注入增强（staleDays 时效标注 + injectBudgetChars 预算截断）
-  require('./check/sections/30-usage-telemetry.cjs'),   // 30. P2 使用遥测（note_get 引用计数 + 防抖批量落盘 + 排序 + UI）
-  require('./check/sections/31-backlinks.cjs'),   // 31. P2 笔记双链（[[..]] + 反向链接）
-  require('./check/sections/32-inject-preview.cjs'),   // 32. 注入预览器（notes-inject-preview + 设置卡片入口 modal + 双端同步）
-  require('./check/sections/33-suggest.cjs'),   // 33. 整理建议器（notes-suggest + 三段式 modal + 四端同步）
-  require('./check/sections/34-search-plus.cjs'),   // 34. 搜索体验升级（高亮 / 相关度 / 组合过滤 / 四端同步）
-  require('./check/sections/35-splitter.cjs'),   // 35. 侧栏宽度拖拽分隔条（splitter：拖拽 + clamp + 记忆 + 双击重置，三端同步）
-  require('./check/sections/35-img-path-hint.cjs'),   // 35. 注入/派发图片路径消歧提示（img-path-hint，host 双包）
-  require('./check/sections/36-history-engine.cjs'),   // 36. 快照式历史引擎（host 数据层 + 导入导出适配）
-  require('./check/sections/37-llm-usage.cjs'),   // 37. LLM token 用量统计（计量包装 + usage.json + notes-usage-get + 预算提醒）
-  require('./check/sections/38-history-ui.cjs'),   // 38. 历史版本面板 UI（notes-history / notes-history-get / notes-restore-history + 四端 UI）
-  require('./check/sections/39-memory.cjs'),   // 39. 工作记忆 v0 Phase 1（kind=log + 默认隐身 + 启用流程 + 日志卫生）
-  require('./check/sections/40-folder-nesting.cjs'),   // 40. 文件夹嵌套（parent + maxFolderDepth + 递归子树过滤 + cascade 删除，host 双包）
-  require('./check/sections/41-folder-nesting-ui.cjs'),   // 41. 文件夹嵌套 UI（递归树 + 拖拽换父 + 级联删除 confirm + 面包屑 + maxFolderDepth 设置行，四端同步）
-  require('./check/sections/42-list-union-defense.cjs'),   // 42. 列表韧性：_list 并集防御（list-union-defense）
-  require('./check/sections/43-inject-manager.cjs'),   // 43. 注入管理面板（设置卡入口 + 总览/直改/批量/过滤/护栏，三端同步零新 RPC）
-  require('./check/sections/44-settings-feedback.cjs'),   // 44. 设置卡交互反馈（✕ 关闭 + dirty 保存/还原 + 兜底 flush，三端同步）
-  require('./check/sections/45-host-modular.cjs'),   // 45. P2·5 host 模块化收口（src/host/** 终态结构 + 双出口同源）
-  require('./check/sections/46-dataloss-guard.cjs'),   // 46. 数据丢失防护（R-1：get 失败安全态 + 空正文覆盖兜底 + 行为断言）
-  require('./check/sections/47-readpath-silent.cjs'),   // 47. 读路径静默群反馈 + 刷新假阳性（R-2：mock error 逐点行为断言）
-  require('./check/sections/48-schedule-exec.cjs'),   // 48. 定时派发·执行层（dispatch-schedule 声明解析 + 常驻 cron tick + 派发执行 + 状态三层）
-  require('./check/sections/49-batch3.cjs'),   // 49. N+1 批量端点（notes-get-batch）+ onboarding 轻量 + 新建草稿态 + 顶栏速记改名（notes-034-batch3）
-  require('./check/sections/50-schedule-ui.cjs'),   // 50. 定时派发·设置交互 UI（派发弹窗调度区 + 注入管理调度任务区 + 原型同步，notes-034-sched-ui）
-  require('./check/sections/51-cheatsheet.cjs'),   // 51. 键盘流速查表（cheat sheet：? 键唤起 + 设置卡入口，键位与 R-4 实现逐键核对，notes-034-f-cheatsheet）
-  require('./check/sections/52-sched-detail.cjs'),   // 52. 定时派发·详情计划块（派发计划 + 关联调度清单，三端同步 + 零渲染红线，notes-034-sched-detail）
-  require('./check/sections/53-injectto-norm.cjs'),   // 53. injectTo 归一化与非法拒绝（写入归一 + 非法整体拒绝 + 勾选态归一比对，notes-034-injectto-norm）
-  require('./check/sections/54-folder-click-view.cjs'),   // 54. 文件夹行单击进视图（caret 独占折叠 + 行主体=进视图 + vfilter 切换保留，四端同步，notes-041-folder-click）
-  require('./check/sections/55-folder-input-modal.cjs'),   // 55. 文件夹名称输入弹层（弃原生 prompt：openFolderInputModal + 空名/同级重名校验，notes-041-folder-prompt）
-  require('./check/sections/56-settings-back.cjs'),   // 56. 设置卡二级面板返回栈（注入管理/启用引导关闭回设置卡，单层，双端+原型，notes-041-settings-back）
-  require('./check/sections/57-topbar-narrow.cjs'),   // 57. 顶栏窄宽防竖排（nowrap + shrink:0 + ≤480px 次要按钮收图标，三端同步，notes-041-topbar-400）
-  require('./check/sections/58-folder-arg-norm.cjs'),   // 58. folder 写入归一（create/update 名称→id + 非法显式拒绝 + 双包逐字节，notes-041-create-folder-name）
-  require('./check/sections/59-sched-runlog.cjs'),   // 59. 定时派发·执行记录独立笔记（schedule.runLog 软链 + 计划块跳转 + 约定正文零改动红线，notes-041-sched-runlog）
-  require('./check/sections/60-i18n.cjs'),   // 60. i18n 机制（字典 + t() 双端 + 语言设置 + 回退 + 构建并入，notes-042-i18n-mech）
-  require('./check/sections/61-readme-en.cjs'),   // 61. README.en 英文版（全文英文 + 双 README 互链 + 发布包 files 清单，notes-042-readme-en）
-  require('./check/sections/62-i18n-cov-a.cjs'),   // 62. i18n 覆盖A（顶栏 + 侧栏树 + hintbar 双语化，notes-042-i18n-cov-a）
-  require('./check/sections/63-i18n-cov-b.cjs'),   // 63. i18n 覆盖B（编辑器 + meta 双语化，notes-042-i18n-cov-b）
-  require('./check/sections/64-i18n-cov-c.cjs'),   // 64. i18n 覆盖C（设置卡双语化 + app 打开态切语言就地重渲染，notes-042-i18n-cov-c）
-  require('./check/sections/65-i18n-cov-d.cjs'),   // 65. i18n 覆盖D（注入管理 + 记忆引导双语化 + schedFreqLabel 跨表面 t() 化，notes-042-i18n-cov-d）
-  require('./check/sections/66-i18n-cov-e.cjs'),   // 66. i18n 覆盖E（弹窗族双语化：dispatch/archive/trash/suggest/newnote/cheatsheet/folder-input + schedFormDecl 校验串，notes-042-i18n-cov-e）
-  require('./check/sections/67-i18n-cov-f.cjs'),   // 67. i18n 覆盖F（其余面板 + popovers + 共享常量表条件映射 + host toast 面核查，notes-042-i18n-cov-f）
-  require('./check/sections/68-i18n-lint.cjs'),   // 68. i18n 守卫（常驻 lint：key 集一致 + 字典↔代码双向覆盖 + 产物抽查 + 未覆盖清单，notes-042-i18n-lint）
-  require('./check/sections/69-tree-log-children.cjs'),   // 69. 树展开日志夹懒加载日志子条目（overlay 并入 + 按夹去重 + R-6 豁免面收敛 + 三端同步，notes-041c-tree-log-children）
-  require('./check/sections/70-unfiled-drag-root.cjs'),   // 70. 根目录笔记拖拽落夹（未入夹提示行置尾防源行位移取消拖拽 + 三端同步，notes-041d-drag-root-note）
-  require('./check/sections/71-graph.cjs'),   // 71. 笔记网络内核①：四类边建图 + 增量维护 + notes-graph 查询（notes-043-graph）
-  require('./check/sections/72-rootnote.cjs'),   // 72. 内核②：RootNote 托管节框架 + runLog 迁移等价回归（notes-043-rootnote）
-  require('./check/sections/73-inject-index.cjs'),   // 73. 内核③⑤：注入索引根笔记 + 管线 reference 桶切换 + 挂载联动/弹层（notes-043-index）
-  require('./check/sections/74-ledger.cjs'),   // 74. 内核⑥：效用账本 §2 指标 + 记忆档案懒创建回填（notes-043-ledger）
-  require('./check/sections/75-guard-readme.cjs'),   // 75. 0.4.3⑦：守卫扩展（索引行格式 lint / 死链行标记 / 待补清单）+ README 哲学节（notes-043-guard）
-  require('./check/sections/76-atomic-store.cjs'),   // 76. 存储加固：per-note 写链串行化 + 原子性委托/常驻声明 + 崩溃恢复断言（notes-043-atomic-store）
-  require('./check/sections/77-fm-roundtrip.cjs'),   // 77. front-matter 往返幂等：正文前导换行零增长 + 存量首轮归一（notes-043-fm-newline）
-  require('./check/sections/78-recall-telemetry.cjs'),   // 78. 统一召回遥测：五通道交付/使用事件流水 + 分通道召回率（notes-043-inject-receipt）
-  require('./check/sections/79-ensure-lock.cjs'),   // 79. 创建级锁：根笔记并发首建竞态修复（索引/档案/runLog 同锁，notes-043-ensure-lock）
-  require('./check/sections/80-folder-sys-view.cjs'),   // 80. 文件夹显式展开放行 sys（按需补拉 sysKids + 树合并 + 机器 chip + 惰性/防陈旧/⑨降噪红线，双端，notes-044-folder-explicit-view）
-  require('./check/sections/81-dispatch-execlog.cjs'),   // 81. 0.4.4-A 派发回执笔记化（三表归一：执行记录=派发历史=调度回执 + kind=log + 执行记录夹 + 双端跳转，notes-044-dispatch-receipts）
-  require('./check/sections/82-hidden-attr.cjs'),   // 82. 0.4.4-D hidden 隐藏属性（字段+显隐开关+纯 UI 遮罩+跳转常显，OS 文件管理对齐，双端，notes-044-hidden-attr）
-  require('./check/sections/83-dormant-dispatch.cjs'),   // 83. 0.4.4-B 休眠会话送达 + 定时派发专属会话复用（_dispatch 双通道 + durable inbox + target='new' 首轮创建回写复用，notes-044-dormant-dispatch）
-  require('./check/sections/84-organize-instruct.cjs'),   // 84. 0.4.4-F AI 整理可选追加指令（弹卡引导 + prompt 条件插入 + 空路径逐字节等价，notes-044-organize-instruct）
-  require('./check/sections/85-sys-folder-attr.cjs'),   // 85. 0.4.4-G 自动沉淀文件夹 sys 机器属性（folder 级 sys + 懒迁移墓碑 + 双通道树显隐 + 右键标记/摘除，双端，notes-044-sys-folders）
-  require('./check/sections/86-reopen-body-reload.cjs'),   // 86. 0.4.4-H 重开笔记面板正文空白修复（富文本重开回填 + 选中存活未加载自动补拉，R-1 不动，notes-044-reopen-body-reload）
-  require('./check/sections/87-ux-polish.cjs'),   // 87. 0.4.5-B UX 打磨（target='new' 新文案四展示点 disp.schedNewTarget + 机器档混合夹惰性闸口径修正，notes-045-ux-polish）
-  require('./check/sections/88-session-injected-badge.cjs'),   // 88. 0.4.5-H 会话头部注入清单徽标（📎N + 明细浮层 + 直达笔记，零新增 RPC，notes-045-session-injected-view）
-  require('./check/sections/89-at-mention.cjs'),   // 89. 0.4.5-E @ 引用笔记（输入框 @ 菜单注册笔记源：chip 落文 + serialize 内联正文直达 Agent，notes-045-at-mention）
-  require('./check/sections/90-conflict-check.cjs'),   // 90. 0.4.5-G 约定体检（LLM 冲突/取代检测 + 人工裁决内联区，notes-045-conflict-check）
-  require('./check/sections/91-dispatch-no-resolve.cjs'),   // 91. 0.4.5-I 派发完成不再标记已解决（全量统一：消息去 resolved 指示 + idle 回执接管闭环 + resolved 手动兜底保留，notes-045-periodic-no-resolve）
-  require('./check/sections/92-export-one.cjs'),   // 92. 0.4.5-F 详情页一键导出单篇 MD（meta 导出按钮 + Blob 下载 + 文件名清洗 + 图片引用提示，notes-045-export-one）
-]
+// ===== 节注册表：自动发现（0.4.6-I，notes-046-check-autodiscovery）=====
+// check/sections/*.cjs 全部自动注册（顺序即执行顺序）——新增节文件零改动本文件，消除新卡必触 check.js 的批次共享锁。
+// 排序契约（check/discover.cjs 实现；节 100 常驻断言看守）：文件名开头数字前缀按 '-' 分段转数值元组逐段数值比较
+// （1-2 → [1,2]，1-10 ＞ 1-2 为数值序非字典序）；元组互为他方前缀时短者在前（[35] ＜ [35,5]）；等值元组/无数字前缀按文件名全串字典序兜底。
+// 红线：节执行顺序零容忍漂移——落地时已用一次性对照脚本断言自动发现序列 ≡ 原硬编码 114 节清单逐位一致
+// （唯一漂移点：35 序号撞车对，以改名 35-5-img-path-hint.cjs 消化，未静默换序）。CORE 名单保留在本文件（改动频率低，不构成锁点）。
+const SECTIONS = require('./check/discover.cjs').discoverSections(H.path.join(__dirname, 'check', 'sections'))
 
 async function main() {
   H.init({ CORE_MODE, CORE, ONLY, ONLY_MODE })

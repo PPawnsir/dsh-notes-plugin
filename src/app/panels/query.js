@@ -1,5 +1,14 @@
 /* ================= 视图求值：主题 ∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索 ================= */
 /* 0.4.3⑦：「文件视图」（文件夹视图）模式整体拆除——view 取值收窄为 all | topic（树展开即文件夹浏览） */
+/* 遮罩谓词（0.4.6-H notes-046-smallfix，R2 n-mux9rpgowpz6/n-mux9r8hfh7xy）：hidden/sys 夹链遮罩段独立成函数——
+   筛选面板选项计数经本谓词取「当前可见集」（与下方 matches() 的遮罩段逐字同口径，改动必须双边同步），
+   消除「选项计数（缓存裸谓词）vs 命中数（matches 全管线）」两套口径；谓词不含筛选条件本身（选项计数 ≠ 命中数语义保留：
+   状态组选项 = 可见集中满足该状态数，底部命中 = 可见集 ∩ 全部已选条件）。 */
+function visMask(n) {
+  if (!showHidden && (n.hidden === true || (n.folder && folderHidden(n.folder)))) return false
+  if (!showHidden && !machineKindOn() && n.folder && folderSys(n.folder)) return false
+  return true
+}
 function matches(n) {
   if (view.type === 'topic') { if ((n.topic || '') !== view.id) return false }
   /* 0.4.4-D hidden 纯 UI 遮罩：显隐开关关 → hidden 笔记 + hidden 夹链内笔记滤除（OS 语义：父夹隐藏即子项不可见；

@@ -18,7 +18,7 @@ module.exports = {
   const sugBlkDev = grabSuggestBlk(hostSrc, 'host-impl.js')
   const sugBlkPkg = grabSuggestBlk(indexSrc, 'index.mjs')
   const sugNS = {}
-  new Function('ns', sugBlkDev + '\nns.suggestCandidates = suggestCandidates; ns.suggestLinkTargetsOf = suggestLinkTargetsOf; ns.SUGGEST_ORPHAN_LIMIT = SUGGEST_ORPHAN_LIMIT; ns.suggestLogHygiene = suggestLogHygiene; ns.suggestISOWeek = suggestISOWeek; ns.suggestLogDateOf = suggestLogDateOf; ns.suggestTelemetryCandidates = suggestTelemetryCandidates; ns.suggestTelemWindowCounts = suggestTelemWindowCounts; ns.SUGGEST_TELEM_WINDOW_DAYS = SUGGEST_TELEM_WINDOW_DAYS; ns.SUGGEST_TELEM_HOT_MIN = SUGGEST_TELEM_HOT_MIN;')(sugNS)
+  new Function('ns', sugBlkDev + '\nns.suggestCandidates = suggestCandidates; ns.suggestLinkTargetsOf = suggestLinkTargetsOf; ns.SUGGEST_ORPHAN_LIMIT = SUGGEST_ORPHAN_LIMIT; ns.suggestLogHygiene = suggestLogHygiene; ns.suggestISOWeek = suggestISOWeek; ns.suggestLogDateOf = suggestLogDateOf; ns.suggestTelemetryCandidates = suggestTelemetryCandidates; ns.suggestTelemWindowCounts = suggestTelemWindowCounts; ns.SUGGEST_TELEM_WINDOW_DAYS = SUGGEST_TELEM_WINDOW_DAYS; ns.SUGGEST_TELEM_HOT_MIN = SUGGEST_TELEM_HOT_MIN; ns.suggestMutexFilter = suggestMutexFilter; ns.SUGGEST_ORPHAN_GRACE_MS = SUGGEST_ORPHAN_GRACE_MS;')(sugNS)
   await t('suggest-helpers 标记块双包逐字节一致 + 可 eval（suggestCandidates/suggestLinkTargetsOf 导出）', () => {
     assert.strictEqual(sugBlkPkg, sugBlkDev, 'host-impl.js 与 index.mjs 的 suggest-helpers 块必须逐字节一致')
     assert.strictEqual(typeof sugNS.suggestCandidates, 'function', 'suggestCandidates 可 eval 导出')
@@ -35,6 +35,27 @@ module.exports = {
     assert.strictEqual(typeof sugNS.suggestTelemWindowCounts, 'function', 'suggestTelemWindowCounts 可 eval 导出')
     assert.strictEqual(sugNS.SUGGEST_TELEM_WINDOW_DAYS, 14, '遥测窗口缺省 14 天（v0 常量）')
     assert.strictEqual(sugNS.SUGGEST_TELEM_HOT_MIN, 3, '高频阈值缺省 3 次（2 不提名/3 提名边界锁定）')
+  })
+  // 0.4.6-E：宽限期 + 两段互斥纯函数 eval（行为级钉死：<24h 不提名/≥24h 可提名；hot ∩ orphan → hot 优先 orphan 剔除）
+  await t('suggest-helpers 0.4.6-E 导出（suggestMutexFilter + SUGGEST_ORPHAN_GRACE_MS=24h）+ 宽限期/互斥行为级 eval', () => {
+    assert.strictEqual(typeof sugNS.suggestMutexFilter, 'function', 'suggestMutexFilter 可 eval 导出')
+    assert.strictEqual(sugNS.SUGGEST_ORPHAN_GRACE_MS, 86400000, '新建宽限期 = 24h（常量锚）')
+    const now = Date.now()
+    const mk = (over) => Object.assign({ id: 'n-x', title: 'x', kind: 'note', status: 'active', inject: false, useCount: 0, tags: [], mergedFrom: [], updatedAt: '2026-01-01T00:00:00.000Z', body: '' }, over)
+    // 宽限期边界：createdAt <24h 不提名 / 恰 ≥24h 可提名 / createdAt 缺失（老旧存量）不豁免照常提名
+    const pool = [
+      mk({ id: 'n-fresh', createdAt: new Date(now - 3600000).toISOString() }),        // 1h 前新建 → 宽限期豁免
+      mk({ id: 'n-edge', createdAt: new Date(now - 86400000).toISOString() }),        // 恰 24h → 可提名（边界：不 < 24h）
+      mk({ id: 'n-old', createdAt: new Date(now - 7 * 86400000).toISOString() }),     // 7 天 → 可提名
+      mk({ id: 'n-nocreated' }),                                                      // createdAt 缺失（不可解析）→ 不豁免
+    ]
+    const r = sugNS.suggestCandidates(pool, 0, now)
+    assert.deepStrictEqual(r.orphanCandidates.map(x => x.id).sort(), ['n-edge', 'n-nocreated', 'n-old'], '宽限期行为级：<24h 不提名 / ≥24h 可提名 / createdAt 缺失不豁免（实得 ' + r.orphanCandidates.map(x => x.id).join(',') + '）')
+    // 两段互斥：hot 命中的笔记从 orphan 剔除（高频 > 可能无用）；空 hot / 空 orphan 直通
+    const orph = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+    assert.deepStrictEqual(sugNS.suggestMutexFilter(orph, [{ id: 'b' }]).map(x => x.id), ['a', 'c'], '互斥：hot 命中 id 从 orphan 剔除')
+    assert.strictEqual(sugNS.suggestMutexFilter(orph, []), orph, '空 hot → 原数组直通（引用相等）')
+    assert.deepStrictEqual(sugNS.suggestMutexFilter([], [{ id: 'b' }]), [], '空 orphan → 空')
   })
   await t('suggestTelemetryCandidates 单元（0.4.5-C）：零引用挂载（窗口内事件/新建/死行豁免）+ 高频未挂载（阈值边界 + orphan 豁免面）+ 遥测缺失静默为空', () => {
     const dayMs = 86400000
@@ -183,8 +204,12 @@ module.exports = {
     seed('n-sg-syshot', ['title: 高频 sys', 'kind: sys', 'useCount: 5', 'createdAt: "' + iso(60) + '"', 'updatedAt: "' + iso(10) + '"'], 'sys 豁免')
     seed('n-sg-todohot', ['title: 高频待办', 'kind: todo', 'useCount: 5', 'createdAt: "' + iso(60) + '"', 'updatedAt: "' + iso(10) + '"'], 'todo 豁免')
     seed('n-sg-quickhot', ['title: 高频速记', 'tags: quick', 'sessionId: sess-sg-9', 'useCount: 5', 'createdAt: "' + iso(60) + '"', 'updatedAt: "' + iso(10) + '"'], 'quick 豁免')
+    // 0.4.6-E 夹具：n-sg-fresh = 新建几分钟（createdAt≈now）的纯孤儿 → 宽限期豁免不提名；n-sg-mutex = useCount=0 + 窗口内 search×3（无 get 取用 → orphan 资格成立）
+    //   + 未挂载 → 同时命中「高频未挂载」与「可能无用」双段判据 → 互斥裁决：进高频段、孤儿段剔除
+    seed('n-sg-fresh', ['title: 刚建的笔记', 'topic: 其他', 'createdAt: "' + iso(0) + '"', 'updatedAt: "' + iso(0) + '"'], '新建宽限期探针正文')
+    seed('n-sg-mutex', ['title: 双段命中探针', 'topic: 调试', 'useCount: 0', 'createdAt: "' + iso(60) + '"', 'updatedAt: "' + iso(30) + '"'], '互斥探针正文')
     const telemByDayGet = {}; telemByDayGet[dkeySG(1)] = { 'n-sg-hot': 2, 'n-sg-warm': 2, 'n-sg-conv': 5, 'n-sg-loghot': 5, 'n-sg-syshot': 5, 'n-sg-todohot': 5, 'n-sg-quickhot': 5 }; telemByDayGet[dkeySG(20)] = { 'n-sg-warm': 9 }
-    const telemByDaySearch = {}; telemByDaySearch[dkeySG(2)] = { 'n-sg-hot': 1, 'n-sg-hotlink': 3 }
+    const telemByDaySearch = {}; telemByDaySearch[dkeySG(2)] = { 'n-sg-hot': 1, 'n-sg-hotlink': 3, 'n-sg-mutex': 3 }
     storeSG.set(NOTES_DIR + '\\telemetry.json', JSON.stringify({
       version: 1,
       receipts: { inject: [{ ts: iso(1), ids: ['n-sg-mtevt'] }, { ts: iso(30), ids: ['n-sg-mtz'] }], mount: [], catalog: [] },
@@ -223,6 +248,9 @@ module.exports = {
       assert(orphIds.indexOf(excluded) < 0, '防误伤排除：' + excluded)
     }
     assert(orphIds.length <= 20, '孤儿上限 20')
+    // 0.4.6-E：新建宽限期（<24h 不提名）+ 两段互斥（hot ∩ orphan → 进高频段、孤儿剔除）
+    assert(orphIds.indexOf('n-sg-fresh') < 0, '新建宽限期：createdAt≈now 的纯孤儿不提名（n-mux79kj4lwx9）')
+    assert(orphIds.indexOf('n-sg-mutex') < 0, '两段互斥：双段命中探针进高频段、孤儿段剔除（n-mux8beuj84i2）')
   })
   await t('notes-suggest 时效阈值跟随 settings.staleDays（override 生效 + 0 关闭 + null 恢复缺省）', async () => {
     await handlersSG['notes-settings-set']({ staleDays: 300 })
@@ -250,6 +278,7 @@ module.exports = {
     assert(zrItem && zrItem.when === '零事件挂载文案045C', '零引用条目携带 when 文案（改文案动作预填数据源）')
     const hotIds = r.hotUnmountedCandidates.map(x => x.id)
     assert(hotIds.indexOf('n-sg-hot') >= 0 && hotIds.indexOf('n-sg-hotlink') >= 0, '③高频未挂载提名：note/link ≥3 次（实得 ' + hotIds.join(',') + '）')
+    assert(hotIds.indexOf('n-sg-mutex') >= 0, '③互斥探针命中高频段（search×3 窗口计数；useCount=0 孤儿资格同时成立 → 互斥后只在本段）')
     assert(hotIds.indexOf('n-sg-warm') < 0, '③阈值边界：窗口内 2 次不提名（窗口外 9 次不计）')
     for (const ex of ['n-sg-conv', 'n-sg-loghot', 'n-sg-syshot', 'n-sg-todohot', 'n-sg-quickhot', 'n-sg-mtz', 'n-sg-mtevt', 'n-sg-mtnew']) {
       assert(hotIds.indexOf(ex) < 0, '④豁免面/已挂载不提名：' + ex)
@@ -290,9 +319,13 @@ module.exports = {
     })
     assert.strictEqual(typeof handlersSug['notes-suggest'], 'function', '静态包注册 notes-suggest')
     const c = await handlersSug['notes-create']({ title: '静态建议笔记', body: 'x' })
+    // 0.4.6-E 宽限期适配：新建笔记（createdAt≈now）不再入选孤儿——正向样本改为直写回溯日期种子（createdAt 10 天前）
+    const oldIso = new Date(Date.now() - 10 * 86400000).toISOString()
+    storeSug.set(NOTES_ROOT_STATIC + '\\n-sg-oldorph.md', '---\nid: n-sg-oldorph\ntitle: 静态老旧孤儿\ncreatedAt: "' + oldIso + '"\nupdatedAt: "' + oldIso + '"\n---\n\n无链正文')
     const r = await handlersSug['notes-suggest']({})
     assert(!r.error && Array.isArray(r.archiveCandidates) && Array.isArray(r.staleCandidates) && Array.isArray(r.orphanCandidates) && typeof r.generatedAt === 'string', '三段 + generatedAt 结构齐备（实得 ' + JSON.stringify(r).slice(0, 160) + '）')
-    assert(r.orphanCandidates.some(x => x.id === c.id), '新建普通笔记（无链/未引用/进行中）入选孤儿')
+    assert(!r.orphanCandidates.some(x => x.id === c.id), '0.4.6-E 宽限期：新建普通笔记（createdAt <24h）不入选孤儿')
+    assert(r.orphanCandidates.some(x => x.id === 'n-sg-oldorph'), '老旧普通笔记（无链/未引用/进行中/超宽限期）入选孤儿')
     // 0.4.5-C：遥测两键结构 + ⑤遥测缺失静默降级（无 telemetry.json → meta.lastFlush 闸门闭合 → 两键空数组，stale/orphan 既有输出零影响）
     assert(Array.isArray(r.zeroRefMountCandidates) && Array.isArray(r.hotUnmountedCandidates) && r.telemetryWindowDays === 14, '静态包遥测两键 + 窗口天数齐备')
     assert(r.zeroRefMountCandidates.length === 0 && r.hotUnmountedCandidates.length === 0, '⑤遥测缺失静默为空（新装库零遥测 → 两类候选不提名）')
@@ -334,10 +367,15 @@ module.exports = {
     // ④ 0.4.5-C 遥测两段动作：摘除挂载 = notes-update inject:false 既有通道（零新 RPC）；挂载/改文案 = panelBridge.openMountModal 复用 MountModal
     assert(clientSrc.indexOf('async function suggestUnmount(n)') >= 0 && clientSrc.indexOf("host.call('notes-update', { id: n.id, inject: false })") >= 0, '摘除挂载走 notes-update inject:false（host 联动摘行，不删笔记）')
     assert(clientSrc.indexOf('function suggestMountNote(n)') >= 0 && clientSrc.indexOf('function suggestEditWhen(n)') >= 0, '挂载/改文案函数存在')
-    assert(clientSrc.indexOf("panelBridge.openMountModal({ id: n.id, title: n.title || n.id }, { onConfirmed: () => openSuggest() })") >= 0, '挂载 → MountModal LLM 草稿模式（确认后回开建议框）')
-    assert(clientSrc.indexOf("panelBridge.openMountModal({ id: n.id, title: n.title || n.id, existing: n.when || '' }, { onConfirmed: () => openSuggest() })") >= 0, '改文案 → MountModal 编辑模式（existing 预填现文案）')
+    assert(clientSrc.indexOf("panelBridge.openMountModal({ id: n.id, title: n.title || n.id }, { onConfirmed: () => { suggestScrollRef.current = sc; openSuggest() } })") >= 0, '挂载 → MountModal LLM 草稿模式（确认后回开建议框 + 滚动保持 0.4.6-E）')
+    assert(clientSrc.indexOf("panelBridge.openMountModal({ id: n.id, title: n.title || n.id, existing: n.when || '' }, { onConfirmed: () => { suggestScrollRef.current = sc; openSuggest() } })") >= 0, '改文案 → MountModal 编辑模式（existing 预填现文案 + 滚动保持 0.4.6-E）')
     assert(clientSrc.indexOf("tt('sugg.secZeroRef')") >= 0 && clientSrc.indexOf("tt('sugg.secHot')") >= 0 && clientSrc.indexOf("tt('sugg.hotMeta'") >= 0, '遥测两段标题/计数行走 tt() 字典')
     assert(clientSrc.indexOf("window.confirm(t('sugg.unmountConfirm'") >= 0, '摘除挂载 confirm 闸门（重挂载需手工 → 给一次确认）')
+    // 0.4.6-E：⑤ 零引用段空态口径统一（零候选也渲染段头 + 「当前无」行——段不再条件渲染）+ 回开滚动保持（ref 存档 + effect 消费还原）
+    const sec5c = clientSrc.match(/tt\('sugg\.secZeroRef'\)[\s\S]*?tt\('sugg\.secHot'\)/)
+    assert(sec5c && sec5c[0].indexOf("tt('sugg.zeroRefEmpty')") >= 0, '⑤零引用段零候选渲染「当前无」空态行（口径统一，n-mux8beuj84i2）')
+    assert(sec5c && sec5c[0].indexOf('? e(') >= 0 && sec5c[0].indexOf(': null') < 0, '⑤零引用段无条件渲染（不再是 条件 ? 段 : null 形态）')
+    assert(clientSrc.indexOf('const suggestScrollRef = { current: 0 }') >= 0 && clientSrc.indexOf('suggestModalRef.current.scrollTop = suggestScrollRef.current') >= 0, '回开滚动保持：ref 存档 + effect 消费还原（n-mux8b046fq2e）')
     assert(clientPkgSrc.indexOf('function suggestMountNote(n)') >= 0 && clientPkgSrc.indexOf("rpc('notes-update', { id: n.id, inject: false })") >= 0, '发布包同步遥测两段动作（rpc 形态，需先跑 scripts/build-dist.cjs）')
     const sec3 = clientSrc.match(/tt\('sugg\.secOrphan'\)[\s\S]*?tt\('sugg\.criteriaClient'\)/)   // 锚定③段标题行（tt() 字典形态，i18n 覆盖卡E），避开段头注释与②段批量按钮
     assert(sec3 && sec3[0].indexOf("tt('sugg.view')") >= 0 && sec3[0].indexOf('doSuggestBatchDelete') < 0 && sec3[0].indexOf('danger') < 0, '孤儿段仅展示（查看按钮走 tt()，无批量/danger 操作）')
@@ -356,7 +394,10 @@ module.exports = {
   await t('app.html + 原型整理建议同款：设置卡片「整理建议」行入口 + 三段式 modal + 批量软删无 confirm（撤销 toast 兜底）+ 孤儿仅展示（双端 UI 标记一致 + mock 演示）', () => {
     for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
       const s = pair[1], label = pair[0]
-      assert(s.indexOf('id="btnSuggest"') < 0, label + ' 底部「整理」按钮已移除（收敛进设置卡片）')
+      /* 0.4.6-C（notes-046-ux-discovery）：btnSuggest id 由顶栏「建议」治理入口复用（设置卡「整理建议」行保留不动）——
+         原底部按钮墓石断言改写为 side-foot 作用域口径：侧栏底行内零 suggest 入口（底部整理按钮移除的设计不变） */
+      const sideFoot33 = (s.match(/<div class="side-foot">[\s\S]*?<\/aside>/) || [''])[0]
+      assert(sideFoot33 && sideFoot33.indexOf('btnSuggest') < 0 && sideFoot33.indexOf('整理建议') < 0, label + ' 底部「整理」按钮已移除（收敛进设置卡片；0.4.6-C 起顶栏另有 btnSuggest 治理入口）')
       assert(s.indexOf('id="setSuggest"') >= 0, label + ' 设置卡片「整理建议」行入口')
       assert(s.indexOf("$('setSuggest').onclick = function () { openSuggest() }") >= 0, label + ' 入口接线（设置卡片）')
       assert(s.indexOf('function openSuggest()') >= 0 && s.indexOf('function renderSuggestList()') >= 0 && s.indexOf('function doSuggestBatchDelete()') >= 0, label + ' 建议三函数')
@@ -373,8 +414,11 @@ module.exports = {
         assert(s.indexOf("t('sugg.secZeroRef')") >= 0 && s.indexOf("t('sugg.secHot')") >= 0, label + ' 遥测两段标题走 t()')
         assert(s.indexOf('sg-unmount') >= 0 && s.indexOf('sg-editwhen') >= 0 && s.indexOf('sg-mount') >= 0, label + ' 遥测两段动作按钮类')
         assert(s.indexOf("rpc('notes-update', { id: id, inject: false })") >= 0, label + ' 摘除挂载走 notes-update inject:false 既有通道')
-        assert(s.indexOf("openMountModal({ id: n.id, title: n.title || n.id, existing: n.when || '' }, function () { openSuggest() })") >= 0, label + ' 改文案 → MountModal 编辑模式（确认回开建议框）')
-        assert(s.indexOf("openMountModal({ id: n.id, title: n.title || n.id }, function () { openSuggest() })") >= 0, label + ' 挂载 → MountModal LLM 草稿模式')
+        assert(s.indexOf("openMountModal({ id: n.id, title: n.title || n.id, existing: n.when || '' }, function () { suggestScrollHold = sc; openSuggest() })") >= 0, label + ' 改文案 → MountModal 编辑模式（确认回开建议框 + 滚动保持 0.4.6-E）')
+        assert(s.indexOf("openMountModal({ id: n.id, title: n.title || n.id }, function () { suggestScrollHold = sc; openSuggest() })") >= 0, label + ' 挂载 → MountModal LLM 草稿模式（确认回开建议框 + 滚动保持 0.4.6-E）')
+        /* 0.4.6-E：⑤ 零引用段空态口径统一（零候选渲染段头 + 「当前无」行）+ 滚动保持消费点 */
+        assert(s.indexOf("t('sugg.zeroRefEmpty')") >= 0, label + ' ⑤零引用段空态行走字典（口径统一，n-mux8beuj84i2）')
+        assert(s.indexOf('var suggestScrollHold = 0;') >= 0 && s.indexOf("if (suggestScrollHold > 0 && d) { var sm = $('modal'); if (sm) sm.scrollTop = suggestScrollHold; suggestScrollHold = 0 }") >= 0, label + ' 回开滚动保持：hold 存档 + 渲染消费还原（n-mux8b046fq2e）')
       }
       /* i18n 覆盖卡E：app 端三段标题/孤儿段文案走 t() 字典（zh 原串随字典内嵌），原型不双语保留中文原文（分侧断言） */
       const sec3 = label === 'app.html' ? s.match(/t\('sugg\.secOrphan'\)[\s\S]*?t\('sugg\.criteria'\)/) : s.match(/>可能无用<span[\s\S]*?判定口径/)   // 锚定③段标题行，避开段头注释与②段批量按钮

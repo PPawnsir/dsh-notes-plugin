@@ -107,14 +107,22 @@ function folderNodeHtml(f, vis, filtering) {
   if (!open) return h;
   var subFolders = folderKids(f.id);
   if (!subFolders.length && !kids.length) return h;
+  /* 0.4.6-H（notes-046-smallfix，R2 n-mux9r8hfh7xy）：子夹全被遮罩（sys 夹 0.4.4-G / hidden 夹 0.4.4-D 整节点滤除）且直挂笔记为空时，
+     「展开为空」补一行提示（原渲染空 .nested 容器零反馈、整链隐身零入口）；仅在整空时出现（有可见内容不打扰）；遮罩本身不松绑（红线） */
+  var subHtml = '';
+  var maskedSub = 0;
+  subFolders.forEach(function (cf) { var sh = folderNodeHtml(cf, vis, filtering); if (sh) subHtml += sh; else maskedSub++ });
   h += '<div class="nested">';
-  subFolders.forEach(function (cf) { h += folderNodeHtml(cf, vis, filtering) });
+  if (!subHtml && !kids.length && maskedSub > 0) h += '<div class="sys-mask-hint">' + t('tree.sysMaskHint') + '</div>';
+  h += subHtml;
   kids.forEach(function (n) { h += noteRow(n, true) });
   h += '</div>';
   return h;
 }
 function renderTree() {
   renderChrome();   /* 覆盖卡A（notes-042-i18n-cov-a）：壳静态串随树渲染收敛刷新（setLang → render() 路径）；函数在 panels/topbar.js */
+  /* 0.4.6-J（notes-046-group-paging）双端口径：app 端恒全量渲染（本就无分页）；client 面板分组分页、组内 cap PAGE_SIZE=50，
+     小库≈全量——双端观感口径收敛，本端行为零改动 */
   var vis = notes.filter(matches);
   /* 排序：缺省保持 host 序（pinned → updatedAt）；「按引用」= useCount 降序（同数按 updatedAt 兜底）；「相关度」= 标题命中>标签>正文（同级 updatedAt 降序），分组内顺序随过滤数组 */
   if (sortBy === 'use') vis.sort(function (a, b) { return ((b.useCount || 0) - (a.useCount || 0)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) });
@@ -126,6 +134,8 @@ function renderTree() {
   var h = '';
   var vt = view.type === 'topic' ? t('tree.viewTopic', { id: view.id }) : t('tree.viewAll');
   h += '<div class="sec-h">' + icon('i-filter', 11) + esc(vt) + (view.type === 'topic' ? ' <span style="letter-spacing:0;text-transform:none;font-weight:500">' + esc(t('tree.crossFolderCount', { n: vis.length })) + '</span>' : '') + (view.type !== 'all' ? '<span class="add" id="viewClear" title="' + t('tree.clearViewTip') + '">✕</span>' : '') + '</div>';
+  /* 0.4.6-B（notes-046-rpc-resilience）：列表在途且树仍为空 → 顶部「加载中…」行（首载/刷新挂起期不再空白零提示；0.4.6-A 正文在途窗的列表侧同族） */
+  if (listLoading && !notes.length) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">' + t('common.loading') + '</div>';
   /* 置顶聚合组（筛选中心「置顶」条件激活时不再重复展示） */
   if (!filters.pinned) {
     var pins = vis.filter(isPinned);
@@ -170,11 +180,14 @@ function renderTree() {
       + '<span class="vfilter' + (on ? ' on' : '') + '" title="' + topicViewTip + '">' + icon('i-filter', 11) + '</span></div>';
     if (tOpen && tkids.length) { h += '<div class="nested">'; tkids.forEach(function (n) { h += noteRow(n, false) }); h += '</div>' }
   });
-  /* 空结果态：提示 + 「清空筛选条件」快捷链接（筛选中心口径⑦） */
+  /* 空结果态：提示 + 「清空筛选条件」快捷链接（筛选中心口径⑦）；
+     0.4.6-D（notes-046-copy-consistency，R2 n-mux7as3gnrru）：过滤激活的零命中补引导行——更短关键词提示 + 「新建一篇」动作出口 */
   if (!vis.length) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">' + t('tree.noMatch') + (filtersActiveCount() ? ' · <span class="add" id="emptyClear" style="letter-spacing:0">' + t('tree.clearFilters') + '</span>' : '') + '</div>';
+  if (!vis.length && filtering) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">' + t('tree.noMatchGuide') + ' <span class="add" id="emptyNew" style="letter-spacing:0">' + t('tree.noMatchNew') + '</span></div>';
   $('tree').innerHTML = h;
   var vc = $('viewClear'); if (vc) vc.onclick = function () { view = { type: 'all', id: '' }; render() };
   var ec = $('emptyClear'); if (ec) ec.onclick = function () { clearFilters(); render(); renderFilterBar(); if (searchText.trim()) reSearch() };
+  var en2 = $('emptyNew'); if (en2) en2.onclick = function () { doNewNote() };   /* 0.4.6-D：空态「新建一篇」→ 草稿新建链路 */
   var af = $('addFolder'); if (af) af.onclick = function (ev) { ev.stopPropagation(); doCreateFolder() };
   $('btnSelMode').classList.toggle('on', selMode);
   /* 筛选中心控制行：按钮计数丸 / 激活 chips / 排序按钮 / popover 随每次树渲染同步（列表到达后 feature-detect 与命中数才准） */

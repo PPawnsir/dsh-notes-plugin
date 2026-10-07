@@ -362,6 +362,176 @@ module.exports = {
     await handlers['notes-delete']({ id: c.id })
   })
 
+  // ===== 声明重锚 declaredAt（0.4.6-F，notes-046-sched-anchor）：修「编辑存量约定后当天误触发一轮」 =====
+  // 造数：直写 store 构造存量笔记（老 createdAt / 指定 declaredAt / 缺字段——cache 未命中由磁盘解析，同真实存量路径；节 42 先例）
+  const mdOf46F = (id, title, createdAtIso, schedObj) => {
+    const schedJson = JSON.stringify(schedObj)
+    return '---\n' +
+      'id: ' + id + '\n' +
+      'title: ' + title + '\n' +
+      'topic: 未分类\n' +
+      'workspace: deepseek-work\n' +
+      'folder: \n' +
+      'tags: \n' +
+      'kind: todo\n' +
+      'status: active\n' +
+      'inject: false\n' +
+      'injectEver: false\n' +
+      'injectTo: \n' +
+      'sensitive: false\n' +
+      'createdAt: "' + createdAtIso + '"\n' +
+      'updatedAt: "' + createdAtIso + '"\n' +
+      'sessionId: ' + LIVE_SID + '\n' +
+      'cwd: "D:\\deepseek-work"\n' +
+      'logDate: \n' +
+      'mergedFrom: \n' +
+      'contractType: dispatch-schedule\n' +
+      'schedule: "' + schedJson.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"\n' +
+      'dispatches: "[]"\n' +
+      'archivedAt: \n' +
+      'deleted: false\n' +
+      '---\n' +
+      '0.4.6-F 断言造数正文\n'
+  }
+
+  await t('declaredAt 写入闸门：首次=now + 声明变更刷新 + 未变更/正文改写延续 + 伪 declaredAt 剥离（断言④）', async () => {
+    const c = await handlers['notes-create']({ title: '重锚约定A', body: '声明重锚断言', contractType: 'dispatch-schedule', schedule: { every: '3d', target: LIVE_SID, declaredAt: '2020-01-01T00:00:00.000Z' } })
+    assert(c && c.id && !c.error, '创建成功（携带伪 declaredAt 试探剥离，实得 ' + JSON.stringify(c) + '）')
+    let g = await handlers['notes-get']({ id: c.id })
+    const d0 = g.note.schedule.declaredAt
+    assert(d0 && d0 !== '2020-01-01T00:00:00.000Z' && Math.abs(Date.parse(d0) - Date.now()) < 60000, '首次写入 declaredAt=now（输入伪值剥离，实得 ' + d0 + '）')
+    const raw0 = store.get(NOTES_DIR + '\\' + c.id + '.md')
+    assert(raw0.indexOf('declaredAt') >= 0, 'declaredAt 随 schedule JSON 落 front-matter 条件行')
+    // 断言④：声明未变更的 update（等价重提交）→ declaredAt 延续不刷新
+    let u = await handlers['notes-update']({ id: c.id, schedule: { every: '3d', target: LIVE_SID } })
+    assert(u && !u.error, '等价声明重提交成功（实得 ' + JSON.stringify(u) + '）')
+    g = await handlers['notes-get']({ id: c.id })
+    assert.strictEqual(g.note.schedule.declaredAt, d0, '声明未变更的 update 不刷新 declaredAt（断言④）')
+    // 断言④：只改正文 → 不过声明闸门 → 延续
+    u = await handlers['notes-update']({ id: c.id, body: '只改正文不动声明' })
+    assert(u && !u.error, '正文更新成功')
+    g = await handlers['notes-get']({ id: c.id })
+    assert.strictEqual(g.note.schedule.declaredAt, d0, '只改正文 declaredAt 延续（断言④）')
+    // 声明变更（every 3d→7d + 伪 declaredAt 二次试探）→ 刷新 now
+    u = await handlers['notes-update']({ id: c.id, schedule: { every: '7d', target: LIVE_SID, declaredAt: '1999-12-31T00:00:00.000Z' } })
+    assert(u && !u.error, '声明变更成功（实得 ' + JSON.stringify(u) + '）')
+    g = await handlers['notes-get']({ id: c.id })
+    const d1 = g.note.schedule.declaredAt
+    assert(d1 && d1 !== '1999-12-31T00:00:00.000Z' && Date.parse(d1) >= Date.parse(d0) && Math.abs(Date.parse(d1) - Date.now()) < 60000, '声明变更刷新 declaredAt=now（伪值再剥离，实得 ' + d1 + '）')
+    // enabled 翻转（暂停）属声明字段 → 刷新
+    u = await handlers['notes-update']({ id: c.id, schedule: { every: '7d', target: LIVE_SID, enabled: false } })
+    assert(u && !u.error, '暂停改写成功')
+    g = await handlers['notes-get']({ id: c.id })
+    assert(Date.parse(g.note.schedule.declaredAt) >= Date.parse(d1), 'enabled 翻转刷新 declaredAt（声明字段，实得 ' + g.note.schedule.declaredAt + '）')
+    await handlers['notes-delete']({ id: c.id })
+  })
+
+  await t('declaredAt 确定性变更判定（存量 declaredAt=2020 造数）：未变更延续旧值 / 变更刷新 now', async () => {
+    const LEG = 'n-reanchor046fa'
+    try {
+      const oldIso = new Date(Date.now() - 10 * 86400000).toISOString()
+      store.set(NOTES_DIR + '\\' + LEG + '.md', mdOf46F(LEG, '存量重锚约定', oldIso, { every: '3d', target: LIVE_SID, action: 'dispatch', enabled: true, declaredAt: '2020-01-01T00:00:00.000Z' }))
+      let g = await handlers['notes-get']({ id: LEG })
+      assert(g && g.note && g.note.schedule && g.note.schedule.declaredAt === '2020-01-01T00:00:00.000Z', '造数读取 declaredAt=2020（front-matter JSON 往返）')
+      let u = await handlers['notes-update']({ id: LEG, schedule: { every: '3d', target: LIVE_SID } })
+      assert(u && !u.error, '等价重提交成功（实得 ' + JSON.stringify(u) + '）')
+      g = await handlers['notes-get']({ id: LEG })
+      assert.strictEqual(g.note.schedule.declaredAt, '2020-01-01T00:00:00.000Z', '声明未变更 → 存量 declaredAt 原样延续（确定性）')
+      u = await handlers['notes-update']({ id: LEG, schedule: { every: '7d', target: LIVE_SID } })
+      assert(u && !u.error, '声明变更成功')
+      g = await handlers['notes-get']({ id: LEG })
+      assert(g.note.schedule.declaredAt !== '2020-01-01T00:00:00.000Z' && Math.abs(Date.parse(g.note.schedule.declaredAt) - Date.now()) < 60000, '声明变更 → declaredAt 刷新为 now（确定性，实得 ' + g.note.schedule.declaredAt + '）')
+    } finally {
+      await handlers['notes-delete']({ id: LEG })   // finally 清理：断言失败也不留活口污染后续节评估计数
+    }
+  })
+
+  await t('编辑重锚行为级（断言①③）：老约定编辑后当天不触发，下个调度点才触发；触发后锚点=lastFiredAt', async () => {
+    const LEG = 'n-reanchor046fb'
+    try {
+      const tenDaysAgo = new Date(Date.now() - 10 * 86400000).toISOString()
+      const declaredIso = new Date().toISOString()   // 模拟「刚编辑过声明」：declaredAt = 现在（真实时钟）
+      const declaredMs = Date.parse(declaredIso)
+      store.set(NOTES_DIR + '\\' + LEG + '.md', mdOf46F(LEG, '老约定重锚', tenDaysAgo, { every: '3d', target: LIVE_SID, action: 'dispatch', enabled: true, declaredAt: declaredIso }))
+      // 修复前口径：now - createdAt = 10d ≥ 3d → 当天立即误触发；修复后锚点 = declaredAt（现在）→ 不到期
+      let ev = await handlers['notes-schedule-eval']({ now: new Date(Date.now() + 60000).toISOString() })
+      assert(ev.fired === 0 && ev.errors === 0, '编辑后当天不触发（declaredAt 重锚，实得 ' + JSON.stringify(ev) + '）')
+      let g = await handlers['notes-get']({ id: LEG })
+      assert(!g.note.schedule.lastFiredAt, 'lastFiredAt 仍空（未误触发）')
+      // 下个调度点（declaredAt + 3d）边界：前 1min 不触发，到点触发
+      ev = await handlers['notes-schedule-eval']({ now: new Date(declaredMs + 3 * 86400000 - 60000).toISOString() })
+      assert(ev.fired === 0, 'declaredAt+3d 前 1min 不触发（实得 ' + JSON.stringify(ev) + '）')
+      const before = sentMessages.length
+      const fireClock = new Date(declaredMs + 3 * 86400000 + 60000).toISOString()
+      ev = await handlers['notes-schedule-eval']({ now: fireClock })
+      assert(ev.fired === 1 && ev.errors === 0, '下个调度点准点触发（实得 ' + JSON.stringify(ev) + '）')
+      assert.strictEqual(sentMessages.length, before + 1, '恰好一次派发')
+      g = await handlers['notes-get']({ id: LEG })
+      assert.strictEqual(g.note.schedule.lastFiredAt, fireClock, 'lastFiredAt=触发时刻')
+      assert.strictEqual(g.note.schedule.declaredAt, declaredIso, '触发不触碰 declaredAt（机器字段各司其职）')
+      // 断言③回归：触发后锚点 = lastFiredAt（非 declaredAt）——距触发 1d < 3d 不触发（若锚点退回 declaredAt：4d+ ≥ 3d 会误触发，本断言即红）
+      ev = await handlers['notes-schedule-eval']({ now: new Date(declaredMs + 4 * 86400000 + 120000).toISOString() })
+      assert(ev.fired === 0, '触发后锚点=lastFiredAt（距 lastFiredAt 1d 不触发，断言③回归）')
+      ev = await handlers['notes-schedule-eval']({ now: new Date(Date.parse(fireClock) + 3 * 86400000 + 60000).toISOString() })
+      assert(ev.fired === 1, 'lastFiredAt+3d 再次到期（周期推进正常）')
+    } finally {
+      await handlers['notes-delete']({ id: LEG })   // finally 清理：断言失败也不留活口污染后续节评估计数
+    }
+  })
+
+  await t('存量兼容（断言②）：无 declaredAt 字段回退 createdAt 锚点（到期语义不变 + 字段零迁移）', async () => {
+    const LEG = 'n-reanchor046fc'
+    try {
+      const GONE = 'session-gone046f00-0000-0000-0000-000000000000'   // 非 live 且持久化不可达：到期尝试触发失败记 lastError，不产生派发消息（断言零干扰）
+      const tenDaysAgo = Date.now() - 10 * 86400000
+      store.set(NOTES_DIR + '\\' + LEG + '.md', mdOf46F(LEG, '存量无重锚字段约定', new Date(tenDaysAgo).toISOString(), { every: '3d', target: GONE, action: 'dispatch', enabled: true }))
+      // createdAt+2d（首个到期点之前）→ 不到期：createdAt 锚点语义不变
+      let ev = await handlers['notes-schedule-eval']({ now: new Date(tenDaysAgo + 2 * 86400000).toISOString() })
+      assert(ev.fired === 0 && ev.errors === 0, 'createdAt+2d 不到期（实得 ' + JSON.stringify(ev) + '）')
+      // createdAt+4d ≥ +3d → 到期（触发尝试失败记 lastError = 到期判定回退 createdAt 生效的行为证据）
+      ev = await handlers['notes-schedule-eval']({ now: new Date(tenDaysAgo + 4 * 86400000).toISOString() })
+      assert(ev.fired === 0 && ev.errors === 1, '存量无 declaredAt → 回退 createdAt 到期（实得 ' + JSON.stringify(ev) + '）')
+      const g = await handlers['notes-get']({ id: LEG })
+      assert(!('declaredAt' in g.note.schedule), 'declaredAt 字段零迁移（机器状态回写不补字段）')
+      assert(!g.note.schedule.lastFiredAt && g.note.schedule.lastError, 'lastFiredAt 不推进 + lastError 落盘（不可送达语义不变）')
+      const raw = store.get(NOTES_DIR + '\\' + LEG + '.md')
+      const schedLine = (raw || '').split('\n').find(l => l.indexOf('schedule:') === 0) || ''
+      assert(schedLine && schedLine.indexOf('declaredAt') < 0 && schedLine.indexOf('lastError') >= 0, '磁盘 schedule 行仍无 declaredAt（存量零迁移）+ lastError 落盘（实得 ' + schedLine.slice(0, 120) + '…）')
+    } finally {
+      await handlers['notes-delete']({ id: LEG })   // finally 清理：断言失败也不留活口污染后续节评估计数
+    }
+  })
+
+  await t('anchor 首触防过去候选（断言①对齐轮询不追赶）：base 陈旧 → 候选落过去不补发，下个锚定点才触发', async () => {
+    const LEG = 'n-reanchor046fd'
+    try {
+      const nowReal = Date.now()
+      const threeDaysAgo = new Date(nowReal - 3 * 86400000).toISOString()
+      store.set(NOTES_DIR + '\\' + LEG + '.md', mdOf46F(LEG, '锚定存量约定', threeDaysAgo, { every: '1d', anchor: '09:00', target: LIVE_SID, action: 'dispatch', enabled: true, declaredAt: threeDaysAgo }))
+      // 修复前口径：base=3d 前 → 首触候选=base 次日 09:00（落在过去）→ now≥next 恒真立即误触发；修复后对齐「now 之后第一个 09:00」
+      const nd = new Date(nowReal), ndMid = new Date(nd.getFullYear(), nd.getMonth(), nd.getDate()).getTime()
+      const nextAnchor = (ndMid + 9 * 3600000 >= nowReal ? ndMid : ndMid + 86400000) + 9 * 3600000   // 与首触防过去候选口径同构的期望推算
+      let ev = await handlers['notes-schedule-eval']({ now: new Date(nowReal).toISOString() })
+      assert(ev.fired === 0 && ev.errors === 0, '候选落过去不补发（首轮不追赶，实得 ' + JSON.stringify(ev) + '）')
+      ev = await handlers['notes-schedule-eval']({ now: new Date(nextAnchor - 60000).toISOString() })
+      assert(ev.fired === 0, '下个锚定点前 1min 不触发（实得 ' + JSON.stringify(ev) + '）')
+      const before = sentMessages.length
+      ev = await handlers['notes-schedule-eval']({ now: new Date(nextAnchor).toISOString() })
+      assert(ev.fired === 1 && ev.errors === 0, '下个锚定点 09:00 准点触发（实得 ' + JSON.stringify(ev) + '）')
+      assert.strictEqual(sentMessages.length, before + 1, '恰好一次派发')
+      const g = await handlers['notes-get']({ id: LEG })
+      assert.strictEqual(g.note.schedule.lastFiredAt, new Date(nextAnchor).toISOString(), 'lastFiredAt=锚定点触发时刻')
+      assert.strictEqual(g.note.schedule.declaredAt, threeDaysAgo, 'declaredAt 不被触发触碰')
+      // 触发后锚定序列不漂移（fired 分支不注入防过去闸：停机补发一次语义保留）——次日 09:00 再触发一次
+      ev = await handlers['notes-schedule-eval']({ now: new Date(nextAnchor + 3600000).toISOString() })
+      assert(ev.fired === 0, '触发后当日不再触发（防重）')
+      ev = await handlers['notes-schedule-eval']({ now: new Date(nextAnchor + 86400000).toISOString() })
+      assert(ev.fired === 1, '次日 09:00 准点触发（锚定序列钉死不漂移）')
+    } finally {
+      await handlers['notes-delete']({ id: LEG })   // finally 清理：断言失败也不留活口污染后续节评估计数
+    }
+  })
+
   // ===== 双包一致：标记块逐字节 + 静态包行为（webServer 路由链路全链路） =====
   await t('schedule-exec 标记块双包逐字节一致 + cron 装配静态锚点（host-impl / index.mjs）', () => {
     const grab = (s, tag) => { const m = s.match(/\/\/ ==== schedule-exec BEGIN ====[\s\S]*?\/\/ ==== schedule-exec END ====/); assert(m, tag + ' 缺 schedule-exec 标记块'); return m[0] }
@@ -380,6 +550,10 @@ module.exports = {
       assert(src.indexOf('function schedAnchorMs(') >= 0 && src.indexOf('function schedAnchorNextMs(') >= 0, tag + ' 锚定时刻 helper（notes-034-sched-time）')
       assert(src.indexOf('schedule.anchor 非法') >= 0 && src.indexOf('schedule.dow 非法') >= 0 && src.indexOf('仅每周模式') >= 0, tag + ' 锚定时刻写入闸门（anchor HH:MM / dow 0-6 / 仅每周）')
       assert(src.indexOf('sched.anchor') >= 0 && src.indexOf('schedAnchorNextMs(sched.anchor') >= 0, tag + ' schedDueAt 锚定分支（无 anchor 存量保持纯间隔语义）')
+      // 0.4.6-F（notes-046-sched-anchor）：declaredAt 声明重锚 + 首触防过去候选——静态锚点双包看守
+      assert(src.indexOf('declaredAt: 1') >= 0 && src.indexOf('function schedDeclChanged(') >= 0, tag + ' declaredAt 已知键 + 声明变更比对（0.4.6-F）')
+      assert(src.indexOf('firedMs || declaredMs ||') >= 0, tag + ' 到期锚点 lastFiredAt||declaredAt||createdAt（0.4.6-F）')
+      assert(src.indexOf('首触防过去候选') >= 0 && src.indexOf('!!firedMs, nowMs)') >= 0, tag + ' 首触防过去候选注入 nowMs（0.4.6-F）')
     }
   })
 
@@ -387,6 +561,8 @@ module.exports = {
     const c = await rpc2('notes-create', { title: '静态调度约定', body: '静态包巡检', contractType: 'dispatch-schedule', schedule: { every: '3d', target: LIVE_SID } })
     assert(c.body && c.body.id && !c.body.error, '静态包创建调度约定（实得 ' + JSON.stringify(c.body) + '）')
     const sid = c.body.id
+    const g0st = await rpc2('notes-get', { id: sid })
+    assert(g0st.body && g0st.body.note.schedule.declaredAt && Math.abs(Date.parse(g0st.body.note.schedule.declaredAt) - Date.now()) < 60000, '静态包首次写入 declaredAt=now（0.4.6-F 声明重锚双包一致，实得 ' + (g0st.body && g0st.body.note.schedule.declaredAt) + '）')
     let ev = await rpc2('notes-schedule-eval', {})
     assert(ev.body && ev.body.fired === 0, '静态包未到期零触发（实得 ' + JSON.stringify(ev.body) + '）')
     const clock = new Date(Date.now() + 4 * 86400000).toISOString()

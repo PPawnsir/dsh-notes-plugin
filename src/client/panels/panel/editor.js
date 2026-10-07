@@ -58,6 +58,10 @@
         const keepQuickRef = React.useRef(false)
         const edBodyDomRef = React.useRef(null)      // 正文 textarea DOM（新建笔记创建后聚焦）
         const edLoadingRef = React.useRef(false)     // 正文异步加载中（notes-get 在途）：AI 整理等入口的轻量互斥指示
+        // 0.4.6-A（notes-046-rich-freeze，UXR2 反馈 n-mux892tew6bf 现象①根修）：正文在途窗反应式镜像——
+        // 富文本在窗内锁编辑 + 同步点转「加载中」橙点（旧口径空 div + 绿点「已同步源码」= 假同步，RPC 尖刺期窗口实测秒级）。
+        // 真值源仍是 edBodyLoadedRef/edLoadErrRef（R-1 闸不动），本 state 仅为渲染镜像（loadEdBody 起止点写入）
+        const [edBodyPending, setEdBodyPending] = React.useState(false)
         // R-1 安全态双字段（P0 数据丢失防护，check 节 46 看守）：edBodyLoadedRef=正文提交闸（仅 notes-get 成功后置 true，doSave 才携带 body）；
         // edLoadErr=加载失败安全态（锁定编辑 + doSave 整体暂停 + 横幅重试），绝不以空 body 为基底提交
         const edBodyLoadedRef = React.useRef(false)
@@ -120,10 +124,12 @@
         function loadEdBody(id) {
           edLoadingRef.current = true
           edBodyLoadedRef.current = false
+          setEdBodyPending(true)   // 0.4.6-A：进入在途窗（同步点转「加载中」+ 富文本锁编辑）
           edLoadErrRef.current = ''; setEdLoadErr('')
           host.call('notes-get', { id: id }).then(res => {
             if (selectedRef.current !== id) return
             edLoadingRef.current = false
+            setEdBodyPending(false)   // 0.4.6-A：落定出窗（成功/失败均出——失败态由 edLoadErr 横幅接管）
             if (res && res.note) {
               edBodyLoadedRef.current = true   // R-1 正文提交闸：全局唯一放行点
               const body = res.note.body || ''
@@ -144,6 +150,7 @@
           }).catch(err => {
             if (selectedRef.current !== id) return
             edLoadingRef.current = false
+            setEdBodyPending(false)   // 0.4.6-A：异常同出窗（错误横幅接管，同步点不滞留「加载中」）
             const msg = tt('editor.loadFailed', { msg: String(err && err.message || err) })
             edLoadErrRef.current = msg; setEdLoadErr(msg)
             showToast(tt('editor.loadFailedLocked', { msg: msg }))
@@ -349,6 +356,9 @@
             })
             return
           }
+          // 0.4.6-E（n-mux8ccd3i4ub）：「约定」档二次确认闸——约定 = 全文进系统提示、缺省对所有会话生效（风险等级高于资料却无闸，实测误触）；
+          //   确认强度对齐风险：off 关闭/资料走挂载框确认，独缺约定这一档。scope 文案随 injectTo 实况（缺省 = 所有会话）
+          if (r === 'convention' && !window.confirm(tt('meta.convInjectConfirm', { title: edTitleRef.current || selectedRef.current, scope: injectScopeLabel(edScopeRef.current) }))) return
           const wasOff = edRole === 'off'
           setEdRole(r)
           if (r === 'off') setScopeOpen(false)
@@ -738,6 +748,8 @@
                   e('span', { className: 'dsh-notes-sched-freq' }, schedFreqLabel(curNote.schedule)),
                   // 0.4.5-B（notes-045-ux-polish）：target='new' 目标位显示人话文案（首轮回写真实 sid 自动恢复「→ 截短」，零迁移；纯展示层）
                   e('span', { className: 'dsh-notes-sched-target dsh-nt', 'data-tooltip': curNote.schedule.target || '' }, curNote.schedule.target === 'new' ? tt('disp.schedNewTarget') : '→ ' + shortSid(curNote.schedule.target)),
+                  // 0.4.6-G（notes-046-sched-model）：声明模型档位标注（有声明才显示，无声明零 DOM 痕迹）
+                  (curNote.schedule.provider && curNote.schedule.model) ? e('span', { className: 'dsh-notes-sched-model dsh-nt', 'data-tooltip': tt('disp.schedModelTip', { model: curNote.schedule.provider + '/' + curNote.schedule.model }) }, curNote.schedule.provider + '/' + curNote.schedule.model) : null,
                   e('span', { className: 'dsh-notes-sched-nf' }, schedPlanNextLabel(curNote)),
                   schedPlanBadgeEl(curNote),
                   curNote.schedule.enabled === false ? e('span', { className: 'dsh-notes-sched-badge off' }, tt('meta.schedPaused')) : null,
@@ -786,7 +798,7 @@
           // 正文双模式（原型 .src / .rich-scroll）：源码 textarea ⇄ 富文本 contenteditable（非受控，编辑期间不重渲染）
           editorMode === 'source'
             ? e('textarea', {
-                ref: edBodyDomRef, className: 'dsh-notes-ed-body', placeholder: tt('editor.bodyPlaceholder'), value: edBody, readOnly: !!edLoadErr,
+                ref: edBodyDomRef, className: 'dsh-notes-ed-body', placeholder: edBodyPending ? tt('editor.bodySyncing') : tt('editor.bodyPlaceholder'), value: edBody, readOnly: !!edLoadErr,
                 onChange: (ev) => { setEdBody(ev.target.value); triggerAutoSave(); scheduleDegAnalyze() },
                 // 图片入口①/②（源码模式）：粘贴/拖拽图片文件 → 同一上传弹窗 → 光标处插 Markdown 文本
                 onPaste: (ev) => { const cd = ev.clipboardData; if (cd && cd.files && cd.files.length && cd.files[0].type.indexOf('image/') === 0) { ev.preventDefault(); pickImageFile(cd.files[0]) } },
@@ -805,8 +817,8 @@
                   e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'quote', 'data-tooltip': tt('editor.tbQuote'), onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('quote') } }, I('quote', 14)),
                   e('span', { className: 'dsh-notes-rtb-sep' }),
                   e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'image', 'data-tooltip': tt('editor.tbImage'), onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('image') } }, I('image', 14)),
-                  e('span', { className: 'dsh-notes-rtb-sync' + (richSyncing ? '' : ' ok') }, e('span', { className: 'dsh-notes-rtb-sync-sd' }), richSyncing ? tt('editor.syncing') : tt('editor.synced'))),
-                e('div', { ref: richRef, className: 'dsh-notes-rich', contentEditable: edLoadErr ? false : true, spellCheck: false, suppressContentEditableWarning: true })),
+                  e('span', { className: 'dsh-notes-rtb-sync' + ((edBodyPending || richSyncing) ? '' : ' ok') }, e('span', { className: 'dsh-notes-rtb-sync-sd' }), edBodyPending ? tt('editor.bodySyncing') : richSyncing ? tt('editor.syncing') : tt('editor.synced'))),
+                e('div', { ref: richRef, className: 'dsh-notes-rich', contentEditable: (edLoadErr || edBodyPending) ? false : true, spellCheck: false, suppressContentEditableWarning: true })),
           // P2 反向链接面板：全库正文含 [[当前id]]/[[当前标题]] 的其他笔记（点击跳转；索引未热提示「索引中…」）
           e('div', { className: 'dsh-notes-backlinks' },
             e('div', { className: 'dsh-notes-backlinks-t' }, I('link', 11), tt('editor.backlinks') + (wikiWarm ? tt('editor.backlinksCount', { n: backlinks.length }) : tt('editor.backlinksWarming'))),

@@ -74,16 +74,30 @@ function refreshLoadErrUI() {
     if (rt && !rt._bound) { rt._bound = true; rt.addEventListener('click', function () { if (selId) loadEdBody(selId) }) }
   }
   var locked = !!edBodyErr;
-  var ta = $('edSrc'); if (ta) ta.readOnly = locked;
+  var ta = $('edSrc'); if (ta) { ta.readOnly = locked; ta.placeholder = edBodyPending() ? t('editor.bodySyncing') : t('editor.bodyPlaceholder') }   /* 0.4.6-B：源码正文在途窗 placeholder 转「正文加载中…」（不再空白；落定/出错即还原） */
   var ti = $('edTitle'); if (ti) ti.contentEditable = locked ? 'false' : 'true';
-  var rich = $('edRich'); if (rich) rich.contentEditable = locked ? 'false' : 'true';
+  /* 0.4.6-A：富文本在正文在途窗同步锁编辑（假同步根修连带闸；源码 textarea 无同步态宣称，语义不动） */
+  var rich = $('edRich'); if (rich) rich.contentEditable = (locked || edBodyPending()) ? 'false' : 'true';
 }
+/* 0.4.6-A（notes-046-rich-freeze，UXR2 反馈 n-mux892tew6bf 现象①根修）：正文在途窗判定——
+   笔记已选（edNote 在）而 notes-get 未落定（edBodyLoaded=false）且无错误横幅时，
+   旧口径富文本渲染空 div + 绿点「已同步源码」= 假同步（RPC 尖刺期窗口实测可达秒级，用户直视即「正文空白」）；
+   窗口期口径：富文本锁编辑（contentEditable=false，堵「空态打字→失焦把空态当编辑序列化」错觉链）+ 同步点转「加载中」橙点（不冒绿）。
+   草稿态天然豁免：doNewNote 本地全量持有正文（edBodyLoaded=true），无 get 链路。 */
+function edBodyPending() { return !!(edNote && !edBodyLoaded && !edBodyErr) }
 /* 正文填充双模式：源码 → textarea.value；富文本 → 内核渲染进 contenteditable（填充前清 dirty，防回填被当编辑） */
 function fillEdBody() {
   if (!edNote) return;
   var body = edNote.body || '';
   if ($('edSrc')) $('edSrc').value = body;
-  if (edMode === 'rich' && $('edRich')) { richDirty = false; $('edRich').innerHTML = renderMarkdown(body, wikiResolve); setSyncStatus(false); }
+  if (edMode === 'rich' && $('edRich')) {
+    /* 0.4.6-A：在途窗富文本不填内核产物（空态 + 锁编辑 + 加载中同步点）；落定由 loadEdBody 链重调本函数回填 */
+    var pend = edBodyPending();
+    richDirty = false;
+    $('edRich').innerHTML = pend ? '' : renderMarkdown(body, wikiResolve);
+    $('edRich').contentEditable = pend ? 'false' : 'true';
+    setSyncStatus(false);
+  }
 }
 function triggerSave() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 900) }
 function doSave() {
@@ -109,6 +123,9 @@ function doSave() {
   rpc('notes-update', upd).then(function (res) {
     if (res && res.error) { toast(res.error); return }
     $('edSaved').textContent = t('editor.autoSaved', { time: new Date().toTimeString().slice(0, 5) });
+    /* 0.4.6-D（notes-046-copy-consistency，R2 n-mux8bv3x6lll）：「更新」时间戳随每次自动保存刷新——edNote 是选中时的拷贝，
+       不随 loadNotes 换代（底栏 renderEdFoot 读 edNote.updatedAt，不刷即滞留旧值）；迟到响应守卫：已切走（id 不符）不重渲底栏 */
+    if (edNote && edNote.id === upd.id) { edNote.updatedAt = new Date().toISOString(); renderEdFoot(); }
     edNote._tagsStr = null;
     wikiBodies[selId] = { body: edNote.body || '', updatedAt: '' };   /* 双链索引：自有正文即时新鲜（updatedAt 置空 → loadNotes 后索引复核） */
     renderBacklinks();
@@ -131,7 +148,8 @@ function renderEd() {
   var ed = $('ed');
   if (!edNote) {
     ed.className = 'ed empty';
-    ed.innerHTML = '<svg class="ic"><use href="#i-note"/></svg><div>' + t('editor.emptyTitle') + '</div><div style="font-size:11px">' + t('editor.emptySub') + '</div>';
+    ed.innerHTML = '<svg class="ic"><use href="#i-note"/></svg><div>' + t('editor.emptyTitle') + '</div><div style="font-size:11px">' + t('editor.emptySub') + '</div>'
+      + '<div style="font-size:11px" class="ed-empty-concept">' + t('editor.emptyConcept') + '</div>';   /* 0.4.6-C：空态首笔记引导补概念指向（静态壳同款一行，双处对齐） */
     return;
   }
   var n = edNote;
@@ -161,7 +179,7 @@ function renderEd() {
     + '<button class="rtb-btn" data-a="quote" title="' + t('editor.tbQuote') + '">' + icon('i-quote', 14) + '</button>'
     + '<span class="rtb-sep"></span>'
     + '<button class="rtb-btn" data-a="image" title="' + t('editor.tbImage') + '">' + icon('i-image', 14) + '</button>'
-    + '<span class="sync' + (richDirty ? '' : ' ok') + '" id="syncPill"><span class="sd"></span><span id="syncTxt">' + (richDirty ? t('editor.syncing') : t('editor.synced')) + '</span></span>'
+    + '<span class="sync' + ((edBodyPending() || richDirty) ? '' : ' ok') + '" id="syncPill"><span class="sd"></span><span id="syncTxt">' + (edBodyPending() ? t('editor.bodySyncing') : (richDirty ? t('editor.syncing') : t('editor.synced'))) + '</span></span>'
     + '</div>'
     + '<div class="rich" id="edRich" contenteditable="true" spellcheck="false"></div>'
     + '</div>'
@@ -231,11 +249,12 @@ function bindRich(rich, wrap) {
     b.addEventListener('mousedown', function (ev) { ev.preventDefault(); toolbarAction(b.getAttribute('data-a')); });
   });
 }
-/* 同步态徽标（原型 syncPill）：编辑中…（橙点）/ 已同步源码（绿点） */
+/* 同步态徽标（原型 syncPill）：编辑中…（橙点）/ 已同步源码（绿点）；0.4.6-A：正文在途窗 = 加载中…（橙点，不冒绿假同步） */
 function setSyncStatus(editing) {
   var pill = $('syncPill'); if (!pill) return;
-  pill.className = 'sync' + (editing ? '' : ' ok');
-  if ($('syncTxt')) $('syncTxt').textContent = editing ? t('editor.syncing') : t('editor.synced');
+  var pend = edBodyPending();
+  pill.className = 'sync' + (pend || editing ? '' : ' ok');
+  if ($('syncTxt')) $('syncTxt').textContent = pend ? t('editor.bodySyncing') : editing ? t('editor.syncing') : t('editor.synced');
 }
 /* 富文本 → 源码序列化（原型 syncFromRich）：内容无损最高优先——有变化才回写 body 并走既有 doSave 自动保存 */
 function syncFromRich(why) {
@@ -283,7 +302,10 @@ function switchMode(m) {
     edMode = 'rich';
     renderModeUI();
     var rich = $('edRich');
-    rich.innerHTML = renderMarkdown(edNote ? edNote.body || '' : '', wikiResolve);
+    /* 0.4.6-A：在途窗切富文本不填内核产物（防空白+假绿点重演），落定由 loadEdBody → fillEdBody 回填解锁 */
+    var pend = edBodyPending();
+    rich.innerHTML = pend ? '' : renderMarkdown(edNote ? edNote.body || '' : '', wikiResolve);
+    rich.contentEditable = pend ? 'false' : 'true';
     bindRich(rich, $('richScroll'));
     setSyncStatus(false);
   } else {

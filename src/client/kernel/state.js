@@ -72,7 +72,6 @@
     function openFolderMenu(ev, f) { return panelBridge.openFolderMenu(ev, f) }
     function injectScopeLabel(injectTo) { return panelBridge.injectScopeLabel(injectTo) }
     function hasWikiLinks(n) { return panelBridge.hasWikiLinks(n) }
-    function setVisibleCount(v) { return panelBridge.setVisibleCount(v) }
     function setSelected(v) { return panelBridge.setSelected(v) }
     function setFocusId(v) { return panelBridge.setFocusId(v) }
     function later(fn, ms) { return panelBridge.later(fn, ms) }
@@ -119,6 +118,6 @@
     const searchDebRef = { current: null }    // 搜索 250ms 防抖器句柄（一次性注册；侧栏输入/筛选变更/清空动作触发重搜）
     const searchInputRef = { current: null }  // 侧栏搜索框 DOM（Ctrl+K 聚焦）
     const treeElRef = { current: null }       // 侧栏树容器 DOM（Esc 焦点分层/搜索↓桥接：还焦列表，j/k 立即可用）
-    const pagedIdsRef = { current: [] }       // 当前分页渲染 id 序（树渲染写入，keyboard j/k/Enter 导航读）
+    const pagedIdsRef = { current: [] }       // 当前树渲染 id 序（0.4.6-J 起 = 各分组分页当前页并集，不含加载行；树渲染写入，keyboard j/k/Enter 导航读）
     const switchModeRef = { current: null }   // 双模式切换最新闭包（Ctrl+/ 经 ref 调最新 switchMode）
     const editorModeRef = { current: 'source' }   // 编辑器模式镜像（Ctrl+/ 守卫 / selectNote / 富文本序列化判读最新值）

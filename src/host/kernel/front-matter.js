@@ -46,7 +46,7 @@
         // （存量口径不动），非调度派发源笔记存本顶层 runLog 字段；普通笔记不落此行，存量零迁移）
         (m.runLog ? 'runLog: ' + escYaml(m.runLog) + '\n' : '') +
         // schedule 条件行（定时派发·执行层：contractType=dispatch-schedule 约定笔记的调度声明 + 机器状态——
-        // 声明 {at|every, target, action, enabled} + 状态 {lastFiredAt, lastRun{at,status,receiptId}, lastError}；
+        // 声明 {at|every, target, action, enabled} + 状态 {lastFiredAt, lastRun{at,status,receiptId}, lastError, declaredAt(0.4.6-F 声明重锚)}；
         // JSON 单行存储同 dispatches 先例；普通笔记不落此行，存量零迁移）
         (m.schedule ? 'schedule: ' + escYaml(JSON.stringify(m.schedule)) + '\n' : '') +
         'dispatches: ' + escYaml(JSON.stringify(m.dispatches || [])) + '\n' +

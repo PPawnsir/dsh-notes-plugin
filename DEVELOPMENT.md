@@ -15,7 +15,8 @@
 | `src/styles.css` | 全部样式（经 `notes-css` RPC 下发），Apple Notes 设计令牌 + 暗色适配 |
 | `check.js` | 回归测试 **runner**（模式解析 + CORE 名单 + 节注册表 + 收尾总结）；内存 mock，不碰真实笔记目录 |
 | `check/helpers.cjs` | 测试共享设施：`t()`/`section()`/断言计数器/源码常量 + host mock 实例工厂 `createHostMocks()`（原单文件节 2 主体），跨节共享状态经 `S` 对象传递 |
-| `check/sections/*.cjs` | 93 个节断言模块（按节次命名如 `39-memory.cjs`），节体自原单文件逐字节迁移；节首从 `H`/`S` 解构依赖、节末 `Object.assign(S, {...})` 导出本节造数 |
+| `check/discover.cjs` | 节注册自动发现（0.4.6-I）：扫 `check/sections/*.cjs` 按数值元组排序契约注册——新增节文件零改动 check.js（消批次共享锁），节 100 常驻断言看守 |
+| `check/sections/*.cjs` | 节断言模块群（按节次命名如 `39-memory.cjs`，插节用子号如 `35-5-`），节体自原单文件逐字节迁移；节首从 `H`/`S` 解构依赖、节末 `Object.assign(S, {...})` 导出本节造数 |
 | `design/notes-ui-v2.html` | **UI 交互原型（唯一规格来源）**：单文件原生 JS，浏览器直接打开验证；UI 改动必须同步更新（见下方「UI 改动同步约定」） |
 | `scripts/concat-client.cjs` | **client 组装器**：`src/client/**` 按 manifest 逐字节拼接（零插入零改写零 banner，LF 归一）；`notes-src` 运行时下发与 `build-dist.cjs` 共用本规则（开发/发布同源）；`@shared/` 条目解析到 `src/shared/` 并加 4 空格基座缩进（同一规则在 `src/host/server.js` 与 `server.dist.js` 的 notes-src 各有一份内联实现） |
 | `scripts/concat-app.cjs` | **app 组装器**：`src/app/**` + `src/shared/` 按 manifest 逐字节拼接 → 写盘 `packages/dsh-notes-plugin/app.html`；`@shared/` 条目原样纳入（列 0 即页面形态） |
@@ -212,7 +213,7 @@ P1+P2 模块化落地后，一切改动都在 `src/**` 模块源上进行，**�
 
 ### 新测试节
 
-`check/sections/<节号>-<名称>.cjs` 一文件一节：`module.exports = { id, title, run(H, S) }`，节首从 `H`/`S` 解构依赖、节末 `Object.assign(S, {...})` 导出本节造数；在 `check.js` 的 `SECTIONS` 数组按节序注册（注册表注释照抄节标题）。代表性断言加进 `check.js` 顶部 `CORE` 名单（名单名与断言名逐字一致，收尾命中校验兜底改名/删除）。
+`check/sections/<节号>-<名称>.cjs` 一文件一节：`module.exports = { id, title, run(H, S) }`，节首从 `H`/`S` 解构依赖、节末 `Object.assign(S, {...})` 导出本节造数；**0.4.6-I 起注册零改动 check.js**——`check/discover.cjs` 自动发现 `check/sections/*.cjs` 并按数值元组排序注册（文件名开头数字前缀按 `-` 分段转数值元组逐段数值比较，如 `1-2` → [1,2]；互为他方前缀时短者在前；等值/无数字前缀按文件名全串字典序兜底）。**命名即节序**：插节用子号先例（`8-5-`/`35-5-`），文件名首段数字必须等于 title 首号（节 100 常驻断言看守排序契约 + 注册契约 + 反硬编码锚）。代表性断言加进 `check.js` 顶部 `CORE` 名单（名单名与断言名逐字一致，收尾命中校验兜底改名/删除）。
 
 ## 笔记文件格式
 
@@ -220,11 +221,11 @@ P1+P2 模块化落地后，一切改动都在 `src/**` 模块源上进行，**�
 
 ## 测试
 
-测试套件为模块化结构：`check.js`（runner：模式解析/CORE 名单/节注册表/总结）+ `check/helpers.cjs`（共享设施）+ `check/sections/*.cjs`（93 节断言体）。断言总数 797（随版本演进；拆分自原单文件时逐字节迁移，语义零变化）。
+测试套件为模块化结构：`check.js`（runner：模式解析/CORE 名单/节注册表/总结）+ `check/helpers.cjs`（共享设施）+ `check/discover.cjs`（节注册自动发现，0.4.6-I）+ `check/sections/*.cjs`（节断言体，自动发现注册、零改动 check.js）。断言总数随版本演进（拆分自原单文件时逐字节迁移，语义零变化；最新数以全量运行输出为准）。
 
 ```bash
-node check.js                 # 全量回归（默认，797 条；verifier/发布前用）
-node check.js --core          # 核心快检：136 条主链路代表性断言，秒级（worker 自测用）；也可用 CHECK_CORE=1
+node check.js                 # 全量回归（默认，1000 条；verifier/发布前用）
+node check.js --core          # 核心快检：143 条主链路代表性断言，秒级（worker 自测用）；也可用 CHECK_CORE=1
 node check.js --only=39,42    # 分节运行：只执行选中节的断言（逗号分隔节号或节名前缀）；也可用 CHECK_ONLY=39,42
 node check.js --core --only=40  # 可组合：选中节内再按 CORE 名单过滤（此时名单命中校验自动跳过）
 ```

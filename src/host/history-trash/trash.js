@@ -16,6 +16,13 @@
       return { id }
     }
 
+    // ==== tmpdir-sweep BEGIN ====（0.4.6-H notes-046-smallfix 卫生小件②，R2 n-mux9tc6z76mj；trash.js ⇄ trash.dist.js 双变体同 purgeNoteFile 删除通道先例）
+    // 原子写孤儿清扫（开发版 = 空操作）：ctx.fs 契约无删除也无 mtime——开发版（vm 沙箱，无 node:fs 可取）无法安全判别/删除 staging 孤儿，
+    //   静默跳过、留待发布包执行（红线：开发版拼接产物不引 node:fs，节 27/28 断言看守）。
+    //   真实实现见发布变体 trash.dist.js 同名函数（fs.processPath 还原进程路径 + node:fs stat/rm；只删 >24h、在途写豁免、逐条吞错）。
+    async function sweepTmpdirOrphans() {}
+    // ==== tmpdir-sweep END ====
+
     // ---- P1 回收站：彻底删除（notes-purge）----
     // 仅限已软删除的笔记（安全闸：未进回收站的笔记拒绝彻底删除）；删除 n-<id>.md 与归档备份 n-<id>.md.bak。
     // 删除语义：ctx.fs（FileSystem 服务契约）只有读/写/编辑、没有删除——开发版用「墓碑式清空」（writeText ''：

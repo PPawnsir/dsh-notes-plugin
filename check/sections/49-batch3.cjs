@@ -234,8 +234,8 @@ module.exports = {
     for (const pair of [['app.html', APP_SRC49], ['原型', PROTO49]]) {
       assert(pair[1].indexOf('你的笔记库 · 写下的约定与资料可注入 Agent 会话') >= 0, pair[0] + ' 副标题人话化')
       assert(pair[1].indexOf('全窗口笔记页 · 与 DSH 浮动面板同源数据') < 0, pair[0] + ' 旧 RPC 术语副标题清零')
-      const hintCnt = (pair[1].match(/点侧栏顶部 \+ 新建笔记（先开草稿，输入内容才落库）/g) || []).length
-      assert.strictEqual(hintCnt, 2, pair[0] + ' 空态提示双处（静态壳 + renderEd）对齐 + 图标指称（实得 ' + hintCnt + '）')
+      const hintCnt = (pair[1].match(/点侧栏顶部 \+ 新建笔记（先开草稿，输入标题或正文即落库；面板端「新建」为弹窗即建）/g) || []).length
+      assert.strictEqual(hintCnt, 2, pair[0] + ' 空态提示双处（静态壳 + renderEd）对齐 + 图标指称（实得 ' + hintCnt + '；0.4.6-D 括注面板端差异）')
       assert(pair[1].indexOf('点左侧「新建」创建笔记') < 0, pair[0] + ' 旧「新建」按钮名提示清零')
     }
   })
@@ -248,7 +248,7 @@ module.exports = {
     }
   })
   await t('顶栏「归档」改名「速记合并」（app + 原型 + client 三端；modal 归档语义不变；0.4.5-D 再改名）', () => {
-    const TIP = '把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）'
+    const TIP = '速记 = 划选文字松手弹出的快速记录（暂存）；点按弹出预览，勾选后把同一会话的速记归并成一篇正式笔记（可撤销）'   /* 0.4.6-D：tooltip 补速记概念解释（R2 n-mux7as4ppskn） */
     for (const pair of [['app.html', APP_SRC49], ['原型', PROTO49]]) {
       assert(pair[1].indexOf('id="btnArchive" title="' + TIP + '"') >= 0, pair[0] + ' 按钮 tooltip 改名引导')
       assert(pair[1].indexOf('</svg><span class="tb-t">速记合并</span></button>') >= 0, pair[0] + ' 按钮可见 label=速记合并（文字包 tb-t，notes-041-topbar-400 窄宽收图标配套；0.4.5-D 改名）')
@@ -256,7 +256,7 @@ module.exports = {
     }
     assert(clientSrc.indexOf("onClick: openArchive, 'data-tooltip': tt('topbar.archiveTip')") >= 0 && clientSrc.indexOf(" }, tt('topbar.archive'))") >= 0, 'client 标题栏按钮改名速记合并 + tooltip（i18n 覆盖卡A 起走 t() 字典）')
     assert(CLIENT_PKG49.indexOf("onClick: openArchive, 'data-tooltip': tt('topbar.archiveTip')") >= 0, '发布包 client 同步（build-dist 已跑）')
-    assert(clientSrc.indexOf('「速记合并」：弹出预览，勾选速记组后才合并') >= 0, '使用说明气泡同步改名（0.4.5-D 随按钮名）')
+    assert(clientSrc.indexOf('「速记合并」：把划选快速记录产生的速记暂存归并成一篇正式笔记') >= 0, '使用说明气泡同步改名（0.4.5-D 随按钮名；0.4.6-D 补概念 + 底部按钮路径）')
   })
   }
 }

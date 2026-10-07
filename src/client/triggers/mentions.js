@@ -74,7 +74,11 @@
         async candidates(session, req) {
           const notes = await ensureMentionNotes()
           if (req && req.signal && req.signal.aborted) return []   // 查询已更迭/菜单已关（signal 被 supersede）→ 空
-          return mentionFilter(notes, req && req.query).map(mentionCandidate)
+          const hits = mentionFilter(notes, req && req.query)
+          // 0.4.6-C（notes-046-ux-discovery）：拉取成功但零命中 → 单条空态提示候选（mention.empty，无 value = onPick 守卫不产出 chip，纯展示）；
+          // 拉取失败（缓存仍 null）保持空数组静默降级，不出提示行（读路径静默群同口径）
+          if (!hits.length && mentionCache.notes) return [{ name: t('mention.empty'), icon: 'file', section: t('mention.section') }]
+          return hits.map(mentionCandidate)
         },
         onPick(pick) {
           const c = pick && pick.candidate

@@ -9,6 +9,17 @@
         const helpEl = showHelp ? e('div', { className: 'dsh-notes-help-bubble' },
             e('button', { className: 'dsh-notes-help-close', onClick: () => setShowHelp(false) }, '×'),
             e('h4', null, t('chrome.help')),
+            // 0.4.6-C 概念引导前置（notes-046-ux-discovery）：首屏「核心概念 30 秒」——约定/资料/挂载/派发/隐藏 五概念一句话+后果；
+            // 设置卡「概念速览」保留为完整版（本块是前置摘要，more 行指向设置卡）
+            e('div', { className: 'dsh-notes-help-concepts' },
+              e('h5', null, t('help.conceptTitle')),
+              e('ul', null,
+                e('li', null, t('help.conceptConvention')),
+                e('li', null, t('help.conceptReference')),
+                e('li', null, t('help.conceptMount')),
+                e('li', null, t('help.conceptDispatch')),
+                e('li', null, t('help.conceptHidden'))),
+              e('div', { className: 'dsh-notes-help-concepts-more' }, t('help.conceptMore'))),
             e('ul', null,
               e('li', null, t('help.newPre'), e('kbd', null, 'Alt+N'), t('help.newPost')),
               e('li', null, t('help.capture')),

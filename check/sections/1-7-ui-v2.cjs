@@ -40,8 +40,10 @@ module.exports = {
     assert(clientSrc.indexOf("' 条'") >= 0, '品牌行计数文案「N 条」')
     // 筛选中心口径⑥：新建 chip 迁入 brand 行右侧 ＋ 按钮
     assert(clientSrc.indexOf('dsh-notes-brand-add') >= 0, 'brand 行右侧新建 ＋ 入口（dsh-notes-brand-add）')
-    // 底部按钮区精确截取（dsh-notes-side-foot → editorEl 之间）：恰 3 个 fbtn = 回收站 + 选择（多选合并迁入）+ 设置，无导出/导入/整理
-    const foot = clientSrc.match(/dsh-notes-side-foot' \},([\s\S]*?)editorEl\)/)
+    // 底部按钮区精确截取（dsh-notes-side-foot → renderSidebar 函数收尾之间）：恰 3 个 fbtn = 回收站 + 选择（多选合并迁入）+ 设置，无导出/导入/整理
+    // （0.4.6-C 边界收紧：旧终点 editorEl) 在模块化拼接序下会越过 chrome.js——标题栏「建议」按钮 openSuggest 被误吞进本区；
+    //   新终点 = sidebar.js 自身的 4 空格基座函数收尾行，区域严格限在 side-foot JSX 内）
+    const foot = clientSrc.match(/dsh-notes-side-foot' \},([\s\S]*?)\n    \}\n/)
     assert(foot, '侧栏底部区存在')
     assert.strictEqual((foot[1].match(/dsh-notes-fbtn/g) || []).length, 3, '底部按钮恰为 3 个（实得 ' + ((foot[1].match(/dsh-notes-fbtn/g) || []).length) + '）')
     assert(foot[1].indexOf('onClick: openTrash') >= 0 && foot[1].indexOf('onClick: toggleSelMode') >= 0 && foot[1].indexOf('onClick: openSettings') >= 0, '底部 = 回收站 + 选择 + 设置')

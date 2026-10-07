@@ -16,11 +16,21 @@
     //     ES 规范按 UTC 午夜解析，本地时区下产生整时区偏移——与时区后缀同类歧义，notes-034-at-need-time）；轮询间隔 ≥5min；目标会话必须存活（工作区有效且未归档）。
     //   ⑦锚定时刻（notes-034-sched-time）：every 可配 anchor:'HH:MM'（本地墙钟时刻，触发序列钉死该时刻不随创建/触发时刻漂移；
     //     需整天间隔——子日间隔锚定语义有歧义一律拒绝）；weekly 另配 dow:0-6（星期几，0=周日；需搭配 anchor 且 every=1w）。
-    //     无 anchor 的存量 every 声明保持纯间隔语义（锚点 lastFiredAt||createdAt）——存量零迁移兼容。
+    //     无 anchor 的存量 every 声明保持纯间隔语义（锚点 lastFiredAt||declaredAt||createdAt，0.4.6-F）——存量零迁移兼容。
+    //   ⑨声明重锚（0.4.6-F，notes-046-sched-anchor）：schedule.declaredAt 机器字段（随 schedule JSON front-matter 落盘，已知键容忍输入但剥离）——
+    //     声明字段（at/every/anchor/dow/target/action/enabled）任一变更或首次写入时，写入闸门刷新 declaredAt=当前时刻；
+    //     声明未变更的改写（等价重提交/只改正文不过闸门）延续存量，缺省不留字段。到期锚点 = lastFiredAt || declaredAt || createdAt
+    //     （字段缺省回退 = 存量零迁移）——修「编辑存量约定后当天误触发一轮」：旧口径锚点恒为 note.createdAt（编辑不推进），
+    //     老约定（创建多日、从未触发）一经编辑 now-base 远超间隔即到期；重锚后锚点 = 本次声明时刻，下个调度点才触发。
+    //     every+anchor 首触防过去候选（schedAnchorNextMs 注入 nowMs）：首触候选落在过去（base 陈旧）→ 对齐「now 之后第一个锚定时刻」
+    //     ——首轮不补发，与⑤「轮询错过不追赶」口径对齐；已触发分支与 at 单次停机补发语义（⑤）不动。
     //   ⑧专属会话 + 休眠送达（0.4.4-B，notes-044-dormant-dispatch）：target='new'（仅周期模式）= 首轮触发创建「定时 · <标题>」
     //     专属会话并随幂等生命线回写 target=新 sid（持久复用，后续轮次同 sid）；执行红线由「目标 live」改写为「目标可送达」——
     //     live 直通 / 持久化可达（stat 命中）走 _dispatch 休眠送达通道（durable inbox 排队，下次活动送达，零唤醒）；
     //     两路皆不可达才记 lastError 不推进 lastFiredAt（补发语义不变）。lastRun.status 新增 queued 枚举（休眠送达标记）。
+    //   ⑩专属会话模型档位（0.4.6-G，notes-046-sched-model）：schedule 声明增可选 model/provider（成对出现、非空字符串；
+    //     合法性不联网校验——创建时 agents.create 失败即落 lastError）。declared model/provider 透传 _schedCreateDedicatedSession
+    //     的 agentOptions（覆盖宿主默认选择）；缺省 = 现状默认模型（存量零迁移）。声明变更比对键随之扩为九键（重锚口径不变）。
     // 序位说明（§8.4.2 例外备案）：本模块消费 dispatch.js 的 _dispatch 故置于其后；notes.js 的 _create/_update 经函数声明提升
     //   调用本模块的 _schedValidateWrite/SCHEDULE_CONTRACT_TYPE——全部为运行期（RPC 调用时）引用，apply 执行期零触碰，无 TDZ 风险。
     const SCHED_TICK_MS = 30 * 1000              // 常驻 tick 周期（裁决②）
@@ -53,37 +63,51 @@
     }
 
     // 锚定时刻序列（notes-034-sched-time）：anchor 声明 → 触发时刻钉死本地 HH:MM，不随创建/触发时刻漂移。
-    //   首触（fired=false，base=createdAt）= base 之后第一个锚定时刻（weekly 限定 dow 星期几）；
+    //   首触（fired=false，base=declaredAt||createdAt，0.4.6-F）= base 之后第一个锚定时刻（weekly 限定 dow 星期几）；
     //   后续（fired=true，base=lastFiredAt）= base + 间隔 所在本地日的锚定时刻（weekly = 下一个 dow 锚定时刻）——
     //   触发延迟（停机错过）只推迟本次，后续仍落回同一时刻序列。
+    //   0.4.6-F（notes-046-sched-anchor）首触防过去候选：注入 nowMs 时，首触候选落在过去（base 陈旧：declaredAt 重锚前存量/停机多日）
+    //   → 对齐「now 之后第一个锚定时刻」（首轮不补发，与⑤轮询错过不追赶口径对齐）；已触发分支不注入该闸（停机补发一次语义保留）。
     //   dow=0-6（0=周日，Date.getDay 口径）；ivMs 需整天倍数（写入闸门保证）。非法 → null
-    function schedAnchorNextMs(anchor, dow, ivMs, baseMs, fired) {
+    function schedAnchorNextMs(anchor, dow, ivMs, baseMs, fired, nowMs) {
       const off = schedAnchorMs(anchor)
       if (off === null || !isFinite(baseMs) || !baseMs) return null
       const b = new Date(baseMs)
       const day0 = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime()   // base 所在本地日午夜
+      // 首触防过去候选（0.4.6-F）：now 有效且晚于 base 时扫描起点抬到 now 当日午夜（跳过陈旧欠款日）；已触发/无 nowMs 保持 base 当日起扫（旧口径）
+      const hasNow = typeof nowMs === 'number' && isFinite(nowMs)
+      let scan0 = day0
+      if (!fired && hasNow && nowMs > baseMs) { const nd0 = new Date(nowMs); scan0 = new Date(nd0.getFullYear(), nd0.getMonth(), nd0.getDate()).getTime() }
       if (typeof dow === 'number') {
-        // weekly：自 base 当日起逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow；首触 → 下一个 dow）
+        // weekly：自扫描起点逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow；首触 → 下一个 dow 且候选 ≥ now）
         for (let i = 0; i < 14; i++) {
-          const dm = day0 + i * 86400000
-          if (new Date(dm).getDay() === dow && dm + off > baseMs) return dm + off
+          const dm = scan0 + i * 86400000
+          if (new Date(dm).getDay() === dow && dm + off > baseMs && (fired || !hasNow || dm + off >= nowMs)) return dm + off
         }
         return null
       }
       if (typeof ivMs !== 'number' || !isFinite(ivMs) || ivMs % 86400000 !== 0) return null
       if (fired) { const f = new Date(baseMs + ivMs); return new Date(f.getFullYear(), f.getMonth(), f.getDate()).getTime() + off }
       // 首触：base 当日锚定时刻未到 → 当日；已过 → 次日
-      return (day0 + off > baseMs ? day0 : day0 + 86400000) + off
+      const first = (day0 + off > baseMs ? day0 : day0 + 86400000) + off
+      // 首触防过去候选（0.4.6-F）：候选落在过去 → 对齐「now 之后第一个锚定时刻」（当日锚定未到 → 当日；已过 → 次日）
+      if (hasNow && first < nowMs) {
+        const nd = new Date(nowMs)
+        const nday0 = new Date(nd.getFullYear(), nd.getMonth(), nd.getDate()).getTime()
+        return (nday0 + off >= nowMs ? nday0 : nday0 + 86400000) + off
+      }
+      return first
     }
 
     // 声明纯校验（同步部分：形状/未知键/动作/at 未来/every 下限；目标存活为异步部分由 _schedValidateWrite 补）。
     // 返回 { value: 归一化声明 } | { error }；机器状态字段（lastFiredAt/lastRun/lastError）容忍输入但剥离（由既有值延续，见 _schedValidateWrite）
     function schedCheckDecl(raw, nowMs) {
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow? }' }
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow?, model?, provider? }' }
       // runLog（notes-041-sched-runlog）：执行记录独立笔记 id 软链——机器字段（回执链路懒创建回写），已知键容忍输入，闸门校验/延续见 _schedValidateWrite
-      const known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1 }
+      // declaredAt（0.4.6-F，notes-046-sched-anchor）：声明重锚时刻——机器字段（闸门赋值/延续），同列已知键容忍输入但剥离（防伪声明注入锚点）
+      const known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, model: 1, provider: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1, declaredAt: 1 }
       for (const k of Object.keys(raw)) {
-        if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled；错得安全：能力声明必须无歧义）' }
+        if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled/model/provider；错得安全：能力声明必须无歧义）' }
       }
       const at = raw.at !== undefined && raw.at !== null && raw.at !== '' ? String(raw.at).trim() : ''
       const every = raw.every !== undefined && raw.every !== null && raw.every !== '' ? raw.every : undefined
@@ -133,7 +157,32 @@
       }
       // 专属会话（0.4.4-B）：target='new' 仅周期模式（every）接受——首轮触发自动创建并回写复用；单次 at 无复用场景一律拒绝（错得安全）
       if (target === SCHED_TARGET_NEW && !value.every) return { error: 'schedule.target=\'new\' 专属会话仅周期模式（every）支持——首轮触发自动创建「定时 · 任务名」会话并持久复用；单次 at 请直接指定目标会话 id' }
+      // 专属会话模型档位（0.4.6-G，notes-046-sched-model）：model/provider 成对出现（单给其一即歧义拒绝），非空字符串；
+      //   空串/null 视为未声明（同 anchor 口径）。合法性不联网校验——创建时 agents.create 失败即落 lastError（声明期零网络，同 at/anchor 纯校验口径）
+      const hasModel = raw.model !== undefined && raw.model !== null && raw.model !== ''
+      const hasProvider = raw.provider !== undefined && raw.provider !== null && raw.provider !== ''
+      if (hasModel !== hasProvider) return { error: 'schedule.model 与 schedule.provider 必须成对出现（专属会话模型档位，单给其一有歧义——错得安全）' }
+      if (hasModel) {
+        if (typeof raw.model !== 'string' || typeof raw.provider !== 'string') return { error: 'schedule.model/provider 必须是字符串（实得 model:' + typeof raw.model + ' / provider:' + typeof raw.provider + '）' }
+        const mv = String(raw.model).trim(), pv = String(raw.provider).trim()
+        if (!mv || !pv) return { error: 'schedule.model/provider 不能是空白字符串（错得安全：能力声明必须无歧义）' }
+        value.model = mv; value.provider = pv
+      }
       return { value: value }
+    }
+
+    // 声明字段等价比对（0.4.6-F，notes-046-sched-anchor）：at/every/anchor/dow/target/action/enabled 七键 + 0.4.6-G model/provider 九键——
+    //   undefined/null/空串归一为空串比对；任一差异 = 声明变更（declaredAt 重锚触发条件）。
+    //   归一化声明（action/enabled 由闸门补齐缺省）与存量比对时，存量缺键（如裸编辑旁路未带 action）按变更处理——保守刷新安全向。
+    function schedDeclChanged(decl, ex) {
+      const keys = ['at', 'every', 'anchor', 'dow', 'target', 'action', 'enabled', 'model', 'provider']
+      for (const k of keys) {
+        const a = decl[k], b = ex && ex[k]
+        const an = (a === undefined || a === null || a === '') ? '' : String(a)
+        const bn = (b === undefined || b === null || b === '') ? '' : String(b)
+        if (an !== bn) return true
+      }
+      return false
     }
 
     // 校验红线③：目标会话必须存活——live 直通；非 live 须在工作区有效会话清单内且未归档（live 与否不影响声明准入，执行时再要求 live）
@@ -154,8 +203,9 @@
     }
 
     // 写入闸门（_create/_update 共用）：纯校验 + 目标存活 + 机器状态延续。返回 { value }（null=显式清除）| { error }
-    // existingSched = 存量 schedule（update 场景）：声明字段被覆盖，机器状态字段（lastFiredAt/lastRun/lastError）延续——
-    //   防重锚点对声明变更自洽（at 改新未来时刻：旧 lastFiredAt < 新 at 自然再触发一次；every 变更：锚点不动对齐下周期）。
+    // existingSched = 存量 schedule（update 场景）：声明字段被覆盖，机器状态字段（lastFiredAt/lastRun/lastError/runLog）延续——
+    //   防重锚点对声明变更自洽（at 改新未来时刻：旧 lastFiredAt < 新 at 自然再触发一次；every 已触发变更：锚点不动对齐下周期）；
+    //   declaredAt（0.4.6-F）属机器字段但语义相反——声明字段变更/首次写入时刷新为当前时刻（重锚），未变更改写延续。
     async function _schedValidateWrite(raw, contractType, existingSched) {
       if (raw === null) {
         // 显式清除：契约仍是 dispatch-schedule 时拒绝（契约 ⟺ 声明配对不变量，防悬空调度笔记）
@@ -163,7 +213,8 @@
         return { value: null }
       }
       if ((contractType || '') !== SCHEDULE_CONTRACT_TYPE) return { error: 'schedule 字段仅允许 contractType=dispatch-schedule 的约定笔记（错得安全：会真执行动作的能力声明必须显式契约分型）' }
-      const chk = schedCheckDecl(raw, Date.now())
+      const nowMs = Date.now()
+      const chk = schedCheckDecl(raw, nowMs)
       if (chk.error) return { error: chk.error }
       const decl = chk.value
       // 校验红线③目标存活：enabled=false（停用/暂停）豁免——暂停操作随时可落，不因目标漂移锁死治理面；
@@ -176,6 +227,11 @@
       if (ex.lastFiredAt) decl.lastFiredAt = ex.lastFiredAt
       if (ex.lastRun) decl.lastRun = ex.lastRun
       if (ex.lastError) decl.lastError = ex.lastError
+      // declaredAt（0.4.6-F，notes-046-sched-anchor 声明重锚）：声明字段（schedDeclChanged 九键，0.4.6-G 扩 model/provider）任一变更或首次写入 → 刷新为当前时刻
+      //   （到期锚点由陈旧 createdAt 改为本次声明时刻，修「编辑存量约定当天误触发」；输入携带的 declaredAt 已被 schedCheckDecl 剥离，
+      //   此处纯机器赋值/延续，伪声明无法注入锚点）；声明未变更的改写延续存量 declaredAt，存量缺省不留字段（到期回退 createdAt，零迁移）
+      if (!existingSched || schedDeclChanged(decl, ex)) decl.declaredAt = new Date(nowMs).toISOString()
+      else if (ex.declaredAt) decl.declaredAt = ex.declaredAt
       // runLog 软链（notes-041-sched-runlog）：显式声明须为存在的笔记 id（空串 = 显式解除软链，runLog 笔记留档不级联删）；
       //   缺省（未携带）延续存量——声明改写（编辑/暂停/恢复只提交声明字段）不丢软链
       if (raw.runLog !== undefined && raw.runLog !== null) {
@@ -201,8 +257,10 @@
 
     // 到期判定（纯函数，注入时钟 nowMs 便于测试与回放）：
     //   at：lastFiredAt < at <= now → 到期（lastFiredAt 空 = 从未触发——含停机错过启动补发场景；触发后 lastFiredAt ≥ at 永不重发）
-    //   every：锚点 = lastFiredAt || createdAt；now - 锚点 ≥ 间隔 → 到期（触发后 lastFiredAt=本次时刻对齐下周期，错过不追赶）；
-    //   every + anchor（notes-034-sched-time 锚定时刻）：到期 = now ≥ 锚定序列下一时刻（schedAnchorNextMs，钉死本地 HH:MM 不漂移）；
+    //   every：锚点 = lastFiredAt || declaredAt || createdAt（0.4.6-F 声明重锚：declaredAt=声明最近写入时刻，缺省回退 createdAt 存量零迁移）；
+    //     now - 锚点 ≥ 间隔 → 到期（触发后 lastFiredAt=本次时刻对齐下周期，错过不追赶）；
+    //   every + anchor（notes-034-sched-time 锚定时刻）：到期 = now ≥ 锚定序列下一时刻（schedAnchorNextMs 注入 nowMs——
+    //     首触防过去候选：候选落在过去对齐下一轮不补发，0.4.6-F；钉死本地 HH:MM 不漂移）；
     //   无 anchor 存量声明保持纯间隔语义（零迁移兼容）；非法声明（写入闸门已拦，此处双保险）一律不触发
     function schedDueAt(note, sched, nowMs) {
       const lastFiredMs = sched.lastFiredAt ? Date.parse(sched.lastFiredAt) : 0
@@ -214,9 +272,11 @@
       }
       const iv = schedEveryMs(sched.every)
       if (iv === null || iv < SCHED_MIN_INTERVAL_MS) return false
-      const base = firedMs || Date.parse(note.createdAt || '') || 0
+      const declaredMs0 = sched.declaredAt ? Date.parse(sched.declaredAt) : 0
+      const declaredMs = isFinite(declaredMs0) ? declaredMs0 : 0
+      const base = firedMs || declaredMs || Date.parse(note.createdAt || '') || 0
       if (sched.anchor) {
-        const next = schedAnchorNextMs(sched.anchor, typeof sched.dow === 'number' ? sched.dow : undefined, iv, base, !!firedMs)
+        const next = schedAnchorNextMs(sched.anchor, typeof sched.dow === 'number' ? sched.dow : undefined, iv, base, !!firedMs, nowMs)
         return next !== null && nowMs >= next
       }
       return nowMs - base >= iv
@@ -282,7 +342,10 @@
       } catch (e) {}
       let presetId
       try { const p = await agentPresets.resolve(); presetId = p && p.id } catch (e) { return { error: 'preset 解析失败：' + String(e && e.message || e) } }
-      const sel = adm && typeof adm.currentSelection === 'function' ? adm.currentSelection() : null
+      // 0.4.6-G（notes-046-sched-model）：声明档位 model/provider 优先（写入闸门保证成对非空；合法性=agents.create 成败即 lastError，此处零校验）；
+      //   缺省回落宿主当前选择（adm.currentSelection）——无声明存量任务行为零变化（存量零迁移红线）
+      const declSel = (function () { const sc = (note && note.schedule) || {}; return (typeof sc.provider === 'string' && sc.provider && typeof sc.model === 'string' && sc.model) ? { provider: sc.provider, model: sc.model } : null })()
+      const sel = declSel || (adm && typeof adm.currentSelection === 'function' ? adm.currentSelection() : null)
       const sid = 'session-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
       let handle = null
       try {

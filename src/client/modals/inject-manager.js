@@ -87,31 +87,38 @@
       return parts.join(' ｜ ')
     }
     // ===== 挂载弹层（0.4.3⑤ notes-043-index；0.4.3 验收修复 notes-043-preview-when-edit：LLM 草稿预填 + 编辑模式）=====
-    // 两种模式：未挂载 = LLM 草稿模式（打开即「生成中…」占位 → notes-when-suggest 成功填草稿，失败/8s 超时静默回退预填标题；
+    // 两种模式：未挂载 = LLM 草稿模式（打开即「生成中…」状态行 → notes-when-suggest 成功填草稿，失败/8s 超时回退预填标题 + 可见失败态）；
     //   用户始终可编辑——touched 后到达的草稿不覆盖）；已挂载（预览目录行点击带 existing）= 编辑模式（预填现有文案，不调 LLM）。
     // 确认统一 notes-mount（幂等换文案；0.4.3 验收修复⑪起 host 单点收口：落行同时把目标翻 reference 档，挂载 ⇔ 资料不变量成立，
     //   挂载行不再被目标笔记的下一次 update 摘掉）；跳过/取消 = 保留现状行；modal 不叠 modal（调用方先关来源 modal）
     // 0.4.3 验收修复⑪（notes-043-mount-ux-final）：openMountModal(n, { onConfirmed } )——确认成功后的回调（三态/管理面板入口的
     //   确认后动作：编辑器同步三态态等）；打开即重置，取消/跳过/关层清零（零副作用语义）；确认后统一 loadNotes 刷新收敛
-    store.modal.mount = createStore({ open: false, id: '', title: '', when: '', pending: false, generating: false, edit: false, touched: false })
+    // 0.4.6-E（n-mux8ak66jttd）：LLM 预填三态可见化——加载态（状态行 spinner「正在生成 whenToUse…」）/ 失败态（「预填不可用，请手写」，
+    //   genErr 携带原始 error 进 tooltip——静默回退排查：resolveLlmSelection 选用链路的失败原因此前被吞，现在用户可见）；
+    //   跳过按钮文案改名「不用建议，自己写」（inj.mountSkip 字典值——消「跳过=不挂载还是跳过候选」歧义）
+    store.modal.mount = createStore({ open: false, id: '', title: '', when: '', pending: false, generating: false, edit: false, touched: false, genErr: '' })
     function setMountOpen(v) { store.modal.mount.set({ open: typeof v === 'function' ? v(store.modal.mount.get().open) : v }) }
     const mountOnConfirmedRef = { current: null }   // 确认回调（模块级单例镜像；打开时重置）
     function openMountModal(n, opts) {
       if (!n) return
       mountOnConfirmedRef.current = (opts && typeof opts.onConfirmed === 'function') ? opts.onConfirmed : null
       const edit = typeof n.existing === 'string'   // 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM）
-      store.modal.mount.set({ open: true, id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false })
+      store.modal.mount.set({ open: true, id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, genErr: '' })
       if (edit) return
-      // LLM 草稿预填：成功填草稿；失败/超时回退预填标题（现状行为）；弹层已关/换目标则丢弃迟到响应
+      // LLM 草稿预填：成功填草稿；失败/超时回退预填标题 + 失败态可见（genErr = 原始原因）；弹层已关/换目标则丢弃迟到响应
       host.call('notes-when-suggest', { id: n.id }).then(res => {
         const m = store.modal.mount.get()
         if (!m.open || m.id !== n.id) return
         const draft = res && !res.error && typeof res.suggestion === 'string' && res.suggestion ? res.suggestion : ''
-        store.modal.mount.set(m.touched ? { generating: false } : { generating: false, when: draft || m.title })
-      }).catch(() => {
+        const nx = m.touched ? { generating: false } : { generating: false, when: draft || m.title }
+        nx.genErr = draft ? '' : String((res && res.error) || 'empty suggestion')
+        store.modal.mount.set(nx)
+      }).catch(err => {
         const m = store.modal.mount.get()
         if (!m.open || m.id !== n.id) return
-        store.modal.mount.set(m.touched ? { generating: false } : { generating: false, when: m.title })
+        const nx = m.touched ? { generating: false } : { generating: false, when: m.title }
+        nx.genErr = String(err && err.message || err)
+        store.modal.mount.set(nx)
       })
     }
     function closeMountModal() { mountOnConfirmedRef.current = null; setMountOpen(false) }
@@ -141,7 +148,11 @@
           e('div', { className: 'dsh-notes-settings-modal-t' }, I('bolt', 14), ' ' + (m.edit ? tt('inj.mountEdit') : tt('inj.mountTitle')), e('span', { className: 'dsh-notes-imgup-sub' }, tt('inj.mountSub'))),
           e('div', { className: 'dsh-notes-inj-mount-body' },
             e('label', { className: 'dsh-notes-inj-mount-label' }, tt('inj.mountLabel')),
-            e('textarea', { className: 'dsh-notes-inj-mount-when', rows: 3, placeholder: m.generating ? tt('inj.mountGen') : tt('inj.mountPlaceholder'), value: m.when, autoFocus: true, onChange: (ev) => store.modal.mount.set({ when: ev.target.value, touched: true }) })),
+            e('textarea', { className: 'dsh-notes-inj-mount-when', rows: 3, placeholder: m.generating ? tt('inj.mountGen') : tt('inj.mountPlaceholder'), value: m.when, autoFocus: true, onChange: (ev) => store.modal.mount.set({ when: ev.target.value, touched: true }) }),
+            // 0.4.6-E：LLM 预填三态可见化——加载中（spinner 状态行）/ 失败（「预填不可用，请手写」+ tooltip 原始原因）/ 成功（行消失）
+            m.generating
+              ? e('div', { className: 'dsh-notes-inj-mount-gen' }, tt('inj.mountGen'))
+              : (m.genErr ? e('div', { className: 'dsh-notes-inj-mount-generr dsh-nt', 'data-tooltip': m.genErr }, tt('inj.mountGenFail')) : null)),
           e('div', { className: 'dsh-notes-dispatch-actions' },
             e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => closeMountModal(), disabled: m.pending }, tt('inj.mountSkip')),
             e('button', { className: 'dsh-notes-dispatch-ok', onClick: () => doMountSave(), disabled: m.pending }, m.pending ? '…' : tt('inj.mountSave')))))
@@ -190,6 +201,7 @@
       if (!s || store.modal.injMgr.get().pending) return
       const decl = { target: s.target, action: 'dispatch', enabled: s.enabled === false }
       if (s.at) decl.at = s.at; else { decl.every = s.every; if (s.anchor) decl.anchor = s.anchor; if (typeof s.dow === 'number') decl.dow = s.dow }
+      if (s.provider && s.model) { decl.provider = s.provider; decl.model = s.model }   // 0.4.6-G：暂停/恢复保留模型档位（声明字段随 every 一并回传，防丢档——同 anchor/dow 先例）
       setInjMgrPending(true); setError('')
       try {
         const res = await host.call('notes-update', { id: n.id, schedule: decl })
@@ -313,6 +325,9 @@
         const selCnt = Object.keys(injMgrSel).length
         const allChecked = selectable.length > 0 && selectable.every(n => injMgrSel[n.id])
         const chipBtn = (f, label) => e('button', { key: f, className: 'dsh-notes-injmgr-chip' + (injMgrFilter === f ? ' on' : ''), onClick: () => setInjMgrFilter(f) }, label)
+        // 0.4.6-E：统计行「截至 HH:MM」时刻（lastFlush 优先，回退快照 at；fmtDT 非法/空 → '' 不渲染后缀）
+        const mntAsOf = injMgrRstats && injMgrRstats.ledger ? fmtDT(injMgrRstats.lastFlush || injMgrRstats.ledger.at || '') : ''
+        const mntLive = injMgrRstats && injMgrRstats.mountNow != null ? injMgrRstats.mountNow : null   // 挂载实时计数（无 → 回退快照 mountTotal）
         // 行内三态 segmented（语义与详情区三态分段控件完全一致）；log 行不渲染注入开关（0.4.3⑦ 注入硬关 UI 化——UI 层不提供，非后台纠正）
         const segOpt = (n, role, r, label, tip) => {
           return e('span', { key: r, className: 'dsh-notes-injmgr-opt dsh-nt' + (role === r ? ' on' : ''), 'data-tooltip': tip, onClick: () => { doInjMgrSet(n, r) } }, label)
@@ -325,10 +340,13 @@
                 chipBtn('all', tt('inj.chipAll', { n: listAll.length })), chipBtn('convention', tt('inj.chipConvention', { n: cntConv })), chipBtn('reference', tt('inj.chipReference', { n: cntRef })), chipBtn('off', tt('inj.chipOff', { n: cntOff }))),
               e('input', { className: 'dsh-notes-injmgr-search', placeholder: tt('inj.searchPlaceholder'), value: injMgrSearch, onChange: (ev) => { injMgrSearchRef.current = ev.target.value; setInjMgrSearch(ev.target.value); if (injMgrSearchDebRef.current) injMgrSearchDebRef.current() } })),
             // 挂载区统计行（0.4.3 验收修复⑥ notes-043-metrics-present）：账本快照紧凑呈现（挂载 N｜本周引用 Top3｜零引用 M），
-            // 点开才见全量（分通道召回率 + 快照明细）；无快照 → 整区省略（静默降级；用途分级红线：本行仅呈现，清理裁决走 notes-recall-stats 全量/人工）
+            // 点开才见全量（分通道召回率 + 快照明细）；无快照 → 整区省略（静默降级；用途分级红线：本行仅呈现，清理裁决走 notes-recall-stats 全量/人工）。
+            // 0.4.6-E（n-mux8cq80ai5h）：挂载计数改用 mountNow 实时现算值（每次打开面板即新鲜；快照 mountTotal 仅作回退）+
+            // 行尾补「截至 HH:MM」（lastFlush 时刻，与目录段信号行同口径——无 lastFlush 回退快照 at）
             injMgrRstats && injMgrRstats.ledger ? e('div', { className: 'dsh-notes-injmgr-mntstats' },
               e('div', { className: 'dsh-notes-injmgr-mntstats-row dsh-nt', 'data-tooltip': tt('inj.mntStatsTip'), onClick: () => setInjMgrRstatsOpen(!injMgrRstatsOpen) },
-                I('eye', 11), ' ' + tt('inj.mntStats', { m: injMgrRstats.ledger.mountTotal || 0, top: (injMgrRstats.ledger.top || []).slice(0, 3).map(it => it.id + '×' + it.count).join('、') || '—', z: injMgrRstats.ledger.zeroRefCount || 0 })),
+                I('eye', 11), ' ' + tt('inj.mntStats', { m: mntLive != null ? mntLive : (injMgrRstats.ledger.mountTotal || 0), top: (injMgrRstats.ledger.top || []).slice(0, 3).map(it => it.id + '×' + it.count).join('、') || '—', z: injMgrRstats.ledger.zeroRefCount || 0 })
+                  + (mntAsOf ? ' ｜ ' + tt('inj.mntStatsAsOf', { at: mntAsOf.slice(-5) }) : '')),
               injMgrRstatsOpen ? e('div', { className: 'dsh-notes-injmgr-mntstats-full' },
                 e('div', null, injMgrChanLine(injMgrRstats.channels)),
                 e('div', null, 'Top5: ' + ((injMgrRstats.ledger.top || []).map(it => it.id + '×' + it.count).join('、') || '—') + ' · zero: ' + ((injMgrRstats.ledger.zeroRef || []).join('、') || '—') + ' · @ ' + fmtDT(injMgrRstats.ledger.at) + (injMgrRstats.noteId ? ' · mirror: ' + injMgrRstats.noteId : ''))) : null) : null,
@@ -346,6 +364,8 @@
                         e('span', { className: 'dsh-notes-sched-freq' }, schedFreqLabel(s)),
                         // 0.4.5-B（notes-045-ux-polish）：target='new' 目标位显示人话文案（首轮回写真实 sid 自动恢复「→ 截短」，零迁移；纯展示层）
                         e('span', { className: 'dsh-notes-sched-target dsh-nt', 'data-tooltip': s.target || '' }, s.target === 'new' ? tt('disp.schedNewTarget') : '→ ' + shortSid(s.target)),
+                        // 0.4.6-G（notes-046-sched-model）：声明模型档位标注（有声明才显示，无声明零 DOM 痕迹）
+                        (s.provider && s.model) ? e('span', { className: 'dsh-notes-sched-model dsh-nt', 'data-tooltip': tt('disp.schedModelTip', { model: s.provider + '/' + s.model }) }, s.provider + '/' + s.model) : null,
                         e('span', { className: 'dsh-notes-sched-nf' }, schedNextLabel(n)),
                         schedBadgeEl(n),
                         paused ? e('span', { className: 'dsh-notes-sched-badge off' }, tt('meta.schedPaused')) : null,

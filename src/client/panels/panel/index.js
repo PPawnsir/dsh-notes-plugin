@@ -25,6 +25,16 @@
         // searchText/searchIds/searchMatches 已拆出（§6 步骤 E：panel/search.js——归 usePanelSearch，下方防抖装配点解构接入）
         const [loading, setLoading] = React.useState(false)
         const [error, setError] = React.useState('')
+        // 0.4.6-B（notes-046-rpc-resilience）：落地页无活跃会话开面板——首取数挂起超 LANDING_STALL_MS 给空态引导
+        // （「打开一个会话后使用」+ 重试，渲染在 panel/tree.js），不再无限「加载中…」卡死；loadNotes 成功即复位（慢但可用不误导）
+        const [landingStall, setLandingStall] = React.useState(false)
+        const loadingRef = React.useRef(false)
+        React.useEffect(() => { loadingRef.current = loading }, [loading])
+        React.useEffect(() => {
+          if (!open || currentSessionId) { if (landingStall) setLandingStall(false); return }
+          const d = later(() => { if (loadingRef.current) setLandingStall(true) }, LANDING_STALL_MS)
+          return () => { try { if (d) d() } catch (err) {} }
+        }, [open])
         // 窗口 chrome（pos/size/sideW/sideDrag + 标题栏/分隔条/resize 拖拽族 + titlebarEl/splitterEl/resizeEl JSX）已拆出
         // （§6 步骤 E：panel/chrome.js——归 usePanelChrome；open/close/showHelp 经入参注入，open 居中/位置持久化 effect 同文随迁；
         // hook 调用点位于 help hook 之后——入参 showHelp 自其解构，TDZ 约束）
@@ -36,7 +46,7 @@
         const { pos, size, sideW, titlebarEl, splitterEl, resizeEl } = usePanelChrome({ open: open, close: close, showHelp: showHelp })
         const [flashId, setFlashId] = React.useState(null)
         const [focusId, setFocusId] = React.useState(null)
-        // visibleCount/topicExpanded/topicSecOpen/dragActive 已拆出（§6 步骤 E：panel/tree.js——归 usePanelTree，下方树装配点解构接入）
+        // groupShown/topicExpanded/topicSecOpen/dragActive 已拆出（§6 步骤 E：panel/tree.js——归 usePanelTree，下方树装配点解构接入）
         // ===== 筛选中心（design/notes-filter-center.html 落地）：filters 状态 {pinned, injected, injectEver, sensitive, kinds[]} =====
         // 组内 OR / 跨组 AND，与文件夹/主题视图/搜索 AND 叠加；localStorage 持久化（dsh-notes-filters，含 sortBy）
         const [filters, setFilters] = React.useState(() => loadFiltersState().filters)
@@ -168,17 +178,22 @@
         React.useEffect(() => { const fn = () => loadNotes(true); noteRefreshListeners.add(fn); return () => noteRefreshListeners.delete(fn) }, [])
         React.useEffect(() => { if (open) loadNotes() }, [open])
         // ⑩ kind 档切换重拉：类型组勾选变化改变取数口径（恰选 1 个 kind → host kind 通道；「机器」档 = sys 全库）——
-        // effect 依赖 kinds 数组身份（filter-pop 勾选产生新数组），该渲染闭包的 loadNotes 读最新 filters；面板关闭时不拉（下次 open  effect 兜底）
-        React.useEffect(() => { if (open) loadNotes(true) }, [filters.kinds])
+        // effect 依赖 kinds 数组身份（filter-pop 勾选产生新数组）；面板关闭时不拉（下次 open effect 兜底）
+        // 0.4.6-K（notes-046-kind-lag）根修：显式传当次渲染闭包 filters.kinds——本 effect 声明先于 usePanelSearch 内的
+        // filtersRef 同步 effect（React 同一 commit 内 effect 按声明序执行），经 filtersRef 镜像读 kinds 会慢一拍
+        // （kind 参数滞后一次点击；外部 notes-changed 重拉时镜像已同步故现场「时好时坏」）。显式传参甩掉镜像时序依赖
+        // （隐式序位契约 → 显式参数）。顺带核查②：本文件其余 ref 镜像（loadingRef/selectedRef 等）消费点均在
+        // timeout/事件/外部回调（同 commit 全部 effect flush 之后），无同款「effect 序位读镜像」隐患，不扩散修
+        React.useEffect(() => { if (open) loadNotes(true, filters.kinds) }, [filters.kinds])
         // 打开时居中定位 effect 已随 panel/chrome.js 迁入（hook 内同文，open 经入参注入）
         // 搜索两段式已拆出（§6 步骤 E：panel/search.js——searchText/searchIds/searchMatches 态 + 250ms 防抖 host 检索归 usePanelSearch；
         // searchRef/searchDebRef 在 kernel/state.js 跨域镜像群；filtersRef 镜像随该模块；filters 经入参注入）
         const { searchText, searchIds, searchMatches, setSearchText, setSearchIds, setSearchMatches } = usePanelSearch({ filters: filters })
         // 注入管理面板搜索防抖（250ms）随 modal 迁入 modals/inject-manager.js（injMgrSearchRef/injMgrSearchDebRef 为模块级单例，防抖 effect 挂 InjMgrModal）
-        // 搜索/视图/筛选中心条件变化时重置分页 effect 已随 panel/tree.js 迁入（该 hook 内同文，入参注入依赖值）
-        // 树渲染/分页/拖拽已拆出（§6 步骤 E：panel/tree.js——visibleCount/dragActive/topicExpanded/topicSecOpen 态 +
-        // onListScroll/双向拖拽族/renderTreeEls（内含 renderNoteRow/renderFolderNode）归 usePanelTree；post-guard 求值经 R 入参注入）
-        const { visibleCount, setVisibleCount, onListScroll, renderTreeEls } = usePanelTree({ notes: notes, view: view, filters: filters, searchText: searchText, searchIds: searchIds, folders: folders, sysKids: sysKids, showHidden: showHidden })
+        // 搜索/视图/筛选中心条件变化时重置分组分页 effect 已随 panel/tree.js 迁入（该 hook 内同文，入参注入依赖值）
+        // 树渲染/分组分页/拖拽已拆出（§6 步骤 E：panel/tree.js——groupShown/dragActive/topicExpanded/topicSecOpen 态 +
+        // renderMoreRow 组尾加载行/双向拖拽族/renderTreeEls（内含 renderNoteRow/renderFolderNode）归 usePanelTree；post-guard 求值经 R 入参注入）
+        const { renderTreeEls } = usePanelTree({ notes: notes, view: view, filters: filters, searchText: searchText, searchIds: searchIds, folders: folders, sysKids: sysKids, showHidden: showHidden })
         // 展开态同步到 ref（keydown 闭包读 ref 避免过期；已拆出 modal 的 open 镜像由各模块 setter 别名同步写入）
         // filtersRef 镜像 + 同步 effect 已随 panel/search.js 迁入（该模块顶层绑定 + hook 内同文）
         // 日志同权（0.4.3 验收修复⑦，用户裁决推翻 R-6 UI 隐身）：kind=log 随默认列表直达（host 已收编），
@@ -199,8 +214,10 @@
         // 0.4.3⑩（notes-043-archive-folder 第二轮裁决）：类型组恰选 1 个 kind 时传 {kind} 给 host——host 谓词 kind 真值短路放行 sys
         // （⑨ 保留的显式 kind 入口），「机器」档（kind=sys）= 全库 sys 笔记（含「记忆档案」夹内档案），树在该档下正常展开档案子行；
         // 不选/多选 kind 时无参调用，行为与 ⑨ 完全一致（缺省降噪）。口径同 panel/search.js sArgs（恰选 1 个可传 kind）。
-        // filters 经 filtersRef（search.js 镜像，每渲染同步）读取——noteRefreshListeners 挂载期注册的闭包也能拿到最新筛选（防过期）
-        async function loadNotes(silent) { if (!silent) setLoading(true); setError(''); let list = []; try { const F = filtersRef.current || filters; const kf = (F && F.kinds) || []; const res = await host.call('notes-list', kf.length === 1 ? { kind: kf[0] } : undefined); list = res.notes || []; setNotes(list) } catch (err) { setError(String(err.message || err)) } loadFolders(); ensureWikiIndex(list); if (!silent) setLoading(false); return list }
+        // 0.4.6-K：kindsNow 显式形参优先——渲染期 effect 调用点（kinds 重拉）必须显式传当次 filters.kinds（序位见上方注）；
+        // 未传时缺省经 filtersRef（search.js 镜像，[filters] effect 同步——非「每渲染」；同 commit 内序位晚于 kinds 重拉 effect）
+        // 读取——兜底服务 noteRefreshListeners 挂载期注册的闭包（外部事件触发时上一 commit 的 effect 已全数 flush，镜像新鲜，防过期）
+        async function loadNotes(silent, kindsNow) { if (!silent) setLoading(true); setError(''); let list = []; try { const F = filtersRef.current || filters; const kf = kindsNow || (F && F.kinds) || []; const res = await host.call('notes-list', kf.length === 1 ? { kind: kf[0] } : undefined); list = res.notes || []; setNotes(list); setLandingStall(false) } catch (err) { setError(String(err.message || err)) } loadFolders(); ensureWikiIndex(list); if (!silent) setLoading(false); return list }
         // 文件夹清单加载已随 popovers/folder-menu.js 迁出（loadFolders 经解构接入；清洗陈旧展开 id 逻辑同文随迁）
         // ===== P2 笔记双链：解析 / 索引 / 跳转 函数族已随 panel/wiki.js 迁出（上方解构接入；内核 extractWikiTargets/wikiLinksTo 同一口径）=====
         // selectNote/doSave/doDelete 已随 panel/editor.js 迁出（经解构/kernel 转发别名接入；panelBridge 回填保持原名）
@@ -269,7 +286,6 @@
         panelBridge.setFlashId = setFlashId
         panelBridge.setSelected = setSelected   // 编辑器域跨域写入（selectNote/doDelete/afterArchiveCleanup 经 kernel 别名中转）
         panelBridge.setFocusId = setFocusId     // 同上（selectNote 同步聚焦行）
-        panelBridge.setVisibleCount = setVisibleCount   // 侧栏搜索输入 onChange 重置分页（panel/tree.js setter 经 kernel 别名中转）
         panelBridge.setView = setView           // 编辑器面包屑/双链跳转/树视图过滤跨域写入（kernel 别名中转）
         panelBridge.later = later
         panelBridge.edBodyDomRef = edBodyDomRef
@@ -380,6 +396,23 @@
           for (const f of folders) if (f.sys === true) Object.assign(sysSubtree, folderSubtreeIdsOf(f.id))
           filtered = filtered.filter(n => !sysSubtree[(n.folder || '')])
         }
+        // 0.4.6-H（notes-046-smallfix，R2 n-mux9rpgowpz6/n-mux9r8hfh7xy）：筛选面板选项计数遮罩谓词——
+        //   与上方 hidden/sys 子树滤除同一口径（选项计数 = 当前可见集中满足该状态/类型数），
+        //   消除「选项计数（缓存裸谓词）vs 命中数（遮罩管线）」两套口径；上方两行滤除锚定原文不动，本谓词增量计算
+        const visMask = (() => {
+          if (showHidden) return () => true
+          const hidSub = {}, sysSub = {}
+          for (const f of folders) {
+            if (f.hidden === true) Object.assign(hidSub, folderSubtreeIdsOf(f.id))
+            if (f.sys === true) Object.assign(sysSub, folderSubtreeIdsOf(f.id))
+          }
+          const machOff = filters.kinds.indexOf('sys') < 0
+          return (n) => {
+            if (n.hidden === true || hidSub[(n.folder || '')]) return false
+            if (machOff && sysSub[(n.folder || '')]) return false
+            return true
+          }
+        })()
         // 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0，如仅 topic 命中)，同级 updatedAt 降序；
         // 命中字段优先取 host notes-search 返回的 matches（全文口径），无则按本地字段估算（preview 仅前 200 字，正文命中可能低估）；无搜索词时退化为 host 序
         function relRank(n) {
@@ -393,10 +426,8 @@
         // 排序（P2 使用遥测 + 相关度档位）：缺省保持 host 序（pinned → updatedAt 降序）；「按引用」= useCount 降序（同数按 updatedAt 兜底），分组内顺序随过滤数组
         if (sortBy === 'use') filtered = filtered.slice().sort((a, b) => ((b.useCount || 0) - (a.useCount || 0)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
         else if (sortBy === 'rel' && q) filtered = filtered.slice().sort((a, b) => (relRank(b) - relRank(a)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
-        // 懒加载分页：只渲染前 visibleCount 条笔记行，滚动到底再加载更多（避免笔记多时全量渲染 + 每条跑 highlight）
-        const paged = filtered.slice(0, visibleCount)
-        const hasMore = filtered.length > visibleCount
-        // onListScroll 已随 panel/tree.js 迁出（经解构接入；树容器 onScroll 沿用）
+        // 0.4.6-J（notes-046-group-paging）：全局窗口切片退役——懒加载分页下沉为各分组独立分页（panel/tree.js groupShown +
+        // 组尾「加载更多」按钮行，四组同构；滚动加载死锁结构性消除），本层只产出 filtered 全量命中供各组切片消费（filtered 求值/排序管线零改动）
         // 注入范围文字函数 injectScopeLabel 已随 popovers/scope.js 迁出（经解构接入；树行尾 bolt tooltip 沿用）
         // ===== 侧栏笔记行 renderNoteRow + 侧栏树构建已随 panel/tree.js 迁出（renderTreeEls 渲染函数内同文；求值上下文经 R 入参注入）=====
         // 筛选中心：激活条件数 = 状态组勾选数 + 类型组勾选数（排序档位不计入）
@@ -406,11 +437,11 @@
         const hasInjectEver = notes.some(n => n.injectEver !== undefined)
         const sortLabel = sortLabelOf(sortBy)   /* i18n 覆盖卡F：排序档标签走 t() 字典（sort.* 条件映射），FILTER_SORTS[i].label 字面量仅作四端同构锚 */
         // 筛选中心浮层 JSX 依赖视图求值结果（命中数/曾注入 feature-detect）——装配点在求值后渲染（popover 与主面板同渲染边界，口径不变）
-        const filterPopEl = renderFilterPop({ notes: notes, filters: filters, hasInjectEver: hasInjectEver, filteredCount: filtered.length, searchDebRef: searchDebRef })
+        const filterPopEl = renderFilterPop({ notes: notes, filters: filters, hasInjectEver: hasInjectEver, filteredCount: filtered.length, visMask: visMask, searchDebRef: searchDebRef })
         // viewTitle 计算已随 panel/tree.js 迁入 renderTreeEls（同文）
-        const treeEls = renderTreeEls({ loading: loading, selected: selected, focusId: focusId, flashId: flashId, selMode: selMode, selIds: selIds, q: q, filtered: filtered, paged: paged, filtersActive: filtersActive, filterCount: filterCount, hasInjectEver: hasInjectEver, renamingId: renamingId, renameText: renameText, subFolderFor: subFolderFor, folderInputOpen: folderInputOpen, folderInputText: folderInputText })
+        const treeEls = renderTreeEls({ loading: loading, selected: selected, focusId: focusId, flashId: flashId, selMode: selMode, selIds: selIds, q: q, filtered: filtered, filtersActive: filtersActive, filterCount: filterCount, hasInjectEver: hasInjectEver, renamingId: renamingId, renameText: renameText, subFolderFor: subFolderFor, folderInputOpen: folderInputOpen, folderInputText: folderInputText, landingStall: landingStall })
         // 侧栏 JSX 已随 panel/sidebar.js 迁出（renderSidebar 注册函数，post-guard 求值结果经 R 入参注入）
-        const sidebarEl = renderSidebar({ sideW: sideW, size: size, notes: notes, filtersActive: filtersActive, filtered: filtered, filters: filters, sortBy: sortBy, searchText: searchText, filterCount: filterCount, filterOpen: filterOpen, sortOpen: sortOpen, sortLabel: sortLabel, sortMenuEl: sortMenuEl, filterPopEl: filterPopEl, treeEls: treeEls, hasMore: hasMore, paged: paged, onListScroll: onListScroll, selMode: selMode })
+        const sidebarEl = renderSidebar({ sideW: sideW, size: size, notes: notes, filtersActive: filtersActive, filtered: filtered, filters: filters, sortBy: sortBy, searchText: searchText, filterCount: filterCount, filterOpen: filterOpen, sortOpen: sortOpen, sortLabel: sortLabel, sortMenuEl: sortMenuEl, filterPopEl: filterPopEl, treeEls: treeEls, selMode: selMode })
         // 树构建主体（视图头/置顶组/文件夹递归/未入夹平铺/主题全局过滤/空态/加载态 + pagedIdsRef 写入）已随 panel/tree.js 迁入 renderTreeEls（同文）
         // ===== 编辑器区（原型 .ed）已随 panel/editor.js 迁出（renderEditorEl 渲染函数内同文：面包屑/meta chips/双模式正文/反向链接/底栏；post-guard 调用口径不变）=====
         const { editorEl, curNote } = renderEditorEl({ scopePanelEl: scopePanelEl, scopeOpen: scopeOpen })

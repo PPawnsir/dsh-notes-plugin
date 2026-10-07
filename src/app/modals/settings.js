@@ -7,7 +7,7 @@ var setPersist = null;   /* 已落盘镜像（兜底 flush/还原只写真不同
 var setInflight = 0;     /* 在途设置写数（>0 = 存在尚未落盘的待写） */
 var setSaving = false;   /* 保存/还原执行中（按钮防重入） */
 function openSettings() {
-  openModal('<div class="modal-t">' + icon('i-gear', 13) + ' ' + t('common.settings') + '<span class="set-t-acts"><button class="mbtn" id="setRestore" disabled>' + t('common.restore') + '</button><button class="mbtn primary" id="setSave" disabled>' + t('common.save') + '</button><button class="mbtn set-x" id="setClose" title="' + t('settings.closeTip') + '">' + icon('i-x', 11) + '</button></span></div><div id="setBody"><div class="modal-hint">' + t('common.loading') + '</div></div><div class="modal-err" id="mErr" style="display:none"></div>');
+  openModal('<div class="modal-t">' + icon('i-gear', 13) + ' ' + t('common.settings') + '<span class="set-t-acts"><button class="mbtn" id="setRestore" disabled>' + t('common.restore') + '</button><button class="mbtn primary" id="setSave" disabled>' + t('common.save') + '</button><button class="mbtn set-x" id="setClose" title="' + t('settings.closeTip') + '">' + icon('i-x', 11) + '</button></span></div><div class="modal-err" id="mErr" style="display:none"></div><div id="setBody"><div class="modal-hint">' + t('common.loading') + '</div></div>');   /* 0.4.6-H（R2 n-mux9svn0vhkz）：错误区自弹窗底部移到标题栏下——校验失败即刻可见（原渲染在弹窗最底部需滚动，「保存看似没反应」）；modalErr 带 scrollIntoView 兜底 */
   modalCloseHook = flushSettingsPending;   /* ✕/Esc/点遮罩关闭前兜底 flush */
   setSnap = null; setPersist = null; setSaving = false;   /* dirty 基准复位（settings-get 返回后再捕获快照） */
   $('setClose').onclick = closeModalFlushed;

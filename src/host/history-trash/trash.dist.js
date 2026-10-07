@@ -16,6 +16,40 @@
       return { id }
     }
 
+    // ==== tmpdir-sweep BEGIN ====（0.4.6-H notes-046-smallfix 卫生小件②，R2 n-mux9tc6z76mj；trash.js ⇄ trash.dist.js 双变体同 purgeNoteFile 删除通道先例）
+    // 原子写孤儿清扫：writeFileAtomic 的 staging 目录（<目标>.<pid>.<uuid>.tmpdir/）在 rename 失败/进程中断时残留，此前无任何清理路径
+    //   （实证：notes/.n-mujh1qizthz3.md.29940.9fed335c-*.tmpdir/ 自 2026-09-27 残留）。
+    // 时机 = apply 启动一次（fire-and-forget 不阻塞就绪；无定时器——插件重载/宿主重启即下一清扫点，摊销即防抖，写入热路径零开销）。
+    // 红线：只删 mtime 超过 24h 的 *.tmpdir 目录——在途写的 staging 恒新（秒级生命周期），24h 阈值天然不动在途写；逐条 try/catch 全吞。
+    // 删除通道：ctx.fs 契约无删除也无 mtime —— 经 fs.processPath 还原进程路径 + node:fs stat/rm（同 purgeNoteFile 静态包先例）；
+    //   能力缺失（宿主 fs 无 processPath / stat 失败）→ 静默跳过，留待下次启动，不报错不扩散。开发版变体（trash.js）= 空操作（无 node:fs）。
+    const TMPDIR_ORPHAN_MAX_AGE_MS = 24 * 60 * 60 * 1000
+    async function sweepTmpdirOrphans() {
+      try {
+        if (!fsNode || !fsNode.promises) return
+        if (!fs || typeof fs.processPath !== 'function') return
+        const dirTarget = await fs.resolve(NOTES_DIR)
+        const info = await fs.stat(dirTarget)
+        if (!info) return
+        const entries = await fs.listDir(dirTarget)
+        const cutoff = Date.now() - TMPDIR_ORPHAN_MAX_AGE_MS
+        for (const en of entries || []) {
+          try {
+            const nm = en && en.name
+            if (!nm || nm.slice(-7) !== '.tmpdir') continue
+            if (en.type && en.type !== 'directory') continue
+            const pp = fs.processPath(en.target ? en.target : await fs.resolve(path.join(NOTES_DIR, nm)))
+            if (!pp) continue
+            const st = await fsNode.promises.stat(pp)
+            if (!st || !st.isDirectory()) continue
+            if (!(st.mtimeMs < cutoff)) continue   // 在途写豁免：只删 >24h 孤儿
+            await fsNode.promises.rm(pp, { recursive: true, force: true })
+          } catch (e) {}
+        }
+      } catch (e) {}
+    }
+    // ==== tmpdir-sweep END ====
+
     // ---- P1 回收站：彻底删除（notes-purge）----
     // （与开发版 host-impl.js 双边同步；唯一差异：本静态包有 node:fs 真删除通道）
     // 仅限已软删除的笔记（安全闸：未进回收站的笔记拒绝彻底删除）；删除 n-<id>.md 与归档备份 n-<id>.md.bak。

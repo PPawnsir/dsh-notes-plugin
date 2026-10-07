@@ -93,7 +93,7 @@
       const d = Math.floor(((nowMs || Date.now()) - t) / 86400000)
       return d > limit ? d : 0
     }
-    // 候选计算（纯函数；all = 未删除全量笔记，staleLimit = staleDaysLimit() 由调用方注入）：
+    // 候选计算（纯函数；all = 未删除全量笔记，staleLimit = staleDaysLimit() 由调用方注入；nowMs 可选注入供单测取确定值）：
     //   staleCandidates：kind=note/link 且 updatedAt 距今 > staleLimit 且 useCount===0
     //     （从未被引用且过期的参考资料——最高优先清理信号；useCount>0 的过期笔记仍被 agent 引用，不提名）。按 staleDays 降序。
     //     工作记忆 v0：kind=log 永不进入 stale/orphan 候选——日志是记录类资产，只聚合不淘汰（§6.3），删除权完全留给用户。
@@ -106,14 +106,19 @@
     //       （all 不含已删笔记——已删笔记的链接不算活引用，与 client 反向链接面板口径一致）
     //     · 排除速记（tags 含 quick：已由 archiveCandidates 通道提名，避免双重提名误导）
     //     · 排除归档产物（mergedFrom 非空：合并归档笔记是「已整理」成果，提名删除会误伤归档结果）
-    function suggestCandidates(all, staleLimit) {
+    //     · 新建宽限期（0.4.6-E）：createdAt 距今 < SUGGEST_ORPHAN_GRACE_MS 不提名——刚建的笔记「未被引用」是常态而非信号，
+    //       即刻提名「可能无用」对新用户是受打击的误伤（n-mux79kj4lwx9）；createdAt 不可解析 = 老旧存量，不豁免。
+    //       stale 段天然免疫（须超 staleLimit 天）；遥测两段各有窗口期豁免口径，不叠加本宽限。
+    const SUGGEST_ORPHAN_GRACE_MS = 86400000   // 新建宽限期 24h（0.4.6-E 常量先行+注释口径；后续可 settings 化）
+    function suggestCandidates(all, staleLimit, nowMs) {
+      const now0 = nowMs || Date.now()
       const staleCandidates = []
       if (staleLimit > 0) {
         for (const n of all) {
           if (n.kind === 'log') continue   // 日志永不被过期清理提名（工作记忆 v0 §6.3：记录类资产只聚合不淘汰；kind 白名单之外的显式双保险）
           if (n.kind === 'sys') continue   // 0.4.3⑥：kind=sys 系统根笔记（注入索引/记忆档案等机器产物）永不被过期清理提名（豁免面收口）
           if (n.kind !== 'note' && n.kind !== 'link') continue
-          const sd = suggestStaleDays(n.updatedAt, staleLimit)
+          const sd = suggestStaleDays(n.updatedAt, staleLimit, now0)
           if (sd <= 0) continue
           if ((n.useCount || 0) > 0) continue   // 遥测保护：仍被引用的过期笔记不提名
           staleCandidates.push({ id: n.id, title: n.title, topic: n.topic || '', updatedAt: n.updatedAt || '', staleDays: sd })
@@ -136,6 +141,8 @@
         if ((n.useCount || 0) > 0) continue
         if ((n.tags || []).indexOf('quick') >= 0) continue
         if ((n.mergedFrom || []).length > 0) continue
+        const cg = Date.parse(n.createdAt || '')
+        if (isFinite(cg) && now0 - cg < SUGGEST_ORPHAN_GRACE_MS) continue   // 新建宽限期（0.4.6-E）：<24h 不提名
         if (suggestLinkTargetsOf(n.body).length > 0) continue
         if (linkTargets.has(n.id) || (n.title && linkTargets.has(n.title))) continue
         orphans.push({ id: n.id, title: n.title, topic: n.topic || '', updatedAt: n.updatedAt || '', createdAt: n.createdAt || '' })
@@ -300,6 +307,15 @@
       hot.sort((x, y) => (y.hits - x.hits) || String(x.id).localeCompare(String(y.id)))   // 取用降序（并列按 id 稳定序）
       return { zeroRefMountCandidates: zeroRef, hotUnmountedCandidates: hot.slice(0, SUGGEST_TELEM_HOT_LIMIT) }
     }
+    // 两段互斥（0.4.6-E 建议器断点批，n-mux8beuj84i2）：hotUnmountedCandidates 命中的笔记不再进 orphanCandidates——
+    //   同屏并列「可能无用」与「高频未挂载」观感直接矛盾（这条到底无用还是高频？）。互斥优先级：高频 > 可能无用
+    //   （高频有窗口遥测实证信号，孤儿是启发式判定——实证优先，孤儿让位）。纯函数：返回剔除后的孤儿数组（原数组不改）。
+    function suggestMutexFilter(orphans, hot) {
+      if (!hot || !hot.length) return orphans || []
+      const hotIds = {}
+      for (const h of hot) hotIds[String(h && h.id)] = true
+      return (orphans || []).filter(n => !hotIds[String(n && n.id)])
+    }
     // ==== suggest-helpers END ====
 
     // 整理建议（notes-suggest，dry-run 零写入）：返回 { archiveCandidates, staleCandidates, orphanCandidates, logHygieneCandidates,
@@ -331,7 +347,9 @@
           })
         }
       } catch (e) { /* 静默降级：遥测故障不扩散整理建议主输出 */ }
-      return { archiveCandidates: pv.quickGroups, staleCandidates: c.staleCandidates, orphanCandidates: c.orphanCandidates, logHygieneCandidates: suggestLogHygiene(all, logWeekAfterDaysLimit(), logRetentionDaysLimit()), zeroRefMountCandidates: telem.zeroRefMountCandidates, hotUnmountedCandidates: telem.hotUnmountedCandidates, telemetryWindowDays: SUGGEST_TELEM_WINDOW_DAYS, generatedAt: new Date().toISOString() }
+      // 两段互斥（0.4.6-E）：高频未挂载命中的笔记从「可能无用」剔除（互斥优先级注释见 suggestMutexFilter 块头）
+      const orphansFinal = suggestMutexFilter(c.orphanCandidates, telem.hotUnmountedCandidates)
+      return { archiveCandidates: pv.quickGroups, staleCandidates: c.staleCandidates, orphanCandidates: orphansFinal, logHygieneCandidates: suggestLogHygiene(all, logWeekAfterDaysLimit(), logRetentionDaysLimit()), zeroRefMountCandidates: telem.zeroRefMountCandidates, hotUnmountedCandidates: telem.hotUnmountedCandidates, telemetryWindowDays: SUGGEST_TELEM_WINDOW_DAYS, generatedAt: new Date().toISOString() }
     }
 
     // 合并一组笔记为一条归档笔记：正文按 updatedAt 升序拼接（## 日期 分节），原笔记先 .bak 备份再软删除。

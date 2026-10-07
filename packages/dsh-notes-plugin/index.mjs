@@ -232,7 +232,7 @@ export function apply(ctx) {
         // （存量口径不动），非调度派发源笔记存本顶层 runLog 字段；普通笔记不落此行，存量零迁移）
         (m.runLog ? 'runLog: ' + escYaml(m.runLog) + '\n' : '') +
         // schedule 条件行（定时派发·执行层：contractType=dispatch-schedule 约定笔记的调度声明 + 机器状态——
-        // 声明 {at|every, target, action, enabled} + 状态 {lastFiredAt, lastRun{at,status,receiptId}, lastError}；
+        // 声明 {at|every, target, action, enabled} + 状态 {lastFiredAt, lastRun{at,status,receiptId}, lastError, declaredAt(0.4.6-F 声明重锚)}；
         // JSON 单行存储同 dispatches 先例；普通笔记不落此行，存量零迁移）
         (m.schedule ? 'schedule: ' + escYaml(JSON.stringify(m.schedule)) + '\n' : '') +
         'dispatches: ' + escYaml(JSON.stringify(m.dispatches || [])) + '\n' +
@@ -2265,6 +2265,40 @@ export function apply(ctx) {
       return { id }
     }
 
+    // ==== tmpdir-sweep BEGIN ====（0.4.6-H notes-046-smallfix 卫生小件②，R2 n-mux9tc6z76mj；trash.js ⇄ trash.dist.js 双变体同 purgeNoteFile 删除通道先例）
+    // 原子写孤儿清扫：writeFileAtomic 的 staging 目录（<目标>.<pid>.<uuid>.tmpdir/）在 rename 失败/进程中断时残留，此前无任何清理路径
+    //   （实证：notes/.n-mujh1qizthz3.md.29940.9fed335c-*.tmpdir/ 自 2026-09-27 残留）。
+    // 时机 = apply 启动一次（fire-and-forget 不阻塞就绪；无定时器——插件重载/宿主重启即下一清扫点，摊销即防抖，写入热路径零开销）。
+    // 红线：只删 mtime 超过 24h 的 *.tmpdir 目录——在途写的 staging 恒新（秒级生命周期），24h 阈值天然不动在途写；逐条 try/catch 全吞。
+    // 删除通道：ctx.fs 契约无删除也无 mtime —— 经 fs.processPath 还原进程路径 + node:fs stat/rm（同 purgeNoteFile 静态包先例）；
+    //   能力缺失（宿主 fs 无 processPath / stat 失败）→ 静默跳过，留待下次启动，不报错不扩散。开发版变体（trash.js）= 空操作（无 node:fs）。
+    const TMPDIR_ORPHAN_MAX_AGE_MS = 24 * 60 * 60 * 1000
+    async function sweepTmpdirOrphans() {
+      try {
+        if (!fsNode || !fsNode.promises) return
+        if (!fs || typeof fs.processPath !== 'function') return
+        const dirTarget = await fs.resolve(NOTES_DIR)
+        const info = await fs.stat(dirTarget)
+        if (!info) return
+        const entries = await fs.listDir(dirTarget)
+        const cutoff = Date.now() - TMPDIR_ORPHAN_MAX_AGE_MS
+        for (const en of entries || []) {
+          try {
+            const nm = en && en.name
+            if (!nm || nm.slice(-7) !== '.tmpdir') continue
+            if (en.type && en.type !== 'directory') continue
+            const pp = fs.processPath(en.target ? en.target : await fs.resolve(path.join(NOTES_DIR, nm)))
+            if (!pp) continue
+            const st = await fsNode.promises.stat(pp)
+            if (!st || !st.isDirectory()) continue
+            if (!(st.mtimeMs < cutoff)) continue   // 在途写豁免：只删 >24h 孤儿
+            await fsNode.promises.rm(pp, { recursive: true, force: true })
+          } catch (e) {}
+        }
+      } catch (e) {}
+    }
+    // ==== tmpdir-sweep END ====
+
     // ---- P1 回收站：彻底删除（notes-purge）----
     // （与开发版 host-impl.js 双边同步；唯一差异：本静态包有 node:fs 真删除通道）
     // 仅限已软删除的笔记（安全闸：未进回收站的笔记拒绝彻底删除）；删除 n-<id>.md 与归档备份 n-<id>.md.bak。
@@ -3665,7 +3699,13 @@ export function apply(ctx) {
         out[c] = { delivered: ids.length, deliveries: st.deliveries, used: used, uses: uses, rate: ids.length ? Math.round(used / ids.length * 1000) / 1000 : null }
       }
       const rl = _recallNoteSync()
-      return { noteId: rl ? rl.id : null, sinceDays: sinceDays, fromDay: fromDay, events: events, channels: out, ledger: (t && t.ledger) || null }
+      // 0.4.6-E（n-mux8cq80ai5h）：面板统计行鲜度两件套（纯读增量，遥测写路径不动）——
+      //   lastFlush = meta.lastFlush（遥测最近落账时刻）：面板统计行「截至 HH:MM」数据源（与目录段信号行同口径的人读时刻）；
+      //   mountNow = idxLinesSync() 实时挂载计数：账本 ledger.mountTotal 是 cron 快照口径（节拍不随挂载动作），
+      //   每次打开注入管理经本 RPC 即得新鲜计数；索引不可用 → null 静默降级（面板回退快照值）。
+      let mountNow = null
+      try { mountNow = idxLinesSync().length } catch (e) { mountNow = null }
+      return { noteId: rl ? rl.id : null, sinceDays: sinceDays, fromDay: fromDay, events: events, channels: out, ledger: (t && t.ledger) || null, lastFlush: (t && t.meta && t.meta.lastFlush) || null, mountNow: mountNow }
     }
     // 查询面入口（RPC + 镜像摘要共用）：读前落账（防抖 pending 与在途回执先 flush 再统计——自洽读）
     async function _recallStats(opts) {
@@ -3844,7 +3884,11 @@ export function apply(ctx) {
     // opts: { sessionId, sessionName, workspace, mode('existing'|'new'), instruction, sourceLabel（派发来源标注，定时调度传 '定时调度 @约定标题'，进消息尾行与 dispatches 记录） }
     async function _dispatch(id, opts) {
       const o = opts || {}
-      const note = await _get(id)
+      // 0.4.6-H（notes-046-smallfix，R2 n-mux9s42zajxk）：入口参数校验——缺 id / 笔记不存在统一返回结构化 {error}
+      //   （与 notes-export-single 缺 dir 等姊妹 RPC 同口径；修复缺参时「cannot read "…\undefined.md"」把 undefined 拼进路径、泄漏内部存储形态）
+      if (!id) return { error: '笔记不存在或参数缺失' }
+      let note
+      try { note = await _get(id) } catch (e) { return { error: '笔记不存在或参数缺失' } }
       if (note.deleted) return { error: '笔记已删除' }
       if (!o.sessionId) return { error: '缺少目标会话' }
       const instruction = String(o.instruction || '').trim()
@@ -4022,11 +4066,21 @@ export function apply(ctx) {
     //     ES 规范按 UTC 午夜解析，本地时区下产生整时区偏移——与时区后缀同类歧义，notes-034-at-need-time）；轮询间隔 ≥5min；目标会话必须存活（工作区有效且未归档）。
     //   ⑦锚定时刻（notes-034-sched-time）：every 可配 anchor:'HH:MM'（本地墙钟时刻，触发序列钉死该时刻不随创建/触发时刻漂移；
     //     需整天间隔——子日间隔锚定语义有歧义一律拒绝）；weekly 另配 dow:0-6（星期几，0=周日；需搭配 anchor 且 every=1w）。
-    //     无 anchor 的存量 every 声明保持纯间隔语义（锚点 lastFiredAt||createdAt）——存量零迁移兼容。
+    //     无 anchor 的存量 every 声明保持纯间隔语义（锚点 lastFiredAt||declaredAt||createdAt，0.4.6-F）——存量零迁移兼容。
+    //   ⑨声明重锚（0.4.6-F，notes-046-sched-anchor）：schedule.declaredAt 机器字段（随 schedule JSON front-matter 落盘，已知键容忍输入但剥离）——
+    //     声明字段（at/every/anchor/dow/target/action/enabled）任一变更或首次写入时，写入闸门刷新 declaredAt=当前时刻；
+    //     声明未变更的改写（等价重提交/只改正文不过闸门）延续存量，缺省不留字段。到期锚点 = lastFiredAt || declaredAt || createdAt
+    //     （字段缺省回退 = 存量零迁移）——修「编辑存量约定后当天误触发一轮」：旧口径锚点恒为 note.createdAt（编辑不推进），
+    //     老约定（创建多日、从未触发）一经编辑 now-base 远超间隔即到期；重锚后锚点 = 本次声明时刻，下个调度点才触发。
+    //     every+anchor 首触防过去候选（schedAnchorNextMs 注入 nowMs）：首触候选落在过去（base 陈旧）→ 对齐「now 之后第一个锚定时刻」
+    //     ——首轮不补发，与⑤「轮询错过不追赶」口径对齐；已触发分支与 at 单次停机补发语义（⑤）不动。
     //   ⑧专属会话 + 休眠送达（0.4.4-B，notes-044-dormant-dispatch）：target='new'（仅周期模式）= 首轮触发创建「定时 · <标题>」
     //     专属会话并随幂等生命线回写 target=新 sid（持久复用，后续轮次同 sid）；执行红线由「目标 live」改写为「目标可送达」——
     //     live 直通 / 持久化可达（stat 命中）走 _dispatch 休眠送达通道（durable inbox 排队，下次活动送达，零唤醒）；
     //     两路皆不可达才记 lastError 不推进 lastFiredAt（补发语义不变）。lastRun.status 新增 queued 枚举（休眠送达标记）。
+    //   ⑩专属会话模型档位（0.4.6-G，notes-046-sched-model）：schedule 声明增可选 model/provider（成对出现、非空字符串；
+    //     合法性不联网校验——创建时 agents.create 失败即落 lastError）。declared model/provider 透传 _schedCreateDedicatedSession
+    //     的 agentOptions（覆盖宿主默认选择）；缺省 = 现状默认模型（存量零迁移）。声明变更比对键随之扩为九键（重锚口径不变）。
     // 序位说明（§8.4.2 例外备案）：本模块消费 dispatch.js 的 _dispatch 故置于其后；notes.js 的 _create/_update 经函数声明提升
     //   调用本模块的 _schedValidateWrite/SCHEDULE_CONTRACT_TYPE——全部为运行期（RPC 调用时）引用，apply 执行期零触碰，无 TDZ 风险。
     const SCHED_TICK_MS = 30 * 1000              // 常驻 tick 周期（裁决②）
@@ -4059,37 +4113,51 @@ export function apply(ctx) {
     }
 
     // 锚定时刻序列（notes-034-sched-time）：anchor 声明 → 触发时刻钉死本地 HH:MM，不随创建/触发时刻漂移。
-    //   首触（fired=false，base=createdAt）= base 之后第一个锚定时刻（weekly 限定 dow 星期几）；
+    //   首触（fired=false，base=declaredAt||createdAt，0.4.6-F）= base 之后第一个锚定时刻（weekly 限定 dow 星期几）；
     //   后续（fired=true，base=lastFiredAt）= base + 间隔 所在本地日的锚定时刻（weekly = 下一个 dow 锚定时刻）——
     //   触发延迟（停机错过）只推迟本次，后续仍落回同一时刻序列。
+    //   0.4.6-F（notes-046-sched-anchor）首触防过去候选：注入 nowMs 时，首触候选落在过去（base 陈旧：declaredAt 重锚前存量/停机多日）
+    //   → 对齐「now 之后第一个锚定时刻」（首轮不补发，与⑤轮询错过不追赶口径对齐）；已触发分支不注入该闸（停机补发一次语义保留）。
     //   dow=0-6（0=周日，Date.getDay 口径）；ivMs 需整天倍数（写入闸门保证）。非法 → null
-    function schedAnchorNextMs(anchor, dow, ivMs, baseMs, fired) {
+    function schedAnchorNextMs(anchor, dow, ivMs, baseMs, fired, nowMs) {
       const off = schedAnchorMs(anchor)
       if (off === null || !isFinite(baseMs) || !baseMs) return null
       const b = new Date(baseMs)
       const day0 = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime()   // base 所在本地日午夜
+      // 首触防过去候选（0.4.6-F）：now 有效且晚于 base 时扫描起点抬到 now 当日午夜（跳过陈旧欠款日）；已触发/无 nowMs 保持 base 当日起扫（旧口径）
+      const hasNow = typeof nowMs === 'number' && isFinite(nowMs)
+      let scan0 = day0
+      if (!fired && hasNow && nowMs > baseMs) { const nd0 = new Date(nowMs); scan0 = new Date(nd0.getFullYear(), nd0.getMonth(), nd0.getDate()).getTime() }
       if (typeof dow === 'number') {
-        // weekly：自 base 当日起逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow；首触 → 下一个 dow）
+        // weekly：自扫描起点逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow；首触 → 下一个 dow 且候选 ≥ now）
         for (let i = 0; i < 14; i++) {
-          const dm = day0 + i * 86400000
-          if (new Date(dm).getDay() === dow && dm + off > baseMs) return dm + off
+          const dm = scan0 + i * 86400000
+          if (new Date(dm).getDay() === dow && dm + off > baseMs && (fired || !hasNow || dm + off >= nowMs)) return dm + off
         }
         return null
       }
       if (typeof ivMs !== 'number' || !isFinite(ivMs) || ivMs % 86400000 !== 0) return null
       if (fired) { const f = new Date(baseMs + ivMs); return new Date(f.getFullYear(), f.getMonth(), f.getDate()).getTime() + off }
       // 首触：base 当日锚定时刻未到 → 当日；已过 → 次日
-      return (day0 + off > baseMs ? day0 : day0 + 86400000) + off
+      const first = (day0 + off > baseMs ? day0 : day0 + 86400000) + off
+      // 首触防过去候选（0.4.6-F）：候选落在过去 → 对齐「now 之后第一个锚定时刻」（当日锚定未到 → 当日；已过 → 次日）
+      if (hasNow && first < nowMs) {
+        const nd = new Date(nowMs)
+        const nday0 = new Date(nd.getFullYear(), nd.getMonth(), nd.getDate()).getTime()
+        return (nday0 + off >= nowMs ? nday0 : nday0 + 86400000) + off
+      }
+      return first
     }
 
     // 声明纯校验（同步部分：形状/未知键/动作/at 未来/every 下限；目标存活为异步部分由 _schedValidateWrite 补）。
     // 返回 { value: 归一化声明 } | { error }；机器状态字段（lastFiredAt/lastRun/lastError）容忍输入但剥离（由既有值延续，见 _schedValidateWrite）
     function schedCheckDecl(raw, nowMs) {
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow? }' }
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow?, model?, provider? }' }
       // runLog（notes-041-sched-runlog）：执行记录独立笔记 id 软链——机器字段（回执链路懒创建回写），已知键容忍输入，闸门校验/延续见 _schedValidateWrite
-      const known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1 }
+      // declaredAt（0.4.6-F，notes-046-sched-anchor）：声明重锚时刻——机器字段（闸门赋值/延续），同列已知键容忍输入但剥离（防伪声明注入锚点）
+      const known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, model: 1, provider: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1, declaredAt: 1 }
       for (const k of Object.keys(raw)) {
-        if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled；错得安全：能力声明必须无歧义）' }
+        if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled/model/provider；错得安全：能力声明必须无歧义）' }
       }
       const at = raw.at !== undefined && raw.at !== null && raw.at !== '' ? String(raw.at).trim() : ''
       const every = raw.every !== undefined && raw.every !== null && raw.every !== '' ? raw.every : undefined
@@ -4139,7 +4207,32 @@ export function apply(ctx) {
       }
       // 专属会话（0.4.4-B）：target='new' 仅周期模式（every）接受——首轮触发自动创建并回写复用；单次 at 无复用场景一律拒绝（错得安全）
       if (target === SCHED_TARGET_NEW && !value.every) return { error: 'schedule.target=\'new\' 专属会话仅周期模式（every）支持——首轮触发自动创建「定时 · 任务名」会话并持久复用；单次 at 请直接指定目标会话 id' }
+      // 专属会话模型档位（0.4.6-G，notes-046-sched-model）：model/provider 成对出现（单给其一即歧义拒绝），非空字符串；
+      //   空串/null 视为未声明（同 anchor 口径）。合法性不联网校验——创建时 agents.create 失败即落 lastError（声明期零网络，同 at/anchor 纯校验口径）
+      const hasModel = raw.model !== undefined && raw.model !== null && raw.model !== ''
+      const hasProvider = raw.provider !== undefined && raw.provider !== null && raw.provider !== ''
+      if (hasModel !== hasProvider) return { error: 'schedule.model 与 schedule.provider 必须成对出现（专属会话模型档位，单给其一有歧义——错得安全）' }
+      if (hasModel) {
+        if (typeof raw.model !== 'string' || typeof raw.provider !== 'string') return { error: 'schedule.model/provider 必须是字符串（实得 model:' + typeof raw.model + ' / provider:' + typeof raw.provider + '）' }
+        const mv = String(raw.model).trim(), pv = String(raw.provider).trim()
+        if (!mv || !pv) return { error: 'schedule.model/provider 不能是空白字符串（错得安全：能力声明必须无歧义）' }
+        value.model = mv; value.provider = pv
+      }
       return { value: value }
+    }
+
+    // 声明字段等价比对（0.4.6-F，notes-046-sched-anchor）：at/every/anchor/dow/target/action/enabled 七键 + 0.4.6-G model/provider 九键——
+    //   undefined/null/空串归一为空串比对；任一差异 = 声明变更（declaredAt 重锚触发条件）。
+    //   归一化声明（action/enabled 由闸门补齐缺省）与存量比对时，存量缺键（如裸编辑旁路未带 action）按变更处理——保守刷新安全向。
+    function schedDeclChanged(decl, ex) {
+      const keys = ['at', 'every', 'anchor', 'dow', 'target', 'action', 'enabled', 'model', 'provider']
+      for (const k of keys) {
+        const a = decl[k], b = ex && ex[k]
+        const an = (a === undefined || a === null || a === '') ? '' : String(a)
+        const bn = (b === undefined || b === null || b === '') ? '' : String(b)
+        if (an !== bn) return true
+      }
+      return false
     }
 
     // 校验红线③：目标会话必须存活——live 直通；非 live 须在工作区有效会话清单内且未归档（live 与否不影响声明准入，执行时再要求 live）
@@ -4160,8 +4253,9 @@ export function apply(ctx) {
     }
 
     // 写入闸门（_create/_update 共用）：纯校验 + 目标存活 + 机器状态延续。返回 { value }（null=显式清除）| { error }
-    // existingSched = 存量 schedule（update 场景）：声明字段被覆盖，机器状态字段（lastFiredAt/lastRun/lastError）延续——
-    //   防重锚点对声明变更自洽（at 改新未来时刻：旧 lastFiredAt < 新 at 自然再触发一次；every 变更：锚点不动对齐下周期）。
+    // existingSched = 存量 schedule（update 场景）：声明字段被覆盖，机器状态字段（lastFiredAt/lastRun/lastError/runLog）延续——
+    //   防重锚点对声明变更自洽（at 改新未来时刻：旧 lastFiredAt < 新 at 自然再触发一次；every 已触发变更：锚点不动对齐下周期）；
+    //   declaredAt（0.4.6-F）属机器字段但语义相反——声明字段变更/首次写入时刷新为当前时刻（重锚），未变更改写延续。
     async function _schedValidateWrite(raw, contractType, existingSched) {
       if (raw === null) {
         // 显式清除：契约仍是 dispatch-schedule 时拒绝（契约 ⟺ 声明配对不变量，防悬空调度笔记）
@@ -4169,7 +4263,8 @@ export function apply(ctx) {
         return { value: null }
       }
       if ((contractType || '') !== SCHEDULE_CONTRACT_TYPE) return { error: 'schedule 字段仅允许 contractType=dispatch-schedule 的约定笔记（错得安全：会真执行动作的能力声明必须显式契约分型）' }
-      const chk = schedCheckDecl(raw, Date.now())
+      const nowMs = Date.now()
+      const chk = schedCheckDecl(raw, nowMs)
       if (chk.error) return { error: chk.error }
       const decl = chk.value
       // 校验红线③目标存活：enabled=false（停用/暂停）豁免——暂停操作随时可落，不因目标漂移锁死治理面；
@@ -4182,6 +4277,11 @@ export function apply(ctx) {
       if (ex.lastFiredAt) decl.lastFiredAt = ex.lastFiredAt
       if (ex.lastRun) decl.lastRun = ex.lastRun
       if (ex.lastError) decl.lastError = ex.lastError
+      // declaredAt（0.4.6-F，notes-046-sched-anchor 声明重锚）：声明字段（schedDeclChanged 九键，0.4.6-G 扩 model/provider）任一变更或首次写入 → 刷新为当前时刻
+      //   （到期锚点由陈旧 createdAt 改为本次声明时刻，修「编辑存量约定当天误触发」；输入携带的 declaredAt 已被 schedCheckDecl 剥离，
+      //   此处纯机器赋值/延续，伪声明无法注入锚点）；声明未变更的改写延续存量 declaredAt，存量缺省不留字段（到期回退 createdAt，零迁移）
+      if (!existingSched || schedDeclChanged(decl, ex)) decl.declaredAt = new Date(nowMs).toISOString()
+      else if (ex.declaredAt) decl.declaredAt = ex.declaredAt
       // runLog 软链（notes-041-sched-runlog）：显式声明须为存在的笔记 id（空串 = 显式解除软链，runLog 笔记留档不级联删）；
       //   缺省（未携带）延续存量——声明改写（编辑/暂停/恢复只提交声明字段）不丢软链
       if (raw.runLog !== undefined && raw.runLog !== null) {
@@ -4207,8 +4307,10 @@ export function apply(ctx) {
 
     // 到期判定（纯函数，注入时钟 nowMs 便于测试与回放）：
     //   at：lastFiredAt < at <= now → 到期（lastFiredAt 空 = 从未触发——含停机错过启动补发场景；触发后 lastFiredAt ≥ at 永不重发）
-    //   every：锚点 = lastFiredAt || createdAt；now - 锚点 ≥ 间隔 → 到期（触发后 lastFiredAt=本次时刻对齐下周期，错过不追赶）；
-    //   every + anchor（notes-034-sched-time 锚定时刻）：到期 = now ≥ 锚定序列下一时刻（schedAnchorNextMs，钉死本地 HH:MM 不漂移）；
+    //   every：锚点 = lastFiredAt || declaredAt || createdAt（0.4.6-F 声明重锚：declaredAt=声明最近写入时刻，缺省回退 createdAt 存量零迁移）；
+    //     now - 锚点 ≥ 间隔 → 到期（触发后 lastFiredAt=本次时刻对齐下周期，错过不追赶）；
+    //   every + anchor（notes-034-sched-time 锚定时刻）：到期 = now ≥ 锚定序列下一时刻（schedAnchorNextMs 注入 nowMs——
+    //     首触防过去候选：候选落在过去对齐下一轮不补发，0.4.6-F；钉死本地 HH:MM 不漂移）；
     //   无 anchor 存量声明保持纯间隔语义（零迁移兼容）；非法声明（写入闸门已拦，此处双保险）一律不触发
     function schedDueAt(note, sched, nowMs) {
       const lastFiredMs = sched.lastFiredAt ? Date.parse(sched.lastFiredAt) : 0
@@ -4220,9 +4322,11 @@ export function apply(ctx) {
       }
       const iv = schedEveryMs(sched.every)
       if (iv === null || iv < SCHED_MIN_INTERVAL_MS) return false
-      const base = firedMs || Date.parse(note.createdAt || '') || 0
+      const declaredMs0 = sched.declaredAt ? Date.parse(sched.declaredAt) : 0
+      const declaredMs = isFinite(declaredMs0) ? declaredMs0 : 0
+      const base = firedMs || declaredMs || Date.parse(note.createdAt || '') || 0
       if (sched.anchor) {
-        const next = schedAnchorNextMs(sched.anchor, typeof sched.dow === 'number' ? sched.dow : undefined, iv, base, !!firedMs)
+        const next = schedAnchorNextMs(sched.anchor, typeof sched.dow === 'number' ? sched.dow : undefined, iv, base, !!firedMs, nowMs)
         return next !== null && nowMs >= next
       }
       return nowMs - base >= iv
@@ -4288,7 +4392,10 @@ export function apply(ctx) {
       } catch (e) {}
       let presetId
       try { const p = await agentPresets.resolve(); presetId = p && p.id } catch (e) { return { error: 'preset 解析失败：' + String(e && e.message || e) } }
-      const sel = adm && typeof adm.currentSelection === 'function' ? adm.currentSelection() : null
+      // 0.4.6-G（notes-046-sched-model）：声明档位 model/provider 优先（写入闸门保证成对非空；合法性=agents.create 成败即 lastError，此处零校验）；
+      //   缺省回落宿主当前选择（adm.currentSelection）——无声明存量任务行为零变化（存量零迁移红线）
+      const declSel = (function () { const sc = (note && note.schedule) || {}; return (typeof sc.provider === 'string' && sc.provider && typeof sc.model === 'string' && sc.model) ? { provider: sc.provider, model: sc.model } : null })()
+      const sel = declSel || (adm && typeof adm.currentSelection === 'function' ? adm.currentSelection() : null)
       const sid = 'session-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
       let handle = null
       try {
@@ -4934,7 +5041,7 @@ export function apply(ctx) {
       const d = Math.floor(((nowMs || Date.now()) - t) / 86400000)
       return d > limit ? d : 0
     }
-    // 候选计算（纯函数；all = 未删除全量笔记，staleLimit = staleDaysLimit() 由调用方注入）：
+    // 候选计算（纯函数；all = 未删除全量笔记，staleLimit = staleDaysLimit() 由调用方注入；nowMs 可选注入供单测取确定值）：
     //   staleCandidates：kind=note/link 且 updatedAt 距今 > staleLimit 且 useCount===0
     //     （从未被引用且过期的参考资料——最高优先清理信号；useCount>0 的过期笔记仍被 agent 引用，不提名）。按 staleDays 降序。
     //     工作记忆 v0：kind=log 永不进入 stale/orphan 候选——日志是记录类资产，只聚合不淘汰（§6.3），删除权完全留给用户。
@@ -4947,14 +5054,19 @@ export function apply(ctx) {
     //       （all 不含已删笔记——已删笔记的链接不算活引用，与 client 反向链接面板口径一致）
     //     · 排除速记（tags 含 quick：已由 archiveCandidates 通道提名，避免双重提名误导）
     //     · 排除归档产物（mergedFrom 非空：合并归档笔记是「已整理」成果，提名删除会误伤归档结果）
-    function suggestCandidates(all, staleLimit) {
+    //     · 新建宽限期（0.4.6-E）：createdAt 距今 < SUGGEST_ORPHAN_GRACE_MS 不提名——刚建的笔记「未被引用」是常态而非信号，
+    //       即刻提名「可能无用」对新用户是受打击的误伤（n-mux79kj4lwx9）；createdAt 不可解析 = 老旧存量，不豁免。
+    //       stale 段天然免疫（须超 staleLimit 天）；遥测两段各有窗口期豁免口径，不叠加本宽限。
+    const SUGGEST_ORPHAN_GRACE_MS = 86400000   // 新建宽限期 24h（0.4.6-E 常量先行+注释口径；后续可 settings 化）
+    function suggestCandidates(all, staleLimit, nowMs) {
+      const now0 = nowMs || Date.now()
       const staleCandidates = []
       if (staleLimit > 0) {
         for (const n of all) {
           if (n.kind === 'log') continue   // 日志永不被过期清理提名（工作记忆 v0 §6.3：记录类资产只聚合不淘汰；kind 白名单之外的显式双保险）
           if (n.kind === 'sys') continue   // 0.4.3⑥：kind=sys 系统根笔记（注入索引/记忆档案等机器产物）永不被过期清理提名（豁免面收口）
           if (n.kind !== 'note' && n.kind !== 'link') continue
-          const sd = suggestStaleDays(n.updatedAt, staleLimit)
+          const sd = suggestStaleDays(n.updatedAt, staleLimit, now0)
           if (sd <= 0) continue
           if ((n.useCount || 0) > 0) continue   // 遥测保护：仍被引用的过期笔记不提名
           staleCandidates.push({ id: n.id, title: n.title, topic: n.topic || '', updatedAt: n.updatedAt || '', staleDays: sd })
@@ -4977,6 +5089,8 @@ export function apply(ctx) {
         if ((n.useCount || 0) > 0) continue
         if ((n.tags || []).indexOf('quick') >= 0) continue
         if ((n.mergedFrom || []).length > 0) continue
+        const cg = Date.parse(n.createdAt || '')
+        if (isFinite(cg) && now0 - cg < SUGGEST_ORPHAN_GRACE_MS) continue   // 新建宽限期（0.4.6-E）：<24h 不提名
         if (suggestLinkTargetsOf(n.body).length > 0) continue
         if (linkTargets.has(n.id) || (n.title && linkTargets.has(n.title))) continue
         orphans.push({ id: n.id, title: n.title, topic: n.topic || '', updatedAt: n.updatedAt || '', createdAt: n.createdAt || '' })
@@ -5141,6 +5255,15 @@ export function apply(ctx) {
       hot.sort((x, y) => (y.hits - x.hits) || String(x.id).localeCompare(String(y.id)))   // 取用降序（并列按 id 稳定序）
       return { zeroRefMountCandidates: zeroRef, hotUnmountedCandidates: hot.slice(0, SUGGEST_TELEM_HOT_LIMIT) }
     }
+    // 两段互斥（0.4.6-E 建议器断点批，n-mux8beuj84i2）：hotUnmountedCandidates 命中的笔记不再进 orphanCandidates——
+    //   同屏并列「可能无用」与「高频未挂载」观感直接矛盾（这条到底无用还是高频？）。互斥优先级：高频 > 可能无用
+    //   （高频有窗口遥测实证信号，孤儿是启发式判定——实证优先，孤儿让位）。纯函数：返回剔除后的孤儿数组（原数组不改）。
+    function suggestMutexFilter(orphans, hot) {
+      if (!hot || !hot.length) return orphans || []
+      const hotIds = {}
+      for (const h of hot) hotIds[String(h && h.id)] = true
+      return (orphans || []).filter(n => !hotIds[String(n && n.id)])
+    }
     // ==== suggest-helpers END ====
 
     // 整理建议（notes-suggest，dry-run 零写入）：返回 { archiveCandidates, staleCandidates, orphanCandidates, logHygieneCandidates,
@@ -5172,7 +5295,9 @@ export function apply(ctx) {
           })
         }
       } catch (e) { /* 静默降级：遥测故障不扩散整理建议主输出 */ }
-      return { archiveCandidates: pv.quickGroups, staleCandidates: c.staleCandidates, orphanCandidates: c.orphanCandidates, logHygieneCandidates: suggestLogHygiene(all, logWeekAfterDaysLimit(), logRetentionDaysLimit()), zeroRefMountCandidates: telem.zeroRefMountCandidates, hotUnmountedCandidates: telem.hotUnmountedCandidates, telemetryWindowDays: SUGGEST_TELEM_WINDOW_DAYS, generatedAt: new Date().toISOString() }
+      // 两段互斥（0.4.6-E）：高频未挂载命中的笔记从「可能无用」剔除（互斥优先级注释见 suggestMutexFilter 块头）
+      const orphansFinal = suggestMutexFilter(c.orphanCandidates, telem.hotUnmountedCandidates)
+      return { archiveCandidates: pv.quickGroups, staleCandidates: c.staleCandidates, orphanCandidates: orphansFinal, logHygieneCandidates: suggestLogHygiene(all, logWeekAfterDaysLimit(), logRetentionDaysLimit()), zeroRefMountCandidates: telem.zeroRefMountCandidates, hotUnmountedCandidates: telem.hotUnmountedCandidates, telemetryWindowDays: SUGGEST_TELEM_WINDOW_DAYS, generatedAt: new Date().toISOString() }
     }
 
     // 合并一组笔记为一条归档笔记：正文按 updatedAt 升序拼接（## 日期 分节），原笔记先 .bak 备份再软删除。
@@ -6062,7 +6187,7 @@ export function apply(ctx) {
         '- restore: { id } (undo delete/archive)\n' +
         '- archive: { groups? } (explicit archive, undoable once via the notes-archive-undo RPC). groups = whitelist [{memberIds:[noteId,...], title?}]: merge exactly those groups (memberIds must all exist and not be deleted; title overrides the default group title). Without groups: merge ONLY quick-capture notes grouped by session. Behavior change: manual notes are NEVER auto-grouped by tag anymore — pass explicit groups to merge them (preview quick groups first via the notes-archive-preview RPC).\n' +
         '- dispatch: { id, targetSessionId?, targetSessionName?, instruction? } (assemble the todo context plus your instruction into one user message and send it to a live session as a real task — or, when the target session is dormant (not live but persisted), queue it into the session\'s durable inbox with ZERO wake: it is delivered and processed on the session\'s next activity (the dispatch record carries queued:true in that case — 0.4.4-B); the handoff is recorded in the note\'s dispatches property with dispatchStatus=sent, and a 📤 line is appended to the note\'s lazily-created execution-log companion note「执行记录 · <标题>」(kind=log in folder「执行记录」— injection hard-disabled, visible/searchable/editable as usual; soft-linked via schedule.runLog for schedule conventions / top-level runLog field otherwise — 0.4.4-A 三表归一). Omit targetSessionId to list dispatchable sessions (live flag per entry — live:false entries are dormant and get queued delivery). Closed loop: closed via idle-transition receipt of the target session — an idle transition auto-flips that session\'s open dispatches to dispatchStatus=done and writes the receipt (dormant queued deliveries close the same way on next-activity idle, zero wake 零唤醒排队同理); update status=resolved remains available as a manual fallback（手动兜底）that force-closes all open dispatches of the note — since 0.4.5-I dispatch messages no longer instruct the target session to resolve the note.)\n' +
-        'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual, and a lazily-created execution-log note「执行记录 · @标题」is soft-linked via schedule.runLog — shared with manual dispatches of the same note (dispatch 📤 lines + receipt 📥/✅ lines land in one note) — the convention body itself is NEVER appended to (it is the dispatch payload; history would bloat and pollute future dispatch contexts). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived — OR the reserved literal target: \'new\' (periodic mode only — 0.4.4-B dedicated session: the first fire auto-creates a session named 定时 · <title> in the note\'s workspace, writes schedule.target back to the new sid, and every later round reuses that session via live-send or dormant queued delivery); unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status(sent|queued|error),receiptId}/lastError/runLog) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
+        'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow?, provider?, model? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual, and a lazily-created execution-log note「执行记录 · @标题」is soft-linked via schedule.runLog — shared with manual dispatches of the same note (dispatch 📤 lines + receipt 📥/✅ lines land in one note) — the convention body itself is NEVER appended to (it is the dispatch payload; history would bloat and pollute future dispatch contexts). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived — OR the reserved literal target: \'new\' (periodic mode only — 0.4.4-B dedicated session: the first fire auto-creates a session named 定时 · <title> in the note\'s workspace, writes schedule.target back to the new sid, and every later round reuses that session via live-send or dormant queued delivery); model/provider: optional dedicated-session model pair (0.4.6-G — declare BOTH or NEITHER, non-empty strings; on target:\'new\' first fire they are passed to agents.create agentOptions, overriding the host default model selection — omitted = host default, zero migration; validity is NOT probed at declaration time, an invalid pair surfaces as schedule.lastError at fire time); unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status(sent|queued|error),receiptId}/lastError/runLog/declaredAt) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
       parameters: {
         type: 'object',
         properties: {
@@ -6085,7 +6210,7 @@ export function apply(ctx) {
           folder: { type: 'string', description: 'Virtual folder (create/move/list filter): folder id or exact folder name (a name is normalized to its id on write; unknown id/name is rejected); "" = unfiled (未分类). Folders nest via parent (maxFolderDepth setting, default 3); a list filter matches the whole subtree recursively (notes in descendant folders included).' },
           // 定时派发·执行层（dispatch-schedule 声明字段；公共写入口 contractType 白名单 '' / dispatch-schedule）
           contractType: { type: 'string', description: 'Contract type (create/update): public writes allow only \'dispatch-schedule\' (scheduled-dispatch convention, must pair with schedule) or \'\' to clear; other contract types are system-managed' },
-          schedule: { type: ['object', 'null'], description: 'Scheduled-dispatch declaration (create/update; requires contractType=\'dispatch-schedule\'): { at?: LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 (one-shot, must be future; Z/±offset rejected) | every?: \'30m\'/\'12h\'/\'3d\'/\'1w\' or ms (>=5min), anchor?: \'HH:MM\' LOCAL time (periodic only, whole-day interval; pins firing to that time of day, no drift), dow?: 0-6 (weekly only, 0=Sunday, requires every:\'1w\' + anchor), target: sessionId (workspace session, not archived) or \'new\' (periodic only: auto-create a dedicated 定时 · <title> session on first fire, then reuse it — 0.4.4-B), action?: \'dispatch\', enabled?: boolean }. Host-managed machine fields lastFiredAt/lastRun/lastError/runLog are preserved across declaration edits (runLog = soft-link id of the lazily-created execution-log note; pass an existing note id to relink, \'\' to unlink). null clears the declaration (pair with contractType: \'\').' },
+          schedule: { type: ['object', 'null'], description: 'Scheduled-dispatch declaration (create/update; requires contractType=\'dispatch-schedule\'): { at?: LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 (one-shot, must be future; Z/±offset rejected) | every?: \'30m\'/\'12h\'/\'3d\'/\'1w\' or ms (>=5min), anchor?: \'HH:MM\' LOCAL time (periodic only, whole-day interval; pins firing to that time of day, no drift), dow?: 0-6 (weekly only, 0=Sunday, requires every:\'1w\' + anchor), target: sessionId (workspace session, not archived) or \'new\' (periodic only: auto-create a dedicated 定时 · <title> session on first fire, then reuse it — 0.4.4-B), action?: \'dispatch\', enabled?: boolean, provider?: + model?: dedicated-session model pair (0.4.6-G: BOTH or NEITHER, non-empty strings; passed to agents.create agentOptions on first-fire creation of a target:\'new\' session, overriding the host default selection; not probed at declaration time — invalid pair surfaces as lastError at fire time) }. Host-managed machine fields lastFiredAt/lastRun/lastError/runLog/declaredAt are preserved across declaration edits (declaredAt = declaration anchor timestamp, refreshed only when declaration fields at/every/anchor/dow/target/action/enabled/model/provider change — periodic due-anchor is lastFiredAt||declaredAt||createdAt; runLog = soft-link id of the lazily-created execution-log note; pass an existing note id to relink, \'\' to unlink). null clears the declaration (pair with contractType: \'\').' },
           // archive 字段（显式归档白名单）
           groups: { type: 'array', items: { type: 'object', properties: { memberIds: { type: 'array', items: { type: 'string' } }, title: { type: 'string' } }, required: ['memberIds'] }, description: 'Archive whitelist (archive action only): [{memberIds:[noteId,...], title?}] — merge exactly these groups. Omitted = merge only quick-capture groups; manual notes are NEVER auto-grouped by tag (behavior change).' },
           // dispatch 字段
@@ -6278,6 +6403,8 @@ export function apply(ctx) {
     loadSettings()
     // 用量统计启动加载（同口径不阻塞）：recordUsage 记账前内部也会 await loadUsage()，双保险防覆盖存量
     loadUsage()
+    // 0.4.6-H（notes-046-smallfix 卫生小件②）：原子写 .tmpdir 孤儿启动清扫（fire-and-forget；>24h 才删不动在途写；能力缺失静默跳过）
+    sweepTmpdirOrphans()
     // 0.4.3⑤ 升级首启自动建「注入索引（自动）」根笔记（notes-043-index，fire-and-forget；失败静默下次启动重试）
     // 0.4.3 验收修复⑪：ensure 落定后顺带孤儿索引自愈（idxHealOrphans：存量同名索引 §1 行并入正式索引 + 软删孤儿；冷缓存防御在 idxEnsure 内水化闸门）
     idxEnsure().then(function (rl) { if (rl) idxHealOrphans(rl) })

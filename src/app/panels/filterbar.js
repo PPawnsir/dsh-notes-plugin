@@ -34,13 +34,18 @@ function renderFilterPop() {
   var h = '<div class="fg-h"><span>' + t('filter.statusGroup') + '</span><span class="fg-rule">' + t('filter.ruleOr') + '</span></div>';
   FILTER_STATUS.forEach(function (s) {
     if (s.id === 'injectEver' && !showEver) return;   /* feature-detect：slim 无 injectEver 字段时不显示 */
+    /* 0.4.6-H（notes-046-smallfix）：选项计数过 visMask 遮罩（query.js，与 matches() 遮罩段同口径）——
+       修复「置顶选项计数 1 vs 命中 0」矛盾（置顶笔记在 sys 夹链内被遮罩时，裸谓词仍计 1） */
     h += '<label class="fg-item"><input type="checkbox" data-ft="' + s.id + '"' + (filters[s.id] === true ? ' checked' : '') + '>'
-      + icon(s.icon, 11) + '<span class="fl">' + filterStatusLabel(s.id) + '</span><span class="cnt2">' + notes.filter(s.pred).length + '</span></label>';
+      + icon(s.icon, 11) + '<span class="fl">' + filterStatusLabel(s.id) + '</span><span class="cnt2">' + notes.filter(function (n) { return visMask(n) && s.pred(n) }).length + '</span></label>';
   });
   h += '<div class="fg-h"><span>' + t('filter.kindGroup') + '</span><span class="fg-rule">' + t('filter.ruleOrAnd') + '</span></div>';
   FILTER_KINDS.forEach(function (k) {
+    /* 0.4.6-H（R2 n-mux9rpgowpz6）：「机器」选项计数口径——sys 笔记不入缺省缓存（host ⑨ 降噪），裸谓词恒 0 属误导；
+       恰选 sys 单档时 host kind 通道已取回全库 sys（data.js listFetchSig）→ 显示真实命中数；其余形态显示「点选加载」占位（不显示 0） */
+    var sysLazy = (k === 'sys' && !(filters.kinds.length === 1 && filters.kinds[0] === 'sys'));
     h += '<label class="fg-item"><input type="checkbox" data-fk="' + k + '"' + (filters.kinds.indexOf(k) >= 0 ? ' checked' : '') + '>'
-      + '<span class="dot" style="background:' + (KCOLOR[k] || KCOLOR.note) + '"></span><span class="fl">' + kindLabel(k) + '</span><span class="cnt2">' + notes.filter(function (n) { return (n.kind || 'note') === k }).length + '</span></label>';
+      + '<span class="dot" style="background:' + (KCOLOR[k] || KCOLOR.note) + '"></span><span class="fl">' + kindLabel(k) + '</span><span class="cnt2">' + (sysLazy ? t('filter.sysCountLazy') : notes.filter(function (n) { return visMask(n) && (n.kind || 'note') === k }).length) + '</span></label>';
   });
   /* 0.4.4-D hidden：显示组——「显示隐藏」显隐开关（OS 文件管理对齐；独立持久键 dsh-notes-app-show-hidden，非筛选条件——不计数/清空不重置） */
   h += '<div class="fg-h"><span>' + t('filter.displayGroup') + '</span></div>';

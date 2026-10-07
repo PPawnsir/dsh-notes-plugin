@@ -235,7 +235,13 @@
         out[c] = { delivered: ids.length, deliveries: st.deliveries, used: used, uses: uses, rate: ids.length ? Math.round(used / ids.length * 1000) / 1000 : null }
       }
       const rl = _recallNoteSync()
-      return { noteId: rl ? rl.id : null, sinceDays: sinceDays, fromDay: fromDay, events: events, channels: out, ledger: (t && t.ledger) || null }
+      // 0.4.6-E（n-mux8cq80ai5h）：面板统计行鲜度两件套（纯读增量，遥测写路径不动）——
+      //   lastFlush = meta.lastFlush（遥测最近落账时刻）：面板统计行「截至 HH:MM」数据源（与目录段信号行同口径的人读时刻）；
+      //   mountNow = idxLinesSync() 实时挂载计数：账本 ledger.mountTotal 是 cron 快照口径（节拍不随挂载动作），
+      //   每次打开注入管理经本 RPC 即得新鲜计数；索引不可用 → null 静默降级（面板回退快照值）。
+      let mountNow = null
+      try { mountNow = idxLinesSync().length } catch (e) { mountNow = null }
+      return { noteId: rl ? rl.id : null, sinceDays: sinceDays, fromDay: fromDay, events: events, channels: out, ledger: (t && t.ledger) || null, lastFlush: (t && t.meta && t.meta.lastFlush) || null, mountNow: mountNow }
     }
     // 查询面入口（RPC + 镜像摘要共用）：读前落账（防抖 pending 与在途回执先 flush 再统计——自洽读）
     async function _recallStats(opts) {

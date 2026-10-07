@@ -117,20 +117,33 @@ const STATIC_PERF_TIMER = [
 const STATIC_PERF_WRAP = '// 性能计数器在 rpc() helper 内部累加（hostCall/hostCallMs），不再改写全局 host 桥'
 
 // 3.4 fetch 转发封装：取代动态插件的 host 调用桥
+// 0.4.6-B（notes-046-rpc-resilience）：静态包 rpc helper 同构超时护栏——AbortController 超时 reject Error
+// （与开发版宿主桥护栏同语义，调用点 try/catch 零改动兼容）；LLM 类长调用经 HOSTCALL_LLM_METHODS 放宽；
+// 只断等待侧（reject 给调用点收尾），底层请求迟到落定仅清计时器零副作用；常量随 src/client/kernel/perf.js 并入产物。
 const STATIC_RPC_HELPER = [
   '// client → host RPC：静态包走 webServer exact 路由（PACKAGING.md 第 4 节），',
   '// 与 index.mjs 的 RPC_PATH = \'' + RPC_PATH + '\' 对应。',
+  '// 0.4.6-B 韧性护栏：AbortController 超时 reject（与开发版宿主桥护栏同语义），LLM 类长调用放宽，只断等待侧',
   'function rpc(method, args) {',
   '  perf.hostCall++',
   '  var t0 = now()',
-  '  return fetch(\'' + RPC_PATH + '\', {',
-  '    method: \'POST\',',
-  '    headers: { \'Content-Type\': \'application/json\' },',
-  '    body: JSON.stringify({ method: method, args: args || {} })',
-  '  }).then(',
-  '    function (r) { perf.hostCallMs += now() - t0; return r.json() },',
-  '    function (err) { perf.hostCallMs += now() - t0; throw err }',
-  '  )',
+  '  var guardMs = HOSTCALL_LLM_METHODS[method] ? HOSTCALL_TIMEOUT_LLM_MS : HOSTCALL_TIMEOUT_MS',
+  '  var ctrl = typeof AbortController !== \'undefined\' ? new AbortController() : null',
+  '  return new Promise(function (resolve, reject) {',
+  '    var to = setTimeout(function () {',
+  '      if (ctrl) { try { ctrl.abort() } catch (e2) {} }',
+  '      reject(new Error(t(\'rpc.hostTimeout\', { s: Math.round(guardMs / 1000) })))',
+  '    }, guardMs)',
+  '    fetch(\'' + RPC_PATH + '\', {',
+  '      method: \'POST\',',
+  '      headers: { \'Content-Type\': \'application/json\' },',
+  '      body: JSON.stringify({ method: method, args: args || {} }),',
+  '      signal: ctrl ? ctrl.signal : undefined',
+  '    }).then(',
+  '      function (r) { clearTimeout(to); perf.hostCallMs += now() - t0; resolve(r.json()) },',
+  '      function (err) { clearTimeout(to); perf.hostCallMs += now() - t0; reject(err) }',
+  '    )',
+  '  })',
   '}',
 ].join('\n')
 

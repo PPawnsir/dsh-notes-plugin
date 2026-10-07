@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>dsh-notes</title>
+<!-- 0.4.6-H（R2 n-mux9tc6z76mj 卫生小件①）：内联 favicon（品牌蓝圆角方块 SVG data URI）——消除浏览器自动请求 /favicon.ico 的 404 console 噪音 -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='4' fill='%237aaaff'/></svg>">
 <!--
   dsh-notes 半独立全窗口笔记页（/dsh-notes-app）
   - UI 基座：design/notes-ui-v2.html 定稿原型（原生 JS+DOM / DSH token 配色 / SVG 图标）
@@ -76,6 +78,9 @@
   .fbtn-filter.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:600}
   .fbtn-filter svg.ic{width:11px;height:11px}
   .fbtn-filter .cnt{font-family:var(--nmono);font-size:9.5px;line-height:1.4;background:var(--nacc);color:#fff;border-radius:8px;padding:0 5px}
+  /* 0.4.6-C（notes-046-ux-discovery）：顶栏「建议」计数徽标（复用 fbtn-filter .cnt 视觉口径）+ 空态概念指向行 */
+  .tbtn .cnt{font-family:var(--nmono);font-size:9.5px;line-height:1.4;background:var(--nacc);color:#fff;border-radius:8px;padding:0 5px}
+  .ed-empty-concept{color:var(--nt3)}
   /* 激活条件 chips：单行横排，超宽横向滚动（不挤压树区高度）；× 单条移除，与 popover 勾选双向同步 */
   .fchips{display:flex;gap:4px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:thin}
   .fchip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 4px 2px 9px;border-radius:20px;background:var(--nbg-sel);color:var(--nacc-tx);flex-shrink:0;user-select:none;white-space:nowrap}
@@ -138,6 +143,8 @@
   .unfiled-hint{display:none;margin:2px 0;padding:5px 8px;border:1px dashed var(--nbd);border-radius:var(--nr-sm);font-size:11px;color:var(--nt3);text-align:center;user-select:none}
   .unfiled-drop.drag-on .unfiled-hint{display:block}
   .unfiled-drop.drop .unfiled-hint{border-color:var(--nacc);color:var(--nacc-tx)}
+  /* 0.4.6-H：「展开为空」遮罩提示行（子夹全是 sys/hidden 被滤除时；tree.js folderNodeHtml 嵌套容器内） */
+  .sys-mask-hint{margin:2px 0;padding:4px 8px;font-size:11px;color:var(--nt3);line-height:1.5;user-select:none}
   .caret{width:11px;flex-shrink:0;color:var(--nt3);display:grid;place-items:center;transition:transform .15s;cursor:pointer}
   .caret.open{transform:rotate(90deg)} .caret svg.ic{width:10px;height:10px}
   /* 行尾视图过滤图标（文件夹/主题行共用：单击行主体=原地展开，视图过滤降级为行尾小图标；hover 浮现，激活常显） */
@@ -440,6 +447,11 @@
   .inj-mount-label{font-size:11px;color:var(--nt2)}
   .inj-mount-when{width:100%;box-sizing:border-box;font:inherit;font-size:12px;line-height:1.6;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:7px 9px;outline:0;resize:vertical;min-height:64px}
   .inj-mount-when:focus{border-color:var(--nacc)}
+  /* 0.4.6-E 挂载弹层 LLM 预填三态：加载态状态行（spinner 转圈）/ 失败态（黄字 + tooltip 原始原因） */
+  .inj-mount-stat{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--nt3)}
+  .inj-mount-stat.gen::before{content:'';width:10px;height:10px;border:2px solid var(--nbd-soft);border-top-color:var(--nacc);border-radius:50%;animation:dshNotesMountSpin .8s linear infinite;flex-shrink:0}
+  @keyframes dshNotesMountSpin{to{transform:rotate(360deg)}}
+  .inj-mount-stat.err{color:var(--nwarn);cursor:help}
   /* ===== 历史版本面板 modal（详情 meta 行「历史」入口；notes-history-ui）：左列版本列表（时间+大小，倒序）+ 右侧只读预览（renderMarkdown 内核渲染；与原型 notes-ui-v2.html 同款） ===== */
   .modal.hist{width:720px}
   .hist-body{display:flex;gap:10px;min-height:190px;margin-bottom:4px}
@@ -491,6 +503,7 @@
   .sched-row-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
   .sched-freq{color:var(--nacc-tx);flex-shrink:0;font-size:10.5px}
   .sched-target{color:var(--nt3);flex-shrink:0;font-size:10.5px;font-family:var(--nmono)}
+  .sched-model{color:var(--nacc-tx);flex-shrink:0;font-size:10px;font-family:var(--nmono);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--nbd-soft);border-radius:8px;padding:0 5px}   /* 0.4.6-G：调度行模型档位标注 */
   .sched-nf{color:var(--nt2);flex-shrink:0;font-size:10.5px;white-space:nowrap}
   .sched-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nt3);border:1px solid var(--nbd);border-radius:10px;padding:0 7px;flex-shrink:0;white-space:nowrap}
   .sched-badge.ok{color:#56c88f;border-color:transparent;background:rgba(86,200,143,.12)}
@@ -539,6 +552,8 @@
   .toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(8px);background:var(--npanel);border:1px solid var(--nbd);box-shadow:0 6px 24px rgba(0,0,0,.35);color:var(--ntx);font-size:12px;padding:8px 16px;border-radius:20px;opacity:0;pointer-events:none;transition:all .2s;z-index:200;max-width:70vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .toast.show{opacity:1;pointer-events:auto}
   .toast a{color:var(--nacc-tx);margin-left:8px;cursor:pointer}
+  /* ===== 0.4.6-B RPC 挂起提示条（notes-046-rpc-resilience）：顶部居中小条，pointer-events:none 不遮罩不阻断操作 ===== */
+  .rpc-slow{position:fixed;top:8px;left:50%;transform:translateX(-50%);background:var(--npanel);border:1px solid var(--nbd);box-shadow:0 4px 16px rgba(0,0,0,.3);color:var(--nwarn);font-size:11px;padding:4px 12px;border-radius:14px;z-index:190;pointer-events:none;white-space:nowrap}
   .hintbar{padding:6px 14px;background:var(--npanel);border-top:1px solid var(--nbd);font-size:11px;color:var(--nt3);display:flex;gap:16px}
   /* ===== 文件夹右键菜单 ===== */
   .ctxmenu{position:fixed;z-index:150;min-width:150px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:4px}

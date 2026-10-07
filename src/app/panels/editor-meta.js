@@ -98,6 +98,9 @@ function renderMeta() {
         });
         return;
       }
+      /* 0.4.6-E（n-mux8ccd3i4ub）：「约定」档二次确认闸——约定 = 全文进系统提示、缺省对所有会话生效（风险等级高于资料却无闸，实测误触）；
+         确认强度对齐风险：off 关闭/资料走挂载框确认，独缺约定这一档。scope 文案随 injectTo 实况（缺省 = 所有会话） */
+      if (r === 'convention' && !confirm(t('meta.convInjectConfirm', { title: n.title || n.id, scope: injectScopeLabel(n.injectTo) }))) return;
       if (r === 'off') { edNote.inject = false; scopeOpen = false }
       else { edNote.inject = true; edNote.injectRole = r; if (!sessList.length) pullSessions(); scopeOpen = true }
       triggerSave(); renderMeta();
@@ -182,6 +185,8 @@ function schedPlanHtml(n, list) {
       + '<span class="sched-freq">' + esc(schedFreqLabel(s)) + '</span>'
       /* 0.4.5-B（notes-045-ux-polish）：target='new' 专属会话目标位显示人话文案（首轮回写真实 sid 后自动恢复「→ 截短」，零迁移；纯展示层） */
       + '<span class="sched-target" title="' + esc(s.target || '') + '">' + (s.target === 'new' ? esc(t('disp.schedNewTarget')) : '→ ' + esc(shortSid(s.target))) + '</span>'
+      /* 0.4.6-G（notes-046-sched-model）：声明模型档位标注（有声明才显示，无声明零 DOM 痕迹） */
+      + (s.provider && s.model ? '<span class="sched-model" title="' + esc(t('disp.schedModelTip', { model: s.provider + '/' + s.model })) + '">' + esc(s.provider + '/' + s.model) + '</span>' : '')
       + '<span class="sched-nf">' + esc(schedNextLabel(n)) + '</span>'
       + schedBadgeHtml(n)
       + (paused ? '<span class="sched-badge off">' + t('meta.schedPaused') + '</span>' : '')

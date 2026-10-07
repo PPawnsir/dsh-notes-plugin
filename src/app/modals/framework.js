@@ -20,5 +20,7 @@ function closeModal() {
 }
 /* ✕/Esc/点遮罩统一入口：先跑兜底 flush 钩子（读控件 DOM 需在清空前），再关 modal；无钩子 ≡ closeModal */
 function closeModalFlushed() { var h = modalCloseHook; if (h) h(); closeModal() }
-function modalErr(m) { var e = $('mErr'); if (e) { e.textContent = m; e.style.display = 'block' } }
+/* 0.4.6-H（R2 n-mux9svn0vhkz）：报错后滚动定位到错误区（block:nearest 最小滚动——设置卡错误区在标题栏下=滚回顶部，
+   其余底部 mErr 弹窗=滚到底部），消除「保存无声」观感；stub 环境无 scrollIntoView 时静默跳过 */
+function modalErr(m) { var e = $('mErr'); if (e) { e.textContent = m; e.style.display = 'block'; try { e.scrollIntoView({ block: 'nearest' }) } catch (err) {} } }
 

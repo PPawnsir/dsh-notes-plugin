@@ -9,6 +9,8 @@ module.exports = {
   name: '㉔ 约定体检：内联结果区提名对 + 保留两者零副作用 / 标已取代落 status + 重跑收敛',
   async run({ base, browser, H }) {
     const page = await H.newPage(browser, base)
+    /* 0.4.6-E：「约定」档新增二次确认闸（meta.convInjectConfirm）——本用例走确认通过路径（Playwright 缺省自动 dismiss 对话框，须显式 accept） */
+    page.on('dialog', d => { d.accept().catch(() => {}) })
     try {
       await H.step(page, '24-conflict-check', async () => {
         /* 隔离造数：两条 off 态笔记 → 逐条切「约定」档 */

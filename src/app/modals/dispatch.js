@@ -5,13 +5,18 @@
    编辑模式（注入管理「调度任务」区 [编辑] 进入）= 同弹窗回填既有声明，保存走 notes-update（机器状态字段由 host 写入闸门延续）。
    锚定时刻（notes-034-sched-time）：周期三模式各补时刻选择（time input，默认 09:00）——声明携 anchor:'HH:MM'
    （触发序列钉死本地时刻，不随创建时间漂移）；「每周」另加星期几选择（dow 0-6）；仅一次保持 datetime-local 不变。
-   校验内联报错（at 未来 / N≥1 / 目标必选；host 红线回显同口径）——禁原生 prompt（R1 反面教材 n-mut46q00c3yw） */
+   校验内联报错（at 未来 / N≥1 / 目标必选；host 红线回显同口径）——禁原生 prompt（R1 反面教材 n-mut46q00c3yw）
+   专属会话模型档位（0.4.6-G，notes-046-sched-model）：专属会话复选框勾选时出模型下拉（数据源 = notes-settings-get 的
+   models 清单通道，与设置卡同通道零新 RPC；清单缺席 → 下拉隐藏静默降级），选中值以 provider/model 拆分随声明提交
+   （缺省空 = 跟随宿主默认选择）；编辑模式回填 s.provider/s.model（清单外存量值补合成条目防丢档） */
 var dState = null;
+var schedModelsCache = null;   /* 模型清单会话级缓存（0.4.6-G）：开弹窗即取缓存渲染，后台刷新对齐 host */
 function openDispatch() {
   if (draftNote) { toast(t('disp.draftNotSaved')); return }   /* 草稿无真实 id（notes-034-batch3） */
   if (!edNote || !selId) { toast(t('editor.selectNoteFirst')); return }
-  dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false };
+  dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false, schedModel: '', schedModels: schedModelsCache || [] };
   pullActiveSessions();
+  pullSchedModels();
   renderDispatchModal();
 }
 /* 编辑模式入口（注入管理「调度任务」区 [编辑]）：同弹窗回填既有声明；note = 调度约定笔记 slim（列表已含 schedule，零新 RPC）；
@@ -20,7 +25,8 @@ function openDispatchEdit(note) {
   if (!note || !note.schedule) { toast(t('disp.noSchedule')); return }
   var s = note.schedule;
   var isNew = s.target === 'new';
-  dState = { sessId: isNew ? '' : (s.target || ''), instr: '', pending: false, sessions: [], pendingSess: [], sched: true, schedMode: 'daily', schedN: 3, schedAt: '', editId: note.id, editNote: note, schedAnchor: '09:00', schedDow: 1, schedNew: isNew };
+  /* 0.4.6-G：模型档位回填（provider/model 成对落库 → 合成 provider/model 选中值；缺省空 = 跟随宿主默认） */
+  dState = { sessId: isNew ? '' : (s.target || ''), instr: '', pending: false, sessions: [], pendingSess: [], sched: true, schedMode: 'daily', schedN: 3, schedAt: '', editId: note.id, editNote: note, schedAnchor: '09:00', schedDow: 1, schedNew: isNew, schedModel: (s.provider && s.model) ? s.provider + '/' + s.model : '', schedModels: schedModelsCache || [] };
   /* 回填：at → 仅一次；every 整天数 → 每天/每周/每 N 天；非整天间隔（front-matter 裸编辑旁路值）归一最近整天，保存按表单覆盖；
      锚定时刻（notes-034-sched-time）：anchor/dow 回填（非法 anchor 回退默认 09:00——裸编辑旁路值防御） */
   if (s.at) { dState.schedMode = 'once'; dState.schedAt = isoToLocalInput(s.at) }
@@ -33,7 +39,33 @@ function openDispatchEdit(note) {
     else { dState.schedMode = 'ndays'; dState.schedN = d >= 1 ? d : Math.max(1, Math.round((ms || 259200000) / 86400000)) }
   }
   pullActiveSessions();
+  pullSchedModels();
   renderDispatchModal();
+}
+/* 模型清单拉取（0.4.6-G）：notes-settings-get 的 models 通道（设置卡同款，零新 RPC）；
+   通道缺席/失败 → schedModels 空 → 下拉隐藏（静默降级红线） */
+function pullSchedModels() {
+  rpc('notes-settings-get', {}).then(function (res) {
+    if (!res || !dState) return;
+    if (res.models && res.models.length) { schedModelsCache = res.models; dState.schedModels = res.models; renderSchedModelSel() }
+  }).catch(function () { /* 静默降级红线（0.4.6-G）：清单通道缺席/传输失败 → 下拉保持隐藏，不打扰派发主链路（R1③ 设计内静默点） */ });
+}
+/* 模型下拉渲染（0.4.6-G）：专属会话勾选 + 周期模式 + 清单非空三条件齐备才显示（缺一隐藏，静默降级）；
+   存量声明值不在清单内（模型已下架等）→ 补合成条目回显防丢档 */
+function renderSchedModelSel() {
+  var box = $('dSchedModelBox'); if (!box || !dState) return;
+  var show = dState.schedNew && dState.schedMode !== 'once' && dState.schedModels.length > 0;
+  box.style.display = show ? '' : 'none';
+  if (!show) { box.innerHTML = ''; return }
+  var opts = '<option value="">' + esc(t('disp.schedModelDefault')) + '</option>';
+  var seen = {};
+  dState.schedModels.forEach(function (m) {
+    var v = m.provider + '/' + m.model; seen[v] = true;
+    opts += '<option value="' + esc(v) + '"' + (dState.schedModel === v ? ' selected' : '') + '>' + esc(m.label || v) + '</option>';
+  });
+  if (dState.schedModel && !seen[dState.schedModel]) opts += '<option value="' + esc(dState.schedModel) + '" selected>' + esc(dState.schedModel) + '</option>';
+  box.innerHTML = '<select class="minput sched-sel" id="dSchedModel" title="' + esc(t('disp.schedModelTip', { model: dState.schedModel || t('disp.schedModelDefault') })) + '">' + opts + '</select>';
+  $('dSchedModel').onchange = function () { dState.schedModel = this.value };
 }
 function pullActiveSessions() {
   rpc('notes-active-sessions', {}).then(function (res) {
@@ -77,6 +109,8 @@ function renderDispatchModal() {
     + '<div class="sched-next" id="dSchedNext"></div>'
     /* 专属会话（0.4.4-B）：周期模式可勾 target='new'——首轮触发 host 自动创建「定时 · 任务名」会话并回写复用；仅一次（at）无复用场景不提供 */
     + '<label class="sched-opt" id="dSchedNewBox"' + (dState.schedMode === 'once' ? ' style="display:none"' : '') + '><input type="checkbox" id="dSchedNew"' + (dState.schedNew ? ' checked' : '') + '> ' + t('disp.schedNew') + '</label>'
+    /* 专属会话模型下拉宿主（0.4.6-G）：勾选专属会话且清单非空才显示（renderSchedModelSel 驱动，静默降级） */
+    + '<span id="dSchedModelBox" style="display:none"></span>'
     + '</div></div>'
     /* 专属会话勾选后隐藏级联选择（目标由 host 首轮创建，无既有会话可选） */
     + '<div id="dispSessHostWrap"' + (dState.schedNew && (dState.sched || dState.editId) ? ' style="display:none"' : '') + '><div id="dispSessHost"></div></div>'
@@ -100,14 +134,16 @@ function renderDispatchModal() {
     /* 专属会话复选框仅周期模式提供（host 闸门同口径拒绝 at+'new'）；切到仅一次时自动摘勾并还原生态位 */
     $('dSchedNewBox').style.display = this.value === 'once' ? 'none' : '';
     if (this.value === 'once' && dState.schedNew) { dState.schedNew = false; $('dSchedNew').checked = false; $('dispSessHostWrap').style.display = ''; }
+    renderSchedModelSel();   /* 0.4.6-G：模式切换联动模型下拉显隐（仅一次无专属会话 → 同隐） */
     renderSchedNext();
   };
-  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; };
+  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; renderSchedModelSel(); };   /* 0.4.6-G：勾选专属会话才出模型下拉 */
   $('dSchedN').oninput = function () { dState.schedN = this.value; renderSchedNext() };
   $('dSchedDow').onchange = function () { dState.schedDow = parseInt(this.value, 10); renderSchedNext() };
   $('dSchedAnchor').oninput = function () { dState.schedAnchor = this.value; renderSchedNext() };
   $('dSchedOnce').oninput = function () { dState.schedAt = this.value; renderSchedNext() };
   renderSchedNext();
+  renderSchedModelSel();   /* 0.4.6-G：编辑模式回填/缓存清单就位时首轮渲染 */
   renderDispatchSessList();
 }
 function renderDispatchSessList() {
@@ -152,16 +188,18 @@ function schedFormDecl() {
   if (dState.schedMode === 'weekly') return { decl: { every: '1w', anchor: dState.schedAnchor, dow: dState.schedDow } };
   return { decl: { every: '1d', anchor: dState.schedAnchor } };
 }
-/* 声明 → 下次触发毫秒（轮询锚点 = lastFiredAt || createdAt || now；锚定时刻声明 = 锚定序列下一时刻，与 host schedDueAt 同口径；编辑模式传入 editNote 取存量锚点） */
+/* 声明 → 下次触发毫秒（轮询锚点 = lastFiredAt || declaredAt || createdAt || now（0.4.6-F 声明重锚）；锚定时刻声明 = 锚定序列下一时刻，与 host schedDueAt 同口径；编辑模式传入 editNote 取存量锚点） */
 function schedDeclNextMs(decl, note) {
   if (decl.at) return Date.parse(decl.at);
   var firedMs = 0;
   if (note && note.schedule && note.schedule.lastFiredAt) { var f = Date.parse(note.schedule.lastFiredAt); if (isFinite(f)) firedMs = f }
-  var base = firedMs;
+  var declaredMs = 0;
+  if (!firedMs && note && note.schedule && note.schedule.declaredAt) { var dd = Date.parse(note.schedule.declaredAt); if (isFinite(dd)) declaredMs = dd }
+  var base = firedMs || declaredMs;
   if (!base && note && note.createdAt) { var c = Date.parse(note.createdAt); if (isFinite(c)) base = c }
   if (!base) base = Date.now();
   var iv = schedEveryMs(decl.every);
-  if (decl.anchor) { var nx = schedAnchorNextMs(decl.anchor, typeof decl.dow === 'number' ? decl.dow : undefined, iv, base, !!firedMs); if (nx !== null) return nx }
+  if (decl.anchor) { var nx = schedAnchorNextMs(decl.anchor, typeof decl.dow === 'number' ? decl.dow : undefined, iv, base, !!firedMs, Date.now()); if (nx !== null) return nx }
   return base + iv;
 }
 /* 下次触发即时预览（内联；非法输入红字提示，禁原生 prompt） */
@@ -186,6 +224,9 @@ function doDispatchConfirm() {
     /* 编辑保留原 enabled 态（暂停的任务改排定不被意外拉起）；创建默认 enabled=true；周期模式携锚定时刻 anchor/dow（notes-034-sched-time） */
     var decl = { target: dState.schedNew ? 'new' : dState.sessId, action: 'dispatch', enabled: editId ? (dState.editNote.schedule.enabled !== false) : true };
     if (f.decl.at) decl.at = f.decl.at; else { decl.every = f.decl.every; decl.anchor = f.decl.anchor; if (typeof f.decl.dow === 'number') decl.dow = f.decl.dow }
+    /* 0.4.6-G：专属会话 + 已选模型档位 → 声明携 provider/model（成对；缺省空 = 跟随宿主默认，声明零字段）；
+       编辑模式保留存量档位（首轮回写后 target=真实 sid、复选框摘勾下拉隐藏，schedModel 仍持回填值——表单与 front-matter 同源，防丢档同 anchor/dow 先例） */
+    if (dState.schedModel && (dState.schedNew || editId)) { var mp = dState.schedModel.split('/'); decl.provider = mp[0]; decl.model = mp.slice(1).join('/') }
     var nextTxt = fmtDT(new Date(schedDeclNextMs(f.decl, dState.editNote)).toISOString());
     dState.pending = true; $('dOk').disabled = true; $('dOk').textContent = editId ? t('settings.saving') : t('disp.savingSched');
     var req;

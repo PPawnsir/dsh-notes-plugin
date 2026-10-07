@@ -5,6 +5,8 @@ module.exports = {
   name: '⑪ 注入开关开 → 注入管理列表变化',
   async run({ base, browser, H }) {
     const page = await H.newPage(browser, base)
+    /* 0.4.6-E：「约定」档新增二次确认闸（meta.convInjectConfirm）——本用例走确认通过路径（Playwright 缺省自动 dismiss 对话框，须显式 accept） */
+    page.on('dialog', d => { d.accept().catch(() => {}) })
     try {
       await H.step(page, '11-inject-manager', async () => {
         await page.click('#tree .note-row:has-text("e2e 种子笔记 A")')

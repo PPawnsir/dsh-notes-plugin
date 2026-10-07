@@ -26,7 +26,7 @@ var I18N_EN = {
   /* ===== Coverage card A (notes-042-i18n-cov-a): topbar + sidebar tree + hintbar ===== */
   'topbar.subtitle': 'Your note library · conventions and references you write can be injected into Agent sessions',
   'topbar.refreshTip': 'Reload the list and folders (LLM topic classification backfills asynchronously; refresh to see it)',
-  'topbar.archiveTip': 'Merge quick notes from the same session into one; click to preview, only checked groups run (undoable)',
+  'topbar.archiveTip': 'Quick notes = temporary captures from the select-and-release card; click to open a preview, then checked groups of the same session merge into one formal note (undoable)',   /* 0.4.6-D: quick-note concept explained (R2 n-mux7as4ppskn) */
   'topbar.themeTip': 'Toggle theme (dark/light)',
   'topbar.homeTip': 'Back to DSH Home',
   'topbar.filterTip': 'Filter center: check conditions by group (OR within a group, AND across groups)',
@@ -37,7 +37,6 @@ var I18N_EN = {
   'side.brand': 'Notes',
   'side.newTip': 'New note (Alt+N)',
   'side.splitterTip': 'Drag to resize the sidebar (double-click to reset)',
-  'side.more': 'Scroll to load more (showing {shown} / {total})',
   'side.fchipStatusTip': 'Filter: status / {label} (click × to remove)',
   'side.fchipKindTip': 'Filter: type / {label} (click × to remove)',
   'tree.topicTip': 'Topic: {topic}',
@@ -51,7 +50,12 @@ var I18N_EN = {
   'tree.wikiTip': 'Has [[…]] wiki links (clickable in the detail rich text)',
   'tree.toggleTip': 'Expand/collapse',
   'tree.sysChipTip': 'Machine-managed note (sys): hidden from default list/search, shown when its folder is expanded (0.4.4-C explicit entry)',
-  'tree.sysFolderTip': 'Machine-managed folder (auto-sedimented: work logs / memory archives / execution records) — hidden from the tree by default; visible when the "Machine" kind filter or "Show hidden items" is on (0.4.4-G)',
+  /* 0.4.6-D (R2 n-mux7arxj4ocf): tooltip now describes the real behavior — hidden is the default, not a constant; seeing the tooltip at all means one of the explicit channels is on */
+  'tree.sysFolderTip': 'Machine-managed folder (auto-sedimented: work logs / memory archives / execution records) — hidden from the tree by default; visible now because the "Machine" kind filter or "Show hidden items" is on (0.4.4-G); click the row to expand/collapse',
+  /* 0.4.6-H (R2 n-mux9r8hfh7xy): empty-expansion mask hint row (all child folders filtered out as sys/hidden) */
+  'tree.sysMaskHint': 'Contains machine-managed items — enable "Show hidden items" or the "Machine" kind filter to view',
+  /* 0.4.6-J (notes-046-group-paging): group-tail load-more row (per-group paging: pinned / folders / unfiled / topics, click += PAGE_SIZE) */
+  'tree.moreRows': 'Load more ({n} more)',
   'tree.countN': '{n}',
   'tree.viewTopic': 'Topic · {id}',
   'tree.viewAll': 'All notes',
@@ -66,6 +70,9 @@ var I18N_EN = {
   'tree.crossFolder': 'Across folders',
   'tree.topicViewTip': 'Topic view (cross-folder filter)',
   'tree.noMatch': 'No matching notes',
+  /* 0.4.6-D (R2 n-mux7as3gnrru): search empty-state guidance — action exits (shorter keyword hint + create button) */
+  'tree.noMatchGuide': 'Try a shorter keyword, or',
+  'tree.noMatchNew': 'create a new note',
   'tree.clearFilters': 'Clear filter conditions',
   'tree.clearFiltersShort': 'Clear filters',
   'tree.clearAllFiltersTip': 'Clear all filter conditions',
@@ -78,6 +85,14 @@ var I18N_EN = {
   'tree.emptyTitle': 'No notes yet',
   'tree.emptySub': 'Click New in the sidebar, enter a title, and create your first note',
   'tree.emptyBtn': 'Write the first one',
+  /* ===== 0.4.6-B RPC resilience (notes-046-rpc-resilience): structured timeout/network errors + pending bar + landing empty state ===== */
+  'rpc.slowBar': 'Slow connection, still loading…',
+  'rpc.timeout': 'Request timed out (no response for {s}s), aborted',
+  'rpc.network': 'Network error: {msg}',
+  'rpc.hostTimeout': 'Notes service timed out ({s}s)',
+  'tree.landingTitle': 'Not connected to a session',
+  'tree.landingSub': 'Open a session to use the notes panel; if you already are, retry below',
+  'tree.landingRetry': 'Retry',
   'sel.selCount': '{n} selected',
   'sel.merge': 'Merge',
   'hint.select': '🖱 <b>Select text and release</b> in the editor on the right → pop up the quick-capture card',
@@ -97,7 +112,8 @@ var I18N_EN = {
   'editor.autoSaved': '✓ Autosaved {time}',
   'editor.autoSavedFlat': 'Autosaved {time}',
   'editor.emptyTitle': 'Select a note on the left to view and edit',
-  'editor.emptySub': 'Click + at the top of the sidebar to create a note (a draft opens first and is saved on first input); select text in the body to pop up the quick-capture card',
+  /* 0.4.6-D (R2 n-mux79kfts75o): new-note copy aligned across both ends — this end (full-window page) is draft-first; the side-panel difference is noted in parentheses */
+  'editor.emptySub': 'Click + at the top of the sidebar to create a note (a draft opens first and is saved as soon as you type a title or body; the side panel "New" uses a create dialog instead); select text in the body to pop up the quick-capture card',
   'editor.emptyTitleShort': 'Select a note to view and edit',
   'editor.emptySubShort': 'Click "New" in the sidebar, enter a title, and create a note',
   'editor.degBanner': 'Detected <b>syntax that rich text editing does not support yet</b>; rich text is unavailable (source editing still works):',
@@ -119,6 +135,7 @@ var I18N_EN = {
   'editor.tbImage': 'Insert image ![](assets/..) (or Ctrl+V paste / drag a file in)',
   'editor.syncing': 'Editing…',
   'editor.synced': 'Synced to source',
+  'editor.bodySyncing': 'Loading body…',   /* 0.4.6-A: sync pill text while the note body is in flight (no fake-green "synced"); editor.bodyLoading is the pre-existing organize-flow key, not reused */
   'editor.modeSource': 'Source mode',
   'editor.modeRich': 'Rich text mode',
   'editor.imageOnly': 'Only image files are supported',
@@ -226,6 +243,8 @@ var I18N_EN = {
   'meta.delTipClient': 'Delete (soft delete, restorable)',
   'meta.injectOff': 'Context injection disabled',
   'meta.injectOn': 'Injected as context · {role} (scope in the dropdown on the right)',
+  /* 0.4.6-E: convention segment click gains a confirm gate — a convention's full text enters the system prompt of every matched session */
+  'meta.convInjectConfirm': 'Set as convention: "{title}" will take effect for {scope} (full text enters the system prompt, read every turn). Continue?',
   'meta.sensOn': 'Marked sensitive (auto-masked when injected)',
   'meta.sensOff': 'Sensitive mark removed',
   'meta.hiddenOn': 'Hidden (no longer shown in list/tree; open via link or search is unaffected)',
@@ -449,16 +468,20 @@ var I18N_EN = {
   'inj.mountLabel': 'One line: when this note should be read (whenToUse)',
   'inj.mountPlaceholder': 'e.g. When changing injection logic, when verifying mounted references…',
   'inj.mountSave': 'Mount',
-  'inj.mountSkip': 'Skip',
+  'inj.mountSkip': 'Skip suggestion, write it myself',
   'inj.mountSaved': 'Mounted to index: {title}',
   'inj.mountFailed': 'Mount failed: {msg}',
   // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
   'inj.mountEdit': 'Edit mount',
   'inj.mountAdd': 'Add whenToUse & mount',
   'inj.mountGen': 'Generating whenToUse…',
+  // 0.4.6-E：LLM prefill three-state visibility — failure copy (raw reason rides the tooltip; skip button renamed to disambiguate)
+  'inj.mountGenFail': 'Prefill unavailable — please write it yourself',
   // 0.4.3 验收修复⑥（notes-043-metrics-present）：注入管理面板挂载区统计行（notes-recall-stats 账本快照，点开看全量）
   'inj.mntStats': 'Mounted {m}｜Week Top: {top}｜Zero-ref {z}',
   'inj.mntStatsTip': 'Recall value signal (source: notes-recall-stats · ledger snapshot) · click for full channel stats',
+  // 0.4.6-E: stats row gains an "as of" stamp (telemetry meta.lastFlush); mount count is now computed live (mountNow)
+  'inj.mntStatsAsOf': 'as of {at}',
   // 0.4.5-G convention checkup (notes-045-conflict-check): LLM pairwise conflict/supersede detection over injected conventions — nominations only, human verdicts
   'inj.conflictTitle': 'Convention checkup',
   'inj.conflictTitleSub': 'LLM pairwise conflict/supersede check on injected conventions · nominations only',
@@ -555,6 +578,8 @@ var I18N_EN = {
   'disp.dispatchedQueued': 'Queued to "{name}" (dormant session · delivered on its next activity)',
   'disp.schedNew': 'Dedicated session (auto-created on first fire, then reused)',
   'disp.schedNewTarget': 'Auto-created dedicated session on first fire',
+  'disp.schedModelDefault': 'Default model (follow host selection)',   /* 0.4.6-G: dedicated-session model dropdown default option (empty value = no model/provider in declaration) */
+  'disp.schedModelTip': 'Dedicated session model: {model}',            /* 0.4.6-G: schedule-row model annotation tooltip + dropdown title */
   'disp.newSessDone': 'New session created; the todo was injected and processing started',
   'disp.failed': 'Dispatch failed: {msg}',
   'disp.markedDone': 'Marked as done',
@@ -569,8 +594,9 @@ var I18N_EN = {
   'arch.sub': 'Runs only after you check groups · merge is undoable',
   'arch.hint': 'Quick notes are grouped by session; checked groups merge into one archived note (originals are backed up, then soft-deleted).',
   'arch.hintClient': 'Quick notes are grouped by session; checked groups merge into one archived note (originals are .bak-backed-up, then soft-deleted).',
-  'arch.manualHint': 'Manual notes are unaffected; to merge manual notes, multi-select them in the list and right-click → Merge.',
-  'arch.empty': 'No quick-note groups to archive (a session needs ≥2 quick notes to form a group).',
+  /* 0.4.6-D (R1 addendum n-mut4lscwg6tf): the "right-click to merge" copy pointed at a non-existent interaction (note rows have no context menu) — now points at the real path (the bottom action bar "Merge" button) */
+  'arch.manualHint': 'Manual notes are unaffected; to merge them, click "Select" at the bottom of the sidebar, check the notes, then click "Merge" on the bottom action bar.',
+  'arch.empty': 'No quick-note groups to archive (a session needs ≥2 quick notes to form a group). Quick notes are temporary captures produced by the select-and-release card.',   /* 0.4.6-D: empty state gains the quick-note concept (n-mux7as4ppskn) */
   'arch.ok': 'Archive selected',
   'arch.okCount': 'Archive selected ({n} groups)',
   'arch.archiving': 'Archiving…',
@@ -648,6 +674,8 @@ var I18N_EN = {
   'sugg.unmountConfirm': 'Unmount: {title}? (The note is kept — only removed from the injection payload; you can re-mount it anytime.)',
   'sugg.unmounted': 'Unmounted: {title}',
   'sugg.unmountFailed': 'Unmount failed: {msg}',
+  /* 0.4.6-E: zero-signal mount section renders its header plus this empty row even with zero candidates (same empty-state policy as the other sections) */
+  'sugg.zeroRefEmpty': 'No zero-signal mount candidates right now.',
   'newnote.draftToast': 'Draft opened: entering a title or body auto-saves it; clicking another note discards the draft (zero empty notes)',
   'newnote.createdToast': 'Note created (the first edit auto-saved it)',
   'newnote.flushedToast': 'Draft auto-saved: "{title}"',
@@ -698,6 +726,8 @@ var I18N_EN = {
   'filter.kindGroup': 'Type',
   'filter.ruleOrAnd': 'OR within the group · AND with the status group',
   'filter.hitCount': '{n} matches',
+  /* 0.4.6-H (R2 n-mux9rpgowpz6): "Machine" option count placeholder — sys notes are excluded from the default cache (a bare count is always 0, misleading); the real count appears once the kind filter is selected and the host kind channel loads them */
+  'filter.sysCountLazy': 'on select',
   'filter.clear': 'Clear',
   'filter.done': 'Done',
   'filter.removeAria': 'Remove filter {label}',
@@ -782,7 +812,8 @@ var I18N_EN = {
   'ctx.newFolder': 'New folder…',
   'ctx.merge': 'Merge into one',
   'help.newPre': 'Click "New" in the sidebar or press ',
-  'help.newPost': ' to create a note by title, then edit the body right away',
+  /* 0.4.6-D (R2 n-mux79kfts75o): new-note copy aligned across both ends — this end (panel) uses a modal dialog (create = save instantly); the full-window draft-first difference is noted in parentheses */
+  'help.newPost': ' to open the new-note dialog: enter a title, pick a kind, and "Create" saves it instantly for editing (the full-window page opens a draft first: typing auto-saves it)',
   'help.capture': 'Select text on the page and release to pop up the quick-capture card (auto-recognized as a quote)',
   'help.mergeWin': 'Quick notes within 10 minutes in the same session merge automatically',
   'help.topic': 'Click a topic in the breadcrumb/editor to filter globally by topic (cross-folder)',
@@ -797,13 +828,13 @@ var I18N_EN = {
   'help.keysEsc': ' layered close (close overlays → clear search and refocus the list → close the panel)',
   'help.cheatPre': 'When not typing, press ',
   'help.cheatPost': ' to open the shortcut cheat sheet (Esc closes; also on the Settings "Keyboard shortcuts" row)',
-  'help.archive': '"Quick-note merge": opens a preview; only checked groups merge (undoable); manual notes merge via multi-select under "Select"',
+  'help.archive': '"Quick-note merge": folds quick notes (temporary captures from select-and-release) into one formal note — preview first, only checked groups run (undoable); manual notes merge via "Select" multi-select and the bottom action bar "Merge"',   /* 0.4.6-D: quick-note concept + merge path points at the real bottom button */
   'help.organize': 'Editor "Organize": AI rewrites the body per the kind template (undoable once); new notes prefill the template skeleton by kind',
   'help.image': 'Images over 1MB are auto-compressed to JPEG; the Settings "Asset cleanup" row removes unreferenced orphan files',
   'help.delete': 'Deletion is soft: "Trash" at the sidebar bottom restores or purges (purging is irreversible)',
   'side.loadFailed': 'Failed to load the list: {msg}',
   /* ===== 0.4.5-H Session header injected-list badge (notes-045-session-injected-view) ===== */
-  'injBadge.tip': 'Injected here: {m} conventions · {k} references (click for details)',
+  'injBadge.tip': 'Injected here: {m} conventions · {k} references (badge = combined total; click for details)',   /* 0.4.6-C: badge number semantics spelled out */
   'injBadge.title': 'Injected into this session',
   'injBadge.convSec': 'Conventions · always injected ({n})',
   'injBadge.refSec': 'Mounted references · on demand ({n})',
@@ -812,4 +843,20 @@ var I18N_EN = {
   'mention.section': 'Notes',
   'mention.inlineHead': '[Note · {title} · {id}]',
   'mention.fetchFailed': '@{title} (content fetch failed)',
+  /* ===== 0.4.6-C concept onboarding + governance entry signals (notes-046-ux-discovery) ===== */
+  'help.conceptTitle': 'Core concepts in 30 seconds',
+  'help.conceptConvention': 'Convention: injected into every conversation and the Agent must obey — write a rule once and it sticks',
+  'help.conceptReference': 'Reference: injected material the Agent reads on demand — not mandatory, consulted only when needed',
+  'help.conceptMount': 'Mount: registers a note into the injection catalog (one index line + "when to read me") — the Agent sees the index and fetches the full text on demand',
+  'help.conceptDispatch': 'Dispatch: assigns a todo note to a session for execution — receipts close the loop automatically',
+  'help.conceptHidden': 'Hidden: a note disappears from list/tree to cut noise — still findable via search and jumps, not deleted',
+  'help.conceptMore': 'Full version: Settings → "Concepts at a glance"',
+  'tree.emptyConcept': 'Conventions/references you write can be injected into AI sessions — click ? in the title bar for a 30-second intro to the five core concepts',
+  'editor.emptyConcept': 'Conventions/references you write can be injected into Agent sessions — see "Concepts at a glance" at the top of Settings for a 30-second intro',
+  'topbar.suggest': 'Suggest',
+  'topbar.suggestTip': 'Organize suggestions + convention checkup: quick-note archiving / stale cleanup / mount governance candidates (nominations only, never auto-run)',
+  'topbar.suggestTipN': 'Organize suggestions: {n} pending governance candidates (nominations only; includes convention checkup entry)',
+  'sugg.goConflict': 'Convention checkup…',
+  'sugg.goConflictTip': 'Open the convention checkup section in the injection manager: LLM pairwise conflict/supersede detection over injected conventions (nominations only)',
+  'mention.empty': 'Type a title keyword to search notes',
 }

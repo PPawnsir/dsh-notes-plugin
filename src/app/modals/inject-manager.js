@@ -65,15 +65,19 @@ function injMgrChanLine(channels) {
   return parts.join(' ｜ ');
 }
 /* 挂载区统计行渲染（卡⑥）：账本快照紧凑行（挂载 N｜本周引用 Top3｜零引用 M）+ 点开才见全量（分通道召回率 + 快照明细）；
-   无快照 → 整区省略（静默降级；用途分级红线：本行仅呈现，清理裁决走 notes-recall-stats 全量/人工） */
+   无快照 → 整区省略（静默降级；用途分级红线：本行仅呈现，清理裁决走 notes-recall-stats 全量/人工）。
+   0.4.6-E（n-mux8cq80ai5h）：挂载计数改用 mountNow 实时现算值（每次打开面板即新鲜；快照 mountTotal 仅作回退）+
+   行尾补「截至 HH:MM」（lastFlush 时刻，与目录段信号行同口径——无 lastFlush 则回退快照 at） */
 function renderInjMntStats() {
   var host = $('injMntStats'); if (!host || !injMgrState) return;
   var st = injMgrState.rstats;
   if (!st || !st.ledger) { host.innerHTML = ''; return }
   var lg = st.ledger;
+  var mNow = st.mountNow != null ? st.mountNow : (lg.mountTotal || 0);
+  var asOf = fmtDT(st.lastFlush || lg.at || '').slice(-5);
   var top3 = (lg.top || []).slice(0, 3).map(function (it) { return it.id + '×' + it.count }).join('、') || '—';
   var h = '<div class="injmgr-mntstats-row" id="injMntStatsRow" title="' + esc(t('inj.mntStatsTip')) + '">'
-    + icon('i-eye', 11) + ' ' + esc(t('inj.mntStats', { m: lg.mountTotal || 0, top: top3, z: lg.zeroRefCount || 0 })) + '</div>';
+    + icon('i-eye', 11) + ' ' + esc(t('inj.mntStats', { m: mNow, top: top3, z: lg.zeroRefCount || 0 })) + (asOf ? esc(' ｜ ' + t('inj.mntStatsAsOf', { at: asOf })) : '') + '</div>';
   if (injMgrState.rstatsOpen) {
     h += '<div class="injmgr-mntstats-full">'
       + '<div>' + esc(injMgrChanLine(st.channels)) + '</div>'
@@ -280,6 +284,8 @@ function renderInjSched() {
         + '<span class="sched-freq">' + esc(schedFreqLabel(s)) + '</span>'
         /* 0.4.5-B（notes-045-ux-polish）：target='new' 专属会话目标位显示人话文案（首轮回写真实 sid 后自动恢复「→ 截短」，零迁移；纯展示层） */
         + '<span class="sched-target" title="' + esc(s.target || '') + '">' + (s.target === 'new' ? esc(t('disp.schedNewTarget')) : '→ ' + esc(shortSid(s.target))) + '</span>'
+        /* 0.4.6-G（notes-046-sched-model）：声明模型档位标注（有声明才显示，无声明零 DOM 痕迹） */
+        + (s.provider && s.model ? '<span class="sched-model" title="' + esc(t('disp.schedModelTip', { model: s.provider + '/' + s.model })) + '">' + esc(s.provider + '/' + s.model) + '</span>' : '')
         + '<span class="sched-nf">' + esc(schedNextLabel(n)) + '</span>'
         + schedBadgeHtml(n)
         + (paused ? '<span class="sched-badge off">' + t('meta.schedPaused') + '</span>' : '')
@@ -312,6 +318,7 @@ function doInjSchedToggle(n) {
   var s = n.schedule; if (!s || schedOpPending) return;
   var decl = { target: s.target, action: 'dispatch', enabled: s.enabled === false };
   if (s.at) decl.at = s.at; else { decl.every = s.every; if (s.anchor) decl.anchor = s.anchor; if (typeof s.dow === 'number') decl.dow = s.dow }
+  if (s.provider && s.model) { decl.provider = s.provider; decl.model = s.model }   /* 0.4.6-G：暂停/恢复保留模型档位（声明字段随 every 一并回传，防丢档——同 anchor/dow 先例） */
   schedOpPending = true;
   if (injMgrState) { injMgrState.pending = true; renderInjectManager(); }
   rpc('notes-update', { id: n.id, schedule: decl }).then(function (res) {
@@ -360,41 +367,59 @@ function toggleInjMgrAll() {
   renderInjectManager();
 }
 /* ===== 挂载弹层（0.4.3⑤ notes-043-index；0.4.3 验收修复 notes-043-preview-when-edit：LLM 草稿预填 + 编辑模式）=====
-   两种模式：未挂载 = LLM 草稿模式（打开即「生成中…」占位 → notes-when-suggest 成功填草稿，失败/8s 超时静默回退预填标题；
+   两种模式：未挂载 = LLM 草稿模式（打开即「生成中…」状态行 → notes-when-suggest 成功填草稿，失败/8s 超时回退预填标题 + 可见失败态）；
      用户始终可编辑——touched 后到达的草稿不覆盖）；已挂载（预览目录行点击带 existing）= 编辑模式（预填现有文案，不调 LLM）。
    确认统一 notes-mount（幂等换文案；0.4.3 验收修复⑪起 host 单点收口：落行同时把目标翻 reference 档，挂载 ⇔ 资料不变量成立，
      挂载行不再被目标笔记的下一次 update 摘掉）；跳过 = 保留现状行；modal 不叠 modal（调用方先关来源 modal，清返回栈）。
    0.4.3 验收修复⑪（notes-043-mount-ux-final）：openMountModal(n, onConfirm)——确认成功后回调（详情三态入口回填编辑器态）；
-     跳过/取消不落回调（零副作用语义）；确认后统一 loadNotes 刷新收敛 */
+     跳过/取消不落回调（零副作用语义）；确认后统一 loadNotes 刷新收敛
+   0.4.6-E（n-mux8ak66jttd）：LLM 预填三态可见化——加载态（#injMountStat 状态行「正在生成 whenToUse…」）/ 失败态（「预填不可用，请手写」，
+     tooltip 携带原始 error 原因——静默回退排查：resolveLlmSelection 选用链路的失败原因此前被吞，现在用户可见）；
+     跳过按钮文案改名「不用建议，自己写」（inj.mountSkip——「跳过」语义歧义：是不写 whenToUse 直接挂载还是跳过此条候选） */
 var mountState = null;
+/* 挂载弹层状态行（0.4.6-E 三态）：mode 'gen' = 加载中 / 'err' = 失败（title 带原始原因）/ '' = 收起（成功/编辑态） */
+function setMountStat(mode, tip) {
+  var el = $('injMountStat'); if (!el) return;
+  if (!mode) { el.style.display = 'none'; return }
+  el.style.display = '';
+  el.className = 'inj-mount-stat ' + mode;
+  el.textContent = t(mode === 'gen' ? 'inj.mountGen' : 'inj.mountGenFail');
+  if (tip) el.title = tip; else el.removeAttribute('title');
+}
 function openMountModal(n, onConfirm) {
   if (!n) return;
   injMgrState = null; modalBackTo = null;
   var edit = typeof n.existing === 'string';   /* 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM） */
-  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, onConfirm: typeof onConfirm === 'function' ? onConfirm : null };
+  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, genErr: '', onConfirm: typeof onConfirm === 'function' ? onConfirm : null };
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + (edit ? t('inj.mountEdit') : t('inj.mountTitle')) + '<span class="sub">' + t('inj.mountSub') + '</span></div>'
     + '<div class="inj-mount-body"><label class="inj-mount-label">' + t('inj.mountLabel') + '</label>'
-    + '<textarea class="inj-mount-when" id="injMountWhen" rows="3" placeholder="' + esc(edit ? t('inj.mountPlaceholder') : t('inj.mountGen')) + '">' + esc(mountState.when) + '</textarea></div>'
+    + '<textarea class="inj-mount-when" id="injMountWhen" rows="3" placeholder="' + esc(edit ? t('inj.mountPlaceholder') : t('inj.mountGen')) + '">' + esc(mountState.when) + '</textarea>'
+    + '<div class="inj-mount-stat" id="injMountStat" style="display:none"></div></div>'
     + '<div class="modal-acts"><button class="mbtn" id="injMountSkip">' + t('inj.mountSkip') + '</button>'
     + '<button class="mbtn primary" id="injMountSave">' + t('inj.mountSave') + '</button></div>'
   );
   $('injMountWhen').oninput = function () { if (mountState) mountState.touched = true };
   if (!edit) {
-    /* LLM 草稿预填：成功填草稿；失败/超时回退预填标题（现状行为）；弹层已关/换目标则丢弃迟到响应；用户已动手不覆盖 */
+    setMountStat('gen');   /* 0.4.6-E：加载态立即可见（不再只靠 textarea 占位符——预填文案到达后占位符即消失，加载态无见证） */
+    /* LLM 草稿预填：成功填草稿；失败/超时回退预填标题 + 失败态可见（tooltip 原始原因）；弹层已关/换目标则丢弃迟到响应；用户已动手不覆盖 */
     rpc('notes-when-suggest', { id: n.id }).then(function (res) {
       if (!mountState || mountState.id !== n.id) return;
       mountState.generating = false;
-      var draft = res && !res.error && typeof res.suggestion === 'string' && res.suggestion ? res.suggestion : mountState.title;
+      var okDraft = res && !res.error && typeof res.suggestion === 'string' && res.suggestion ? res.suggestion : '';
+      mountState.genErr = okDraft ? '' : String((res && res.error) || 'empty suggestion');
       var ta = $('injMountWhen');
-      if (!mountState.touched) { mountState.when = draft; if (ta) ta.value = draft }
+      if (!mountState.touched) { mountState.when = okDraft || mountState.title; if (ta) ta.value = mountState.when }
       if (ta) ta.placeholder = t('inj.mountPlaceholder');
-    }, function () {
+      setMountStat(mountState.genErr ? 'err' : '', mountState.genErr);
+    }, function (e) {
       if (!mountState || mountState.id !== n.id) return;
       mountState.generating = false;
+      mountState.genErr = String(e && e.message || e);
       var ta = $('injMountWhen');
       if (!mountState.touched) { mountState.when = mountState.title; if (ta) ta.value = mountState.title }
       if (ta) ta.placeholder = t('inj.mountPlaceholder');
+      setMountStat('err', mountState.genErr);
     });
   }
   $('injMountSkip').onclick = function () { mountState = null; closeModal() };

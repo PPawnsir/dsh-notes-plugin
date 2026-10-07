@@ -48,7 +48,7 @@ module.exports = {
       }
       assert(/function folderNodeHtml\(f, vis, filtering\)/.test(s), label + ' 递归渲染器 folderNodeHtml 存在')
       assert(s.indexOf('rootFolders().forEach(function (f) { h += folderNodeHtml(f, vis, filtering) })') >= 0, label + ' 根级清单驱动递归渲染')
-      assert(s.indexOf('subFolders.forEach(function (cf) { h += folderNodeHtml(cf, vis, filtering) })') >= 0, label + ' 子文件夹递归（depth-first：子文件夹先于直挂笔记）')
+      assert(s.indexOf('subFolders.forEach(function (cf) { var sh = folderNodeHtml(cf, vis, filtering); if (sh) subHtml += sh; else maskedSub++ })') >= 0, label + ' 子文件夹递归（depth-first：子文件夹先于直挂笔记；0.4.6-H 起收集遮罩子夹计数 maskedSub 供「展开为空」提示行）')
       assert(s.indexOf("view.type === 'folder'") < 0, label + ' 0.4.3⑦：文件夹视图过滤分支已拆除（树展开即文件夹浏览）')
       assert(s.indexOf('var subHits = filtering ? vis.filter(function (n) { return sub[n.folder || \'\'] }).length : 0;') >= 0, label + ' 子树命中统计（过滤激活时）')
       assert(s.indexOf('data-drop="1" draggable="true"') >= 0, label + ' 文件夹行 draggable（拖拽换父）')

@@ -89,18 +89,38 @@ module.exports = {
     assert.strictEqual(ns.schedAnchorNextMs('09:00', wDow, 604800000, wBase, false), wFire, 'weekly 首触：当日即 dow 且时刻未到 → 当日 09:00')
     assert.strictEqual(ns.schedAnchorNextMs('09:00', wDow, 604800000, wFire, true), wFire + 7 * 86400000, 'weekly 已触发：→ 下周同 dow 09:00（不漂移）')
     assert.strictEqual(ns.schedAnchorNextMs('09:00', wDow, 604800000, wFire + 3600000, true), wFire + 7 * 86400000, 'weekly 延迟触发 1h：仍 → 下周同 dow 09:00')
+    // 0.4.6-F（notes-046-sched-anchor）首触防过去候选：nowMs 注入时首触候选落在过去 → 对齐「now 之后第一个锚定时刻」（首轮不补发）；
+    //   已触发分支不注入该闸（停机补发一次语义保留）；无 nowMs / now 早于 base → 旧口径零变化（上行断言区原样保留 = 兼容证明）
+    assert.strictEqual(ns.schedAnchorNextMs('09:00', undefined, 86400000, mkL(2026, 10, 1, 8, 30), false, mkL(2026, 10, 5, 15, 0)), mkL(2026, 10, 6, 9, 0), '首触候选在过去 + 当日锚定已过 → now 次日 09:00（0.4.6-F）')
+    assert.strictEqual(ns.schedAnchorNextMs('09:00', undefined, 86400000, mkL(2026, 10, 1, 8, 30), false, mkL(2026, 10, 5, 8, 0)), mkL(2026, 10, 5, 9, 0), '首触候选在过去 + 当日锚定未到 → now 当日 09:00（0.4.6-F）')
+    assert.strictEqual(ns.schedAnchorNextMs('09:00', undefined, 86400000, mkL(2026, 10, 5, 8, 30), false, mkL(2026, 10, 5, 8, 40)), mkL(2026, 10, 5, 9, 0), '首触候选在未来 → 闸不插手（编辑当天锚定未到照常当日触发，0.4.6-F）')
+    assert.strictEqual(ns.schedAnchorNextMs('09:00', undefined, 86400000, mkL(2026, 10, 5, 9, 0), true, mkL(2026, 10, 8, 12, 0)), mkL(2026, 10, 6, 9, 0), '已触发分支不注入防过去闸（停机补发语义保留，0.4.6-F）')
+    assert.strictEqual(ns.schedAnchorNextMs('09:00', wDow, 604800000, wBase - 21 * 86400000, false, wBase), wFire, 'weekly 首触 base 陈旧（3 周前）→ now 之后首个 dow 09:00（0.4.6-F）')
+    assert.strictEqual(ns.schedAnchorNextMs('09:00', wDow, 604800000, wBase, false, wBase - 86400000), wFire, 'weekly 首触 now 早于 base → 旧口径不插手（0.4.6-F 兼容）')
     const anchor = '2026-10-01T02:00:00.000Z'
     assert.strictEqual(ns.schedNextMs({ createdAt: anchor, schedule: { every: '3d' } }), Date.parse(anchor) + 3 * 86400000, '轮询未触发：createdAt + 间隔（同 host 锚点，无 anchor 存量兼容）')
     const fired = '2026-10-03T02:00:00.000Z'
     assert.strictEqual(ns.schedNextMs({ createdAt: anchor, schedule: { every: '3d', lastFiredAt: fired } }), Date.parse(fired) + 3 * 86400000, '轮询已触发：lastFiredAt + 间隔（对齐下周期不追赶）')
+    // 0.4.6-F 声明重锚：轮询锚点 = lastFiredAt || declaredAt || createdAt（declaredAt 优先于 createdAt；lastFiredAt 最优先）
+    assert.strictEqual(ns.schedNextMs({ createdAt: anchor, schedule: { every: '3d', declaredAt: '2026-10-02T02:00:00.000Z' } }), Date.parse('2026-10-02T02:00:00.000Z') + 3 * 86400000, '轮询未触发带 declaredAt：declaredAt + 间隔（重锚优先 createdAt，0.4.6-F）')
+    assert.strictEqual(ns.schedNextMs({ createdAt: anchor, schedule: { every: '3d', lastFiredAt: fired, declaredAt: '2026-10-02T02:00:00.000Z' } }), Date.parse(fired) + 3 * 86400000, '轮询已触发带 declaredAt：lastFiredAt 优先（触发后锚点不变回归，0.4.6-F）')
     assert.strictEqual(ns.schedNextMs({ schedule: { at: '2026-10-10T01:00:00.000Z' } }), Date.parse('2026-10-10T01:00:00.000Z'), '单次 = at 本身')
     assert.strictEqual(ns.schedNextMs({ schedule: { every: 'bad' } }), null, '非法间隔 → null')
     assert.strictEqual(ns.schedNextMs({}), null, '无 schedule → null')
-    // 锚定时刻声明：schedNextMs 走锚定序列（注入管理「下次触发」展示口径）
+    // 锚定时刻声明：schedNextMs 走锚定序列（注入管理「下次触发」展示口径）；
+    //   0.4.6-F：存量 createdAt 陈旧的首触展示对齐「now 之后第一个锚定时刻」（防过去候选，与 host 实触口径一致——关系断言防时钟边界竞态）
     const aBase = mkL(2026, 10, 5, 8, 30), aIso = new Date(aBase).toISOString()
-    assert.strictEqual(ns.schedNextMs({ createdAt: aIso, schedule: { every: '1d', anchor: '09:00' } }), mkL(2026, 10, 5, 9, 0), '锚定声明下次触发=当日 09:00（首触）')
-    assert.strictEqual(ns.schedNextMs({ createdAt: aIso, schedule: { every: '1d', anchor: '09:00', lastFiredAt: new Date(mkL(2026, 10, 5, 12, 0)).toISOString() } }), mkL(2026, 10, 6, 9, 0), '锚定声明已触发：次日 09:00（延迟不漂移）')
-    assert.strictEqual(ns.schedNextMs({ createdAt: aIso, schedule: { every: '1w', anchor: '09:00', dow: new Date(aBase).getDay() } }), mkL(2026, 10, 5, 9, 0), '锚定 weekly 首触：当日 dow 09:00')
+    const now50 = Date.now()
+    const nxDaily = ns.schedNextMs({ createdAt: aIso, schedule: { every: '1d', anchor: '09:00' } })
+    assert(nxDaily >= now50 - 1000 && nxDaily <= now50 + 86400000 + 60000 && new Date(nxDaily).getHours() === 9 && new Date(nxDaily).getMinutes() === 0, '锚定声明存量首触 = now 之后第一个本地 09:00（0.4.6-F 防过去候选，实得 ' + new Date(nxDaily).toISOString() + '）')
+    assert.strictEqual(ns.schedNextMs({ createdAt: aIso, schedule: { every: '1d', anchor: '09:00', lastFiredAt: new Date(mkL(2026, 10, 5, 12, 0)).toISOString() } }), mkL(2026, 10, 6, 9, 0), '锚定声明已触发：次日 09:00（延迟不漂移——fired 分支不注入防过去闸）')
+    const nxWeekly = ns.schedNextMs({ createdAt: aIso, schedule: { every: '1w', anchor: '09:00', dow: new Date(aBase).getDay() } })
+    assert(nxWeekly >= now50 - 1000 && nxWeekly <= now50 + 8 * 86400000 && new Date(nxWeekly).getDay() === new Date(aBase).getDay() && new Date(nxWeekly).getHours() === 9 && new Date(nxWeekly).getMinutes() === 0, '锚定 weekly 存量首触 = now 之后第一个 dow 09:00（0.4.6-F 防过去候选，实得 ' + new Date(nxWeekly).toISOString() + '）')
+    // 0.4.6-F 四端锚点：declaredAt 重锚口径镜像同步（app/client/原型）
+    for (const [src46, tag46] of [[appSrc, 'app.html'], [clientSrc, 'client'], [protoV2Src, '原型']]) {
+      assert(src46.indexOf('declaredAt') >= 0, tag46 + ' 调度镜像含 declaredAt（0.4.6-F 声明重锚）')
+      assert(src46.indexOf('首触防过去候选') >= 0, tag46 + ' 调度镜像含首触防过去候选（0.4.6-F）')
+    }
     const li = ns.isoToLocalInput('2026-10-10T01:00:00.000Z')
     assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(li), 'datetime-local 形态（实得 ' + li + '）')
     assert.strictEqual(ns.isoToLocalInput('bad'), '', '非法 ISO → 空串')
@@ -307,6 +327,13 @@ module.exports = {
     assert(r.value === null, '成对清除放行')
     r = ns.gate({ every: '7d', target: SID }, 'dispatch-schedule', { every: '3d', target: SID, lastFiredAt: '2026-10-03T02:00:00.000Z', lastRun: { at: '2026-10-03T02:00:00.000Z', status: 'sent', receiptId: 'x' } })
     assert(r.value && r.value.every === '7d' && r.value.lastFiredAt === '2026-10-03T02:00:00.000Z' && r.value.lastRun && r.value.lastRun.receiptId === 'x', '声明改写机器状态延续（lastFiredAt/lastRun 不清零）')
+    // declaredAt 声明重锚（0.4.6-F，notes-046-sched-anchor，同 host 闸门）：首次写入=now / 声明未变更延续 / 声明变更刷新 / 输入伪值剥离
+    r = ns.gate({ every: '3d', target: SID, declaredAt: '2020-01-01T00:00:00.000Z' }, 'dispatch-schedule', null)
+    assert(r.value && typeof r.value.declaredAt === 'string' && r.value.declaredAt !== '2020-01-01T00:00:00.000Z' && Math.abs(Date.parse(r.value.declaredAt) - Date.now()) < 60000, 'mock 闸门首次写入 declaredAt=now（伪值剥离，实得 ' + r.value.declaredAt + '）')
+    r = ns.gate({ every: '3d', target: SID }, 'dispatch-schedule', { every: '3d', target: SID, action: 'dispatch', enabled: true, declaredAt: '2020-01-01T00:00:00.000Z' })
+    assert(r.value && r.value.declaredAt === '2020-01-01T00:00:00.000Z', 'mock 闸门声明未变更延续 declaredAt（实得 ' + r.value.declaredAt + '）')
+    r = ns.gate({ every: '7d', target: SID }, 'dispatch-schedule', { every: '3d', target: SID, action: 'dispatch', enabled: true, declaredAt: '2020-01-01T00:00:00.000Z' })
+    assert(r.value && r.value.declaredAt !== '2020-01-01T00:00:00.000Z' && Math.abs(Date.parse(r.value.declaredAt) - Date.now()) < 60000, 'mock 闸门声明变更刷新 declaredAt=now（实得 ' + r.value.declaredAt + '）')
     // 锚定时刻闸门（notes-034-sched-time，与 host 节 48 同口径）：anchor HH:MM / 整天间隔 / at 互斥 / dow 0-6 + 搭配 anchor + 仅每周
     r = ns.gate({ every: '1d', anchor: '09:00', target: SID }, 'dispatch-schedule', null)
     assert(r.value && r.value.anchor === '09:00' && !('dow' in r.value), 'mock 闸门 anchor 合法放行（每天 09:00）')

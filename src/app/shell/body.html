@@ -45,9 +45,11 @@
   <div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>dsh-notes</b>
   <span class="sub" id="topSub">你的笔记库 · 写下的约定与资料可注入 Agent 会话</span>
   <span class="sp"></span>
-  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新/速记保文字 -->
+  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（建议/切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新/速记保文字 -->
   <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg><span class="tb-t">刷新</span></button>
-  <button class="tbtn" id="btnArchive" title="把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）"><svg class="ic"><use href="#i-check"/></svg><span class="tb-t">速记合并</span></button>
+  <button class="tbtn" id="btnArchive" title="速记 = 划选文字松手弹出的快速记录（暂存）；点按弹出预览，勾选后把同一会话的速记归并成一篇正式笔记（可撤销）"><svg class="ic"><use href="#i-check"/></svg><span class="tb-t">速记合并</span></button>
+  <!-- 0.4.6-C（notes-046-ux-discovery）：治理入口提升到顶栏——整理建议 + 约定体检（建议框底栏）；有待办候选时 #suggestBd 计数徽标点亮（notes-suggest 六段合计） -->
+  <button class="tbtn ico-only" id="btnSuggest" title="整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）"><svg class="ic"><use href="#i-sparkle"/></svg><span class="tb-t">建议</span><span class="cnt" id="suggestBd" style="display:none"></span></button>
   <button class="tbtn ico-only" id="btnTheme" title="切换主题（暗色/亮色）"><svg class="ic"><use href="#i-theme"/></svg><span class="tb-t">切换主题</span></button>
   <a class="tbtn ico-only" href="/" id="btnHome" title="返回 DSH 主界面"><svg class="ic"><use href="#i-home"/></svg><span class="tb-t">DSH 主界面</span></a>
 </div>
@@ -83,7 +85,9 @@
   <section class="ed empty" id="ed">
     <svg class="ic"><use href="#i-note"/></svg>
     <div>选择左侧一条笔记查看和编辑</div>
-    <div style="font-size:11px">点侧栏顶部 + 新建笔记（先开草稿，输入内容才落库）；正文划选文字可弹出快速记录卡片</div>
+    <div style="font-size:11px">点侧栏顶部 + 新建笔记（先开草稿，输入标题或正文即落库；面板端「新建」为弹窗即建）；正文划选文字可弹出快速记录卡片</div>
+    <!-- 0.4.6-C（notes-046-ux-discovery）：空态首笔记引导补概念指向（设置卡「概念速览」完整版）；renderEd 动态空态同款一行（49 节双处对齐口径） -->
+    <div style="font-size:11px" class="ed-empty-concept">写下的约定/资料可注入 Agent 会话——设置卡顶部「概念速览」30 秒看懂五个核心概念</div>
   </section>
 </div>
 <div class="hintbar"><span id="hintSelect">🖱 在右侧正文<b>划选文字松手</b> → 弹出快速记录卡片</span><span id="hintDrag">拖笔记 → 文件夹移入 / 拖到根级笔记区移出</span><span id="hintFolder">点击展开/折叠 · 右键管理</span><span id="hintKeys">Ctrl K 搜索 · Alt N 新建 · j/k 移动 · Enter 打开 · Esc 关闭浮层 · ? 快捷键</span></div>
@@ -92,5 +96,7 @@
 <div id="ctxHost"></div>
 <div class="selbar" id="selbar" style="display:none"><span class="n" id="selbarN">已选 0 条</span><span class="syswarn" id="selSysWarn" style="display:none"></span><button class="mbtn primary" id="selMerge">合并</button><button class="mbtn danger" id="selDelete">删除</button><button class="mbtn" id="selCancel">取消</button></div>
 <div class="toast" id="toast"></div>
+<!-- 0.4.6-B RPC 挂起提示条（notes-046-rpc-resilience）：任一 RPC 挂起 >RPC_SLOW_MS 显示，全部落定消失；pointer-events:none 不遮罩不阻断 -->
+<div class="rpc-slow" id="rpcSlowBar" style="display:none"></div>
 
 <script>

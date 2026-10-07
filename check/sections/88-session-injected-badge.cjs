@@ -112,7 +112,7 @@ module.exports = {
     const grab = (s, v) => new Function(s + '\nreturn ' + v)()
     const zh = grab(zhSrc, 'I18N_ZH'), en = grab(enSrc, 'I18N_EN')
     const PAIRS = {
-      'injBadge.tip': ['本会话注入：约定 {m} · 资料 {k}（点击查看明细）', 'Injected here: {m} conventions · {k} references (click for details)'],
+      'injBadge.tip': ['本会话注入：约定 {m} · 资料 {k}（徽标数字 = 两者合计；点击查看明细）', 'Injected here: {m} conventions · {k} references (badge = combined total; click for details)'],   // 0.4.6-C：数字语义写明（R2 误读为笔记数/未读数；节 95 同锚）
       'injBadge.title': ['本会话注入清单', 'Injected into this session'],
       'injBadge.convSec': ['约定 · 须遵守（{n}）', 'Conventions · always injected ({n})'],
       'injBadge.refSec': ['挂载资料 · 按需取用（{n}）', 'Mounted references · on demand ({n})'],

@@ -26,12 +26,12 @@ module.exports = {
   const KEYS = [
     'topbar.subtitle', 'topbar.refreshTip', 'topbar.archiveTip', 'topbar.themeTip', 'topbar.homeTip',
     'topbar.filterTip', 'topbar.sortTip', 'topbar.filterAria', 'topbar.trashTip', 'topbar.selectTip',
-    'side.brand', 'side.newTip', 'side.splitterTip', 'side.more', 'side.fchipStatusTip', 'side.fchipKindTip',
+    'side.brand', 'side.newTip', 'side.splitterTip', 'side.fchipStatusTip', 'side.fchipKindTip',
     'tree.topicTip', 'tree.untitled', 'tree.injectTip', 'tree.roleReference', 'tree.roleConvention', 'tree.injectScope',
     'tree.injectEverTip', 'tree.useCountTip', 'tree.wikiTip', 'tree.toggleTip', 'tree.countN',
     'tree.viewTopic', 'tree.viewAll', 'tree.crossFolderCount', 'tree.clearViewTip', 'tree.pinned',
     'tree.folders', 'tree.addFolderTip', 'tree.dropOutHint', 'tree.dropRootHint', 'tree.topicsHeader', 'tree.crossFolder',
-    'tree.topicViewTip', 'tree.noMatch', 'tree.clearFilters', 'tree.clearFiltersShort', 'tree.clearAllFiltersTip',
+    'tree.topicViewTip', 'tree.noMatch', 'tree.clearFilters', 'tree.clearFiltersShort', 'tree.clearAllFiltersTip', 'tree.moreRows',
     'tree.movedTo', 'tree.movedOut', 'tree.moveFailed', 'tree.subFolderPlaceholder', 'tree.folderPlaceholder',
     'tree.classifying', 'tree.emptyTitle', 'tree.emptySub', 'tree.emptyBtn',
     'sel.selCount', 'sel.merge',
@@ -65,11 +65,12 @@ module.exports = {
     assert(treeAppSrc.indexOf('renderChrome();') >= 0, 'renderTree 首行收敛调用 renderChrome（setLang→render 路径）')
     assert(treeAppSrc.indexOf("t('tree.movedTo', { name: fname(folderId) })") >= 0 && treeAppSrc.indexOf("t('sel.selCount', { n: n })") >= 0, 'tree.js(app) 移动 toast / selbar 计数走 t()')
     assert(treeAppSrc.indexOf('var topicViewTip = t(') >= 0, 'tree.js(app) 主题 tooltip 前置提升（forEach 形参 t 遮蔽全局 t()）')
-    assert(sideSrc.indexOf("placeholder: t('topbar.searchPlaceholder')") >= 0 && sideSrc.indexOf("t('side.more', { shown: paged.length") >= 0, 'sidebar.js 搜索占位/加载更多走 t()')
+    assert(sideSrc.indexOf("placeholder: t('topbar.searchPlaceholder')") >= 0 && sideSrc.indexOf('side.more') < 0, 'sidebar.js 搜索占位走 t()；side.more 全局提示行随 0.4.6-J 分组分页退役')
+    assert(treeCliSrc.indexOf("tt('tree.moreRows', { n:") >= 0, 'tree.js(client) 组尾加载行走 tt()（0.4.6-J 分组分页）')
     assert((treeCliSrc.match(/const tt = useT\(\)/g) || []).length === 1 && (chromeSrc.match(/const tt = useT\(\)/g) || []).length === 1, 'client tree/chrome 双 hook 各挂 useT()（订阅 langStore 自渲染）')
     assert(chromeSrc.indexOf("'data-tooltip': tt('topbar.archiveTip')") >= 0 && treeCliSrc.indexOf("tt('tree.topicsHeader', { n:") >= 0, 'chrome/tree(client) 标题栏/主题区走 tt()')
     // 变量插值纪律：{name} 占位符双端同形（抽查 4 条含参 key）
-    for (const k of ['tree.movedTo', 'tree.useCountTip', 'sel.selCount', 'side.more']) {
+    for (const k of ['tree.movedTo', 'tree.useCountTip', 'sel.selCount', 'tree.moreRows']) {
       const ph = (zh[k].match(/\{\w+\}/g) || []).sort().join(',')
       assert(ph && ph === ((en[k].match(/\{\w+\}/g) || []).sort().join(',')), k + ' 双端占位符同形（' + ph + '）')
     }

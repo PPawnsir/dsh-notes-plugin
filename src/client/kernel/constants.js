@@ -1,4 +1,18 @@
     const PAGE_SIZE = 50
+    // ==== group-paging BEGIN ====
+    // 0.4.6-J（notes-046-group-paging）：分组分页纯函数核——懒加载死锁根修（反馈 n-muxyj3zodvf3：全局 flat 窗口切片在
+    // 文件夹收起时树内容过短 → 无滚动条 → 滚动加载永不触发 → 窗口外条目无途径够到）。分页单位从全局切片改为
+    // 分组各自分页（置顶/文件夹/未入夹/主题四组同构），组尾「加载更多（还有 N 条）」按钮行翻页，不再依赖滚动。
+    // key = 组标识（'pinned' / folder.id / 'unfiled' / 'topic:'+主题名）；value = 该组当前显示条数（缺省 PAGE_SIZE）。
+    // 组内 cap PAGE_SIZE 性能闸保留：总渲染量 = Σ min(组命中, PAGE_SIZE)，小库≈全量（与 app 端恒全量口径收敛）。
+    // check 节 1.5 提取本块 eval 回归（folder-tree-helpers / i18n-mech 同姿势）。
+    function groupShownOf(gs, key) { return (gs && gs[key]) || PAGE_SIZE }
+    function groupPage(list, gs, key) { return list.slice(0, groupShownOf(gs, key)) }
+    function groupMoreCount(list, gs, key) { return Math.max(0, list.length - groupShownOf(gs, key)) }
+    function groupPageNext(gs, key) { const next = Object.assign({}, gs); next[key] = groupShownOf(gs, key) + PAGE_SIZE; return next }
+    // ==== group-paging END ====
+    // 0.4.6-B（notes-046-rpc-resilience）：落地页无活跃会话开面板——首取数挂起超阈给空态引导（「打开一个会话后使用」+ 重试），不再无限「加载中…」假死
+    const LANDING_STALL_MS = 6000
     const KIND_LABELS = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '机器' }   /* 0.4.3⑩ +sys「机器」（筛选中心「机器」档标签/持久化校验用；编辑器/新建 kind 选项不收 sys——机器托管 kind 人工不转） */
     // ---- 二期：kind 模板骨架（新建笔记预填）——与 host-impl.js / index.mjs / app.html / 原型同一份（check.js 断言一致）----
     // note 为自由格式（空骨架）；机器/运维信息类由 ✨整理按内容套用机器模板（建时无法预判内容，不进 KIND_TEMPLATES）

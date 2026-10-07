@@ -39,7 +39,9 @@ module.exports = {
   })
   await t('app.html 关键交互结构：树/编辑器/快速记录卡片/派发对话框/设置/导入导出/注入范围浮层', () => {
     for (const k of ['id="tree"', 'id="q"', 'id="filterbar"', 'id="fchips"', 'id="fpop"', 'id="btnSort"', 'id="capHost"', 'id="modalHost"', 'id="toast"', 'id="btnNew"', 'id="btnTrash"', 'id="btnSelMode"', 'id="btnSettings"']) assert(appSrc.indexOf(k) >= 0, '静态结构缺：' + k)
-    assert(appSrc.indexOf('id="btnExport"') < 0 && appSrc.indexOf('id="btnImport"') < 0 && appSrc.indexOf('id="btnSuggest"') < 0, '底部 导出/导入/整理 按钮已移除（收敛进设置卡片）')
+    /* 0.4.6-C（notes-046-ux-discovery）：btnSuggest id 由顶栏「建议」治理入口复用——墓石断言改写为 side-foot 作用域口径（底部三 id 移除的设计不变） */
+    const sideFoot24 = (appSrc.match(/<div class="side-foot">[\s\S]*?<\/aside>/) || [''])[0]
+    assert(sideFoot24 && sideFoot24.indexOf('id="btnExport"') < 0 && sideFoot24.indexOf('id="btnImport"') < 0 && sideFoot24.indexOf('id="btnSuggest"') < 0, '底部 导出/导入/整理 按钮已移除（收敛进设置卡片；0.4.6-C 起顶栏另有 btnSuggest 治理入口）')
     for (const k of ['ed-title', 'ed-main', 'ed-meta', 'ed-crumb', 'scope-panel', 'disp-sess', 'disp-todo', 'imp-list', 'set-row', 'cap-in', 'note-row', 'nested']) assert(appSrc.indexOf(k) >= 0, '样式/动态结构缺：' + k)
     assert(appSrc.indexOf('contenteditable="true"') >= 0, '标题/正文 contenteditable 编辑')
     assert(appSrc.indexOf('localStorage') >= 0 && appSrc.indexOf('dsh-notes-app-foldopen') >= 0, '折叠态 localStorage 持久化')

@@ -11,7 +11,7 @@ const CASES_DIR = path.join(__dirname, 'cases')
 const filter = process.argv[2] || ''
 
 async function main() {
-  const { server, port } = await startServer(Number(process.env.E2E_PORT) || 0)
+  const { server, port, state } = await startServer(Number(process.env.E2E_PORT) || 0)
   const base = 'http://127.0.0.1:' + port
   console.log('[e2e] mock host: ' + base)
 
@@ -25,7 +25,7 @@ async function main() {
       const mod = require(path.join(CASES_DIR, f))
       console.log('\n[e2e] 用例 ' + f + ' — ' + (mod.name || ''))
       const before = H.results.length
-      try { await mod.run({ base, browser, H }) }
+      try { await mod.run({ base, browser, H, state }) }
       catch (e) { H.record('用例执行未抛异常（' + f + '）', false, String(e && e.message || e)) }
       if (H.results.length === before) H.record('用例至少一条断言（' + f + '）', false, '未产生任何断言')
     }

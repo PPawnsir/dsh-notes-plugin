@@ -103,7 +103,7 @@ module.exports = {
       ['constants.js(client)', constCliSrc, 7], ['ctx-menu.js(client)', ctxCliSrc, 13], ['filter-pop.js(client)', fpopCliSrc, 7],
       ['folder-menu.js(client)', fmenuCliSrc, 16], ['help.js(client)', helpCliSrc, 21], ['scope.js(client)', scopeCliSrc, 7],
       ['selbar.js(client)', selbarCliSrc, 10], ['capture.js(client)', capCliSrc, 27], ['wiki.js(client)', wikiCliSrc, 3],
-      ['sidebar.js(client)', sideCliSrc, 8], ['editor.js(client)', edCliSrc, 155],
+      ['sidebar.js(client)', sideCliSrc, 7], ['editor.js(client)', edCliSrc, 155],   /* sidebar 阈值 8→7：0.4.6-J 分组分页退役 side.more 全局提示行（t() 命中 -1） */
     ]
     let total = 0
     for (const [label, s, min] of per) { const c = cnt(s); total += c; assert(c >= min, label + ' 域内 t(/tt( 命中 ≥' + min + '（实得 ' + c + '）') }

@@ -228,6 +228,7 @@ module.exports = {
     const ns2 = { rendered: 0, closed: 0 }
     new Function('ns2',
       'var dState = null; var modalBackTo = null; var injMgrState = { pending: false };\n'
+      + 'var schedModelsCache = null; function pullSchedModels(){}\n'   /* 0.4.6-G：openDispatchEdit 新增模型档位依赖打桩（notes-046-sched-model） */
       + 'function toast(m){ ns2.lastToast = m }\nfunction closeModal(){ ns2.closed++ }\nfunction pullActiveSessions(){}\nfunction renderDispatchModal(){ ns2.rendered++ }\n'
       + 'function isoToLocalInput(v){ return v }\nfunction schedAnchorMs(a){ return a === "09:00" ? 32400000 : null }\nfunction schedEveryMs(e){ return e === "1d" ? 86400000 : null }\n'
       + grabFn(appSrc, 'openDispatchEdit', 'app.html') + '\n'

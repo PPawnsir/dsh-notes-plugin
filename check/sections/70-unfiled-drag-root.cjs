@@ -26,14 +26,16 @@ module.exports = {
     assert(appTreeSrc.indexOf('notes-041d-drag-root-note') >= 0, 'app 树 根因注释在位（后续维护可考古）')
   })
 
-  await t('React 面板：unfiled 容器 children 顺序 = unfiledKids 在前、提示行在后（开发版 + 发布包）', () => {
+  await t('React 面板：unfiled 容器 children 顺序 = unfiledKids → 组尾加载行（0.4.6-J）→ 提示行（开发版 + 发布包）', () => {
     for (const pair of [['client 开发版', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
       const anchor = pair[1].indexOf('onDrop: onUnfiledDrop },')
       assert(anchor >= 0, pair[0] + ' unfiled 容器 children 段可提取')
-      const seg = pair[1].slice(anchor, anchor + 200)
+      const seg = pair[1].slice(anchor, anchor + 260)
       const kidsPos = seg.indexOf('unfiledKids')
+      const morePos = seg.indexOf("renderMoreRow('unfiled'")
       const hintPos = seg.indexOf('dsh-notes-unfiled-hint')
-      assert(kidsPos >= 0 && hintPos >= 0 && kidsPos < hintPos, pair[0] + ' children 顺序 = unfiledKids → 提示行（实得：' + JSON.stringify(seg.slice(0, 120)) + '）')
+      // 0.4.6-J：组尾加载行同为尾部固定槽（恒排笔记行之后、拖拽提示行之前），插入/消失均不位移既有笔记行（拖拽链路不破）
+      assert(kidsPos >= 0 && morePos >= 0 && hintPos >= 0 && kidsPos < morePos && morePos < hintPos, pair[0] + ' children 顺序 = unfiledKids → 组尾加载行 → 提示行（实得：' + JSON.stringify(seg.slice(0, 160)) + '）')
       assert(pair[1].indexOf('notes-041d-drag-root-note') >= 0, pair[0] + ' 根因注释在位（发布包需先跑 scripts/build-dist.cjs）')
     }
   })

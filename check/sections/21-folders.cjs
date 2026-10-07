@@ -131,7 +131,7 @@ module.exports = {
     const protoSrcX = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
     // ① 根级直显：无 folder 笔记平铺在树根部（文件夹列表之后）；未分类主题二次分组兜底已移除（主题聚合由「主题过滤」区承担，不重复聚合）
     assert(clientSrc.indexOf('groupByTopic') < 0, 'client-impl 未分类主题二次分组（groupByTopic）已移除')
-    assert(clientSrc.indexOf("const unfiled = paged.filter(n => !(n.folder || ''))") >= 0, 'client-impl 未入夹笔记 = 无 folder 过滤集')
+    assert(clientSrc.indexOf("const unfiledHits = filtered.filter(n => !(n.folder || ''))") >= 0 && clientSrc.indexOf("const unfiled = groupPage(unfiledHits, groupShown, 'unfiled')") >= 0, 'client-impl 未入夹笔记 = 无 folder 过滤集（0.4.6-J 起分组分页切片）')
     assert(clientSrc.indexOf("const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })") >= 0, 'client-impl 未入夹笔记根级平铺直渲（无主题分组头/nested 包裹）')
     assert(clientSrc.indexOf("'tg-' + topic") < 0 && clientSrc.indexOf('dsh-notes-topic-g') < 0, 'client-impl 未分类主题分组头渲染已移除')
     // ② drop 移出落点保持：.dsh-notes-unfiled-drop 容器 + 三处理器不变（「未分类」分组头已在 notes-tree-unfiled-sibling 移除——落点 = 包裹容器 + 拖拽中提示行）

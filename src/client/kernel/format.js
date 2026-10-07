@@ -28,21 +28,29 @@
       return m ? (parseInt(m[1], 10) * 60 + parseInt(m[2], 10)) * 60000 : null
     }
     // 锚定时刻序列（同 host schedDueAt 锚定分支口径）：触发时刻钉死本地 HH:MM，不随创建/触发时刻漂移——
-    // 首触（fired=false，base=createdAt）= base 之后第一个锚定时刻（weekly 限定 dow 星期几）；
+    // 首触（fired=false，base=declaredAt||createdAt，0.4.6-F）= base 之后第一个锚定时刻（weekly 限定 dow 星期几）；
     // 后续（fired=true，base=lastFiredAt）= base + 间隔 所在本地日的锚定时刻（weekly = 下一个 dow 锚定时刻）。
+    // 0.4.6-F 首触防过去候选：注入 nowMs 时首触候选落在过去（base 陈旧）→ 对齐「now 之后第一个锚定时刻」（首轮不补发，同 host）。
     // dow=0-6（0=周日，Date.getDay 口径）；ivMs 需整天倍数。非法 → null
-    const schedAnchorNextMs = (anchor, dow, ivMs, baseMs, fired) => {
+    const schedAnchorNextMs = (anchor, dow, ivMs, baseMs, fired, nowMs) => {
       const off = schedAnchorMs(anchor)
       if (off === null || !isFinite(baseMs) || !baseMs) return null
       const b = new Date(baseMs), day0 = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime()
+      // 首触防过去候选（0.4.6-F，同 host）：now 有效且晚于 base 时扫描起点抬到 now 当日午夜；已触发/无 nowMs 保持旧口径
+      const hasNow = typeof nowMs === 'number' && isFinite(nowMs)
+      let scan0 = day0
+      if (!fired && hasNow && nowMs > baseMs) { const nd0 = new Date(nowMs); scan0 = new Date(nd0.getFullYear(), nd0.getMonth(), nd0.getDate()).getTime() }
       if (typeof dow === 'number') {
-        // weekly：自 base 当日起逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow；首触 → 下一个 dow）
-        for (let i = 0; i < 14; i++) { const dm = day0 + i * 86400000; if (new Date(dm).getDay() === dow && dm + off > baseMs) return dm + off }
+        // weekly：自扫描起点逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow；首触 → 下一个 dow 且候选 ≥ now）
+        for (let i = 0; i < 14; i++) { const dm = scan0 + i * 86400000; if (new Date(dm).getDay() === dow && dm + off > baseMs && (fired || !hasNow || dm + off >= nowMs)) return dm + off }
         return null
       }
       if (typeof ivMs !== 'number' || !isFinite(ivMs) || ivMs % 86400000 !== 0) return null
       if (fired) { const f = new Date(baseMs + ivMs); return new Date(f.getFullYear(), f.getMonth(), f.getDate()).getTime() + off }
-      return (day0 + off > baseMs ? day0 : day0 + 86400000) + off
+      // 首触：base 当日锚定时刻未到 → 当日；已过 → 次日；候选落在过去（0.4.6-F）→ 对齐「now 之后第一个锚定时刻」
+      const first = (day0 + off > baseMs ? day0 : day0 + 86400000) + off
+      if (hasNow && first < nowMs) { const nd = new Date(nowMs), nday0 = new Date(nd.getFullYear(), nd.getMonth(), nd.getDate()).getTime(); return (nday0 + off >= nowMs ? nday0 : nday0 + 86400000) + off }
+      return first
     }
     // 频率人话：仅一次 <时间> / 每天 / 每周 / 每 N 天（锚定时刻声明带时刻后缀：每天 09:00 / 每周一 09:00 / 每 3 天 09:00）；非整天间隔（front-matter 裸编辑旁路值）兜底 每 N 小时/分钟/ms
     // i18n 覆盖卡D：文案走 t() 字典 common.sched*（跨表面复用——注入管理 + 详情计划块；app kernel/helpers.js 同口径镜像）；
@@ -60,16 +68,17 @@
       if (ms % 60000 === 0) return t('common.schedNMinutes', { n: ms / 60000 })
       return t('common.schedNMs', { n: ms })
     }
-    // 下次触发毫秒（与 host schedDueAt 锚点同口径：轮询 = lastFiredAt || createdAt + 间隔；单次 = at 本身；
-    // 锚定时刻声明（notes-034-sched-time）= 锚定序列下一时刻）；非法 → null
+    // 下次触发毫秒（与 host schedDueAt 锚点同口径：轮询 = lastFiredAt || declaredAt || createdAt + 间隔（0.4.6-F 声明重锚）；单次 = at 本身；
+    // 锚定时刻声明（notes-034-sched-time）= 锚定序列下一时刻（首触防过去候选注入当前时刻，0.4.6-F））；非法 → null
     const schedNextMs = (n) => {
       const s = n && n.schedule; if (!s) return null
       if (s.at) { const t = Date.parse(s.at); return isFinite(t) ? t : null }
       const iv = schedEveryMs(s.every); if (iv === null) return null
       const firedMs = (s.lastFiredAt && Date.parse(s.lastFiredAt)) || 0
-      let base = firedMs || Date.parse(n.createdAt || '') || 0
+      const declaredMs = (s.declaredAt && Date.parse(s.declaredAt)) || 0
+      let base = firedMs || declaredMs || Date.parse(n.createdAt || '') || 0
       if (!isFinite(base) || !base) base = Date.now()
-      if (s.anchor) return schedAnchorNextMs(s.anchor, typeof s.dow === 'number' ? s.dow : undefined, iv, base, !!firedMs)
+      if (s.anchor) return schedAnchorNextMs(s.anchor, typeof s.dow === 'number' ? s.dow : undefined, iv, base, !!firedMs, Date.now())
       return base + iv
     }
     // ISO → datetime-local 输入值（本地时区 YYYY-MM-DDTHH:mm；非法/空 → ''）
@@ -98,16 +107,18 @@
       if (mode === 'weekly') return { decl: { every: '1w', anchor: anchor, dow: typeof dow === 'number' ? dow : 1 } }
       return { decl: { every: '1d', anchor: anchor } }
     }
-    // 声明 → 下次触发毫秒（轮询锚点 = lastFiredAt || createdAt || now；锚定时刻声明 = 锚定序列下一时刻，与 host schedDueAt 同口径；编辑模式传入 editNote 取存量锚点）
+    // 声明 → 下次触发毫秒（轮询锚点 = lastFiredAt || declaredAt || createdAt || now（0.4.6-F 声明重锚）；锚定时刻声明 = 锚定序列下一时刻，与 host schedDueAt 同口径；编辑模式传入 editNote 取存量锚点）
     const schedDeclNextMs = (decl, note) => {
       if (decl.at) return Date.parse(decl.at)
       let firedMs = 0
       if (note && note.schedule && note.schedule.lastFiredAt) { const f = Date.parse(note.schedule.lastFiredAt); if (isFinite(f)) firedMs = f }
-      let base = firedMs
+      let declaredMs = 0
+      if (!firedMs && note && note.schedule && note.schedule.declaredAt) { const dd = Date.parse(note.schedule.declaredAt); if (isFinite(dd)) declaredMs = dd }
+      let base = firedMs || declaredMs
       if (!base && note && note.createdAt) { const c = Date.parse(note.createdAt); if (isFinite(c)) base = c }
       if (!base) base = Date.now()
       const iv = schedEveryMs(decl.every)
-      if (decl.anchor) { const nx = schedAnchorNextMs(decl.anchor, typeof decl.dow === 'number' ? decl.dow : undefined, iv, base, !!firedMs); if (nx !== null) return nx }
+      if (decl.anchor) { const nx = schedAnchorNextMs(decl.anchor, typeof decl.dow === 'number' ? decl.dow : undefined, iv, base, !!firedMs, Date.now()); if (nx !== null) return nx }
       return base + iv
     }
     // 关联调度匹配键（notes-034-sched-detail）：标题去「定时」前缀（排定创建时自动加，见 dispatch modal）+ trim；与 app editor-meta.js 同口径

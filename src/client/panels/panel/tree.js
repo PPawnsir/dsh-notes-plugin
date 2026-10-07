@@ -1,10 +1,10 @@
-    // ===== panel/tree —— 文件夹树渲染 + 拖拽换位 + 懒加载分页（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
-    // provides: usePanelTree（visibleCount/topicExpanded/topicSecOpen/dragActive 态 + 分页重置/onListScroll + 双向拖拽族 +
+    // ===== panel/tree —— 文件夹树渲染 + 拖拽换位 + 分组分页（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
+    // provides: usePanelTree（groupShown/topicExpanded/topicSecOpen/dragActive 态 + 分页重置 + renderMoreRow 组尾加载行 + 双向拖拽族 +
     //           renderTreeEls 渲染函数（内含 renderNoteRow/renderFolderNode，签名/正文逐字））
-    // needs: kernel/state.js（pagedIdsRef 跨域镜像 + 文件夹域/多选/右键/编辑器域转发别名群）、kernel/constants.js（PAGE_SIZE/PINNED_KEY/FILTER_KINDS/KIND_LABELS/FILTERS0）、
+    // needs: kernel/state.js（pagedIdsRef 跨域镜像 + 文件夹域/多选/右键/编辑器域转发别名群）、kernel/constants.js（PAGE_SIZE/group-paging 纯函数核/PINNED_KEY/FILTER_KINDS/KIND_LABELS/FILTERS0）、
     //        kernel/icons.js（e/I）、kernel/bus.js（showToast）、kernel/format.js（notifyNotesChanged）、panel/search.js（highlight，序位在前）、
     //        modals/newnote.js（openNewNote，序位在前）；notes/view/filters/searchText/searchIds 经 hook 入参注入（装配层回填，渲染期新鲜值）；
-    //        post-guard 求值结果（filtered/paged/q/filtersActive 等）经 renderTreeEls 入参注入
+    //        post-guard 求值结果（filtered/q/filtersActive 等）经 renderTreeEls 入参注入（0.4.6-J 起四组各自分页消费 filtered，不再经全局窗口切片）
     // state 托管：四态留 hook 内 useState（与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）；
     // dragNoteIdRef/dragFolderIdRef 的 React.useRef 声明原文被 check.js 锚定（21/41 节）——留 hook 内（useRef 不可模块顶层调用）
     function usePanelTree(args) {
@@ -23,15 +23,18 @@
         const tt = useT()
         const dragNoteIdRef = React.useRef(null)   // 笔记拖拽状态：dragstart 记录 noteId（ref 防闭包过期），dragend 清空
         const dragFolderIdRef = React.useRef(null)   // 文件夹拖拽状态（换父）：dragstart 记录 folderId，dragend 清空；与笔记拖拽互斥
-        const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
+        // 0.4.6-J（notes-046-group-paging）：分组分页 state——key=组标识（'pinned' / folder.id / 'unfiled' / 'topic:'+tn），
+        // value=该组当前显示条数（缺省 PAGE_SIZE，groupShownOf 兜底）；全局 flat 窗口切片退役（四组曾共享同一窗口：
+        // 文件夹收起时树内容过短 → 无滚动条 → 滚动加载永不触发 → 窗口外条目够不到，反馈 n-muxyj3zodvf3 实证死锁）
+        const [groupShown, setGroupShown] = React.useState({})
         // 主题过滤行原地展开态（点行主体=展开/收起该主题子列表；object map，session 内有效，不持久化；缺省折叠）
         const [topicExpanded, setTopicExpanded] = React.useState({})
         // 主题过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「主题 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
         const [topicSecOpen, setTopicSecOpen] = React.useState(false)
         // 拖拽进行中标记（dragstart 置位 / dragend 复位）：驱动未入夹区「移出文件夹」落点提示行渲染（空态下保证拖拽中仍有可拖出落点）
         const [dragActive, setDragActive] = React.useState(false)
-        // 搜索/视图/筛选中心条件变化时重置分页（新结果从头开始）
-        React.useEffect(() => { setVisibleCount(PAGE_SIZE) }, [searchText, searchIds, view, filters])
+        // 搜索/视图/筛选中心条件变化时重置分组分页（各组新结果从头开始；0.4.6-J 沿用原重置 effect 依赖面）
+        React.useEffect(() => { setGroupShown({}) }, [searchText, searchIds, view, filters])
         // 主题过滤行原地展开切换（与文件夹 toggleFolder 同义「点哪个展开哪个」；不持久化）
         function toggleTopicExpanded(tn) { setTopicExpanded(prev => { const next = Object.assign({}, prev); next[tn] = !next[tn]; return next }) }
         // ===== 拖拽挪入/挪出文件夹（HTML5 DnD；与右键「移动到文件夹」共用 ctxMoveToFolder 移动逻辑）=====
@@ -104,15 +107,22 @@
           const noteObj = notes.find(x => x.id === id)
           if (noteObj && (noteObj.folder || '')) ctxMoveToFolder({ id: id }, '')
         }
-        // 懒加载分页：只渲染前 visibleCount 条笔记行，滚动到底再加载更多（避免笔记多时全量渲染 + 每条跑 highlight）
-        function onListScroll(ev) {
-          const el = ev.target
-          if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) { setVisibleCount(c => c + PAGE_SIZE) }
+        // ==== more-row BEGIN ====
+        // 组尾「加载更多（还有 N 条）」按钮行（0.4.6-J 分组分页）：组内命中 > 当前显示数时渲染在该组内容末尾
+        // （恒排笔记行之后——沿用 notes-041d-drag-root-note 未入夹区提示行置尾先例，插入/消失均不位移既有笔记行）；
+        // 点击 = 该组显示数 += PAGE_SIZE（组间互不影响）；键盘导航 treeIds 不收录加载行（非笔记行）；
+        // 视觉复用原全局提示行口径 + cursor:pointer + hover 态（styles.css .dsh-notes-more-row）
+        function renderMoreRow(key, total) {
+          const shown = groupShownOf(groupShown, key)
+          if (total <= shown) return null
+          return e('div', { key: 'more-' + key, className: 'dsh-notes-more-row', onClick: () => setGroupShown(prev => groupPageNext(prev, key)) }, tt('tree.moreRows', { n: total - shown }))
         }
+        // ==== more-row END ====
         // ===== 侧栏树渲染（原型 renderTree 翻译）：视图求值结果经 R 注入（装配层 post-guard 新鲜值）=====
         function renderTreeEls(R) {
           const loading = R.loading, selected = R.selected, focusId = R.focusId, flashId = R.flashId, selMode = R.selMode, selIds = R.selIds
-          const q = R.q, filtered = R.filtered, paged = R.paged, filtersActive = R.filtersActive, filterCount = R.filterCount, hasInjectEver = R.hasInjectEver
+          const landingStall = R.landingStall   // 0.4.6-B：落地页无活跃会话首取数挂起超阈（panel/index.js 计时写入）→ 空态引导替代无限「加载中…」
+          const q = R.q, filtered = R.filtered, filtersActive = R.filtersActive, filterCount = R.filterCount, hasInjectEver = R.hasInjectEver
           // 文件夹域内联输入/重命名态（popovers/folder-menu.js 托管）经 R 注入
           const renamingId = R.renamingId, renameText = R.renameText, subFolderFor = R.subFolderFor, folderInputOpen = R.folderInputOpen, folderInputText = R.folderInputText
           // ===== 侧栏笔记行（原型 note-row）：kind 色点 + 标题(+置顶 pin) + 注入 bolt + 行尾 =====
@@ -161,8 +171,9 @@
               e('span', { className: 'dsh-notes-sec-h-n' }, pinnedAll.length)))
             if (pinOpen) {
               const pinRows = []
-              paged.filter(n => n.status === 'pinned').forEach(n => { treeIds.push(n.id); pinRows.push(renderNoteRow(n, false)) })
-              if (pinRows.length) treeEls.push(e('div', { key: 'pinned-kids', className: 'dsh-notes-nested' }, pinRows))
+              // 0.4.6-J：置顶组独立分页（组标识 'pinned'）——命中全量 pinnedAll 截当前显示数，组尾加载行翻页
+              groupPage(pinnedAll, groupShown, 'pinned').forEach(n => { treeIds.push(n.id); pinRows.push(renderNoteRow(n, false)) })
+              if (pinRows.length) treeEls.push(e('div', { key: 'pinned-kids', className: 'dsh-notes-nested' }, pinRows, renderMoreRow('pinned', pinnedAll.length)))
             }
           }
           // 文件夹组：行 = caret + folder 图标 + 名称 + 计数；行主体单击 = 纯展开/折叠
@@ -185,7 +196,10 @@
             // 0.4.4-C：合并按需补拉的 sys 子行（置尾从简——sys 行 host 序与主缓存排序口径分离，混排易误导，注释即取舍）；
             // 过滤/搜索激活时不混入（⑨ 默认列表/搜索降噪零放松：sys 仅「文件夹展开」这一个显式入口放行）；id 去重防御陈旧窗口（kind 变更等）；
             // 0.4.4-D：同层叠加 hidden 谓词——显隐开关关时 hidden 档案行不混入（开=带 hid 遮罩样式渲染）；与 C 卡合并零互扰
-            const kidsBase = paged.filter(n => (n.folder || '') === f.id)
+            // 0.4.6-J：文件夹组独立分页（组标识 = f.id）——kidsAll = 本夹命中全量，kidsBase = 分页切片（缺省 cap PAGE_SIZE）；
+            // sysKids 合并口径不变：分页 slice 之后再 concat sys 置尾行——sys 行不占分页名额
+            const kidsAll = filtered.filter(n => (n.folder || '') === f.id)
+            const kidsBase = groupPage(kidsAll, groupShown, f.id)
             const kids = filtersActive ? kidsBase : kidsBase.concat(((sysKids[f.id] && sysKids[f.id].rows) || []).filter(n => !kidsBase.some(x => x.id === n.id) && (showHidden || n.hidden !== true)))
             const subHits = filtersActive ? filtered.filter(n => sub[(n.folder || '')]).length : 0
             const fOpen = isFolderExpanded(f.id) || (filtersActive && subHits > 0)
@@ -211,8 +225,17 @@
                 e('span', { className: 'dsh-notes-ic-slot' }, I('folder', 13)),
                 e('input', { className: 'dsh-notes-folder-rename', placeholder: tt('tree.subFolderPlaceholder'), value: folderInputText, autoFocus: true, onChange: (ev) => setFolderInputText(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doCreateFolder() } else if (ev.key === 'Escape') { ev.preventDefault(); setSubFolderFor(null) } }, onBlur: () => { if (!folderInputText.trim()) setSubFolderFor(null) } })))
             }
+            /* 0.4.6-H（notes-046-smallfix，R2 n-mux9r8hfh7xy，与 app panels/tree.js 同构）：子夹全被遮罩（sys/hidden 整节点滤除）
+               且直挂笔记为空 → 「展开为空」补一行提示（原零反馈）；有可见内容不出现；遮罩本身不松绑。
+               注：递归行保持节 41 锚定原文，遮罩计数由前后 length 快照差得出（childFoldersOf 幂等纯函数，二次调用零副作用） */
+            const subFolderCnt046h = childFoldersOf(f.id).length
+            const beforeSub046h = childEls.length
             for (const cf of childFoldersOf(f.id)) renderFolderNode(cf, childEls)
+            if (subFolderCnt046h && childEls.length === beforeSub046h && !kids.length) childEls.push(e('div', { key: 'sysmask-' + f.id, className: 'dsh-notes-sysmask-hint' }, tt('tree.sysMaskHint')))
             kids.forEach(n => { treeIds.push(n.id); childEls.push(renderNoteRow(n, true)) })
+            // 0.4.6-J：组尾加载行（恒排笔记行之后；本夹命中 > 当前显示数时出现，点击该组 += PAGE_SIZE）
+            const moreRow046j = renderMoreRow(f.id, kidsAll.length)
+            if (moreRow046j) childEls.push(moreRow046j)
             if (childEls.length) sink.push(e('div', { key: 'kids-' + f.id, className: 'dsh-notes-nested' }, childEls))
           }
           for (const f of rootFolders()) renderFolderNode(f, treeEls)
@@ -227,13 +250,17 @@
           // 不再渲染「未分类」分组头/分区计数——数量已并入 brand 行总计数；主题聚合由底部「主题过滤」区承担，不重复聚合）；
           // .dsh-notes-unfiled-drop 包裹容器保留为「移出文件夹」drop 落点（拖到本区任意位置 = 移出），仅在 有未入夹笔记 或 拖拽进行中 渲染——
           // 空态非拖拽不渲染任何占位；拖拽中本区头部显示淡提示行「拖到此处移出文件夹」（dragActive 驱动，空态下也保证有可拖出落点）
-          const unfiled = paged.filter(n => !(n.folder || ''))
+          // 0.4.6-J：未入夹区独立分页（组标识 'unfiled'）——unfiledHits = 命中全量，unfiled = 分页切片（缺省 cap PAGE_SIZE）
+          const unfiledHits = filtered.filter(n => !(n.folder || ''))
+          const unfiled = groupPage(unfiledHits, groupShown, 'unfiled')
           const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })
           if (unfiledKids.length || dragActive) {
             // 提示行排笔记行**之后**（notes-041d-drag-root-note）：dragActive 点亮瞬间若在行首插入提示行，会把本夹笔记行（=拖拽源行）整体下移，
-            // Chromium 判定拖拽源位移直接取消拖拽（dragstart→立即 dragend）——根目录笔记因此拖不进文件夹；置尾后源行零位移，拖拽链路恢复
+            // Chromium 判定拖拽源位移直接取消拖拽（dragstart→立即 dragend）——根目录笔记因此拖不进文件夹；置尾后源行零位移，拖拽链路恢复；
+            // 0.4.6-J 组尾加载行同例：恒排笔记行之后、拖拽提示行之前（两者皆为尾部固定槽，笔记行零位移）
             treeEls.push(e('div', { key: 'unfiled-drop', className: 'dsh-notes-unfiled-drop', onDragOver: onUnfiledDragOver, onDragLeave: onUnfiledDragLeave, onDrop: onUnfiledDrop },
               unfiledKids,
+              renderMoreRow('unfiled', unfiledHits.length),
               dragActive ? e('div', { key: 'unfiled-hint', className: 'dsh-notes-unfiled-hint' }, dragFolderIdRef.current ? tt('tree.dropRootHint') : tt('tree.dropOutHint')) : null))
           }
           // 主题全局过滤（原型底部区）：全库主题 + 计数；点行主体 = 原地展开/收起该主题的笔记子列表（topicExpanded，不持久化）；
@@ -265,8 +292,9 @@
                 e('span', { className: 'dsh-notes-row-n' }, filtersActive ? tkidsAll.length : allTopics[tn]),
                 e('span', { className: 'dsh-notes-row-vfilter dsh-nt' + (view.type === 'topic' && view.id === tn ? ' on' : ''), 'data-tooltip': tt('tree.topicViewTip'), onClick: (ev) => { ev.stopPropagation(); setView(view.type === 'topic' && view.id === tn ? { type: 'all', id: '' } : { type: 'topic', id: tn }) } }, I('filter', 11))))
               if (tOpen) {
-                const tkids = paged.filter(n => (n.topic || '') === tn)
-                if (tkids.length) { tkids.forEach(n => { treeIds.push(n.id) }); treeEls.push(e('div', { key: 'tpk-' + tn, className: 'dsh-notes-nested' }, tkids.map(n => renderNoteRow(n, false)))) }
+                // 0.4.6-J：主题组独立分页（组标识 'topic:'+tn；命中全量 tkidsAll 截当前显示数，组尾加载行翻页）
+                const tkids = groupPage(tkidsAll, groupShown, 'topic:' + tn)
+                if (tkids.length) { tkids.forEach(n => { treeIds.push(n.id) }); treeEls.push(e('div', { key: 'tpk-' + tn, className: 'dsh-notes-nested' }, tkids.map(n => renderNoteRow(n, false)), renderMoreRow('topic:' + tn, tkidsAll.length))) }
               }
             })
           }
@@ -276,19 +304,35 @@
               e('div', { className: 'dsh-notes-empty-ic' }, I('note', 30)),
               e('div', { className: 'dsh-notes-empty-t' }, tt('tree.emptyTitle')),
               e('div', { className: 'dsh-notes-empty-s' }, tt('tree.emptySub')),
+              // 0.4.6-C（notes-046-ux-discovery）：首笔记空态补概念指向（→ 标题栏 ? 使用说明首屏「核心概念 30 秒」）
+              e('div', { className: 'dsh-notes-empty-s dsh-notes-empty-concept' }, tt('tree.emptyConcept')),
               e('button', { className: 'dsh-notes-empty-btn', onClick: openNewNote }, tt('tree.emptyBtn'))))
           } else if (filtered.length === 0 && filtersActive) {
             // 空结果态：提示 + 筛选中心条件激活时附「清空筛选」快捷动作（设计稿口径⑦）
             treeEls.push(e('div', { key: 'no-match', className: 'dsh-notes-sec-h' }, e('span', { className: 'dsh-notes-sec-h-t' }, tt('tree.noMatch')),
               filterCount > 0 ? e('span', { className: 'dsh-notes-sec-h-clear dsh-nt', 'data-tooltip': tt('tree.clearAllFiltersTip'), onClick: () => { setFilters(FILTERS0()); if (searchDebRef.current) searchDebRef.current() } }, tt('tree.clearFiltersShort')) : null))
+            // 0.4.6-D（notes-046-copy-consistency，R2 n-mux7as3gnrru）：搜索空态引导行——更短关键词提示 + 「新建一篇」动作出口（→ 新建弹窗）
+            treeEls.push(e('div', { key: 'no-match-guide', className: 'dsh-notes-sec-h' },
+              e('span', { className: 'dsh-notes-sec-h-t' }, tt('tree.noMatchGuide') + ' '),
+              e('span', { className: 'dsh-notes-sec-h-clear dsh-nt', 'data-tooltip': tt('side.newTip'), onClick: (ev) => { ev.stopPropagation(); openNewNote() } }, tt('tree.noMatchNew'))))
           }
-          if (loading && notes.length === 0) treeEls.unshift(e('div', { key: 'loading', className: 'dsh-notes-loading' }, tt('common.loading')))
-          // 键盘导航顺序 = 树渲染顺序（置顶组与所属位置重复出现的笔记去重）
+          if (loading && notes.length === 0) {
+            /* 0.4.6-B（notes-046-rpc-resilience）：落地页空态引导（无活跃会话 + 挂起超阈）——「打开一个会话后使用」+ 重试；
+               重试经 kernel loadNotes 别名直取（成功路径 index.js 复位 landingStall），超时由宿主桥 30s 护栏兜底 */
+            treeEls.unshift(landingStall
+              ? e('div', { key: 'landing-stall', className: 'dsh-notes-empty-state' },
+                  e('div', { className: 'dsh-notes-empty-ic' }, I('note', 30)),
+                  e('div', { className: 'dsh-notes-empty-t' }, tt('tree.landingTitle')),
+                  e('div', { className: 'dsh-notes-empty-s' }, tt('tree.landingSub')),
+                  e('button', { className: 'dsh-notes-empty-btn', onClick: () => loadNotes() }, tt('tree.landingRetry')))
+              : e('div', { key: 'loading', className: 'dsh-notes-loading' }, tt('common.loading')))
+          }
+          // 键盘导航顺序 = 树渲染顺序（置顶组与所属位置重复出现的笔记去重；0.4.6-J 组尾加载行非笔记行、不推入 treeIds，j/k 导航不经过）
           pagedIdsRef.current = Array.from(new Set(treeIds))
           return treeEls
         }
         return {
-          visibleCount: visibleCount, setVisibleCount: setVisibleCount, dragActive: dragActive, onListScroll: onListScroll,
+          dragActive: dragActive, renderMoreRow: renderMoreRow,
           onNoteDragStart: onNoteDragStart, onNoteDragEnd: onNoteDragEnd, renderTreeEls: renderTreeEls
         }
     }

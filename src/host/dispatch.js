@@ -139,7 +139,11 @@
     // opts: { sessionId, sessionName, workspace, mode('existing'|'new'), instruction, sourceLabel（派发来源标注，定时调度传 '定时调度 @约定标题'，进消息尾行与 dispatches 记录） }
     async function _dispatch(id, opts) {
       const o = opts || {}
-      const note = await _get(id)
+      // 0.4.6-H（notes-046-smallfix，R2 n-mux9s42zajxk）：入口参数校验——缺 id / 笔记不存在统一返回结构化 {error}
+      //   （与 notes-export-single 缺 dir 等姊妹 RPC 同口径；修复缺参时「cannot read "…\undefined.md"」把 undefined 拼进路径、泄漏内部存储形态）
+      if (!id) return { error: '笔记不存在或参数缺失' }
+      let note
+      try { note = await _get(id) } catch (e) { return { error: '笔记不存在或参数缺失' } }
       if (note.deleted) return { error: '笔记已删除' }
       if (!o.sessionId) return { error: '缺少目标会话' }
       const instruction = String(o.instruction || '').trim()

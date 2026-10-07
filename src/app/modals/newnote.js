@@ -1,7 +1,9 @@
 /* ================= 新建笔记（本地草稿态，notes-034-batch3） =================
    点 + / Alt+N：先开本地草稿进编辑器（不落库、列表不出行）；首次有效编辑（标题/正文非空）才 notes-create 落库；
    放弃（点别的笔记且零内容）不产生空 Untitled（证据 n-mut4n5zuuxaw：昔日点 + 立即落库，巡检现场残留 3 条空 Untitled）。
-   切走时未落库的有内容草稿由 selectNote 兜底 flushDraftCreate（fire-and-forget，不阻塞切换）。 */
+   切走时未落库的有内容草稿由 selectNote 兜底 flushDraftCreate（fire-and-forget，不阻塞切换）。
+   0.4.6-D 双端差异留档（R2 n-mux79kfts75o）：本端（全窗口页）= 草稿先行「输入即落库」；面板端 = 模态弹窗「输标题+选类型→创建即落库」
+   （client/modals/newnote.js）。两端文案已按各自实际行为对齐并互注差异；行为本身统一属大改，另议。 */
 function doNewNote() {
   /* 草稿期重复点击 = 聚焦标题继续写（不重建草稿、不丢在途输入） */
   if (draftNote) { var t0 = $('edTitle'); if (t0) t0.focus(); return }
@@ -52,7 +54,11 @@ function createDraftNote(d, payload) {
       wikiBodies[res.id] = { body: payload.body, updatedAt: '' };   /* 双链索引即时新鲜（updatedAt 空 → 下轮复核 reconcile） */
       if (edNote === d) {
         selId = res.id; edNote.id = res.id;
-        renderCrumb(); renderMeta();
+        /* 0.4.6-D（notes-046-copy-consistency，R2 n-mux79kgmbpza/n-mux8bv3x6lll）：落库即切普通笔记态——回填创建/更新时间戳并重渲底栏，
+           「草稿（首次输入即落库）」标签随落库消失（renderEdFoot 以 createdAt 有无判草稿态）；
+           notes-create 不回传时间戳，取本地时钟（与 host 同机同源，loadNotes 换代后列表侧复核） */
+        var _now = new Date().toISOString(); if (!edNote.createdAt) edNote.createdAt = _now; edNote.updatedAt = _now;
+        renderCrumb(); renderMeta(); renderEdFoot();
         $('edSaved').textContent = t('editor.autoSaved', { time: new Date().toTimeString().slice(0, 5) });
         toast(t('newnote.createdToast'));
       } else {

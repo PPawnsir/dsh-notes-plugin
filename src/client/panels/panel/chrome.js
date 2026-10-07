@@ -1,8 +1,9 @@
     // ===== panel/chrome —— 窗口 chrome：pos/size/sideW 态 + 标题栏/分隔条/resize 拖拽族（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
     // provides: usePanelChrome（面板位置/尺寸/侧栏宽 state + 持久化/居中 effect + onTitlebarMouseDown/onResizeMouseDown/onSplitterMouseDown/resetSideW +
     //           titlebarEl/splitterEl/resizeEl JSX）
-    // needs: kernel/state.js（setShowHelp 转发别名）、kernel/persist.js（loadSideW/saveSideW/SIDE_W_DEFAULT/clampSideW/entryMode/setEntryMode）、
-    //        kernel/drag.js（drag）、kernel/icons.js（e/I）、modals/archive.js（openArchive）——序位在前；
+    // needs: kernel/state.js（setShowHelp 转发别名 + store.modal.suggest 徽标订阅）、kernel/persist.js（loadSideW/saveSideW/SIDE_W_DEFAULT/clampSideW/entryMode/setEntryMode）、
+    //        kernel/drag.js（drag）、kernel/icons.js（e/I）、kernel/bus.js（noteRefreshListeners）、modals/archive.js（openArchive）+
+    //        modals/suggest.js（openSuggest/refreshSuggestBadge——0.4.6-C 顶栏「建议」入口，序位在前）——序位在前；
     //        open/close/showHelp 经 hook 入参注入（装配层回填：open 主面板开合态、close 滞留装配层、showHelp 自 popovers/help.js 解构）
     // state 托管：pos/size/sideW/sideDrag 留 hook 内 useState（与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）
     function usePanelChrome(args) {
@@ -13,6 +14,11 @@
         const [size, setSize] = React.useState({ width: 920, height: 640 })
         // 侧栏宽度：分隔条拖拽调整（clamp 200px–60% 面板宽），localStorage 记忆（SIDE_W_KEY），双击分隔条重置缺省
         const [sideW, setSideW] = React.useState(() => loadSideW() || SIDE_W_DEFAULT)
+        // 0.4.6-C 顶栏「建议」入口徽标（notes-046-ux-discovery）：订阅 suggest 切片 badge 计数（-1=未知不显/0=无候选不显/>0 带计数）；
+        // 刷新触发 = 面板打开瞬间 + 笔记变更（notifyNotesChanged 通道，模块内 1.2s 防抖收口）——治理面从设置三层深提到标题栏一层
+        const suggestBadge = store.modal.suggest.useSel(s => s.badge)
+        React.useEffect(() => { if (open) refreshSuggestBadge() }, [open])
+        React.useEffect(() => { const fn = () => refreshSuggestBadge(); noteRefreshListeners.add(fn); return () => noteRefreshListeners.delete(fn) }, [])
         const [sideDrag, setSideDrag] = React.useState(false)   // 拖拽中：分隔条高亮 + body 禁文本选择
         const sideWRef = React.useRef(0)   // 拖拽期间最新宽镜像（mouseup 持久化读 ref，防闭包过期）
         React.useEffect(() => { try { const saved = localStorage.getItem('dsh-notes-panel-state'); if (saved) { const s = JSON.parse(saved); if (s.x !== undefined && s.y !== undefined) setPos({ x: s.x, y: s.y }); if (s.width !== undefined && s.height !== undefined) setSize({ width: s.width, height: s.height }) } } catch (err) {} }, [])
@@ -62,6 +68,7 @@
             e('div', { className: 'dsh-notes-titlebar-actions' },
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setEntryMode(entryMode === 'header' ? 'fab' : 'header'), 'data-tooltip': tt('chrome.entryModeTip') }, I('swap', 13)),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: openArchive, 'data-tooltip': tt('topbar.archiveTip') }, tt('topbar.archive')),
+              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => openSuggest(), 'data-tooltip': suggestBadge > 0 ? tt('topbar.suggestTipN', { n: suggestBadge }) : tt('topbar.suggestTip') }, I('sparkle', 13), tt('topbar.suggest'), suggestBadge > 0 ? e('span', { className: 'dsh-notes-tcnt' }, String(suggestBadge)) : null),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setShowHelp(!showHelp), 'data-tooltip': tt('chrome.help') }, '?'),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: close, 'data-tooltip': tt('common.close') }, '×')))
         const splitterEl = e('div', { className: 'dsh-notes-splitter dsh-nt' + (sideDrag ? ' on' : ''), onMouseDown: onSplitterMouseDown, onDoubleClick: resetSideW, 'data-tooltip': tt('side.splitterTip') })

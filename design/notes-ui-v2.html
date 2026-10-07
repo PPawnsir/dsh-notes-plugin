@@ -78,6 +78,9 @@
   .fbtn-filter.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:600}
   .fbtn-filter svg.ic{width:11px;height:11px}
   .fbtn-filter .cnt{font-family:var(--nmono);font-size:9.5px;line-height:1.4;background:var(--nacc);color:#fff;border-radius:8px;padding:0 5px}
+  /* 0.4.6-C（notes-046-ux-discovery）：顶栏「建议」计数徽标（复用 fbtn-filter .cnt 视觉口径）+ 空态概念指向行 */
+  .tbtn .cnt{font-family:var(--nmono);font-size:9.5px;line-height:1.4;background:var(--nacc);color:#fff;border-radius:8px;padding:0 5px}
+  .ed-empty-concept{color:var(--nt3)}
   /* 激活条件 chips：单行横排，超宽横向滚动（不挤压树区高度）；× 单条移除，与 popover 勾选双向同步 */
   .fchips{display:flex;gap:4px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:thin}
   .fchip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 4px 2px 9px;border-radius:20px;background:var(--nbg-sel);color:var(--nacc-tx);flex-shrink:0;user-select:none;white-space:nowrap}
@@ -140,6 +143,12 @@
   .unfiled-hint{display:none;margin:2px 0;padding:5px 8px;border:1px dashed var(--nbd);border-radius:var(--nr-sm);font-size:11px;color:var(--nt3);text-align:center;user-select:none}
   .unfiled-drop.drag-on .unfiled-hint{display:block}
   .unfiled-drop.drop .unfiled-hint{border-color:var(--nacc);color:var(--nacc-tx)}
+  /* 0.4.6-H：「展开为空」遮罩提示行（与 app head.html 同款） */
+  .sys-mask-hint{margin:2px 0;padding:4px 8px;font-size:11px;color:var(--nt3);line-height:1.5;user-select:none}
+  /* 0.4.6-J（notes-046-group-paging）：组尾「加载更多（还有 N 条）」按钮行（client 分组分页：置顶/文件夹/未入夹/主题四组同构，
+     组内命中 > 当前显示数时渲染在组内容末尾，点击该组 += PAGE_SIZE；app/原型恒全量渲染，本行仅静态示例视觉锚） */
+  .more-row{padding:10px 14px;color:var(--nt3);font-size:11px;text-align:center;user-select:none;cursor:pointer}
+  .more-row:hover{color:var(--nacc-tx)}
   .caret{width:11px;flex-shrink:0;color:var(--nt3);display:grid;place-items:center;transition:transform .15s;cursor:pointer}
   .caret.open{transform:rotate(90deg)} .caret svg.ic{width:10px;height:10px}
   /* 行尾视图过滤图标（文件夹/主题行共用：单击行主体=原地展开，视图过滤降级为行尾小图标；hover 浮现，激活常显） */
@@ -395,6 +404,7 @@
   .sched-row-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
   .sched-freq{color:var(--nacc-tx);flex-shrink:0;font-size:10.5px}
   .sched-target{color:var(--nt3);flex-shrink:0;font-size:10.5px;font-family:var(--nmono)}
+  .sched-model{color:var(--nacc-tx);flex-shrink:0;font-size:10px;font-family:var(--nmono);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--nbd-soft);border-radius:8px;padding:0 5px}   /* 0.4.6-G：调度行模型档位标注 */
   .sched-nf{color:var(--nt2);flex-shrink:0;font-size:10.5px;white-space:nowrap}
   .sched-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nt3);border:1px solid var(--nbd);border-radius:10px;padding:0 7px;flex-shrink:0;white-space:nowrap}
   .sched-badge.ok{color:#56c88f;border-color:transparent;background:rgba(86,200,143,.12)}
@@ -524,9 +534,11 @@
   <div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>dsh-notes</b>
   <span class="sub">你的笔记库 · 写下的约定与资料可注入 Agent 会话</span>
   <span class="sp"></span>
-  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新/速记保文字 -->
+  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（建议/切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新/速记保文字 -->
   <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg><span class="tb-t">刷新</span></button>
-  <button class="tbtn" id="btnArchive" title="把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）"><svg class="ic"><use href="#i-check"/></svg><span class="tb-t">速记合并</span></button>
+  <button class="tbtn" id="btnArchive" title="速记 = 划选文字松手弹出的快速记录（暂存）；点按弹出预览，勾选后把同一会话的速记归并成一篇正式笔记（可撤销）"><svg class="ic"><use href="#i-check"/></svg><span class="tb-t">速记合并</span></button>
+  <!-- 0.4.6-C（notes-046-ux-discovery）：治理入口提升到顶栏——整理建议 + 约定体检（建议框底栏）；有待办候选时 #suggestBd 计数徽标点亮（notes-suggest 六段合计） -->
+  <button class="tbtn ico-only" id="btnSuggest" title="整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）"><svg class="ic"><use href="#i-sparkle"/></svg><span class="tb-t">建议</span><span class="cnt" id="suggestBd" style="display:none"></span></button>
   <button class="tbtn ico-only" id="btnTheme" title="切换主题（暗色/亮色）"><svg class="ic"><use href="#i-theme"/></svg><span class="tb-t">切换主题</span></button>
   <span class="tbtn proto-tag" style="cursor:default;color:var(--nt3)">交互原型 · 内存 mock 数据（UI 与 app.html 一致）</span>
 </div>
@@ -562,7 +574,9 @@
   <section class="ed empty" id="ed">
     <svg class="ic"><use href="#i-note"/></svg>
     <div>选择左侧一条笔记查看和编辑</div>
-    <div style="font-size:11px">点侧栏顶部 + 新建笔记（先开草稿，输入内容才落库）；正文划选文字可弹出快速记录卡片</div>
+    <div style="font-size:11px">点侧栏顶部 + 新建笔记（先开草稿，输入标题或正文即落库；面板端「新建」为弹窗即建）；正文划选文字可弹出快速记录卡片</div>
+    <!-- 0.4.6-C（notes-046-ux-discovery）：空态首笔记引导补概念指向（设置卡「概念速览」完整版）；renderEd 动态空态同款一行（49 节双处对齐口径） -->
+    <div style="font-size:11px" class="ed-empty-concept">写下的约定/资料可注入 Agent 会话——设置卡顶部「概念速览」30 秒看懂五个核心概念</div>
   </section>
 </div>
 <div class="hintbar"><span>🖱 在右侧正文<b>划选文字松手</b> → 弹出快速记录卡片</span><span>拖笔记 → 文件夹移入 / 拖到根级笔记区移出</span><span>点击展开/折叠 · 右键管理</span><span>Ctrl K 搜索 · Alt N 新建 · j/k 移动 · Enter 打开 · Esc 关闭浮层 · ? 快捷键</span></div>
@@ -628,7 +642,10 @@ var _mockNotes = [
   /* 执行记录独立笔记演示（notes-041-sched-runlog）：n93 的 runLog 软链目标——约定正文零改动（派发载荷保持纯净），执行记录独立成笔记 */
   { id: 'n96', title: '定时 每 3 天一轮 UX 巡检 · 执行记录', kind: 'note', topic: '看板反馈', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-10-03T02:05:00.000Z', updatedAt: '2026-10-03T02:05:00.000Z', sessionId: '', cwd: '', dispatches: [], body: '## 执行记录（自动）\n\n- ✅ 2026-10-03 10:05 · 回执（idle）· → 主窗口 · dsh-notes 开发 · note-dispatch-mock-n93\n' },
   { id: 'n94', title: '定时 周报汇总（暂停演示）', kind: 'todo', topic: '数据管线', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-09-28T06:00:00.000Z', updatedAt: '2026-09-29T06:00:00.000Z', sessionId: '', cwd: '', contractType: 'dispatch-schedule', schedule: { at: '2026-10-10T09:00:00', target: 'session-oa123456-0000-0000-0000-000000000000', action: 'dispatch', enabled: false }, dispatches: [], body: '每周五汇总本周数据管线运行周报（暂停中——恢复走注入管理调度任务区）。\n' },
-  { id: 'n95', title: '定时 每日构建状态检查', kind: 'todo', topic: '运维', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-10-02T02:00:00.000Z', updatedAt: '2026-10-04T02:00:00.000Z', sessionId: '', cwd: '', contractType: 'dispatch-schedule', schedule: { every: '1d', anchor: '09:00', target: 'session-work1234-0000-0000-0000-000000000000', action: 'dispatch', enabled: true, lastFiredAt: '2026-10-04T02:00:00.000Z', lastRun: { at: '2026-10-04T02:00:00.000Z', status: 'queued', receiptId: 'note-dispatch-mock-n95' } }, dispatches: [{ sessionId: 'session-work1234-0000-0000-0000-000000000000', sessionName: 'oabanner 数据管线', workspace: 'ontology-proj', mode: 'existing', instruction: '', at: '2026-10-04T02:00:00.000Z', done: false, dispatchStatus: 'sent', sourceLabel: '定时调度 @定时 每日构建状态检查', msgId: 'note-dispatch-mock-n95', queued: true }], body: '每天检查一次 CI 构建状态，失败时定位首要原因。\n' }
+  { id: 'n95', title: '定时 每日构建状态检查', kind: 'todo', topic: '运维', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-10-02T02:00:00.000Z', updatedAt: '2026-10-04T02:00:00.000Z', sessionId: '', cwd: '', contractType: 'dispatch-schedule', schedule: { every: '1d', anchor: '09:00', target: 'session-work1234-0000-0000-0000-000000000000', action: 'dispatch', enabled: true, lastFiredAt: '2026-10-04T02:00:00.000Z', lastRun: { at: '2026-10-04T02:00:00.000Z', status: 'queued', receiptId: 'note-dispatch-mock-n95' } }, dispatches: [{ sessionId: 'session-work1234-0000-0000-0000-000000000000', sessionName: 'oabanner 数据管线', workspace: 'ontology-proj', mode: 'existing', instruction: '', at: '2026-10-04T02:00:00.000Z', done: false, dispatchStatus: 'sent', sourceLabel: '定时调度 @定时 每日构建状态检查', msgId: 'note-dispatch-mock-n95', queued: true }], body: '每天检查一次 CI 构建状态，失败时定位首要原因。\n' },
+  /* 专属会话模型档位演示（0.4.6-G，notes-046-sched-model）：n97 target='new' + provider/model 声明——调度任务区/计划块行出模型标注，
+     编辑回填派发弹窗可见模型下拉选中态（mock notes-settings-get 清单含 kimi/kimi-k3） */
+  { id: 'n97', title: '定时 每日竞品舆情轻量扫描', kind: 'todo', topic: '运维', folder: '', status: 'active', inject: false, injectTo: [], recall: true, tags: [], createdAt: '2026-10-04T03:00:00.000Z', updatedAt: '2026-10-04T03:00:00.000Z', sessionId: '', cwd: '', contractType: 'dispatch-schedule', schedule: { every: '1d', anchor: '08:30', target: 'new', action: 'dispatch', enabled: true, provider: 'kimi', model: 'kimi-k3' }, dispatches: [], body: '每天早上扫描竞品舆情要点（轻量模型档位演示——专属会话创建时按声明档位配模型）。\n' }
 ];
 var _mockSettings = {};
 var _mockArchUndo = null;   /* 归档撤销事务（只保留最近一次；契约同 host .archive-undo.json） */
@@ -677,16 +694,17 @@ function rpc(method, args) {
    且禁纯日期（YYYY-MM-DD 无 T 时间部分按 UTC 午夜解析产生整时区偏移，notes-034-at-need-time）/ every≥5min /
    锚定时刻（notes-034-sched-time）：anchor HH:MM 严格两位 + 需整天间隔；dow 0-6 整数 + 需搭配 anchor + 仅每周（1w）；at 不接受 anchor/dow /
    目标在 _mockSessions 清单（存活）/ 未知字段拒绝 / action 仅 dispatch / enabled 布尔；
-   机器状态字段（lastFiredAt/lastRun/lastError）由存量延续；enabled=false 豁免存活校验（暂停随时可落） */
+   机器状态字段（lastFiredAt/lastRun/lastError）由存量延续；enabled=false 豁免存活校验（暂停随时可落）；
+   declaredAt（0.4.6-F，同 host，notes-046-sched-anchor）：声明字段任一变更或首次写入刷新为当前时刻，未变更改写延续存量 */
 function _mockSchedGate(raw, contractType, existing) {
   if (raw === null) {
     if ((contractType || '') === 'dispatch-schedule') return { error: 'contractType=dispatch-schedule 需要 schedule 声明；解除调度请同时清除 contractType（contractType: \'\' + schedule: null）' };
     return { value: null };
   }
   if ((contractType || '') !== 'dispatch-schedule') return { error: 'schedule 字段仅允许 contractType=dispatch-schedule 的约定笔记（错得安全：能力声明必须显式契约分型）' };
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow? }' };
-  var known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1 };
-  for (var k in raw) { if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled；错得安全：能力声明必须无歧义）' } }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象 { at|every, target, action?, enabled?, anchor?, dow?, model?, provider? }' };
+  var known = { at: 1, every: 1, target: 1, action: 1, enabled: 1, anchor: 1, dow: 1, model: 1, provider: 1, lastFiredAt: 1, lastRun: 1, lastError: 1, runLog: 1, declaredAt: 1 };
+  for (var k in raw) { if (!known[k]) return { error: 'schedule 含未知字段 ' + k + '（声明只允许 at/every/anchor/dow/target/action/enabled/model/provider；错得安全：能力声明必须无歧义）' } }
   var at = raw.at !== undefined && raw.at !== null && raw.at !== '' ? String(raw.at).trim() : '';
   var every = raw.every !== undefined && raw.every !== null && raw.every !== '' ? raw.every : undefined;
   /* 锚定时刻（notes-034-sched-time）：anchor='HH:MM' 本地时刻 / dow=0-6 星期几（weekly）——空串/null 视为未声明（同 host） */
@@ -732,6 +750,17 @@ function _mockSchedGate(raw, contractType, existing) {
   }
   /* 专属会话（0.4.4-B，同 host 闸门）：target='new' 仅周期模式接受——首轮触发自动创建「定时 · 任务名」会话并回写复用；单次 at 无复用场景拒绝；专属目标豁免存活校验（首轮才创建） */
   if (target === 'new' && !decl.every) return { error: 'schedule.target=\'new\' 专属会话仅周期模式（every）支持——首轮触发自动创建「定时 · 任务名」会话并持久复用；单次 at 请直接指定目标会话 id' };
+  /* 专属会话模型档位（0.4.6-G，同 host 闸门，notes-046-sched-model）：model/provider 成对出现（单给其一即歧义拒绝），非空字符串；
+     空串/null 视为未声明；合法性不联网校验（创建期 agents.create 失败即 lastError） */
+  var hasModel = raw.model !== undefined && raw.model !== null && raw.model !== '';
+  var hasProvider = raw.provider !== undefined && raw.provider !== null && raw.provider !== '';
+  if (hasModel !== hasProvider) return { error: 'schedule.model 与 schedule.provider 必须成对出现（专属会话模型档位，单给其一有歧义——错得安全）' };
+  if (hasModel) {
+    if (typeof raw.model !== 'string' || typeof raw.provider !== 'string') return { error: 'schedule.model/provider 必须是字符串（实得 model:' + typeof raw.model + ' / provider:' + typeof raw.provider + '）' };
+    var _mv = String(raw.model).trim(), _pv = String(raw.provider).trim();
+    if (!_mv || !_pv) return { error: 'schedule.model/provider 不能是空白字符串（错得安全：能力声明必须无歧义）' };
+    decl.model = _mv; decl.provider = _pv;
+  }
   if (enabled !== false && target !== 'new' && !_mockSessions.some(function (t) { return t.id === target })) return { error: 'schedule.target 目标会话不存在或已归档：' + target };
   var ex = existing || {};
   if (ex.lastFiredAt) decl.lastFiredAt = ex.lastFiredAt;
@@ -743,6 +772,12 @@ function _mockSchedGate(raw, contractType, existing) {
     else if (!_mockNotes.some(function (x) { return x.id === raw.runLog && !x.deleted })) return { error: 'schedule.runLog 必须是存在的笔记 id 或空（实得 ' + raw.runLog + '）' };
     else decl.runLog = raw.runLog;
   } else if (ex.runLog) decl.runLog = ex.runLog;
+  /* declaredAt 声明重锚（0.4.6-F，同 host _schedValidateWrite，notes-046-sched-anchor）：声明九键（at/every/anchor/dow/target/action/enabled + 0.4.6-G model/provider）
+     任一变更或首次写入 → 刷新当前时刻；声明未变更的改写延续存量 declaredAt，缺省不留字段（到期回退 createdAt，存量零迁移）；
+     输入携带的 declaredAt 不直接采信（机器字段剥离，上方 decl 逐字段重建天然不含） */
+  var _dchg = !existing;
+  if (!_dchg) { var _dkeys = ['at', 'every', 'anchor', 'dow', 'target', 'action', 'enabled', 'model', 'provider']; for (var _dk = 0; _dk < _dkeys.length; _dk++) { var _kk = _dkeys[_dk]; var _av = decl[_kk] == null || decl[_kk] === '' ? '' : String(decl[_kk]); var _bv = ex[_kk] == null || ex[_kk] === '' ? '' : String(ex[_kk]); if (_av !== _bv) { _dchg = true; break } } }
+  if (_dchg) decl.declaredAt = new Date().toISOString(); else if (ex.declaredAt) decl.declaredAt = ex.declaredAt;
   return { value: decl };
 }
 /* 定时派发 mock 常驻 tick（原型演示加速 15s；host 实机为 30s + unref 不挂进程）：让「触发」环节在原型真实可见——
@@ -990,8 +1025,8 @@ function _mockRpc(method, a) {
     return { ok: true, id: n.id };
   }
   /* 定时派发 mock（notes-034-sched-ui，契约同 host notes-schedule-eval）：{now?} 注入时钟到期评估——
-     到期判定同 host schedDueAt（at：lastFiredAt < at <= now；every：now - (lastFiredAt||createdAt) ≥ 间隔；
-     every + anchor 锚定时刻（notes-034-sched-time）：now ≥ 锚定序列下一时刻 schedAnchorNextMs，钉死本地 HH:MM 不漂移）；
+     到期判定同 host schedDueAt（at：lastFiredAt < at <= now；every：now - (lastFiredAt||declaredAt||createdAt) ≥ 间隔（0.4.6-F 声明重锚）；
+     every + anchor 锚定时刻（notes-034-sched-time）：now ≥ 锚定序列下一时刻 schedAnchorNextMs（注入 nowMs 首触防过去候选，0.4.6-F），钉死本地 HH:MM 不漂移）；
      目标不存在记 lastError 不推进 lastFiredAt（执行红线，0.4.4-B 改写：休眠目标走 queued 排队送达不再报错）；
      target='new' 首轮触发 mock 创建专属会话并回写（0.4.4-B 专属会话复用演示）；触发 = 登记 dispatches + lastFiredAt/lastRun 回写 */
   if (method === 'notes-schedule-eval') {
@@ -1004,8 +1039,8 @@ function _mockRpc(method, a) {
       var s = x.schedule, firedMs = s.lastFiredAt ? Date.parse(s.lastFiredAt) : 0, due = false;
       if (s.at) { var atMs0 = Date.parse(s.at); due = isFinite(atMs0) && atMs0 <= nowMs && firedMs < atMs0 }
       else {
-        var iv0 = schedEveryMs(s.every), baseMs = firedMs || Date.parse(x.createdAt || '') || 0;
-        if (s.anchor) { var nx0 = schedAnchorNextMs(s.anchor, typeof s.dow === 'number' ? s.dow : undefined, iv0, baseMs, !!firedMs); due = nx0 !== null && nowMs >= nx0 }
+        var iv0 = schedEveryMs(s.every), dclMs0 = s.declaredAt ? Date.parse(s.declaredAt) : 0, baseMs = firedMs || (isFinite(dclMs0) ? dclMs0 : 0) || Date.parse(x.createdAt || '') || 0;
+        if (s.anchor) { var nx0 = schedAnchorNextMs(s.anchor, typeof s.dow === 'number' ? s.dow : undefined, iv0, baseMs, !!firedMs, nowMs); due = nx0 !== null && nowMs >= nx0 }
         else due = iv0 !== null && nowMs - baseMs >= iv0
       }
       if (!due) return;
@@ -1358,21 +1393,29 @@ function schedAnchorMs(anchor) {
   return m ? (parseInt(m[1], 10) * 60 + parseInt(m[2], 10)) * 60000 : null;
 }
 /* 锚定时刻序列（同 host schedDueAt 锚定分支口径）：触发时刻钉死本地 HH:MM，不随创建/触发时刻漂移——
-   首触（fired=false，base=createdAt）= base 之后第一个锚定时刻（weekly 限定 dow 星期几）；
+   首触（fired=false，base=declaredAt||createdAt，0.4.6-F）= base 之后第一个锚定时刻（weekly 限定 dow 星期几）；
    后续（fired=true，base=lastFiredAt）= base + 间隔 所在本地日的锚定时刻（weekly = 下一个 dow 锚定时刻）。
+   0.4.6-F 首触防过去候选：注入 nowMs 时首触候选落在过去（base 陈旧）→ 对齐「now 之后第一个锚定时刻」（首轮不补发，同 host）。
    dow=0-6（0=周日，Date.getDay 口径）；ivMs 需整天倍数。非法 → null */
-function schedAnchorNextMs(anchor, dow, ivMs, baseMs, fired) {
+function schedAnchorNextMs(anchor, dow, ivMs, baseMs, fired, nowMs) {
   var off = schedAnchorMs(anchor);
   if (off === null || !isFinite(baseMs) || !baseMs) return null;
   var b = new Date(baseMs), day0 = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
+  /* 首触防过去候选（0.4.6-F，同 host）：now 有效且晚于 base 时扫描起点抬到 now 当日午夜；已触发/无 nowMs 保持旧口径 */
+  var hasNow = typeof nowMs === 'number' && isFinite(nowMs);
+  var scan0 = day0;
+  if (!fired && hasNow && nowMs > baseMs) { var nd0 = new Date(nowMs); scan0 = new Date(nd0.getFullYear(), nd0.getMonth(), nd0.getDate()).getTime() }
   if (typeof dow === 'number') {
-    /* weekly：自 base 当日起逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow；首触 → 下一个 dow） */
-    for (var i = 0; i < 14; i++) { var dm = day0 + i * 86400000; if (new Date(dm).getDay() === dow && dm + off > baseMs) return dm + off }
+    /* weekly：自扫描起点逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow；首触 → 下一个 dow 且候选 ≥ now） */
+    for (var i = 0; i < 14; i++) { var dm = scan0 + i * 86400000; if (new Date(dm).getDay() === dow && dm + off > baseMs && (fired || !hasNow || dm + off >= nowMs)) return dm + off }
     return null;
   }
   if (typeof ivMs !== 'number' || !isFinite(ivMs) || ivMs % 86400000 !== 0) return null;
   if (fired) { var f = new Date(baseMs + ivMs); return new Date(f.getFullYear(), f.getMonth(), f.getDate()).getTime() + off }
-  return (day0 + off > baseMs ? day0 : day0 + 86400000) + off;
+  /* 首触：base 当日锚定时刻未到 → 当日；已过 → 次日；候选落在过去（0.4.6-F）→ 对齐「now 之后第一个锚定时刻」 */
+  var first = (day0 + off > baseMs ? day0 : day0 + 86400000) + off;
+  if (hasNow && first < nowMs) { var nd = new Date(nowMs), nday0 = new Date(nd.getFullYear(), nd.getMonth(), nd.getDate()).getTime(); return (nday0 + off >= nowMs ? nday0 : nday0 + 86400000) + off }
+  return first;
 }
 /* 频率人话：仅一次 <时间> / 每天 / 每周 / 每 N 天（锚定时刻声明带时刻后缀：每天 09:00 / 每周一 09:00 / 每 3 天 09:00）；非整天间隔（front-matter 裸编辑旁路值）兜底 每 N 小时/分钟/ms */
 function schedFreqLabel(s) {
@@ -1388,16 +1431,17 @@ function schedFreqLabel(s) {
   if (ms % 60000 === 0) return '每 ' + ms / 60000 + ' 分钟';
   return '每 ' + ms + 'ms';
 }
-/* 下次触发毫秒（与 host schedDueAt 锚点同口径：轮询 = lastFiredAt || createdAt + 间隔；单次 = at 本身；
-   锚定时刻声明（notes-034-sched-time）= 锚定序列下一时刻）；非法 → null */
+/* 下次触发毫秒（与 host schedDueAt 锚点同口径：轮询 = lastFiredAt || declaredAt || createdAt + 间隔（0.4.6-F 声明重锚）；单次 = at 本身；
+   锚定时刻声明（notes-034-sched-time）= 锚定序列下一时刻（首触防过去候选注入当前时刻，0.4.6-F））；非法 → null */
 function schedNextMs(n) {
   var s = n && n.schedule; if (!s) return null;
   if (s.at) { var t = Date.parse(s.at); return isFinite(t) ? t : null }
   var iv = schedEveryMs(s.every); if (iv === null) return null;
   var firedMs = (s.lastFiredAt && Date.parse(s.lastFiredAt)) || 0;
-  var base = firedMs || Date.parse(n.createdAt || '') || 0;
+  var declaredMs = (s.declaredAt && Date.parse(s.declaredAt)) || 0;
+  var base = firedMs || declaredMs || Date.parse(n.createdAt || '') || 0;
   if (!isFinite(base) || !base) base = Date.now();
-  if (s.anchor) return schedAnchorNextMs(s.anchor, typeof s.dow === 'number' ? s.dow : undefined, iv, base, !!firedMs);
+  if (s.anchor) return schedAnchorNextMs(s.anchor, typeof s.dow === 'number' ? s.dow : undefined, iv, base, !!firedMs, Date.now());
   return base + iv;
 }
 /* ISO → datetime-local 输入值（本地时区 YYYY-MM-DDTHH:mm；非法/空 → ''） */
@@ -1429,7 +1473,8 @@ function loadNotes(silent) {
   return rpc('notes-list', sig ? { kind: sig } : undefined).then(function (res) {
     if (res && res.notes) notes = res.notes;
     return loadFolders();
-  }).then(function () { renderTree(); })
+  }).then(function () { refreshSuggestBadge() })   /* 0.4.6-C：列表落定即触发建议徽标刷新（3s 节流） */
+  .then(function () { renderTree(); })
     .catch(function (e) { if (!silent) toast('列表加载失败：' + (e && e.message || e)) });
 }
 function loadFolders() {
@@ -1570,8 +1615,13 @@ function folderNodeHtml(f, vis, filtering) {
   if (!open) return h;
   var subFolders = folderKids(f.id);
   if (!subFolders.length && !kids.length) return h;
+  /* 0.4.6-H（notes-046-smallfix）：子夹全被遮罩（sys/hidden 整节点滤除）且直挂为空时「展开为空」提示行（原型静态串，app 侧文案走 i18n 字典键 tree.sysMaskHint） */
+  var subHtml = '';
+  var maskedSub = 0;
+  subFolders.forEach(function (cf) { var sh = folderNodeHtml(cf, vis, filtering); if (sh) subHtml += sh; else maskedSub++ });
   h += '<div class="nested">';
-  subFolders.forEach(function (cf) { h += folderNodeHtml(cf, vis, filtering) });
+  if (!subHtml && !kids.length && maskedSub > 0) h += '<div class="sys-mask-hint">内含机器托管内容，可开启「显示隐藏」或「机器」档查看</div>';
+  h += subHtml;
   kids.forEach(function (n) { h += noteRow(n, true) });
   h += '</div>';
   return h;
@@ -1591,7 +1641,12 @@ function renderTree() {
   /* 置顶聚合组（筛选中心「置顶」条件激活时不再重复展示） */
   if (!filters.pinned) {
     var pins = vis.filter(isPinned);
-    if (pins.length) { h += '<div class="sec-h">' + icon('i-pin', 11) + ' 置顶<span class="cnt2">' + pins.length + '</span></div>'; pins.forEach(function (n) { h += noteRow(n, false) }) }
+    if (pins.length) {
+      h += '<div class="sec-h">' + icon('i-pin', 11) + ' 置顶<span class="cnt2">' + pins.length + '</span></div>'; pins.forEach(function (n) { h += noteRow(n, false) });
+      /* 0.4.6-J（notes-046-group-paging）：组尾「加载更多（还有 N 条）」静态示例行——client 实行为各组命中 > 显示数时渲染、
+         点击该组 += PAGE_SIZE（组间独立）；原型 mock 数据量小无真实分页场景，本行仅作视觉锚（0.4.4-F 同步纪律） */
+      h += '<div class="more-row">加载更多（还有 12 条）</div>';
+    }
   }
   /* 文件夹组（嵌套递归：根级清单 → folderNodeHtml depth-first；悬空 parent 按根级防御） */
   h += '<div class="sec-h">文件夹<span class="add" id="addFolder" title="新建文件夹">' + icon('i-plus', 12) + '</span></div>';
@@ -1629,11 +1684,14 @@ function renderTree() {
       + '<span class="vfilter' + (on ? ' on' : '') + '" title="主题视图（跨文件夹过滤）">' + icon('i-filter', 11) + '</span></div>';
     if (tOpen && tkids.length) { h += '<div class="nested">'; tkids.forEach(function (n) { h += noteRow(n, false) }); h += '</div>' }
   });
-  /* 空结果态：提示 + 「清空筛选条件」快捷链接（筛选中心口径⑦） */
+  /* 空结果态：提示 + 「清空筛选条件」快捷链接（筛选中心口径⑦）；
+     0.4.6-D（notes-046-copy-consistency）：过滤激活的零命中补引导行——更短关键词提示 + 「新建一篇」动作出口 */
   if (!vis.length) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">无匹配笔记' + (filtersActiveCount() ? ' · <span class="add" id="emptyClear" style="letter-spacing:0">清空筛选条件</span>' : '') + '</div>';
+  if (!vis.length && filtering) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">试试更短的关键词，或 <span class="add" id="emptyNew" style="letter-spacing:0">新建一篇</span></div>';
   $('tree').innerHTML = h;
   var vc = $('viewClear'); if (vc) vc.onclick = function () { view = { type: 'all', id: '' }; render() };
   var ec = $('emptyClear'); if (ec) ec.onclick = function () { clearFilters(); render(); renderFilterBar(); if (searchText.trim()) reSearch() };
+  var en2 = $('emptyNew'); if (en2) en2.onclick = function () { doNewNote() };   /* 0.4.6-D：空态「新建一篇」→ 草稿新建链路 */
   var af = $('addFolder'); if (af) af.onclick = function (ev) { ev.stopPropagation(); doCreateFolder() };
   $('btnSelMode').classList.toggle('on', selMode);
   /* 筛选中心控制行：按钮计数丸 / 激活 chips / 排序按钮 / popover 随每次树渲染同步（列表到达后 feature-detect 与命中数才准） */
@@ -1912,6 +1970,8 @@ function doSave() {
   rpc('notes-update', upd).then(function (res) {
     if (res && res.error) { toast(res.error); return }
     $('edSaved').textContent = '✓ 已自动保存 ' + new Date().toTimeString().slice(0, 5);
+    /* 0.4.6-D：「更新」时间戳随每次自动保存刷新（edNote 为选中时拷贝，不随 loadNotes 换代）；迟到守卫：已切走不重渲底栏 */
+    if (edNote && edNote.id === upd.id) { edNote.updatedAt = new Date().toISOString(); renderEdFoot(); }
     edNote._tagsStr = null;
     loadNotes(true);
     if (histCount === 0) probeHistCount(selId);   /* 首次真实保存产生首份快照（0→1 转折点）→ 补探「历史」入口 */
@@ -1931,7 +1991,8 @@ function renderEd() {
   var ed = $('ed');
   if (!edNote) {
     ed.className = 'ed empty';
-    ed.innerHTML = '<svg class="ic"><use href="#i-note"/></svg><div>选择左侧一条笔记查看和编辑</div><div style="font-size:11px">点侧栏顶部 + 新建笔记（先开草稿，输入内容才落库）；正文划选文字可弹出快速记录卡片</div>';
+    ed.innerHTML = '<svg class="ic"><use href="#i-note"/></svg><div>选择左侧一条笔记查看和编辑</div><div style="font-size:11px">点侧栏顶部 + 新建笔记（先开草稿，输入标题或正文即落库；面板端「新建」为弹窗即建）；正文划选文字可弹出快速记录卡片</div>'
+      + '<div style="font-size:11px" class="ed-empty-concept">写下的约定/资料可注入 Agent 会话——设置卡顶部「概念速览」30 秒看懂五个核心概念</div>';   /* 0.4.6-C：空态概念指向（静态壳同款一行，双处对齐） */
     return;
   }
   var n = edNote;
@@ -2079,6 +2140,8 @@ function renderMeta() {
     seg.onclick = function () {
       var r = seg.getAttribute('data-role');
       if (r === role) return;
+      /* 0.4.6-E（n-mux8ccd3i4ub）：「约定」档二次确认闸——约定 = 全文进系统提示、缺省对所有会话生效（风险等级高于资料却无闸，实测误触） */
+      if (r === 'convention' && !confirm('设为约定：《' + (edNote.title || edNote.id) + '》将对' + injectScopeLabel(edNote.injectTo) + '生效（全文进系统提示，每次对话必读），确认开启？')) return;
       if (r === 'off') { edNote.inject = false; scopeOpen = false }
       else { edNote.inject = true; edNote.injectRole = r; if (!sessList.length) pullSessions(); scopeOpen = true }
       triggerSave(); renderMeta();
@@ -2154,6 +2217,8 @@ function schedPlanHtml(n, list) {
       + '<span class="sched-plan-t">' + icon('i-clock', 11) + '派发计划</span>'
       + '<span class="sched-freq">' + esc(schedFreqLabel(s)) + '</span>'
       + '<span class="sched-target" title="' + esc(s.target || '') + '">' + (s.target === 'new' ? '首轮自动创建专属会话' : '→ ' + esc(shortSid(s.target))) + '</span>'
+      /* 0.4.6-G（notes-046-sched-model）：声明模型档位标注（有声明才显示，无声明零 DOM 痕迹） */
+      + (s.provider && s.model ? '<span class="sched-model" title="专属会话模型档位：' + esc(s.provider + '/' + s.model) + '">' + esc(s.provider + '/' + s.model) + '</span>' : '')
       + '<span class="sched-nf">' + esc(schedNextLabel(n)) + '</span>'
       + schedBadgeHtml(n)
       + (paused ? '<span class="sched-badge off">已暂停</span>' : '')
@@ -2335,7 +2400,9 @@ function createDraftNote(d, payload) {
     if (res && res.id) {
       if (edNote === d) {
         selId = res.id; edNote.id = res.id;
-        renderCrumb(); renderMeta();
+        /* 0.4.6-D：落库即切普通笔记态——回填创建/更新时间戳并重渲底栏（「草稿」标签随落库消失；notes-create 不回传时间戳取本地时钟） */
+        var _now = new Date().toISOString(); if (!edNote.createdAt) edNote.createdAt = _now; edNote.updatedAt = _now;
+        renderCrumb(); renderMeta(); renderEdFoot();
         $('edSaved').textContent = '✓ 已自动保存 ' + new Date().toTimeString().slice(0, 5);
         toast('已创建笔记（首次编辑自动落库）');
       } else {
@@ -2479,11 +2546,13 @@ function openCheatsheet() {
    （触发序列钉死本地时刻，不随创建时间漂移）；「每周」另加星期几选择（dow 0-6）；仅一次保持 datetime-local 不变。
    校验内联报错（at 未来 / N≥1 / 目标必选；host 红线回显同口径）——禁原生 prompt（R1 反面教材 n-mut46q00c3yw） */
 var dState = null;
+var schedModelsCache = null;   /* 模型清单会话级缓存（0.4.6-G，notes-046-sched-model）：开弹窗即取缓存渲染，后台刷新对齐 mock */
 function openDispatch() {
   if (draftNote) { toast('草稿尚未落库：输入标题或正文自动保存后再派发'); return }   /* 草稿无真实 id（notes-034-batch3） */
   if (!edNote || !selId) { toast('先选择一条笔记'); return }
-  dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false };
+  dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false, schedModel: '', schedModels: schedModelsCache || [] };
   pullActiveSessions();
+  pullSchedModels();
   renderDispatchModal();
 }
 /* 编辑模式入口（注入管理「调度任务」区 [编辑]）：同弹窗回填既有声明；note = 调度约定笔记 slim（列表已含 schedule，零新 RPC）；
@@ -2492,7 +2561,8 @@ function openDispatchEdit(note) {
   if (!note || !note.schedule) { toast('该笔记没有调度声明'); return }
   var s = note.schedule;
   var isNew = s.target === 'new';
-  dState = { sessId: isNew ? '' : (s.target || ''), instr: '', pending: false, sessions: [], pendingSess: [], sched: true, schedMode: 'daily', schedN: 3, schedAt: '', editId: note.id, editNote: note, schedAnchor: '09:00', schedDow: 1, schedNew: isNew };
+  /* 0.4.6-G：模型档位回填（provider/model 成对落库 → 合成 provider/model 选中值；缺省空 = 跟随宿主默认） */
+  dState = { sessId: isNew ? '' : (s.target || ''), instr: '', pending: false, sessions: [], pendingSess: [], sched: true, schedMode: 'daily', schedN: 3, schedAt: '', editId: note.id, editNote: note, schedAnchor: '09:00', schedDow: 1, schedNew: isNew, schedModel: (s.provider && s.model) ? s.provider + '/' + s.model : '', schedModels: schedModelsCache || [] };
   /* 回填：at → 仅一次；every 整天数 → 每天/每周/每 N 天；非整天间隔（front-matter 裸编辑旁路值）归一最近整天，保存按表单覆盖；
      锚定时刻（notes-034-sched-time）：anchor/dow 回填（非法 anchor 回退默认 09:00——裸编辑旁路值防御） */
   if (s.at) { dState.schedMode = 'once'; dState.schedAt = isoToLocalInput(s.at) }
@@ -2505,7 +2575,33 @@ function openDispatchEdit(note) {
     else { dState.schedMode = 'ndays'; dState.schedN = d >= 1 ? d : Math.max(1, Math.round((ms || 259200000) / 86400000)) }
   }
   pullActiveSessions();
+  pullSchedModels();
   renderDispatchModal();
+}
+/* 模型清单拉取（0.4.6-G）：notes-settings-get 的 models 通道（设置卡同款，零新 RPC）；
+   通道缺席/失败 → schedModels 空 → 下拉隐藏（静默降级红线） */
+function pullSchedModels() {
+  rpc('notes-settings-get', {}).then(function (res) {
+    if (!res || !dState) return;
+    if (res.models && res.models.length) { schedModelsCache = res.models; dState.schedModels = res.models; renderSchedModelSel() }
+  }).catch(function () {});
+}
+/* 模型下拉渲染（0.4.6-G）：专属会话勾选 + 周期模式 + 清单非空三条件齐备才显示（缺一隐藏，静默降级）；
+   存量声明值不在清单内（模型已下架等）→ 补合成条目回显防丢档 */
+function renderSchedModelSel() {
+  var box = $('dSchedModelBox'); if (!box || !dState) return;
+  var show = dState.schedNew && dState.schedMode !== 'once' && dState.schedModels.length > 0;
+  box.style.display = show ? '' : 'none';
+  if (!show) { box.innerHTML = ''; return }
+  var opts = '<option value="">默认模型（跟随宿主当前选择）</option>';
+  var seen = {};
+  dState.schedModels.forEach(function (m) {
+    var v = m.provider + '/' + m.model; seen[v] = true;
+    opts += '<option value="' + esc(v) + '"' + (dState.schedModel === v ? ' selected' : '') + '>' + esc(m.label || v) + '</option>';
+  });
+  if (dState.schedModel && !seen[dState.schedModel]) opts += '<option value="' + esc(dState.schedModel) + '" selected>' + esc(dState.schedModel) + '</option>';
+  box.innerHTML = '<select class="minput sched-sel" id="dSchedModel" title="专属会话模型档位：' + esc(dState.schedModel || '默认模型（跟随宿主当前选择）') + '">' + opts + '</select>';
+  $('dSchedModel').onchange = function () { dState.schedModel = this.value };
 }
 function pullActiveSessions() {
   rpc('notes-active-sessions', {}).then(function (res) {
@@ -2548,6 +2644,8 @@ function renderDispatchModal() {
     + '<div class="sched-next" id="dSchedNext"></div>'
     /* 专属会话（0.4.4-B）：周期模式可勾 target='new'——首轮触发 host 自动创建「定时 · 任务名」会话并回写复用；仅一次（at）无复用场景不提供 */
     + '<label class="sched-opt" id="dSchedNewBox"' + (dState.schedMode === 'once' ? ' style="display:none"' : '') + '><input type="checkbox" id="dSchedNew"' + (dState.schedNew ? ' checked' : '') + '> 专属会话（首轮触发自动创建「定时 · 任务名」，后续复用）</label>'
+    /* 专属会话模型下拉宿主（0.4.6-G）：勾选专属会话且清单非空才显示（renderSchedModelSel 驱动，静默降级） */
+    + '<span id="dSchedModelBox" style="display:none"></span>'
     + '</div></div>'
     /* 专属会话勾选后隐藏级联选择（目标由 host 首轮创建，无既有会话可选） */
     + '<div id="dispSessHostWrap"' + (dState.schedNew && (dState.sched || dState.editId) ? ' style="display:none"' : '') + '><div id="dispSessHost"></div></div>'
@@ -2571,14 +2669,16 @@ function renderDispatchModal() {
     /* 专属会话复选框仅周期模式提供（host 闸门同口径拒绝 at+'new'）；切到仅一次时自动摘勾并还原生态位 */
     $('dSchedNewBox').style.display = this.value === 'once' ? 'none' : '';
     if (this.value === 'once' && dState.schedNew) { dState.schedNew = false; $('dSchedNew').checked = false; $('dispSessHostWrap').style.display = ''; }
+    renderSchedModelSel();   /* 0.4.6-G：模式切换联动模型下拉显隐（仅一次无专属会话 → 同隐） */
     renderSchedNext();
   };
-  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; };
+  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; renderSchedModelSel(); };   /* 0.4.6-G：勾选专属会话才出模型下拉 */
   $('dSchedN').oninput = function () { dState.schedN = this.value; renderSchedNext() };
   $('dSchedDow').onchange = function () { dState.schedDow = parseInt(this.value, 10); renderSchedNext() };
   $('dSchedAnchor').oninput = function () { dState.schedAnchor = this.value; renderSchedNext() };
   $('dSchedOnce').oninput = function () { dState.schedAt = this.value; renderSchedNext() };
   renderSchedNext();
+  renderSchedModelSel();   /* 0.4.6-G：编辑模式回填/缓存清单就位时首轮渲染 */
   renderDispatchSessList();
 }
 /* 表单 → schedule 声明片段（{at|every} + 周期模式锚定 anchor:'HH:MM'（weekly 另带 dow），notes-034-sched-time；target/enabled 由确认路径补）：返回 { decl } | { err }（内联报错文案与 host 红线同口径） */
@@ -2600,16 +2700,18 @@ function schedFormDecl() {
   if (dState.schedMode === 'weekly') return { decl: { every: '1w', anchor: dState.schedAnchor, dow: dState.schedDow } };
   return { decl: { every: '1d', anchor: dState.schedAnchor } };
 }
-/* 声明 → 下次触发毫秒（轮询锚点 = lastFiredAt || createdAt || now；锚定时刻声明 = 锚定序列下一时刻，与 host schedDueAt 同口径；编辑模式传入 editNote 取存量锚点） */
+/* 声明 → 下次触发毫秒（轮询锚点 = lastFiredAt || declaredAt || createdAt || now（0.4.6-F 声明重锚）；锚定时刻声明 = 锚定序列下一时刻，与 host schedDueAt 同口径；编辑模式传入 editNote 取存量锚点） */
 function schedDeclNextMs(decl, note) {
   if (decl.at) return Date.parse(decl.at);
   var firedMs = 0;
   if (note && note.schedule && note.schedule.lastFiredAt) { var f = Date.parse(note.schedule.lastFiredAt); if (isFinite(f)) firedMs = f }
-  var base = firedMs;
+  var declaredMs = 0;
+  if (!firedMs && note && note.schedule && note.schedule.declaredAt) { var dd = Date.parse(note.schedule.declaredAt); if (isFinite(dd)) declaredMs = dd }
+  var base = firedMs || declaredMs;
   if (!base && note && note.createdAt) { var c = Date.parse(note.createdAt); if (isFinite(c)) base = c }
   if (!base) base = Date.now();
   var iv = schedEveryMs(decl.every);
-  if (decl.anchor) { var nx = schedAnchorNextMs(decl.anchor, typeof decl.dow === 'number' ? decl.dow : undefined, iv, base, !!firedMs); if (nx !== null) return nx }
+  if (decl.anchor) { var nx = schedAnchorNextMs(decl.anchor, typeof decl.dow === 'number' ? decl.dow : undefined, iv, base, !!firedMs, Date.now()); if (nx !== null) return nx }
   return base + iv;
 }
 /* 下次触发即时预览（内联；非法输入红字提示，禁原生 prompt） */
@@ -2658,6 +2760,9 @@ function doDispatchConfirm() {
     /* 编辑保留原 enabled 态（暂停的任务改排定不被意外拉起）；创建默认 enabled=true；周期模式携锚定时刻 anchor/dow（notes-034-sched-time） */
     var decl = { target: dState.schedNew ? 'new' : dState.sessId, action: 'dispatch', enabled: editId ? (dState.editNote.schedule.enabled !== false) : true };
     if (f.decl.at) decl.at = f.decl.at; else { decl.every = f.decl.every; decl.anchor = f.decl.anchor; if (typeof f.decl.dow === 'number') decl.dow = f.decl.dow }
+    /* 0.4.6-G：专属会话 + 已选模型档位 → 声明携 provider/model（成对；缺省空 = 跟随宿主默认，声明零字段）；
+       编辑模式保留存量档位（首轮回写后 target=真实 sid、复选框摘勾下拉隐藏，schedModel 仍持回填值——表单与 front-matter 同源，防丢档同 anchor/dow 先例） */
+    if (dState.schedModel && (dState.schedNew || editId)) { var mp = dState.schedModel.split('/'); decl.provider = mp[0]; decl.model = mp.slice(1).join('/') }
     var nextTxt = fmtDT(new Date(schedDeclNextMs(f.decl, dState.editNote)).toISOString());
     dState.pending = true; $('dOk').disabled = true; $('dOk').textContent = editId ? '保存中…' : '排定中…';
     var req;
@@ -3365,6 +3470,8 @@ function renderInjSched() {
         + '<span class="sched-row-t" title="' + esc(n.title || '无标题') + '">' + esc(n.title || '无标题') + '</span>'
         + '<span class="sched-freq">' + esc(schedFreqLabel(s)) + '</span>'
         + '<span class="sched-target" title="' + esc(s.target || '') + '">' + (s.target === 'new' ? '首轮自动创建专属会话' : '→ ' + esc(shortSid(s.target))) + '</span>'
+        /* 0.4.6-G（notes-046-sched-model）：声明模型档位标注（有声明才显示，无声明零 DOM 痕迹） */
+        + (s.provider && s.model ? '<span class="sched-model" title="专属会话模型档位：' + esc(s.provider + '/' + s.model) + '">' + esc(s.provider + '/' + s.model) + '</span>' : '')
         + '<span class="sched-nf">' + esc(schedNextLabel(n)) + '</span>'
         + schedBadgeHtml(n)
         + (paused ? '<span class="sched-badge off">已暂停</span>' : '')
@@ -3489,6 +3596,7 @@ function doInjSchedToggle(n) {
   var s = n.schedule; if (!s || schedOpPending) return;
   var decl = { target: s.target, action: 'dispatch', enabled: s.enabled === false };
   if (s.at) decl.at = s.at; else { decl.every = s.every; if (s.anchor) decl.anchor = s.anchor; if (typeof s.dow === 'number') decl.dow = s.dow }
+  if (s.provider && s.model) { decl.provider = s.provider; decl.model = s.model }   /* 0.4.6-G：暂停/恢复保留模型档位（同 anchor/dow 先例，防丢档） */
   schedOpPending = true;
   if (injMgrState) { injMgrState.pending = true; renderInjectManager(); }
   rpc('notes-update', { id: n.id, schedule: decl }).then(function (res) {
@@ -3883,14 +3991,42 @@ function doTrashPurgeBatch() {
    契约：{ archiveCandidates:速记组（结构与 notes-archive-preview 同源）, staleCandidates:过期未引用, orphanCandidates:孤儿（仅展示）, logHygieneCandidates:{weekly,monthly}:日志卫生（工作记忆 v0，仅展示明细）, generatedAt }
    红线：只提名不自动执行——速记组「去归档」直达归档预览对话框；过期未引用「一键批量软删除」无 confirm 直接逐条 notes-delete（软删可恢复，撤销 toast 兜底——确认强度 = 不可恢复性，notes-034-c-confirm）；
    孤儿候选是启发式判定（可能误伤），不提供批量操作，逐条跳转人工过目；日志卫生 v0 仅展开明细（聚合执行留待 Phase 2，日志只聚合不淘汰）。 */
+/* ===== 0.4.6-C 顶栏「建议」入口徽标（notes-046-ux-discovery）：计数 = notes-suggest 六段候选合计（与 app modals/suggest.js 同口径同构）===== */
+function suggestPendingCount(res) {
+  if (!res || res.error) return 0;
+  var logHg = res.logHygieneCandidates || {};
+  return ((res.archiveCandidates || []).length) + ((res.staleCandidates || []).length) + ((res.orphanCandidates || []).length)
+    + ((logHg.weekly || []).length) + ((logHg.monthly || []).length)
+    + ((res.zeroRefMountCandidates || []).length) + ((res.hotUnmountedCandidates || []).length);
+}
+var suggestBadgeN = -1, suggestBadgeAt = 0, suggestBadgeTimer = null;
+function refreshSuggestBadge() {
+  var now = Date.now(), wait = suggestBadgeAt + 3000 - now;
+  if (wait <= 0) { suggestBadgeAt = now; doRefreshSuggestBadge(); return }
+  if (suggestBadgeTimer) return;
+  suggestBadgeTimer = setTimeout(function () { suggestBadgeTimer = null; suggestBadgeAt = Date.now(); doRefreshSuggestBadge() }, wait);
+}
+function doRefreshSuggestBadge() {
+  rpc('notes-suggest', {}).then(function (res) {
+    if (!res || res.error) return;
+    suggestBadgeN = suggestPendingCount(res); renderSuggestBadge();
+  }).catch(function () {});
+}
+function renderSuggestBadge() {
+  var bd = $('suggestBd'); if (!bd) return;
+  if (suggestBadgeN > 0) { bd.textContent = String(suggestBadgeN); bd.style.display = ''; $('btnSuggest').title = '整理建议：' + suggestBadgeN + ' 条待办治理候选（只提名不执行；含约定体检入口）' }
+  else { bd.style.display = 'none'; if ($('btnSuggest')) $('btnSuggest').title = '整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）' }
+}
 function openSuggest() {
   suggestState = { data: null, pending: false, logHgExpand: {} };
   openModal(
     '<div class="modal-t">' + icon('i-sparkle', 13) + ' 整理建议<span class="sub">只提名不自动执行 · 软删除可恢复</span></div>'
     + '<div id="suggestList"><div class="modal-hint">分析中…</div></div>'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
-    + '<div class="modal-acts"><button class="mbtn" id="suggestClose">关闭</button></div>'
+    /* 0.4.6-C：约定体检入口提升——底栏直达注入管理体检区（原路径 设置→注入管理→管理… 三层深；modal 不叠 modal，先关建议框） */
+    + '<div class="modal-acts"><button class="mbtn" id="sgGoConflict" title="打开注入管理面板的约定体检区：LLM 两两检测注入中约定的冲突/取代（只提名不执行）">约定体检…</button><button class="mbtn" id="suggestClose">关闭</button></div>'
   );
+  $('sgGoConflict').onclick = function () { if (!suggestState || !suggestState.pending) { closeModal(); suggestState = null; openInjectManager() } };
   $('suggestClose').onclick = function () { if (!suggestState || !suggestState.pending) { closeModal(); suggestState = null } };
   loadSuggest();
 }
@@ -3900,6 +4036,7 @@ function loadSuggest() {
     if (!suggestState) return;
     if (res && res.error) { suggestState.data = empty; renderSuggestList(); modalErr(res.error); return }
     suggestState.data = res || empty;
+    suggestBadgeN = suggestPendingCount(res); renderSuggestBadge();   /* 0.4.6-C：建议框刷新即同步顶栏徽标（同一响应同一计数函数） */
     renderSuggestList();
   }).catch(function (e) { if (suggestState) { suggestState.data = empty; renderSuggestList(); modalErr('分析失败：' + (e && e.message || e)) } });
 }
@@ -3923,7 +4060,7 @@ function renderSuggestList() {
         return '<div class="arch-row"><span class="ti" title="' + esc(g.title) + '">' + esc(g.title) + '</span>'
           + '<span class="meta">' + esc(span) + ' · ' + g.members.length + ' 条 · ' + fmtBytes(g.totalBytes) + ((g.totalUseCount || 0) > 0 ? ' · 被引用 ' + g.totalUseCount + ' 次' : '') + '</span></div>'
       }).join('') + '</div>'
-    : '<div class="modal-hint">没有可归档的速记组（同一会话 ≥2 条速记才会成组）。</div>';
+    : '<div class="modal-hint">没有可归档的速记组（同一会话 ≥2 条速记才会成组）。速记 = 划选文字松手弹出的快速记录卡片产生的暂存笔记。</div>';
   h += '</div>';
   /* ② 过期未引用（useCount=0 且超 staleDays；一键批量软删，无 confirm + 撤销 toast 兜底） */
   h += '<div class="sg-sec"><div class="sg-sec-t">过期未引用<span class="sg-sec-n">' + stale.length + ' 条</span>'
@@ -4097,7 +4234,7 @@ function renderArchModal() {
     '<div class="modal-t">' + icon('i-check', 13) + ' 归档预览<span class="sub">勾选后才执行 · 合并可撤销</span></div>'
     + '<div class="modal-hint">速记按会话分组，勾选的组合并成一篇归档笔记（原笔记备份后软删除）。</div>'
     + '<div id="archList"><div class="modal-hint">加载中…</div></div>'
-    + '<div class="modal-hint">手动笔记不受影响；如需合并手动笔记，请在列表多选后右键合并。</div>'
+    + '<div class="modal-hint">手动笔记不受影响；如需合并手动笔记，点侧栏底部「选择」勾选多条后，点底部操作条的「合并」。</div>'   /* 0.4.6-D：幽灵右键文案改为真实路径（底部操作条按钮） */
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
     + '<div class="modal-acts"><button class="mbtn" id="archCancel">取消</button><button class="mbtn primary" id="archOk" disabled>归档所选</button></div>'
   );
@@ -4109,7 +4246,7 @@ function renderArchList() {
   var host = $('archList'); if (!host || !archState) return;
   var gs = archState.groups || [];
   var ok = $('archOk');
-  if (!gs.length) { host.innerHTML = '<div class="modal-hint">没有可归档的速记组（同一会话 ≥2 条速记才会成组）。</div>'; if (ok) { ok.disabled = true; ok.textContent = '归档所选（0 组）' } return }
+  if (!gs.length) { host.innerHTML = '<div class="modal-hint">没有可归档的速记组（同一会话 ≥2 条速记才会成组）。速记 = 划选文字松手弹出的快速记录卡片产生的暂存笔记。</div>'; if (ok) { ok.disabled = true; ok.textContent = '归档所选（0 组）' } return }
   var h = '<div class="arch-list">';
   gs.forEach(function (g) {
     var ck = archState.checked[g.sessionId] !== false;
@@ -4220,6 +4357,9 @@ function undoBatchDelete(ids) {
 /* ================= 顶栏：刷新 / 归档 / 主题 ================= */
 $('btnRefresh').addEventListener('click', function () { searchIds = null; loadNotes(); if (sessList.length) pullSessions(); toast('已刷新') });
 $('btnArchive').addEventListener('click', openArchive);
+/* 0.4.6-C（notes-046-ux-discovery）：顶栏「建议」入口 + 启动即拉一次计数（notes-suggest dry-run 零写入） */
+$('btnSuggest').addEventListener('click', function () { openSuggest() });
+refreshSuggestBadge();
 $('btnSelMode').addEventListener('click', function () { selMode = !selMode; selIds = {}; renderTree() });
 /* ================= 筛选中心交互（popover 开关 / 勾选即时生效 / chip × 单条移除 / 排序菜单） ================= */
 $('btnFilter').addEventListener('click', function (ev) { ev.stopPropagation(); filterOpen = !filterOpen; if (filterOpen) sortOpen = false; renderFilterBar() });

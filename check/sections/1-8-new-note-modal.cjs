@@ -65,7 +65,7 @@ module.exports = {
   await t('使用说明与空态文案已改为新建标题（无速记输入框残留文案）', () => {
     assert(clientSrc.indexOf('展开输入框') < 0, '使用说明不再提「展开输入框」速记')
     assert(clientSrc.indexOf('在上方输入框直接记录') < 0, '编辑器空态不再提「上方输入框」')
-    assert(clientSrc.indexOf('输入标题新建笔记') >= 0, '使用说明第一条改为输标题新建')
+    assert(clientSrc.indexOf('弹出新建窗口：输入标题、选类型') >= 0, '使用说明第一条改为弹窗输标题新建（0.4.6-D 双端对齐：面板=模态即建，括注全窗口草稿先行差异）')
   })
   }
 }

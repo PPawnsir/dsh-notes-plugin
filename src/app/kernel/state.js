@@ -14,6 +14,7 @@ var KIND_TEMPLATES = {
 };
 var STATUS_LABEL = { active: '进行中', pinned: '置顶', resolved: '已解决', superseded: '已取代' };
 var notes = [];              // slim 列表缓存（常驻内存；写操作后静默回填）
+var listLoading = false;     /* 0.4.6-B：非静默 loadNotes 在途标记（树「加载中…」行数据源；silent 刷新不置位） */
 var folders = [];            // 虚拟文件夹清单 [{id,name,order,count}]
 var view = { type: 'all', id: '' };   // all | topic（0.4.3⑦：「文件视图」（文件夹视图）模式整体拆除）
 /* ===== 筛选中心状态（design/notes-filter-center.html 落地）：组内 OR / 跨组 AND；与主题视图/搜索 AND 叠加；localStorage 持久化 ===== */

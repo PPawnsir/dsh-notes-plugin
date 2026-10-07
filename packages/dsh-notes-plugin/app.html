@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>dsh-notes</title>
+<!-- 0.4.6-H（R2 n-mux9tc6z76mj 卫生小件①）：内联 favicon（品牌蓝圆角方块 SVG data URI）——消除浏览器自动请求 /favicon.ico 的 404 console 噪音 -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='4' fill='%237aaaff'/></svg>">
 <!--
   dsh-notes 半独立全窗口笔记页（/dsh-notes-app）
   - UI 基座：design/notes-ui-v2.html 定稿原型（原生 JS+DOM / DSH token 配色 / SVG 图标）
@@ -76,6 +78,9 @@
   .fbtn-filter.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:600}
   .fbtn-filter svg.ic{width:11px;height:11px}
   .fbtn-filter .cnt{font-family:var(--nmono);font-size:9.5px;line-height:1.4;background:var(--nacc);color:#fff;border-radius:8px;padding:0 5px}
+  /* 0.4.6-C（notes-046-ux-discovery）：顶栏「建议」计数徽标（复用 fbtn-filter .cnt 视觉口径）+ 空态概念指向行 */
+  .tbtn .cnt{font-family:var(--nmono);font-size:9.5px;line-height:1.4;background:var(--nacc);color:#fff;border-radius:8px;padding:0 5px}
+  .ed-empty-concept{color:var(--nt3)}
   /* 激活条件 chips：单行横排，超宽横向滚动（不挤压树区高度）；× 单条移除，与 popover 勾选双向同步 */
   .fchips{display:flex;gap:4px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:thin}
   .fchip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 4px 2px 9px;border-radius:20px;background:var(--nbg-sel);color:var(--nacc-tx);flex-shrink:0;user-select:none;white-space:nowrap}
@@ -138,6 +143,8 @@
   .unfiled-hint{display:none;margin:2px 0;padding:5px 8px;border:1px dashed var(--nbd);border-radius:var(--nr-sm);font-size:11px;color:var(--nt3);text-align:center;user-select:none}
   .unfiled-drop.drag-on .unfiled-hint{display:block}
   .unfiled-drop.drop .unfiled-hint{border-color:var(--nacc);color:var(--nacc-tx)}
+  /* 0.4.6-H：「展开为空」遮罩提示行（子夹全是 sys/hidden 被滤除时；tree.js folderNodeHtml 嵌套容器内） */
+  .sys-mask-hint{margin:2px 0;padding:4px 8px;font-size:11px;color:var(--nt3);line-height:1.5;user-select:none}
   .caret{width:11px;flex-shrink:0;color:var(--nt3);display:grid;place-items:center;transition:transform .15s;cursor:pointer}
   .caret.open{transform:rotate(90deg)} .caret svg.ic{width:10px;height:10px}
   /* 行尾视图过滤图标（文件夹/主题行共用：单击行主体=原地展开，视图过滤降级为行尾小图标；hover 浮现，激活常显） */
@@ -440,6 +447,11 @@
   .inj-mount-label{font-size:11px;color:var(--nt2)}
   .inj-mount-when{width:100%;box-sizing:border-box;font:inherit;font-size:12px;line-height:1.6;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:7px 9px;outline:0;resize:vertical;min-height:64px}
   .inj-mount-when:focus{border-color:var(--nacc)}
+  /* 0.4.6-E 挂载弹层 LLM 预填三态：加载态状态行（spinner 转圈）/ 失败态（黄字 + tooltip 原始原因） */
+  .inj-mount-stat{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--nt3)}
+  .inj-mount-stat.gen::before{content:'';width:10px;height:10px;border:2px solid var(--nbd-soft);border-top-color:var(--nacc);border-radius:50%;animation:dshNotesMountSpin .8s linear infinite;flex-shrink:0}
+  @keyframes dshNotesMountSpin{to{transform:rotate(360deg)}}
+  .inj-mount-stat.err{color:var(--nwarn);cursor:help}
   /* ===== 历史版本面板 modal（详情 meta 行「历史」入口；notes-history-ui）：左列版本列表（时间+大小，倒序）+ 右侧只读预览（renderMarkdown 内核渲染；与原型 notes-ui-v2.html 同款） ===== */
   .modal.hist{width:720px}
   .hist-body{display:flex;gap:10px;min-height:190px;margin-bottom:4px}
@@ -491,6 +503,7 @@
   .sched-row-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
   .sched-freq{color:var(--nacc-tx);flex-shrink:0;font-size:10.5px}
   .sched-target{color:var(--nt3);flex-shrink:0;font-size:10.5px;font-family:var(--nmono)}
+  .sched-model{color:var(--nacc-tx);flex-shrink:0;font-size:10px;font-family:var(--nmono);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--nbd-soft);border-radius:8px;padding:0 5px}   /* 0.4.6-G：调度行模型档位标注 */
   .sched-nf{color:var(--nt2);flex-shrink:0;font-size:10.5px;white-space:nowrap}
   .sched-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nt3);border:1px solid var(--nbd);border-radius:10px;padding:0 7px;flex-shrink:0;white-space:nowrap}
   .sched-badge.ok{color:#56c88f;border-color:transparent;background:rgba(86,200,143,.12)}
@@ -539,6 +552,8 @@
   .toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(8px);background:var(--npanel);border:1px solid var(--nbd);box-shadow:0 6px 24px rgba(0,0,0,.35);color:var(--ntx);font-size:12px;padding:8px 16px;border-radius:20px;opacity:0;pointer-events:none;transition:all .2s;z-index:200;max-width:70vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .toast.show{opacity:1;pointer-events:auto}
   .toast a{color:var(--nacc-tx);margin-left:8px;cursor:pointer}
+  /* ===== 0.4.6-B RPC 挂起提示条（notes-046-rpc-resilience）：顶部居中小条，pointer-events:none 不遮罩不阻断操作 ===== */
+  .rpc-slow{position:fixed;top:8px;left:50%;transform:translateX(-50%);background:var(--npanel);border:1px solid var(--nbd);box-shadow:0 4px 16px rgba(0,0,0,.3);color:var(--nwarn);font-size:11px;padding:4px 12px;border-radius:14px;z-index:190;pointer-events:none;white-space:nowrap}
   .hintbar{padding:6px 14px;background:var(--npanel);border-top:1px solid var(--nbd);font-size:11px;color:var(--nt3);display:flex;gap:16px}
   /* ===== 文件夹右键菜单 ===== */
   .ctxmenu{position:fixed;z-index:150;min-width:150px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:4px}
@@ -615,9 +630,11 @@
   <div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>dsh-notes</b>
   <span class="sub" id="topSub">你的笔记库 · 写下的约定与资料可注入 Agent 会话</span>
   <span class="sp"></span>
-  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新/速记保文字 -->
+  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（建议/切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新/速记保文字 -->
   <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg><span class="tb-t">刷新</span></button>
-  <button class="tbtn" id="btnArchive" title="把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）"><svg class="ic"><use href="#i-check"/></svg><span class="tb-t">速记合并</span></button>
+  <button class="tbtn" id="btnArchive" title="速记 = 划选文字松手弹出的快速记录（暂存）；点按弹出预览，勾选后把同一会话的速记归并成一篇正式笔记（可撤销）"><svg class="ic"><use href="#i-check"/></svg><span class="tb-t">速记合并</span></button>
+  <!-- 0.4.6-C（notes-046-ux-discovery）：治理入口提升到顶栏——整理建议 + 约定体检（建议框底栏）；有待办候选时 #suggestBd 计数徽标点亮（notes-suggest 六段合计） -->
+  <button class="tbtn ico-only" id="btnSuggest" title="整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）"><svg class="ic"><use href="#i-sparkle"/></svg><span class="tb-t">建议</span><span class="cnt" id="suggestBd" style="display:none"></span></button>
   <button class="tbtn ico-only" id="btnTheme" title="切换主题（暗色/亮色）"><svg class="ic"><use href="#i-theme"/></svg><span class="tb-t">切换主题</span></button>
   <a class="tbtn ico-only" href="/" id="btnHome" title="返回 DSH 主界面"><svg class="ic"><use href="#i-home"/></svg><span class="tb-t">DSH 主界面</span></a>
 </div>
@@ -653,7 +670,9 @@
   <section class="ed empty" id="ed">
     <svg class="ic"><use href="#i-note"/></svg>
     <div>选择左侧一条笔记查看和编辑</div>
-    <div style="font-size:11px">点侧栏顶部 + 新建笔记（先开草稿，输入内容才落库）；正文划选文字可弹出快速记录卡片</div>
+    <div style="font-size:11px">点侧栏顶部 + 新建笔记（先开草稿，输入标题或正文即落库；面板端「新建」为弹窗即建）；正文划选文字可弹出快速记录卡片</div>
+    <!-- 0.4.6-C（notes-046-ux-discovery）：空态首笔记引导补概念指向（设置卡「概念速览」完整版）；renderEd 动态空态同款一行（49 节双处对齐口径） -->
+    <div style="font-size:11px" class="ed-empty-concept">写下的约定/资料可注入 Agent 会话——设置卡顶部「概念速览」30 秒看懂五个核心概念</div>
   </section>
 </div>
 <div class="hintbar"><span id="hintSelect">🖱 在右侧正文<b>划选文字松手</b> → 弹出快速记录卡片</span><span id="hintDrag">拖笔记 → 文件夹移入 / 拖到根级笔记区移出</span><span id="hintFolder">点击展开/折叠 · 右键管理</span><span id="hintKeys">Ctrl K 搜索 · Alt N 新建 · j/k 移动 · Enter 打开 · Esc 关闭浮层 · ? 快捷键</span></div>
@@ -662,17 +681,52 @@
 <div id="ctxHost"></div>
 <div class="selbar" id="selbar" style="display:none"><span class="n" id="selbarN">已选 0 条</span><span class="syswarn" id="selSysWarn" style="display:none"></span><button class="mbtn primary" id="selMerge">合并</button><button class="mbtn danger" id="selDelete">删除</button><button class="mbtn" id="selCancel">取消</button></div>
 <div class="toast" id="toast"></div>
+<!-- 0.4.6-B RPC 挂起提示条（notes-046-rpc-resilience）：任一 RPC 挂起 >RPC_SLOW_MS 显示，全部落定消失；pointer-events:none 不遮罩不阻断 -->
+<div class="rpc-slow" id="rpcSlowBar" style="display:none"></div>
 
 <script>
 /* ================= 数据层：/dsh-notes RPC（与 lib/client.js 同模式） ================= */
+/* 0.4.6-B 韧性层（notes-046-rpc-resilience，巡检三角色同族证据 n-mux88x3knpsv/n-mux89mdj6tty/n-mux8a1l4k2nv）：
+   裸 fetch 包装（无超时/无错误处理/挂起=空白假死）→ 三件套：
+   ① 超时：AbortController，缺省 RPC_TIMEOUT_MS；LLM 类长调用（host 侧 8s 级起）经 RPC_LLM_METHODS 显式放宽；
+   ② 超时/网络错误 → 结构化 {error} 返回（与 host error 形态一致，调用点零改动兼容）+ toast 显式告知（不静默）；
+   ③ 挂起 > RPC_SLOW_MS → 非阻塞「连接慢」提示条（#rpcSlowBar，CSS pointer-events:none 不遮罩不阻断），全部落定后消失。
+   红线：不改 host 协议形态；超时值集中本块常量可改；不引入第三方库；UI 提示不阻断操作。 */
+var RPC_TIMEOUT_MS = 20000;        /* 缺省超时（普通 RPC） */
+var RPC_TIMEOUT_LLM_MS = 120000;   /* LLM 类长调用超时（✨整理/选区指令/挂载建议/约定体检） */
+var RPC_SLOW_MS = 3000;            /* 挂起提示条阈值：超过即显示「连接慢」非阻塞条 */
+var RPC_LLM_METHODS = { 'notes-ai-organize': 1, 'notes-quick-instruct': 1, 'notes-when-suggest': 1, 'notes-conflict-check': 1 };
+var rpcSlowShown = 0;              /* 已升条的慢请求在途计数（>0 → 提示条可见；并发归并同一条） */
+function rpcSlowBar(show) {
+  var bar = $('rpcSlowBar');
+  if (!bar) return;
+  if (show === true) { bar.textContent = t('rpc.slowBar'); bar.style.display = 'block' }
+  else bar.style.display = 'none';
+}
 function rpc(method, args) {
+  var timeoutMs = RPC_LLM_METHODS[method] ? RPC_TIMEOUT_LLM_MS : RPC_TIMEOUT_MS;
+  var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var timedOut = false, slowUp = false;
+  var toTimer = setTimeout(function () { timedOut = true; if (ctrl) { try { ctrl.abort() } catch (e) {} } }, timeoutMs);
+  var slowTimer = setTimeout(function () { slowUp = true; rpcSlowShown++; rpcSlowBar(true) }, RPC_SLOW_MS);
+  function settled() {
+    clearTimeout(toTimer); clearTimeout(slowTimer);
+    if (slowUp) { slowUp = false; rpcSlowShown--; if (rpcSlowShown <= 0) { rpcSlowShown = 0; rpcSlowBar(false) } }
+  }
   return fetch('/dsh-notes', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ method: method, args: args || {} })
+    body: JSON.stringify({ method: method, args: args || {} }),
+    signal: ctrl ? ctrl.signal : undefined
   }).then(function (r) { return r.json() })
+    .then(function (res) { settled(); return res })
+    .catch(function (e) {
+      settled();
+      var msg = timedOut ? t('rpc.timeout', { s: Math.round(timeoutMs / 1000) }) : t('rpc.network', { msg: e && e.message || String(e) });
+      toast(msg);   /* 错误不静默：韧性层显式 toast（调用点的业务横幅/错误条语义照旧） */
+      return { error: msg };
+    })
 }
-
 /* ================= 常量与状态 ================= */
 var KIND = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '机器' };   /* 0.4.3⑩ +sys「机器」（筛选中心「机器」档标签/持久化校验用；编辑器 kind 下拉不收 sys——机器托管 kind 人工不转，见 editor-meta.js） */
 var KCOLOR = { note: 'var(--kind-note)', decision: 'var(--kind-decision)', todo: 'var(--kind-todo)', link: 'var(--kind-link)', quote: 'var(--kind-quote)', log: 'var(--kind-log)', sys: 'var(--kind-sys)' };
@@ -689,6 +743,7 @@ var KIND_TEMPLATES = {
 };
 var STATUS_LABEL = { active: '进行中', pinned: '置顶', resolved: '已解决', superseded: '已取代' };
 var notes = [];              // slim 列表缓存（常驻内存；写操作后静默回填）
+var listLoading = false;     /* 0.4.6-B：非静默 loadNotes 在途标记（树「加载中…」行数据源；silent 刷新不置位） */
 var folders = [];            // 虚拟文件夹清单 [{id,name,order,count}]
 var view = { type: 'all', id: '' };   // all | topic（0.4.3⑦：「文件视图」（文件夹视图）模式整体拆除）
 /* ===== 筛选中心状态（design/notes-filter-center.html 落地）：组内 OR / 跨组 AND；与主题视图/搜索 AND 叠加；localStorage 持久化 ===== */
@@ -1103,7 +1158,7 @@ var I18N_ZH = {
   /* ===== 覆盖卡 A（notes-042-i18n-cov-a）：顶栏 + 侧栏树 + hintbar ===== */
   'topbar.subtitle': '你的笔记库 · 写下的约定与资料可注入 Agent 会话',
   'topbar.refreshTip': '重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）',
-  'topbar.archiveTip': '把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）',
+  'topbar.archiveTip': '速记 = 划选文字松手弹出的快速记录（暂存）；点按弹出预览，勾选后把同一会话的速记归并成一篇正式笔记（可撤销）',   /* 0.4.6-D：补速记概念解释（R2 n-mux7as4ppskn：主按钮位零解释） */
   'topbar.themeTip': '切换主题（暗色/亮色）',
   'topbar.homeTip': '返回 DSH 主界面',
   'topbar.filterTip': '筛选中心：分组勾选条件（组内 OR / 跨组 AND）',
@@ -1114,7 +1169,6 @@ var I18N_ZH = {
   'side.brand': '笔记',
   'side.newTip': '新建笔记（Alt+N）',
   'side.splitterTip': '拖拽调整侧栏宽度（双击重置）',
-  'side.more': '继续滚动加载更多（已显示 {shown} / {total}）',
   'side.fchipStatusTip': '筛选条件：状态 / {label}（点 × 移除）',
   'side.fchipKindTip': '筛选条件：类型 / {label}（点 × 移除）',
   'tree.topicTip': '主题：{topic}',
@@ -1128,7 +1182,12 @@ var I18N_ZH = {
   'tree.wikiTip': '含双链 [[…]]（详情富文本中可点击跳转）',
   'tree.toggleTip': '展开/折叠',
   'tree.sysChipTip': '机器托管笔记（sys）：默认列表/搜索降噪不显示，随文件夹展开可见（0.4.4-C 显式入口）',
-  'tree.sysFolderTip': '机器托管文件夹（自动沉淀：工作日志/记忆档案/执行记录）——默认从树隐身；筛选中心「机器」档或「显示隐藏」开时可见（0.4.4-G）',
+  /* 0.4.6-D（R2 n-mux7arxj4ocf）：tooltip 按真实行为写——隐身是缺省态而非恒态；tooltip 能被看到本身就意味着某条显式通道已开，写明消除「说隐身却可见」矛盾 */
+  'tree.sysFolderTip': '机器托管文件夹（自动沉淀：工作日志/记忆档案/执行记录）——默认从树隐藏降噪；当前可见 = 筛选中心「机器」档或「显示隐藏」已开（0.4.4-G），点行展开/收起查看',
+  /* 0.4.6-H（R2 n-mux9r8hfh7xy）：夹展开为空的遮罩提示行（子夹全是 sys/hidden 被整节点滤除时） */
+  'tree.sysMaskHint': '内含机器托管内容，可开启「显示隐藏」或「机器」档查看',
+  /* 0.4.6-J（notes-046-group-paging）：组尾加载行（分组分页：置顶/文件夹/未入夹/主题四组同构，点击该组 += PAGE_SIZE） */
+  'tree.moreRows': '加载更多（还有 {n} 条）',
   'tree.countN': '{n} 条',
   'tree.viewTopic': '主题 · {id}',
   'tree.viewAll': '全部笔记',
@@ -1143,6 +1202,9 @@ var I18N_ZH = {
   'tree.crossFolder': '跨文件夹',
   'tree.topicViewTip': '主题视图（跨文件夹过滤）',
   'tree.noMatch': '无匹配笔记',
+  /* 0.4.6-D（R2 n-mux7as3gnrru）：搜索空态引导行——动作出口（更短关键词提示 + 新建一篇按钮） */
+  'tree.noMatchGuide': '试试更短的关键词，或',
+  'tree.noMatchNew': '新建一篇',
   'tree.clearFilters': '清空筛选条件',
   'tree.clearFiltersShort': '清空筛选',
   'tree.clearAllFiltersTip': '清空全部筛选条件',
@@ -1155,6 +1217,14 @@ var I18N_ZH = {
   'tree.emptyTitle': '还没有笔记',
   'tree.emptySub': '点侧栏「新建」输入标题，创建第一条笔记',
   'tree.emptyBtn': '记第一条',
+  /* ===== 0.4.6-B RPC 韧性层（notes-046-rpc-resilience）：超时/网络错误结构化 + 挂起提示条 + 落地页空态引导 ===== */
+  'rpc.slowBar': '连接较慢，仍在加载…',
+  'rpc.timeout': '请求超时（{s} 秒无响应），已中断',
+  'rpc.network': '网络异常：{msg}',
+  'rpc.hostTimeout': '笔记服务响应超时（{s} 秒）',
+  'tree.landingTitle': '尚未连接到会话',
+  'tree.landingSub': '打开一个会话后再使用笔记面板；若已在会话中，点下方重试',
+  'tree.landingRetry': '重试',
   'sel.selCount': '已选 {n} 条',
   'sel.merge': '合并',
   'hint.select': '🖱 在右侧正文<b>划选文字松手</b> → 弹出快速记录卡片',
@@ -1174,7 +1244,8 @@ var I18N_ZH = {
   'editor.autoSaved': '✓ 已自动保存 {time}',
   'editor.autoSavedFlat': '已自动保存 {time}',
   'editor.emptyTitle': '选择左侧一条笔记查看和编辑',
-  'editor.emptySub': '点侧栏顶部 + 新建笔记（先开草稿，输入内容才落库）；正文划选文字可弹出快速记录卡片',
+  /* 0.4.6-D（R2 n-mux79kfts75o）：双端新建文案对齐——本端（全窗口页）为草稿先行，括注面板端差异消除两端互矛盾观感；行为统一属大改另议（差异留档见 app/modals/newnote.js 头注） */
+  'editor.emptySub': '点侧栏顶部 + 新建笔记（先开草稿，输入标题或正文即落库；面板端「新建」为弹窗即建）；正文划选文字可弹出快速记录卡片',
   'editor.emptyTitleShort': '选择一条笔记查看和编辑',
   'editor.emptySubShort': '点侧栏「新建」输入标题，新建一条笔记',
   'editor.degBanner': '检测到<b>暂不支持富文本编辑的语法</b>，富文本不可用（仍可源码编辑）：',
@@ -1196,6 +1267,7 @@ var I18N_ZH = {
   'editor.tbImage': '插入图片 ![](assets/..)（也可 Ctrl+V 粘贴 / 拖拽文件）',
   'editor.syncing': '编辑中…',
   'editor.synced': '已同步源码',
+  'editor.bodySyncing': '正文加载中…',   /* 0.4.6-A：正文在途窗同步点文案（不冒绿「已同步」）；editor.bodyLoading 系整理链路既有键，不复用 */
   'editor.modeSource': '源码模式',
   'editor.modeRich': '富文本模式',
   'editor.imageOnly': '仅支持图片文件',
@@ -1303,6 +1375,8 @@ var I18N_ZH = {
   'meta.delTipClient': '删除（软删除，可恢复）',
   'meta.injectOff': '已关闭上下文注入',
   'meta.injectOn': '已注入为上下文 · {role}（范围见右侧下拉）',
+  /* 0.4.6-E（n-mux8ccd3i4ub）：「约定」档点击二次确认闸——约定 = 全文进系统提示每次对话必读，误触即真实全会话注入 */
+  'meta.convInjectConfirm': '设为约定：《{title}》将对{scope}生效（全文进系统提示，每次对话必读），确认开启？',
   'meta.sensOn': '已标记敏感（注入时自动脱敏）',
   'meta.sensOff': '已取消敏感标记',
   'meta.hiddenOn': '已隐藏（列表/树不再显示；跳转与搜索打开不受影响）',
@@ -1525,16 +1599,20 @@ var I18N_ZH = {
   'inj.mountLabel': '一句话说明：什么时候该读这篇（whenToUse）',
   'inj.mountPlaceholder': '如：改注入相关逻辑时、验收资料挂载时…',
   'inj.mountSave': '挂载',
-  'inj.mountSkip': '跳过',
+  'inj.mountSkip': '不用建议，自己写',
   'inj.mountSaved': '已挂载索引：{title}',
   'inj.mountFailed': '挂载失败：{msg}',
   // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
   'inj.mountEdit': '编辑挂载',
   'inj.mountAdd': '补充 whenToUse 并挂载',
   'inj.mountGen': '正在生成 whenToUse…',
+  // 0.4.6-E（n-mux8ak66jttd）：LLM 预填三态可见化——失败态文案（原因随 tooltip 给原始 error；跳过按钮文案同步改名「不用建议，自己写」消歧义）
+  'inj.mountGenFail': '预填不可用，请手写',
   // 0.4.3 验收修复⑥（notes-043-metrics-present）：注入管理面板挂载区统计行（notes-recall-stats 账本快照，点开看全量）
   'inj.mntStats': '挂载 {m}｜本周引用 Top：{top}｜零引用 {z}',
   'inj.mntStatsTip': '召回价值信号（数据源 notes-recall-stats · 账本快照）· 点开看全量分通道统计',
+  // 0.4.6-E（n-mux8cq80ai5h）：统计行补「截至」时刻（telemetry meta.lastFlush 口径，与目录段信号行同）；挂载计数改实时现算（mountNow）
+  'inj.mntStatsAsOf': '截至 {at}',
   // 0.4.5-G 约定体检（notes-045-conflict-check）：LLM 两两检测注入中约定的冲突/被取代对——只提名不执行，人工裁决三动作
   'inj.conflictTitle': '约定体检',
   'inj.conflictTitleSub': 'LLM 两两检测注入中约定的冲突/取代 · 只提名不执行',
@@ -1634,6 +1712,8 @@ var I18N_ZH = {
   'disp.dispatchedQueued': '已排队到「{name}」（休眠会话 · 下次活动送达）',
   'disp.schedNew': '专属会话（首轮触发自动创建「定时 · 任务名」，后续复用）',
   'disp.schedNewTarget': '首轮自动创建专属会话',
+  'disp.schedModelDefault': '默认模型（跟随宿主当前选择）',   /* 0.4.6-G：专属会话模型下拉缺省项（空值 = 声明不带 model/provider） */
+  'disp.schedModelTip': '专属会话模型档位：{model}',          /* 0.4.6-G：调度行模型标注 tooltip + 下拉 title */
   'disp.newSessDone': '已新建会话，待办已注入并开始处理',
   'disp.failed': '派发失败：{msg}',
   'disp.markedDone': '已标记完成',
@@ -1648,8 +1728,9 @@ var I18N_ZH = {
   'arch.sub': '勾选后才执行 · 合并可撤销',
   'arch.hint': '速记按会话分组，勾选的组合并成一篇归档笔记（原笔记备份后软删除）。',
   'arch.hintClient': '速记按会话分组，勾选的组合并成一篇归档笔记（原笔记 .bak 备份后软删除）。',
-  'arch.manualHint': '手动笔记不受影响；如需合并手动笔记，请在列表多选后右键合并。',
-  'arch.empty': '没有可归档的速记组（同一会话 ≥2 条速记才会成组）。',
+  /* 0.4.6-D（R1 追加 n-mut4lscwg6tf）：旧文案指向「列表多选后右键」这一不存在的交互（笔记行无右键菜单）——改为指向真实路径（底部操作条「合并」按钮） */
+  'arch.manualHint': '手动笔记不受影响；如需合并手动笔记，点侧栏底部「选择」勾选多条后，点底部操作条的「合并」。',
+  'arch.empty': '没有可归档的速记组（同一会话 ≥2 条速记才会成组）。速记 = 划选文字松手弹出的快速记录卡片产生的暂存笔记。',   /* 0.4.6-D：空态补速记概念解释（n-mux7as4ppskn） */
   'arch.ok': '归档所选',
   'arch.okCount': '归档所选（{n} 组）',
   'arch.archiving': '归档中…',
@@ -1727,6 +1808,8 @@ var I18N_ZH = {
   'sugg.unmountConfirm': '摘除挂载：{title}？（不删笔记，仅移出注入载荷；可随时重新挂载）',
   'sugg.unmounted': '已摘除挂载：{title}',
   'sugg.unmountFailed': '摘除挂载失败：{msg}',
+  /* 0.4.6-E（n-mux8beuj84i2）：零引用挂载段空态口径统一——零候选也渲染段头 + 本行（与速记组/过期/孤儿/日志卫生段同款空态策略） */
+  'sugg.zeroRefEmpty': '当前无零引用挂载候选。',
   'newnote.draftToast': '已开草稿：输入标题或正文即自动落库；直接点别的笔记则草稿丢弃（零空笔记）',
   'newnote.createdToast': '已创建笔记（首次编辑自动落库）',
   'newnote.flushedToast': '草稿已自动落库：「{title}」',
@@ -1775,6 +1858,8 @@ var I18N_ZH = {
   'filter.kindGroup': '类型',
   'filter.ruleOrAnd': '组内 OR · 与状态组 = AND',
   'filter.hitCount': '命中 {n} 条',
+  /* 0.4.6-H（R2 n-mux9rpgowpz6）：「机器」选项计数占位——sys 不入缺省缓存（计数恒 0 属误导），点选后 host kind 通道取回全库 sys 才显真实命中数 */
+  'filter.sysCountLazy': '点选加载',
   'filter.clear': '清空',
   'filter.done': '完成',
   'filter.removeAria': '移除条件 {label}',
@@ -1859,7 +1944,8 @@ var I18N_ZH = {
   'ctx.newFolder': '新建文件夹…',
   'ctx.merge': '合并为一篇',
   'help.newPre': '点侧栏「新建」或按 ',
-  'help.newPost': ' 输入标题新建笔记，创建后直接编辑正文',
+  /* 0.4.6-D（R2 n-mux79kfts75o）：双端新建文案对齐——本端（面板）为模态弹窗即建即编辑，括注全窗口页差异；行为统一属大改另议（差异留档见 client/modals/newnote.js 头注） */
+  'help.newPost': ' 弹出新建窗口：输入标题、选类型，点「创建」立即落库并编辑正文（全窗口页 + 号新建为草稿先行：输入即落库）',
   'help.capture': '在页面划选文字松手，弹出快速记录卡片（自动识别为引用）',
   'help.mergeWin': '同一会话 10 分钟内的速记自动合并',
   'help.topic': '点面包屑/编辑器里的主题可按主题全局过滤（跨文件夹）',
@@ -1874,7 +1960,7 @@ var I18N_ZH = {
   'help.keysEsc': ' 分层（关浮层 → 清搜索并还焦列表 → 关面板）',
   'help.cheatPre': '非输入焦点时按 ',
   'help.cheatPost': ' 唤起快捷键速查表（cheat sheet，Esc 关闭；设置卡「键盘快捷键」行同入口）',
-  'help.archive': '「速记合并」：弹出预览，勾选速记组后才合并（可撤销）；手动笔记点「选择」多选合并',
+  'help.archive': '「速记合并」：把划选快速记录产生的速记暂存归并成一篇正式笔记——弹出预览勾选后才执行（可撤销）；手动笔记点「选择」多选后走底部操作条「合并」',   /* 0.4.6-D：补速记概念 + 合并路径指向真实底部按钮（幽灵右键清零） */
   'help.organize': '编辑器「整理」：AI 按类型模板重写正文（替换后可撤销一次）；新建笔记按类型预填模板骨架',
   'help.image': '图片超过 1MB 自动压缩转 JPEG；设置卡片「资产清理」清理未被引用的孤儿文件',
   'help.delete': '删除是软删除：侧栏底部「回收站」可恢复或彻底删除（彻底删除不可恢复）',
@@ -1882,7 +1968,7 @@ var I18N_ZH = {
   /* ===== 0.4.5-H 会话头部注入清单徽标（notes-045-session-injected-view）：📎N + 明细浮层 + 直达笔记 =====
      复用既有 key（禁重复建别名）：meta.scopeAll/scopeSession（约定行范围文字）、common.listSep、tree.untitled、
        wiki.targetNotFound（直达失败 toast） */
-  'injBadge.tip': '本会话注入：约定 {m} · 资料 {k}（点击查看明细）',
+  'injBadge.tip': '本会话注入：约定 {m} · 资料 {k}（徽标数字 = 两者合计；点击查看明细）',   /* 0.4.6-C：数字语义写明（R2 反馈误读为笔记数/未读数） */
   'injBadge.title': '本会话注入清单',
   'injBadge.convSec': '约定 · 须遵守（{n}）',
   'injBadge.refSec': '挂载资料 · 按需取用（{n}）',
@@ -1892,6 +1978,23 @@ var I18N_ZH = {
   'mention.section': '笔记',
   'mention.inlineHead': '【笔记 · {title} · {id}】',
   'mention.fetchFailed': '@{title}（内容拉取失败）',
+  /* ===== 0.4.6-C 概念引导与治理入口信号（notes-046-ux-discovery；UX 巡检 R2 发现性族：
+     概念引导前置（使用说明首屏 30 秒五概念 + 空态指向）/ 建议+体检入口提升顶栏（带计数徽标）/ @ 空态提示 / 📎 数字语义 ===== */
+  'help.conceptTitle': '核心概念 30 秒',
+  'help.conceptConvention': '约定：每次对话都注入、Agent 必须遵守——写下规则，AI 会一直照做',
+  'help.conceptReference': '资料：注入后 Agent 按需取用的参考——不强制遵守，需要时才读',
+  'help.conceptMount': '挂载：把笔记登记进注入目录（一行索引 +「何时查我」）——Agent 先看到索引，需要全文再调取',
+  'help.conceptDispatch': '派发：把待办笔记派给指定会话执行——完成后回执自动闭环',
+  'help.conceptHidden': '隐藏：笔记从列表/树隐身降噪——搜索和跳转仍能找到，不是删除',
+  'help.conceptMore': '完整版见 设置 →「概念速览」',
+  'tree.emptyConcept': '写下的约定/资料可注入 AI 会话——点标题栏 ? 花 30 秒看懂五个核心概念',
+  'editor.emptyConcept': '写下的约定/资料可注入 Agent 会话——设置卡顶部「概念速览」30 秒看懂五个核心概念',
+  'topbar.suggest': '建议',
+  'topbar.suggestTip': '整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）',
+  'topbar.suggestTipN': '整理建议：{n} 条待办治理候选（只提名不执行；含约定体检入口）',
+  'sugg.goConflict': '约定体检…',
+  'sugg.goConflictTip': '打开注入管理面板的约定体检区：LLM 两两检测注入中约定的冲突/取代（只提名不执行）',
+  'mention.empty': '输入标题关键词搜索笔记',
 }
 /* ===== i18n dictionary · English（notes-042-i18n-mech）=====
    直译优先 + 统一术语表（injection=注入 / convention=约定 / dispatch=派发 / agent memory=工作记忆 /
@@ -1921,7 +2024,7 @@ var I18N_EN = {
   /* ===== Coverage card A (notes-042-i18n-cov-a): topbar + sidebar tree + hintbar ===== */
   'topbar.subtitle': 'Your note library · conventions and references you write can be injected into Agent sessions',
   'topbar.refreshTip': 'Reload the list and folders (LLM topic classification backfills asynchronously; refresh to see it)',
-  'topbar.archiveTip': 'Merge quick notes from the same session into one; click to preview, only checked groups run (undoable)',
+  'topbar.archiveTip': 'Quick notes = temporary captures from the select-and-release card; click to open a preview, then checked groups of the same session merge into one formal note (undoable)',   /* 0.4.6-D: quick-note concept explained (R2 n-mux7as4ppskn) */
   'topbar.themeTip': 'Toggle theme (dark/light)',
   'topbar.homeTip': 'Back to DSH Home',
   'topbar.filterTip': 'Filter center: check conditions by group (OR within a group, AND across groups)',
@@ -1932,7 +2035,6 @@ var I18N_EN = {
   'side.brand': 'Notes',
   'side.newTip': 'New note (Alt+N)',
   'side.splitterTip': 'Drag to resize the sidebar (double-click to reset)',
-  'side.more': 'Scroll to load more (showing {shown} / {total})',
   'side.fchipStatusTip': 'Filter: status / {label} (click × to remove)',
   'side.fchipKindTip': 'Filter: type / {label} (click × to remove)',
   'tree.topicTip': 'Topic: {topic}',
@@ -1946,7 +2048,12 @@ var I18N_EN = {
   'tree.wikiTip': 'Has [[…]] wiki links (clickable in the detail rich text)',
   'tree.toggleTip': 'Expand/collapse',
   'tree.sysChipTip': 'Machine-managed note (sys): hidden from default list/search, shown when its folder is expanded (0.4.4-C explicit entry)',
-  'tree.sysFolderTip': 'Machine-managed folder (auto-sedimented: work logs / memory archives / execution records) — hidden from the tree by default; visible when the "Machine" kind filter or "Show hidden items" is on (0.4.4-G)',
+  /* 0.4.6-D (R2 n-mux7arxj4ocf): tooltip now describes the real behavior — hidden is the default, not a constant; seeing the tooltip at all means one of the explicit channels is on */
+  'tree.sysFolderTip': 'Machine-managed folder (auto-sedimented: work logs / memory archives / execution records) — hidden from the tree by default; visible now because the "Machine" kind filter or "Show hidden items" is on (0.4.4-G); click the row to expand/collapse',
+  /* 0.4.6-H (R2 n-mux9r8hfh7xy): empty-expansion mask hint row (all child folders filtered out as sys/hidden) */
+  'tree.sysMaskHint': 'Contains machine-managed items — enable "Show hidden items" or the "Machine" kind filter to view',
+  /* 0.4.6-J (notes-046-group-paging): group-tail load-more row (per-group paging: pinned / folders / unfiled / topics, click += PAGE_SIZE) */
+  'tree.moreRows': 'Load more ({n} more)',
   'tree.countN': '{n}',
   'tree.viewTopic': 'Topic · {id}',
   'tree.viewAll': 'All notes',
@@ -1961,6 +2068,9 @@ var I18N_EN = {
   'tree.crossFolder': 'Across folders',
   'tree.topicViewTip': 'Topic view (cross-folder filter)',
   'tree.noMatch': 'No matching notes',
+  /* 0.4.6-D (R2 n-mux7as3gnrru): search empty-state guidance — action exits (shorter keyword hint + create button) */
+  'tree.noMatchGuide': 'Try a shorter keyword, or',
+  'tree.noMatchNew': 'create a new note',
   'tree.clearFilters': 'Clear filter conditions',
   'tree.clearFiltersShort': 'Clear filters',
   'tree.clearAllFiltersTip': 'Clear all filter conditions',
@@ -1973,6 +2083,14 @@ var I18N_EN = {
   'tree.emptyTitle': 'No notes yet',
   'tree.emptySub': 'Click New in the sidebar, enter a title, and create your first note',
   'tree.emptyBtn': 'Write the first one',
+  /* ===== 0.4.6-B RPC resilience (notes-046-rpc-resilience): structured timeout/network errors + pending bar + landing empty state ===== */
+  'rpc.slowBar': 'Slow connection, still loading…',
+  'rpc.timeout': 'Request timed out (no response for {s}s), aborted',
+  'rpc.network': 'Network error: {msg}',
+  'rpc.hostTimeout': 'Notes service timed out ({s}s)',
+  'tree.landingTitle': 'Not connected to a session',
+  'tree.landingSub': 'Open a session to use the notes panel; if you already are, retry below',
+  'tree.landingRetry': 'Retry',
   'sel.selCount': '{n} selected',
   'sel.merge': 'Merge',
   'hint.select': '🖱 <b>Select text and release</b> in the editor on the right → pop up the quick-capture card',
@@ -1992,7 +2110,8 @@ var I18N_EN = {
   'editor.autoSaved': '✓ Autosaved {time}',
   'editor.autoSavedFlat': 'Autosaved {time}',
   'editor.emptyTitle': 'Select a note on the left to view and edit',
-  'editor.emptySub': 'Click + at the top of the sidebar to create a note (a draft opens first and is saved on first input); select text in the body to pop up the quick-capture card',
+  /* 0.4.6-D (R2 n-mux79kfts75o): new-note copy aligned across both ends — this end (full-window page) is draft-first; the side-panel difference is noted in parentheses */
+  'editor.emptySub': 'Click + at the top of the sidebar to create a note (a draft opens first and is saved as soon as you type a title or body; the side panel "New" uses a create dialog instead); select text in the body to pop up the quick-capture card',
   'editor.emptyTitleShort': 'Select a note to view and edit',
   'editor.emptySubShort': 'Click "New" in the sidebar, enter a title, and create a note',
   'editor.degBanner': 'Detected <b>syntax that rich text editing does not support yet</b>; rich text is unavailable (source editing still works):',
@@ -2014,6 +2133,7 @@ var I18N_EN = {
   'editor.tbImage': 'Insert image ![](assets/..) (or Ctrl+V paste / drag a file in)',
   'editor.syncing': 'Editing…',
   'editor.synced': 'Synced to source',
+  'editor.bodySyncing': 'Loading body…',   /* 0.4.6-A: sync pill text while the note body is in flight (no fake-green "synced"); editor.bodyLoading is the pre-existing organize-flow key, not reused */
   'editor.modeSource': 'Source mode',
   'editor.modeRich': 'Rich text mode',
   'editor.imageOnly': 'Only image files are supported',
@@ -2121,6 +2241,8 @@ var I18N_EN = {
   'meta.delTipClient': 'Delete (soft delete, restorable)',
   'meta.injectOff': 'Context injection disabled',
   'meta.injectOn': 'Injected as context · {role} (scope in the dropdown on the right)',
+  /* 0.4.6-E: convention segment click gains a confirm gate — a convention's full text enters the system prompt of every matched session */
+  'meta.convInjectConfirm': 'Set as convention: "{title}" will take effect for {scope} (full text enters the system prompt, read every turn). Continue?',
   'meta.sensOn': 'Marked sensitive (auto-masked when injected)',
   'meta.sensOff': 'Sensitive mark removed',
   'meta.hiddenOn': 'Hidden (no longer shown in list/tree; open via link or search is unaffected)',
@@ -2344,16 +2466,20 @@ var I18N_EN = {
   'inj.mountLabel': 'One line: when this note should be read (whenToUse)',
   'inj.mountPlaceholder': 'e.g. When changing injection logic, when verifying mounted references…',
   'inj.mountSave': 'Mount',
-  'inj.mountSkip': 'Skip',
+  'inj.mountSkip': 'Skip suggestion, write it myself',
   'inj.mountSaved': 'Mounted to index: {title}',
   'inj.mountFailed': 'Mount failed: {msg}',
   // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
   'inj.mountEdit': 'Edit mount',
   'inj.mountAdd': 'Add whenToUse & mount',
   'inj.mountGen': 'Generating whenToUse…',
+  // 0.4.6-E：LLM prefill three-state visibility — failure copy (raw reason rides the tooltip; skip button renamed to disambiguate)
+  'inj.mountGenFail': 'Prefill unavailable — please write it yourself',
   // 0.4.3 验收修复⑥（notes-043-metrics-present）：注入管理面板挂载区统计行（notes-recall-stats 账本快照，点开看全量）
   'inj.mntStats': 'Mounted {m}｜Week Top: {top}｜Zero-ref {z}',
   'inj.mntStatsTip': 'Recall value signal (source: notes-recall-stats · ledger snapshot) · click for full channel stats',
+  // 0.4.6-E: stats row gains an "as of" stamp (telemetry meta.lastFlush); mount count is now computed live (mountNow)
+  'inj.mntStatsAsOf': 'as of {at}',
   // 0.4.5-G convention checkup (notes-045-conflict-check): LLM pairwise conflict/supersede detection over injected conventions — nominations only, human verdicts
   'inj.conflictTitle': 'Convention checkup',
   'inj.conflictTitleSub': 'LLM pairwise conflict/supersede check on injected conventions · nominations only',
@@ -2450,6 +2576,8 @@ var I18N_EN = {
   'disp.dispatchedQueued': 'Queued to "{name}" (dormant session · delivered on its next activity)',
   'disp.schedNew': 'Dedicated session (auto-created on first fire, then reused)',
   'disp.schedNewTarget': 'Auto-created dedicated session on first fire',
+  'disp.schedModelDefault': 'Default model (follow host selection)',   /* 0.4.6-G: dedicated-session model dropdown default option (empty value = no model/provider in declaration) */
+  'disp.schedModelTip': 'Dedicated session model: {model}',            /* 0.4.6-G: schedule-row model annotation tooltip + dropdown title */
   'disp.newSessDone': 'New session created; the todo was injected and processing started',
   'disp.failed': 'Dispatch failed: {msg}',
   'disp.markedDone': 'Marked as done',
@@ -2464,8 +2592,9 @@ var I18N_EN = {
   'arch.sub': 'Runs only after you check groups · merge is undoable',
   'arch.hint': 'Quick notes are grouped by session; checked groups merge into one archived note (originals are backed up, then soft-deleted).',
   'arch.hintClient': 'Quick notes are grouped by session; checked groups merge into one archived note (originals are .bak-backed-up, then soft-deleted).',
-  'arch.manualHint': 'Manual notes are unaffected; to merge manual notes, multi-select them in the list and right-click → Merge.',
-  'arch.empty': 'No quick-note groups to archive (a session needs ≥2 quick notes to form a group).',
+  /* 0.4.6-D (R1 addendum n-mut4lscwg6tf): the "right-click to merge" copy pointed at a non-existent interaction (note rows have no context menu) — now points at the real path (the bottom action bar "Merge" button) */
+  'arch.manualHint': 'Manual notes are unaffected; to merge them, click "Select" at the bottom of the sidebar, check the notes, then click "Merge" on the bottom action bar.',
+  'arch.empty': 'No quick-note groups to archive (a session needs ≥2 quick notes to form a group). Quick notes are temporary captures produced by the select-and-release card.',   /* 0.4.6-D: empty state gains the quick-note concept (n-mux7as4ppskn) */
   'arch.ok': 'Archive selected',
   'arch.okCount': 'Archive selected ({n} groups)',
   'arch.archiving': 'Archiving…',
@@ -2543,6 +2672,8 @@ var I18N_EN = {
   'sugg.unmountConfirm': 'Unmount: {title}? (The note is kept — only removed from the injection payload; you can re-mount it anytime.)',
   'sugg.unmounted': 'Unmounted: {title}',
   'sugg.unmountFailed': 'Unmount failed: {msg}',
+  /* 0.4.6-E: zero-signal mount section renders its header plus this empty row even with zero candidates (same empty-state policy as the other sections) */
+  'sugg.zeroRefEmpty': 'No zero-signal mount candidates right now.',
   'newnote.draftToast': 'Draft opened: entering a title or body auto-saves it; clicking another note discards the draft (zero empty notes)',
   'newnote.createdToast': 'Note created (the first edit auto-saved it)',
   'newnote.flushedToast': 'Draft auto-saved: "{title}"',
@@ -2593,6 +2724,8 @@ var I18N_EN = {
   'filter.kindGroup': 'Type',
   'filter.ruleOrAnd': 'OR within the group · AND with the status group',
   'filter.hitCount': '{n} matches',
+  /* 0.4.6-H (R2 n-mux9rpgowpz6): "Machine" option count placeholder — sys notes are excluded from the default cache (a bare count is always 0, misleading); the real count appears once the kind filter is selected and the host kind channel loads them */
+  'filter.sysCountLazy': 'on select',
   'filter.clear': 'Clear',
   'filter.done': 'Done',
   'filter.removeAria': 'Remove filter {label}',
@@ -2677,7 +2810,8 @@ var I18N_EN = {
   'ctx.newFolder': 'New folder…',
   'ctx.merge': 'Merge into one',
   'help.newPre': 'Click "New" in the sidebar or press ',
-  'help.newPost': ' to create a note by title, then edit the body right away',
+  /* 0.4.6-D (R2 n-mux79kfts75o): new-note copy aligned across both ends — this end (panel) uses a modal dialog (create = save instantly); the full-window draft-first difference is noted in parentheses */
+  'help.newPost': ' to open the new-note dialog: enter a title, pick a kind, and "Create" saves it instantly for editing (the full-window page opens a draft first: typing auto-saves it)',
   'help.capture': 'Select text on the page and release to pop up the quick-capture card (auto-recognized as a quote)',
   'help.mergeWin': 'Quick notes within 10 minutes in the same session merge automatically',
   'help.topic': 'Click a topic in the breadcrumb/editor to filter globally by topic (cross-folder)',
@@ -2692,13 +2826,13 @@ var I18N_EN = {
   'help.keysEsc': ' layered close (close overlays → clear search and refocus the list → close the panel)',
   'help.cheatPre': 'When not typing, press ',
   'help.cheatPost': ' to open the shortcut cheat sheet (Esc closes; also on the Settings "Keyboard shortcuts" row)',
-  'help.archive': '"Quick-note merge": opens a preview; only checked groups merge (undoable); manual notes merge via multi-select under "Select"',
+  'help.archive': '"Quick-note merge": folds quick notes (temporary captures from select-and-release) into one formal note — preview first, only checked groups run (undoable); manual notes merge via "Select" multi-select and the bottom action bar "Merge"',   /* 0.4.6-D: quick-note concept + merge path points at the real bottom button */
   'help.organize': 'Editor "Organize": AI rewrites the body per the kind template (undoable once); new notes prefill the template skeleton by kind',
   'help.image': 'Images over 1MB are auto-compressed to JPEG; the Settings "Asset cleanup" row removes unreferenced orphan files',
   'help.delete': 'Deletion is soft: "Trash" at the sidebar bottom restores or purges (purging is irreversible)',
   'side.loadFailed': 'Failed to load the list: {msg}',
   /* ===== 0.4.5-H Session header injected-list badge (notes-045-session-injected-view) ===== */
-  'injBadge.tip': 'Injected here: {m} conventions · {k} references (click for details)',
+  'injBadge.tip': 'Injected here: {m} conventions · {k} references (badge = combined total; click for details)',   /* 0.4.6-C: badge number semantics spelled out */
   'injBadge.title': 'Injected into this session',
   'injBadge.convSec': 'Conventions · always injected ({n})',
   'injBadge.refSec': 'Mounted references · on demand ({n})',
@@ -2707,6 +2841,22 @@ var I18N_EN = {
   'mention.section': 'Notes',
   'mention.inlineHead': '[Note · {title} · {id}]',
   'mention.fetchFailed': '@{title} (content fetch failed)',
+  /* ===== 0.4.6-C concept onboarding + governance entry signals (notes-046-ux-discovery) ===== */
+  'help.conceptTitle': 'Core concepts in 30 seconds',
+  'help.conceptConvention': 'Convention: injected into every conversation and the Agent must obey — write a rule once and it sticks',
+  'help.conceptReference': 'Reference: injected material the Agent reads on demand — not mandatory, consulted only when needed',
+  'help.conceptMount': 'Mount: registers a note into the injection catalog (one index line + "when to read me") — the Agent sees the index and fetches the full text on demand',
+  'help.conceptDispatch': 'Dispatch: assigns a todo note to a session for execution — receipts close the loop automatically',
+  'help.conceptHidden': 'Hidden: a note disappears from list/tree to cut noise — still findable via search and jumps, not deleted',
+  'help.conceptMore': 'Full version: Settings → "Concepts at a glance"',
+  'tree.emptyConcept': 'Conventions/references you write can be injected into AI sessions — click ? in the title bar for a 30-second intro to the five core concepts',
+  'editor.emptyConcept': 'Conventions/references you write can be injected into Agent sessions — see "Concepts at a glance" at the top of Settings for a 30-second intro',
+  'topbar.suggest': 'Suggest',
+  'topbar.suggestTip': 'Organize suggestions + convention checkup: quick-note archiving / stale cleanup / mount governance candidates (nominations only, never auto-run)',
+  'topbar.suggestTipN': 'Organize suggestions: {n} pending governance candidates (nominations only; includes convention checkup entry)',
+  'sugg.goConflict': 'Convention checkup…',
+  'sugg.goConflictTip': 'Open the convention checkup section in the injection manager: LLM pairwise conflict/supersede detection over injected conventions (nominations only)',
+  'mention.empty': 'Type a title keyword to search notes',
 }
 // 搜索关键词 <mark> 高亮（搜索体验升级；与原型 notes-ui-v2.html 同源，check.js 断言一致）。
 // 安全红线：先 esc 再包 <mark>——标题/查询词都先经 esc 转义，正则只对转义后文本起作用，插入的仅 <mark> 标签本身；
@@ -2760,21 +2910,29 @@ function schedAnchorMs(anchor) {
   return m ? (parseInt(m[1], 10) * 60 + parseInt(m[2], 10)) * 60000 : null;
 }
 /* 锚定时刻序列（同 host schedDueAt 锚定分支口径）：触发时刻钉死本地 HH:MM，不随创建/触发时刻漂移——
-   首触（fired=false，base=createdAt）= base 之后第一个锚定时刻（weekly 限定 dow 星期几）；
+   首触（fired=false，base=declaredAt||createdAt，0.4.6-F）= base 之后第一个锚定时刻（weekly 限定 dow 星期几）；
    后续（fired=true，base=lastFiredAt）= base + 间隔 所在本地日的锚定时刻（weekly = 下一个 dow 锚定时刻）。
+   0.4.6-F 首触防过去候选：注入 nowMs 时首触候选落在过去（base 陈旧）→ 对齐「now 之后第一个锚定时刻」（首轮不补发，同 host）。
    dow=0-6（0=周日，Date.getDay 口径）；ivMs 需整天倍数。非法 → null */
-function schedAnchorNextMs(anchor, dow, ivMs, baseMs, fired) {
+function schedAnchorNextMs(anchor, dow, ivMs, baseMs, fired, nowMs) {
   var off = schedAnchorMs(anchor);
   if (off === null || !isFinite(baseMs) || !baseMs) return null;
   var b = new Date(baseMs), day0 = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
+  /* 首触防过去候选（0.4.6-F，同 host）：now 有效且晚于 base 时扫描起点抬到 now 当日午夜；已触发/无 nowMs 保持旧口径 */
+  var hasNow = typeof nowMs === 'number' && isFinite(nowMs);
+  var scan0 = day0;
+  if (!fired && hasNow && nowMs > baseMs) { var nd0 = new Date(nowMs); scan0 = new Date(nd0.getFullYear(), nd0.getMonth(), nd0.getDate()).getTime() }
   if (typeof dow === 'number') {
-    /* weekly：自 base 当日起逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow；首触 → 下一个 dow） */
-    for (var i = 0; i < 14; i++) { var dm = day0 + i * 86400000; if (new Date(dm).getDay() === dow && dm + off > baseMs) return dm + off }
+    /* weekly：自扫描起点逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow；首触 → 下一个 dow 且候选 ≥ now） */
+    for (var i = 0; i < 14; i++) { var dm = scan0 + i * 86400000; if (new Date(dm).getDay() === dow && dm + off > baseMs && (fired || !hasNow || dm + off >= nowMs)) return dm + off }
     return null;
   }
   if (typeof ivMs !== 'number' || !isFinite(ivMs) || ivMs % 86400000 !== 0) return null;
   if (fired) { var f = new Date(baseMs + ivMs); return new Date(f.getFullYear(), f.getMonth(), f.getDate()).getTime() + off }
-  return (day0 + off > baseMs ? day0 : day0 + 86400000) + off;
+  /* 首触：base 当日锚定时刻未到 → 当日；已过 → 次日；候选落在过去（0.4.6-F）→ 对齐「now 之后第一个锚定时刻」 */
+  var first = (day0 + off > baseMs ? day0 : day0 + 86400000) + off;
+  if (hasNow && first < nowMs) { var nd = new Date(nowMs), nday0 = new Date(nd.getFullYear(), nd.getMonth(), nd.getDate()).getTime(); return (nday0 + off >= nowMs ? nday0 : nday0 + 86400000) + off }
+  return first;
 }
 /* 频率人话：仅一次 <时间> / 每天 / 每周 / 每 N 天（锚定时刻声明带时刻后缀：每天 09:00 / 每周一 09:00 / 每 3 天 09:00）；非整天间隔（front-matter 裸编辑旁路值）兜底 每 N 小时/分钟/ms
    i18n 覆盖卡D：文案走 t() 字典 common.sched*（跨表面复用——注入管理 + 详情计划块；client kernel/format.js 同口径镜像）；星期名经 common.dowNames 管道分隔取值（en 多字符名 charAt 不可取） */
@@ -2791,16 +2949,17 @@ function schedFreqLabel(s) {
   if (ms % 60000 === 0) return t('common.schedNMinutes', { n: ms / 60000 });
   return t('common.schedNMs', { n: ms });
 }
-/* 下次触发毫秒（与 host schedDueAt 锚点同口径：轮询 = lastFiredAt || createdAt + 间隔；单次 = at 本身；
-   锚定时刻声明（notes-034-sched-time）= 锚定序列下一时刻）；非法 → null */
+/* 下次触发毫秒（与 host schedDueAt 锚点同口径：轮询 = lastFiredAt || declaredAt || createdAt + 间隔（0.4.6-F 声明重锚）；单次 = at 本身；
+   锚定时刻声明（notes-034-sched-time）= 锚定序列下一时刻（首触防过去候选注入当前时刻，0.4.6-F））；非法 → null */
 function schedNextMs(n) {
   var s = n && n.schedule; if (!s) return null;
   if (s.at) { var t = Date.parse(s.at); return isFinite(t) ? t : null }
   var iv = schedEveryMs(s.every); if (iv === null) return null;
   var firedMs = (s.lastFiredAt && Date.parse(s.lastFiredAt)) || 0;
-  var base = firedMs || Date.parse(n.createdAt || '') || 0;
+  var declaredMs = (s.declaredAt && Date.parse(s.declaredAt)) || 0;
+  var base = firedMs || declaredMs || Date.parse(n.createdAt || '') || 0;
   if (!isFinite(base) || !base) base = Date.now();
-  if (s.anchor) return schedAnchorNextMs(s.anchor, typeof s.dow === 'number' ? s.dow : undefined, iv, base, !!firedMs);
+  if (s.anchor) return schedAnchorNextMs(s.anchor, typeof s.dow === 'number' ? s.dow : undefined, iv, base, !!firedMs, Date.now());
   return base + iv;
 }
 /* ISO → datetime-local 输入值（本地时区 YYYY-MM-DDTHH:mm；非法/空 → ''） */
@@ -2856,12 +3015,15 @@ function listFetchSig() { return filters.kinds.length === 1 ? filters.kinds[0] :
 function loadNotes(silent) {
   var sig = listFetchSig();
   var listArgs = sig ? { kind: sig } : undefined;   /* ⑩ 恰选 1 个 kind → host kind 通道（「机器」档取 sys 全库） */
+  /* 0.4.6-B（notes-046-rpc-resilience）：非静默取数在途期树显「加载中…」行——首载/手动刷新挂起不再空白零提示（silent 后台静默刷新不动） */
+  if (!silent) { listLoading = true; renderTree(); }
   return rpc('notes-list', listArgs).then(function (res) {
     if (res && res.error) throw new Error(res.error);
     if (res && res.notes) notes = res.notes;
     return loadFolders();
-  }).then(function () { ensureWikiIndex(); renderTree(); refreshSysKids(); return true })   /* 0.4.4-C：列表刷新后复核 sysKids（剔除陈旧 + 展开中的夹重拉覆盖；refreshSysKids 定义在 panels/tree.js） */
-    .catch(function (e) { if (!silent) toast(t('side.loadFailed', { msg: e && e.message || e })); return false });   /* i18n 覆盖卡F：side.loadFailed */
+  }).then(function () { refreshSuggestBadge() })   /* 0.4.6-C：列表落定即触发建议徽标刷新（modals/suggest.js 内 3s 节流，高频静默刷新不 hammer） */
+  .then(function () { listLoading = false; ensureWikiIndex(); renderTree(); refreshSysKids(); return true })   /* 0.4.4-C：列表刷新后复核 sysKids（剔除陈旧 + 展开中的夹重拉覆盖；refreshSysKids 定义在 panels/tree.js） */
+    .catch(function (e) { listLoading = false; if (!silent) { renderTree(); toast(t('side.loadFailed', { msg: e && e.message || e })) } return false });   /* i18n 覆盖卡F：side.loadFailed */
 }
 /* ===== P2 笔记双链：解析 / 索引 / 跳转 / 反向链接（内核 extractWikiTargets/wikiLinksTo 同一口径；库已在内存，host 不改）===== */
 /* 渲染时解析：[[n-xxx]] 精确 id 优先，其次 [[标题]] 全库标题精确匹配；均不中 → null（渲染为纯文本） */
@@ -2953,6 +3115,15 @@ function pullSessions() {
 
 /* ================= 视图求值：主题 ∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索 ================= */
 /* 0.4.3⑦：「文件视图」（文件夹视图）模式整体拆除——view 取值收窄为 all | topic（树展开即文件夹浏览） */
+/* 遮罩谓词（0.4.6-H notes-046-smallfix，R2 n-mux9rpgowpz6/n-mux9r8hfh7xy）：hidden/sys 夹链遮罩段独立成函数——
+   筛选面板选项计数经本谓词取「当前可见集」（与下方 matches() 的遮罩段逐字同口径，改动必须双边同步），
+   消除「选项计数（缓存裸谓词）vs 命中数（matches 全管线）」两套口径；谓词不含筛选条件本身（选项计数 ≠ 命中数语义保留：
+   状态组选项 = 可见集中满足该状态数，底部命中 = 可见集 ∩ 全部已选条件）。 */
+function visMask(n) {
+  if (!showHidden && (n.hidden === true || (n.folder && folderHidden(n.folder)))) return false
+  if (!showHidden && !machineKindOn() && n.folder && folderSys(n.folder)) return false
+  return true
+}
 function matches(n) {
   if (view.type === 'topic') { if ((n.topic || '') !== view.id) return false }
   /* 0.4.4-D hidden 纯 UI 遮罩：显隐开关关 → hidden 笔记 + hidden 夹链内笔记滤除（OS 语义：父夹隐藏即子项不可见；
@@ -3017,13 +3188,18 @@ function renderFilterPop() {
   var h = '<div class="fg-h"><span>' + t('filter.statusGroup') + '</span><span class="fg-rule">' + t('filter.ruleOr') + '</span></div>';
   FILTER_STATUS.forEach(function (s) {
     if (s.id === 'injectEver' && !showEver) return;   /* feature-detect：slim 无 injectEver 字段时不显示 */
+    /* 0.4.6-H（notes-046-smallfix）：选项计数过 visMask 遮罩（query.js，与 matches() 遮罩段同口径）——
+       修复「置顶选项计数 1 vs 命中 0」矛盾（置顶笔记在 sys 夹链内被遮罩时，裸谓词仍计 1） */
     h += '<label class="fg-item"><input type="checkbox" data-ft="' + s.id + '"' + (filters[s.id] === true ? ' checked' : '') + '>'
-      + icon(s.icon, 11) + '<span class="fl">' + filterStatusLabel(s.id) + '</span><span class="cnt2">' + notes.filter(s.pred).length + '</span></label>';
+      + icon(s.icon, 11) + '<span class="fl">' + filterStatusLabel(s.id) + '</span><span class="cnt2">' + notes.filter(function (n) { return visMask(n) && s.pred(n) }).length + '</span></label>';
   });
   h += '<div class="fg-h"><span>' + t('filter.kindGroup') + '</span><span class="fg-rule">' + t('filter.ruleOrAnd') + '</span></div>';
   FILTER_KINDS.forEach(function (k) {
+    /* 0.4.6-H（R2 n-mux9rpgowpz6）：「机器」选项计数口径——sys 笔记不入缺省缓存（host ⑨ 降噪），裸谓词恒 0 属误导；
+       恰选 sys 单档时 host kind 通道已取回全库 sys（data.js listFetchSig）→ 显示真实命中数；其余形态显示「点选加载」占位（不显示 0） */
+    var sysLazy = (k === 'sys' && !(filters.kinds.length === 1 && filters.kinds[0] === 'sys'));
     h += '<label class="fg-item"><input type="checkbox" data-fk="' + k + '"' + (filters.kinds.indexOf(k) >= 0 ? ' checked' : '') + '>'
-      + '<span class="dot" style="background:' + (KCOLOR[k] || KCOLOR.note) + '"></span><span class="fl">' + kindLabel(k) + '</span><span class="cnt2">' + notes.filter(function (n) { return (n.kind || 'note') === k }).length + '</span></label>';
+      + '<span class="dot" style="background:' + (KCOLOR[k] || KCOLOR.note) + '"></span><span class="fl">' + kindLabel(k) + '</span><span class="cnt2">' + (sysLazy ? t('filter.sysCountLazy') : notes.filter(function (n) { return visMask(n) && (n.kind || 'note') === k }).length) + '</span></label>';
   });
   /* 0.4.4-D hidden：显示组——「显示隐藏」显隐开关（OS 文件管理对齐；独立持久键 dsh-notes-app-show-hidden，非筛选条件——不计数/清空不重置） */
   h += '<div class="fg-h"><span>' + t('filter.displayGroup') + '</span></div>';
@@ -3149,14 +3325,22 @@ function folderNodeHtml(f, vis, filtering) {
   if (!open) return h;
   var subFolders = folderKids(f.id);
   if (!subFolders.length && !kids.length) return h;
+  /* 0.4.6-H（notes-046-smallfix，R2 n-mux9r8hfh7xy）：子夹全被遮罩（sys 夹 0.4.4-G / hidden 夹 0.4.4-D 整节点滤除）且直挂笔记为空时，
+     「展开为空」补一行提示（原渲染空 .nested 容器零反馈、整链隐身零入口）；仅在整空时出现（有可见内容不打扰）；遮罩本身不松绑（红线） */
+  var subHtml = '';
+  var maskedSub = 0;
+  subFolders.forEach(function (cf) { var sh = folderNodeHtml(cf, vis, filtering); if (sh) subHtml += sh; else maskedSub++ });
   h += '<div class="nested">';
-  subFolders.forEach(function (cf) { h += folderNodeHtml(cf, vis, filtering) });
+  if (!subHtml && !kids.length && maskedSub > 0) h += '<div class="sys-mask-hint">' + t('tree.sysMaskHint') + '</div>';
+  h += subHtml;
   kids.forEach(function (n) { h += noteRow(n, true) });
   h += '</div>';
   return h;
 }
 function renderTree() {
   renderChrome();   /* 覆盖卡A（notes-042-i18n-cov-a）：壳静态串随树渲染收敛刷新（setLang → render() 路径）；函数在 panels/topbar.js */
+  /* 0.4.6-J（notes-046-group-paging）双端口径：app 端恒全量渲染（本就无分页）；client 面板分组分页、组内 cap PAGE_SIZE=50，
+     小库≈全量——双端观感口径收敛，本端行为零改动 */
   var vis = notes.filter(matches);
   /* 排序：缺省保持 host 序（pinned → updatedAt）；「按引用」= useCount 降序（同数按 updatedAt 兜底）；「相关度」= 标题命中>标签>正文（同级 updatedAt 降序），分组内顺序随过滤数组 */
   if (sortBy === 'use') vis.sort(function (a, b) { return ((b.useCount || 0) - (a.useCount || 0)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) });
@@ -3168,6 +3352,8 @@ function renderTree() {
   var h = '';
   var vt = view.type === 'topic' ? t('tree.viewTopic', { id: view.id }) : t('tree.viewAll');
   h += '<div class="sec-h">' + icon('i-filter', 11) + esc(vt) + (view.type === 'topic' ? ' <span style="letter-spacing:0;text-transform:none;font-weight:500">' + esc(t('tree.crossFolderCount', { n: vis.length })) + '</span>' : '') + (view.type !== 'all' ? '<span class="add" id="viewClear" title="' + t('tree.clearViewTip') + '">✕</span>' : '') + '</div>';
+  /* 0.4.6-B（notes-046-rpc-resilience）：列表在途且树仍为空 → 顶部「加载中…」行（首载/刷新挂起期不再空白零提示；0.4.6-A 正文在途窗的列表侧同族） */
+  if (listLoading && !notes.length) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">' + t('common.loading') + '</div>';
   /* 置顶聚合组（筛选中心「置顶」条件激活时不再重复展示） */
   if (!filters.pinned) {
     var pins = vis.filter(isPinned);
@@ -3212,11 +3398,14 @@ function renderTree() {
       + '<span class="vfilter' + (on ? ' on' : '') + '" title="' + topicViewTip + '">' + icon('i-filter', 11) + '</span></div>';
     if (tOpen && tkids.length) { h += '<div class="nested">'; tkids.forEach(function (n) { h += noteRow(n, false) }); h += '</div>' }
   });
-  /* 空结果态：提示 + 「清空筛选条件」快捷链接（筛选中心口径⑦） */
+  /* 空结果态：提示 + 「清空筛选条件」快捷链接（筛选中心口径⑦）；
+     0.4.6-D（notes-046-copy-consistency，R2 n-mux7as3gnrru）：过滤激活的零命中补引导行——更短关键词提示 + 「新建一篇」动作出口 */
   if (!vis.length) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">' + t('tree.noMatch') + (filtersActiveCount() ? ' · <span class="add" id="emptyClear" style="letter-spacing:0">' + t('tree.clearFilters') + '</span>' : '') + '</div>';
+  if (!vis.length && filtering) h += '<div class="sec-h" style="text-transform:none;letter-spacing:0">' + t('tree.noMatchGuide') + ' <span class="add" id="emptyNew" style="letter-spacing:0">' + t('tree.noMatchNew') + '</span></div>';
   $('tree').innerHTML = h;
   var vc = $('viewClear'); if (vc) vc.onclick = function () { view = { type: 'all', id: '' }; render() };
   var ec = $('emptyClear'); if (ec) ec.onclick = function () { clearFilters(); render(); renderFilterBar(); if (searchText.trim()) reSearch() };
+  var en2 = $('emptyNew'); if (en2) en2.onclick = function () { doNewNote() };   /* 0.4.6-D：空态「新建一篇」→ 草稿新建链路 */
   var af = $('addFolder'); if (af) af.onclick = function (ev) { ev.stopPropagation(); doCreateFolder() };
   $('btnSelMode').classList.toggle('on', selMode);
   /* 筛选中心控制行：按钮计数丸 / 激活 chips / 排序按钮 / popover 随每次树渲染同步（列表到达后 feature-detect 与命中数才准） */
@@ -3566,16 +3755,30 @@ function refreshLoadErrUI() {
     if (rt && !rt._bound) { rt._bound = true; rt.addEventListener('click', function () { if (selId) loadEdBody(selId) }) }
   }
   var locked = !!edBodyErr;
-  var ta = $('edSrc'); if (ta) ta.readOnly = locked;
+  var ta = $('edSrc'); if (ta) { ta.readOnly = locked; ta.placeholder = edBodyPending() ? t('editor.bodySyncing') : t('editor.bodyPlaceholder') }   /* 0.4.6-B：源码正文在途窗 placeholder 转「正文加载中…」（不再空白；落定/出错即还原） */
   var ti = $('edTitle'); if (ti) ti.contentEditable = locked ? 'false' : 'true';
-  var rich = $('edRich'); if (rich) rich.contentEditable = locked ? 'false' : 'true';
+  /* 0.4.6-A：富文本在正文在途窗同步锁编辑（假同步根修连带闸；源码 textarea 无同步态宣称，语义不动） */
+  var rich = $('edRich'); if (rich) rich.contentEditable = (locked || edBodyPending()) ? 'false' : 'true';
 }
+/* 0.4.6-A（notes-046-rich-freeze，UXR2 反馈 n-mux892tew6bf 现象①根修）：正文在途窗判定——
+   笔记已选（edNote 在）而 notes-get 未落定（edBodyLoaded=false）且无错误横幅时，
+   旧口径富文本渲染空 div + 绿点「已同步源码」= 假同步（RPC 尖刺期窗口实测可达秒级，用户直视即「正文空白」）；
+   窗口期口径：富文本锁编辑（contentEditable=false，堵「空态打字→失焦把空态当编辑序列化」错觉链）+ 同步点转「加载中」橙点（不冒绿）。
+   草稿态天然豁免：doNewNote 本地全量持有正文（edBodyLoaded=true），无 get 链路。 */
+function edBodyPending() { return !!(edNote && !edBodyLoaded && !edBodyErr) }
 /* 正文填充双模式：源码 → textarea.value；富文本 → 内核渲染进 contenteditable（填充前清 dirty，防回填被当编辑） */
 function fillEdBody() {
   if (!edNote) return;
   var body = edNote.body || '';
   if ($('edSrc')) $('edSrc').value = body;
-  if (edMode === 'rich' && $('edRich')) { richDirty = false; $('edRich').innerHTML = renderMarkdown(body, wikiResolve); setSyncStatus(false); }
+  if (edMode === 'rich' && $('edRich')) {
+    /* 0.4.6-A：在途窗富文本不填内核产物（空态 + 锁编辑 + 加载中同步点）；落定由 loadEdBody 链重调本函数回填 */
+    var pend = edBodyPending();
+    richDirty = false;
+    $('edRich').innerHTML = pend ? '' : renderMarkdown(body, wikiResolve);
+    $('edRich').contentEditable = pend ? 'false' : 'true';
+    setSyncStatus(false);
+  }
 }
 function triggerSave() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 900) }
 function doSave() {
@@ -3601,6 +3804,9 @@ function doSave() {
   rpc('notes-update', upd).then(function (res) {
     if (res && res.error) { toast(res.error); return }
     $('edSaved').textContent = t('editor.autoSaved', { time: new Date().toTimeString().slice(0, 5) });
+    /* 0.4.6-D（notes-046-copy-consistency，R2 n-mux8bv3x6lll）：「更新」时间戳随每次自动保存刷新——edNote 是选中时的拷贝，
+       不随 loadNotes 换代（底栏 renderEdFoot 读 edNote.updatedAt，不刷即滞留旧值）；迟到响应守卫：已切走（id 不符）不重渲底栏 */
+    if (edNote && edNote.id === upd.id) { edNote.updatedAt = new Date().toISOString(); renderEdFoot(); }
     edNote._tagsStr = null;
     wikiBodies[selId] = { body: edNote.body || '', updatedAt: '' };   /* 双链索引：自有正文即时新鲜（updatedAt 置空 → loadNotes 后索引复核） */
     renderBacklinks();
@@ -3623,7 +3829,8 @@ function renderEd() {
   var ed = $('ed');
   if (!edNote) {
     ed.className = 'ed empty';
-    ed.innerHTML = '<svg class="ic"><use href="#i-note"/></svg><div>' + t('editor.emptyTitle') + '</div><div style="font-size:11px">' + t('editor.emptySub') + '</div>';
+    ed.innerHTML = '<svg class="ic"><use href="#i-note"/></svg><div>' + t('editor.emptyTitle') + '</div><div style="font-size:11px">' + t('editor.emptySub') + '</div>'
+      + '<div style="font-size:11px" class="ed-empty-concept">' + t('editor.emptyConcept') + '</div>';   /* 0.4.6-C：空态首笔记引导补概念指向（静态壳同款一行，双处对齐） */
     return;
   }
   var n = edNote;
@@ -3653,7 +3860,7 @@ function renderEd() {
     + '<button class="rtb-btn" data-a="quote" title="' + t('editor.tbQuote') + '">' + icon('i-quote', 14) + '</button>'
     + '<span class="rtb-sep"></span>'
     + '<button class="rtb-btn" data-a="image" title="' + t('editor.tbImage') + '">' + icon('i-image', 14) + '</button>'
-    + '<span class="sync' + (richDirty ? '' : ' ok') + '" id="syncPill"><span class="sd"></span><span id="syncTxt">' + (richDirty ? t('editor.syncing') : t('editor.synced')) + '</span></span>'
+    + '<span class="sync' + ((edBodyPending() || richDirty) ? '' : ' ok') + '" id="syncPill"><span class="sd"></span><span id="syncTxt">' + (edBodyPending() ? t('editor.bodySyncing') : (richDirty ? t('editor.syncing') : t('editor.synced'))) + '</span></span>'
     + '</div>'
     + '<div class="rich" id="edRich" contenteditable="true" spellcheck="false"></div>'
     + '</div>'
@@ -3723,11 +3930,12 @@ function bindRich(rich, wrap) {
     b.addEventListener('mousedown', function (ev) { ev.preventDefault(); toolbarAction(b.getAttribute('data-a')); });
   });
 }
-/* 同步态徽标（原型 syncPill）：编辑中…（橙点）/ 已同步源码（绿点） */
+/* 同步态徽标（原型 syncPill）：编辑中…（橙点）/ 已同步源码（绿点）；0.4.6-A：正文在途窗 = 加载中…（橙点，不冒绿假同步） */
 function setSyncStatus(editing) {
   var pill = $('syncPill'); if (!pill) return;
-  pill.className = 'sync' + (editing ? '' : ' ok');
-  if ($('syncTxt')) $('syncTxt').textContent = editing ? t('editor.syncing') : t('editor.synced');
+  var pend = edBodyPending();
+  pill.className = 'sync' + (pend || editing ? '' : ' ok');
+  if ($('syncTxt')) $('syncTxt').textContent = pend ? t('editor.bodySyncing') : editing ? t('editor.syncing') : t('editor.synced');
 }
 /* 富文本 → 源码序列化（原型 syncFromRich）：内容无损最高优先——有变化才回写 body 并走既有 doSave 自动保存 */
 function syncFromRich(why) {
@@ -3775,7 +3983,10 @@ function switchMode(m) {
     edMode = 'rich';
     renderModeUI();
     var rich = $('edRich');
-    rich.innerHTML = renderMarkdown(edNote ? edNote.body || '' : '', wikiResolve);
+    /* 0.4.6-A：在途窗切富文本不填内核产物（防空白+假绿点重演），落定由 loadEdBody → fillEdBody 回填解锁 */
+    var pend = edBodyPending();
+    rich.innerHTML = pend ? '' : renderMarkdown(edNote ? edNote.body || '' : '', wikiResolve);
+    rich.contentEditable = pend ? 'false' : 'true';
     bindRich(rich, $('richScroll'));
     setSyncStatus(false);
   } else {
@@ -4150,6 +4361,9 @@ function renderMeta() {
         });
         return;
       }
+      /* 0.4.6-E（n-mux8ccd3i4ub）：「约定」档二次确认闸——约定 = 全文进系统提示、缺省对所有会话生效（风险等级高于资料却无闸，实测误触）；
+         确认强度对齐风险：off 关闭/资料走挂载框确认，独缺约定这一档。scope 文案随 injectTo 实况（缺省 = 所有会话） */
+      if (r === 'convention' && !confirm(t('meta.convInjectConfirm', { title: n.title || n.id, scope: injectScopeLabel(n.injectTo) }))) return;
       if (r === 'off') { edNote.inject = false; scopeOpen = false }
       else { edNote.inject = true; edNote.injectRole = r; if (!sessList.length) pullSessions(); scopeOpen = true }
       triggerSave(); renderMeta();
@@ -4234,6 +4448,8 @@ function schedPlanHtml(n, list) {
       + '<span class="sched-freq">' + esc(schedFreqLabel(s)) + '</span>'
       /* 0.4.5-B（notes-045-ux-polish）：target='new' 专属会话目标位显示人话文案（首轮回写真实 sid 后自动恢复「→ 截短」，零迁移；纯展示层） */
       + '<span class="sched-target" title="' + esc(s.target || '') + '">' + (s.target === 'new' ? esc(t('disp.schedNewTarget')) : '→ ' + esc(shortSid(s.target))) + '</span>'
+      /* 0.4.6-G（notes-046-sched-model）：声明模型档位标注（有声明才显示，无声明零 DOM 痕迹） */
+      + (s.provider && s.model ? '<span class="sched-model" title="' + esc(t('disp.schedModelTip', { model: s.provider + '/' + s.model })) + '">' + esc(s.provider + '/' + s.model) + '</span>' : '')
       + '<span class="sched-nf">' + esc(schedNextLabel(n)) + '</span>'
       + schedBadgeHtml(n)
       + (paused ? '<span class="sched-badge off">' + t('meta.schedPaused') + '</span>' : '')
@@ -4422,7 +4638,9 @@ function doExportOne() {
 /* ================= 新建笔记（本地草稿态，notes-034-batch3） =================
    点 + / Alt+N：先开本地草稿进编辑器（不落库、列表不出行）；首次有效编辑（标题/正文非空）才 notes-create 落库；
    放弃（点别的笔记且零内容）不产生空 Untitled（证据 n-mut4n5zuuxaw：昔日点 + 立即落库，巡检现场残留 3 条空 Untitled）。
-   切走时未落库的有内容草稿由 selectNote 兜底 flushDraftCreate（fire-and-forget，不阻塞切换）。 */
+   切走时未落库的有内容草稿由 selectNote 兜底 flushDraftCreate（fire-and-forget，不阻塞切换）。
+   0.4.6-D 双端差异留档（R2 n-mux79kfts75o）：本端（全窗口页）= 草稿先行「输入即落库」；面板端 = 模态弹窗「输标题+选类型→创建即落库」
+   （client/modals/newnote.js）。两端文案已按各自实际行为对齐并互注差异；行为本身统一属大改，另议。 */
 function doNewNote() {
   /* 草稿期重复点击 = 聚焦标题继续写（不重建草稿、不丢在途输入） */
   if (draftNote) { var t0 = $('edTitle'); if (t0) t0.focus(); return }
@@ -4473,7 +4691,11 @@ function createDraftNote(d, payload) {
       wikiBodies[res.id] = { body: payload.body, updatedAt: '' };   /* 双链索引即时新鲜（updatedAt 空 → 下轮复核 reconcile） */
       if (edNote === d) {
         selId = res.id; edNote.id = res.id;
-        renderCrumb(); renderMeta();
+        /* 0.4.6-D（notes-046-copy-consistency，R2 n-mux79kgmbpza/n-mux8bv3x6lll）：落库即切普通笔记态——回填创建/更新时间戳并重渲底栏，
+           「草稿（首次输入即落库）」标签随落库消失（renderEdFoot 以 createdAt 有无判草稿态）；
+           notes-create 不回传时间戳，取本地时钟（与 host 同机同源，loadNotes 换代后列表侧复核） */
+        var _now = new Date().toISOString(); if (!edNote.createdAt) edNote.createdAt = _now; edNote.updatedAt = _now;
+        renderCrumb(); renderMeta(); renderEdFoot();
         $('edSaved').textContent = t('editor.autoSaved', { time: new Date().toTimeString().slice(0, 5) });
         toast(t('newnote.createdToast'));
       } else {
@@ -4554,7 +4776,9 @@ function closeModal() {
 }
 /* ✕/Esc/点遮罩统一入口：先跑兜底 flush 钩子（读控件 DOM 需在清空前），再关 modal；无钩子 ≡ closeModal */
 function closeModalFlushed() { var h = modalCloseHook; if (h) h(); closeModal() }
-function modalErr(m) { var e = $('mErr'); if (e) { e.textContent = m; e.style.display = 'block' } }
+/* 0.4.6-H（R2 n-mux9svn0vhkz）：报错后滚动定位到错误区（block:nearest 最小滚动——设置卡错误区在标题栏下=滚回顶部，
+   其余底部 mErr 弹窗=滚到底部），消除「保存无声」观感；stub 环境无 scrollIntoView 时静默跳过 */
+function modalErr(m) { var e = $('mErr'); if (e) { e.textContent = m; e.style.display = 'block'; try { e.scrollIntoView({ block: 'nearest' }) } catch (err) {} } }
 
 /* ================= 文件夹名称输入弹层（notes-041-folder-prompt：弃原生 prompt） =================
    反馈 n-mut46q00c3yw：原生 prompt 无样式/无校验，自动化环境静默失效——新建/重命名文件夹改纯 DOM 自定义弹层。
@@ -4619,13 +4843,18 @@ function openCheatsheet() {
    编辑模式（注入管理「调度任务」区 [编辑] 进入）= 同弹窗回填既有声明，保存走 notes-update（机器状态字段由 host 写入闸门延续）。
    锚定时刻（notes-034-sched-time）：周期三模式各补时刻选择（time input，默认 09:00）——声明携 anchor:'HH:MM'
    （触发序列钉死本地时刻，不随创建时间漂移）；「每周」另加星期几选择（dow 0-6）；仅一次保持 datetime-local 不变。
-   校验内联报错（at 未来 / N≥1 / 目标必选；host 红线回显同口径）——禁原生 prompt（R1 反面教材 n-mut46q00c3yw） */
+   校验内联报错（at 未来 / N≥1 / 目标必选；host 红线回显同口径）——禁原生 prompt（R1 反面教材 n-mut46q00c3yw）
+   专属会话模型档位（0.4.6-G，notes-046-sched-model）：专属会话复选框勾选时出模型下拉（数据源 = notes-settings-get 的
+   models 清单通道，与设置卡同通道零新 RPC；清单缺席 → 下拉隐藏静默降级），选中值以 provider/model 拆分随声明提交
+   （缺省空 = 跟随宿主默认选择）；编辑模式回填 s.provider/s.model（清单外存量值补合成条目防丢档） */
 var dState = null;
+var schedModelsCache = null;   /* 模型清单会话级缓存（0.4.6-G）：开弹窗即取缓存渲染，后台刷新对齐 host */
 function openDispatch() {
   if (draftNote) { toast(t('disp.draftNotSaved')); return }   /* 草稿无真实 id（notes-034-batch3） */
   if (!edNote || !selId) { toast(t('editor.selectNoteFirst')); return }
-  dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false };
+  dState = { sessId: '', instr: '', pending: false, sessions: [], pendingSess: [], sched: false, schedMode: 'daily', schedN: 3, schedAt: '', editId: '', editNote: null, schedAnchor: '09:00', schedDow: 1, schedNew: false, schedModel: '', schedModels: schedModelsCache || [] };
   pullActiveSessions();
+  pullSchedModels();
   renderDispatchModal();
 }
 /* 编辑模式入口（注入管理「调度任务」区 [编辑]）：同弹窗回填既有声明；note = 调度约定笔记 slim（列表已含 schedule，零新 RPC）；
@@ -4634,7 +4863,8 @@ function openDispatchEdit(note) {
   if (!note || !note.schedule) { toast(t('disp.noSchedule')); return }
   var s = note.schedule;
   var isNew = s.target === 'new';
-  dState = { sessId: isNew ? '' : (s.target || ''), instr: '', pending: false, sessions: [], pendingSess: [], sched: true, schedMode: 'daily', schedN: 3, schedAt: '', editId: note.id, editNote: note, schedAnchor: '09:00', schedDow: 1, schedNew: isNew };
+  /* 0.4.6-G：模型档位回填（provider/model 成对落库 → 合成 provider/model 选中值；缺省空 = 跟随宿主默认） */
+  dState = { sessId: isNew ? '' : (s.target || ''), instr: '', pending: false, sessions: [], pendingSess: [], sched: true, schedMode: 'daily', schedN: 3, schedAt: '', editId: note.id, editNote: note, schedAnchor: '09:00', schedDow: 1, schedNew: isNew, schedModel: (s.provider && s.model) ? s.provider + '/' + s.model : '', schedModels: schedModelsCache || [] };
   /* 回填：at → 仅一次；every 整天数 → 每天/每周/每 N 天；非整天间隔（front-matter 裸编辑旁路值）归一最近整天，保存按表单覆盖；
      锚定时刻（notes-034-sched-time）：anchor/dow 回填（非法 anchor 回退默认 09:00——裸编辑旁路值防御） */
   if (s.at) { dState.schedMode = 'once'; dState.schedAt = isoToLocalInput(s.at) }
@@ -4647,7 +4877,33 @@ function openDispatchEdit(note) {
     else { dState.schedMode = 'ndays'; dState.schedN = d >= 1 ? d : Math.max(1, Math.round((ms || 259200000) / 86400000)) }
   }
   pullActiveSessions();
+  pullSchedModels();
   renderDispatchModal();
+}
+/* 模型清单拉取（0.4.6-G）：notes-settings-get 的 models 通道（设置卡同款，零新 RPC）；
+   通道缺席/失败 → schedModels 空 → 下拉隐藏（静默降级红线） */
+function pullSchedModels() {
+  rpc('notes-settings-get', {}).then(function (res) {
+    if (!res || !dState) return;
+    if (res.models && res.models.length) { schedModelsCache = res.models; dState.schedModels = res.models; renderSchedModelSel() }
+  }).catch(function () { /* 静默降级红线（0.4.6-G）：清单通道缺席/传输失败 → 下拉保持隐藏，不打扰派发主链路（R1③ 设计内静默点） */ });
+}
+/* 模型下拉渲染（0.4.6-G）：专属会话勾选 + 周期模式 + 清单非空三条件齐备才显示（缺一隐藏，静默降级）；
+   存量声明值不在清单内（模型已下架等）→ 补合成条目回显防丢档 */
+function renderSchedModelSel() {
+  var box = $('dSchedModelBox'); if (!box || !dState) return;
+  var show = dState.schedNew && dState.schedMode !== 'once' && dState.schedModels.length > 0;
+  box.style.display = show ? '' : 'none';
+  if (!show) { box.innerHTML = ''; return }
+  var opts = '<option value="">' + esc(t('disp.schedModelDefault')) + '</option>';
+  var seen = {};
+  dState.schedModels.forEach(function (m) {
+    var v = m.provider + '/' + m.model; seen[v] = true;
+    opts += '<option value="' + esc(v) + '"' + (dState.schedModel === v ? ' selected' : '') + '>' + esc(m.label || v) + '</option>';
+  });
+  if (dState.schedModel && !seen[dState.schedModel]) opts += '<option value="' + esc(dState.schedModel) + '" selected>' + esc(dState.schedModel) + '</option>';
+  box.innerHTML = '<select class="minput sched-sel" id="dSchedModel" title="' + esc(t('disp.schedModelTip', { model: dState.schedModel || t('disp.schedModelDefault') })) + '">' + opts + '</select>';
+  $('dSchedModel').onchange = function () { dState.schedModel = this.value };
 }
 function pullActiveSessions() {
   rpc('notes-active-sessions', {}).then(function (res) {
@@ -4691,6 +4947,8 @@ function renderDispatchModal() {
     + '<div class="sched-next" id="dSchedNext"></div>'
     /* 专属会话（0.4.4-B）：周期模式可勾 target='new'——首轮触发 host 自动创建「定时 · 任务名」会话并回写复用；仅一次（at）无复用场景不提供 */
     + '<label class="sched-opt" id="dSchedNewBox"' + (dState.schedMode === 'once' ? ' style="display:none"' : '') + '><input type="checkbox" id="dSchedNew"' + (dState.schedNew ? ' checked' : '') + '> ' + t('disp.schedNew') + '</label>'
+    /* 专属会话模型下拉宿主（0.4.6-G）：勾选专属会话且清单非空才显示（renderSchedModelSel 驱动，静默降级） */
+    + '<span id="dSchedModelBox" style="display:none"></span>'
     + '</div></div>'
     /* 专属会话勾选后隐藏级联选择（目标由 host 首轮创建，无既有会话可选） */
     + '<div id="dispSessHostWrap"' + (dState.schedNew && (dState.sched || dState.editId) ? ' style="display:none"' : '') + '><div id="dispSessHost"></div></div>'
@@ -4714,14 +4972,16 @@ function renderDispatchModal() {
     /* 专属会话复选框仅周期模式提供（host 闸门同口径拒绝 at+'new'）；切到仅一次时自动摘勾并还原生态位 */
     $('dSchedNewBox').style.display = this.value === 'once' ? 'none' : '';
     if (this.value === 'once' && dState.schedNew) { dState.schedNew = false; $('dSchedNew').checked = false; $('dispSessHostWrap').style.display = ''; }
+    renderSchedModelSel();   /* 0.4.6-G：模式切换联动模型下拉显隐（仅一次无专属会话 → 同隐） */
     renderSchedNext();
   };
-  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; };
+  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; renderSchedModelSel(); };   /* 0.4.6-G：勾选专属会话才出模型下拉 */
   $('dSchedN').oninput = function () { dState.schedN = this.value; renderSchedNext() };
   $('dSchedDow').onchange = function () { dState.schedDow = parseInt(this.value, 10); renderSchedNext() };
   $('dSchedAnchor').oninput = function () { dState.schedAnchor = this.value; renderSchedNext() };
   $('dSchedOnce').oninput = function () { dState.schedAt = this.value; renderSchedNext() };
   renderSchedNext();
+  renderSchedModelSel();   /* 0.4.6-G：编辑模式回填/缓存清单就位时首轮渲染 */
   renderDispatchSessList();
 }
 function renderDispatchSessList() {
@@ -4766,16 +5026,18 @@ function schedFormDecl() {
   if (dState.schedMode === 'weekly') return { decl: { every: '1w', anchor: dState.schedAnchor, dow: dState.schedDow } };
   return { decl: { every: '1d', anchor: dState.schedAnchor } };
 }
-/* 声明 → 下次触发毫秒（轮询锚点 = lastFiredAt || createdAt || now；锚定时刻声明 = 锚定序列下一时刻，与 host schedDueAt 同口径；编辑模式传入 editNote 取存量锚点） */
+/* 声明 → 下次触发毫秒（轮询锚点 = lastFiredAt || declaredAt || createdAt || now（0.4.6-F 声明重锚）；锚定时刻声明 = 锚定序列下一时刻，与 host schedDueAt 同口径；编辑模式传入 editNote 取存量锚点） */
 function schedDeclNextMs(decl, note) {
   if (decl.at) return Date.parse(decl.at);
   var firedMs = 0;
   if (note && note.schedule && note.schedule.lastFiredAt) { var f = Date.parse(note.schedule.lastFiredAt); if (isFinite(f)) firedMs = f }
-  var base = firedMs;
+  var declaredMs = 0;
+  if (!firedMs && note && note.schedule && note.schedule.declaredAt) { var dd = Date.parse(note.schedule.declaredAt); if (isFinite(dd)) declaredMs = dd }
+  var base = firedMs || declaredMs;
   if (!base && note && note.createdAt) { var c = Date.parse(note.createdAt); if (isFinite(c)) base = c }
   if (!base) base = Date.now();
   var iv = schedEveryMs(decl.every);
-  if (decl.anchor) { var nx = schedAnchorNextMs(decl.anchor, typeof decl.dow === 'number' ? decl.dow : undefined, iv, base, !!firedMs); if (nx !== null) return nx }
+  if (decl.anchor) { var nx = schedAnchorNextMs(decl.anchor, typeof decl.dow === 'number' ? decl.dow : undefined, iv, base, !!firedMs, Date.now()); if (nx !== null) return nx }
   return base + iv;
 }
 /* 下次触发即时预览（内联；非法输入红字提示，禁原生 prompt） */
@@ -4800,6 +5062,9 @@ function doDispatchConfirm() {
     /* 编辑保留原 enabled 态（暂停的任务改排定不被意外拉起）；创建默认 enabled=true；周期模式携锚定时刻 anchor/dow（notes-034-sched-time） */
     var decl = { target: dState.schedNew ? 'new' : dState.sessId, action: 'dispatch', enabled: editId ? (dState.editNote.schedule.enabled !== false) : true };
     if (f.decl.at) decl.at = f.decl.at; else { decl.every = f.decl.every; decl.anchor = f.decl.anchor; if (typeof f.decl.dow === 'number') decl.dow = f.decl.dow }
+    /* 0.4.6-G：专属会话 + 已选模型档位 → 声明携 provider/model（成对；缺省空 = 跟随宿主默认，声明零字段）；
+       编辑模式保留存量档位（首轮回写后 target=真实 sid、复选框摘勾下拉隐藏，schedModel 仍持回填值——表单与 front-matter 同源，防丢档同 anchor/dow 先例） */
+    if (dState.schedModel && (dState.schedNew || editId)) { var mp = dState.schedModel.split('/'); decl.provider = mp[0]; decl.model = mp.slice(1).join('/') }
     var nextTxt = fmtDT(new Date(schedDeclNextMs(f.decl, dState.editNote)).toISOString());
     dState.pending = true; $('dOk').disabled = true; $('dOk').textContent = editId ? t('settings.saving') : t('disp.savingSched');
     var req;
@@ -4922,7 +5187,7 @@ var setPersist = null;   /* 已落盘镜像（兜底 flush/还原只写真不同
 var setInflight = 0;     /* 在途设置写数（>0 = 存在尚未落盘的待写） */
 var setSaving = false;   /* 保存/还原执行中（按钮防重入） */
 function openSettings() {
-  openModal('<div class="modal-t">' + icon('i-gear', 13) + ' ' + t('common.settings') + '<span class="set-t-acts"><button class="mbtn" id="setRestore" disabled>' + t('common.restore') + '</button><button class="mbtn primary" id="setSave" disabled>' + t('common.save') + '</button><button class="mbtn set-x" id="setClose" title="' + t('settings.closeTip') + '">' + icon('i-x', 11) + '</button></span></div><div id="setBody"><div class="modal-hint">' + t('common.loading') + '</div></div><div class="modal-err" id="mErr" style="display:none"></div>');
+  openModal('<div class="modal-t">' + icon('i-gear', 13) + ' ' + t('common.settings') + '<span class="set-t-acts"><button class="mbtn" id="setRestore" disabled>' + t('common.restore') + '</button><button class="mbtn primary" id="setSave" disabled>' + t('common.save') + '</button><button class="mbtn set-x" id="setClose" title="' + t('settings.closeTip') + '">' + icon('i-x', 11) + '</button></span></div><div class="modal-err" id="mErr" style="display:none"></div><div id="setBody"><div class="modal-hint">' + t('common.loading') + '</div></div>');   /* 0.4.6-H（R2 n-mux9svn0vhkz）：错误区自弹窗底部移到标题栏下——校验失败即刻可见（原渲染在弹窗最底部需滚动，「保存看似没反应」）；modalErr 带 scrollIntoView 兜底 */
   modalCloseHook = flushSettingsPending;   /* ✕/Esc/点遮罩关闭前兜底 flush */
   setSnap = null; setPersist = null; setSaving = false;   /* dirty 基准复位（settings-get 返回后再捕获快照） */
   $('setClose').onclick = closeModalFlushed;
@@ -5471,15 +5736,19 @@ function injMgrChanLine(channels) {
   return parts.join(' ｜ ');
 }
 /* 挂载区统计行渲染（卡⑥）：账本快照紧凑行（挂载 N｜本周引用 Top3｜零引用 M）+ 点开才见全量（分通道召回率 + 快照明细）；
-   无快照 → 整区省略（静默降级；用途分级红线：本行仅呈现，清理裁决走 notes-recall-stats 全量/人工） */
+   无快照 → 整区省略（静默降级；用途分级红线：本行仅呈现，清理裁决走 notes-recall-stats 全量/人工）。
+   0.4.6-E（n-mux8cq80ai5h）：挂载计数改用 mountNow 实时现算值（每次打开面板即新鲜；快照 mountTotal 仅作回退）+
+   行尾补「截至 HH:MM」（lastFlush 时刻，与目录段信号行同口径——无 lastFlush 则回退快照 at） */
 function renderInjMntStats() {
   var host = $('injMntStats'); if (!host || !injMgrState) return;
   var st = injMgrState.rstats;
   if (!st || !st.ledger) { host.innerHTML = ''; return }
   var lg = st.ledger;
+  var mNow = st.mountNow != null ? st.mountNow : (lg.mountTotal || 0);
+  var asOf = fmtDT(st.lastFlush || lg.at || '').slice(-5);
   var top3 = (lg.top || []).slice(0, 3).map(function (it) { return it.id + '×' + it.count }).join('、') || '—';
   var h = '<div class="injmgr-mntstats-row" id="injMntStatsRow" title="' + esc(t('inj.mntStatsTip')) + '">'
-    + icon('i-eye', 11) + ' ' + esc(t('inj.mntStats', { m: lg.mountTotal || 0, top: top3, z: lg.zeroRefCount || 0 })) + '</div>';
+    + icon('i-eye', 11) + ' ' + esc(t('inj.mntStats', { m: mNow, top: top3, z: lg.zeroRefCount || 0 })) + (asOf ? esc(' ｜ ' + t('inj.mntStatsAsOf', { at: asOf })) : '') + '</div>';
   if (injMgrState.rstatsOpen) {
     h += '<div class="injmgr-mntstats-full">'
       + '<div>' + esc(injMgrChanLine(st.channels)) + '</div>'
@@ -5686,6 +5955,8 @@ function renderInjSched() {
         + '<span class="sched-freq">' + esc(schedFreqLabel(s)) + '</span>'
         /* 0.4.5-B（notes-045-ux-polish）：target='new' 专属会话目标位显示人话文案（首轮回写真实 sid 后自动恢复「→ 截短」，零迁移；纯展示层） */
         + '<span class="sched-target" title="' + esc(s.target || '') + '">' + (s.target === 'new' ? esc(t('disp.schedNewTarget')) : '→ ' + esc(shortSid(s.target))) + '</span>'
+        /* 0.4.6-G（notes-046-sched-model）：声明模型档位标注（有声明才显示，无声明零 DOM 痕迹） */
+        + (s.provider && s.model ? '<span class="sched-model" title="' + esc(t('disp.schedModelTip', { model: s.provider + '/' + s.model })) + '">' + esc(s.provider + '/' + s.model) + '</span>' : '')
         + '<span class="sched-nf">' + esc(schedNextLabel(n)) + '</span>'
         + schedBadgeHtml(n)
         + (paused ? '<span class="sched-badge off">' + t('meta.schedPaused') + '</span>' : '')
@@ -5718,6 +5989,7 @@ function doInjSchedToggle(n) {
   var s = n.schedule; if (!s || schedOpPending) return;
   var decl = { target: s.target, action: 'dispatch', enabled: s.enabled === false };
   if (s.at) decl.at = s.at; else { decl.every = s.every; if (s.anchor) decl.anchor = s.anchor; if (typeof s.dow === 'number') decl.dow = s.dow }
+  if (s.provider && s.model) { decl.provider = s.provider; decl.model = s.model }   /* 0.4.6-G：暂停/恢复保留模型档位（声明字段随 every 一并回传，防丢档——同 anchor/dow 先例） */
   schedOpPending = true;
   if (injMgrState) { injMgrState.pending = true; renderInjectManager(); }
   rpc('notes-update', { id: n.id, schedule: decl }).then(function (res) {
@@ -5766,41 +6038,59 @@ function toggleInjMgrAll() {
   renderInjectManager();
 }
 /* ===== 挂载弹层（0.4.3⑤ notes-043-index；0.4.3 验收修复 notes-043-preview-when-edit：LLM 草稿预填 + 编辑模式）=====
-   两种模式：未挂载 = LLM 草稿模式（打开即「生成中…」占位 → notes-when-suggest 成功填草稿，失败/8s 超时静默回退预填标题；
+   两种模式：未挂载 = LLM 草稿模式（打开即「生成中…」状态行 → notes-when-suggest 成功填草稿，失败/8s 超时回退预填标题 + 可见失败态）；
      用户始终可编辑——touched 后到达的草稿不覆盖）；已挂载（预览目录行点击带 existing）= 编辑模式（预填现有文案，不调 LLM）。
    确认统一 notes-mount（幂等换文案；0.4.3 验收修复⑪起 host 单点收口：落行同时把目标翻 reference 档，挂载 ⇔ 资料不变量成立，
      挂载行不再被目标笔记的下一次 update 摘掉）；跳过 = 保留现状行；modal 不叠 modal（调用方先关来源 modal，清返回栈）。
    0.4.3 验收修复⑪（notes-043-mount-ux-final）：openMountModal(n, onConfirm)——确认成功后回调（详情三态入口回填编辑器态）；
-     跳过/取消不落回调（零副作用语义）；确认后统一 loadNotes 刷新收敛 */
+     跳过/取消不落回调（零副作用语义）；确认后统一 loadNotes 刷新收敛
+   0.4.6-E（n-mux8ak66jttd）：LLM 预填三态可见化——加载态（#injMountStat 状态行「正在生成 whenToUse…」）/ 失败态（「预填不可用，请手写」，
+     tooltip 携带原始 error 原因——静默回退排查：resolveLlmSelection 选用链路的失败原因此前被吞，现在用户可见）；
+     跳过按钮文案改名「不用建议，自己写」（inj.mountSkip——「跳过」语义歧义：是不写 whenToUse 直接挂载还是跳过此条候选） */
 var mountState = null;
+/* 挂载弹层状态行（0.4.6-E 三态）：mode 'gen' = 加载中 / 'err' = 失败（title 带原始原因）/ '' = 收起（成功/编辑态） */
+function setMountStat(mode, tip) {
+  var el = $('injMountStat'); if (!el) return;
+  if (!mode) { el.style.display = 'none'; return }
+  el.style.display = '';
+  el.className = 'inj-mount-stat ' + mode;
+  el.textContent = t(mode === 'gen' ? 'inj.mountGen' : 'inj.mountGenFail');
+  if (tip) el.title = tip; else el.removeAttribute('title');
+}
 function openMountModal(n, onConfirm) {
   if (!n) return;
   injMgrState = null; modalBackTo = null;
   var edit = typeof n.existing === 'string';   /* 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM） */
-  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, onConfirm: typeof onConfirm === 'function' ? onConfirm : null };
+  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, genErr: '', onConfirm: typeof onConfirm === 'function' ? onConfirm : null };
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + (edit ? t('inj.mountEdit') : t('inj.mountTitle')) + '<span class="sub">' + t('inj.mountSub') + '</span></div>'
     + '<div class="inj-mount-body"><label class="inj-mount-label">' + t('inj.mountLabel') + '</label>'
-    + '<textarea class="inj-mount-when" id="injMountWhen" rows="3" placeholder="' + esc(edit ? t('inj.mountPlaceholder') : t('inj.mountGen')) + '">' + esc(mountState.when) + '</textarea></div>'
+    + '<textarea class="inj-mount-when" id="injMountWhen" rows="3" placeholder="' + esc(edit ? t('inj.mountPlaceholder') : t('inj.mountGen')) + '">' + esc(mountState.when) + '</textarea>'
+    + '<div class="inj-mount-stat" id="injMountStat" style="display:none"></div></div>'
     + '<div class="modal-acts"><button class="mbtn" id="injMountSkip">' + t('inj.mountSkip') + '</button>'
     + '<button class="mbtn primary" id="injMountSave">' + t('inj.mountSave') + '</button></div>'
   );
   $('injMountWhen').oninput = function () { if (mountState) mountState.touched = true };
   if (!edit) {
-    /* LLM 草稿预填：成功填草稿；失败/超时回退预填标题（现状行为）；弹层已关/换目标则丢弃迟到响应；用户已动手不覆盖 */
+    setMountStat('gen');   /* 0.4.6-E：加载态立即可见（不再只靠 textarea 占位符——预填文案到达后占位符即消失，加载态无见证） */
+    /* LLM 草稿预填：成功填草稿；失败/超时回退预填标题 + 失败态可见（tooltip 原始原因）；弹层已关/换目标则丢弃迟到响应；用户已动手不覆盖 */
     rpc('notes-when-suggest', { id: n.id }).then(function (res) {
       if (!mountState || mountState.id !== n.id) return;
       mountState.generating = false;
-      var draft = res && !res.error && typeof res.suggestion === 'string' && res.suggestion ? res.suggestion : mountState.title;
+      var okDraft = res && !res.error && typeof res.suggestion === 'string' && res.suggestion ? res.suggestion : '';
+      mountState.genErr = okDraft ? '' : String((res && res.error) || 'empty suggestion');
       var ta = $('injMountWhen');
-      if (!mountState.touched) { mountState.when = draft; if (ta) ta.value = draft }
+      if (!mountState.touched) { mountState.when = okDraft || mountState.title; if (ta) ta.value = mountState.when }
       if (ta) ta.placeholder = t('inj.mountPlaceholder');
-    }, function () {
+      setMountStat(mountState.genErr ? 'err' : '', mountState.genErr);
+    }, function (e) {
       if (!mountState || mountState.id !== n.id) return;
       mountState.generating = false;
+      mountState.genErr = String(e && e.message || e);
       var ta = $('injMountWhen');
       if (!mountState.touched) { mountState.when = mountState.title; if (ta) ta.value = mountState.title }
       if (ta) ta.placeholder = t('inj.mountPlaceholder');
+      setMountStat('err', mountState.genErr);
     });
   }
   $('injMountSkip').onclick = function () { mountState = null; closeModal() };
@@ -6172,15 +6462,47 @@ function doTrashPurgeBatch() {
           hotUnmountedCandidates:高频取用未挂载（窗口内检索+取用 ≥3 次且未挂载，动作=挂载）, telemetryWindowDays, generatedAt }
    红线：只提名不自动执行——速记组「去归档」直达归档预览对话框；过期未引用「一键批量软删除」无 confirm 直接逐条 notes-delete（软删可恢复，撤销 toast 兜底——确认强度 = 不可恢复性，notes-034-c-confirm）；
    孤儿候选是启发式判定（可能误伤），不提供批量操作，逐条跳转人工过目；日志卫生 v0 仅展开明细（聚合执行留待 Phase 2，日志只聚合不淘汰）；
-   遥测两段空态不渲染（遥测缺失静默为空），摘除挂载 confirm 后走 notes-update inject:false 既有通道（host _idxSyncMount 联动摘 §1 行，零新 RPC 面，不删笔记），挂载/改文案复用 MountModal。 */
+   遥测两段：零引用挂载段空态口径统一（0.4.6-E：零候选也渲染段头+「当前无」行）、高频段空态不渲染（遥测缺失静默为空），摘除挂载 confirm 后走 notes-update inject:false 既有通道（host _idxSyncMount 联动摘 §1 行，零新 RPC 面，不删笔记），挂载/改文案复用 MountModal（确认后回开本框且滚动保持——0.4.6-E）。 */
+/* ===== 0.4.6-C 顶栏「建议」入口徽标（notes-046-ux-discovery）：计数 = notes-suggest 六段候选合计（纯函数，check 节 95 eval 锚）。
+   计数口径与建议框六段一一对应（速记组/过期/孤儿/日志卫生组/零引用挂载/高频未挂载）——徽标与 modal 内容同一响应同一函数，天然一致；
+   client 侧同名同口径（modals/suggest.js），两端逐字节同构。 */
+function suggestPendingCount(res) {
+  if (!res || res.error) return 0;
+  var logHg = res.logHygieneCandidates || {};
+  return ((res.archiveCandidates || []).length) + ((res.staleCandidates || []).length) + ((res.orphanCandidates || []).length)
+    + ((logHg.weekly || []).length) + ((logHg.monthly || []).length)
+    + ((res.zeroRefMountCandidates || []).length) + ((res.hotUnmountedCandidates || []).length);
+}
+/* 徽标状态：-1 = 未知/未拉取（不显示）；>0 点亮计数；0/失败保旧值（读路径静默群同口径：徽标是信号不是闸门，宁可陈旧不可误报清零）。
+   刷新节流：loadNotes 高频触发（自动保存链路同源），3s 最小间隔 + 尾调用收口 */
+var suggestBadgeN = -1, suggestBadgeAt = 0, suggestBadgeTimer = null;
+function refreshSuggestBadge() {
+  var now = Date.now(), wait = suggestBadgeAt + 3000 - now;
+  if (wait <= 0) { suggestBadgeAt = now; doRefreshSuggestBadge(); return }
+  if (suggestBadgeTimer) return;
+  suggestBadgeTimer = setTimeout(function () { suggestBadgeTimer = null; suggestBadgeAt = Date.now(); doRefreshSuggestBadge() }, wait);
+}
+function doRefreshSuggestBadge() {
+  rpc('notes-suggest', {}).then(function (res) {
+    if (!res || res.error) return;
+    suggestBadgeN = suggestPendingCount(res); renderSuggestBadge();
+  }).catch(function () { /* 设计内静默（同 probeHistCount 白名单语义）：徽标=信号不是闸门，拉取失败保旧值不清零，零动作即正确处理 */ });
+}
+function renderSuggestBadge() {
+  var bd = $('suggestBd'); if (!bd) return;
+  if (suggestBadgeN > 0) { bd.textContent = String(suggestBadgeN); bd.style.display = ''; $('btnSuggest').title = t('topbar.suggestTipN', { n: suggestBadgeN }) }
+  else { bd.style.display = 'none'; if ($('btnSuggest')) $('btnSuggest').title = t('topbar.suggestTip') }
+}
 function openSuggest() {
   suggestState = { data: null, pending: false, logHgExpand: {} };
   openModal(
     '<div class="modal-t">' + icon('i-sparkle', 13) + ' ' + t('settings.suggest') + '<span class="sub">' + t('sugg.sub') + '</span></div>'
     + '<div id="suggestList"><div class="modal-hint">' + t('sugg.analyzing') + '</div></div>'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
-    + '<div class="modal-acts"><button class="mbtn" id="suggestClose">' + t('common.close') + '</button></div>'
+    /* 0.4.6-C：约定体检入口提升——底栏直达注入管理体检区（原路径 设置→注入管理→管理… 三层深；modal 不叠 modal，先关建议框） */
+    + '<div class="modal-acts"><button class="mbtn" id="sgGoConflict" title="' + esc(t('sugg.goConflictTip')) + '">' + t('sugg.goConflict') + '</button><button class="mbtn" id="suggestClose">' + t('common.close') + '</button></div>'
   );
+  $('sgGoConflict').onclick = function () { if (!suggestState || !suggestState.pending) { closeModal(); suggestState = null; openInjectManager() } };
   $('suggestClose').onclick = function () { if (!suggestState || !suggestState.pending) { closeModal(); suggestState = null } };
   loadSuggest();
 }
@@ -6190,10 +6512,14 @@ function loadSuggest() {
     if (!suggestState) return;
     if (res && res.error) { suggestState.data = empty; renderSuggestList(); modalErr(res.error); return }
     suggestState.data = res || empty;
+    suggestBadgeN = suggestPendingCount(res); renderSuggestBadge();   /* 0.4.6-C：建议框刷新即同步顶栏徽标（同一响应同一计数函数） */
     renderSuggestList();
   }).catch(function (e) { if (suggestState) { suggestState.data = empty; renderSuggestList(); modalErr(t('sugg.failed', { msg: e && e.message || e })) } });
 }
-/* 六段式列表（复用 arch-list/arch-row）：① 速记组（「去归档」直达归档预览，数据同源）② 过期未引用（一键批量软删，无 confirm + 撤销 toast）③ 可能无用（仅展示，逐条「查看」跳转）④ 日志卫生（工作记忆 v0：超窗日志 周/月 聚合提名——只提名不执行，v0 「明细」展开逐条「查看」）⑤ 零引用挂载（0.4.5-C 遥测驱动，空态不渲染）⑥ 高频取用未挂载（空态不渲染） */
+/* 六段式列表（复用 arch-list/arch-row）：① 速记组（「去归档」直达归档预览，数据同源）② 过期未引用（一键批量软删，无 confirm + 撤销 toast）③ 可能无用（仅展示，逐条「查看」跳转）④ 日志卫生（工作记忆 v0：超窗日志 周/月 聚合提名——只提名不执行，v0 「明细」展开逐条「查看」）⑤ 零引用挂载（0.4.5-C 遥测驱动；0.4.6-E 空态口径统一：零候选也渲染段头+「当前无」行）⑥ 高频取用未挂载（空态不渲染） */
+/* 0.4.6-E（n-mux8b046fq2e）：挂载/改文案确认后回开建议框且滚动位置保持（批处理连续作业）——点击时存档 .modal scrollTop，
+   onConfirmed 回开前写入本 hold；renderSuggestList 消费一次性还原（取消/跳过不回开 = 零副作用语义不动，hold 永不挂载） */
+var suggestScrollHold = 0;
 function renderSuggestList() {
   var host = $('suggestList'); if (!host || !suggestState) return;
   var d = suggestState.data;
@@ -6257,17 +6583,18 @@ function renderSuggestList() {
       }).join('') + '</div>'
     : '<div class="modal-hint">' + t('sugg.logHgEmpty') + '</div>';
   h += '</div>';
-  /* ⑤ 零引用挂载（0.4.5-C 遥测驱动）：近 14 天五通道零事件的 §1 挂载笔记——动作双选「改文案」（MountModal 编辑模式预填现文案）/「摘除挂载」（confirm 后 notes-update inject:false，不删笔记）；空态不渲染 */
-  if (zr.length) {
-    h += '<div class="sg-sec"><div class="sg-sec-t">' + t('sugg.secZeroRef') + '<span class="sg-sec-n">' + t('sugg.countItems', { n: zr.length }) + '</span></div>';
-    h += '<div class="arch-list">' + zr.map(function (n) {
-      return '<div class="arch-row"><span class="ti" title="' + esc(n.title || 'Untitled') + '">' + esc(n.title || 'Untitled') + '</span>'
-        + '<span class="meta">' + esc(n.topic || t('meta.uncategorized')) + (n.when ? ' · ' + esc(n.when) : '') + '</span>'
-        + '<button class="mbtn trash-act sg-editwhen" data-id="' + esc(n.id) + '">' + t('sugg.editWhen') + '</button>'
-        + '<button class="mbtn trash-act sg-unmount" data-id="' + esc(n.id) + '">' + t('sugg.unmount') + '</button></div>'
-    }).join('') + '</div>';
-    h += '</div>';
-  }
+  /* ⑤ 零引用挂载（0.4.5-C 遥测驱动）：近 14 天五通道零事件的 §1 挂载笔记——动作双选「改文案」（MountModal 编辑模式预填现文案）/「摘除挂载」（confirm 后 notes-update inject:false，不删笔记）；
+     0.4.6-E 空态口径统一（n-mux8beuj84i2）：零候选也渲染段头 + 「当前无」行，与其他段一致（遥测缺失时两类候选静默为空，段头仍在 = 功能可见） */
+  h += '<div class="sg-sec"><div class="sg-sec-t">' + t('sugg.secZeroRef') + '<span class="sg-sec-n">' + t('sugg.countItems', { n: zr.length }) + '</span></div>';
+  h += zr.length
+    ? '<div class="arch-list">' + zr.map(function (n) {
+        return '<div class="arch-row"><span class="ti" title="' + esc(n.title || 'Untitled') + '">' + esc(n.title || 'Untitled') + '</span>'
+          + '<span class="meta">' + esc(n.topic || t('meta.uncategorized')) + (n.when ? ' · ' + esc(n.when) : '') + '</span>'
+          + '<button class="mbtn trash-act sg-editwhen" data-id="' + esc(n.id) + '">' + t('sugg.editWhen') + '</button>'
+          + '<button class="mbtn trash-act sg-unmount" data-id="' + esc(n.id) + '">' + t('sugg.unmount') + '</button></div>'
+      }).join('') + '</div>'
+    : '<div class="modal-hint">' + t('sugg.zeroRefEmpty') + '</div>';
+  h += '</div>';
   /* ⑥ 高频取用未挂载：窗口内检索+取用 ≥3 次且未挂载——动作「挂载」（MountModal LLM 草稿预填）；空态不渲染 */
   if (hot.length) {
     h += '<div class="sg-sec"><div class="sg-sec-t">' + t('sugg.secHot') + '<span class="sg-sec-n">' + t('sugg.countItems', { n: hot.length }) + '</span></div>';
@@ -6295,22 +6622,27 @@ function renderSuggestList() {
     };
   });
   /* ⑤⑥ 遥测候选动作接线（0.4.5-C）：摘除挂载 = confirm 后 doSuggestUnmount；改文案/挂载 = MountModal
-     （modal 不叠 modal——先关建议框让出 modal 宿主；确认回调重开建议框继续收割其余候选，跳过/取消零副作用不回开） */
+     （modal 不叠 modal——先关建议框让出 modal 宿主；确认回调重开建议框继续收割其余候选，跳过/取消零副作用不回开）
+     0.4.6-E：回开滚动保持——点击时存档 .modal scrollTop，确认回调内先写 suggestScrollHold 再 openSuggest（renderSuggestList 消费还原） */
   host.querySelectorAll('.sg-unmount').forEach(function (el) { el.onclick = function () { doSuggestUnmount(el.dataset.id) } });
   host.querySelectorAll('.sg-editwhen').forEach(function (el) {
     el.onclick = function () {
       var n = findSuggestTelem(el.dataset.id, 'zeroRefMountCandidates'); if (!n) return;
+      var sc = $('modal') ? $('modal').scrollTop : 0;
       closeModal(); suggestState = null;
-      openMountModal({ id: n.id, title: n.title || n.id, existing: n.when || '' }, function () { openSuggest() });
+      openMountModal({ id: n.id, title: n.title || n.id, existing: n.when || '' }, function () { suggestScrollHold = sc; openSuggest() });
     };
   });
   host.querySelectorAll('.sg-mount').forEach(function (el) {
     el.onclick = function () {
       var n = findSuggestTelem(el.dataset.id, 'hotUnmountedCandidates'); if (!n) return;
+      var sc = $('modal') ? $('modal').scrollTop : 0;
       closeModal(); suggestState = null;
-      openMountModal({ id: n.id, title: n.title || n.id }, function () { openSuggest() });
+      openMountModal({ id: n.id, title: n.title || n.id }, function () { suggestScrollHold = sc; openSuggest() });
     };
   });
+  /* 0.4.6-E：滚动保持消费点——回开后的首次真实渲染还原 .modal scrollTop（一次性，消费即清零；analyzing/空态渲染不触碰） */
+  if (suggestScrollHold > 0 && d) { var sm = $('modal'); if (sm) sm.scrollTop = suggestScrollHold; suggestScrollHold = 0 }
 }
 /* 遥测候选查找（⑤⑥ 段共用）：从当前建议数据按 id 取条目（when/title 供 MountModal 预填，免 DOM 转义往返） */
 function findSuggestTelem(id, key) {
@@ -6578,6 +6910,10 @@ function undoBatchDelete(ids) {
 /* 刷新假阳性修复（R-2）：等 loadNotes 真实结果——失败（res.error/网络异常）时 loadNotes 已弹「列表加载失败」，这里不再无条件报喜 */
 $('btnRefresh').addEventListener('click', function () { searchIds = null; var p = loadNotes(); if (sessList.length) pullSessions(); p.then(function (ok) { if (ok) toast(t('common.refreshed')) }) });
 $('btnArchive').addEventListener('click', openArchive);
+/* 0.4.6-C（notes-046-ux-discovery）：顶栏「建议」入口（计数徽标 #suggestBd 由 modals/suggest.js renderSuggestBadge 驱动）；
+   启动即拉一次计数（notes-suggest dry-run 零写入），后续随 loadNotes 链尾节流刷新（kernel/data.js） */
+$('btnSuggest').addEventListener('click', function () { openSuggest() });
+refreshSuggestBadge();
 $('btnSelMode').addEventListener('click', function () { selMode = !selMode; selIds = {}; renderTree() });
 /* ===== 壳静态文案 i18n（notes-042-i18n-cov-a 覆盖卡A：顶栏 + 侧栏架 + hintbar + selbar）=====
    body.html 静态串保留中文缺省（原型不双语红线不动；静态锚点断言兼容），本函数按当前语言态以 t() 重写：
@@ -6587,6 +6923,8 @@ function renderChrome() {
   $('topSub').textContent = t('topbar.subtitle');
   $('btnRefresh').title = t('topbar.refreshTip'); $('btnRefresh').querySelector('.tb-t').textContent = t('topbar.refresh');
   $('btnArchive').title = t('topbar.archiveTip'); $('btnArchive').querySelector('.tb-t').textContent = t('topbar.archive');
+  $('btnSuggest').querySelector('.tb-t').textContent = t('topbar.suggest');   /* 0.4.6-C：title 由 renderSuggestBadge 按计数态写（suggestTip/suggestTipN） */
+  renderSuggestBadge();
   $('btnTheme').title = t('topbar.themeTip'); $('btnTheme').querySelector('.tb-t').textContent = t('topbar.theme');
   $('btnHome').title = t('topbar.homeTip'); $('btnHome').querySelector('.tb-t').textContent = t('topbar.home');
   $('brandName').textContent = t('side.brand');

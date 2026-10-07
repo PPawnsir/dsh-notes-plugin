@@ -1,4 +1,6 @@
     // ===== modal: newnote —— 新建笔记弹窗（architecture-modular §6 步骤 D1，自 panels/whole.js 拆出）=====
+    // 0.4.6-D 双端差异留档（R2 n-mux79kfts75o）：本端（面板）= 模态弹窗「输标题+选类型→创建即落库」；全窗口页 = 草稿先行「输入即落库」
+    // （app/modals/newnote.js）。两端文案已按各自实际行为对齐并互注差异（help.newPost / editor.emptySub）；行为本身统一属大改，另议。
     // provides: store.modal.newnote / newNoteOpenRef / newNoteInputRef / setNewNoteOpen / setNewNoteTitle / setNewNotePending / openNewNote / NewNoteModal
     // needs: kernel/state.js（store/createStore/panelBridge + setError/setNewNoteKind 转发别名）、kernel/constants.js（KIND_LABELS/KIND_TEMPLATES）、
     //        kernel/icons.js（e/I）、kernel/bus.js（showToast/notifyNotesChanged）

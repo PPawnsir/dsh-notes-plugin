@@ -314,6 +314,8 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 /* 未入夹区「移出文件夹」提示行（仅拖拽中渲染，dragActive 驱动）：淡虚线框；落点高亮时随容器同步强调 */
 .dsh-notes-unfiled-hint{margin:2px 0;padding:5px 8px;border:1px dashed var(--nbd);border-radius:var(--nr-sm);font-size:11px;color:var(--nt3);text-align:center;user-select:none}
 .dsh-notes-unfiled-drop.drop-hint .dsh-notes-unfiled-hint{border-color:var(--nacc);color:var(--nacc-tx)}
+/* 0.4.6-H：「展开为空」遮罩提示行（子夹全是 sys/hidden 被滤除时；panel/tree.js renderFolderNode 嵌套容器内，与 app .sys-mask-hint 同构） */
+.dsh-notes-sysmask-hint{margin:2px 0;padding:4px 8px;font-size:11px;color:var(--nt3);line-height:1.5;user-select:none}
 
 /* 侧栏底部（导出 | 导入 | 设置） */
 .dsh-notes-side-foot{padding:8px 10px;border-top:1px solid var(--nbd-soft);display:flex;gap:6px;flex-shrink:0}
@@ -352,7 +354,7 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-meta-jump:hover{color:var(--nacc)}
 .dsh-notes-meta-jump .dsh-ic{width:10px;height:10px}
 .dsh-notes-meta-sp{flex:1}
-.dsh-notes-meta-act{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--nt3);padding:3px 9px;border-radius:var(--nr-sm);cursor:pointer;user-select:none;font-family:var(--nfont)}
+.dsh-notes-meta-act{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--nt3);padding:3px 9px;border-radius:var(--nr-sm);cursor:pointer;user-select:none;font-family:var(--nfont);flex-shrink:0;white-space:nowrap}   /* 0.4.6-C：窄宽不压缩不换行截字（R2「窄宽被裁」根修——flex 缺省 shrink 会把整理/派发挤没； shrink:0 后改为整颗换行） */
 .dsh-notes-meta-act:hover{background:var(--nbg-hover);color:var(--ntx)}
 .dsh-notes-meta-act.on{color:var(--nacc-tx);background:var(--nbg-sel)}
 .dsh-notes-meta-act.danger:hover{color:var(--ndanger)}
@@ -429,6 +431,7 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-sched-row-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:var(--ntx)}
 .dsh-notes-sched-freq{color:var(--nacc-tx);flex-shrink:0;font-size:10.5px}
 .dsh-notes-sched-target{color:var(--nt3);flex-shrink:0;font-size:10.5px;font-family:var(--nmono)}
+.dsh-notes-sched-model{color:var(--nacc-tx);flex-shrink:0;font-size:10px;font-family:var(--nmono);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--nbd-soft);border-radius:8px;padding:0 5px}   /* 0.4.6-G：调度行模型档位标注 */
 .dsh-notes-sched-nf{color:var(--nt2);flex-shrink:0;font-size:10.5px;white-space:nowrap}
 .dsh-notes-sched-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--nt3);border:1px solid var(--nbd);border-radius:10px;padding:0 7px;flex-shrink:0;white-space:nowrap}
 .dsh-notes-sched-badge.ok{color:#56c88f;border-color:transparent;background:rgba(86,200,143,.12)}
@@ -556,6 +559,11 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-inj-mount-when{width:100%;box-sizing:border-box;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:7px;color:var(--ntx);font-size:12px;line-height:1.6;padding:7px 9px;font-family:var(--nfont);outline:none;resize:vertical;min-height:64px}
 .dsh-notes-inj-mount-when:focus{border-color:var(--nacc)}
 .dsh-notes-inj-mount-when::placeholder{color:var(--nt3)}
+/* 0.4.6-E 挂载弹层 LLM 预填三态：加载态状态行（spinner 转圈）/ 失败态（黄字 + tooltip 原始原因） */
+.dsh-notes-inj-mount-gen{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--nt3)}
+.dsh-notes-inj-mount-gen::before{content:'';width:10px;height:10px;border:2px solid var(--nbd-soft);border-top-color:var(--nacc);border-radius:50%;animation:dshNotesMountSpin .8s linear infinite;flex-shrink:0}
+@keyframes dshNotesMountSpin{to{transform:rotate(360deg)}}
+.dsh-notes-inj-mount-generr{font-size:11px;color:var(--nwarn);cursor:help}
 
 /* ===== 历史版本面板 modal（详情 meta 行「历史」入口；notes-history-ui）：左列版本列表（时间+大小，倒序）+ 右侧只读预览（renderMarkdown 内核渲染） ===== */
 .dsh-notes-hist-modal{width:640px}   /* 列表+预览双栏需要更宽，覆盖 settings-modal 的 400px */
@@ -719,7 +727,9 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-empty-btn:hover{filter:brightness(1.06)}
 /* 搜索高亮（琥珀色，深浅通用） */
 .dsh-notes-mark{background:rgba(255,213,79,.35);color:inherit;border-radius:2px;padding:0 1px}
-.dsh-notes-more{padding:10px 14px;color:var(--nt3);font-size:11px;text-align:center;user-select:none}
+/* 0.4.6-J（notes-046-group-paging）：组尾「加载更多」按钮行——复用原 .dsh-notes-more 全局提示行视觉 + cursor:pointer + hover 态（全局行随分组分页退役，旧类同步移除） */
+.dsh-notes-more-row{padding:10px 14px;color:var(--nt3);font-size:11px;text-align:center;user-select:none;cursor:pointer}
+.dsh-notes-more-row:hover{color:var(--nacc-tx)}
 .dsh-notes-error{padding:10px 16px;color:var(--ndanger);font-size:12px}
 .dsh-notes-toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:2147483646;background:rgba(28,28,30,.96);color:#fff;border-radius:8px;padding:9px 16px;font-size:12px;box-shadow:0 8px 30px rgba(0,0,0,.3);opacity:0;transition:opacity .2s;pointer-events:none;font-family:var(--nfont)}
 .dsh-notes-toast.show{opacity:1}
@@ -772,13 +782,23 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-selbar-n{flex:1;font-size:11.5px;color:var(--nt2)}
 
 /* ===== 帮助气泡（极简） ===== */
-.dsh-notes-help-bubble{position:absolute;top:50px;right:14px;width:290px;background:var(--npanel);border:1px solid var(--nbd);border-radius:10px;padding:14px 16px;font-size:12px;line-height:1.7;color:var(--ntx);z-index:20;box-shadow:var(--nshadow)}
+/* 0.4.6-D（notes-046-copy-consistency，R2 n-mux79ki7zcgj）：气泡锚定从面板右缘（absolute 随面板几何）改为视口右缘（fixed）——
+   面板持久化几何可随上一更宽视口留存（dsh-notes-panel-state），面板右缘越出视口时 absolute 锚定会把气泡整体裁出屏幕（1424px 实测只露一窄条）；
+   fixed 锚视口后任意面板几何下气泡恒在屏内可读；max-width/max-height + overflow 兜底窄/矮视口 */
+.dsh-notes-help-bubble{position:fixed;top:50px;right:14px;width:290px;max-width:calc(100vw - 28px);max-height:calc(100vh - 70px);overflow-y:auto;background:var(--npanel);border:1px solid var(--nbd);border-radius:10px;padding:14px 16px;font-size:12px;line-height:1.7;color:var(--ntx);z-index:20;box-shadow:var(--nshadow)}
 .dsh-notes-help-bubble h4{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--ntx)}
 .dsh-notes-help-bubble ul{margin:0;padding-left:16px}
 .dsh-notes-help-bubble li{margin-bottom:5px;color:var(--nt2)}
 .dsh-notes-help-bubble kbd{background:var(--nbg-raise);padding:1px 5px;border-radius:4px;font-size:10px;font-family:var(--nmono);border:1px solid var(--nbd)}
 .dsh-notes-help-close{position:absolute;top:8px;right:10px;background:none;border:none;color:var(--nt3);font-size:15px;cursor:pointer;padding:2px 6px;border-radius:5px;line-height:1}
 .dsh-notes-help-close:hover{background:var(--nbg-hover);color:var(--ntx)}
+/* 0.4.6-C 使用说明首屏「核心概念 30 秒」块（notes-046-ux-discovery）：概念区与操作清单分隔，more 行指向设置卡完整版 */
+.dsh-notes-help-concepts{margin:0 0 10px;padding-bottom:9px;border-bottom:1px solid var(--nbd-soft)}
+.dsh-notes-help-concepts h5{margin:0 0 6px;font-size:11.5px;font-weight:600;color:var(--nacc-tx)}
+.dsh-notes-help-concepts li{margin-bottom:4px;color:var(--nt2);font-size:11px}
+.dsh-notes-help-concepts-more{font-size:10.5px;color:var(--nt3)}
+/* 0.4.6-C 标题栏「建议」计数徽标（复用 fcnt 视觉口径） */
+.dsh-notes-tcnt{font-family:var(--nmono);font-size:9.5px;line-height:1.4;background:var(--nacc);color:#fff;border-radius:8px;padding:0 5px;margin-left:2px;pointer-events:none}
 
 /* ===== 键盘流速查表（cheat sheet，notes-034-f-cheatsheet）：复用 settings mask/modal，键帽行两栏布局 ===== */
 .dsh-notes-cheatsheet-modal{width:440px}

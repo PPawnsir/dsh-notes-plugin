@@ -1,5 +1,7 @@
 // 节 35. 注入/派发图片路径消歧提示（img-path-hint，host 双包）
 // 拆分自 check.js 单文件（notes-check-split）：节体逐字节保留，仅首尾为机械接线（H=helpers 设施，S=跨节共享状态）。
+// 0.4.6-I（notes-046-check-autodiscovery）：文件名 35-img-path-hint.cjs → 35-5-img-path-hint.cjs——
+// 原名与 35-splitter.cjs 数字前缀同为 [35]，自动发现字典序兜底会颠倒历史执行序；改子号 [35,5]（前缀短者在前）消化漂移，节 id/title 不变。
 module.exports = {
   id: "35",
   title: "35. 注入/派发图片路径消歧提示（img-path-hint，host 双包）",

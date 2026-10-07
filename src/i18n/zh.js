@@ -26,7 +26,7 @@ var I18N_ZH = {
   /* ===== 覆盖卡 A（notes-042-i18n-cov-a）：顶栏 + 侧栏树 + hintbar ===== */
   'topbar.subtitle': '你的笔记库 · 写下的约定与资料可注入 Agent 会话',
   'topbar.refreshTip': '重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）',
-  'topbar.archiveTip': '把同一会话的速记合并成一篇；点按弹出预览，勾选后才执行（可撤销）',
+  'topbar.archiveTip': '速记 = 划选文字松手弹出的快速记录（暂存）；点按弹出预览，勾选后把同一会话的速记归并成一篇正式笔记（可撤销）',   /* 0.4.6-D：补速记概念解释（R2 n-mux7as4ppskn：主按钮位零解释） */
   'topbar.themeTip': '切换主题（暗色/亮色）',
   'topbar.homeTip': '返回 DSH 主界面',
   'topbar.filterTip': '筛选中心：分组勾选条件（组内 OR / 跨组 AND）',
@@ -37,7 +37,6 @@ var I18N_ZH = {
   'side.brand': '笔记',
   'side.newTip': '新建笔记（Alt+N）',
   'side.splitterTip': '拖拽调整侧栏宽度（双击重置）',
-  'side.more': '继续滚动加载更多（已显示 {shown} / {total}）',
   'side.fchipStatusTip': '筛选条件：状态 / {label}（点 × 移除）',
   'side.fchipKindTip': '筛选条件：类型 / {label}（点 × 移除）',
   'tree.topicTip': '主题：{topic}',
@@ -51,7 +50,12 @@ var I18N_ZH = {
   'tree.wikiTip': '含双链 [[…]]（详情富文本中可点击跳转）',
   'tree.toggleTip': '展开/折叠',
   'tree.sysChipTip': '机器托管笔记（sys）：默认列表/搜索降噪不显示，随文件夹展开可见（0.4.4-C 显式入口）',
-  'tree.sysFolderTip': '机器托管文件夹（自动沉淀：工作日志/记忆档案/执行记录）——默认从树隐身；筛选中心「机器」档或「显示隐藏」开时可见（0.4.4-G）',
+  /* 0.4.6-D（R2 n-mux7arxj4ocf）：tooltip 按真实行为写——隐身是缺省态而非恒态；tooltip 能被看到本身就意味着某条显式通道已开，写明消除「说隐身却可见」矛盾 */
+  'tree.sysFolderTip': '机器托管文件夹（自动沉淀：工作日志/记忆档案/执行记录）——默认从树隐藏降噪；当前可见 = 筛选中心「机器」档或「显示隐藏」已开（0.4.4-G），点行展开/收起查看',
+  /* 0.4.6-H（R2 n-mux9r8hfh7xy）：夹展开为空的遮罩提示行（子夹全是 sys/hidden 被整节点滤除时） */
+  'tree.sysMaskHint': '内含机器托管内容，可开启「显示隐藏」或「机器」档查看',
+  /* 0.4.6-J（notes-046-group-paging）：组尾加载行（分组分页：置顶/文件夹/未入夹/主题四组同构，点击该组 += PAGE_SIZE） */
+  'tree.moreRows': '加载更多（还有 {n} 条）',
   'tree.countN': '{n} 条',
   'tree.viewTopic': '主题 · {id}',
   'tree.viewAll': '全部笔记',
@@ -66,6 +70,9 @@ var I18N_ZH = {
   'tree.crossFolder': '跨文件夹',
   'tree.topicViewTip': '主题视图（跨文件夹过滤）',
   'tree.noMatch': '无匹配笔记',
+  /* 0.4.6-D（R2 n-mux7as3gnrru）：搜索空态引导行——动作出口（更短关键词提示 + 新建一篇按钮） */
+  'tree.noMatchGuide': '试试更短的关键词，或',
+  'tree.noMatchNew': '新建一篇',
   'tree.clearFilters': '清空筛选条件',
   'tree.clearFiltersShort': '清空筛选',
   'tree.clearAllFiltersTip': '清空全部筛选条件',
@@ -78,6 +85,14 @@ var I18N_ZH = {
   'tree.emptyTitle': '还没有笔记',
   'tree.emptySub': '点侧栏「新建」输入标题，创建第一条笔记',
   'tree.emptyBtn': '记第一条',
+  /* ===== 0.4.6-B RPC 韧性层（notes-046-rpc-resilience）：超时/网络错误结构化 + 挂起提示条 + 落地页空态引导 ===== */
+  'rpc.slowBar': '连接较慢，仍在加载…',
+  'rpc.timeout': '请求超时（{s} 秒无响应），已中断',
+  'rpc.network': '网络异常：{msg}',
+  'rpc.hostTimeout': '笔记服务响应超时（{s} 秒）',
+  'tree.landingTitle': '尚未连接到会话',
+  'tree.landingSub': '打开一个会话后再使用笔记面板；若已在会话中，点下方重试',
+  'tree.landingRetry': '重试',
   'sel.selCount': '已选 {n} 条',
   'sel.merge': '合并',
   'hint.select': '🖱 在右侧正文<b>划选文字松手</b> → 弹出快速记录卡片',
@@ -97,7 +112,8 @@ var I18N_ZH = {
   'editor.autoSaved': '✓ 已自动保存 {time}',
   'editor.autoSavedFlat': '已自动保存 {time}',
   'editor.emptyTitle': '选择左侧一条笔记查看和编辑',
-  'editor.emptySub': '点侧栏顶部 + 新建笔记（先开草稿，输入内容才落库）；正文划选文字可弹出快速记录卡片',
+  /* 0.4.6-D（R2 n-mux79kfts75o）：双端新建文案对齐——本端（全窗口页）为草稿先行，括注面板端差异消除两端互矛盾观感；行为统一属大改另议（差异留档见 app/modals/newnote.js 头注） */
+  'editor.emptySub': '点侧栏顶部 + 新建笔记（先开草稿，输入标题或正文即落库；面板端「新建」为弹窗即建）；正文划选文字可弹出快速记录卡片',
   'editor.emptyTitleShort': '选择一条笔记查看和编辑',
   'editor.emptySubShort': '点侧栏「新建」输入标题，新建一条笔记',
   'editor.degBanner': '检测到<b>暂不支持富文本编辑的语法</b>，富文本不可用（仍可源码编辑）：',
@@ -119,6 +135,7 @@ var I18N_ZH = {
   'editor.tbImage': '插入图片 ![](assets/..)（也可 Ctrl+V 粘贴 / 拖拽文件）',
   'editor.syncing': '编辑中…',
   'editor.synced': '已同步源码',
+  'editor.bodySyncing': '正文加载中…',   /* 0.4.6-A：正文在途窗同步点文案（不冒绿「已同步」）；editor.bodyLoading 系整理链路既有键，不复用 */
   'editor.modeSource': '源码模式',
   'editor.modeRich': '富文本模式',
   'editor.imageOnly': '仅支持图片文件',
@@ -226,6 +243,8 @@ var I18N_ZH = {
   'meta.delTipClient': '删除（软删除，可恢复）',
   'meta.injectOff': '已关闭上下文注入',
   'meta.injectOn': '已注入为上下文 · {role}（范围见右侧下拉）',
+  /* 0.4.6-E（n-mux8ccd3i4ub）：「约定」档点击二次确认闸——约定 = 全文进系统提示每次对话必读，误触即真实全会话注入 */
+  'meta.convInjectConfirm': '设为约定：《{title}》将对{scope}生效（全文进系统提示，每次对话必读），确认开启？',
   'meta.sensOn': '已标记敏感（注入时自动脱敏）',
   'meta.sensOff': '已取消敏感标记',
   'meta.hiddenOn': '已隐藏（列表/树不再显示；跳转与搜索打开不受影响）',
@@ -448,16 +467,20 @@ var I18N_ZH = {
   'inj.mountLabel': '一句话说明：什么时候该读这篇（whenToUse）',
   'inj.mountPlaceholder': '如：改注入相关逻辑时、验收资料挂载时…',
   'inj.mountSave': '挂载',
-  'inj.mountSkip': '跳过',
+  'inj.mountSkip': '不用建议，自己写',
   'inj.mountSaved': '已挂载索引：{title}',
   'inj.mountFailed': '挂载失败：{msg}',
   // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
   'inj.mountEdit': '编辑挂载',
   'inj.mountAdd': '补充 whenToUse 并挂载',
   'inj.mountGen': '正在生成 whenToUse…',
+  // 0.4.6-E（n-mux8ak66jttd）：LLM 预填三态可见化——失败态文案（原因随 tooltip 给原始 error；跳过按钮文案同步改名「不用建议，自己写」消歧义）
+  'inj.mountGenFail': '预填不可用，请手写',
   // 0.4.3 验收修复⑥（notes-043-metrics-present）：注入管理面板挂载区统计行（notes-recall-stats 账本快照，点开看全量）
   'inj.mntStats': '挂载 {m}｜本周引用 Top：{top}｜零引用 {z}',
   'inj.mntStatsTip': '召回价值信号（数据源 notes-recall-stats · 账本快照）· 点开看全量分通道统计',
+  // 0.4.6-E（n-mux8cq80ai5h）：统计行补「截至」时刻（telemetry meta.lastFlush 口径，与目录段信号行同）；挂载计数改实时现算（mountNow）
+  'inj.mntStatsAsOf': '截至 {at}',
   // 0.4.5-G 约定体检（notes-045-conflict-check）：LLM 两两检测注入中约定的冲突/被取代对——只提名不执行，人工裁决三动作
   'inj.conflictTitle': '约定体检',
   'inj.conflictTitleSub': 'LLM 两两检测注入中约定的冲突/取代 · 只提名不执行',
@@ -557,6 +580,8 @@ var I18N_ZH = {
   'disp.dispatchedQueued': '已排队到「{name}」（休眠会话 · 下次活动送达）',
   'disp.schedNew': '专属会话（首轮触发自动创建「定时 · 任务名」，后续复用）',
   'disp.schedNewTarget': '首轮自动创建专属会话',
+  'disp.schedModelDefault': '默认模型（跟随宿主当前选择）',   /* 0.4.6-G：专属会话模型下拉缺省项（空值 = 声明不带 model/provider） */
+  'disp.schedModelTip': '专属会话模型档位：{model}',          /* 0.4.6-G：调度行模型标注 tooltip + 下拉 title */
   'disp.newSessDone': '已新建会话，待办已注入并开始处理',
   'disp.failed': '派发失败：{msg}',
   'disp.markedDone': '已标记完成',
@@ -571,8 +596,9 @@ var I18N_ZH = {
   'arch.sub': '勾选后才执行 · 合并可撤销',
   'arch.hint': '速记按会话分组，勾选的组合并成一篇归档笔记（原笔记备份后软删除）。',
   'arch.hintClient': '速记按会话分组，勾选的组合并成一篇归档笔记（原笔记 .bak 备份后软删除）。',
-  'arch.manualHint': '手动笔记不受影响；如需合并手动笔记，请在列表多选后右键合并。',
-  'arch.empty': '没有可归档的速记组（同一会话 ≥2 条速记才会成组）。',
+  /* 0.4.6-D（R1 追加 n-mut4lscwg6tf）：旧文案指向「列表多选后右键」这一不存在的交互（笔记行无右键菜单）——改为指向真实路径（底部操作条「合并」按钮） */
+  'arch.manualHint': '手动笔记不受影响；如需合并手动笔记，点侧栏底部「选择」勾选多条后，点底部操作条的「合并」。',
+  'arch.empty': '没有可归档的速记组（同一会话 ≥2 条速记才会成组）。速记 = 划选文字松手弹出的快速记录卡片产生的暂存笔记。',   /* 0.4.6-D：空态补速记概念解释（n-mux7as4ppskn） */
   'arch.ok': '归档所选',
   'arch.okCount': '归档所选（{n} 组）',
   'arch.archiving': '归档中…',
@@ -650,6 +676,8 @@ var I18N_ZH = {
   'sugg.unmountConfirm': '摘除挂载：{title}？（不删笔记，仅移出注入载荷；可随时重新挂载）',
   'sugg.unmounted': '已摘除挂载：{title}',
   'sugg.unmountFailed': '摘除挂载失败：{msg}',
+  /* 0.4.6-E（n-mux8beuj84i2）：零引用挂载段空态口径统一——零候选也渲染段头 + 本行（与速记组/过期/孤儿/日志卫生段同款空态策略） */
+  'sugg.zeroRefEmpty': '当前无零引用挂载候选。',
   'newnote.draftToast': '已开草稿：输入标题或正文即自动落库；直接点别的笔记则草稿丢弃（零空笔记）',
   'newnote.createdToast': '已创建笔记（首次编辑自动落库）',
   'newnote.flushedToast': '草稿已自动落库：「{title}」',
@@ -698,6 +726,8 @@ var I18N_ZH = {
   'filter.kindGroup': '类型',
   'filter.ruleOrAnd': '组内 OR · 与状态组 = AND',
   'filter.hitCount': '命中 {n} 条',
+  /* 0.4.6-H（R2 n-mux9rpgowpz6）：「机器」选项计数占位——sys 不入缺省缓存（计数恒 0 属误导），点选后 host kind 通道取回全库 sys 才显真实命中数 */
+  'filter.sysCountLazy': '点选加载',
   'filter.clear': '清空',
   'filter.done': '完成',
   'filter.removeAria': '移除条件 {label}',
@@ -782,7 +812,8 @@ var I18N_ZH = {
   'ctx.newFolder': '新建文件夹…',
   'ctx.merge': '合并为一篇',
   'help.newPre': '点侧栏「新建」或按 ',
-  'help.newPost': ' 输入标题新建笔记，创建后直接编辑正文',
+  /* 0.4.6-D（R2 n-mux79kfts75o）：双端新建文案对齐——本端（面板）为模态弹窗即建即编辑，括注全窗口页差异；行为统一属大改另议（差异留档见 client/modals/newnote.js 头注） */
+  'help.newPost': ' 弹出新建窗口：输入标题、选类型，点「创建」立即落库并编辑正文（全窗口页 + 号新建为草稿先行：输入即落库）',
   'help.capture': '在页面划选文字松手，弹出快速记录卡片（自动识别为引用）',
   'help.mergeWin': '同一会话 10 分钟内的速记自动合并',
   'help.topic': '点面包屑/编辑器里的主题可按主题全局过滤（跨文件夹）',
@@ -797,7 +828,7 @@ var I18N_ZH = {
   'help.keysEsc': ' 分层（关浮层 → 清搜索并还焦列表 → 关面板）',
   'help.cheatPre': '非输入焦点时按 ',
   'help.cheatPost': ' 唤起快捷键速查表（cheat sheet，Esc 关闭；设置卡「键盘快捷键」行同入口）',
-  'help.archive': '「速记合并」：弹出预览，勾选速记组后才合并（可撤销）；手动笔记点「选择」多选合并',
+  'help.archive': '「速记合并」：把划选快速记录产生的速记暂存归并成一篇正式笔记——弹出预览勾选后才执行（可撤销）；手动笔记点「选择」多选后走底部操作条「合并」',   /* 0.4.6-D：补速记概念 + 合并路径指向真实底部按钮（幽灵右键清零） */
   'help.organize': '编辑器「整理」：AI 按类型模板重写正文（替换后可撤销一次）；新建笔记按类型预填模板骨架',
   'help.image': '图片超过 1MB 自动压缩转 JPEG；设置卡片「资产清理」清理未被引用的孤儿文件',
   'help.delete': '删除是软删除：侧栏底部「回收站」可恢复或彻底删除（彻底删除不可恢复）',
@@ -805,7 +836,7 @@ var I18N_ZH = {
   /* ===== 0.4.5-H 会话头部注入清单徽标（notes-045-session-injected-view）：📎N + 明细浮层 + 直达笔记 =====
      复用既有 key（禁重复建别名）：meta.scopeAll/scopeSession（约定行范围文字）、common.listSep、tree.untitled、
        wiki.targetNotFound（直达失败 toast） */
-  'injBadge.tip': '本会话注入：约定 {m} · 资料 {k}（点击查看明细）',
+  'injBadge.tip': '本会话注入：约定 {m} · 资料 {k}（徽标数字 = 两者合计；点击查看明细）',   /* 0.4.6-C：数字语义写明（R2 反馈误读为笔记数/未读数） */
   'injBadge.title': '本会话注入清单',
   'injBadge.convSec': '约定 · 须遵守（{n}）',
   'injBadge.refSec': '挂载资料 · 按需取用（{n}）',
@@ -815,4 +846,21 @@ var I18N_ZH = {
   'mention.section': '笔记',
   'mention.inlineHead': '【笔记 · {title} · {id}】',
   'mention.fetchFailed': '@{title}（内容拉取失败）',
+  /* ===== 0.4.6-C 概念引导与治理入口信号（notes-046-ux-discovery；UX 巡检 R2 发现性族：
+     概念引导前置（使用说明首屏 30 秒五概念 + 空态指向）/ 建议+体检入口提升顶栏（带计数徽标）/ @ 空态提示 / 📎 数字语义 ===== */
+  'help.conceptTitle': '核心概念 30 秒',
+  'help.conceptConvention': '约定：每次对话都注入、Agent 必须遵守——写下规则，AI 会一直照做',
+  'help.conceptReference': '资料：注入后 Agent 按需取用的参考——不强制遵守，需要时才读',
+  'help.conceptMount': '挂载：把笔记登记进注入目录（一行索引 +「何时查我」）——Agent 先看到索引，需要全文再调取',
+  'help.conceptDispatch': '派发：把待办笔记派给指定会话执行——完成后回执自动闭环',
+  'help.conceptHidden': '隐藏：笔记从列表/树隐身降噪——搜索和跳转仍能找到，不是删除',
+  'help.conceptMore': '完整版见 设置 →「概念速览」',
+  'tree.emptyConcept': '写下的约定/资料可注入 AI 会话——点标题栏 ? 花 30 秒看懂五个核心概念',
+  'editor.emptyConcept': '写下的约定/资料可注入 Agent 会话——设置卡顶部「概念速览」30 秒看懂五个核心概念',
+  'topbar.suggest': '建议',
+  'topbar.suggestTip': '整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）',
+  'topbar.suggestTipN': '整理建议：{n} 条待办治理候选（只提名不执行；含约定体检入口）',
+  'sugg.goConflict': '约定体检…',
+  'sugg.goConflictTip': '打开注入管理面板的约定体检区：LLM 两两检测注入中约定的冲突/取代（只提名不执行）',
+  'mention.empty': '输入标题关键词搜索笔记',
 }

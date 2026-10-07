@@ -69,7 +69,7 @@ module.exports = {
     assert(cliConstSrc.indexOf("const FILTER_KINDS = ['note', 'decision', 'todo', 'link', 'quote', 'log', 'sys']") >= 0, '⑩ client FILTER_KINDS 含 sys（「机器」档入口）')
     assert(zhSrc74.indexOf("'meta.kindSys': '机器'") >= 0 && enSrc74.indexOf("'meta.kindSys': 'Machine'") >= 0, '⑩ i18n meta.kindSys 双语键（「机器」/Machine）')
     assert(appDataSrc.indexOf('function listFetchSig()') >= 0 && appDataSrc.indexOf("rpc('notes-list', listArgs)") >= 0 && appDataSrc.indexOf('{ kind: sig }') >= 0, '⑩ app 列表取数恰选单 kind 传 {kind}（listFetchSig 口径）')
-    assert(cliIndexSrc.indexOf("host.call('notes-list', kf.length === 1 ? { kind: kf[0] } : undefined)") >= 0 && cliIndexSrc.indexOf('React.useEffect(() => { if (open) loadNotes(true) }, [filters.kinds])') >= 0, '⑩ client 列表取数恰选单 kind 传 {kind} + kind 档切换重拉 effect')
+    assert(cliIndexSrc.indexOf("host.call('notes-list', kf.length === 1 ? { kind: kf[0] } : undefined)") >= 0 && cliIndexSrc.indexOf('React.useEffect(() => { if (open) loadNotes(true, filters.kinds) }, [filters.kinds])') >= 0, '⑩ client 列表取数恰选单 kind 传 {kind} + kind 档切换重拉 effect（0.4.6-K 起显式传 filters.kinds，甩掉 filtersRef 序位依赖）')
   })
 
   // ---- 74.1 fixture 全链路：指标快照数值 + 存量 §2 摘除 + 档案懒创建 + 近 7 天窗口过滤 ----

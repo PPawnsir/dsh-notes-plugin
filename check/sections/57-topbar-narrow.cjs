@@ -47,10 +47,11 @@ module.exports = {
     assert(/<button class="tbtn ico-only" id="btnTheme" title="切换主题[^"]*"><svg class="ic"><use href="#i-theme"\/><\/svg><span class="tb-t">切换主题<\/span><\/button>/.test(protoSrc), '原型 btnTheme 应为 ico-only + i-theme 图标 + tb-t 文字')
     assert(/<button class="tbtn" id="btnRefresh"[^>]*><svg class="ic"><use href="#i-refresh"\/><\/svg><span class="tb-t">刷新<\/span>/.test(protoSrc) && /<button class="tbtn" id="btnArchive"[^>]*><svg class="ic"><use href="#i-check"\/><\/svg><span class="tb-t">速记合并<\/span>/.test(protoSrc), '原型 刷新/速记合并 保文字（tb-t；0.4.5-D 改名）')
     assert(protoSrc.indexOf('id="i-theme"') >= 0, '原型缺 i-theme 图标 symbol')
-    // 计数闸：ico-only 恰好 = app 2（切换主题+DSH 主界面）/ 原型 1（切换主题），防误标扩散
-    assert((appSrc.match(/class="tbtn ico-only"/g) || []).length === 2, 'app.html ico-only 按钮应恰好 2 枚')
-    assert((protoSrc.match(/class="tbtn ico-only"/g) || []).length === 1, '原型 ico-only 按钮应恰好 1 枚')
-    assert((appSrc.match(/class="tb-t"/g) || []).length === 4 && (protoSrc.match(/class="tb-t"/g) || []).length === 3, 'tb-t 文字包裹数：app 4 / 原型 3')
+    // 计数闸：ico-only 恰好 = app 3（建议[0.4.6-C]+切换主题+DSH 主界面）/ 原型 2（建议+切换主题），防误标扩散
+    assert((appSrc.match(/class="tbtn ico-only"/g) || []).length === 3, 'app.html ico-only 按钮应恰好 3 枚（0.4.6-C 建议入口窄宽收图标态）')
+    assert((protoSrc.match(/class="tbtn ico-only"/g) || []).length === 2, '原型 ico-only 按钮应恰好 2 枚（0.4.6-C 建议入口）')
+    assert(/<button class="tbtn ico-only" id="btnSuggest" title="整理建议[^"]*"><svg class="ic"><use href="#i-sparkle"\/><\/svg><span class="tb-t">建议<\/span>/.test(appSrc) && /<button class="tbtn ico-only" id="btnSuggest" title="整理建议[^"]*"><svg class="ic"><use href="#i-sparkle"\/><\/svg><span class="tb-t">建议<\/span>/.test(protoSrc), 'btnSuggest 双端 ico-only + i-sparkle 图标 + title + tb-t 文字（0.4.6-C）')
+    assert((appSrc.match(/class="tb-t"/g) || []).length === 5 && (protoSrc.match(/class="tb-t"/g) || []).length === 4, 'tb-t 文字包裹数：app 5 / 原型 4（0.4.6-C 顶栏「建议」入口 +1，notes-046-ux-discovery）')
   })
 
   await t('行为级 eval：断点判定函数（自 CSS 源提取阈值 eval）+ ico-only 配对完整性（图标/title/文字三齐备，收图标不留空按钮）', () => {

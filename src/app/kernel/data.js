@@ -12,10 +12,13 @@ function listFetchSig() { return filters.kinds.length === 1 ? filters.kinds[0] :
 function loadNotes(silent) {
   var sig = listFetchSig();
   var listArgs = sig ? { kind: sig } : undefined;   /* ⑩ 恰选 1 个 kind → host kind 通道（「机器」档取 sys 全库） */
+  /* 0.4.6-B（notes-046-rpc-resilience）：非静默取数在途期树显「加载中…」行——首载/手动刷新挂起不再空白零提示（silent 后台静默刷新不动） */
+  if (!silent) { listLoading = true; renderTree(); }
   return rpc('notes-list', listArgs).then(function (res) {
     if (res && res.error) throw new Error(res.error);
     if (res && res.notes) notes = res.notes;
     return loadFolders();
-  }).then(function () { ensureWikiIndex(); renderTree(); refreshSysKids(); return true })   /* 0.4.4-C：列表刷新后复核 sysKids（剔除陈旧 + 展开中的夹重拉覆盖；refreshSysKids 定义在 panels/tree.js） */
-    .catch(function (e) { if (!silent) toast(t('side.loadFailed', { msg: e && e.message || e })); return false });   /* i18n 覆盖卡F：side.loadFailed */
+  }).then(function () { refreshSuggestBadge() })   /* 0.4.6-C：列表落定即触发建议徽标刷新（modals/suggest.js 内 3s 节流，高频静默刷新不 hammer） */
+  .then(function () { listLoading = false; ensureWikiIndex(); renderTree(); refreshSysKids(); return true })   /* 0.4.4-C：列表刷新后复核 sysKids（剔除陈旧 + 展开中的夹重拉覆盖；refreshSysKids 定义在 panels/tree.js） */
+    .catch(function (e) { listLoading = false; if (!silent) { renderTree(); toast(t('side.loadFailed', { msg: e && e.message || e })) } return false });   /* i18n 覆盖卡F：side.loadFailed */
 }

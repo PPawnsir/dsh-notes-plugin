@@ -25,7 +25,7 @@ module.exports = {
             btnN: btns.length,
           }
         })
-        H.t('顶栏 4 个按钮全渲染（窄断点只收文字不删按钮）', m.btnN === 4, () => '实际 ' + m.btnN + ' 个')
+        H.t('顶栏 5 个按钮全渲染（窄断点只收文字不删按钮；0.4.6-C +建议入口）', m.btnN === 5, () => '实际 ' + m.btnN + ' 个')
         H.t('顶栏高度 ≤60px（未换行堆叠）', !m.wrap, () => '顶栏高度 ' + m.barH + 'px')
         H.t('所有按钮同一行（top 最大差 ≤2px，基线渲染容差）', Math.max(...m.topSet) - Math.min(...m.topSet) <= 2, () => 'top 集合：' + JSON.stringify(m.topSet))
         H.t('无横向溢出（scrollWidth ≤ 视口宽）', m.overflowX === false)
