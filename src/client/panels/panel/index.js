@@ -145,7 +145,7 @@
         // 编辑器域已拆出（§6 步骤 E：panel/editor.js——ed* 字段态/整理撤销栈/历史计数/双模式运行时 + selectNote/doSave/doDelete/
         // applyRestoredBody/probeHistCount/insertImageMd/三态开关/工具栏/富文本绑定 + renderEditorEl 渲染函数 归 usePanelEditor；
         // selected/notes/dispatching/wiki 族经入参注入；setSelected/setFocusId/later 等经 kernel 转发别名）
-        const { edScope, selectNote, doDelete, applyRestoredBody, probeHistCount, histCountRef, setHistCount, insertImageMd, afterArchiveCleanup, toggleScope, keepSel, restoreSel, scheduleRichSync, setEditorModeState, edBodyDomRef, richRef, richDirtyRef, setEdBody, renderEditorEl, doAiOrganize } = usePanelEditor({ selected: selected, notes: notes, dispatching: dispatching, open: open, wikiVer: wikiVer, wikiResolve: wikiResolve, bumpWikiBody: bumpWikiBody, jumpToWikiTarget: jumpToWikiTarget })
+        const { edScope, selectNote, doDelete, applyRestoredBody, probeHistCount, histCountRef, setHistCount, insertImageMd, afterArchiveCleanup, toggleScope, keepSel, restoreSel, scheduleRichSync, setEditorModeState, edBodyDomRef, richRef, richDirtyRef, setEdBody, renderEditorEl, doAiOrganize, flushPendingEdits } = usePanelEditor({ selected: selected, notes: notes, dispatching: dispatching, open: open, wikiVer: wikiVer, wikiResolve: wikiResolve, bumpWikiBody: bumpWikiBody, jumpToWikiTarget: jumpToWikiTarget })
         // 注入范围浮层已拆出（§6 步骤 E：popovers/scope.js；hook 调用点随 edScope 依赖后置于此——editor hook 先行回填 edScope）
         const { sessList, sessPending, scopeOpen, setScopeOpen, injectScopeLabel, scopePanelEl } = usePanelScope({ open: open, notes: notes, edScope: edScope })
         // keepQuickRef/edBodyDomRef/edLoadingRef/rich*Ref/ed*Ref/autoSaveRef 等编辑器运行时 ref 已随 panel/editor.js 迁出（hook 内同文）
@@ -231,7 +231,7 @@
         // ===== 拖拽挪入/挪出文件夹（HTML5 DnD；与右键「移动到文件夹」共用 ctxMoveToFolder 移动逻辑）=====
         // 双向拖拽族（onNoteDrag*/onFolderDrag*/onUnfiled*）已随 panel/tree.js 迁出（同文；dragNoteIdRef/dragFolderIdRef 为该模块顶层绑定）
         // 点击菜单外部关闭 effect 已随 popovers/ctx-menu.js / folder-menu.js 迁入各自 hook（同文）
-        function close() { panelOpen = false; notify() }
+        function close() { flushPendingEdits('关闭面板'); panelOpen = false; notify() }   // 0.4.7-C：关闭前先 flush <900ms 在途编辑（×/Esc 同走本收口；富文本 DOM 拆毁前序列化落盘）
         // jumpToSession（来源会话跳转）已随 panel/editor.js 迁出（编辑器 meta 行「来源」按钮同域）
         // setRoleSeg/toggleSens/toggleScope（注入三态/敏感/范围多选）已随 panel/editor.js 迁出（同文；
         // setScopeOpen 联动经 kernel 转发别名 → panelBridge 回填；「目录可见」开关随 0.4.3⑪ chip 拆除退役）
@@ -357,6 +357,7 @@
         panelBridge.sessPending = sessPending
         panelBridge.jumpToWikiTarget = jumpToWikiTarget
         panelBridge.setEdBody = setEdBody   // dispatch 确认后回填正文（modals/dispatch.js 经此中转，禁横向引用）
+        panelBridge.flushPendingEdits = flushPendingEdits   // 0.4.7-C：头部按钮 toggle-off 关闭路径同调兜底 flush（entries 经桥中转，序位 entries 先于 panel）
         panelBridge.doAiOrganize = doAiOrganize   // 0.4.4-F 整理引导卡确认回跳（modals/organize-instruct.js 经此中转，禁横向引用——序位 organize-instruct 先于 panels）
         panelBridge.openDispatchEdit = openDispatchEdit   // 调度任务「编辑」回填派发弹窗（modals/inject-manager.js 经此中转，禁横向引用——序位 inject-manager 先于 dispatch）
         panelBridge.openMountModal = openMountModal   // 预览目录行点击开挂载弹层（modals/inject-preview.js 经此中转，禁横向引用——序位 inject-preview 先于 inject-manager）

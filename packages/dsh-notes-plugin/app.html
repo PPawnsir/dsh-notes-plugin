@@ -256,6 +256,24 @@
   .meta-act svg.ic{width:12px;height:12px}
   /* 二期 ✨整理按钮：整理中态（忙） */
   .meta-act.organize-btn.busy{opacity:.62;cursor:default;pointer-events:none}
+  /* 0.4.7-B②b（notes-047-ux）：meta 行动区封板——动作总数超 META_ACT_MAX 时中段收进「…」溢出菜单（动作相对顺序不动，仅收纳） */
+  .meta-more-wrap{position:relative;display:inline-flex}
+  .meta-act.meta-more{padding:3px 8px;font-weight:700;letter-spacing:1px}
+  .meta-more-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:70;min-width:120px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:4px;display:flex;flex-direction:column;gap:2px;align-items:stretch}
+  .meta-more-menu .meta-act{padding:5px 10px;white-space:nowrap}
+  /* 0.4.7-B④a（notes-047-ux，R2 漏网 n-mux79knmfjxt）：三态分段旁可见 ⓘ——tooltip 与三档原生 title 同文（合成），可聚焦 + 点击 toast 同文（触屏/键盘可达） */
+  .role-info{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin-left:2px;border-radius:50%;color:var(--nt3);cursor:help;user-select:none;font-size:11px;flex-shrink:0}
+  .role-info:hover{color:var(--nacc-tx);background:var(--nbg-hover)}
+  .role-info:focus-visible{outline:2px solid var(--nacc);outline-offset:1px}
+  /* 0.4.7-B⑥（notes-047-ux，实测 n-muy9gdybdd40）：整理中态强化——正文区遮罩（spinner + 「约需半分钟」文案）；整理失败驻留条（手动 ✕ 才消失） */
+  .org-veil{position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(22,22,26,.55);background:color-mix(in srgb, var(--npanel) 78%, transparent);color:var(--nt2);font-size:12.5px}
+  .org-veil .org-spin{width:16px;height:16px}
+  .org-spin{width:10px;height:10px;border:2px solid var(--nbd-soft);border-top-color:var(--nacc);border-radius:50%;animation:orgSpin .8s linear infinite;flex-shrink:0}
+  @keyframes orgSpin{to{transform:rotate(360deg)}}
+  #orgErr .org-x{margin-left:auto;cursor:pointer;color:var(--nt3);padding:0 4px;flex-shrink:0}
+  #orgErr .org-x:hover{color:var(--ntx)}
+  /* 0.4.7-B⑤（notes-047-ux）：派发弹窗专属会话无界面提示行 */
+  .sched-new-hint{font-size:10.5px;color:var(--nwarn);line-height:1.5;margin:4px 0 2px;padding-left:2px}
   /* ===== 双模式编辑器 v3（原型 design/notes-editor-v3.html；与面板 styles.css 同款无前缀；色板走上方 html[data-theme] 块，此处不加主题块以守住 v2 色板同步断言） ===== */
   .ed-main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
   .src{flex:1;width:100%;resize:none;border:0;outline:0;background:transparent;color:var(--ntx);font-family:var(--nmono);font-size:12.5px;line-height:1.8;padding:14px 24px 24px}
@@ -284,6 +302,8 @@
   .rtb .sync .sd{width:6px;height:6px;border-radius:50%;background:var(--nwarn)}
   html[data-theme="dark"] .rtb .sync.ok .sd{background:#56c88f}
   html[data-theme="light"] .rtb .sync.ok .sd{background:#2f9e6e}
+  .rtb .sync.err{color:var(--ndanger)}   /* 0.4.7-C ②a：失败态同步点统一（红点 + 失败文案，与 client 端 .dsh-notes-rtb-sync.err 同口径） */
+  .rtb .sync.err .sd{background:var(--ndanger)}
   .rich{flex:1;padding:14px 24px 64px;outline:none;font-size:13px;line-height:1.75;min-height:calc(100% - 40px);caret-color:var(--nacc)}
   .rich:empty::before{content:var(--i18n-ed-rich-ph,"正文…（富文本，编辑后失焦自动同步源码）");color:var(--nt3)}
   .rich p{margin:0 0 14px;word-break:break-word}
@@ -372,7 +392,8 @@
   /* ===== 通用 modal ===== */
   .mask{position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.45);display:grid;place-items:center}
   .modal{width:460px;max-width:calc(100vw - 60px);max-height:82vh;overflow-y:auto;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-lg);box-shadow:0 16px 48px rgba(0,0,0,.5);padding:16px}
-  .modal-t{font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;margin-bottom:12px}
+  /* 0.4.7-B①a（notes-047-ux）：弹窗标题栏 sticky——长弹窗（设置卡 16 节）滚动时标题栏动作区（保存/还原/✕）恒见；短弹窗零视觉差 */
+  .modal-t{font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;margin:-16px -16px 12px;padding:16px 16px 12px;position:sticky;top:-16px;background:var(--npanel);z-index:5;border-radius:var(--nr-lg) var(--nr-lg) 0 0}
   .modal-t .sub{font-size:10.5px;color:var(--nt3);font-weight:400}
   .modal-hint{font-size:11.5px;color:var(--nt3);line-height:1.6;margin-bottom:10px}
   .modal-err{font-size:11.5px;color:var(--ndanger);margin-top:10px;line-height:1.5;white-space:pre-wrap}
@@ -465,6 +486,13 @@
   .hist-preview{font-size:12px;line-height:1.7;background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:12px 14px;max-height:52vh;min-height:180px;overflow:auto;box-sizing:border-box}
   .set-label{flex:1;font-size:12.5px}
   .set-label .s{display:block;font-size:10.5px;color:var(--nt3);margin-top:2px;line-height:1.5}
+  /* 0.4.7-B①b（notes-047-ux）：描述文本瘦身——长说明（>60 字）限 2 行收折，行首 ⓘ 钮展开/收拢（键盘可聚焦） */
+  .set-label .s.cl{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .sx{display:inline-flex;align-items:center;justify-content:center;margin-left:4px;padding:0 3px;border:0;background:transparent;color:var(--nt3);font-size:10.5px;line-height:1.4;cursor:pointer;vertical-align:baseline;border-radius:4px;font-family:inherit}
+  .sx:hover{color:var(--nacc-tx);background:var(--nbg-hover)}
+  .sx:focus-visible{outline:2px solid var(--nacc);outline-offset:1px}
+  /* 0.4.7-B①c：概念速览 bullet 折行排版——悬挂缩进（续行对齐到「· 」之后的文字起点） */
+  .modal-hint .onb-li{padding-left:13px;text-indent:-13px}
   .set-ctrl{display:flex;align-items:center;gap:6px}
   .set-ctrl select{max-width:190px}
   /* LLM 用量区（设置卡片「LLM 用量」行）：数值两行竖排 */
@@ -630,9 +658,9 @@
   <div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>dsh-notes</b>
   <span class="sub" id="topSub">你的笔记库 · 写下的约定与资料可注入 Agent 会话</span>
   <span class="sp"></span>
-  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（建议/切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新/速记保文字 -->
+  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（建议/切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新保文字；
+       0.4.7-B②a（notes-047-ux）：「速记合并」顶栏按钮撤除——与建议器首段「速记组 → 去归档」入口重复（0 组也占主行动位）；归档预览入口 = 顶栏「建议」→ 速记组段 -->
   <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg><span class="tb-t">刷新</span></button>
-  <button class="tbtn" id="btnArchive" title="速记 = 划选文字松手弹出的快速记录（暂存）；点按弹出预览，勾选后把同一会话的速记归并成一篇正式笔记（可撤销）"><svg class="ic"><use href="#i-check"/></svg><span class="tb-t">速记合并</span></button>
   <!-- 0.4.6-C（notes-046-ux-discovery）：治理入口提升到顶栏——整理建议 + 约定体检（建议框底栏）；有待办候选时 #suggestBd 计数徽标点亮（notes-suggest 六段合计） -->
   <button class="tbtn ico-only" id="btnSuggest" title="整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）"><svg class="ic"><use href="#i-sparkle"/></svg><span class="tb-t">建议</span><span class="cnt" id="suggestBd" style="display:none"></span></button>
   <button class="tbtn ico-only" id="btnTheme" title="切换主题（暗色/亮色）"><svg class="ic"><use href="#i-theme"/></svg><span class="tb-t">切换主题</span></button>
@@ -688,7 +716,7 @@
 /* ================= 数据层：/dsh-notes RPC（与 lib/client.js 同模式） ================= */
 /* 0.4.6-B 韧性层（notes-046-rpc-resilience，巡检三角色同族证据 n-mux88x3knpsv/n-mux89mdj6tty/n-mux8a1l4k2nv）：
    裸 fetch 包装（无超时/无错误处理/挂起=空白假死）→ 三件套：
-   ① 超时：AbortController，缺省 RPC_TIMEOUT_MS；LLM 类长调用（host 侧 8s 级起）经 RPC_LLM_METHODS 显式放宽；
+   ① 超时：AbortController，缺省 RPC_TIMEOUT_MS；LLM 类长调用（host 侧 8s~120s 级：when-suggest 草稿 8s / 约定体检 120s——0.4.7-A⑨）经 RPC_LLM_METHODS 显式放宽；
    ② 超时/网络错误 → 结构化 {error} 返回（与 host error 形态一致，调用点零改动兼容）+ toast 显式告知（不静默）；
    ③ 挂起 > RPC_SLOW_MS → 非阻塞「连接慢」提示条（#rpcSlowBar，CSS pointer-events:none 不遮罩不阻断），全部落定后消失。
    红线：不改 host 协议形态；超时值集中本块常量可改；不引入第三方库；UI 提示不阻断操作。 */
@@ -726,6 +754,25 @@ function rpc(method, args) {
       toast(msg);   /* 错误不静默：韧性层显式 toast（调用点的业务横幅/错误条语义照旧） */
       return { error: msg };
     })
+}
+/* 0.4.7-C（notes-047-stability ①）：卸载兜底专用直发——页面拆毁期普通 fetch 常被取消，keepalive/sendBeacon 是卸载可靠通道。
+   自包含（不走 rpc() 超时/慢条三件套：卸载期计时器无意义）；sendBeacon 优先（浏览器保证投递尝试），
+   不支持/排队满回退 fetch keepalive；64KB keepalive 预算守卫——超预算回退普通 rpc() 尽力送达（宁可尽力不可硬失败）。
+   火忘语义：响应体无人消费，返回 Promise 仅为调用点形态兼容 */
+function rpcKeepalive(method, args) {
+  try {
+    var body = JSON.stringify({ method: method, args: args || {} });
+    if (body.length < 60000 && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      if (navigator.sendBeacon('/dsh-notes', new Blob([body], { type: 'application/json' }))) return Promise.resolve({ ok: true });
+    }
+    if (typeof fetch !== 'undefined') {
+      return fetch('/dsh-notes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body,
+        keepalive: body.length < 60000,
+      }).then(function (r) { return r.json() }).catch(function () { return {} });
+    }
+  } catch (e) {}
+  return Promise.resolve({});
 }
 /* ================= 常量与状态 ================= */
 var KIND = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志', sys: '机器' };   /* 0.4.3⑩ +sys「机器」（筛选中心「机器」档标签/持久化校验用；编辑器 kind 下拉不收 sys——机器托管 kind 人工不转，见 editor-meta.js） */
@@ -846,6 +893,7 @@ var selMode = false, selIds = {};      // 列表多选态 + 勾选集合（noteI
 var archState = null;                  // 归档预览对话框状态：{ groups:null=加载中, checked:{sid:false=取消勾选}, expand:{sid:true}, pending }
 /* ===== 二期 ✨整理（notes-ai-organize 按 kind 模板重写正文，可撤销）+ 孤儿资产清理（notes-assets-prune） ===== */
 var organizing = false, organizeUndo = null;   // organizeUndo = 一次撤销栈（整理前正文字符串 | null）
+var organizeErr = '';                  // 0.4.7-B⑥a：整理失败驻留条文案（''=无；手动 ✕ / 换笔记 / 下次发起才清——替代 transient toast）
 var pruneState = null;                 // 资产清理对话框状态：{ data:null=扫描中, checked:{name:false=取消勾选}, pending }
 /* ===== P1 回收站（notes-list {includeDeleted:true} + notes-restore/notes-purge）===== */
 var trashState = null;                 // 回收站对话框状态：{ list:null=加载中, pending:执行中的笔记 id }
@@ -1268,12 +1316,13 @@ var I18N_ZH = {
   'editor.syncing': '编辑中…',
   'editor.synced': '已同步源码',
   'editor.bodySyncing': '正文加载中…',   /* 0.4.6-A：正文在途窗同步点文案（不冒绿「已同步」）；editor.bodyLoading 系整理链路既有键，不复用 */
+  'editor.syncFailed': '加载失败',   /* 0.4.7-C：正文加载失败同步点统一失败态（红点 + 本文案，双端同口径；详情在横幅，点内不重复 msg） */
   'editor.modeSource': '源码模式',
   'editor.modeRich': '富文本模式',
   'editor.imageOnly': '仅支持图片文件',
   'editor.tableReadonly': '表格为只读，请切换源码模式编辑该区域',
   'editor.richRestored': '富文本模式已恢复可用',
-  'editor.richDisabled': '检测到白名单外语法 → 富文本入口置灰',
+  'editor.richDisabled': '这篇笔记含有富文本暂不支持的特殊语法，已退回纯文本编辑（内容不受影响，可照常编辑）',   /* 0.4.7-A②：先讲后果——消「白名单外语法」术语残留 */
   'editor.degReasonItem': '{label}（第 {line} 行：{sample}）',
   'editor.selectCodeFirst': '先选中要设为行内码的文字',
   'editor.selectLinkFirst': '先选中要加链接的文字',
@@ -1290,6 +1339,10 @@ var I18N_ZH = {
   'editor.organizeInstructPlaceholder': '告诉 AI 整理方向，如「突出待办事项」「精简为三条结论」；留空使用系统默认整理规则',
   'editor.organizeInstructConfirm': '开始整理',
   'editor.organizeInstructCancel': '取消',
+  /* 0.4.7-B⑥（notes-047-ux，实测反馈 n-muy9gdybdd40）：整理中态强化 + 失败驻留 + 超限前置校验 */
+  'editor.organizingVeil': 'AI 整理中，约需半分钟…',
+  'editor.organizeTooLong': '本篇 {n} 字超上限 {max}，建议分段整理',
+  'editor.organizeTooLongTip': '整理长度上限可在设置卡片「整理长度上限」调整；0 = 按所配模型自动',
   'editor.charCount': '{n} 字',
   'editor.backlinks': '反向链接',
   'editor.backlinksCount': '（{n}）',
@@ -1356,6 +1409,8 @@ var I18N_ZH = {
   'meta.organizeTip': 'AI 整理：按「{kind}」模板重写正文（替换后可撤销）',
   'meta.organizing': '整理中…',
   'meta.organize': '整理',
+  /* 0.4.7-B②b（notes-047-ux）：meta 行动区封板——动作超阈值收进「…」溢出菜单 */
+  'meta.actsMoreTip': '更多操作',
   'meta.dispatchTip': '派发待办到活跃会话',
   'meta.dispatchTipClient': '派发待办到会话（可补充具体要求）',
   'meta.dispatch': '派发',
@@ -1498,7 +1553,7 @@ var I18N_ZH = {
   'settings.memDisableTip': '停用 = 关闭引导约定笔记的注入（笔记保留可再启用）',
   'settings.memPending': '处理中…',
   'settings.memEnable': '启用沉淀引导…',
-  'settings.memEnableTip': '创建一条预填约定笔记（inject=true，contractType: memory-guide），引导 Agent 在任务收尾时把会话结论写为工作日志（kind=log，同权可见/可搜，注入硬禁）——与既有约定并行不冲突',
+  'settings.memEnableTip': '启用后，AI 会在每次任务收尾时把本次会话结论自动沉淀为工作日志（列表可见、可搜索，不占注入位）。点击 = 创建一条预填约定笔记即生效，与已有约定互不影响',   /* 0.4.7-A②：先讲后果——消字段名残留（inject/contractType/kind 不外露） */
   'settings.logWeek': '日志周聚合窗口',
   'settings.logWeekTip': '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行；缺省 7 天）',
   'settings.logWeekTipT': '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行）',
@@ -1532,6 +1587,14 @@ var I18N_ZH = {
   'settings.usageBudgetInvalid': '月度用量预算需为非负整数（0 = 关闭提醒）',
   'settings.usageBudgetOff': '已关闭月度用量预算提醒',
   'settings.savedUsageBudget': '已保存：月度用量预算 {v} tokens',
+  /* 0.4.7-B⑦（notes-047-ux）：整理长度上限设置项（LLM 区数字输入；0/缺省 = 按所配模型自动，生效值随 settings-get 透出） */
+  /* 0.4.7-B①b（notes-047-ux）：设置行说明文字 ⓘ 展开/收拢钮 title */
+  'settings.descExpandTip': '展开 / 收起完整说明',
+  'settings.organizeMax': '整理长度上限',
+  'settings.organizeMaxTip': 'AI 整理单次正文长度上限（字符），超过需分段整理；0 = 按所配模型自动（当前生效 {eff}）',
+  'settings.organizeMaxInvalid': '整理长度上限需为非负整数（0 = 按所配模型自动）',
+  'settings.organizeMaxAuto': '已恢复：整理长度上限按所配模型自动',
+  'settings.savedOrganizeMax': '已保存：整理长度上限 {v} 字符',
   'settings.savedAll': '设置已保存',
   'settings.restoredAll': '已还原：设置回滚到打开时的状态',
   'settings.restoreFailed': '还原失败：{msg}',
@@ -1571,7 +1634,7 @@ var I18N_ZH = {
   'inj.executing': '执行中…',
   'inj.logNoInject': '日志不参与注入',
   'inj.logNoInjectTip': '工作日志注入硬禁：host 强制 inject=false（injectForcedOff 硬闸）；日志同权——可见/可搜索/可编辑，注入目录恒不含',
-  'inj.sensTip': '敏感笔记：注入时自动脱敏（正文按行打码，键保留值遮蔽）',
+  'inj.sensTip': '敏感笔记：注入给 AI 时自动脱敏——按行打码（字段名保留、值隐藏为 ******），AI 要看原文需按 id 调取（note_get）',   /* 0.4.7-A②：先讲后果——消「键保留值遮蔽」术语残留 */
   'inj.sensBadge': '注入时自动脱敏',
   'inj.scopeGlobal': '全局',
   'inj.scopeSessions': '{n} 个会话',
@@ -1600,6 +1663,9 @@ var I18N_ZH = {
   'inj.mountPlaceholder': '如：改注入相关逻辑时、验收资料挂载时…',
   'inj.mountSave': '挂载',
   'inj.mountSkip': '不用建议，自己写',
+  /* 0.4.7-B④b（notes-047-ux，R2 漏网 n-mux79knmfjxt）：三态切「资料」弹挂载框的跳过档文案明确化——
+     仅三态/行内直改入口（角色切换在途）显示本文案并切角不挂载；建议器/预览等纯挂载入口仍用 inj.mountSkip；Esc/遮罩 = 取消不切换（零副作用） */
+  'inj.mountSkipSwitch': '仅切换角色，暂不挂载',
   'inj.mountSaved': '已挂载索引：{title}',
   'inj.mountFailed': '挂载失败：{msg}',
   // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
@@ -1620,7 +1686,7 @@ var I18N_ZH = {
   'inj.conflictRerun': '重新体检',
   'inj.conflictRunTip': '对全部注入中的约定做 LLM 两两冲突/取代检测（手动触发；敏感笔记正文打码后参与）',
   'inj.conflictRunning': '检测中…',
-  'inj.conflictRunningHint': 'LLM 正在两两比对约定，约需几秒…',
+  'inj.conflictRunningHint': 'LLM 正在两两比对约定，约定多时约需一两分钟…',   /* 0.4.7-A⑨：在途文案对齐 120s 重操作口径（原「约需几秒」系 8s 时代残留） */
   'inj.conflictError': '体检失败：{msg}',
   'inj.conflictEmpty': '未发现疑似冲突或取代的约定对（已检测 {n} 条约定）。',
   'inj.conflictRelConflict': '疑似冲突',
@@ -1711,6 +1777,8 @@ var I18N_ZH = {
   'disp.dispatched': '已派发待办到「{name}」（开始处理）',
   'disp.dispatchedQueued': '已排队到「{name}」（休眠会话 · 下次活动送达）',
   'disp.schedNew': '专属会话（首轮触发自动创建「定时 · 任务名」，后续复用）',
+  /* 0.4.7-B⑤（notes-047-ux）：专属会话复选框旁无界面提示行（今日实测教训：专属会话无 browser_* 等 GUI 附着工具） */
+  'disp.schedNewHint': '专属会话为无界面会话：无浏览器等 GUI 附着工具；需要浏览器走查的任务请指定常驻会话',
   'disp.schedNewTarget': '首轮自动创建专属会话',
   'disp.schedModelDefault': '默认模型（跟随宿主当前选择）',   /* 0.4.6-G：专属会话模型下拉缺省项（空值 = 声明不带 model/provider） */
   'disp.schedModelTip': '专属会话模型档位：{model}',          /* 0.4.6-G：调度行模型标注 tooltip + 下拉 title */
@@ -2137,12 +2205,13 @@ var I18N_EN = {
   'editor.syncing': 'Editing…',
   'editor.synced': 'Synced to source',
   'editor.bodySyncing': 'Loading body…',   /* 0.4.6-A: sync pill text while the note body is in flight (no fake-green "synced"); editor.bodyLoading is the pre-existing organize-flow key, not reused */
+  'editor.syncFailed': 'Load failed',   /* 0.4.7-C: unified failure-state sync pill (red dot + this text, same on both ends; details live in the banner, not repeated in the pill) */
   'editor.modeSource': 'Source mode',
   'editor.modeRich': 'Rich text mode',
   'editor.imageOnly': 'Only image files are supported',
   'editor.tableReadonly': 'Tables are read-only; switch to source mode to edit this region',
   'editor.richRestored': 'Rich text mode is available again',
-  'editor.richDisabled': 'Out-of-whitelist syntax detected → rich text entry disabled',
+  'editor.richDisabled': 'This note contains syntax the rich editor cannot safely handle — switched back to plain text (content unchanged)',   /* 0.4.7-A②: consequence-first — drop "out-of-whitelist" jargon */
   'editor.degReasonItem': '{label} (line {line}: {sample})',
   'editor.selectCodeFirst': 'Select the text to mark as inline code first',
   'editor.selectLinkFirst': 'Select the text to turn into a link first',
@@ -2159,6 +2228,10 @@ var I18N_EN = {
   'editor.organizeInstructPlaceholder': 'Guide the AI, e.g. "highlight action items" or "trim to three conclusions"; leave empty to use the default system rules',
   'editor.organizeInstructConfirm': 'Organize',
   'editor.organizeInstructCancel': 'Cancel',
+  /* 0.4.7-B⑥ (notes-047-ux, field feedback n-muy9gdybdd40): organizing in-flight reinforcement + persistent failure + over-limit pre-check */
+  'editor.organizingVeil': 'AI is organizing — this can take up to half a minute…',
+  'editor.organizeTooLong': 'This note is {n} chars, over the {max} limit — organize it in sections',
+  'editor.organizeTooLongTip': 'The organize length cap lives in Settings → "Organize length cap"; 0 = auto by the configured model',
   'editor.charCount': '{n} chars',
   'editor.backlinks': 'Backlinks',
   'editor.backlinksCount': ' ({n})',
@@ -2225,6 +2298,8 @@ var I18N_EN = {
   'meta.organizeTip': 'AI organize: rewrite the body with the "{kind}" template (undoable after replacement)',
   'meta.organizing': 'Organizing…',
   'meta.organize': 'Organize',
+  /* 0.4.7-B②b (notes-047-ux): meta action-area cap — actions beyond the threshold fold into a "…" overflow menu */
+  'meta.actsMoreTip': 'More actions',
   'meta.dispatchTip': 'Dispatch the todo to a live session',
   'meta.dispatchTipClient': 'Dispatch the todo to a session (extra instructions supported)',
   'meta.dispatch': 'Dispatch',
@@ -2367,7 +2442,7 @@ var I18N_EN = {
   'settings.memDisableTip': 'Disable = turn off injection of the guide convention note (the note is kept and can be re-enabled)',
   'settings.memPending': 'Processing…',
   'settings.memEnable': 'Enable settling guide…',
-  'settings.memEnableTip': 'Create a prefilled convention note (inject=true, contractType: memory-guide) that guides the Agent to write session conclusions as work logs (kind=log, first-class visible/searchable, injection hard-disabled) at task wrap-up — coexists with existing conventions without conflict',
+  'settings.memEnableTip': 'Once enabled, the Agent writes session conclusions into work logs at every task wrap-up (visible and searchable in the list, no injection slot used). Click to create a prefilled convention note — coexists with existing conventions',   /* 0.4.7-A②: consequence-first — internal field names (inject/contractType/kind) no longer leak into user copy */
   'settings.logWeek': 'Log weekly rollup window',
   'settings.logWeekTip': 'Work logs older than N days are nominated for rollup by workspace×week in organize suggestions (nominates only; default 7 days)',
   'settings.logWeekTipT': 'Work logs older than N days are nominated for rollup by workspace×week in organize suggestions (nominates only)',
@@ -2401,6 +2476,14 @@ var I18N_EN = {
   'settings.usageBudgetInvalid': 'The monthly usage budget must be a non-negative integer (0 = off)',
   'settings.usageBudgetOff': 'Monthly usage budget reminder disabled',
   'settings.savedUsageBudget': 'Saved: monthly usage budget {v} tokens',
+  /* 0.4.7-B⑦ (notes-047-ux): organize length cap setting (number input in the LLM section; 0/absent = auto by the configured model, effective value piggybacks on settings-get) */
+  /* 0.4.7-B①b (notes-047-ux): title of the ⓘ expand/collapse button for setting-row descriptions */
+  'settings.descExpandTip': 'Expand / collapse the full description',
+  'settings.organizeMax': 'Organize length cap',
+  'settings.organizeMaxTip': 'Max body chars per AI organize run; longer notes need sectioning. 0 = auto by the configured model (effective: {eff})',
+  'settings.organizeMaxInvalid': 'The organize length cap must be a non-negative integer (0 = auto by the configured model)',
+  'settings.organizeMaxAuto': 'Restored: organize length cap follows the configured model',
+  'settings.savedOrganizeMax': 'Saved: organize length cap {v} chars',
   'settings.savedAll': 'Settings saved',
   'settings.restoredAll': 'Restored: settings rolled back to the state when opened',
   'settings.restoreFailed': 'Restore failed: {msg}',
@@ -2441,7 +2524,7 @@ var I18N_EN = {
   'inj.executing': 'Running…',
   'inj.logNoInject': 'No injection (log)',
   'inj.logNoInjectTip': 'Work logs are hard-gated out of injection (host forces inject=false); logs are first-class — visible/searchable/editable; never included in the injected directory',
-  'inj.sensTip': 'Sensitive note: auto-masked when injected (body masked line by line; keys kept, values hidden)',
+  'inj.sensTip': 'Sensitive note: auto-masked when injected into AI context — line-by-line masking (field names kept, values hidden as ******); the Agent fetches originals by id (note_get)',   /* 0.4.7-A②: consequence-first — drop "keys kept, values hidden" jargon residue */
   'inj.sensBadge': 'Auto-masked on injection',
   'inj.scopeGlobal': 'Global',
   'inj.scopeSessions': '{n} sessions',
@@ -2470,6 +2553,9 @@ var I18N_EN = {
   'inj.mountPlaceholder': 'e.g. When changing injection logic, when verifying mounted references…',
   'inj.mountSave': 'Mount',
   'inj.mountSkip': 'Skip suggestion, write it myself',
+  /* 0.4.7-B④b (notes-047-ux, R2 leftover n-mux79knmfjxt): explicit copy for the skip tier of the mount modal when a role switch is pending —
+     only tri-state/inline-row entries (role switch in flight) show this copy and switch without mounting; suggest/preview pure-mount entries keep inj.mountSkip; Esc/mask = cancel without switching (zero side effects) */
+  'inj.mountSkipSwitch': 'Switch role only, mount later',
   'inj.mountSaved': 'Mounted to index: {title}',
   'inj.mountFailed': 'Mount failed: {msg}',
   // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
@@ -2490,7 +2576,7 @@ var I18N_EN = {
   'inj.conflictRerun': 'Re-run checkup',
   'inj.conflictRunTip': 'Run an LLM pairwise conflict/supersede check over all injected conventions (manual trigger; sensitive bodies masked first)',
   'inj.conflictRunning': 'Checking…',
-  'inj.conflictRunningHint': 'The LLM is comparing conventions pairwise; this takes a few seconds…',
+  'inj.conflictRunningHint': 'The LLM is comparing conventions pairwise; with many conventions this can take a minute or two…',   /* 0.4.7-A⑨: in-flight copy aligned with the 120s heavy-operation budget */
   'inj.conflictError': 'Checkup failed: {msg}',
   'inj.conflictEmpty': 'No suspected conflict or supersede pairs found ({n} conventions checked).',
   'inj.conflictRelConflict': 'Conflict?',
@@ -2578,6 +2664,8 @@ var I18N_EN = {
   'disp.dispatched': 'Todo dispatched to "{name}" (processing started)',
   'disp.dispatchedQueued': 'Queued to "{name}" (dormant session · delivered on its next activity)',
   'disp.schedNew': 'Dedicated session (auto-created on first fire, then reused)',
+  /* 0.4.7-B⑤ (notes-047-ux): headless hint line next to the dedicated-session checkbox (field lesson: dedicated sessions have no browser_* or other GUI-attached tools) */
+  'disp.schedNewHint': 'A dedicated session is headless: no browser or other GUI-attached tools. For tasks that need browser walkthroughs, target a resident session instead',
   'disp.schedNewTarget': 'Auto-created dedicated session on first fire',
   'disp.schedModelDefault': 'Default model (follow host selection)',   /* 0.4.6-G: dedicated-session model dropdown default option (empty value = no model/provider in declaration) */
   'disp.schedModelTip': 'Dedicated session model: {model}',            /* 0.4.6-G: schedule-row model annotation tooltip + dropdown title */
@@ -3708,6 +3796,7 @@ function selectNote(id) {
   if (n && n.folder) { foldOpen[n.folder] = true; saveFoldOpen() }
   edNote = n ? Object.assign({}, n, { body: '' }) : null;
   edBodyLoaded = false; edBodyErr = '';   /* R-1 安全态复位：新笔记正文未加载前提交闸关闭、错误横幅清空（renderEd 在其后执行，DOM 初态一致） */
+  organizeErr = '';                        /* 0.4.7-B⑥a：换笔记清整理失败驻留条（驻留粒度 = 当前笔记） */
   degraded = { ok: true, reasons: [] };   /* 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果） */
   renderTree(); renderEd();
   if (n) {
@@ -3771,10 +3860,14 @@ function refreshLoadErrUI() {
     if (rt && !rt._bound) { rt._bound = true; rt.addEventListener('click', function () { if (selId) loadEdBody(selId) }) }
   }
   var locked = !!edBodyErr;
-  var ta = $('edSrc'); if (ta) { ta.readOnly = locked; ta.placeholder = edBodyPending() ? t('editor.bodySyncing') : t('editor.bodyPlaceholder') }   /* 0.4.6-B：源码正文在途窗 placeholder 转「正文加载中…」（不再空白；落定/出错即还原） */
+  /* 0.4.7-C ②b（notes-047-stability）：源码模式在途窗补同款锁（0.4.6-A 只锁富文本——在途窗源码可打字 = 落定回填盖掉输入的假同步洞）；
+     在途/失败两态都锁，落定（成功回填/失败重试后）解锁；placeholder 在途文案口径不动（0.4.6-B 锚） */
+  var ta = $('edSrc'); if (ta) { ta.readOnly = locked || edBodyPending(); ta.placeholder = edBodyPending() ? t('editor.bodySyncing') : t('editor.bodyPlaceholder') }   /* 0.4.6-B：源码正文在途窗 placeholder 转「正文加载中…」（不再空白；落定/出错即还原） */
   var ti = $('edTitle'); if (ti) ti.contentEditable = locked ? 'false' : 'true';
-  /* 0.4.6-A：富文本在正文在途窗同步锁编辑（假同步根修连带闸；源码 textarea 无同步态宣称，语义不动） */
+  /* 0.4.6-A：富文本在正文在途窗同步锁编辑（假同步根修连带闸） */
   var rich = $('edRich'); if (rich) rich.contentEditable = (locked || edBodyPending()) ? 'false' : 'true';
+  /* 0.4.7-C ②a：失败态同步点接管——错误进出/在途起止均经本函数收敛到同一呈现（旧口径失败后同步点滞留「加载中」橙点不落幕） */
+  setSyncStatus(false);
 }
 /* 0.4.6-A（notes-046-rich-freeze，UXR2 反馈 n-mux892tew6bf 现象①根修）：正文在途窗判定——
    笔记已选（edNote 在）而 notes-get 未落定（edBodyLoaded=false）且无错误横幅时，
@@ -3797,12 +3890,12 @@ function fillEdBody() {
   }
 }
 function triggerSave() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 900) }
-function doSave() {
-  if (!edNote) return;
-  /* 草稿态（notes-034-batch3）：首次有效编辑走 notes-create 落库（空内容闸在 doDraftCreate 内）；落库后 draftNote 清空、后续走正常 update */
-  if (draftNote) { doDraftCreate(); return }
-  if (!selId) return;
-  if (edBodyErr) return;   /* R-1 安全态：正文加载失败未恢复前自动保存整体暂停（含元数据）——横幅「重试」是唯一出口 */
+/* 0.4.7-C（notes-047-stability ①）：自动保存载荷构建单点化——doSave 与卸载兜底 flushPendingSave 共用同一构造（防双份漂移）；
+   null = 守卫拦截（无笔记/无选中/R-1 安全态暂停），调用方零动作 */
+function buildSavePayload() {
+  if (!edNote) return null;
+  if (!selId) return null;
+  if (edBodyErr) return null;   /* R-1 安全态：正文加载失败未恢复前自动保存整体暂停（含元数据）——横幅「重试」是唯一出口 */
   var keepQuick = (notes.find(function (x) { return x.id === selId }) || {}).tags || [];
   var tags = (edNote._tagsStr != null ? edNote._tagsStr : (edNote.tags || []).filter(function (t) { return t !== 'quick' }).join(', '))
     .split(/[,，;；]/).map(function (s) { return s.trim() }).filter(Boolean);
@@ -3817,6 +3910,13 @@ function doSave() {
   if (edBodyLoaded) { upd.body = edNote.body; if (upd.body === '') upd.confirmClearBody = true }
   if (upd.inject) upd.injectRole = edNote.injectRole === 'reference' ? 'reference' : 'convention';   /* 非 off 才带 injectRole（payload 禁 undefined） */
   if ((edNote.topic || '').trim()) upd.topic = edNote.topic.trim();
+  return upd;
+}
+function doSave() {
+  if (!edNote) return;
+  /* 草稿态（notes-034-batch3）：首次有效编辑走 notes-create 落库（空内容闸在 doDraftCreate 内）；落库后 draftNote 清空、后续走正常 update */
+  if (draftNote) { doDraftCreate(); return }
+  var upd = buildSavePayload(); if (!upd) return;   /* 0.4.7-C：载荷构建单点化（卸载 flush 同口径） */
   rpc('notes-update', upd).then(function (res) {
     if (res && res.error) { toast(res.error); return }
     $('edSaved').textContent = t('editor.autoSaved', { time: new Date().toTimeString().slice(0, 5) });
@@ -3829,6 +3929,18 @@ function doSave() {
     loadNotes(true);
     if (histCount === 0) probeHistCount(selId);   /* 首次真实保存产生首份快照（0→1 转折点）→ 补探「历史」入口 */
   }).catch(function (e) { toast(t('common.saveFailed', { msg: e && e.message || e })) });
+}
+/* 0.4.7-C（notes-047-stability ①）：页面卸载兜底 flush——<900ms debounce 窗口内的在途编辑立即落盘（不等到期）。
+   富文本在途先序列化回 edNote.body（beforeunload 期 DOM 仍在）；debounce 计时器取消后走 keepalive 直发（页面拆毁后仍送达）。
+   R-1 提交闸/edBodyErr 暂停语义经 buildSavePayload 与 doSave 同口径继承；无在途（saveTimer 空）零动作；
+   草稿在途：create 落库同走 keepalive（draftCreating 在飞时跳过——在途 create 自带沉降，防并发双建同口径） */
+function flushPendingSave() {
+  if (edMode === 'rich' && richDirty && edNote) syncFromRich('卸载冲刷');
+  if (!saveTimer) return;
+  clearTimeout(saveTimer); saveTimer = null;
+  if (draftNote) { if (!draftCreating) { var dp = draftPayloadOf(draftNote); if (dp) rpcKeepalive('notes-create', dp) } return; }
+  var upd = buildSavePayload(); if (!upd) return;
+  rpcKeepalive('notes-update', upd);
 }
 function injectScopeLabel(injectTo) {
   var arr = (injectTo || []).filter(function (t) { return t !== 'global' && t !== 'workspace' });
@@ -3863,6 +3975,10 @@ function renderEd() {
     + '<div class="deg" id="degBanner" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div>' + t('editor.degBanner') + '<span class="rs" id="degReasons"></span><br>' + t('editor.degBanner2') + '</div></div>'
     /* R-1 安全态横幅（正文加载失败）：复用 .deg 警告样式；edLoadErrMsg=错误详情，edLoadRetry=重试入口（refreshLoadErrUI 驱动显隐与锁定） */
     + '<div class="deg" id="edLoadErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="edLoadErrMsg"></span>' + t('editor.loadLockNote') + '<span id="edLoadRetry" style="cursor:pointer;color:var(--nacc);font-weight:600">' + t('editor.retry') + '</span></div></div>'
+    /* 0.4.7-B⑥a（notes-047-ux）：整理失败驻留条（复用 .deg 警告样式，手动 ✕ 才消失——替代一闪而过的 toast；refreshOrganizeUI 驱动） */
+    + '<div class="deg" id="orgErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="orgErrMsg"></span></div><span class="org-x" id="orgErrX" role="button" tabindex="0" title="' + t('common.close') + '">' + icon('i-x', 11) + '</span></div>'
+    /* 0.4.7-B⑥：整理中正文区遮罩（spinner + 「约需半分钟」文案——LLM 窗口期强反馈，消除「没反应」体感） */
+    + '<div class="org-veil" id="orgVeil" style="display:none"><span class="org-spin"></span><span>' + t('editor.organizingVeil') + '</span></div>'
     + '<textarea class="src" id="edSrc" spellcheck="false" placeholder="' + t('editor.bodyPlaceholder') + '"' + (edMode === 'source' ? '' : ' style="display:none"') + '></textarea>'
     + '<div class="rich-scroll rich-wrap" id="richScroll"' + (edMode === 'rich' ? '' : ' style="display:none"') + '>'
     + '<div class="rtb" id="rtb">'
@@ -3876,7 +3992,7 @@ function renderEd() {
     + '<button class="rtb-btn" data-a="quote" title="' + t('editor.tbQuote') + '">' + icon('i-quote', 14) + '</button>'
     + '<span class="rtb-sep"></span>'
     + '<button class="rtb-btn" data-a="image" title="' + t('editor.tbImage') + '">' + icon('i-image', 14) + '</button>'
-    + '<span class="sync' + ((edBodyPending() || richDirty) ? '' : ' ok') + '" id="syncPill"><span class="sd"></span><span id="syncTxt">' + (edBodyPending() ? t('editor.bodySyncing') : (richDirty ? t('editor.syncing') : t('editor.synced'))) + '</span></span>'
+    + '<span class="sync' + (edBodyErr ? ' err' : ((edBodyPending() || richDirty) ? '' : ' ok')) + '" id="syncPill"><span class="sd"></span><span id="syncTxt">' + (edBodyErr ? t('editor.syncFailed') : edBodyPending() ? t('editor.bodySyncing') : (richDirty ? t('editor.syncing') : t('editor.synced'))) + '</span></span>'   /* 0.4.7-C ②a：初态同走失败态分支（与 setSyncStatus 同一口径） */
     + '</div>'
     + '<div class="rich" id="edRich" contenteditable="true" spellcheck="false"></div>'
     + '</div>'
@@ -3888,6 +4004,7 @@ function renderEd() {
   $('edTitle').addEventListener('input', function () { if (!edNote) return; edNote.title = this.textContent.trim() || 'Untitled'; triggerSave() });
   bindEditorArea();
   refreshLoadErrUI();   /* R-1：DOM 重建后重挂安全态（横幅显隐 + 编辑锁定 + 重试绑定） */
+  refreshOrganizeUI();   /* 0.4.7-B⑥：DOM 重建后复态整理中遮罩/失败驻留条（同 refreshLoadErrUI 先例） */
 }
 /* 编辑区事件绑定（renderEd 重建 DOM 后重挂；元素级监听随重建不累积，document 级 selectionchange 在启动区挂一次） */
 function bindEditorArea() {
@@ -3946,12 +4063,13 @@ function bindRich(rich, wrap) {
     b.addEventListener('mousedown', function (ev) { ev.preventDefault(); toolbarAction(b.getAttribute('data-a')); });
   });
 }
-/* 同步态徽标（原型 syncPill）：编辑中…（橙点）/ 已同步源码（绿点）；0.4.6-A：正文在途窗 = 加载中…（橙点，不冒绿假同步） */
+/* 同步态徽标（原型 syncPill）：编辑中…（橙点）/ 已同步源码（绿点）；0.4.6-A：正文在途窗 = 加载中…（橙点，不冒绿假同步）；
+   0.4.7-C ②a：失败态统一——edBodyErr 在窗 = 红点「加载失败」（与横幅同口径；替代旧口径滞留橙/冒绿的双端不一） */
 function setSyncStatus(editing) {
   var pill = $('syncPill'); if (!pill) return;
   var pend = edBodyPending();
-  pill.className = 'sync' + (pend || editing ? '' : ' ok');
-  if ($('syncTxt')) $('syncTxt').textContent = pend ? t('editor.bodySyncing') : editing ? t('editor.syncing') : t('editor.synced');
+  pill.className = 'sync' + (edBodyErr ? ' err' : (pend || editing ? '' : ' ok'));
+  if ($('syncTxt')) $('syncTxt').textContent = edBodyErr ? t('editor.syncFailed') : pend ? t('editor.bodySyncing') : editing ? t('editor.syncing') : t('editor.synced');
 }
 /* 富文本 → 源码序列化（原型 syncFromRich）：内容无损最高优先——有变化才回写 body 并走既有 doSave 自动保存 */
 function syncFromRich(why) {
@@ -4229,7 +4347,11 @@ function openLinkModal(selText) {
    + meta.undo 字典（禁重复建别名）；kind 名经 kindLabel() 条件映射（KIND 字面量仅作锚）
    0.4.4-F（notes-044-organize-instruct）：点「整理」先弹引导卡（可选追加指令 textarea + 确认/取消）——
    留空确认 = instruction:''（host 空指令路径 prompt 与二期现行逐字节等价）；填写 = 追加进 prompt 再整理；取消/点遮罩 = 零副作用。
-   doAiOrganize(instruction) 复用全部守卫/撤销栈/容错，仅 RPC payload 多带一个 instruction 字段 */
+   doAiOrganize(instruction) 复用全部守卫/撤销栈/容错，仅 RPC payload 多带一个 instruction 字段
+   0.4.7-B⑥（notes-047-ux，实测反馈 n-muy9gdybdd40「输入指令后没反应」）：整理中态强化——
+   meta 钮 spinner/禁用（既有 busy）+ 正文区遮罩 #orgVeil（「AI 整理中，约需半分钟…」）双通道反馈；
+   ⑥a：失败提示驻留化——organizeFailed 从一闪而过的 toast 改为编辑区驻留条 #orgErr（手动 ✕ / 换笔记 / 下次发起才消失）；
+   容错与撤销栈语义零改动 */
 function doAiOrganize(instruction) {
   if (!edNote || organizing) return;
   if (edLoading) { toast(t('editor.bodyLoading')); return }
@@ -4237,15 +4359,26 @@ function doAiOrganize(instruction) {
   var body = edNote.body || '';
   if (!body.trim()) { toast(t('editor.bodyEmpty')); return }
   var instr = typeof instruction === 'string' ? instruction.trim() : '';   /* 0.4.4-F：追加指令 trim（空 = 系统默认规则） */
-  organizing = true; renderMeta();
+  organizing = true; organizeErr = ''; renderMeta(); refreshOrganizeUI();
   rpc('notes-ai-organize', { body: body, kind: edNote.kind || 'note', title: edNote.title === 'Untitled' ? '' : (edNote.title || ''), instruction: instr }).then(function (res) {
-    organizing = false; renderMeta();
-    if (res && res.error) { toast(t('editor.organizeFailed', { msg: res.error })); return }
+    organizing = false; renderMeta(); refreshOrganizeUI();
+    if (res && res.error) { organizeErr = t('editor.organizeFailed', { msg: res.error }); refreshOrganizeUI(); return }   /* ⑥a：驻留条（不再一闪而过） */
     if (!res || !res.body || !res.body.trim()) { toast(t('editor.organizeEmpty')); return }
     organizeUndo = body;   /* 一次撤销栈：只保留最近一次整理前的正文 */
     applyOrganizedBody(res.body);
     toast(t('editor.organized', { kind: kindLabel(edNote.kind) || t('meta.kindNote') }), { label: t('meta.undo'), fn: undoAiOrganize });
-  }).catch(function (e) { organizing = false; renderMeta(); toast(t('editor.organizeFailed', { msg: e && e.message || e })) });
+  }).catch(function (e) { organizing = false; organizeErr = t('editor.organizeFailed', { msg: e && e.message || e }); renderMeta(); refreshOrganizeUI() });
+}
+/* 0.4.7-B⑥：整理中遮罩 + 失败驻留条显隐收敛点（renderEd 重建 DOM 后须重挂——同 refreshLoadErrUI 先例；✕ 手动关闭驻留条） */
+function refreshOrganizeUI() {
+  var veil = $('orgVeil'); if (veil) veil.style.display = organizing ? 'flex' : 'none';
+  var bn = $('orgErr');
+  if (bn) {
+    bn.style.display = organizeErr ? 'flex' : 'none';
+    var msg = $('orgErrMsg'); if (msg) msg.textContent = organizeErr || '';
+    var x = $('orgErrX');
+    if (x && !x._bound) { x._bound = true; x.addEventListener('click', function () { organizeErr = ''; refreshOrganizeUI() }) }
+  }
 }
 /* 重写正文落进编辑器双模式：源码 textarea.value；富文本重渲染内核产物（白名单外语法则回落源码模式） */
 function applyOrganizedBody(text) {
@@ -4265,17 +4398,87 @@ function undoAiOrganize() {
 }
 /* 0.4.4-F 整理引导弹卡（notes-044-organize-instruct）：点「整理」先弹可选追加指令输入——
    确认 = 带 instruction 调 doAiOrganize（守卫/撤销栈/容错全复用，留空 = 系统默认整理规则）；
-   取消/点遮罩/Esc（键盘面统一 closeModalFlushed）= 关弹卡零副作用。organizing 态守卫保留（整理中按钮 busy 不重入，弹卡亦不另开） */
+   取消/点遮罩/Esc（键盘面统一 closeModalFlushed）= 关弹卡零副作用。organizing 态守卫保留（整理中按钮 busy 不重入，弹卡亦不另开）
+   0.4.7-B⑥b/⑦（notes-047-ux）：超限前置校验——开卡即按生效上限判定正文长度（本地长度零等待）；
+   生效值 = settings-get 响应 organizeMaxChars（⑦.4 增带，用户覆盖 || 模型表 || 12000；会话级缓存，首开后台对齐 host）；
+   超限 → textarea 上方提示「本篇 N 字超上限 X，建议分段整理」+ 确认钮禁用（不再把超限请求发到 host 才报错） */
+var orgMaxCache = 0;   /* 整理长度上限生效值会话级缓存（0 = 未拉取，暂用 12000 回落） */
+function orgMaxCacheReset() { orgMaxCache = 0 }   /* 设置卡保存整理长度上限后失效（settings.js saveSettings 成功路径调用； concat 全局互通） */
+function orgLimitRefresh(bodyLen) {
+  var max = orgMaxCache || 12000;
+  var over = bodyLen > max;
+  var hint = $('oiLimit');
+  if (hint) { hint.style.display = over ? '' : 'none'; if (over) hint.textContent = t('editor.organizeTooLong', { n: bodyLen, max: max }) + '。' + t('editor.organizeTooLongTip') }
+  var ok = $('oiOk'); if (ok) ok.disabled = over;
+}
 function openOrganizeInstruct() {
   if (!edNote || organizing) return;
+  var bodyLen = (edNote.body || '').length;
   openModal(
     '<div class="modal-t">' + icon('i-sparkle') + ' ' + t('editor.organizeInstructTitle') + '</div>'
+    + '<div class="modal-hint" id="oiLimit" style="display:none"></div>'
     + '<textarea class="minput" id="oiInstr" rows="3" placeholder="' + t('editor.organizeInstructPlaceholder') + '"></textarea>'
     + '<div class="modal-acts"><button class="mbtn" id="oiCancel">' + t('editor.organizeInstructCancel') + '</button><button class="mbtn primary" id="oiOk">' + t('editor.organizeInstructConfirm') + '</button></div>'
   );
   $('oiCancel').onclick = closeModal;
-  $('oiOk').onclick = function () { var v = $('oiInstr').value; closeModal(); doAiOrganize(v) };
+  $('oiOk').onclick = function () { if ($('oiOk').disabled) return; var v = $('oiInstr').value; closeModal(); doAiOrganize(v) };
+  orgLimitRefresh(bodyLen);
+  if (!orgMaxCache) rpc('notes-settings-get', {}).then(function (res) {
+    orgMaxCache = (res && typeof res.organizeMaxChars === 'number' && res.organizeMaxChars > 0) ? res.organizeMaxChars : 12000;
+    if ($('oiLimit')) orgLimitRefresh(bodyLen);   /* 弹卡还开着才复判（关窗静默） */
+  }).catch(function () { orgMaxCache = 12000 });   /* 通道异常回落 12000 现状值（不阻塞开卡） */
   $('oiInstr').focus();
+}
+/* ===== 0.4.7-B②b（notes-047-ux）meta 行动区封板：动作总数 > META_ACT_MAX 时中段收进「…」溢出菜单 =====
+   规则：头 3 个（整理/派发/来源）+ 尾 2 个图标动作（置顶/删除，高频且既有断言锚 #mPin/#mDel 恒见）直出；
+   中段（历史/导出等）按原相对顺序入菜单。≤5 个动作 = 全直出零菜单（常态零变化）。
+   metaActsSplit 为纯函数（client panels/panel/editor.js 同文一份，check 锚定双端一致） */
+var META_ACT_MAX = 5;
+function metaActsSplit(keys) {
+  if (keys.length <= META_ACT_MAX) return { inline: keys, overflow: [] };
+  return { inline: keys.slice(0, 3).concat(keys.slice(keys.length - 2)), overflow: keys.slice(3, keys.length - 2) };
+}
+/* meta 行动区 HTML：动作段原位构建（id 不变 → 既有 onclick 接线零改动），溢出段搬进菜单容器 */
+function metaActsHtml(n) {
+  var acts = {
+    /* 二期 ✨整理：AI 按当前 kind 模板重写正文（notes-ai-organize；替换后 toast 可撤销一次）；0.4.7-B⑥：整理中 spinner + 禁用态 */
+    organize: '<span class="meta-act organize-btn' + (organizing ? ' busy' : '') + '" id="mOrganize" title="' + (organizing ? t('meta.organizingTip') : t('meta.organizeTip', { kind: kindLabel(edNote.kind) || t('meta.kindNote') })) + '">' + (organizing ? '<span class="org-spin"></span>' : icon('i-sparkle')) + (organizing ? t('meta.organizing') : t('meta.organize')) + '</span>',
+    dispatch: '<span class="meta-act" id="mDispatch" title="' + t('meta.dispatchTip') + '">' + icon('i-play') + t('meta.dispatch') + '</span>',
+    src: n.sessionId ? '<span class="meta-act" id="mSrc" title="' + t('meta.sourceTip') + '">' + icon('i-ext') + t('meta.source') + '</span>' : null,
+    /* 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数） */
+    hist: (histCount || 0) > 0 ? '<span class="meta-act" id="mHist" title="' + t('meta.histTip', { n: histCount }) + '">' + icon('i-clock') + t('meta.history') + '</span>' : null,
+    /* 0.4.5-F（notes-045-export-one）：一键导出单篇 MD（Blob 浏览器下载，零新 RPC；正文原样） */
+    export: '<span class="meta-act" id="mExport" title="' + t('meta.exportTip') + '">' + icon('i-down') + t('meta.export') + '</span>',
+    pin: '<span class="meta-act' + (isPinned(n) ? ' on' : '') + '" id="mPin" title="' + (isPinned(n) ? t('meta.unpin') : t('meta.pin')) + '">' + icon('i-pin') + '</span>',
+    del: '<span class="meta-act danger" id="mDel" title="' + t('meta.delTip') + '">' + icon('i-trash') + '</span>'
+  };
+  var keys = ['organize', 'dispatch'];
+  if (n.sessionId) keys.push('src');
+  if ((histCount || 0) > 0) keys.push('hist');
+  keys.push('export', 'pin', 'del');
+  var split = metaActsSplit(keys);
+  var h = split.inline.map(function (k) { return acts[k] }).join('');
+  if (split.overflow.length) {
+    h += '<span class="meta-more-wrap" id="mActsMoreWrap"><span class="meta-act meta-more" id="mActsMore" role="button" tabindex="0" title="' + t('meta.actsMoreTip') + '" aria-label="' + t('meta.actsMoreTip') + '">…</span>'
+      + '<span class="meta-more-menu" id="mActsMenu" style="display:none">' + split.overflow.map(function (k) { return acts[k] }).join('') + '</span></span>';
+  }
+  return h;
+}
+/* 溢出菜单外点收拢：document 级委托一次性挂载（renderMeta 重建菜单不受影响） */
+var metaActsDocBound = false;
+function metaActsBindOnce() {
+  if (metaActsDocBound) return;
+  metaActsDocBound = true;
+  document.addEventListener('click', function (ev) {
+    var m = $('mActsMenu'); if (!m || m.style.display === 'none') return;
+    var w = $('mActsMoreWrap'); if (w && w.contains(ev.target)) return;
+    m.style.display = 'none';
+  });
+}
+/* 0.4.7-B④a（R2 漏网 n-mux79knmfjxt）：三态 ⓘ tooltip 文案 = 三档原生 title 同文合成（单一文案源防漂移；触屏/键盘点击 toast 同文可达）；
+   分段符走 common.listSep（zh、/ en ", "）——client panels/panel/editor.js 同文一份 */
+function roleInfoTip() {
+  return t('meta.roleOff') + ' = ' + t('meta.roleOffTip') + t('common.listSep') + t('tree.roleConvention') + ' = ' + t('meta.roleConventionTip') + t('common.listSep') + t('tree.roleReference') + ' = ' + t('meta.roleReferenceTip');
 }
 function renderCrumb() {
   var n = edNote; if (!n) return;
@@ -4316,7 +4519,9 @@ function renderMeta() {
       : '<span class="meta-chip role-seg" id="mRole">' + icon('i-bolt')
       + '<span class="seg' + (role === 'off' ? ' on' : '') + '" data-role="off" title="' + t('meta.roleOffTip') + '">' + t('meta.roleOff') + '</span>'
       + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="' + t('meta.roleConventionTip') + '">' + t('tree.roleConvention') + '</span>'
-      + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="' + t('meta.roleReferenceTip') + '">' + t('tree.roleReference') + '</span></span>')
+      + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="' + t('meta.roleReferenceTip') + '">' + t('tree.roleReference') + '</span>'
+      /* 0.4.7-B④a：三态旁可见 ⓘ（tooltip=三档 title 合成同文；tabindex+role=button 键盘可达，点击/Enter 另 toast 同文兜底触屏） */
+      + '<span class="role-info" id="mRoleInfo" tabindex="0" role="button" title="' + roleInfoTip() + '" aria-label="' + roleInfoTip() + '">ⓘ</span></span>')
     + (role !== 'off' ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="' + t('meta.scopeTip') + '">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
     + '<span class="meta-chip tgl' + (n.sensitive === true ? ' on' : '') + '" id="mSens" title="' + t('meta.sensTip') + '">' + icon('i-lock') + t('meta.sens') + '</span>'
     /* 0.4.4-D hidden chip（eye 图标）：隐藏中=列表/树不显示（跳转与搜索打开不受影响）；点击切回 */
@@ -4333,16 +4538,8 @@ function renderMeta() {
     + '<span class="tip" id="richTip">' + t('meta.richDegradedShort') + '</span>'
     + '</span>'
     + '<span class="kbd">Ctrl+/</span>'
-    /* 二期 ✨整理：AI 按当前 kind 模板重写正文（notes-ai-organize；替换后 toast 可撤销一次） */
-    + '<span class="meta-act organize-btn' + (organizing ? ' busy' : '') + '" id="mOrganize" title="' + (organizing ? t('meta.organizingTip') : t('meta.organizeTip', { kind: kindLabel(edNote.kind) || t('meta.kindNote') })) + '">' + icon('i-sparkle') + (organizing ? t('meta.organizing') : t('meta.organize')) + '</span>'
-    + '<span class="meta-act" id="mDispatch" title="' + t('meta.dispatchTip') + '">' + icon('i-play') + t('meta.dispatch') + '</span>'
-    + (n.sessionId ? '<span class="meta-act" id="mSrc" title="' + t('meta.sourceTip') + '">' + icon('i-ext') + t('meta.source') + '</span>' : '')
-    /* 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数） */
-    + ((histCount || 0) > 0 ? '<span class="meta-act" id="mHist" title="' + t('meta.histTip', { n: histCount }) + '">' + icon('i-clock') + t('meta.history') + '</span>' : '')
-    /* 0.4.5-F（notes-045-export-one）：一键导出单篇 MD（Blob 浏览器下载，零新 RPC；正文原样） */
-    + '<span class="meta-act" id="mExport" title="' + t('meta.exportTip') + '">' + icon('i-down') + t('meta.export') + '</span>'
-    + '<span class="meta-act' + (isPinned(n) ? ' on' : '') + '" id="mPin" title="' + (isPinned(n) ? t('meta.unpin') : t('meta.pin')) + '">' + icon('i-pin') + '</span>'
-    + '<span class="meta-act danger" id="mDel" title="' + t('meta.delTip') + '">' + icon('i-trash') + '</span>'
+    /* meta 行动区（0.4.7-B②b 封板）：有序动作组 → metaActsSplit 分直出/「…」溢出菜单（动作相对顺序不动，仅收纳） */
+    + metaActsHtml(n)
     + spHtml;
   $('kindSel').onchange = function () { edNote.kind = this.value; triggerSave(); renderMeta(); renderTree() };
   $('statusSel').onchange = function () { edNote.status = this.value; triggerSave(); renderMeta(); renderTree() };
@@ -4357,23 +4554,19 @@ function renderMeta() {
          确认 = 弹层内 notes-mount 单点收口（落索引行 + host 同步翻 reference 档）→ onConfirm 回填编辑器三态并保存 */
       if (r === 'reference') {
         /* ⑫ 收尾对齐：开弹层前查 notes-mount-list 取 existing（client editor 同款）——已挂载进编辑模式预填现文案，非草稿观感；查询失败静默回退草稿 */
+        /* 0.4.7-B④b（R2 漏网 n-mux79knmfjxt）：挂载框三岔——确认=挂载+切档（onConfirm）/「仅切换角色，暂不挂载」=切档不落索引行（onSkip）/Esc·遮罩·取消=零副作用不切换 */
+        var flipRef = function () {
+          edNote.inject = true; edNote.injectRole = 'reference';
+          if (!sessList.length) pullSessions();
+          scopeOpen = true;
+          triggerSave(); renderMeta();
+          toast(t('meta.injectOn', { role: t('tree.roleReference') }));
+        };
         rpc('notes-mount-list', {}).then(function (ml) {
           var line = ((ml && ml.lines) || []).filter(function (l) { return l.id === n.id })[0]
-          openMountModal({ id: n.id, title: n.title, existing: line ? line.when : undefined }, function () {
-            edNote.inject = true; edNote.injectRole = 'reference';
-            if (!sessList.length) pullSessions();
-            scopeOpen = true;
-            triggerSave(); renderMeta();
-            toast(t('meta.injectOn', { role: t('tree.roleReference') }));
-          })
+          openMountModal({ id: n.id, title: n.title, existing: line ? line.when : undefined }, flipRef, flipRef)
         }).catch(function () {
-          openMountModal({ id: n.id, title: n.title }, function () {
-            edNote.inject = true; edNote.injectRole = 'reference';
-            if (!sessList.length) pullSessions();
-            scopeOpen = true;
-            triggerSave(); renderMeta();
-            toast(t('meta.injectOn', { role: t('tree.roleReference') }));
-          })
+          openMountModal({ id: n.id, title: n.title }, flipRef, flipRef)
         });
         return;
       }
@@ -4396,6 +4589,21 @@ function renderMeta() {
   var dBadge = $('mDispBadge');
   if (dBadge) dBadge.onclick = function () { var host = $('dispHost'); if (!host) return; host.dataset.open = '1'; renderDispatches(); try { host.scrollIntoView({ block: 'nearest' }) } catch (e) {} };
   $('mOrganize').onclick = function () { if (!organizing) openOrganizeInstruct() };   /* 0.4.4-F：先弹追加指令引导卡（确认才进 doAiOrganize；取消零副作用） */
+  /* 0.4.7-B④a：三态 ⓘ——点击/Enter/Space toast 同文（触屏/键盘可达；悬停原生 title 不变）；
+     stopPropagation：元素可聚焦后 Enter/Space 不得再冒泡到 document 列表导航（keyboard.js Enter=打开焦点行） */
+  var roleInfoEl = $('mRoleInfo');
+  if (roleInfoEl) {
+    roleInfoEl.onclick = function () { toast(roleInfoTip()) };
+    roleInfoEl.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); toast(roleInfoTip()) } };
+  }
+  /* 0.4.7-B②b：行动区溢出菜单——触发钮开合（点击/Enter/Space）+ 点菜收拢 + 外点收拢（document 委托一次性挂载） */
+  var actsMoreEl = $('mActsMore');
+  if (actsMoreEl) {
+    metaActsBindOnce();
+    actsMoreEl.onclick = function (ev) { ev.stopPropagation(); var m = $('mActsMenu'); if (m) m.style.display = m.style.display === 'none' ? 'flex' : 'none' };
+    actsMoreEl.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); actsMoreEl.click() } };
+    $('mActsMenu').addEventListener('click', function () { $('mActsMenu').style.display = 'none' });
+  }
   var src = $('mSrc');
   if (src) src.onclick = function () { toast(t('meta.sourceToast', { short: shortSid(edNote.sessionId), full: edNote.sessionId })) };
   /* 历史版本面板入口（无版本时入口不渲染，需守卫） */
@@ -4953,6 +5161,11 @@ function renderSchedModelSel() {
   box.innerHTML = '<select class="minput sched-sel" id="dSchedModel" title="' + esc(t('disp.schedModelTip', { model: dState.schedModel || t('disp.schedModelDefault') })) + '">' + opts + '</select>';
   $('dSchedModel').onchange = function () { dState.schedModel = this.value };
 }
+/* 0.4.7-B⑤：无界面提示行显隐收敛点（勾选专属会话 + 非「仅一次」才显示——与模型/权限下拉同口径联动） */
+function renderSchedNewHint() {
+  var h = $('dSchedNewHint'); if (!h || !dState) return;
+  h.style.display = (dState.schedNew && dState.schedMode !== 'once') ? '' : 'none';
+}
 function pullActiveSessions() {
   rpc('notes-active-sessions', {}).then(function (res) {
     if (!res || !dState) return;
@@ -4995,6 +5208,8 @@ function renderDispatchModal() {
     + '<div class="sched-next" id="dSchedNext"></div>'
     /* 专属会话（0.4.4-B）：周期模式可勾 target='new'——首轮触发 host 自动创建「定时 · 任务名」会话并回写复用；仅一次（at）无复用场景不提供 */
     + '<label class="sched-opt" id="dSchedNewBox"' + (dState.schedMode === 'once' ? ' style="display:none"' : '') + '><input type="checkbox" id="dSchedNew"' + (dState.schedNew ? ' checked' : '') + '> ' + t('disp.schedNew') + '</label>'
+    /* 0.4.7-B⑤（notes-047-ux）：专属会话无界面提示行（实测教训：专属会话无 browser_* 等 GUI 附着工具）——勾选即见 */
+    + '<div class="sched-new-hint" id="dSchedNewHint"' + (dState.schedNew && dState.schedMode !== 'once' ? '' : ' style="display:none"') + '>' + t('disp.schedNewHint') + '</div>'
     /* 专属会话模型下拉宿主（0.4.6-G）：勾选专属会话且清单非空才显示（renderSchedModelSel 驱动，静默降级） */
     + '<span id="dSchedModelBox" style="display:none"></span>'
     /* 专属会话权限下拉宿主（0.4.7）：勾选专属会话即显示（renderSchedPresetSel 驱动，无清单依赖常显） */
@@ -5024,9 +5239,10 @@ function renderDispatchModal() {
     if (this.value === 'once' && dState.schedNew) { dState.schedNew = false; $('dSchedNew').checked = false; $('dispSessHostWrap').style.display = ''; }
     renderSchedModelSel();   /* 0.4.6-G：模式切换联动模型下拉显隐（仅一次无专属会话 → 同隐） */
     renderSchedPresetSel();   /* 0.4.7：模式切换联动权限下拉显隐（同模型下拉口径） */
+    renderSchedNewHint();   /* 0.4.7-B⑤：提示行同口径联动 */
     renderSchedNext();
   };
-  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; renderSchedModelSel(); renderSchedPresetSel(); };   /* 0.4.6-G：勾选专属会话才出模型下拉；0.4.7：同出权限下拉 */
+  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; renderSchedModelSel(); renderSchedPresetSel(); renderSchedNewHint(); };   /* 0.4.6-G：勾选专属会话才出模型下拉；0.4.7：同出权限下拉；0.4.7-B⑤：同出无界面提示行 */
   $('dSchedN').oninput = function () { dState.schedN = this.value; renderSchedNext() };
   $('dSchedDow').onchange = function () { dState.schedDow = parseInt(this.value, 10); renderSchedNext() };
   $('dSchedAnchor').oninput = function () { dState.schedAnchor = this.value; renderSchedNext() };
@@ -5034,6 +5250,7 @@ function renderDispatchModal() {
   renderSchedNext();
   renderSchedModelSel();   /* 0.4.6-G：编辑模式回填/缓存清单就位时首轮渲染 */
   renderSchedPresetSel();   /* 0.4.7：权限下拉首轮渲染（预填态就位） */
+  renderSchedNewHint();   /* 0.4.7-B⑤：提示行首轮渲染（编辑态回填 schedNew 情形；markup 内联初态同款口径双保险） */
   renderDispatchSessList();
 }
 function renderDispatchSessList() {
@@ -5238,10 +5455,18 @@ function doRestoreHistory() {
 /* 设置卡交互反馈（notes-settings-feedback）：✕ 常驻关闭 + dirty 跟踪「保存」（显式确认 + 兜底 flush）+「还原」回滚。
    dirty 判定口径 = 在途待写（setInflight>0）或 任一控件值 ≠ 打开时快照（setSnap）；
    自动保存（失焦/Enter/选择即存）零改动——「保存」按钮是显式确认 + 未落盘改动的兜底 flush，两者并存 */
-var setSnap = null;      /* 打开时快照 {llmP,llmM,stale,maxDepth,budget,usageBudget,logWeek,logMonth}（字符串口径同控件值；0.4.4-E：catalog 目录补充行开关随功能整体拆除） */
+var setSnap = null;      /* 打开时快照 {llmP,llmM,stale,maxDepth,budget,usageBudget,logWeek,logMonth,orgMax}（字符串口径同控件值；0.4.4-E：catalog 目录补充行开关随功能整体拆除；0.4.7-B⑦ +orgMax 整理长度上限） */
 var setPersist = null;   /* 已落盘镜像（兜底 flush/还原只写真不同的键） */
 var setInflight = 0;     /* 在途设置写数（>0 = 存在尚未落盘的待写） */
 var setSaving = false;   /* 保存/还原执行中（按钮防重入） */
+/* 0.4.7-B①b（notes-047-ux）：设置行 label 生成器——说明文字 >60 字时限 2 行收折（.s.cl），行名旁出 ⓘ 钮点击展开/收拢；
+   extraHtml = 说明后的追加块（如注入预算仪表），收折只作用说明段 */
+function setLabelHtml(label, tip, extraHtml) {
+  var long = typeof tip === 'string' && tip.length > 60;
+  return '<div class="set-label">' + label
+    + (long ? '<button class="sx" type="button" title="' + t('settings.descExpandTip') + '" aria-label="' + t('settings.descExpandTip') + '">ⓘ</button>' : '')
+    + '<span class="s' + (long ? ' cl' : '') + '">' + tip + '</span>' + (extraHtml || '') + '</div>';
+}
 function openSettings() {
   openModal('<div class="modal-t">' + icon('i-gear', 13) + ' ' + t('common.settings') + '<span class="set-t-acts"><button class="mbtn" id="setRestore" disabled>' + t('common.restore') + '</button><button class="mbtn primary" id="setSave" disabled>' + t('common.save') + '</button><button class="mbtn set-x" id="setClose" title="' + t('settings.closeTip') + '">' + icon('i-x', 11) + '</button></span></div><div class="modal-err" id="mErr" style="display:none"></div><div id="setBody"><div class="modal-hint">' + t('common.loading') + '</div></div>');   /* 0.4.6-H（R2 n-mux9svn0vhkz）：错误区自弹窗底部移到标题栏下——校验失败即刻可见（原渲染在弹窗最底部需滚动，「保存看似没反应」）；modalErr 带 scrollIntoView 兜底 */
   modalCloseHook = flushSettingsPending;   /* ✕/Esc/点遮罩关闭前兜底 flush */
@@ -5267,8 +5492,11 @@ function openSettings() {
     var logRetentionDays = typeof settings.logRetentionDays === 'number' ? settings.logRetentionDays : 90;
     var lastChars = typeof res.lastInjectChars === 'number' ? res.lastInjectChars : 0;
     var gaugePct = budgetNum > 0 ? Math.min(100, Math.round(lastChars / budgetNum * 100)) : 0;
+    /* 0.4.7-B⑦（notes-047-ux）：整理长度上限——控件回显用户覆盖值（0=按所配模型自动）；生效值读 settings-get 增带的 organizeMaxChars（host 已按 用户||模型表||12000 解析） */
+    var orgMaxRaw = typeof settings.organizeMaxChars === 'number' && settings.organizeMaxChars > 0 ? settings.organizeMaxChars : 0;
+    var orgMaxEff = typeof res.organizeMaxChars === 'number' && res.organizeMaxChars > 0 ? res.organizeMaxChars : 12000;
     /* dirty/还原基准（notes-settings-feedback）：打开时快照 + 已落盘镜像初始化（字符串口径同控件值） */
-    setSnap = { llmP: l ? l.provider : '', llmM: l ? l.model : '', stale: String(staleDays), maxDepth: String(maxDepth), budget: String(budgetNum), usageBudget: String(usageBudget), logWeek: String(logWeekDays), logMonth: String(logRetentionDays) };
+    setSnap = { llmP: l ? l.provider : '', llmM: l ? l.model : '', stale: String(staleDays), maxDepth: String(maxDepth), budget: String(budgetNum), usageBudget: String(usageBudget), logWeek: String(logWeekDays), logMonth: String(logRetentionDays), orgMax: String(orgMaxRaw) };
     setPersist = setSnap;
     var llmCtrl;
     if (models.length) {
@@ -5285,34 +5513,39 @@ function openSettings() {
         + (l ? '<button class="mbtn" id="setLlmClear">' + t('settings.followBtn') + '</button>' : '');
     }
     $('setBody').innerHTML =
-      /* onboarding 轻量（notes-034-batch3）：四概念一行一条前置解释（注入/约定·资料/目录注入/派发）——新用户先懂「为什么要配这些」再看字段 */
-      '<div class="modal-hint"><b>' + t('settings.onboardTitle') + '</b><br>'
-      + t('settings.onboardInject') + '<br>'
-      + t('settings.onboardRoles') + '<br>'
-      + t('settings.onboardCatalog') + '<br>'
-      + t('settings.onboardDispatch') + '</div>'
+      /* onboarding 轻量（notes-034-batch3）：四概念一行一条前置解释（注入/约定·资料/目录注入/派发）——新用户先懂「为什么要配这些」再看字段；
+         0.4.7-B①c：bullet 逐条 div.onb-li 悬挂缩进（续行对齐文字起点，<br> 连排折行参差消除） */
+      '<div class="modal-hint onb"><b>' + t('settings.onboardTitle') + '</b>'
+      + '<div class="onb-li">' + t('settings.onboardInject') + '</div>'
+      + '<div class="onb-li">' + t('settings.onboardRoles') + '</div>'
+      + '<div class="onb-li">' + t('settings.onboardCatalog') + '</div>'
+      + '<div class="onb-li">' + t('settings.onboardDispatch') + '</div></div>'
       /* i18n 语言项（notes-042-i18n-mech）：localStorage 本地记忆、切换即生效（setLang 全量 render）；不走 settings.json，不参与 dirty 跟踪 */
-      + '<div class="set-row"><div class="set-label">' + t('settings.language') + '<span class="s">' + t('settings.languageTip') + '</span></div><div class="set-ctrl"><select class="minput" id="setLang"><option value="zh">中文</option><option value="en">English</option></select></div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.llm') + '<span class="s">' + t('settings.llmTip') + '</span></div><div class="set-ctrl">' + llmCtrl + '</div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.usage') + '<span class="s">' + t('settings.usageTip') + '</span></div><div class="set-ctrl usage" id="setUsageBody"><span class="s">' + t('common.loading') + '</span></div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.usageBudget') + '<span class="s">' + t('settings.usageBudgetTip') + '</span></div><div class="set-ctrl"><input class="minput" id="setUsageBudget" type="number" min="0" step="1000" style="width:110px" value="' + usageBudget + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.stale') + '<span class="s">' + t('settings.staleTip') + '</span></div><div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.maxDepth') + '<span class="s">' + t('settings.maxDepthTip') + '</span></div><div class="set-ctrl"><input class="minput" id="setMaxDepth" type="number" min="0" step="1" style="width:90px" value="' + maxDepth + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.budget') + '<span class="s">' + t('settings.budgetTip') + '</span>'
-      + '<span class="s" id="setGaugeT">' + t('settings.gaugeCurrent', { last: lastChars }) + (budgetNum > 0 ? ' / ' + t('settings.gaugeBudget', { budget: budgetNum }) : t('settings.gaugeUnlimited')) + '</span>'
-      + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.language'), t('settings.languageTip')) + '<div class="set-ctrl"><select class="minput" id="setLang"><option value="zh">中文</option><option value="en">English</option></select></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.llm'), t('settings.llmTip')) + '<div class="set-ctrl">' + llmCtrl + '</div></div>'
+      /* 0.4.7-B⑦：整理长度上限行（LLM 区紧随模型行；0 = 按所配模型自动，说明文字带生效值） */
+      + '<div class="set-row">' + setLabelHtml(t('settings.organizeMax'), t('settings.organizeMaxTip', { eff: orgMaxEff })) + '<div class="set-ctrl"><input class="minput" id="setOrgMax" type="number" min="0" step="1000" style="width:110px" value="' + orgMaxRaw + '"></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.usage'), t('settings.usageTip')) + '<div class="set-ctrl usage" id="setUsageBody"><span class="s">' + t('common.loading') + '</span></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.usageBudget'), t('settings.usageBudgetTip')) + '<div class="set-ctrl"><input class="minput" id="setUsageBudget" type="number" min="0" step="1000" style="width:110px" value="' + usageBudget + '"></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.stale'), t('settings.staleTip')) + '<div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.maxDepth'), t('settings.maxDepthTip')) + '<div class="set-ctrl"><input class="minput" id="setMaxDepth" type="number" min="0" step="1" style="width:90px" value="' + maxDepth + '"></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.budget'), t('settings.budgetTip'),
+          '<span class="s" id="setGaugeT">' + t('settings.gaugeCurrent', { last: lastChars }) + (budgetNum > 0 ? ' / ' + t('settings.gaugeBudget', { budget: budgetNum }) : t('settings.gaugeUnlimited')) + '</span>'
+          + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div>')
       + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.injPreview') + '<span class="s">' + t('settings.injPreviewTip') + '</span></div><div class="set-ctrl"><button class="mbtn" id="setInjectPreview">' + t('settings.previewBtn') + '</button></div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.injManager') + '<span class="s">' + t('settings.injManagerTip') + '</span></div><div class="set-ctrl"><button class="mbtn" id="setInjectManager">' + t('settings.manageBtn') + '</button></div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.data') + '<span class="s">' + t('settings.dataTip') + '</span></div><div class="set-ctrl"><button class="mbtn" id="setExport">' + t('settings.exportAll') + '</button><button class="mbtn" id="setImport">' + t('settings.importBtn') + '</button><button class="mbtn" id="setTrash">' + t('topbar.trash') + '</button></div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.assets') + '<span class="s">' + t('settings.assetsTip') + '</span></div><div class="set-ctrl"><button class="mbtn" id="setPrune">' + t('settings.pruneBtn') + '</button></div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.suggest') + '<span class="s">' + t('settings.suggestTip') + '</span></div><div class="set-ctrl"><button class="mbtn" id="setSuggest">' + t('settings.openBtn') + '</button></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.injPreview'), t('settings.injPreviewTip')) + '<div class="set-ctrl"><button class="mbtn" id="setInjectPreview">' + t('settings.previewBtn') + '</button></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.injManager'), t('settings.injManagerTip')) + '<div class="set-ctrl"><button class="mbtn" id="setInjectManager">' + t('settings.manageBtn') + '</button></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.data'), t('settings.dataTip')) + '<div class="set-ctrl"><button class="mbtn" id="setExport">' + t('settings.exportAll') + '</button><button class="mbtn" id="setImport">' + t('settings.importBtn') + '</button><button class="mbtn" id="setTrash">' + t('topbar.trash') + '</button></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.assets'), t('settings.assetsTip')) + '<div class="set-ctrl"><button class="mbtn" id="setPrune">' + t('settings.pruneBtn') + '</button></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.suggest'), t('settings.suggestTip')) + '<div class="set-ctrl"><button class="mbtn" id="setSuggest">' + t('settings.openBtn') + '</button></div></div>'
       /* 工作记忆 v0「工作记忆」区：启用沉淀引导（约定笔记方案）+ 日志卫生两级窗口 */
-      + '<div class="set-row"><div class="set-label">' + t('settings.memory') + '<span class="s">' + t('settings.memoryTip') + '</span></div><div class="set-ctrl" id="setMemoryCtrl"><span class="s">' + t('settings.memProbing') + '</span></div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.logWeek') + '<span class="s">' + t('settings.logWeekTip') + '</span></div><div class="set-ctrl"><input class="minput" id="setLogWeek" type="number" min="0" step="1" style="width:90px" value="' + logWeekDays + '"></div></div>'
-      + '<div class="set-row"><div class="set-label">' + t('settings.logMonth') + '<span class="s">' + t('settings.logMonthTip') + '</span></div><div class="set-ctrl"><input class="minput" id="setLogMonth" type="number" min="0" step="1" style="width:90px" value="' + logRetentionDays + '"></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.memory'), t('settings.memoryTip')) + '<div class="set-ctrl" id="setMemoryCtrl"><span class="s">' + t('settings.memProbing') + '</span></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.logWeek'), t('settings.logWeekTip')) + '<div class="set-ctrl"><input class="minput" id="setLogWeek" type="number" min="0" step="1" style="width:90px" value="' + logWeekDays + '"></div></div>'
+      + '<div class="set-row">' + setLabelHtml(t('settings.logMonth'), t('settings.logMonthTip')) + '<div class="set-ctrl"><input class="minput" id="setLogMonth" type="number" min="0" step="1" style="width:90px" value="' + logRetentionDays + '"></div></div>'
       /* 键盘流速查表入口（notes-034-f-cheatsheet）：内容与 panels/keyboard.js 逐键核对；? 键为直达通道 */
-      + '<div class="set-row"><div class="set-label">' + t('settings.cheatsheet') + '<span class="s">' + t('settings.cheatsheetTip') + '</span></div><div class="set-ctrl"><button class="mbtn" id="setCheatsheet">' + t('settings.viewBtn') + '</button></div></div>';
+      + '<div class="set-row">' + setLabelHtml(t('settings.cheatsheet'), t('settings.cheatsheetTip')) + '<div class="set-ctrl"><button class="mbtn" id="setCheatsheet">' + t('settings.viewBtn') + '</button></div></div>';
+    /* 0.4.7-B①b：说明 ⓘ 展开/收拢接线（长说明初态 .cl 收折两行；点击切换，按钮原生可聚焦） */
+    $('setBody').querySelectorAll('.sx').forEach(function (el) { el.onclick = function () { var s = el.parentElement.querySelector('.s'); if (s) s.classList.toggle('cl') } });
     /* i18n 语言项（notes-042-i18n-mech + cov-c）：回显当前语言态；切换 = setLang 持久化 + 全量 render +
        本卡就地重渲染（render() 不重渲已开 modal：先兜底 flush 未落盘改动，重跑 openSettings 按新语言重建，
        滚动位置经 modalBackScroll 一次性还原——与二级面板返回同口径） */
@@ -5378,8 +5611,14 @@ function openSettings() {
       usageBudget = parseInt(v, 10);
       saveSettings({ usageBudgetMonthly: usageBudget }, +v === 0 ? t('settings.usageBudgetOff') : t('settings.savedUsageBudget', { v: fmtTok(+v) }));
     };
+    /* 0.4.7-B⑦：整理长度上限失焦/Enter 即保存（非负整数；0 = 按所配模型自动——host 侧删 override 回落模型表） */
+    $('setOrgMax').onchange = function () {
+      var v = String(this.value).trim();
+      if (!/^\d+$/.test(v)) { modalErr(t('settings.organizeMaxInvalid')); return }
+      saveSettings({ organizeMaxChars: parseInt(v, 10) }, +v === 0 ? t('settings.organizeMaxAuto') : t('settings.savedOrganizeMax', { v: v }));
+    };
     /* dirty 跟踪（notes-settings-feedback）：输入即刷新 保存/还原 按钮态（oninput 只刷新不落盘；失焦/Enter 即存的 onchange 链路不变） */
-    ['setStale', 'setMaxDepth', 'setBudget', 'setUsageBudget', 'setLogWeek', 'setLogMonth', 'setLlmP', 'setLlmM'].forEach(function (id) { var el = $(id); if (el) el.oninput = setDirtyRefresh });
+    ['setStale', 'setMaxDepth', 'setBudget', 'setUsageBudget', 'setLogWeek', 'setLogMonth', 'setOrgMax', 'setLlmP', 'setLlmM'].forEach(function (id) { var el = $(id); if (el) el.oninput = setDirtyRefresh });
     setDirtyRefresh();
     /* 单层返回栈（notes-041-settings-back）：二级面板返回重开时还原离开时的滚动位置（一次性消费，随后清零防串档） */
     if (modalBackScroll > 0 && $('modal')) $('modal').scrollTop = modalBackScroll;
@@ -5400,6 +5639,7 @@ function saveSettings(patch, okMsg) {
   rpc('notes-settings-set', patch).then(function (res) {
     if (res && res.error) { modalErr(res.error); return }
     setPersistMerge(patch);
+    if ('organizeMaxChars' in patch || 'llm' in patch) { if (typeof orgMaxCacheReset === 'function') orgMaxCacheReset() }   /* 0.4.7-B⑦：整理上限/模型变更 → 引导卡生效值缓存失效（organize.js 全局互通） */
     if (okMsg) toast(okMsg);
   }).catch(function (e) { modalErr(t('common.saveFailed', { msg: e && e.message || e })) }).then(function () { setInflight--; setDirtyRefresh() });
 }
@@ -5410,7 +5650,7 @@ function setDirtyCompute() {
   if (setInflight > 0) return true;
   if ($('setLlmSel') && $('setLlmSel').value !== (setSnap.llmP && setSnap.llmM ? setSnap.llmP + '/' + setSnap.llmM : '')) return true;
   if ($('setLlmP') && ($('setLlmP').value.trim() !== setSnap.llmP || $('setLlmM').value.trim() !== setSnap.llmM)) return true;
-  var nums = [['setStale', 'stale'], ['setMaxDepth', 'maxDepth'], ['setBudget', 'budget'], ['setUsageBudget', 'usageBudget'], ['setLogWeek', 'logWeek'], ['setLogMonth', 'logMonth']];
+  var nums = [['setStale', 'stale'], ['setMaxDepth', 'maxDepth'], ['setBudget', 'budget'], ['setUsageBudget', 'usageBudget'], ['setLogWeek', 'logWeek'], ['setLogMonth', 'logMonth'], ['setOrgMax', 'orgMax']];
   for (var i = 0; i < nums.length; i++) { var el = $(nums[i][0]); if (el && String(el.value).trim() !== setSnap[nums[i][1]]) return true }
   return false;
 }
@@ -5433,6 +5673,7 @@ function setPersistMerge(patch) {
   if ('usageBudgetMonthly' in patch) n.usageBudget = String(patch.usageBudgetMonthly);
   if ('logWeekAfterDays' in patch) n.logWeek = String(patch.logWeekAfterDays);
   if ('logRetentionDays' in patch) n.logMonth = String(patch.logRetentionDays);
+  if ('organizeMaxChars' in patch) n.orgMax = String(patch.organizeMaxChars > 0 ? patch.organizeMaxChars : 0);   /* 0.4.7-B⑦：0 = 自动（host 删 override），镜像口径同控件 */
   setPersist = n;
 }
 /* 低层写通道（保存/还原/关闭兜底 flush 共用）：不逐键 toast，错误 reject 透传；在途计数 + 已落盘镜像跟进 */
@@ -5453,10 +5694,11 @@ var SET_NUM_FIELDS = [
   ['setUsageBudget', 'usageBudget', 'usageBudgetMonthly', 'settings.usageBudgetInvalid'],
   ['setLogWeek', 'logWeek', 'logWeekAfterDays', 'settings.logWeekInvalid'],
   ['setLogMonth', 'logMonth', 'logRetentionDays', 'settings.logMonthInvalid'],
+  ['setOrgMax', 'orgMax', 'organizeMaxChars', 'settings.organizeMaxInvalid'],
 ];
 /* 当前控件值 → 快照对象（保存成功后快照跟进用） */
 function setSnapFromControls() {
-  var s = { llmP: '', llmM: '', stale: '', maxDepth: '', budget: '', usageBudget: '', logWeek: '', logMonth: '' };
+  var s = { llmP: '', llmM: '', stale: '', maxDepth: '', budget: '', usageBudget: '', logWeek: '', logMonth: '', orgMax: '' };
   if ($('setLlmSel')) { var v = $('setLlmSel').value; s.llmP = v ? v.split('/')[0] : ''; s.llmM = v ? v.split('/').slice(1).join('/') : '' }
   if ($('setLlmP')) { s.llmP = $('setLlmP').value.trim(); s.llmM = $('setLlmM').value.trim() }
   for (var i = 0; i < SET_NUM_FIELDS.length; i++) { var el = $(SET_NUM_FIELDS[i][0]); if (el) s[SET_NUM_FIELDS[i][1]] = String(el.value).trim() }
@@ -6113,17 +6355,21 @@ function setMountStat(mode, tip) {
   el.textContent = t(mode === 'gen' ? 'inj.mountGen' : 'inj.mountGenFail');
   if (tip) el.title = tip; else el.removeAttribute('title');
 }
-function openMountModal(n, onConfirm) {
+function openMountModal(n, onConfirm, onSkip) {
   if (!n) return;
   injMgrState = null; modalBackTo = null;
   var edit = typeof n.existing === 'string';   /* 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM） */
-  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, genErr: '', onConfirm: typeof onConfirm === 'function' ? onConfirm : null };
+  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, genErr: '', onConfirm: typeof onConfirm === 'function' ? onConfirm : null, onSkip: typeof onSkip === 'function' ? onSkip : null };
+  /* 0.4.7-B④b（notes-047-ux，R2 漏网 n-mux79knmfjxt）：左钮三岔文案明确化——
+     角色切换在途（onSkip 存在，三态/行内直改入口）=「仅切换角色，暂不挂载」（切档不落索引行）；编辑模式 =「取消」；
+     其余纯挂载入口（建议器/预览）= inj.mountSkip 原样。Esc/点遮罩 = 一律取消零副作用（不切换不挂载） */
+  var skipLabel = mountState.onSkip ? t('inj.mountSkipSwitch') : (edit ? t('common.cancel') : t('inj.mountSkip'));
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + (edit ? t('inj.mountEdit') : t('inj.mountTitle')) + '<span class="sub">' + t('inj.mountSub') + '</span></div>'
     + '<div class="inj-mount-body"><label class="inj-mount-label">' + t('inj.mountLabel') + '</label>'
     + '<textarea class="inj-mount-when" id="injMountWhen" rows="3" placeholder="' + esc(edit ? t('inj.mountPlaceholder') : t('inj.mountGen')) + '">' + esc(mountState.when) + '</textarea>'
     + '<div class="inj-mount-stat" id="injMountStat" style="display:none"></div></div>'
-    + '<div class="modal-acts"><button class="mbtn" id="injMountSkip">' + t('inj.mountSkip') + '</button>'
+    + '<div class="modal-acts"><button class="mbtn" id="injMountSkip">' + skipLabel + '</button>'
     + '<button class="mbtn primary" id="injMountSave">' + t('inj.mountSave') + '</button></div>'
   );
   $('injMountWhen').oninput = function () { if (mountState) mountState.touched = true };
@@ -6149,7 +6395,8 @@ function openMountModal(n, onConfirm) {
       setMountStat('err', mountState.genErr);
     });
   }
-  $('injMountSkip').onclick = function () { mountState = null; closeModal() };
+  /* 跳过/取消钮：onSkip 在途（角色切换入口）= 关卡 + 切档不挂载；否则 = 纯取消零副作用（0.4.7-B④b） */
+  $('injMountSkip').onclick = function () { var st = mountState; mountState = null; closeModal(); if (st && st.onSkip) { try { st.onSkip() } catch (e) {} } };
   $('injMountSave').onclick = function () {
     if (!mountState || mountState.pending) return;
     mountState.pending = true; mountState.when = $('injMountWhen').value;
@@ -6172,21 +6419,29 @@ function doInjMgrSet(n, role) {
   if (injMgrRole(n) === role) return;
   /* 0.4.3 验收修复⑪：单行「设为资料」先开挂载弹层（LLM 预填 whenToUse；确认 = notes-mount 单点收口落行 + 翻 reference 档，
      取消零副作用——不先静默翻转）；modal 不叠 modal——openMountModal 接管 modal 宿主（ injMgrState 清零由弹层入口承担），
-     确认后的收敛刷新由弹层保存路径统一承担（loadNotes） */
-  if (role === 'reference') { openMountModal({ id: n.id, title: n.title }); return }
+     确认后的收敛刷新由弹层保存路径统一承担（loadNotes）；
+     0.4.7-B④b：弹层第三岔「仅切换角色，暂不挂载」（onSkip）= 直走 injMgrSetDirect 切档不落索引行 */
+  if (role === 'reference') { openMountModal({ id: n.id, title: n.title }, null, function () { injMgrSetDirect(n, 'reference') }); return }
+  /* 0.4.7-A④（notes-047-cleanup，0.4.6-E verifier 残留）：行内「设为约定」confirm 闸——单击直切约定档太秃，
+     与详情区三态同文案同口径（meta.convInjectConfirm，editor-meta.js 先例）；取消零副作用。批量闸（doInjMgrBatch）同用原生 confirm */
+  if (role === 'convention' && !confirm(t('meta.convInjectConfirm', { title: n.title || n.id, scope: injectScopeLabel(n.injectTo) }))) return;
+  injMgrSetDirect(n, role);
+}
+/* 单行直改落盘段（doInjMgrSet 非挂载路径 + 0.4.7-B④b 挂载框「仅切换角色」跳过档共用）：notes-update {inject, injectRole} + toast + 本地回写；
+   反馈 toast 不挂 injMgrState 守卫（onSkip 路径弹层已接管宿主、管理面板态为空——写已落盘，反馈必须出声；面板 UI 回写才守卫） */
+function injMgrSetDirect(n, role) {
   var upd = { id: n.id, inject: role !== 'off' };
   if (upd.inject) upd.injectRole = role;   /* 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘） */
   rpc('notes-update', upd).then(function (res) {
-    if (!injMgrState) return;
-    if (res && res.error) { modalErr(res.error); return }
+    if (res && res.error) { if (injMgrState) modalErr(res.error); else toast(res.error); return }
     if (res && res.injectForcedOff) toast(t('inj.forcedOff', { title: n.title || n.id }));
     else toast(role === 'off' ? t('inj.injectOffToast', { title: n.title || n.id }) : t('inj.injectSetToast', { role: t(role === 'reference' ? 'tree.roleReference' : 'tree.roleConvention'), title: n.title || n.id }));
     /* 本地即时回写（injectEver 粘性：开启即曾注入），后台刷新对齐 host */
     n.inject = role !== 'off';
     if (role !== 'off') { n.injectRole = role; n.injectEver = true }
-    renderInjectManager();
+    if (injMgrState) renderInjectManager();
     loadNotes(true);
-  }).catch(function (e) { modalErr(t('inj.setFailed', { msg: e && e.message || e })) });
+  }).catch(function (e) { if (injMgrState) modalErr(t('inj.setFailed', { msg: e && e.message || e })); else toast(t('inj.setFailed', { msg: e && e.message || e })) });
 }
 /* 批量设为约定/资料/关闭：confirm 条数 → 逐条 notes-update（单条失败计数不中断）；完成后清选 + 刷新 */
 function doInjMgrBatch(role) {
@@ -6962,10 +7217,10 @@ function undoBatchDelete(ids) {
   chain.then(function () { toast(t('common.restoredBatch', { ok: ok }) + (fail ? t('inj.batchDoneFail', { n: fail }) : '')); loadNotes(true); });
 }
 
-/* ================= 顶栏：刷新 / 归档 / 主题 ================= */
+/* ================= 顶栏：刷新 / 建议 / 主题 ================= */
 /* 刷新假阳性修复（R-2）：等 loadNotes 真实结果——失败（res.error/网络异常）时 loadNotes 已弹「列表加载失败」，这里不再无条件报喜 */
+/* 0.4.7-B②a（notes-047-ux）：顶栏「速记合并」按钮撤除（与建议器首段「速记组 → 去归档」入口重复）——归档预览入口保留在建议器内 */
 $('btnRefresh').addEventListener('click', function () { searchIds = null; var p = loadNotes(); if (sessList.length) pullSessions(); p.then(function (ok) { if (ok) toast(t('common.refreshed')) }) });
-$('btnArchive').addEventListener('click', openArchive);
 /* 0.4.6-C（notes-046-ux-discovery）：顶栏「建议」入口（计数徽标 #suggestBd 由 modals/suggest.js renderSuggestBadge 驱动）；
    启动即拉一次计数（notes-suggest dry-run 零写入），后续随 loadNotes 链尾节流刷新（kernel/data.js） */
 $('btnSuggest').addEventListener('click', function () { openSuggest() });
@@ -6978,7 +7233,6 @@ $('btnSelMode').addEventListener('click', function () { selMode = !selMode; selI
 function renderChrome() {
   $('topSub').textContent = t('topbar.subtitle');
   $('btnRefresh').title = t('topbar.refreshTip'); $('btnRefresh').querySelector('.tb-t').textContent = t('topbar.refresh');
-  $('btnArchive').title = t('topbar.archiveTip'); $('btnArchive').querySelector('.tb-t').textContent = t('topbar.archive');
   $('btnSuggest').querySelector('.tb-t').textContent = t('topbar.suggest');   /* 0.4.6-C：title 由 renderSuggestBadge 按计数态写（suggestTip/suggestTipN） */
   renderSuggestBadge();
   $('btnTheme').title = t('topbar.themeTip'); $('btnTheme').querySelector('.tb-t').textContent = t('topbar.theme');
@@ -7143,6 +7397,9 @@ document.addEventListener('selectionchange', function () {
 });
 /* 0.4.3⑦：日志同权 + 文件视图拆除——render 不再做日志口径翻转检测（maybeReloadForLogs 已随 data.js 一并拆除），纯渲染汇聚 */
 function render() { renderTree(); if (edNote) renderMeta() }
+/* 0.4.7-C（notes-047-stability ①）：页面卸载兜底——<900ms debounce 窗口内的在途编辑 flush 落盘（keepalive 通道）；
+   面板关闭路径在 app 端不存在（全窗口页无浮层关），卸载是唯一关闭点；无在途时 flushPendingSave 零动作 */
+window.addEventListener('beforeunload', function () { try { flushPendingSave() } catch (e) {} });
 loadNotes();
 </script>
 </body>

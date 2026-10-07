@@ -105,6 +105,14 @@ module.exports = {
     assert.strictEqual(ns.schedAnchorNextMs('00:00', undefined, 86400000, mkL(2026, 10, 5, 10, 0), false, mkL(2026, 10, 6, 0, 0) + 30000), mkL(2026, 10, 6, 0, 0), '0.4.7 断言③：跨日后 tick 晚 30s（00:00:30）→ 当日零点候选照常返回补发（修复前跳后日）')
     assert.strictEqual(ns.schedAnchorNextMs('10:30', wDow, 604800000, mkL(2026, 10, 5, 10, 0), false, mkL(2026, 10, 5, 10, 35)), mkL(2026, 10, 5, 10, 30), '0.4.7 weekly 同款收紧：当日 dow 锚点刚过 5min → 当日内补发不跳下周（修复前跳下周）')
     assert.strictEqual(ns.schedAnchorNextMs('09:00', wDow, 604800000, wBase - 21 * 86400000, false, wBase + 3600000), wFire + 7 * 86400000, '0.4.7 weekly 陈旧欠款 + 当日锚点已过 → 跳下周（欠款语义不退化）')
+    // 0.4.7-A⑦（notes-047-cleanup）三件套非对齐值变体：首触防过去闸（first < nday0）+ weekly 补发闸（dn+off >= nowMs）边界
+    //   「精确命中 / 差一分（锚点分钟粒度最小单位）未到 / 差几秒已过」——虚拟时钟精确等号盲区教训（0.4.7 首触 bug）
+    assert.strictEqual(ns.schedAnchorNextMs('00:00', undefined, 86400000, mkL(2026, 10, 4, 10, 0), false, mkL(2026, 10, 5, 12, 0)), mkL(2026, 10, 5, 0, 0), '0.4.7-A⑦ daily 闸：候选 == nday0 精确命中 → 不跳日（等号归属不陈旧侧）')
+    assert.strictEqual(ns.schedAnchorNextMs('23:59', undefined, 86400000, mkL(2026, 10, 4, 10, 0), false, mkL(2026, 10, 5, 12, 0)), mkL(2026, 10, 5, 23, 59), '0.4.7-A⑦ daily 闸：候选 = nday0 差一分未到（陈旧）→ 跳日对齐当日 23:59')
+    assert.strictEqual(ns.schedAnchorNextMs('00:00', undefined, 86400000, mkL(2026, 10, 4, 10, 0), false, mkL(2026, 10, 5, 0, 0) + 5000), mkL(2026, 10, 5, 0, 0), '0.4.7-A⑦ daily 闸：now = 候选+5s（当日内错过）→ 候选照常返回（当日内补发不跳日）')
+    assert.strictEqual(ns.schedAnchorNextMs('09:00', wDow, 604800000, wBase - 21 * 86400000, false, wFire - 1000), wFire, '0.4.7-A⑦ weekly 闸：now = 候选-1s（未到）→ 本周候选')
+    assert.strictEqual(ns.schedAnchorNextMs('09:00', wDow, 604800000, wBase - 21 * 86400000, false, wFire), wFire, '0.4.7-A⑦ weekly 闸：now == 候选精确命中 → 本周候选（等号归属命中侧）')
+    assert.strictEqual(ns.schedAnchorNextMs('09:00', wDow, 604800000, wBase - 21 * 86400000, false, wFire + 5000), wFire + 7 * 86400000, '0.4.7-A⑦ weekly 闸：now = 候选+5s（已过）→ 跳下周同 dow')
     const anchor = '2026-10-01T02:00:00.000Z'
     assert.strictEqual(ns.schedNextMs({ createdAt: anchor, schedule: { every: '3d' } }), Date.parse(anchor) + 3 * 86400000, '轮询未触发：createdAt + 间隔（同 host 锚点，无 anchor 存量兼容）')
     const fired = '2026-10-03T02:00:00.000Z'

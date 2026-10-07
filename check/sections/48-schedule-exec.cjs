@@ -644,6 +644,93 @@ module.exports = {
     }
   })
 
+  // ===== 时间闸门断言三件套（0.4.7-A⑦ notes-047-cleanup；P0 首触 bug 测试盲区教训：真实轮询时钟打不中精确等号）=====
+  //   凡含 nowMs 注入的判定函数各补一轮「精确命中 / 差一秒未到 / 差几秒已过」非对齐值变体：
+  //   schedDueAt 三分支（every 纯间隔 nowMs-base>=iv / at 单次 atMs<=nowMs && firedMs<atMs / anchor 锚定 nowMs>=next）+ lastError 5min 节流闸（nowMs-lastErrMs<RETRY）。
+  //   注意：触发会推进 lastFiredAt，三件套的「已过」变体须分篇造数（同篇首触后边界语义已变）。
+  await t('时间闸门三件套（非对齐值变体）：every/at/anchor 三判定分支 + lastError 节流闸 各补 精确命中/差一秒未到/差几秒已过', async () => {
+    // ---- every 纯间隔分支（nowMs - base >= iv；base=declaredAt 重锚口径） ----
+    const cE = await handlers['notes-create']({ title: '三件套轮询约定', body: 'x', contractType: 'dispatch-schedule', schedule: { every: '3d', target: LIVE_SID } })
+    try {
+      const dMs = Date.parse((await handlers['notes-get']({ id: cE.id })).note.schedule.declaredAt)
+      assert(isFinite(dMs), 'declaredAt 可读（0.4.6-F 锚点）')
+      let ev = await handlers['notes-schedule-eval']({ now: new Date(dMs + 3 * 86400000 - 1000).toISOString() })
+      assert(ev.fired === 0 && ev.errors === 0, 'every：差一秒未到不触发（实得 ' + JSON.stringify(ev) + '）')
+      ev = await handlers['notes-schedule-eval']({ now: new Date(dMs + 3 * 86400000).toISOString() })
+      assert(ev.fired === 1 && ev.errors === 0, 'every：精确命中 base+3d 即触发（等号归属到期侧，实得 ' + JSON.stringify(ev) + '）')
+    } finally { await handlers['notes-delete']({ id: cE.id }) }
+    const cE2 = await handlers['notes-create']({ title: '三件套轮询约定乙', body: 'x', contractType: 'dispatch-schedule', schedule: { every: '3d', target: LIVE_SID } })
+    try {
+      const dMs2 = Date.parse((await handlers['notes-get']({ id: cE2.id })).note.schedule.declaredAt)
+      const ev = await handlers['notes-schedule-eval']({ now: new Date(dMs2 + 3 * 86400000 + 3000).toISOString() })
+      assert(ev.fired === 1 && ev.errors === 0, 'every：差几秒已过照常触发（轮询时钟语义，实得 ' + JSON.stringify(ev) + '）')
+    } finally { await handlers['notes-delete']({ id: cE2.id }) }
+    // ---- at 单次分支（atMs <= nowMs && firedMs < atMs；localIso 精度到秒——边界按秒整对齐） ----
+    const atIso1 = localIso(Date.now() + 120000)
+    const atMs1 = Date.parse(atIso1)
+    const cA1 = await handlers['notes-create']({ title: '三件套单次约定', body: 'x', contractType: 'dispatch-schedule', schedule: { at: atIso1, target: LIVE_SID } })
+    try {
+      let ev = await handlers['notes-schedule-eval']({ now: new Date(atMs1 - 1000).toISOString() })
+      assert(ev.fired === 0 && ev.errors === 0, 'at：差一秒未到不触发（实得 ' + JSON.stringify(ev) + '）')
+      ev = await handlers['notes-schedule-eval']({ now: new Date(atMs1).toISOString() })
+      assert(ev.fired === 1 && ev.errors === 0, 'at：精确命中 atMs 即触发（等号归属到期侧，实得 ' + JSON.stringify(ev) + '）')
+    } finally { await handlers['notes-delete']({ id: cA1.id }) }
+    const atIso2 = localIso(Date.now() + 120000)
+    const atMs2 = Date.parse(atIso2)
+    const cA2 = await handlers['notes-create']({ title: '三件套单次约定乙', body: 'x', contractType: 'dispatch-schedule', schedule: { at: atIso2, target: LIVE_SID } })
+    try {
+      const ev = await handlers['notes-schedule-eval']({ now: new Date(atMs2 + 5000).toISOString() })
+      assert(ev.fired === 1 && ev.errors === 0, 'at：差几秒已过补发一次（停机错过语义，实得 ' + JSON.stringify(ev) + '）')
+    } finally { await handlers['notes-delete']({ id: cA2.id }) }
+    // ---- anchor 锚定分支（nowMs >= schedAnchorNextMs(...)） ----
+    const cN1 = await handlers['notes-create']({ title: '三件套锚定约定', body: 'x', contractType: 'dispatch-schedule', schedule: { every: '1d', anchor: '09:00', target: LIVE_SID } })
+    try {
+      const created = Date.parse((await handlers['notes-get']({ id: cN1.id })).note.createdAt)
+      const d0 = new Date(created), dayMid = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate()).getTime()
+      const firstDue = (dayMid + 9 * 3600000 > created ? dayMid : dayMid + 86400000) + 9 * 3600000   // 下一个本地 09:00（同上方锚定行为断言口径）
+      let ev = await handlers['notes-schedule-eval']({ now: new Date(firstDue - 1000).toISOString() })
+      assert(ev.fired === 0 && ev.errors === 0, 'anchor：差一秒未到不触发（实得 ' + JSON.stringify(ev) + '）')
+      ev = await handlers['notes-schedule-eval']({ now: new Date(firstDue).toISOString() })
+      assert(ev.fired === 1 && ev.errors === 0, 'anchor：精确命中锚定时刻即触发（等号归属到期侧，实得 ' + JSON.stringify(ev) + '）')
+    } finally { await handlers['notes-delete']({ id: cN1.id }) }
+    const cN2 = await handlers['notes-create']({ title: '三件套锚定约定乙', body: 'x', contractType: 'dispatch-schedule', schedule: { every: '1d', anchor: '09:00', target: LIVE_SID } })
+    try {
+      const created2 = Date.parse((await handlers['notes-get']({ id: cN2.id })).note.createdAt)
+      const d2 = new Date(created2), dayMid2 = new Date(d2.getFullYear(), d2.getMonth(), d2.getDate()).getTime()
+      const firstDue2 = (dayMid2 + 9 * 3600000 > created2 ? dayMid2 : dayMid2 + 86400000) + 9 * 3600000
+      const ev = await handlers['notes-schedule-eval']({ now: new Date(firstDue2 + 5000).toISOString() })
+      assert(ev.fired === 1 && ev.errors === 0, 'anchor：差几秒已过照常触发（当日内补发，0.4.7 闸收紧口径，实得 ' + JSON.stringify(ev) + '）')
+    } finally { await handlers['notes-delete']({ id: cN2.id }) }
+    // ---- lastError 5min 节流闸（nowMs - lastErrMs < SCHED_ERR_RETRY_MS；< 号等号归属刷新侧） ----
+    const GONE_SID = 'session-gone047a00-0000-0000-0000-000000000000'   // 声明期存活（就地扩账）执行期持久化失联 → 每轮到期必失败
+    S.ws1SessionIds.push(GONE_SID)
+    let goneId = null
+    try {
+      const c = await handlers['notes-create']({ title: '三件套节流约定', body: 'x', contractType: 'dispatch-schedule', schedule: { every: '5m', target: GONE_SID } })
+      assert(c && c.id && !c.error, '节流探针创建（实得 ' + JSON.stringify(c) + '）')
+      goneId = c.id
+      const t0 = new Date(Date.now() + 3600000).toISOString()
+      let ev = await handlers['notes-schedule-eval']({ now: t0 })
+      assert(ev.fired === 0 && ev.errors === 1, '节流基线：首次故障落 lastError（实得 ' + JSON.stringify(ev) + '）')
+      let g = await handlers['notes-get']({ id: c.id })
+      assert.strictEqual(g.note.schedule.lastError.at, t0, 'lastError.at = 基线时刻')
+      ev = await handlers['notes-schedule-eval']({ now: new Date(Date.parse(t0) + 300000 - 1000).toISOString() })
+      g = await handlers['notes-get']({ id: c.id })
+      assert(ev.errors === 1 && g.note.schedule.lastError.at === t0, '节流闸：差一秒未到窗不刷写（实得 ' + g.note.schedule.lastError.at + '）')
+      const t1 = new Date(Date.parse(t0) + 300000).toISOString()
+      ev = await handlers['notes-schedule-eval']({ now: t1 })
+      g = await handlers['notes-get']({ id: c.id })
+      assert(ev.errors === 1 && g.note.schedule.lastError.at === t1, '节流闸：精确命中窗口边缘即刷写（等号归属刷新侧）')
+      const t2 = new Date(Date.parse(t1) + 300000 + 3000).toISOString()
+      ev = await handlers['notes-schedule-eval']({ now: t2 })
+      g = await handlers['notes-get']({ id: c.id })
+      assert(ev.errors === 1 && g.note.schedule.lastError.at === t2, '节流闸：差几秒已过窗照常刷写')
+    } finally {
+      if (goneId) await handlers['notes-delete']({ id: goneId })
+      const i = S.ws1SessionIds.indexOf(GONE_SID); if (i >= 0) S.ws1SessionIds.splice(i, 1)   // 复位账目（防污染后续节会话清单口径）
+    }
+  })
+
   // ===== 双包一致：标记块逐字节 + 静态包行为（webServer 路由链路全链路） =====
   await t('schedule-exec 标记块双包逐字节一致 + cron 装配静态锚点（host-impl / index.mjs）', () => {
     const grab = (s, tag) => { const m = s.match(/\/\/ ==== schedule-exec BEGIN ====[\s\S]*?\/\/ ==== schedule-exec END ====/); assert(m, tag + ' 缺 schedule-exec 标记块'); return m[0] }

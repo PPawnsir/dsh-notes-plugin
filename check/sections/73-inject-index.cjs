@@ -54,7 +54,7 @@ module.exports = {
     // app（模板串形态）
     const appSrc = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'modals', 'inject-manager.js'), 'utf8')
     assert(appSrc.indexOf('function openMountModal(') >= 0 && appSrc.indexOf("rpc('notes-mount', { id: mountState.id, whenToUse: mountState.when || mountState.title })") >= 0, 'app 挂载弹层在位 + notes-mount 通道（0.4.3⑦ 顺带微修：when 空串回退标题）')
-    assert(appSrc.indexOf("if (role === 'reference')") >= 0 && appSrc.indexOf('openMountModal({ id: n.id, title: n.title })') >= 0, 'app 注入管理行：设为资料 → 弹层')
+    assert(appSrc.indexOf("if (role === 'reference')") >= 0 && appSrc.indexOf('openMountModal({ id: n.id, title: n.title }') >= 0, 'app 注入管理行：设为资料 → 弹层（0.4.7-B④b 起带 onSkip 第三岔，锚改前缀）')
     // i18n：en/zh 同 key 集全 key 化（inj.mount*）
     const en = fsNative.readFileSync(path.join(DIR, 'src', 'i18n', 'en.js'), 'utf8')
     const zh = fsNative.readFileSync(path.join(DIR, 'src', 'i18n', 'zh.js'), 'utf8')
@@ -499,16 +499,16 @@ module.exports = {
     assert(clientPkgSrc.indexOf('existing: line ? line.when : undefined') >= 0, '发布包 lib/client.js 编辑器预填链路同步（0.4.3⑫，需先跑 scripts/build-dist.cjs）')
     // 弹层机制：onConfirmed 回调存管 + 取消/关闭清零 + 确认后收敛刷新（loadNotes + notifyNotesChanged）
     assert(clientSrc.indexOf('const mountOnConfirmedRef = { current: null }') >= 0, 'client 挂载确认回调镜像在位')
-    assert(clientSrc.indexOf("function closeMountModal() { mountOnConfirmedRef.current = null; setMountOpen(false) }") >= 0, '取消/跳过 = 回调清零（零副作用语义）')
+    assert(clientSrc.indexOf("function closeMountModal() { mountOnConfirmedRef.current = null; mountOnSkipRef.current = null; setMountOpen(false) }") >= 0, '取消 = 回调清零（零副作用语义；0.4.7-B④b 起跳过档回调 onSkip 同口清零）')
     assert(clientSrc.indexOf('const cb = mountOnConfirmedRef.current') >= 0 && clientSrc.indexOf('panelBridge.loadNotes(true); notifyNotesChanged()') >= 0, '确认后先取回调再关层 + 收敛刷新（陈旧 inject=false 态保存会摘行）')
     // 入口② client 注入管理单行：modal-first（先关面板再开弹层，不先静默翻转）
-    assert(clientSrc.indexOf("if (role === 'reference') { setInjMgrOpen(false); injMgrBackRef.current = null; openMountModal({ id: n.id, title: n.title }); return }") >= 0, 'client 注入管理单行设为资料 = modal-first（modal 不叠 modal：先关再开）')
+    assert(clientSrc.indexOf("if (role === 'reference') { setInjMgrOpen(false); injMgrBackRef.current = null; openMountModal({ id: n.id, title: n.title }") >= 0, 'client 注入管理单行设为资料 = modal-first（modal 不叠 modal：先关再开；0.4.7-B④b 起带 onSkip，锚改前缀）')
     // 入口③ app 详情三态 + app 注入管理单行 + app 弹层 onConfirm/收敛刷新
     const appMeta = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'panels', 'editor-meta.js'), 'utf8')
-    assert(appMeta.indexOf("openMountModal({ id: n.id, title: n.title }, function () {") >= 0 && appMeta.indexOf("edNote.injectRole = 'reference';") >= 0, 'app 详情三态切资料 → openMountModal（onConfirm 回填 inject=true+reference）')
+    assert(appMeta.indexOf("openMountModal({ id: n.id, title: n.title }, flipRef, flipRef)") >= 0 && appMeta.indexOf("edNote.injectRole = 'reference';") >= 0, 'app 详情三态切资料 → openMountModal（onConfirm/onSkip 同闭包回填 inject=true+reference；0.4.7-B④b 三岔）')
     const appMgr = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'modals', 'inject-manager.js'), 'utf8')
-    assert(appMgr.indexOf("if (role === 'reference') { openMountModal({ id: n.id, title: n.title }); return }") >= 0, 'app 注入管理单行设为资料 = modal-first')
-    assert(appMgr.indexOf('function openMountModal(n, onConfirm)') >= 0 && appMgr.indexOf('if (done.onConfirm)') >= 0 && appMgr.indexOf('onConfirm: typeof onConfirm') >= 0, 'app 挂载弹层 onConfirm 接线（取消不落回调）')
+    assert(appMgr.indexOf("if (role === 'reference') { openMountModal({ id: n.id, title: n.title }, null, function () { injMgrSetDirect(n, 'reference') }); return }") >= 0, 'app 注入管理单行设为资料 = modal-first + onSkip 直切档（0.4.7-B④b）')
+    assert(appMgr.indexOf('function openMountModal(n, onConfirm, onSkip)') >= 0 && appMgr.indexOf('if (done.onConfirm)') >= 0 && appMgr.indexOf('onConfirm: typeof onConfirm') >= 0, 'app 挂载弹层 onConfirm 接线（取消不落回调）')
     // 批量条维持静默缺省行（行为不变红线）+ tooltip 注明「缺省文案=标题」
     assert(clientSrc.indexOf("tt('inj.batchRefTip')") >= 0 && appMgr.indexOf("t('inj.batchRefTip')") >= 0, '批量「设为资料」tooltip 双端注明缺省文案=标题')
     assert(clientSrc.indexOf('async function doInjMgrBatch(role)') >= 0 && appMgr.indexOf('function doInjMgrBatch(role)') >= 0, '批量通道维持静默 notes-update 缺省行（行为不变）')

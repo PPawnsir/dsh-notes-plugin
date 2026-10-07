@@ -112,12 +112,12 @@ module.exports = {
     assert(manifestSrc.indexOf("'modals/organize-instruct.js',") >= 0, 'client manifest 登记 modals/organize-instruct.js')
     for (const pair of [['client-src', clientSrc], ['发布包 lib/client.js', clientPkgSrc]]) {
       const s = pair[1], label = pair[0]
-      assert(s.indexOf("store.modal.organizeInstruct = createStore({ open: false, instr: '' })") >= 0, label + ' store.modal.organizeInstruct 切片')
-      assert(s.indexOf('function openOrganizeInstruct()') >= 0 && s.indexOf('function closeOrganizeInstruct()') >= 0, label + ' 开/关弹卡函数')
+      assert(s.indexOf("store.modal.organizeInstruct = createStore({ open: false, instr: '', bodyLen: 0, maxChars: 0 })") >= 0, label + ' store.modal.organizeInstruct 切片（0.4.7-B⑥b 起携 bodyLen/maxChars 前置校验字段）')
+      assert(s.indexOf('function openOrganizeInstruct(bodyLen)') >= 0 && s.indexOf('function closeOrganizeInstruct()') >= 0, label + ' 开/关弹卡函数（0.4.7-B⑥b 开卡携正文长度）')
       assert(s.indexOf('function OrganizeInstructModal()') >= 0 && s.indexOf('e(OrganizeInstructModal)') >= 0, label + ' 弹卡组件 + 面板挂载点')
       assert(s.indexOf('panelBridge.doAiOrganize = doAiOrganize') >= 0, label + ' 确认回跳经 panelBridge（modals 禁横向引用）')
-      assert(s.indexOf('if (panelBridge.doAiOrganize) panelBridge.doAiOrganize(instr)') >= 0, label + ' 确认 = 带参回跳 doAiOrganize')
-      assert(s.indexOf('if (!organizing) openOrganizeInstruct()') >= 0, label + ' 整理按钮改开弹卡（organizing 态守卫保留）')
+      assert(s.indexOf('if (panelBridge.doAiOrganize) panelBridge.doAiOrganize(m.instr || ') >= 0, label + ' 确认 = 带参回跳 doAiOrganize（0.4.7-B⑥b 起经切片态读取）')
+      assert(s.indexOf('if (!organizing) openOrganizeInstruct(') >= 0, label + ' 整理按钮改开弹卡（organizing 态守卫保留；0.4.7-B⑥b 起携正文长度入卡）')
       assert(s.indexOf('async function doAiOrganize(instruction)') >= 0, label + ' doAiOrganize 带可选 instruction 形参')
       assert(s.indexOf("'notes-ai-organize', { body: body, kind: edKindRef.current, title: edTitleRef.current, instruction: instr }") >= 0, label + ' RPC payload 带 instruction 字段')
       assert(s.indexOf("tt('editor.organizeInstructPlaceholder')") >= 0 && s.indexOf("tt('editor.organizeInstructTitle')") >= 0, label + ' 弹卡文案走 tt() 字典')

@@ -101,6 +101,8 @@ function handleRpc(state, method, args) {
         inject: !!a.inject, injectRole: a.injectRole || '', injectTo: a.injectTo || [], recall: a.recall !== false,
         folder: a.folder || '', useCount: 0, sensitive: !!a.sensitive, hidden: !!a.hidden,
         contractType: a.contractType || '', schedule: a.schedule || undefined,
+        /* 0.4.7-B（用例㊱/㊲）：sessionId 透传（host 真实场景 quick/速记落库即带会话来源）——驱动 meta「来源」动作进溢出菜单演习面 */
+        sessionId: typeof a.sessionId === 'string' ? a.sessionId : '',
         createdAt: nowIso(), updatedAt: nowIso(), deleted: false,
       }
       notes.push(n)
@@ -200,8 +202,18 @@ function handleRpc(state, method, args) {
         unfiled,
       }
     }
-    case 'notes-settings-get': return { settings: state.settings, modelsDir: '' }
-    case 'notes-settings-set': { Object.assign(state.settings, (args && args.settings) || {}); return { ok: true } }
+    /* 0.4.7-B⑦（用例㊱/㊲）：mock 镜像 host settings-get 增带 organizeMaxChars 生效值——用户覆盖优先，缺省回落 12000
+       （mock 不模拟模型表：host 侧模型映射由 check 节 106 行为级断言锁定） */
+    case 'notes-settings-get': return { settings: state.settings, modelsDir: '', organizeMaxChars: (state.settings.organizeMaxChars > 0 ? state.settings.organizeMaxChars : 12000) }
+    /* 0.4.7-B⑦：settings-set 兼容平铺 patch（host 真实形态 {organizeMaxChars: n}）与旧 {settings:{}} 包壳两形态；0 = 删 override（自动档） */
+    case 'notes-settings-set': {
+      const patch = (args && args.settings) || args || {}
+      Object.keys(patch).forEach(k => {
+        if (patch[k] === null || patch[k] === undefined || (k === 'organizeMaxChars' && patch[k] === 0)) delete state.settings[k]
+        else state.settings[k] = patch[k]
+      })
+      return { ok: true }
+    }
     case 'notes-usage-get': return { usage: {} }
     case 'notes-active-sessions': return { sessions: state.sessions.slice() }
     case 'notes-sessions': return { sessions: state.sessions.slice() }
@@ -244,6 +256,8 @@ function handleRpc(state, method, args) {
       const oiInstr = String((args && args.instruction) || '').trim()
       const oiBody = String((args && args.body) || '')
       if (!oiBody.trim()) return { error: '正文为空，无可整理内容' }
+      /* 0.4.7-B⑥a（用例㊱）：失败路径演习面——正文含 [org-err] 标记返回 {error}（驱动 client 驻留错误条断言） */
+      if (oiBody.indexOf('[org-err]') >= 0) return { error: 'mock 整理失败演示（[org-err] 标记）' }
       return { ok: true, body: '## 已整理\n\n[指令:' + (oiInstr || '(无)') + ']\n\n' + oiBody + '\n', kind: (args && args.kind) || 'note' }
     }
     case 'notes-memory-guide': return { guide: '' }
@@ -260,6 +274,8 @@ function handleRpc(state, method, args) {
     case 'notes-suggest': {
       /* 0.4.6-C（用例㉘ notes-046-ux-discovery）：固定候选集——过期未引用 2 条 + 孤儿 1 条 → 顶栏「建议」徽标计数 = 3（六段合计口径，与其余用例共享状态零耦合） */
       /* 0.4.6-E（用例㉚ notes-046-suggest-flow）：state._suggestHot 可注入高频未挂载候选（默认空 = 零耦合；用例㉚ 自行设置/清理） */
+      /* 0.4.7-D2（用例㊲）：state._suggestFixture 全量候选集覆写（六段齐备 → 徽标六段合计真机锁，等价 check 节 95 退役的 suggestPendingCount eval 合计断言） */
+      if (state._suggestFixture) return Object.assign({ telemetryWindowDays: 14, generatedAt: nowIso() }, state._suggestFixture)
       return {
         archiveCandidates: [],
         staleCandidates: [

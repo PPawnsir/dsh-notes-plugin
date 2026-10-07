@@ -5,7 +5,7 @@
 //      dispatches 记录带 queued 布尔；执行记录 📤 行注（下次活动送达）。
 //   B. 派发弹窗目标列表 = 活跃+休眠双区（数据源 _activeSessions 既有全量能力），休眠行标注「下次活动送达」；
 //      client 去除「先打开激活」强开唤醒路径（零唤醒红线）。
-//   C. schedule.target='new'（仅周期模式）：首轮触发 agents.create 创建「定时 · <任务名>」专属会话
+//   C. schedule.target='new'（仅周期模式）：首轮触发 agents.create 创建「定时 · <任务名> · <id 末 6 位>」专属会话（0.4.7-A⑧ 起命名带 id 尾，防跨笔记同名共享）
 //      （agentPresets.mount 默认 preset = 工具能力 + workspace.attachSession 落账 = GUI 可见 + sessionTitle.rename 命名），
 //      随幂等生命线回写 target=新 sid（持久复用）；后续轮次 live 直发 / 休眠送达复用同 sid。
 // 测试策略：共享 mock 集群（节 2 扩展 persistLogs/createdAgents/agentPresetsMock/attachCalls/titleRenameCalls/ws1SessionIds）
@@ -181,8 +181,8 @@ module.exports = {
     assert.strictEqual(createOpts.meta.agentPreset, 'mock-default-preset', '挂载默认 preset（工具能力来源）')
     assert(typeof createOpts.setup === 'function', 'setup 回挂在位（agentPresets.mount 绑定）')
     const newSid = createOpts.sessionId
-    // 命名 + 工作区落账（GUI 可见性）
-    assert(S.titleRenameCalls.some(x => x.id === newSid && x.title === '定时 · 专属巡检约定'), 'sessionTitle.rename 命名「定时 · <任务名>」（实得 ' + JSON.stringify(S.titleRenameCalls.slice(-1)) + '）')
+    // 命名 + 工作区落账（GUI 可见性）——0.4.7-A⑧：命名 = 「定时 · <任务名> · <id 末 6 位>」（同名复用 bug 修复）
+    assert(S.titleRenameCalls.some(x => x.id === newSid && x.title === '定时 · 专属巡检约定 · ' + c.id.slice(-6)), 'sessionTitle.rename 命名带 id 尾（实得 ' + JSON.stringify(S.titleRenameCalls.slice(-1)) + '）')
     assert(S.attachCalls.indexOf(newSid) >= 0, 'workspace.attachSession 落账（GUI 左侧列表可见）')
     // target 回写 + 首轮 live 直发（创建即 live）
     const g = await handlers['notes-get']({ id: c.id })
@@ -192,7 +192,7 @@ module.exports = {
     assert.strictEqual(mySends(newSid), 1, '首轮派发经 live send（新建 agent 立即可工作）')
     const m1 = sentMessages.filter(m => m.via === 'created:' + newSid)[0]
     assert(m1 && m1.msg.content[0].text.indexOf('巡检专属频道内容') >= 0, '首轮消息进专属会话（载荷 = 约定正文）')
-    assert(g.note.dispatches.length === 1 && g.note.dispatches[0].sessionName === '定时 · 专属巡检约定' && g.note.dispatches[0].sessionId === newSid, 'dispatches 记录专属会话名 + sid')
+    assert(g.note.dispatches.length === 1 && g.note.dispatches[0].sessionName === '定时 · 专属巡检约定 · ' + c.id.slice(-6) && g.note.dispatches[0].sessionId === newSid, 'dispatches 记录专属会话名（带 id 尾）+ sid')
     // 二轮复用：同 sid 零新建
     const clock2 = new Date(Date.now() + 8 * 86400000).toISOString()
     const dispBefore2 = await myDispatches()
@@ -275,6 +275,54 @@ module.exports = {
     }
   })
 
+  // ===== C②c 同名复用 bug 回归（0.4.7-A⑧ notes-047-cleanup，用户实测 [[n-muy8azorkasl]]）：
+  //   修复前孤儿探测只认标题 → 跨笔记同名任务共享先建会话（preset/model 声明被静默丢弃——复用路径不补挂档位）；
+  //   修复后命名带 id 末 6 位尾，探测只对同笔记命中。本块：B 触发时账目里挂着 A 的同名孤儿 → 必须各建各的 =====
+  await t('同名复用 bug（0.4.7-A⑧）：跨笔记同名调度各建各的专属会话 + preset 意图不丢 + 同笔记孤儿复用不回归', async () => {
+    const cA = await handlers['notes-create']({ title: '同名巡检约定', body: 'A 篇载荷', contractType: 'dispatch-schedule', schedule: { every: '3d', target: 'new', enabled: false } })
+    const cB = await handlers['notes-create']({ title: '同名巡检约定', body: 'B 篇载荷', contractType: 'dispatch-schedule', schedule: { every: '3d', target: 'new', preset: 'workspace-write' } })
+    assert(cA.id && cB.id && cA.id !== cB.id, '两篇同名约定创建成功（A 暂停防首轮自触，实得 ' + cA.id + ' / ' + cB.id + '）')
+    const sidOrphan = 'session-samename83a-0000-0000-0000-000000000000'
+    const nameA = '定时 · 同名巡检约定 · ' + cA.id.slice(-6)
+    const nameB = '定时 · 同名巡检约定 · ' + cB.id.slice(-6)
+    assert(nameA !== nameB, '同名任务命名因 id 尾分叉（实得 ' + nameA + ' / ' + nameB + '）')
+    try {
+      // 造 A 的孤儿专属会话：挂账 + rename 录制表供标题探测命中（模拟「create 成功但 target 回写失败」窗口遗留）
+      S.ws1SessionIds.push(sidOrphan)
+      S.titleRenameCalls.push({ id: sidOrphan, title: nameA })
+      S.persistLogs.set(sidOrphan, [])   // 持久化可达（复用后轮休眠送达可排队）
+      // B 首轮触发：探测目标名 = nameB → 不得命中 A 的孤儿（nameA 尾不同）→ 新建自己的专属会话
+      const createsBefore = S.agentCreateCalls.length
+      const presetCallsBefore = S.permissionPresetSetCalls.length
+      const ev1 = await handlers['notes-schedule-eval']({ now: new Date(Date.now() + 4 * 86400000).toISOString() })
+      assert(ev1 && ev1.errors === 0 && ev1.fired >= 1, 'B 首轮评估零故障（实得 ' + JSON.stringify(ev1) + '）')
+      assert.strictEqual(S.agentCreateCalls.length, createsBefore + 1, 'B 新建自己的专属会话（不冒领 A 的同名孤儿）')
+      const sidB = S.agentCreateCalls[S.agentCreateCalls.length - 1].sessionId
+      assert(sidB && sidB !== sidOrphan, 'B 的 sid 与孤儿不同（实得 ' + sidB + '）')
+      const gB = await handlers['notes-get']({ id: cB.id })
+      assert.strictEqual(gB.note.schedule.target, sidB, 'B target 回写自有 sid')
+      assert(S.titleRenameCalls.some(x => x.id === sidB && x.title === nameB), 'B 专属会话命名带 B 尾（实得 ' + JSON.stringify(S.titleRenameCalls.slice(-1)) + '）')
+      // preset 意图不静默丢弃：B 声明 workspace-write → 新建路径 permissionPresets.set 透传（复用路径不补挂 = 旧 bug 的另一半）
+      const pp = S.permissionPresetSetCalls.slice(presetCallsBefore)
+      assert(pp.some(x => x.id === sidB && x.name === 'workspace-write'), 'B 声明 preset 透传新建会话（实得 ' + JSON.stringify(pp) + '）')
+      // 同笔记孤儿复用不回归：A 解除暂停触发 → 探测命中自己的孤儿 sidOrphan（零新建）→ 休眠送达
+      const u = await handlers['notes-update']({ id: cA.id, schedule: { every: '3d', target: 'new', enabled: true } })
+      assert(u && !u.error, 'A 解除暂停（实得 ' + JSON.stringify(u) + '）')
+      const ev2 = await handlers['notes-schedule-eval']({ now: new Date(Date.now() + 8 * 86400000).toISOString() })
+      assert(ev2 && ev2.errors === 0, 'A 轮评估零故障（实得 ' + JSON.stringify(ev2) + '）')
+      assert.strictEqual(S.agentCreateCalls.length, createsBefore + 1, 'A 探测命中同 id 尾孤儿 → 复用零新建')
+      const gA = await handlers['notes-get']({ id: cA.id })
+      assert.strictEqual(gA.note.schedule.target, sidOrphan, 'A target 回写 = 孤儿 sid（同笔记复用锚点）')
+      assert(gA.note.schedule.lastRun && gA.note.schedule.lastRun.status === 'queued', '复用会话非 live → 休眠送达 queued（实得 ' + JSON.stringify(gA.note.schedule.lastRun) + '）')
+      assert.strictEqual((S.persistLogs.get(sidOrphan) || []).length, 1, '孤儿会话日志落 1 条排队消息')
+    } finally {
+      await handlers['notes-delete']({ id: cA.id })
+      await handlers['notes-delete']({ id: cB.id })
+      const i = S.ws1SessionIds.indexOf(sidOrphan); if (i >= 0) S.ws1SessionIds.splice(i, 1)   // 复位账目（防污染后续节会话清单口径）
+      S.persistLogs.delete(sidOrphan)
+    }
+  })
+
   // ===== C③ 静态包同口径：target=new 闸门 + 首轮创建回写（webServer 路由链路 + 双包一致） =====
   await t('静态包专属会话：rpc2 链路 target=new 闸门 + 首轮创建回写复用（index.mjs 行为）', async () => {
     const bad = await rpc2('notes-create', { title: 'x', body: 'x', contractType: 'dispatch-schedule', schedule: { at: '2027-01-01T09:00', target: 'new' } })
@@ -288,7 +336,7 @@ module.exports = {
     assert.strictEqual(S.agentCreateCalls.length, createsBefore + 1, '静态包 agents.create 恰 1 次')
     const g = await rpc2('notes-get', { id: c.body.id })
     assert(g.body.note.schedule.target === S.agentCreateCalls[S.agentCreateCalls.length - 1].sessionId, '静态包 target 回写新 sid')
-    assert(g.body.note.dispatches.length === 1 && g.body.note.dispatches[0].sessionName === '定时 · 静态专属约定', '静态包 dispatches 专属会话名')
+    assert(g.body.note.dispatches.length === 1 && g.body.note.dispatches[0].sessionName === '定时 · 静态专属约定 · ' + c.body.id.slice(-6), '静态包 dispatches 专属会话名（带 id 尾，0.4.7-A⑧ 双包一致）')
     await rpc2('notes-delete', { id: c.body.id })
   })
 

@@ -309,12 +309,13 @@ window.__ModuleLoader__.load({
       'editor.syncing': '编辑中…',
       'editor.synced': '已同步源码',
       'editor.bodySyncing': '正文加载中…',   /* 0.4.6-A：正文在途窗同步点文案（不冒绿「已同步」）；editor.bodyLoading 系整理链路既有键，不复用 */
+      'editor.syncFailed': '加载失败',   /* 0.4.7-C：正文加载失败同步点统一失败态（红点 + 本文案，双端同口径；详情在横幅，点内不重复 msg） */
       'editor.modeSource': '源码模式',
       'editor.modeRich': '富文本模式',
       'editor.imageOnly': '仅支持图片文件',
       'editor.tableReadonly': '表格为只读，请切换源码模式编辑该区域',
       'editor.richRestored': '富文本模式已恢复可用',
-      'editor.richDisabled': '检测到白名单外语法 → 富文本入口置灰',
+      'editor.richDisabled': '这篇笔记含有富文本暂不支持的特殊语法，已退回纯文本编辑（内容不受影响，可照常编辑）',   /* 0.4.7-A②：先讲后果——消「白名单外语法」术语残留 */
       'editor.degReasonItem': '{label}（第 {line} 行：{sample}）',
       'editor.selectCodeFirst': '先选中要设为行内码的文字',
       'editor.selectLinkFirst': '先选中要加链接的文字',
@@ -331,6 +332,10 @@ window.__ModuleLoader__.load({
       'editor.organizeInstructPlaceholder': '告诉 AI 整理方向，如「突出待办事项」「精简为三条结论」；留空使用系统默认整理规则',
       'editor.organizeInstructConfirm': '开始整理',
       'editor.organizeInstructCancel': '取消',
+      /* 0.4.7-B⑥（notes-047-ux，实测反馈 n-muy9gdybdd40）：整理中态强化 + 失败驻留 + 超限前置校验 */
+      'editor.organizingVeil': 'AI 整理中，约需半分钟…',
+      'editor.organizeTooLong': '本篇 {n} 字超上限 {max}，建议分段整理',
+      'editor.organizeTooLongTip': '整理长度上限可在设置卡片「整理长度上限」调整；0 = 按所配模型自动',
       'editor.charCount': '{n} 字',
       'editor.backlinks': '反向链接',
       'editor.backlinksCount': '（{n}）',
@@ -397,6 +402,8 @@ window.__ModuleLoader__.load({
       'meta.organizeTip': 'AI 整理：按「{kind}」模板重写正文（替换后可撤销）',
       'meta.organizing': '整理中…',
       'meta.organize': '整理',
+      /* 0.4.7-B②b（notes-047-ux）：meta 行动区封板——动作超阈值收进「…」溢出菜单 */
+      'meta.actsMoreTip': '更多操作',
       'meta.dispatchTip': '派发待办到活跃会话',
       'meta.dispatchTipClient': '派发待办到会话（可补充具体要求）',
       'meta.dispatch': '派发',
@@ -539,7 +546,7 @@ window.__ModuleLoader__.load({
       'settings.memDisableTip': '停用 = 关闭引导约定笔记的注入（笔记保留可再启用）',
       'settings.memPending': '处理中…',
       'settings.memEnable': '启用沉淀引导…',
-      'settings.memEnableTip': '创建一条预填约定笔记（inject=true，contractType: memory-guide），引导 Agent 在任务收尾时把会话结论写为工作日志（kind=log，同权可见/可搜，注入硬禁）——与既有约定并行不冲突',
+      'settings.memEnableTip': '启用后，AI 会在每次任务收尾时把本次会话结论自动沉淀为工作日志（列表可见、可搜索，不占注入位）。点击 = 创建一条预填约定笔记即生效，与已有约定互不影响',   /* 0.4.7-A②：先讲后果——消字段名残留（inject/contractType/kind 不外露） */
       'settings.logWeek': '日志周聚合窗口',
       'settings.logWeekTip': '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行；缺省 7 天）',
       'settings.logWeekTipT': '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行）',
@@ -573,6 +580,14 @@ window.__ModuleLoader__.load({
       'settings.usageBudgetInvalid': '月度用量预算需为非负整数（0 = 关闭提醒）',
       'settings.usageBudgetOff': '已关闭月度用量预算提醒',
       'settings.savedUsageBudget': '已保存：月度用量预算 {v} tokens',
+      /* 0.4.7-B⑦（notes-047-ux）：整理长度上限设置项（LLM 区数字输入；0/缺省 = 按所配模型自动，生效值随 settings-get 透出） */
+      /* 0.4.7-B①b（notes-047-ux）：设置行说明文字 ⓘ 展开/收拢钮 title */
+      'settings.descExpandTip': '展开 / 收起完整说明',
+      'settings.organizeMax': '整理长度上限',
+      'settings.organizeMaxTip': 'AI 整理单次正文长度上限（字符），超过需分段整理；0 = 按所配模型自动（当前生效 {eff}）',
+      'settings.organizeMaxInvalid': '整理长度上限需为非负整数（0 = 按所配模型自动）',
+      'settings.organizeMaxAuto': '已恢复：整理长度上限按所配模型自动',
+      'settings.savedOrganizeMax': '已保存：整理长度上限 {v} 字符',
       'settings.savedAll': '设置已保存',
       'settings.restoredAll': '已还原：设置回滚到打开时的状态',
       'settings.restoreFailed': '还原失败：{msg}',
@@ -612,7 +627,7 @@ window.__ModuleLoader__.load({
       'inj.executing': '执行中…',
       'inj.logNoInject': '日志不参与注入',
       'inj.logNoInjectTip': '工作日志注入硬禁：host 强制 inject=false（injectForcedOff 硬闸）；日志同权——可见/可搜索/可编辑，注入目录恒不含',
-      'inj.sensTip': '敏感笔记：注入时自动脱敏（正文按行打码，键保留值遮蔽）',
+      'inj.sensTip': '敏感笔记：注入给 AI 时自动脱敏——按行打码（字段名保留、值隐藏为 ******），AI 要看原文需按 id 调取（note_get）',   /* 0.4.7-A②：先讲后果——消「键保留值遮蔽」术语残留 */
       'inj.sensBadge': '注入时自动脱敏',
       'inj.scopeGlobal': '全局',
       'inj.scopeSessions': '{n} 个会话',
@@ -641,6 +656,9 @@ window.__ModuleLoader__.load({
       'inj.mountPlaceholder': '如：改注入相关逻辑时、验收资料挂载时…',
       'inj.mountSave': '挂载',
       'inj.mountSkip': '不用建议，自己写',
+      /* 0.4.7-B④b（notes-047-ux，R2 漏网 n-mux79knmfjxt）：三态切「资料」弹挂载框的跳过档文案明确化——
+         仅三态/行内直改入口（角色切换在途）显示本文案并切角不挂载；建议器/预览等纯挂载入口仍用 inj.mountSkip；Esc/遮罩 = 取消不切换（零副作用） */
+      'inj.mountSkipSwitch': '仅切换角色，暂不挂载',
       'inj.mountSaved': '已挂载索引：{title}',
       'inj.mountFailed': '挂载失败：{msg}',
       // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
@@ -661,7 +679,7 @@ window.__ModuleLoader__.load({
       'inj.conflictRerun': '重新体检',
       'inj.conflictRunTip': '对全部注入中的约定做 LLM 两两冲突/取代检测（手动触发；敏感笔记正文打码后参与）',
       'inj.conflictRunning': '检测中…',
-      'inj.conflictRunningHint': 'LLM 正在两两比对约定，约需几秒…',
+      'inj.conflictRunningHint': 'LLM 正在两两比对约定，约定多时约需一两分钟…',   /* 0.4.7-A⑨：在途文案对齐 120s 重操作口径（原「约需几秒」系 8s 时代残留） */
       'inj.conflictError': '体检失败：{msg}',
       'inj.conflictEmpty': '未发现疑似冲突或取代的约定对（已检测 {n} 条约定）。',
       'inj.conflictRelConflict': '疑似冲突',
@@ -752,6 +770,8 @@ window.__ModuleLoader__.load({
       'disp.dispatched': '已派发待办到「{name}」（开始处理）',
       'disp.dispatchedQueued': '已排队到「{name}」（休眠会话 · 下次活动送达）',
       'disp.schedNew': '专属会话（首轮触发自动创建「定时 · 任务名」，后续复用）',
+      /* 0.4.7-B⑤（notes-047-ux）：专属会话复选框旁无界面提示行（今日实测教训：专属会话无 browser_* 等 GUI 附着工具） */
+      'disp.schedNewHint': '专属会话为无界面会话：无浏览器等 GUI 附着工具；需要浏览器走查的任务请指定常驻会话',
       'disp.schedNewTarget': '首轮自动创建专属会话',
       'disp.schedModelDefault': '默认模型（跟随宿主当前选择）',   /* 0.4.6-G：专属会话模型下拉缺省项（空值 = 声明不带 model/provider） */
       'disp.schedModelTip': '专属会话模型档位：{model}',          /* 0.4.6-G：调度行模型标注 tooltip + 下拉 title */
@@ -1178,12 +1198,13 @@ window.__ModuleLoader__.load({
       'editor.syncing': 'Editing…',
       'editor.synced': 'Synced to source',
       'editor.bodySyncing': 'Loading body…',   /* 0.4.6-A: sync pill text while the note body is in flight (no fake-green "synced"); editor.bodyLoading is the pre-existing organize-flow key, not reused */
+      'editor.syncFailed': 'Load failed',   /* 0.4.7-C: unified failure-state sync pill (red dot + this text, same on both ends; details live in the banner, not repeated in the pill) */
       'editor.modeSource': 'Source mode',
       'editor.modeRich': 'Rich text mode',
       'editor.imageOnly': 'Only image files are supported',
       'editor.tableReadonly': 'Tables are read-only; switch to source mode to edit this region',
       'editor.richRestored': 'Rich text mode is available again',
-      'editor.richDisabled': 'Out-of-whitelist syntax detected → rich text entry disabled',
+      'editor.richDisabled': 'This note contains syntax the rich editor cannot safely handle — switched back to plain text (content unchanged)',   /* 0.4.7-A②: consequence-first — drop "out-of-whitelist" jargon */
       'editor.degReasonItem': '{label} (line {line}: {sample})',
       'editor.selectCodeFirst': 'Select the text to mark as inline code first',
       'editor.selectLinkFirst': 'Select the text to turn into a link first',
@@ -1200,6 +1221,10 @@ window.__ModuleLoader__.load({
       'editor.organizeInstructPlaceholder': 'Guide the AI, e.g. "highlight action items" or "trim to three conclusions"; leave empty to use the default system rules',
       'editor.organizeInstructConfirm': 'Organize',
       'editor.organizeInstructCancel': 'Cancel',
+      /* 0.4.7-B⑥ (notes-047-ux, field feedback n-muy9gdybdd40): organizing in-flight reinforcement + persistent failure + over-limit pre-check */
+      'editor.organizingVeil': 'AI is organizing — this can take up to half a minute…',
+      'editor.organizeTooLong': 'This note is {n} chars, over the {max} limit — organize it in sections',
+      'editor.organizeTooLongTip': 'The organize length cap lives in Settings → "Organize length cap"; 0 = auto by the configured model',
       'editor.charCount': '{n} chars',
       'editor.backlinks': 'Backlinks',
       'editor.backlinksCount': ' ({n})',
@@ -1266,6 +1291,8 @@ window.__ModuleLoader__.load({
       'meta.organizeTip': 'AI organize: rewrite the body with the "{kind}" template (undoable after replacement)',
       'meta.organizing': 'Organizing…',
       'meta.organize': 'Organize',
+      /* 0.4.7-B②b (notes-047-ux): meta action-area cap — actions beyond the threshold fold into a "…" overflow menu */
+      'meta.actsMoreTip': 'More actions',
       'meta.dispatchTip': 'Dispatch the todo to a live session',
       'meta.dispatchTipClient': 'Dispatch the todo to a session (extra instructions supported)',
       'meta.dispatch': 'Dispatch',
@@ -1408,7 +1435,7 @@ window.__ModuleLoader__.load({
       'settings.memDisableTip': 'Disable = turn off injection of the guide convention note (the note is kept and can be re-enabled)',
       'settings.memPending': 'Processing…',
       'settings.memEnable': 'Enable settling guide…',
-      'settings.memEnableTip': 'Create a prefilled convention note (inject=true, contractType: memory-guide) that guides the Agent to write session conclusions as work logs (kind=log, first-class visible/searchable, injection hard-disabled) at task wrap-up — coexists with existing conventions without conflict',
+      'settings.memEnableTip': 'Once enabled, the Agent writes session conclusions into work logs at every task wrap-up (visible and searchable in the list, no injection slot used). Click to create a prefilled convention note — coexists with existing conventions',   /* 0.4.7-A②: consequence-first — internal field names (inject/contractType/kind) no longer leak into user copy */
       'settings.logWeek': 'Log weekly rollup window',
       'settings.logWeekTip': 'Work logs older than N days are nominated for rollup by workspace×week in organize suggestions (nominates only; default 7 days)',
       'settings.logWeekTipT': 'Work logs older than N days are nominated for rollup by workspace×week in organize suggestions (nominates only)',
@@ -1442,6 +1469,14 @@ window.__ModuleLoader__.load({
       'settings.usageBudgetInvalid': 'The monthly usage budget must be a non-negative integer (0 = off)',
       'settings.usageBudgetOff': 'Monthly usage budget reminder disabled',
       'settings.savedUsageBudget': 'Saved: monthly usage budget {v} tokens',
+      /* 0.4.7-B⑦ (notes-047-ux): organize length cap setting (number input in the LLM section; 0/absent = auto by the configured model, effective value piggybacks on settings-get) */
+      /* 0.4.7-B①b (notes-047-ux): title of the ⓘ expand/collapse button for setting-row descriptions */
+      'settings.descExpandTip': 'Expand / collapse the full description',
+      'settings.organizeMax': 'Organize length cap',
+      'settings.organizeMaxTip': 'Max body chars per AI organize run; longer notes need sectioning. 0 = auto by the configured model (effective: {eff})',
+      'settings.organizeMaxInvalid': 'The organize length cap must be a non-negative integer (0 = auto by the configured model)',
+      'settings.organizeMaxAuto': 'Restored: organize length cap follows the configured model',
+      'settings.savedOrganizeMax': 'Saved: organize length cap {v} chars',
       'settings.savedAll': 'Settings saved',
       'settings.restoredAll': 'Restored: settings rolled back to the state when opened',
       'settings.restoreFailed': 'Restore failed: {msg}',
@@ -1482,7 +1517,7 @@ window.__ModuleLoader__.load({
       'inj.executing': 'Running…',
       'inj.logNoInject': 'No injection (log)',
       'inj.logNoInjectTip': 'Work logs are hard-gated out of injection (host forces inject=false); logs are first-class — visible/searchable/editable; never included in the injected directory',
-      'inj.sensTip': 'Sensitive note: auto-masked when injected (body masked line by line; keys kept, values hidden)',
+      'inj.sensTip': 'Sensitive note: auto-masked when injected into AI context — line-by-line masking (field names kept, values hidden as ******); the Agent fetches originals by id (note_get)',   /* 0.4.7-A②: consequence-first — drop "keys kept, values hidden" jargon residue */
       'inj.sensBadge': 'Auto-masked on injection',
       'inj.scopeGlobal': 'Global',
       'inj.scopeSessions': '{n} sessions',
@@ -1511,6 +1546,9 @@ window.__ModuleLoader__.load({
       'inj.mountPlaceholder': 'e.g. When changing injection logic, when verifying mounted references…',
       'inj.mountSave': 'Mount',
       'inj.mountSkip': 'Skip suggestion, write it myself',
+      /* 0.4.7-B④b (notes-047-ux, R2 leftover n-mux79knmfjxt): explicit copy for the skip tier of the mount modal when a role switch is pending —
+         only tri-state/inline-row entries (role switch in flight) show this copy and switch without mounting; suggest/preview pure-mount entries keep inj.mountSkip; Esc/mask = cancel without switching (zero side effects) */
+      'inj.mountSkipSwitch': 'Switch role only, mount later',
       'inj.mountSaved': 'Mounted to index: {title}',
       'inj.mountFailed': 'Mount failed: {msg}',
       // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
@@ -1531,7 +1569,7 @@ window.__ModuleLoader__.load({
       'inj.conflictRerun': 'Re-run checkup',
       'inj.conflictRunTip': 'Run an LLM pairwise conflict/supersede check over all injected conventions (manual trigger; sensitive bodies masked first)',
       'inj.conflictRunning': 'Checking…',
-      'inj.conflictRunningHint': 'The LLM is comparing conventions pairwise; this takes a few seconds…',
+      'inj.conflictRunningHint': 'The LLM is comparing conventions pairwise; with many conventions this can take a minute or two…',   /* 0.4.7-A⑨: in-flight copy aligned with the 120s heavy-operation budget */
       'inj.conflictError': 'Checkup failed: {msg}',
       'inj.conflictEmpty': 'No suspected conflict or supersede pairs found ({n} conventions checked).',
       'inj.conflictRelConflict': 'Conflict?',
@@ -1619,6 +1657,8 @@ window.__ModuleLoader__.load({
       'disp.dispatched': 'Todo dispatched to "{name}" (processing started)',
       'disp.dispatchedQueued': 'Queued to "{name}" (dormant session · delivered on its next activity)',
       'disp.schedNew': 'Dedicated session (auto-created on first fire, then reused)',
+      /* 0.4.7-B⑤ (notes-047-ux): headless hint line next to the dedicated-session checkbox (field lesson: dedicated sessions have no browser_* or other GUI-attached tools) */
+      'disp.schedNewHint': 'A dedicated session is headless: no browser or other GUI-attached tools. For tasks that need browser walkthroughs, target a resident session instead',
       'disp.schedNewTarget': 'Auto-created dedicated session on first fire',
       'disp.schedModelDefault': 'Default model (follow host selection)',   /* 0.4.6-G: dedicated-session model dropdown default option (empty value = no model/provider in declaration) */
       'disp.schedModelTip': 'Dedicated session model: {model}',            /* 0.4.6-G: schedule-row model annotation tooltip + dropdown title */
@@ -2532,7 +2572,7 @@ window.__ModuleLoader__.load({
     }
     // ===== 0.4.6-B 韧性护栏（notes-046-rpc-resilience）：in-process 宿主调用桥同款超时（实测挂起场景：落地页无活跃会话/巡检并发打满宿主）=====
     // 超时 reject Error(t('rpc.hostTimeout'))——调用点既有 catch 零改动兼容（loadNotes → 错误条 / loadEdBody → R-1 横幅）；
-    // LLM 类长调用（host 侧 8s 级起）经 HOSTCALL_LLM_METHODS 显式放宽；超时值集中本块常量可改。
+    // LLM 类长调用（host 侧 8s~120s 级：when-suggest 草稿 8s / 约定体检 120s——0.4.7-A⑨）经 HOSTCALL_LLM_METHODS 显式放宽；超时值集中本块常量可改。
     const HOSTCALL_TIMEOUT_MS = 30000        // 缺省护栏（普通 RPC）
     const HOSTCALL_TIMEOUT_LLM_MS = 120000   // LLM 类长调用护栏
     const HOSTCALL_LLM_METHODS = { 'notes-ai-organize': 1, 'notes-quick-instruct': 1, 'notes-when-suggest': 1, 'notes-conflict-check': 1 }
@@ -3793,9 +3833,11 @@ window.__ModuleLoader__.load({
     store.modal.mount = createStore({ open: false, id: '', title: '', when: '', pending: false, generating: false, edit: false, touched: false, genErr: '' })
     function setMountOpen(v) { store.modal.mount.set({ open: typeof v === 'function' ? v(store.modal.mount.get().open) : v }) }
     const mountOnConfirmedRef = { current: null }   // 确认回调（模块级单例镜像；打开时重置）
+    const mountOnSkipRef = { current: null }   // 0.4.7-B④b：跳过档回调（存在 = 角色切换在途——左钮改「仅切换角色，暂不挂载」）
     function openMountModal(n, opts) {
       if (!n) return
       mountOnConfirmedRef.current = (opts && typeof opts.onConfirmed === 'function') ? opts.onConfirmed : null
+      mountOnSkipRef.current = (opts && typeof opts.onSkip === 'function') ? opts.onSkip : null
       const edit = typeof n.existing === 'string'   // 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM）
       store.modal.mount.set({ open: true, id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, genErr: '' })
       if (edit) return
@@ -3815,7 +3857,7 @@ window.__ModuleLoader__.load({
         store.modal.mount.set(nx)
       })
     }
-    function closeMountModal() { mountOnConfirmedRef.current = null; setMountOpen(false) }
+    function closeMountModal() { mountOnConfirmedRef.current = null; mountOnSkipRef.current = null; setMountOpen(false) }
     async function doMountSave() {
       const m = store.modal.mount.get()
       if (!m.id || m.pending) return
@@ -3848,7 +3890,9 @@ window.__ModuleLoader__.load({
               ? e('div', { className: 'dsh-notes-inj-mount-gen' }, tt('inj.mountGen'))
               : (m.genErr ? e('div', { className: 'dsh-notes-inj-mount-generr dsh-nt', 'data-tooltip': m.genErr }, tt('inj.mountGenFail')) : null)),
           e('div', { className: 'dsh-notes-dispatch-actions' },
-            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => closeMountModal(), disabled: m.pending }, tt('inj.mountSkip')),
+            /* 0.4.7-B④b（R2 漏网 n-mux79knmfjxt）：左钮三岔文案明确化——角色切换在途（onSkip 在）=「仅切换角色，暂不挂载」（关卡+切档不落行）；
+               编辑模式 =「取消」；纯挂载入口（建议器/预览）= inj.mountSkip 原样。点遮罩 = 一律取消零副作用 */
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => { const cb = mountOnSkipRef.current; closeMountModal(); if (cb) { try { cb() } catch (err) {} } }, disabled: m.pending }, mountOnSkipRef.current ? tt('inj.mountSkipSwitch') : (m.edit ? tt('common.cancel') : tt('inj.mountSkip'))),
             e('button', { className: 'dsh-notes-dispatch-ok', onClick: () => doMountSave(), disabled: m.pending }, m.pending ? '…' : tt('inj.mountSave')))))
     }
     // ===== 注入管理面板（设置卡片「注入管理」入口；notes-inject-manager）：全库注入总览 + 单行直改 + 多选批量 =====
@@ -3952,8 +3996,16 @@ window.__ModuleLoader__.load({
         setError('')
         // 0.4.3 验收修复⑪：单行「设为资料」先开挂载弹层（LLM 预填 whenToUse；确认 = notes-mount 单点收口落行 + 翻 reference 档，
         //   取消零副作用——不先静默翻转）；modal 不叠 modal——先关注入管理面板（沿用卡②「先关再开」，清返回栈）；
-        //   确认后的收敛刷新由 doMountSave 统一承担（loadNotes + notifyNotesChanged）
-        if (role === 'reference') { setInjMgrOpen(false); injMgrBackRef.current = null; openMountModal({ id: n.id, title: n.title }); return }
+        //   确认后的收敛刷新由 doMountSave 统一承担（loadNotes + notifyNotesChanged）；
+        //   0.4.7-B④b：弹层第三岔「仅切换角色，暂不挂载」（onSkip）= 直走 injMgrSetDirect 切档不落索引行
+        if (role === 'reference') { setInjMgrOpen(false); injMgrBackRef.current = null; openMountModal({ id: n.id, title: n.title }, { onSkip: () => injMgrSetDirect(n, 'reference') }); return }
+        // 0.4.7-A④（notes-047-cleanup，0.4.6-E verifier 残留）：行内「设为约定」confirm 闸——单击直切约定档太秃，
+        //   与详情区三态同文案同口径（meta.convInjectConfirm，panel/editor.js 先例；injectScopeLabel 经 kernel/state.js 中转）；取消零副作用
+        if (role === 'convention' && !window.confirm(t('meta.convInjectConfirm', { title: n.title || n.id, scope: injectScopeLabel(n.injectTo) }))) return
+        await injMgrSetDirect(n, role)
+      }
+      // 单行直改落盘段（doInjMgrSet 非挂载路径 + 0.4.7-B④b 挂载框「仅切换角色」跳过档共用）：notes-update {inject, injectRole} + toast + 本地回写
+      async function injMgrSetDirect(n, role) {
         const upd = { id: n.id, inject: role !== 'off' }
         if (upd.inject) upd.injectRole = role   // 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘）
         try {
@@ -4141,36 +4193,52 @@ window.__ModuleLoader__.load({
     // ===== modal: organize-instruct —— AI 整理追加指令引导卡（0.4.4-F notes-044-organize-instruct）=====
     // provides: store.modal.organizeInstruct / setOrganizeInstructOpen / openOrganizeInstruct / closeOrganizeInstruct /
     //           confirmOrganizeInstruct / OrganizeInstructModal
-    // needs: kernel/state.js（store/createStore/panelBridge）、kernel/icons.js（e/I）、kernel/i18n.js（useT）
+    // needs: kernel/state.js（store/createStore/panelBridge）、kernel/icons.js（e/I）、kernel/i18n.js（useT）、kernel/bootstrap.js（host）
     // 交互定稿（用户裁决 2026-10-06）：点 ✨整理 → 弹引导卡（可选指令输入框 + 确认/取消）——
     //   留空确认 = instruction:''（host 空指令路径 prompt 与二期现行逐字节等价，节 84 锁定）；
     //   填写确认 = trim 后追加进 prompt（host 在【当前草稿】前插【用户追加指令】段）；取消/点遮罩 = 关卡零副作用。
     // 确认经 panelBridge.doAiOrganize(instr) 中转（modals 禁横向引用——editor.js hook 内 doAiOrganize 由 panel/index.js 回填），
     //   守卫（空正文/加载中/整理中）/一次撤销栈/容错全在 doAiOrganize 内复用，本卡只做输入收集。
     // state 托管：open/instr 迁入 store.modal.organizeInstruct 切片；Esc 栈不挂（dispatch/mount 同口径先例：遮罩/取消按钮关闭）。
-    store.modal.organizeInstruct = createStore({ open: false, instr: '' })
+    // 0.4.7-B⑥b/⑦（notes-047-ux）：超限前置校验——开卡携正文长度（bodyLen 由 editor 按钮位传入，本地长度零 RPC 等待）；
+    //   生效上限 = notes-settings-get 响应 organizeMaxChars（⑦.4 增带，用户覆盖 || 模型表 || 12000；模块级缓存，首开后台对齐 host）；
+    //   超限 → textarea 上方提示「本篇 N 字超上限 X，建议分段整理」+ 确认钮禁用（confirm 内同口径双闸）。
+    store.modal.organizeInstruct = createStore({ open: false, instr: '', bodyLen: 0, maxChars: 0 })
+    let orgMaxCache = 0   // 整理长度上限生效值会话级缓存（0 = 未拉取，暂用 12000 回落）
+    panelBridge.orgMaxCacheReset = () => { orgMaxCache = 0 }   // 设置卡保存整理长度上限后失效（modals/settings.js 成功路径经 panelBridge 调用）
     function setOrganizeInstructOpen(v) { store.modal.organizeInstruct.set({ open: typeof v === 'function' ? v(store.modal.organizeInstruct.get().open) : v }) }
-    // 打开即重置输入（上次填写不残留——每次整理独立决策）
-    function openOrganizeInstruct() { store.modal.organizeInstruct.set({ open: true, instr: '' }) }
+    // 打开即重置输入（上次填写不残留——每次整理独立决策）；bodyLen = 当前正文长度（0.4.7-B⑥b 前置校验数据源）
+    function openOrganizeInstruct(bodyLen) {
+      store.modal.organizeInstruct.set({ open: true, instr: '', bodyLen: bodyLen || 0, maxChars: orgMaxCache })
+      if (!orgMaxCache) rpc('notes-settings-get', {}).then(res => {
+        orgMaxCache = (res && typeof res.organizeMaxChars === 'number' && res.organizeMaxChars > 0) ? res.organizeMaxChars : 12000
+        if (store.modal.organizeInstruct.get().open) store.modal.organizeInstruct.set({ maxChars: orgMaxCache })   // 弹卡还开着才复判（关窗静默）
+      }).catch(() => { orgMaxCache = 12000 })   // 通道异常回落 12000 现状值（不阻塞开卡）
+    }
     function closeOrganizeInstruct() { store.modal.organizeInstruct.set({ open: false, instr: '' }) }
-    // 确认：先关卡再整理（弹层不滞留——整理中态由 meta 行「整理中…」按钮承载）；trim 在 doAiOrganize 内统一做
+    // 确认：先关卡再整理（弹层不滞留——整理中态由 meta 行「整理中…」按钮 + 正文区遮罩承载）；trim 在 doAiOrganize 内统一做；
+    // 超限双闸（0.4.7-B⑥b）：按钮禁用为主，本守卫兜底（Enter 键入等旁路）
     function confirmOrganizeInstruct() {
-      const instr = store.modal.organizeInstruct.get().instr || ''
+      const m = store.modal.organizeInstruct.get()
+      if (m.bodyLen > (m.maxChars || 12000)) return
       closeOrganizeInstruct()
-      if (panelBridge.doAiOrganize) panelBridge.doAiOrganize(instr)
+      if (panelBridge.doAiOrganize) panelBridge.doAiOrganize(m.instr || '')
     }
     function OrganizeInstructModal() {
       const m = store.modal.organizeInstruct.useSel(s => s)
       const tt = useT()
       if (!m.open) return null
+      const maxChars = m.maxChars || 12000
+      const over = m.bodyLen > maxChars   // 0.4.7-B⑥b：超限态（提示 + 确认禁用）
       return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) closeOrganizeInstruct() } },
         e('div', { className: 'dsh-notes-settings-modal' },
           e('div', { className: 'dsh-notes-settings-modal-t' }, I('sparkle', 14), ' ' + tt('editor.organizeInstructTitle')),
           e('div', { className: 'dsh-notes-inj-mount-body' },
+            over ? e('div', { className: 'dsh-notes-org-limit' }, tt('editor.organizeTooLong', { n: m.bodyLen, max: maxChars }) + '。' + tt('editor.organizeTooLongTip')) : null,
             e('textarea', { className: 'dsh-notes-inj-mount-when', rows: 3, placeholder: tt('editor.organizeInstructPlaceholder'), value: m.instr, autoFocus: true, onChange: (ev) => store.modal.organizeInstruct.set({ instr: ev.target.value }) })),
           e('div', { className: 'dsh-notes-dispatch-actions' },
             e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => closeOrganizeInstruct() }, tt('editor.organizeInstructCancel')),
-            e('button', { className: 'dsh-notes-dispatch-ok', onClick: () => confirmOrganizeInstruct() }, tt('editor.organizeInstructConfirm')))))
+            e('button', { className: 'dsh-notes-dispatch-ok', disabled: over, onClick: () => confirmOrganizeInstruct() }, tt('editor.organizeInstructConfirm')))))
     }
     // ===== modal: suggest —— 整理建议对话框（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
     // provides: store.modal.suggest / suggestOpenRef / setSuggestOpen / setSuggestData / setSuggestPending / setLogHgExpand /
@@ -4823,6 +4891,8 @@ window.__ModuleLoader__.load({
               e('div', { className: 'dsh-notes-sched-next' + (schedForm && schedForm.err ? ' warn' : '') }, schedForm && schedForm.err ? ('⚠ ' + schedForm.err) : tt('disp.nextTrigger', { time: fmtDT(new Date(schedDeclNextMs(schedForm.decl, dispatchEditNote)).toISOString()) })),
               // 专属会话（0.4.4-B）：周期模式可勾 target='new'——首轮触发 host 自动创建「定时 · 任务名」会话并回写复用；仅一次（at）无复用场景不提供
               dispatchSchedMode !== 'once' ? e('label', { className: 'dsh-notes-sched-opt' }, e('input', { type: 'checkbox', checked: dispatchSchedNew, onChange: (ev) => setDispatchSchedNew(ev.target.checked) }), ' ' + tt('disp.schedNew')) : null,
+              // 0.4.7-B⑤（notes-047-ux）：专属会话无界面提示行（实测教训：专属会话无 browser_* 等 GUI 附着工具）——勾选即见
+              (dispatchSchedNew && dispatchSchedMode !== 'once') ? e('div', { className: 'dsh-notes-sched-new-hint' }, tt('disp.schedNewHint')) : null,
               // 专属会话模型下拉（0.4.6-G）：勾选专属会话 + 清单非空才显示（清单缺席静默降级）；清单外存量值补合成条目回显防丢档
               (dispatchSchedNew && dispatchSchedMode !== 'once' && dispatchSchedModels.length > 0) ? e('select', { className: 'dsh-notes-dispatch-select dsh-notes-sched-sel', 'data-tooltip': tt('disp.schedModelTip', { model: dispatchSchedModel || tt('disp.schedModelDefault') }), value: (dispatchSchedModel && dispatchSchedModels.some(m => m.provider + '/' + m.model === dispatchSchedModel)) ? dispatchSchedModel : (dispatchSchedModel || ''), onChange: (ev) => setDispatchSchedModel(ev.target.value) },
                 e('option', { value: '' }, tt('disp.schedModelDefault')),
@@ -4911,7 +4981,7 @@ window.__ModuleLoader__.load({
     // 组件经 props 注入，模块函数经 panelBridge.setMaxDepth/setSetMaxDepth/setSnap/setSetSnap/setInflight/setSetInflight 中转；
     // settingsOpenRef（Esc 栈）/usageBudgetRef（预算判定）/setPersistRef（已落盘镜像）/settingsFlushRef（Esc 兜底 flush）
     // 为模块级单例（plain object 与 useRef 等价——面板为 shell.overlay 单例）；whole.js 经 panelBridge.setSettingsOpen 回填别名中转互斥关闭
-    store.modal.settings = createStore({ open: false, data: null, llmProvider: '', llmModel: '', stale: '90', budget: '0', usageData: null, usageBudget: '0', saving: false, logWeek: '7', logRetention: '90' })
+    store.modal.settings = createStore({ open: false, data: null, llmProvider: '', llmModel: '', stale: '90', budget: '0', usageData: null, usageBudget: '0', saving: false, logWeek: '7', logRetention: '90', orgMax: '0' })
     const settingsOpenRef = { current: false }   // 设置卡片镜像（Esc 优先关设置卡片）
     const usageBudgetRef = { current: 0 }   // 预算镜像 ref：usage-get 与 settings-get 并发放射，toast 判定读 ref 防闭包过期
     const setPersistRef = { current: null }   // 已落盘值镜像（兜底 flush/还原只写真不同的键）
@@ -4928,6 +4998,7 @@ window.__ModuleLoader__.load({
     function setSetSaving(v) { store.modal.settings.set({ saving: typeof v === 'function' ? v(store.modal.settings.get().saving) : v }) }
     function setSetLogWeek(v) { store.modal.settings.set({ logWeek: typeof v === 'function' ? v(store.modal.settings.get().logWeek) : v }) }
     function setSetLogRetention(v) { store.modal.settings.set({ logRetention: typeof v === 'function' ? v(store.modal.settings.get().logRetention) : v }) }
+    function setSetOrgMax(v) { store.modal.settings.set({ orgMax: typeof v === 'function' ? v(store.modal.settings.get().orgMax) : v }) }   // 0.4.7-B⑦：整理长度上限（0=按所配模型自动）
     // 设置卡片：打开即拉取 settings + 可用模型列表（host 探 llm 服务目录；探不到时 models=[]，控件退化为手输）
     function openSettings() {
       setSetLlmProvider(''); setSetLlmModel(''); setSettingsData(null); setUsageData(null); setError(''); setSettingsOpen(true)
@@ -4951,6 +5022,8 @@ window.__ModuleLoader__.load({
         usageBudgetRef.current = (res.settings && typeof res.settings.usageBudgetMonthly === 'number') ? res.settings.usageBudgetMonthly : 0
         setSetLogWeek(String(res.settings && typeof res.settings.logWeekAfterDays === 'number' ? res.settings.logWeekAfterDays : 7))   // 工作记忆 v0：日志周聚合窗口，缺省 7
         setSetLogRetention(String(res.settings && typeof res.settings.logRetentionDays === 'number' ? res.settings.logRetentionDays : 90))   // 日志月聚合窗口，缺省 90（0=关闭本级）
+        // 0.4.7-B⑦（notes-047-ux）：整理长度上限——控件回显用户覆盖值（0=按所配模型自动）；生效值读 settings-get 增带的 organizeMaxChars（渲染期取 settingsData）
+        setSetOrgMax(String(res.settings && typeof res.settings.organizeMaxChars === 'number' && res.settings.organizeMaxChars > 0 ? res.settings.organizeMaxChars : 0))
         // dirty/还原基准（notes-settings-feedback）：打开时快照（UI 形态字符串口径，与控件受控值同构）+ 已落盘镜像初始化
         const snap0 = {
           llmP: (l && l.provider && l.model) ? l.provider : '', llmM: (l && l.provider && l.model) ? l.model : '',
@@ -4960,6 +5033,7 @@ window.__ModuleLoader__.load({
           usageBudget: String(res.settings && typeof res.settings.usageBudgetMonthly === 'number' ? res.settings.usageBudgetMonthly : 0),
           logWeek: String(res.settings && typeof res.settings.logWeekAfterDays === 'number' ? res.settings.logWeekAfterDays : 7),
           logRetention: String(res.settings && typeof res.settings.logRetentionDays === 'number' ? res.settings.logRetentionDays : 90),
+          orgMax: String(res.settings && typeof res.settings.organizeMaxChars === 'number' && res.settings.organizeMaxChars > 0 ? res.settings.organizeMaxChars : 0),
         }
         panelBridge.setSetSnap(snap0); setPersistRef.current = snap0
         loadUsage()
@@ -5000,11 +5074,13 @@ window.__ModuleLoader__.load({
       if ('usageBudgetMonthly' in patch) n.usageBudget = String(patch.usageBudgetMonthly)
       if ('logWeekAfterDays' in patch) n.logWeek = String(patch.logWeekAfterDays)
       if ('logRetentionDays' in patch) n.logRetention = String(patch.logRetentionDays)
+      if ('organizeMaxChars' in patch) n.orgMax = String(patch.organizeMaxChars > 0 ? patch.organizeMaxChars : 0)   // 0.4.7-B⑦：0 = 自动（host 删 override），镜像口径同控件
       setPersistRef.current = n
     }
     // 选择即保存：llm=null 恢复跟随当前会话（默认）；否则保存 { provider, model }
     function saveSettingsLlm(llm) {
       settingsSetQuiet({ llm: llm }).then(() => {
+        if (panelBridge.orgMaxCacheReset) panelBridge.orgMaxCacheReset()   /* 0.4.7-B⑦：模型变更 → 引导卡生效值缓存失效 */
         showToast(llm ? t('settings.savedLlm', { name: llm.provider + ' / ' + llm.model }) : t('settings.restoredFollow'))
       }).catch(err => setError(String(err.message || err)))
     }
@@ -5080,6 +5156,16 @@ window.__ModuleLoader__.load({
         showToast(v === 0 ? t('settings.logMonthOff') : t('settings.savedLogMonth', { v: v }))
       }).catch(err => setError(String(err.message || err)))
     }
+    // 0.4.7-B⑦：整理长度上限（字符，0 = 按所配模型自动——host 侧删 override 回落模型表）：失焦/Enter 即保存（非负整数；非法输入报错不落盘）
+    function saveSettingsOrgMax() {
+      const raw = store.modal.settings.get().orgMax.trim()
+      if (!/^\d+$/.test(raw)) { setError(t('settings.organizeMaxInvalid')); return }
+      const v = parseInt(raw, 10)
+      settingsSetQuiet({ organizeMaxChars: v }).then(() => {
+        if (panelBridge.orgMaxCacheReset) panelBridge.orgMaxCacheReset()   /* 0.4.7-B⑦：上限变更 → 引导卡生效值缓存失效 */
+        showToast(v === 0 ? t('settings.organizeMaxAuto') : t('settings.savedOrganizeMax', { v: v }))
+      }).catch(err => setError(String(err.message || err)))
+    }
     // ===== 设置卡交互反馈（notes-settings-feedback）：显式保存 / 还原 / 关闭兜底 flush =====
     // 数值字段登记表（快照键 ↔ 设置 RPC 键 ↔ 校验文案 i18n key）：保存校验/兜底 flush/还原回滚三处共用同一份口径
     // （第 3 列为字典 key，用时 t() 取当下语言——登记表在模块加载期求值，不能直接存译文）
@@ -5090,6 +5176,7 @@ window.__ModuleLoader__.load({
       ['usageBudget', 'usageBudgetMonthly', 'settings.usageBudgetInvalid'],
       ['logWeek', 'logWeekAfterDays', 'settings.logWeekInvalid'],
       ['logRetention', 'logRetentionDays', 'settings.logMonthInvalid'],
+      ['orgMax', 'organizeMaxChars', 'settings.organizeMaxInvalid'],
     ]
     // 「保存」：显式确认 + 兜底 flush——先校验全部数值字段（任一非法即中止并报错，改动保留继续编辑），
     // 再串行落盘全部「控件值 ≠ 已落盘」的键（串行防写竞态），全部成功后快照跟进 + toast「设置已保存」+ dirty 复位
@@ -5104,9 +5191,10 @@ window.__ModuleLoader__.load({
       const setLogRetention = store.modal.settings.get().logRetention
       const setLlmProvider = store.modal.settings.get().llmProvider
       const setLlmModel = store.modal.settings.get().llmModel
+      const setOrgMax = store.modal.settings.get().orgMax
       const settingsData = store.modal.settings.get().data
       if (setSaving || !setSnap) return
-      const vals = { stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention }
+      const vals = { stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention, orgMax: setOrgMax }
       for (const f of SET_NUM_FIELDS) { if (!/^\d+$/.test(vals[f[0]].trim())) { setError(t(f[2])); return } }
       const p = setPersistRef.current || setSnap
       const patches = []
@@ -5119,8 +5207,9 @@ window.__ModuleLoader__.load({
       for (const pt of patches) seq = seq.then(() => settingsSetQuiet(pt))
       seq.then(() => {
         setSetSaving(false)
+        if (panelBridge.orgMaxCacheReset) panelBridge.orgMaxCacheReset()   /* 0.4.7-B⑦：全量保存可能含 orgMax/llm → 引导卡生效值缓存失效（幂等廉价） */
         // 快照跟进到当前控件值（显式确认完成 → dirty 复位，保存按钮回禁用态）
-        panelBridge.setSetSnap({ llmP: setLlmProvider, llmM: setLlmModel, stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention })
+        panelBridge.setSetSnap({ llmP: setLlmProvider, llmM: setLlmModel, stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention, orgMax: setOrgMax })
         usageBudgetRef.current = parseInt(setUsageBudget.trim(), 10)
         showToast(t('settings.savedAll'))
       }, err => { setSetSaving(false); setError(t('common.saveFailed', { msg: String(err && err.message || err) })) })
@@ -5141,7 +5230,7 @@ window.__ModuleLoader__.load({
         setSetSaving(false)
         setSetLlmProvider(s.llmP); setSetLlmModel(s.llmM)
         setSetStale(s.stale); panelBridge.setSetMaxDepth(s.maxDepth); setSetBudget(s.budget)
-        setSetUsageBudget(s.usageBudget); setSetLogWeek(s.logWeek); setSetLogRetention(s.logRetention)
+        setSetUsageBudget(s.usageBudget); setSetLogWeek(s.logWeek); setSetLogRetention(s.logRetention); setSetOrgMax(s.orgMax || '0')
         usageBudgetRef.current = parseInt(s.usageBudget, 10)
         showToast(t('settings.restoredAll'))
       }, err => { setSetSaving(false); setError(t('settings.restoreFailed', { msg: String(err && err.message || err) })) })
@@ -5158,12 +5247,13 @@ window.__ModuleLoader__.load({
       const setUsageBudget = store.modal.settings.get().usageBudget
       const setLogWeek = store.modal.settings.get().logWeek
       const setLogRetention = store.modal.settings.get().logRetention
+      const setOrgMax = store.modal.settings.get().orgMax
       const p = setPersistRef.current
       if (!p) return
       const patches = []
       const models0 = (settingsData && settingsData.models) || []
       if (!models0.length && setLlmProvider.trim() && setLlmModel.trim() && (setLlmProvider !== p.llmP || setLlmModel !== p.llmM)) patches.push({ llm: { provider: setLlmProvider.trim(), model: setLlmModel.trim() } })
-      const vals = { stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention }
+      const vals = { stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention, orgMax: setOrgMax }
       for (const f of SET_NUM_FIELDS) { const raw = vals[f[0]].trim(); if (/^\d+$/.test(raw) && raw !== p[f[0]]) { const o = {}; o[f[1]] = parseInt(raw, 10); patches.push(o) } }
       if (!patches.length) return
       let seq = Promise.resolve()
@@ -5172,6 +5262,17 @@ window.__ModuleLoader__.load({
     }
     // ✕/Esc/点遮罩统一关闭入口：有未落盘改动先兜底 flush（fire-and-forget，落盘完成自 toast），再收起
     function closeSettings() { flushSettingsPending(); setSettingsOpen(false) }
+    // 0.4.7-B①b（notes-047-ux）：设置行 label 组件——说明文字 >60 字时限 2 行收折（.cl），行名旁出 ⓘ 钮展开/收拢（原生 button 键盘可达）；
+    //   展开态为本组件 useState（随行 key 存续；app modals/settings.js 的 setLabelHtml 同口径）
+    function SettingsRowLabel(props) {
+      const tt = useT()
+      const [exp, setExp] = React.useState(false)
+      const long = typeof props.sub === 'string' && props.sub.length > 60
+      return e('div', { className: 'dsh-notes-settings-label' },
+        props.label,
+        long ? e('button', { className: 'dsh-notes-settings-sx', type: 'button', title: tt('settings.descExpandTip'), 'aria-label': tt('settings.descExpandTip'), onClick: () => setExp(!exp) }, 'ⓘ') : null,
+        props.sub ? e('span', { className: 'dsh-notes-settings-label-s' + (long && !exp ? ' cl' : '') }, props.sub) : null)
+    }
     // 设置卡片宿主（modal，居中，复用派发 modal 的 mask/modal 风格）：通用结构——标题「设置」+ 设置项行列表
     // （每行：左 label + 右控件）。以后加设置项只需往 settingsRows 数组加行，结构不变。
     // 交互（notes-settings-feedback）：自动保存保留（选择即存/失焦/Enter 即存，走 notes-settings-set）；
@@ -5189,6 +5290,7 @@ window.__ModuleLoader__.load({
       const setSaving = store.modal.settings.useSel(s => s.saving)
       const setLogWeek = store.modal.settings.useSel(s => s.logWeek)
       const setLogRetention = store.modal.settings.useSel(s => s.logRetention)
+      const setOrgMax = store.modal.settings.useSel(s => s.orgMax)
       // i18n 语言态（notes-042-i18n-mech）：订阅 langStore——切换语言本卡即时重渲染为新语言；tt = 本组件 t()
       const lang = langStore.useSel(s => s.lang)
       const tt = useT()
@@ -5209,7 +5311,8 @@ window.__ModuleLoader__.load({
         const setDirty = setInflight > 0 || (setSnap ? (
           setLlmProvider !== setSnap.llmP || setLlmModel !== setSnap.llmM ||
           setStale !== setSnap.stale || setMaxDepth !== setSnap.maxDepth || setBudget !== setSnap.budget ||
-          setUsageBudget !== setSnap.usageBudget || setLogWeek !== setSnap.logWeek || setLogRetention !== setSnap.logRetention) : false)
+          setUsageBudget !== setSnap.usageBudget || setLogWeek !== setSnap.logWeek || setLogRetention !== setSnap.logRetention ||
+          setOrgMax !== (setSnap.orgMax || '0')) : false)
         const modelList = (settingsData && settingsData.models) || []
         // 下拉选项 = provider/model 组合，第一项「跟随当前会话（默认）」；
         // 已保存值不在列表中（如模型已下线）时追加一项保证回显正确
@@ -5230,6 +5333,9 @@ window.__ModuleLoader__.load({
               e('input', { className: 'dsh-notes-settings-input', placeholder: 'provider', value: setLlmProvider, onChange: (ev) => setSetLlmProvider(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
               e('input', { className: 'dsh-notes-settings-input', placeholder: 'model', value: setLlmModel, onChange: (ev) => setSetLlmModel(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
               (setLlmProvider || setLlmModel) ? e('button', { className: 'dsh-notes-settings-clear', onClick: () => { setSetLlmProvider(''); setSetLlmModel(''); saveSettingsLlm(null) } }, tt('settings.followSession')) : null)
+        // 0.4.7-B⑦（notes-047-ux）：整理长度上限控件（LLM 区紧随模型行）——数值输入（字符），失焦/Enter 即保存；0 = 按所配模型自动（说明文字带生效值）
+        const orgMaxEff = (settingsData && typeof settingsData.organizeMaxChars === 'number' && settingsData.organizeMaxChars > 0) ? settingsData.organizeMaxChars : 12000
+        const orgMaxControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1000, value: setOrgMax, 'data-tooltip': tt('settings.organizeMaxTip', { eff: orgMaxEff }), onChange: (ev) => setSetOrgMax(ev.target.value), onBlur: saveSettingsOrgMax, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsOrgMax() } })
         // P1 时效衰减提醒控件：数值输入（天），失焦/Enter 即保存；0 = 关闭
         const staleControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1, value: setStale, 'data-tooltip': tt('settings.staleTipT'), onChange: (ev) => setSetStale(ev.target.value), onBlur: saveSettingsStale, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsStale() } })
         // 文件夹嵌套深度上限控件（同 staleDays 输入交互）：数值输入（层），失焦/Enter 即保存；0 = 不限层数
@@ -5293,6 +5399,8 @@ window.__ModuleLoader__.load({
         const settingsRows = [
           { key: 'language', label: tt('settings.language'), sub: tt('settings.languageTip'), control: langControl },
           { key: 'llm', label: tt('settings.llm'), sub: tt('settings.llmTip'), control: llmControl },
+          // 0.4.7-B⑦：整理长度上限行（LLM 区紧随模型行；sub 带生效值 = settings-get 增带键，零新 RPC）
+          { key: 'organizemax', label: tt('settings.organizeMax'), sub: tt('settings.organizeMaxTip', { eff: orgMaxEff }), control: orgMaxControl },
           { key: 'usage', label: tt('settings.usage'), sub: tt('settings.usageTip'), control: usageControl },
           { key: 'usagebudget', label: tt('settings.usageBudget'), sub: tt('settings.usageBudgetTip'), control: usageBudgetControl },
           { key: 'stale', label: tt('settings.stale'), sub: tt('settings.staleTip'), control: staleControl },
@@ -5320,16 +5428,17 @@ window.__ModuleLoader__.load({
                 e('button', { className: 'dsh-notes-settings-close dsh-nt', 'data-tooltip': tt('settings.closeTip'), onClick: closeSettings }, I('x', 12)))),
             /* 0.4.6-H：错误区锚定位 = 标题栏正下方（保存按钮旁视野内；原渲染在列表最底部） */
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-            /* onboarding 轻量（notes-034-batch3）：设置卡顶部四概念一行一条速览（注入/约定·资料/目录注入/派发）——新用户前置解释 */
+            /* onboarding 轻量（notes-034-batch3）：设置卡顶部四概念一行一条速览（注入/约定·资料/目录注入/派发）——新用户前置解释；
+               0.4.7-B①c：bullet 逐条 .dsh-notes-onb-li 悬挂缩进（续行对齐文字起点，折行参差消除） */
             e('div', { className: 'dsh-notes-data-hint' },
               e('b', null, tt('settings.onboardTitle')),
-              e('div', null, tt('settings.onboardInject')),
-              e('div', null, tt('settings.onboardRoles')),
-              e('div', null, tt('settings.onboardCatalog')),
-              e('div', null, tt('settings.onboardDispatch'))),
+              e('div', { className: 'dsh-notes-onb-li' }, tt('settings.onboardInject')),
+              e('div', { className: 'dsh-notes-onb-li' }, tt('settings.onboardRoles')),
+              e('div', { className: 'dsh-notes-onb-li' }, tt('settings.onboardCatalog')),
+              e('div', { className: 'dsh-notes-onb-li' }, tt('settings.onboardDispatch'))),
             e('div', { className: 'dsh-notes-settings-list' },
               settingsRows.map(row => e('div', { key: row.key, className: 'dsh-notes-settings-row' },
-                e('div', { className: 'dsh-notes-settings-label' }, row.label, row.sub ? e('span', { className: 'dsh-notes-settings-label-s' }, row.sub) : null),
+                e(SettingsRowLabel, { label: row.label, sub: row.sub }),   /* 0.4.7-B①b：长说明收折 ⓘ 展开（组件态随行 key 存续） */
                 e('div', { className: 'dsh-notes-settings-control' }, row.control))))))
       })()
       : null
@@ -5980,7 +6089,7 @@ window.__ModuleLoader__.load({
         React.useEffect(() => { const fn = () => force(v => v + 1); entryListeners.add(fn); listeners.add(fn); return () => { entryListeners.delete(fn); listeners.delete(fn) } }, [])
         // 模式互斥：fab 模式时隐藏会话头部按钮
         if (entryMode !== 'header') return null
-        return e('button', { className: 'dsh-notes-hdr-btn dsh-nt' + (panelOpen ? ' active' : ''), onClick: () => { panelOpen = !panelOpen; notify() }, 'data-tooltip': '智能笔记' }, e('span', { className: 'dsh-notes-hdr-ic' }, I('note', 13)), e('span', null, '智能笔记'))
+        return e('button', { className: 'dsh-notes-hdr-btn dsh-nt' + (panelOpen ? ' active' : ''), onClick: () => { if (panelOpen && panelBridge.flushPendingEdits) panelBridge.flushPendingEdits('关闭面板'); panelOpen = !panelOpen; notify() }, 'data-tooltip': '智能笔记' }, e('span', { className: 'dsh-notes-hdr-ic' }, I('note', 13)), e('span', null, '智能笔记'))   // 0.4.7-C：toggle 关面板前同调兜底 flush（不经 close() 的第二关闭点）
       }
       slots.register({ name: 'conversation.session.header.actions', id: 'dsh-notes-btn', order: 40 }, (props) => e(HeaderBtn, props))
     })
@@ -6363,12 +6472,16 @@ window.__ModuleLoader__.load({
         // ==== more-row BEGIN ====
         // 组尾「加载更多（还有 N 条）」按钮行（0.4.6-J 分组分页）：组内命中 > 当前显示数时渲染在该组内容末尾
         // （恒排笔记行之后——沿用 notes-041d-drag-root-note 未入夹区提示行置尾先例，插入/消失均不位移既有笔记行）；
-        // 点击 = 该组显示数 += PAGE_SIZE（组间互不影响）；键盘导航 treeIds 不收录加载行（非笔记行）；
+        // 点击 = 该组显示数 += PAGE_SIZE（组间互不影响）；
         // 视觉复用原全局提示行口径 + cursor:pointer + hover 态（styles.css .dsh-notes-more-row）
+        // 0.4.7-B③（notes-047-ux，0.4.6-J verifier 残留）：键盘可达——role=button + tabIndex=0 + Enter/Space 触发（原生按钮语义）。
+        //   取舍注记：j/k 导航到组尾边界「自动聚焦加载行」不做——j/k 聚焦模型是笔记 id 序列（pagedIdsRef，kernel/state 跨域镜像），
+        //   加载行非笔记行，混入要重构「id 序列 ⇄ DOM 行」映射，代价远大于收益；Tab 序列可达 + Enter/Space 触发已满足 WCAG 键盘面。
         function renderMoreRow(key, total) {
           const shown = groupShownOf(groupShown, key)
           if (total <= shown) return null
-          return e('div', { key: 'more-' + key, className: 'dsh-notes-more-row', onClick: () => setGroupShown(prev => groupPageNext(prev, key)) }, tt('tree.moreRows', { n: total - shown }))
+          const label = tt('tree.moreRows', { n: total - shown })
+          return e('div', { key: 'more-' + key, className: 'dsh-notes-more-row', role: 'button', tabIndex: 0, 'aria-label': label, onClick: () => setGroupShown(prev => groupPageNext(prev, key)), onKeyDown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setGroupShown(prev => groupPageNext(prev, key)) } } }, label)
         }
         // ==== more-row END ====
         // ===== 侧栏树渲染（原型 renderTree 翻译）：视图求值结果经 R 注入（装配层 post-guard 新鲜值）=====
@@ -6600,6 +6713,14 @@ window.__ModuleLoader__.load({
     //        modals/inject-manager.js（doInjSchedEdit/doInjSchedToggle/doInjSchedDel——计划块原地操作复用，notes-041-sched-plan-edit；
     //        openMountModal——三态切「资料」档先弹挂载框，0.4.3 验收修复⑪）+ modals/organize-instruct.js（openOrganizeInstruct——
     //        ✨整理先弹追加指令引导卡，0.4.4-F）——序位在前；
+    // ===== 0.4.7-B②b（notes-047-ux）meta 行动区封板：动作总数 > META_ACT_MAX 时中段收进「…」溢出菜单 =====
+    // 规则：头 3 个（整理/派发/来源）+ 尾 2 个图标动作（置顶/删除，高频恒见）直出；中段（历史/导出等）按原相对顺序入菜单。
+    // ≤5 个动作 = 全直出零菜单（常态零变化）。metaActsSplit 为纯函数（app panels/editor-meta.js 同文一份，check 锚定双端一致）
+    const META_ACT_MAX = 5
+    function metaActsSplit(keys) {
+      if (keys.length <= META_ACT_MAX) return { inline: keys, overflow: [] }
+      return { inline: keys.slice(0, 3).concat(keys.slice(keys.length - 2)), overflow: keys.slice(3, keys.length - 2) }
+    }
     //        selected/notes/dispatching/wikiVer/wikiResolve/bumpWikiBody/jumpToWikiTarget 经 hook 入参注入（装配层回填，渲染期新鲜值）
     // state 托管：全部 state/ref 留 hook 内（useState/useRef 声明原文被 check.js 锚定者不迁 store——27-5 节 edSens/edSensRef 等；
     // 与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）
@@ -6644,6 +6765,10 @@ window.__ModuleLoader__.load({
         // ===== 二期 ✨整理：notes-ai-organize 按 kind 模板重写正文；organizeUndoRef = 一次撤销栈（toast「撤销」恢复）=====
         const [organizing, setOrganizing] = React.useState(false)
         const organizeUndoRef = React.useRef(null)   // { body } | null
+        // 0.4.7-B⑥a（notes-047-ux）：整理失败驻留条文案（''=无；手动 ✕ / 换笔记 / 下次发起才清——替代 transient toast）
+        const [orgErr, setOrgErr] = React.useState('')
+        // 0.4.7-B②b：meta 行动区溢出菜单开合态
+        const [actsMenuOpen, setActsMenuOpen] = React.useState(false)
         // ===== 历史版本面板（notes-history-ui）：详情 meta 行「历史」入口（有版本才显示）→ modal：版本列表（时间+大小）→ 点选只读预览 → 恢复 =====
         const [histCount, setHistCount] = React.useState(null)    // 当前笔记历史版本数（null=未探测；0=无版本不显示入口）
         const keepQuickRef = React.useRef(false)
@@ -6679,6 +6804,7 @@ window.__ModuleLoader__.load({
         const edHiddenRef = React.useRef(false)   // 0.4.4-D hidden 镜像（自动保存 debounce 读最新值）
         const edScopeRef = React.useRef([])
         const autoSaveRef = React.useRef(null)
+        const autoSavePendingRef = React.useRef(false)   // 0.4.7-C：debounce 在途脏标记（关闭/卸载兜底 flush 的判定与消费点；防 flush 后到期回调双保存）
         React.useEffect(() => { histCountRef.current = histCount }, [histCount])
         function selectNote(n) {
           // 双模式：切换笔记前把富文本在途编辑序列化落回 edBody 并立即保存（防 900ms debounce 打到新笔记上）
@@ -6691,6 +6817,7 @@ window.__ModuleLoader__.load({
           setEdKind(n.kind || 'note'); setEdStatus(n.status || 'active'); setEdRole(n.inject ? (n.injectRole || 'convention') : 'off'); setEdScope(n.injectTo || []); setEdSens(n.sensitive === true)
           setEdHidden(n.hidden === true)   // 0.4.4-D：hidden 状态回填（open-by-id 旁路笔记同口径——跳转打开 hidden 笔记编辑器/meta chip 正常渲染）
           setEdBody('')
+          setOrgErr('')   // 0.4.7-B⑥a：换笔记清整理失败驻留条（驻留粒度 = 当前笔记）
           setDegraded({ ok: true, reasons: [] })   // 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果）
           histCountRef.current = null; setHistCount(null)   // 换笔记重置「历史」入口可见性，随即探测版本计数
           // 0.4.4-A：open-by-id 旁路登记——缓存外笔记（执行记录跳转 notes-get 直开产物）挂旁路供 curNote 回退；缓存内选中清零
@@ -6813,15 +6940,16 @@ window.__ModuleLoader__.load({
           const body = edBodyRef.current
           if (!body || !body.trim()) { showToast(tt('editor.bodyEmpty')); return }
           const instr = typeof instruction === 'string' ? instruction.trim() : ''   // 0.4.4-F：追加指令 trim（空 = 系统默认规则）
-          setOrganizing(true); setError('')
+          // 0.4.7-B⑥：整理中态 = meta 钮 spinner/禁用（busy）+ 正文区遮罩（org-veil）双通道反馈，消除「没反应」体感
+          setOrganizing(true); setError(''); setOrgErr('')
           try {
             const res = await rpc('notes-ai-organize', { body: body, kind: edKindRef.current, title: edTitleRef.current, instruction: instr })
-            if (res && res.error) { showToast(tt('editor.organizeFailed', { msg: res.error })); return }
+            if (res && res.error) { setOrgErr(tt('editor.organizeFailed', { msg: res.error })); return }   // ⑥a：失败驻留条（手动 ✕ 才消失，不再一闪而过）
             if (!res || !res.body || !res.body.trim()) { showToast(tt('editor.organizeEmpty')); return }
             organizeUndoRef.current = { body: body }   // 一次撤销栈：只保留最近一次整理前的正文
             applyOrganizedBody(res.body)
             showToast(tt('editor.organized', { kind: kindLabel(edKindRef.current) || tt('meta.kindNote') }), { label: tt('meta.undo'), fn: undoAiOrganize })
-          } catch (err) { showToast(tt('editor.organizeFailed', { msg: String(err.message || err) })) } finally { setOrganizing(false) }
+          } catch (err) { setOrgErr(tt('editor.organizeFailed', { msg: String(err.message || err) })) } finally { setOrganizing(false) }
         }
         // 重写正文落进编辑器双模式：源码 textarea 受控随 edBody 更新；富文本重渲染内核产物（白名单外语法则回落源码模式）
         function applyOrganizedBody(text) {
@@ -6929,21 +7057,19 @@ window.__ModuleLoader__.load({
             const wasOff0 = edRole === 'off'
             const mid = selectedRef.current
             if (!mid) return
+            // 0.4.7-B④b（R2 漏网 n-mux79knmfjxt）：挂载框三岔——确认=挂载+切档（onConfirmed）/「仅切换角色，暂不挂载」=切档不落索引行（onSkip）/遮罩·取消=零副作用不切换
+            const flipRef = () => {
+              setEdRole('reference')
+              if (wasOff0) setScopeOpen(true)
+              triggerAutoSave()
+            }
             rpc('notes-mount-list', {}).then(ml => {
               if (selectedRef.current !== mid) return   // 迟到响应丢弃（已切走）
               const line = ((ml && ml.lines) || []).filter(l => l.id === mid)[0]
-              openMountModal({ id: mid, title: edTitleRef.current || mid, existing: line ? line.when : undefined }, { onConfirmed: () => {
-                setEdRole('reference')
-                if (wasOff0) setScopeOpen(true)
-                triggerAutoSave()
-              } })
+              openMountModal({ id: mid, title: edTitleRef.current || mid, existing: line ? line.when : undefined }, { onConfirmed: flipRef, onSkip: flipRef })
             }).catch(() => {
               if (selectedRef.current !== mid) return
-              openMountModal({ id: mid, title: edTitleRef.current || mid }, { onConfirmed: () => {
-                setEdRole('reference')
-                if (wasOff0) setScopeOpen(true)
-                triggerAutoSave()
-              } })
+              openMountModal({ id: mid, title: edTitleRef.current || mid }, { onConfirmed: flipRef, onSkip: flipRef })
             })
             return
           }
@@ -7217,10 +7343,33 @@ window.__ModuleLoader__.load({
         switchModeRef.current = switchMode
         jumpWikiRef.current = jumpToWikiTarget   // P2 双链跳转（富文本 click 委托读最新闭包；jumpWikiRef 为 panel/wiki.js 顶层绑定）
         // 自动保存：debounce 只注册一次（null 时赋值），回调读 ref 避免闭包过期
-        if (!autoSaveRef.current) autoSaveRef.current = timer.debounce(() => { if (selectedRef.current) doSave() }, 900)
-        function triggerAutoSave() { if (autoSaveRef.current) autoSaveRef.current() }
+        // 0.4.7-C：回调先消费在途脏标记——flushPendingEdits 已直发的窗口期，到期回调空转（不双保存）
+        if (!autoSaveRef.current) autoSaveRef.current = timer.debounce(() => { if (!autoSavePendingRef.current) return; autoSavePendingRef.current = false; if (selectedRef.current) doSave() }, 900)
+        function triggerAutoSave() { autoSavePendingRef.current = true; if (autoSaveRef.current) autoSaveRef.current() }
+        // 0.4.7-C（notes-047-stability ①）：关闭/卸载兜底 flush——面板关闭（浮层关）与页面卸载（beforeunload）双路径同调。
+        // 富文本在途编辑先序列化回源码（面板关闭 = 富文本 DOM 拆毁前最后窗口；0.4.4-H 已知旧洞：关时在途富文本随旧 DOM 销毁）；
+        // <900ms debounce 窗口内脏缓冲消费标记后立即 doSave（不等到期）。R-1 提交闸/edLoadErr 暂停语义由 doSave 内部守卫全继承；无在途零动作
+        function flushPendingEdits(why) {
+          if (editorModeRef.current === 'rich' && richDirtyRef.current) syncFromRich(why || '关闭冲刷')
+          if (!autoSavePendingRef.current) return
+          autoSavePendingRef.current = false   // 标记已消费：debounce 到期回调空转，不双保存
+          if (selectedRef.current) doSave()
+        }
+        // 0.4.7-C：页面卸载兜底（beforeunload = 面板浮层关闭之外的第二条丢失路径）；闭包读 ref 恒新鲜（与 debounce 注册同口径），挂一次
+        React.useEffect(() => {
+          const onPageUnload = () => { try { flushPendingEdits('页面卸载') } catch (err) {} }
+          window.addEventListener('beforeunload', onPageUnload)
+          return () => window.removeEventListener('beforeunload', onPageUnload)
+        }, [])
         // i18n（覆盖卡B）：rich 空态 CSS content 占位串——styles.css 静态 zh 缺省保留（var() 回退值），运行时按语言态写 CSS 变量（tt 随 langStore 换实例 → 本 effect 重跑）
         React.useEffect(() => { try { document.documentElement.style.setProperty('--dsh-notes-rich-ph', '"' + tt('editor.richPlaceholder') + '"') } catch (err) {} }, [tt])
+        // 0.4.7-B②b：meta 溢出菜单外点收拢（菜单开着才挂 document 监听，关闭即卸——防泄漏同 disposer 口径）
+        React.useEffect(() => {
+          if (!actsMenuOpen) return
+          const onDoc = (ev) => { try { if (!(ev.target && ev.target.closest && ev.target.closest('.dsh-notes-meta-more-wrap'))) setActsMenuOpen(false) } catch (err) {} }
+          document.addEventListener('mousedown', onDoc)
+          return () => document.removeEventListener('mousedown', onDoc)
+        }, [actsMenuOpen])
         // ===== 编辑器区渲染（原型 .ed）：面包屑 + 大标题 + meta chips 行 + 正文 + 底部状态 =====
         // 装配层 post-guard 调用（面板关闭时不求值）；scopePanelEl 等跨域渲染产物经 R 入参注入
         function renderEditorEl(R) {
@@ -7247,6 +7396,9 @@ window.__ModuleLoader__.load({
           void schedPeerVer   // 兜底缓存到达驱动重算（wikiVer 同模式）
           const curIsSched = !!(curNote && (curNote.contractType || '') === 'dispatch-schedule' && curNote.schedule)
           const schedPeers = curNote ? relatedScheds(curNote, schedPeerSource()).slice(0, 5) : []   // 关联清单 ≤5 条（防极端刷屏，注入管理总览看全量）
+          // 0.4.7-B④a（R2 漏网 n-mux79knmfjxt）：三态 ⓘ tooltip 文案 = 三档 tooltip 同文合成（单一文案源防漂移；触屏/键盘点击 toast 同文可达）；
+          //   分段符走 common.listSep（zh、/ en ", "）——app panels/editor-meta.js 同文一份
+          const roleInfoTip = tt('meta.roleOff') + ' = ' + tt('meta.roleOffTip') + tt('common.listSep') + tt('tree.roleConvention') + ' = ' + tt('meta.roleConventionTip') + tt('common.listSep') + tt('tree.roleReference') + ' = ' + tt('meta.roleReferenceTip')
           // ===== P2 反向链接：全库正文索引扫描（extractWikiTargets/wikiLinksTo 与内核同一口径）；索引未到的条目暂不计，标题行提示「索引中…」=====
           void wikiVer   // 索引版本号驱动本区重算（索引推进 → setWikiVer → 重渲染）
           const wikiWarm = notes.every(n => !!wikiBodiesRef.current[n.id])
@@ -7261,6 +7413,37 @@ window.__ModuleLoader__.load({
             }
             return out
           })()
+          // ===== 0.4.7-B②b meta 行动区封板：有序动作组构建（元素原位定义，id/处理器零改动）→ metaActsSplit 分直出/「…」溢出菜单 =====
+          const actEls = {
+            // 二期 ✨整理：AI 按当前 kind 模板重写正文（notes-ai-organize；替换后 toast 可撤销一次）；0.4.4-F 起先弹追加指令引导卡（确认才进 doAiOrganize）；
+            // 0.4.7-B⑥：整理中 spinner + 禁用态（busy class 既有）；⑥b：开卡携正文长度（超限前置校验数据源）
+            organize: e('span', { className: 'dsh-notes-meta-act dsh-notes-organize-btn' + (organizing ? ' busy' : '') + ' dsh-nt', onClick: (ev) => { ev.stopPropagation(); if (!organizing) openOrganizeInstruct(edBodyRef.current.length) }, 'data-tooltip': organizing ? tt('meta.organizingTip') : tt('meta.organizeTip', { kind: kindLabel(edKind) || tt('meta.kindNote') }) }, organizing ? e('span', { className: 'dsh-notes-org-spin' }) : I('sparkle', 12), organizing ? tt('meta.organizing') : tt('meta.organize')),
+            dispatch: e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); openDispatch() }, 'data-tooltip': tt('meta.dispatchTipClient') }, I('play', 12), dispatching ? '…' : tt('meta.dispatch')),
+            src: curNote && curNote.sessionId ? e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: () => jumpToSession(curNote.sessionId), 'data-tooltip': tt('meta.sourceJumpTip') }, I('ext', 12), tt('meta.source')) : null,
+            // 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数）
+            hist: (histCount || 0) > 0 ? e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); openHistory() }, 'data-tooltip': tt('meta.histTip', { n: histCount }) }, I('clock', 12), tt('meta.history')) : null,
+            // 0.4.5-F（notes-045-export-one）：一键导出单篇 MD（Blob 浏览器下载，零新 RPC；正文原样）
+            export: e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); doExportOne() }, 'data-tooltip': tt('meta.exportTip') }, I('down', 12), tt('meta.export')),
+            pin: e('span', { className: 'dsh-notes-meta-act' + (edStatus === 'pinned' ? ' on' : '') + ' dsh-nt', onClick: () => { setEdStatus(edStatus === 'pinned' ? 'active' : 'pinned'); triggerAutoSave() }, 'data-tooltip': edStatus === 'pinned' ? tt('meta.unpin') : tt('meta.pin') }, I('pin', 12)),
+            del: e('span', { className: 'dsh-notes-meta-act danger dsh-nt', onClick: () => doDelete(selected), 'data-tooltip': tt('meta.delTipClient') }, I('trash', 12)),
+          }
+          const actKeys = ['organize', 'dispatch']
+          if (actEls.src) actKeys.push('src')
+          if (actEls.hist) actKeys.push('hist')
+          actKeys.push('export', 'pin', 'del')
+          const actSplit = metaActsSplit(actKeys)
+          const actElOf = (k) => React.cloneElement(actEls[k], { key: 'mact-' + k })   // 数组化渲染补 key（零 React 告警）
+          const actRowEls = actSplit.inline.map(actElOf)
+          if (actSplit.overflow.length) {
+            actRowEls.push(e('span', { key: 'macts-more', className: 'dsh-notes-meta-more-wrap' },
+              e('span', { className: 'dsh-notes-meta-act dsh-notes-meta-more dsh-nt', role: 'button', tabIndex: 0, 'data-tooltip': tt('meta.actsMoreTip'), 'aria-label': tt('meta.actsMoreTip'), onClick: (ev) => { ev.stopPropagation(); setActsMenuOpen(!actsMenuOpen) }, onKeyDown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); setActsMenuOpen(!actsMenuOpen) } } }, '…'),
+              /* 菜单项：cloneElement 覆写 onClick = 关菜单 + 转调原 act 处理器（原处理器内的 stopPropagation 无害保留）；
+                 不嵌套包装 span——实证（用例㊲）：捕获相 setState 后目标相 onClick 在克隆嵌套形态下被跳过 */
+              actsMenuOpen ? e('span', { className: 'dsh-notes-meta-more-menu' }, actSplit.overflow.map(k => React.cloneElement(actEls[k], {
+                key: 'macto-' + k,
+                onClick: (ev) => { ev.stopPropagation(); setActsMenuOpen(false); actEls[k].props.onClick(ev) },
+              }))) : null))
+          }
           const editorEl = curNote ? e('section', { className: 'dsh-notes-ed' },
           e('div', { className: 'dsh-notes-ed-h' },
             e('div', { className: 'dsh-notes-ed-crumb' },
@@ -7302,7 +7485,9 @@ window.__ModuleLoader__.load({
                 I('bolt', 11),
                 e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'off' ? ' on' : ''), onClick: () => setRoleSeg('off'), 'data-tooltip': tt('meta.roleOffTip') }, tt('meta.roleOff')),
                 e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'convention' ? ' on' : ''), onClick: () => setRoleSeg('convention'), 'data-tooltip': tt('meta.roleConventionTip') }, tt('tree.roleConvention')),
-                e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'reference' ? ' on' : ''), onClick: () => setRoleSeg('reference'), 'data-tooltip': tt('meta.roleReferenceTip') }, tt('tree.roleReference'))),
+                e('span', { className: 'dsh-notes-role-opt dsh-nt' + (edRole === 'reference' ? ' on' : ''), onClick: () => setRoleSeg('reference'), 'data-tooltip': tt('meta.roleReferenceTip') }, tt('tree.roleReference')),
+                // 0.4.7-B④a：三态旁可见 ⓘ（tooltip=三档合成同文；tabIndex+role=button 键盘可达，点击/Enter 另 toast 同文兜底触屏）
+                e('span', { className: 'dsh-notes-role-info dsh-nt', tabIndex: 0, role: 'button', 'data-tooltip': roleInfoTip, 'aria-label': roleInfoTip, onClick: (ev) => { ev.stopPropagation(); showToast(roleInfoTip) }, onKeyDown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); showToast(roleInfoTip) } } }, 'ⓘ')),
               isInjected ? e('span', { className: 'dsh-notes-ed-scope-wrap' },
                 e('button', { className: 'dsh-notes-meta-chip dsh-notes-scope-trigger dsh-nt', onClick: (ev) => { ev.stopPropagation(); setScopeOpen(!scopeOpen) }, 'data-tooltip': tt('meta.scopeTip') },
                   injectScopeLabel(edScope), e('span', { className: 'dsh-notes-scope-caret' }, '▾')),
@@ -7322,16 +7507,8 @@ window.__ModuleLoader__.load({
                 e('button', { className: 'dsh-notes-modeseg-seg' + (editorMode === 'source' ? ' on' : '') + ' dsh-nt', 'data-tooltip': tt('meta.srcModeTip'), onClick: () => switchMode('source') }, I('codeblock', 12), tt('meta.src')),
                 e('button', { className: 'dsh-notes-modeseg-seg' + (editorMode === 'rich' ? ' on' : '') + (!degraded.ok ? ' dis' : '') + ' dsh-nt', 'data-tooltip': !degraded.ok ? tt('editor.richDegradedReasons', { reasons: degraded.reasons.map(r => r.label).join(tt('common.listSep')) }) : tt('meta.richModeTipClient'), onClick: () => switchMode('rich') }, I('eye', 12), tt('meta.rich'))),
               e('span', { className: 'dsh-notes-kbd dsh-notes-modeseg-kbd' }, 'Ctrl+/'),
-              // 二期 ✨整理：AI 按当前 kind 模板重写正文（notes-ai-organize；替换后 toast 可撤销一次）；0.4.4-F 起先弹追加指令引导卡（确认才进 doAiOrganize）
-              e('span', { className: 'dsh-notes-meta-act dsh-notes-organize-btn' + (organizing ? ' busy' : '') + ' dsh-nt', onClick: (ev) => { ev.stopPropagation(); if (!organizing) openOrganizeInstruct() }, 'data-tooltip': organizing ? tt('meta.organizingTip') : tt('meta.organizeTip', { kind: kindLabel(edKind) || tt('meta.kindNote') }) }, I('sparkle', 12), organizing ? tt('meta.organizing') : tt('meta.organize')),
-              e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); openDispatch() }, 'data-tooltip': tt('meta.dispatchTipClient') }, I('play', 12), dispatching ? '…' : tt('meta.dispatch')),
-              curNote.sessionId ? e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: () => jumpToSession(curNote.sessionId), 'data-tooltip': tt('meta.sourceJumpTip') }, I('ext', 12), tt('meta.source')) : null,
-              // 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数）
-              (histCount || 0) > 0 ? e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); openHistory() }, 'data-tooltip': tt('meta.histTip', { n: histCount }) }, I('clock', 12), tt('meta.history')) : null,
-              // 0.4.5-F（notes-045-export-one）：一键导出单篇 MD（Blob 浏览器下载，零新 RPC；正文原样）
-              e('span', { className: 'dsh-notes-meta-act dsh-nt', onClick: (ev) => { ev.stopPropagation(); doExportOne() }, 'data-tooltip': tt('meta.exportTip') }, I('down', 12), tt('meta.export')),
-              e('span', { className: 'dsh-notes-meta-act' + (edStatus === 'pinned' ? ' on' : '') + ' dsh-nt', onClick: () => { setEdStatus(edStatus === 'pinned' ? 'active' : 'pinned'); triggerAutoSave() }, 'data-tooltip': edStatus === 'pinned' ? tt('meta.unpin') : tt('meta.pin') }, I('pin', 12)),
-              e('span', { className: 'dsh-notes-meta-act danger dsh-nt', onClick: () => doDelete(selected), 'data-tooltip': tt('meta.delTipClient') }, I('trash', 12)),
+              // meta 行动区（0.4.7-B②b 封板）：有序动作组 actRowEls（构建见 editorEl 上方；超阈值中段收「…」溢出菜单，相对顺序不动）
+              actRowEls,
               // 派发计划块 + 关联调度清单（notes-034-sched-detail）：meta 尾部全宽行；无调度笔记零渲染（null = 零 DOM 痕迹红线）
               (curIsSched || schedPeers.length) ? e('div', { className: 'dsh-notes-sched-plan' },
                 curIsSched ? e('div', { className: 'dsh-notes-sched-plan-row' + (curNote.schedule.enabled === false ? ' paused' : '') },
@@ -7386,10 +7563,17 @@ window.__ModuleLoader__.load({
             e('div', null,
               e('div', null, edLoadErr, tt('editor.loadLockNote')),
               e('div', null, e('span', { className: 'dsh-notes-meta-act', style: { cursor: 'pointer' }, onClick: () => { if (selectedRef.current) loadEdBody(selectedRef.current) } }, tt('editor.retry'))))) : null,
-          // 正文双模式（原型 .src / .rich-scroll）：源码 textarea ⇄ 富文本 contenteditable（非受控，编辑期间不重渲染）
-          editorMode === 'source'
+          // 0.4.7-B⑥a（notes-047-ux）：整理失败驻留条（复用 .dsh-notes-deg 警告样式，手动 ✕ 才消失——替代一闪而过的 toast）
+          orgErr ? e('div', { className: 'dsh-notes-deg dsh-notes-org-err' },
+            I('warn', 13),
+            e('div', null, orgErr),
+            e('span', { className: 'dsh-notes-org-err-x dsh-nt', role: 'button', tabIndex: 0, 'data-tooltip': tt('common.close'), 'aria-label': tt('common.close'), onClick: () => setOrgErr(''), onKeyDown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setOrgErr('') } } }, I('x', 11))) : null,
+          // 正文双模式（原型 .src / .rich-scroll）：源码 textarea ⇄ 富文本 contenteditable（非受控，编辑期间不重渲染）；
+          // 0.4.7-B⑥：正文区包壳 .dsh-notes-ed-bodywrap（relative）承载整理中遮罩（org-veil：spinner + 「约需半分钟」文案）
+          e('div', { className: 'dsh-notes-ed-bodywrap' },
+            editorMode === 'source'
             ? e('textarea', {
-                ref: edBodyDomRef, className: 'dsh-notes-ed-body', placeholder: edBodyPending ? tt('editor.bodySyncing') : tt('editor.bodyPlaceholder'), value: edBody, readOnly: !!edLoadErr,
+                ref: edBodyDomRef, className: 'dsh-notes-ed-body', placeholder: edBodyPending ? tt('editor.bodySyncing') : tt('editor.bodyPlaceholder'), value: edBody, readOnly: !!(edLoadErr || edBodyPending),   /* 0.4.7-C ②b：源码模式在途窗同款锁（旧口径只锁失败态——在途窗可编辑 = 落定回填盖掉打字的假同步洞） */
                 onChange: (ev) => { setEdBody(ev.target.value); triggerAutoSave(); scheduleDegAnalyze() },
                 // 图片入口①/②（源码模式）：粘贴/拖拽图片文件 → 同一上传弹窗 → 光标处插 Markdown 文本
                 onPaste: (ev) => { const cd = ev.clipboardData; if (cd && cd.files && cd.files.length && cd.files[0].type.indexOf('image/') === 0) { ev.preventDefault(); pickImageFile(cd.files[0]) } },
@@ -7408,8 +7592,10 @@ window.__ModuleLoader__.load({
                   e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'quote', 'data-tooltip': tt('editor.tbQuote'), onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('quote') } }, I('quote', 14)),
                   e('span', { className: 'dsh-notes-rtb-sep' }),
                   e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'image', 'data-tooltip': tt('editor.tbImage'), onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('image') } }, I('image', 14)),
-                  e('span', { className: 'dsh-notes-rtb-sync' + ((edBodyPending || richSyncing) ? '' : ' ok') }, e('span', { className: 'dsh-notes-rtb-sync-sd' }), edBodyPending ? tt('editor.bodySyncing') : richSyncing ? tt('editor.syncing') : tt('editor.synced'))),
+                  e('span', { className: 'dsh-notes-rtb-sync' + (edLoadErr ? ' err' : ((edBodyPending || richSyncing) ? '' : ' ok')) }, e('span', { className: 'dsh-notes-rtb-sync-sd' }), edLoadErr ? tt('editor.syncFailed') : edBodyPending ? tt('editor.bodySyncing') : richSyncing ? tt('editor.syncing') : tt('editor.synced'))),   /* 0.4.7-C ②a：失败态同步点统一红点「加载失败」（旧口径 edLoadErr 在窗时冒绿「已同步」= 与横幅矛盾的双口径） */
                 e('div', { ref: richRef, className: 'dsh-notes-rich', contentEditable: (edLoadErr || edBodyPending) ? false : true, spellCheck: false, suppressContentEditableWarning: true })),
+            // 0.4.7-B⑥：整理中遮罩（正文区全覆；organizing 翻转即现/即隐，与 meta 钮 busy 同数据源）
+            organizing ? e('div', { className: 'dsh-notes-org-veil' }, e('span', { className: 'dsh-notes-org-spin' }), e('span', null, tt('editor.organizingVeil'))) : null),
           // P2 反向链接面板：全库正文含 [[当前id]]/[[当前标题]] 的其他笔记（点击跳转；索引未热提示「索引中…」）
           e('div', { className: 'dsh-notes-backlinks' },
             e('div', { className: 'dsh-notes-backlinks-t' }, I('link', 11), tt('editor.backlinks') + (wikiWarm ? tt('editor.backlinksCount', { n: backlinks.length }) : tt('editor.backlinksWarming'))),
@@ -7437,6 +7623,7 @@ window.__ModuleLoader__.load({
           afterArchiveCleanup: afterArchiveCleanup, toggleScope: toggleScope, keepSel: keepSel, restoreSel: restoreSel,
           scheduleRichSync: scheduleRichSync, setEditorModeState: setEditorModeState, edBodyDomRef: edBodyDomRef,
           richRef: richRef, richDirtyRef: richDirtyRef, setEdBody: setEdBody, renderEditorEl: renderEditorEl,
+          flushPendingEdits: flushPendingEdits,   // 0.4.7-C：面板关闭兜底 flush（装配层 close()/头部按钮 toggle-off 同调）
           doAiOrganize: doAiOrganize   // 0.4.4-F：整理引导卡确认回跳（modals/organize-instruct.js 经 panelBridge 中转，禁横向引用）
         }
     }
@@ -7964,7 +8151,7 @@ window.__ModuleLoader__.load({
         // 编辑器域已拆出（§6 步骤 E：panel/editor.js——ed* 字段态/整理撤销栈/历史计数/双模式运行时 + selectNote/doSave/doDelete/
         // applyRestoredBody/probeHistCount/insertImageMd/三态开关/工具栏/富文本绑定 + renderEditorEl 渲染函数 归 usePanelEditor；
         // selected/notes/dispatching/wiki 族经入参注入；setSelected/setFocusId/later 等经 kernel 转发别名）
-        const { edScope, selectNote, doDelete, applyRestoredBody, probeHistCount, histCountRef, setHistCount, insertImageMd, afterArchiveCleanup, toggleScope, keepSel, restoreSel, scheduleRichSync, setEditorModeState, edBodyDomRef, richRef, richDirtyRef, setEdBody, renderEditorEl, doAiOrganize } = usePanelEditor({ selected: selected, notes: notes, dispatching: dispatching, open: open, wikiVer: wikiVer, wikiResolve: wikiResolve, bumpWikiBody: bumpWikiBody, jumpToWikiTarget: jumpToWikiTarget })
+        const { edScope, selectNote, doDelete, applyRestoredBody, probeHistCount, histCountRef, setHistCount, insertImageMd, afterArchiveCleanup, toggleScope, keepSel, restoreSel, scheduleRichSync, setEditorModeState, edBodyDomRef, richRef, richDirtyRef, setEdBody, renderEditorEl, doAiOrganize, flushPendingEdits } = usePanelEditor({ selected: selected, notes: notes, dispatching: dispatching, open: open, wikiVer: wikiVer, wikiResolve: wikiResolve, bumpWikiBody: bumpWikiBody, jumpToWikiTarget: jumpToWikiTarget })
         // 注入范围浮层已拆出（§6 步骤 E：popovers/scope.js；hook 调用点随 edScope 依赖后置于此——editor hook 先行回填 edScope）
         const { sessList, sessPending, scopeOpen, setScopeOpen, injectScopeLabel, scopePanelEl } = usePanelScope({ open: open, notes: notes, edScope: edScope })
         // keepQuickRef/edBodyDomRef/edLoadingRef/rich*Ref/ed*Ref/autoSaveRef 等编辑器运行时 ref 已随 panel/editor.js 迁出（hook 内同文）
@@ -8050,7 +8237,7 @@ window.__ModuleLoader__.load({
         // ===== 拖拽挪入/挪出文件夹（HTML5 DnD；与右键「移动到文件夹」共用 ctxMoveToFolder 移动逻辑）=====
         // 双向拖拽族（onNoteDrag*/onFolderDrag*/onUnfiled*）已随 panel/tree.js 迁出（同文；dragNoteIdRef/dragFolderIdRef 为该模块顶层绑定）
         // 点击菜单外部关闭 effect 已随 popovers/ctx-menu.js / folder-menu.js 迁入各自 hook（同文）
-        function close() { panelOpen = false; notify() }
+        function close() { flushPendingEdits('关闭面板'); panelOpen = false; notify() }   // 0.4.7-C：关闭前先 flush <900ms 在途编辑（×/Esc 同走本收口；富文本 DOM 拆毁前序列化落盘）
         // jumpToSession（来源会话跳转）已随 panel/editor.js 迁出（编辑器 meta 行「来源」按钮同域）
         // setRoleSeg/toggleSens/toggleScope（注入三态/敏感/范围多选）已随 panel/editor.js 迁出（同文；
         // setScopeOpen 联动经 kernel 转发别名 → panelBridge 回填；「目录可见」开关随 0.4.3⑪ chip 拆除退役）
@@ -8176,6 +8363,7 @@ window.__ModuleLoader__.load({
         panelBridge.sessPending = sessPending
         panelBridge.jumpToWikiTarget = jumpToWikiTarget
         panelBridge.setEdBody = setEdBody   // dispatch 确认后回填正文（modals/dispatch.js 经此中转，禁横向引用）
+        panelBridge.flushPendingEdits = flushPendingEdits   // 0.4.7-C：头部按钮 toggle-off 关闭路径同调兜底 flush（entries 经桥中转，序位 entries 先于 panel）
         panelBridge.doAiOrganize = doAiOrganize   // 0.4.4-F 整理引导卡确认回跳（modals/organize-instruct.js 经此中转，禁横向引用——序位 organize-instruct 先于 panels）
         panelBridge.openDispatchEdit = openDispatchEdit   // 调度任务「编辑」回填派发弹窗（modals/inject-manager.js 经此中转，禁横向引用——序位 inject-manager 先于 dispatch）
         panelBridge.openMountModal = openMountModal   // 预览目录行点击开挂载弹层（modals/inject-preview.js 经此中转，禁横向引用——序位 inject-preview 先于 inject-manager）

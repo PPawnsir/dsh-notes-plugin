@@ -136,12 +136,13 @@ var I18N_EN = {
   'editor.syncing': 'Editing…',
   'editor.synced': 'Synced to source',
   'editor.bodySyncing': 'Loading body…',   /* 0.4.6-A: sync pill text while the note body is in flight (no fake-green "synced"); editor.bodyLoading is the pre-existing organize-flow key, not reused */
+  'editor.syncFailed': 'Load failed',   /* 0.4.7-C: unified failure-state sync pill (red dot + this text, same on both ends; details live in the banner, not repeated in the pill) */
   'editor.modeSource': 'Source mode',
   'editor.modeRich': 'Rich text mode',
   'editor.imageOnly': 'Only image files are supported',
   'editor.tableReadonly': 'Tables are read-only; switch to source mode to edit this region',
   'editor.richRestored': 'Rich text mode is available again',
-  'editor.richDisabled': 'Out-of-whitelist syntax detected → rich text entry disabled',
+  'editor.richDisabled': 'This note contains syntax the rich editor cannot safely handle — switched back to plain text (content unchanged)',   /* 0.4.7-A②: consequence-first — drop "out-of-whitelist" jargon */
   'editor.degReasonItem': '{label} (line {line}: {sample})',
   'editor.selectCodeFirst': 'Select the text to mark as inline code first',
   'editor.selectLinkFirst': 'Select the text to turn into a link first',
@@ -158,6 +159,10 @@ var I18N_EN = {
   'editor.organizeInstructPlaceholder': 'Guide the AI, e.g. "highlight action items" or "trim to three conclusions"; leave empty to use the default system rules',
   'editor.organizeInstructConfirm': 'Organize',
   'editor.organizeInstructCancel': 'Cancel',
+  /* 0.4.7-B⑥ (notes-047-ux, field feedback n-muy9gdybdd40): organizing in-flight reinforcement + persistent failure + over-limit pre-check */
+  'editor.organizingVeil': 'AI is organizing — this can take up to half a minute…',
+  'editor.organizeTooLong': 'This note is {n} chars, over the {max} limit — organize it in sections',
+  'editor.organizeTooLongTip': 'The organize length cap lives in Settings → "Organize length cap"; 0 = auto by the configured model',
   'editor.charCount': '{n} chars',
   'editor.backlinks': 'Backlinks',
   'editor.backlinksCount': ' ({n})',
@@ -224,6 +229,8 @@ var I18N_EN = {
   'meta.organizeTip': 'AI organize: rewrite the body with the "{kind}" template (undoable after replacement)',
   'meta.organizing': 'Organizing…',
   'meta.organize': 'Organize',
+  /* 0.4.7-B②b (notes-047-ux): meta action-area cap — actions beyond the threshold fold into a "…" overflow menu */
+  'meta.actsMoreTip': 'More actions',
   'meta.dispatchTip': 'Dispatch the todo to a live session',
   'meta.dispatchTipClient': 'Dispatch the todo to a session (extra instructions supported)',
   'meta.dispatch': 'Dispatch',
@@ -366,7 +373,7 @@ var I18N_EN = {
   'settings.memDisableTip': 'Disable = turn off injection of the guide convention note (the note is kept and can be re-enabled)',
   'settings.memPending': 'Processing…',
   'settings.memEnable': 'Enable settling guide…',
-  'settings.memEnableTip': 'Create a prefilled convention note (inject=true, contractType: memory-guide) that guides the Agent to write session conclusions as work logs (kind=log, first-class visible/searchable, injection hard-disabled) at task wrap-up — coexists with existing conventions without conflict',
+  'settings.memEnableTip': 'Once enabled, the Agent writes session conclusions into work logs at every task wrap-up (visible and searchable in the list, no injection slot used). Click to create a prefilled convention note — coexists with existing conventions',   /* 0.4.7-A②: consequence-first — internal field names (inject/contractType/kind) no longer leak into user copy */
   'settings.logWeek': 'Log weekly rollup window',
   'settings.logWeekTip': 'Work logs older than N days are nominated for rollup by workspace×week in organize suggestions (nominates only; default 7 days)',
   'settings.logWeekTipT': 'Work logs older than N days are nominated for rollup by workspace×week in organize suggestions (nominates only)',
@@ -400,6 +407,14 @@ var I18N_EN = {
   'settings.usageBudgetInvalid': 'The monthly usage budget must be a non-negative integer (0 = off)',
   'settings.usageBudgetOff': 'Monthly usage budget reminder disabled',
   'settings.savedUsageBudget': 'Saved: monthly usage budget {v} tokens',
+  /* 0.4.7-B⑦ (notes-047-ux): organize length cap setting (number input in the LLM section; 0/absent = auto by the configured model, effective value piggybacks on settings-get) */
+  /* 0.4.7-B①b (notes-047-ux): title of the ⓘ expand/collapse button for setting-row descriptions */
+  'settings.descExpandTip': 'Expand / collapse the full description',
+  'settings.organizeMax': 'Organize length cap',
+  'settings.organizeMaxTip': 'Max body chars per AI organize run; longer notes need sectioning. 0 = auto by the configured model (effective: {eff})',
+  'settings.organizeMaxInvalid': 'The organize length cap must be a non-negative integer (0 = auto by the configured model)',
+  'settings.organizeMaxAuto': 'Restored: organize length cap follows the configured model',
+  'settings.savedOrganizeMax': 'Saved: organize length cap {v} chars',
   'settings.savedAll': 'Settings saved',
   'settings.restoredAll': 'Restored: settings rolled back to the state when opened',
   'settings.restoreFailed': 'Restore failed: {msg}',
@@ -440,7 +455,7 @@ var I18N_EN = {
   'inj.executing': 'Running…',
   'inj.logNoInject': 'No injection (log)',
   'inj.logNoInjectTip': 'Work logs are hard-gated out of injection (host forces inject=false); logs are first-class — visible/searchable/editable; never included in the injected directory',
-  'inj.sensTip': 'Sensitive note: auto-masked when injected (body masked line by line; keys kept, values hidden)',
+  'inj.sensTip': 'Sensitive note: auto-masked when injected into AI context — line-by-line masking (field names kept, values hidden as ******); the Agent fetches originals by id (note_get)',   /* 0.4.7-A②: consequence-first — drop "keys kept, values hidden" jargon residue */
   'inj.sensBadge': 'Auto-masked on injection',
   'inj.scopeGlobal': 'Global',
   'inj.scopeSessions': '{n} sessions',
@@ -469,6 +484,9 @@ var I18N_EN = {
   'inj.mountPlaceholder': 'e.g. When changing injection logic, when verifying mounted references…',
   'inj.mountSave': 'Mount',
   'inj.mountSkip': 'Skip suggestion, write it myself',
+  /* 0.4.7-B④b (notes-047-ux, R2 leftover n-mux79knmfjxt): explicit copy for the skip tier of the mount modal when a role switch is pending —
+     only tri-state/inline-row entries (role switch in flight) show this copy and switch without mounting; suggest/preview pure-mount entries keep inj.mountSkip; Esc/mask = cancel without switching (zero side effects) */
+  'inj.mountSkipSwitch': 'Switch role only, mount later',
   'inj.mountSaved': 'Mounted to index: {title}',
   'inj.mountFailed': 'Mount failed: {msg}',
   // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
@@ -489,7 +507,7 @@ var I18N_EN = {
   'inj.conflictRerun': 'Re-run checkup',
   'inj.conflictRunTip': 'Run an LLM pairwise conflict/supersede check over all injected conventions (manual trigger; sensitive bodies masked first)',
   'inj.conflictRunning': 'Checking…',
-  'inj.conflictRunningHint': 'The LLM is comparing conventions pairwise; this takes a few seconds…',
+  'inj.conflictRunningHint': 'The LLM is comparing conventions pairwise; with many conventions this can take a minute or two…',   /* 0.4.7-A⑨: in-flight copy aligned with the 120s heavy-operation budget */
   'inj.conflictError': 'Checkup failed: {msg}',
   'inj.conflictEmpty': 'No suspected conflict or supersede pairs found ({n} conventions checked).',
   'inj.conflictRelConflict': 'Conflict?',
@@ -577,6 +595,8 @@ var I18N_EN = {
   'disp.dispatched': 'Todo dispatched to "{name}" (processing started)',
   'disp.dispatchedQueued': 'Queued to "{name}" (dormant session · delivered on its next activity)',
   'disp.schedNew': 'Dedicated session (auto-created on first fire, then reused)',
+  /* 0.4.7-B⑤ (notes-047-ux): headless hint line next to the dedicated-session checkbox (field lesson: dedicated sessions have no browser_* or other GUI-attached tools) */
+  'disp.schedNewHint': 'A dedicated session is headless: no browser or other GUI-attached tools. For tasks that need browser walkthroughs, target a resident session instead',
   'disp.schedNewTarget': 'Auto-created dedicated session on first fire',
   'disp.schedModelDefault': 'Default model (follow host selection)',   /* 0.4.6-G: dedicated-session model dropdown default option (empty value = no model/provider in declaration) */
   'disp.schedModelTip': 'Dedicated session model: {model}',            /* 0.4.6-G: schedule-row model annotation tooltip + dropdown title */

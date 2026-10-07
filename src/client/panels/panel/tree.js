@@ -110,12 +110,16 @@
         // ==== more-row BEGIN ====
         // 组尾「加载更多（还有 N 条）」按钮行（0.4.6-J 分组分页）：组内命中 > 当前显示数时渲染在该组内容末尾
         // （恒排笔记行之后——沿用 notes-041d-drag-root-note 未入夹区提示行置尾先例，插入/消失均不位移既有笔记行）；
-        // 点击 = 该组显示数 += PAGE_SIZE（组间互不影响）；键盘导航 treeIds 不收录加载行（非笔记行）；
+        // 点击 = 该组显示数 += PAGE_SIZE（组间互不影响）；
         // 视觉复用原全局提示行口径 + cursor:pointer + hover 态（styles.css .dsh-notes-more-row）
+        // 0.4.7-B③（notes-047-ux，0.4.6-J verifier 残留）：键盘可达——role=button + tabIndex=0 + Enter/Space 触发（原生按钮语义）。
+        //   取舍注记：j/k 导航到组尾边界「自动聚焦加载行」不做——j/k 聚焦模型是笔记 id 序列（pagedIdsRef，kernel/state 跨域镜像），
+        //   加载行非笔记行，混入要重构「id 序列 ⇄ DOM 行」映射，代价远大于收益；Tab 序列可达 + Enter/Space 触发已满足 WCAG 键盘面。
         function renderMoreRow(key, total) {
           const shown = groupShownOf(groupShown, key)
           if (total <= shown) return null
-          return e('div', { key: 'more-' + key, className: 'dsh-notes-more-row', onClick: () => setGroupShown(prev => groupPageNext(prev, key)) }, tt('tree.moreRows', { n: total - shown }))
+          const label = tt('tree.moreRows', { n: total - shown })
+          return e('div', { key: 'more-' + key, className: 'dsh-notes-more-row', role: 'button', tabIndex: 0, 'aria-label': label, onClick: () => setGroupShown(prev => groupPageNext(prev, key)), onKeyDown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setGroupShown(prev => groupPageNext(prev, key)) } } }, label)
         }
         // ==== more-row END ====
         // ===== 侧栏树渲染（原型 renderTree 翻译）：视图求值结果经 R 注入（装配层 post-guard 新鲜值）=====

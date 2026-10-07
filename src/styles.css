@@ -472,7 +472,8 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 /* ===== 设置卡片（modal，居中）：通用结构——标题「设置」+ 设置项行列表（加设置项 = 加行） ===== */
 .dsh-notes-settings-mask{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:70;display:flex;align-items:center;justify-content:center}
 .dsh-notes-settings-modal{width:400px;max-width:92%;background:var(--npanel);border:1px solid var(--nbd);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:16px;font-family:var(--nfont);max-height:80vh;overflow-y:auto;color:var(--ntx)}
-.dsh-notes-settings-modal-t{display:flex;align-items:center;font-size:14px;font-weight:700;color:var(--ntx);margin-bottom:8px}
+/* 0.4.7-B①a（notes-047-ux）：弹窗标题栏 sticky——长滚动时标题栏动作区（保存/还原/✕）恒见；短弹窗零视觉差 */
+.dsh-notes-settings-modal-t{display:flex;align-items:center;font-size:14px;font-weight:700;color:var(--ntx);margin:-16px -16px 8px;padding:16px 16px 8px;position:sticky;top:-16px;background:var(--npanel);z-index:5;border-radius:14px 14px 0 0}
 /* 设置卡标题栏动作区（notes-settings-feedback）：✕ 常驻关闭 + dirty 态「保存」（accent 实心主按钮）/「还原」（次按钮）——无改动时禁用灰显 */
 .dsh-notes-settings-t-acts{margin-left:auto;display:flex;align-items:center;gap:6px}
 .dsh-notes-settings-save{background:var(--nacc);border:1px solid transparent;border-radius:7px;color:#fff;font-size:11px;font-weight:600;padding:4px 12px;cursor:pointer;font-family:var(--nfont);white-space:nowrap;transition:opacity .15s}
@@ -488,6 +489,13 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-settings-row:last-child{border-bottom:none}
 .dsh-notes-settings-label{font-size:13px;color:var(--ntx);line-height:1.4}
 .dsh-notes-settings-label-s{display:block;font-size:11px;color:var(--nt3);margin-top:2px;font-weight:400}
+/* 0.4.7-B①b（notes-047-ux）：描述文本瘦身——长说明（>60 字）限 2 行收折，行首 ⓘ 钮展开/收拢（键盘可聚焦） */
+.dsh-notes-settings-label-s.cl{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dsh-notes-settings-sx{display:inline-flex;align-items:center;justify-content:center;margin-left:4px;padding:0 3px;border:0;background:transparent;color:var(--nt3);font-size:10.5px;line-height:1.4;cursor:pointer;vertical-align:baseline;border-radius:4px;font-family:var(--nfont)}
+.dsh-notes-settings-sx:hover{color:var(--nacc-tx);background:var(--nbg-hover)}
+.dsh-notes-settings-sx:focus-visible{outline:2px solid var(--nacc);outline-offset:1px}
+/* 0.4.7-B①c：概念速览 bullet 折行排版——悬挂缩进（续行对齐到「· 」之后的文字起点） */
+.dsh-notes-onb-li{padding-left:13px;text-indent:-13px}
 .dsh-notes-settings-control{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
 .dsh-notes-settings-select{width:100%;background:var(--npanel);border:1px solid var(--nbd);border-radius:7px;color:var(--ntx);font-size:12px;padding:5px 8px;font-family:var(--nfont);outline:none}
 .dsh-notes-settings-select:focus{border-color:var(--nacc)}
@@ -663,6 +671,8 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-rtb-sync{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--nt3);white-space:nowrap}
 .dsh-notes-rtb-sync-sd{width:6px;height:6px;border-radius:50%;background:var(--nwarn)}
 .dsh-notes-rtb-sync.ok .dsh-notes-rtb-sync-sd{background:var(--nok)}
+.dsh-notes-rtb-sync.err{color:var(--ndanger)}   /* 0.4.7-C ②a：失败态同步点统一（红点 + 失败文案，与 app 端 .rtb .sync.err 同口径） */
+.dsh-notes-rtb-sync.err .dsh-notes-rtb-sync-sd{background:var(--ndanger)}
 /* 富文本编辑区（非受控 contenteditable；块级观感对齐原型 .rich） */
 .dsh-notes-rich{flex:1;padding:14px 24px 64px;outline:none;font-size:13px;line-height:1.75;min-height:calc(100% - 40px);caret-color:var(--nacc);color:var(--ntx-soft);letter-spacing:.2px;-webkit-font-smoothing:antialiased;font-synthesis-weight:none}
 .dsh-notes-rich:empty::before{content:var(--dsh-notes-rich-ph,"正文…（富文本，编辑后失焦自动同步源码）");color:var(--nt3)}
@@ -730,6 +740,8 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 /* 0.4.6-J（notes-046-group-paging）：组尾「加载更多」按钮行——复用原 .dsh-notes-more 全局提示行视觉 + cursor:pointer + hover 态（全局行随分组分页退役，旧类同步移除） */
 .dsh-notes-more-row{padding:10px 14px;color:var(--nt3);font-size:11px;text-align:center;user-select:none;cursor:pointer}
 .dsh-notes-more-row:hover{color:var(--nacc-tx)}
+/* 0.4.7-B③（notes-047-ux，0.4.6-J verifier 残留）：组尾加载行键盘可达——聚焦环 + 聚焦态同色反馈 */
+.dsh-notes-more-row:focus-visible{outline:2px solid var(--nacc);outline-offset:-2px;color:var(--nacc-tx)}
 .dsh-notes-error{padding:10px 16px;color:var(--ndanger);font-size:12px}
 .dsh-notes-toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:2147483646;background:rgba(28,28,30,.96);color:#fff;border-radius:8px;padding:9px 16px;font-size:12px;box-shadow:0 8px 30px rgba(0,0,0,.3);opacity:0;transition:opacity .2s;pointer-events:none;font-family:var(--nfont)}
 .dsh-notes-toast.show{opacity:1}
@@ -838,6 +850,27 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-newnote-kind-hint{font-size:10.5px;color:var(--nt3)}
 /* 二期 ✨整理按钮：整理中态（忙）脉冲 */
 .dsh-notes-organize-btn.busy{opacity:.62;cursor:default;pointer-events:none}
+/* 0.4.7-B②b（notes-047-ux）：meta 行动区封板——动作总数超 META_ACT_MAX 时中段收进「…」溢出菜单（动作相对顺序不动，仅收纳） */
+.dsh-notes-meta-more-wrap{position:relative;display:inline-flex}
+.dsh-notes-meta-act.dsh-notes-meta-more{padding:3px 8px;font-weight:700;letter-spacing:1px}
+.dsh-notes-meta-more-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:70;min-width:130px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.35);padding:4px;display:flex;flex-direction:column;gap:2px;align-items:stretch}
+.dsh-notes-meta-more-menu .dsh-notes-meta-act{padding:5px 10px;white-space:nowrap}
+/* 0.4.7-B④a（notes-047-ux，R2 漏网 n-mux79knmfjxt）：三态分段旁可见 ⓘ——tooltip 与三档 tooltip 同文（合成），可聚焦 + 点击 toast 同文（触屏/键盘可达） */
+.dsh-notes-role-info{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin-left:2px;border-radius:50%;color:var(--nt3);cursor:help;user-select:none;font-size:11px;flex-shrink:0}
+.dsh-notes-role-info:hover{color:var(--nacc-tx);background:var(--nbg-hover)}
+.dsh-notes-role-info:focus-visible{outline:2px solid var(--nacc);outline-offset:1px}
+/* 0.4.7-B⑥（notes-047-ux，实测 n-muy9gdybdd40）：整理中态强化——正文区遮罩（spinner + 「约需半分钟」文案）；整理失败驻留条（手动 ✕ 才消失） */
+.dsh-notes-ed-bodywrap{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.dsh-notes-org-veil{position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(22,22,26,.55);background:color-mix(in srgb, var(--npanel) 78%, transparent);color:var(--nt2);font-size:12.5px}
+.dsh-notes-org-spin{width:16px;height:16px;border:2px solid var(--nbd-soft);border-top-color:var(--nacc);border-radius:50%;animation:dshNotesOrgSpin .8s linear infinite;flex-shrink:0}
+.dsh-notes-meta-act .dsh-notes-org-spin{width:10px;height:10px;border-width:1.5px}
+@keyframes dshNotesOrgSpin{to{transform:rotate(360deg)}}
+.dsh-notes-org-err-x{margin-left:auto;cursor:pointer;color:var(--nt3);padding:0 4px;flex-shrink:0}
+.dsh-notes-org-err-x:hover{color:var(--ntx)}
+/* 0.4.7-B⑤（notes-047-ux）：派发弹窗专属会话无界面提示行 */
+.dsh-notes-sched-new-hint{font-size:10.5px;color:var(--nwarn);line-height:1.5;margin-top:4px}
+/* 0.4.7-B⑥b：整理引导卡超限前置提示行（textarea 上方，确认钮同步禁用） */
+.dsh-notes-org-limit{font-size:11px;color:var(--nwarn);line-height:1.5;margin-bottom:4px}
 
 /* ===== 快速记录卡片 v2（原型 .cap：头部 + 选区预览 + 补充输入 + 复制/记录/取消） ===== */
 .dsh-notes-cap{

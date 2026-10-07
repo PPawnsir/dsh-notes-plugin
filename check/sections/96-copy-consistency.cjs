@@ -136,8 +136,9 @@ module.exports = {
     assert(EN96['arch.empty'].indexOf('temporary captures produced by the select-and-release card') >= 0, 'en 归档空态补概念')
     assert(ZH96['help.archive'].indexOf('速记暂存') >= 0 && ZH96['help.archive'].indexOf('底部操作条') >= 0, 'zh 使用说明归档行概念 + 真实路径')
     assert(EN96['help.archive'].indexOf('temporary captures') >= 0 && EN96['help.archive'].indexOf('bottom action bar') >= 0, 'en 使用说明归档行同款')
-    assert(appBody.indexOf('id="btnArchive" title="速记 = 划选文字松手弹出的快速记录（暂存）') >= 0, 'app 静态壳按钮 title 同步')
-    assert(proto.indexOf('id="btnArchive" title="速记 = 划选文字松手弹出的快速记录（暂存）') >= 0, '原型按钮 title 同步')
+    /* 0.4.7-B②a（notes-047-ux）：app/原型顶栏速记合并按钮已撤——静态壳 title 锚反转为缺席；概念解释留存于 arch.empty/help.archive + client 标题栏 tooltip */
+    assert(appBody.indexOf('id="btnArchive"') < 0, 'app 静态壳顶栏速记合并按钮已撤（0.4.7-B②a）')
+    assert(proto.indexOf('id="btnArchive"') < 0, '原型顶栏速记合并按钮已撤（0.4.7-B②a）')
   })
 
   // ===== ⑥ 搜索空态引导行（双端 + 原型）=====

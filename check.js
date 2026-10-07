@@ -178,6 +178,8 @@ const CORE = new Set([
   // 94. 0.4.6-B RPC 韧性层（notes-046-rpc-resilience：常驻 --core 防挂起假死回归——超时结构化/提示条/落地页空态）
   '0.4.6-B rpc 超时 → 结构化 {error} + toast 不静默（AbortController 行为级）',
   '0.4.6-B rpc 挂起提示条：>RPC_SLOW_MS 出现 / 落定消失（并发归并同一条）',
+  // 103. 0.4.7-C 稳定性债（notes-047-stability：常驻 --core 防关闭丢稿/假同步回归——卸载 flush 行为级主断言）
+  '0.4.7-C app flush（行为）：dirty 态触发关闭钩 → host 立即收到 notes-update（不等到期）+ 到期回调不双保存',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

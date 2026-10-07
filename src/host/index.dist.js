@@ -98,7 +98,7 @@
         '- restore: { id } (undo delete/archive)\n' +
         '- archive: { groups? } (explicit archive, undoable once via the notes-archive-undo RPC). groups = whitelist [{memberIds:[noteId,...], title?}]: merge exactly those groups (memberIds must all exist and not be deleted; title overrides the default group title). Without groups: merge ONLY quick-capture notes grouped by session. Behavior change: manual notes are NEVER auto-grouped by tag anymore — pass explicit groups to merge them (preview quick groups first via the notes-archive-preview RPC).\n' +
         '- dispatch: { id, targetSessionId?, targetSessionName?, instruction? } (assemble the todo context plus your instruction into one user message and send it to a live session as a real task — or, when the target session is dormant (not live but persisted), queue it into the session\'s durable inbox with ZERO wake: it is delivered and processed on the session\'s next activity (the dispatch record carries queued:true in that case — 0.4.4-B); the handoff is recorded in the note\'s dispatches property with dispatchStatus=sent, and a 📤 line is appended to the note\'s lazily-created execution-log companion note「执行记录 · <标题>」(kind=log in folder「执行记录」— injection hard-disabled, visible/searchable/editable as usual; soft-linked via schedule.runLog for schedule conventions / top-level runLog field otherwise — 0.4.4-A 三表归一). Omit targetSessionId to list dispatchable sessions (live flag per entry — live:false entries are dormant and get queued delivery). Closed loop: closed via idle-transition receipt of the target session — an idle transition auto-flips that session\'s open dispatches to dispatchStatus=done and writes the receipt (dormant queued deliveries close the same way on next-activity idle, zero wake 零唤醒排队同理); update status=resolved remains available as a manual fallback（手动兜底）that force-closes all open dispatches of the note — since 0.4.5-I dispatch messages no longer instruct the target session to resolve the note.)\n' +
-        'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow?, provider?, model?, preset? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual, and a lazily-created execution-log note「执行记录 · @标题」is soft-linked via schedule.runLog — shared with manual dispatches of the same note (dispatch 📤 lines + receipt 📥/✅ lines land in one note) — the convention body itself is NEVER appended to (it is the dispatch payload; history would bloat and pollute future dispatch contexts). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived — OR the reserved literal target: \'new\' (periodic mode only — 0.4.4-B dedicated session: the first fire auto-creates a session named 定时 · <title> in the note\'s workspace, writes schedule.target back to the new sid, and every later round reuses that session via live-send or dormant queued delivery); model/provider: optional dedicated-session model pair (0.4.6-G — declare BOTH or NEITHER, non-empty strings; on target:\'new\' first fire they are passed to agents.create agentOptions, overriding the host default model selection — omitted = host default, zero migration; validity is NOT probed at declaration time, an invalid pair surfaces as schedule.lastError at fire time); preset: optional dedicated-session permission preset (0.4.7 — exactly \'danger-full-access\' | \'workspace-write\', no inherit; on target:\'new\' first fire it is applied via permissionPresets.set right after agents.create, overriding the host-pinned default preset — omitted = host default, zero migration; unknown values rejected at the write gate; service absent or set failure = schedule.lastError note, dispatch never blocked); unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status(sent|queued|error),receiptId}/lastError/runLog/declaredAt) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
+        'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow?, provider?, model?, preset? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual, and a lazily-created execution-log note「执行记录 · @标题」is soft-linked via schedule.runLog — shared with manual dispatches of the same note (dispatch 📤 lines + receipt 📥/✅ lines land in one note) — the convention body itself is NEVER appended to (it is the dispatch payload; history would bloat and pollute future dispatch contexts). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||declaredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived — OR the reserved literal target: \'new\' (periodic mode only — 0.4.4-B dedicated session: the first fire auto-creates a session named 定时 · <title> in the note\'s workspace, writes schedule.target back to the new sid, and every later round reuses that session via live-send or dormant queued delivery); model/provider: optional dedicated-session model pair (0.4.6-G — declare BOTH or NEITHER, non-empty strings; on target:\'new\' first fire they are passed to agents.create agentOptions, overriding the host default model selection — omitted = host default, zero migration; validity is NOT probed at declaration time, an invalid pair surfaces as schedule.lastError at fire time); preset: optional dedicated-session permission preset (0.4.7 — exactly \'danger-full-access\' | \'workspace-write\', no inherit; on target:\'new\' first fire it is applied via permissionPresets.set right after agents.create, overriding the host-pinned default preset — omitted = host default, zero migration; unknown values rejected at the write gate; service absent or set failure = schedule.lastError note, dispatch never blocked); unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status(sent|queued|error),receiptId}/lastError/runLog/declaredAt) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
       parameters: {
         type: 'object',
         properties: {
@@ -323,32 +323,68 @@
     // 存量一次性修补：agents 未就绪期创建的笔记 workspace 为空，导致“本工作区”注入范围严格匹配后永不命中。
     // 启动时按来源会话推导补填一次（只补空值）。注意：不用 _list()（它 await migrationDone，会与本补全死锁），
     // 直接走底层遍历；也不挂进 migrationDone 链——_list 只需等 legacy 迁移，补全异步自跑即可。
+    // 0.4.7-A⑥（notes-047-cleanup，用户活机钓出：每次启动重扫全库 + 不可推导的 16 篇逐行 console.log 刷屏）：
+    //   ①skip 明细聚合成一行汇总（fixed=N skipped=M ledgered=K），不再逐行刷屏；
+    //   ②sessionId 缺席/推导不到时先试笔记自身 cwd 字段——精确匹配 workspaceRegistry 注册 path 推导 workspace（创建时自会话上下文落盘的一手数据）；
+    //   ③仍不可推导的记账 telemetry.json meta.wsBackfillSkip（幂等：下次启动直接跳过，不再每次重扫同一批死账；想重试某篇删对应键即可）。
     const legacyDone = migrationDone
     // 0.4.3 验收修复⑤（notes-043-metrics-storage）：遥测一次性迁移 + 存量索引 §2 摘除挂在 legacy 迁移之后
     //   （旧「召回遥测（自动）」笔记可能随开发版目录迁移而来——等迁移落定再解析回填 telemetry.json，幂等，内部全吞异常）
     ;(async function () { try { await legacyDone } catch (e) {} try { await _recallMaybeMigrate() } catch (e) {} try { await _ledgerStripS2() } catch (e) {} })()
+    // 笔记自身 cwd → 工作区名（0.4.7-A⑥）：精确匹配 workspaceRegistry 注册 path（归一尾斜杠 + 大小写）才落 workspace——
+    //   未注册路径不猜（workspace 是「本工作区」注入范围匹配键，误填比空值更糟）；注册表缺席/空 → ''（调用方据此不记账，下次启动重试）
+    function _wsOfNoteCwd(cwd) {
+      const c = String(cwd || '').trim()
+      if (!c) return ''
+      if (!workspaceRegistry || typeof workspaceRegistry.list !== 'function') return ''
+      const wl = workspaceRegistry.list() || []
+      if (!wl.length) return ''
+      const norm = function (p) { return String(p || '').replace(/[\\/]+$/, '').toLowerCase() }
+      for (const w of wl) {
+        if (w && w.path && norm(w.path) === norm(c)) return String(w.title || '') || basename(w.path)
+      }
+      return ''
+    }
     async function fixLegacyWorkspaces() {
       try { await legacyDone } catch (e) {}
       try {
         const dirTarget = await fs.resolve(NOTES_DIR)
         const info = await fs.stat(dirTarget)
         if (!info) return { fixed: 0 }
+        // 不可推导跳过名单（0.4.7-A③幂等记账）：telemetry.json meta.wsBackfillSkip {id:1}——随遥测单写者通道原子落盘
+        const telem = await _telemetryLoad()
+        const skipLedger = (telem && telem.meta && typeof telem.meta.wsBackfillSkip === 'object' && telem.meta.wsBackfillSkip) || {}
+        let ledgerDirty = false
         const entries = await fs.listDir(dirTarget)
         let fixed = 0
         let skipped = 0
+        let ledgerHit = 0
         for (const entry of entries) {
           if (!entry.name || !entry.name.endsWith('.md')) continue
           const id = entry.name.replace(/\.md$/, '')
+          if (skipLedger[id]) { ledgerHit++; continue }   // 记账命中：本轮直接跳过（不再重扫死账）
           try {
             const n = await loadNote(id)
             if (n.deleted || n.workspace) continue
-            const ws = await _wsOfSession(n.sessionId)
-            if (!ws) { skipped++; console.log('notes: workspace backfill skip ' + id + ' (sid=' + (n.sessionId || 'none') + ', 推导不到 cwd)') ; continue }
+            let ws = await _wsOfSession(n.sessionId)
+            let conclusive = true
+            if (!ws && n.cwd) {
+              // sessionId 缺席/推导不到 → 笔记自身 cwd 兜底（注册表精确匹配）；注册表未就绪不记账（瞬态，下次启动重试）
+              if (workspaceRegistry && typeof workspaceRegistry.list === 'function' && (workspaceRegistry.list() || []).length) ws = _wsOfNoteCwd(n.cwd)
+              else conclusive = false
+            }
+            if (!ws) {
+              skipped++
+              if (conclusive) { skipLedger[id] = 1; ledgerDirty = true }   // 可定论的不可推导才记账（幂等跳过生效点）
+              continue
+            }
             await persistNote(Object.assign({}, n, { workspace: ws }))
             fixed++
           } catch (e) { skipped++; console.error('notes: workspace backfill item failed', id, e) }
         }
-        console.log('notes: workspace backfill done, fixed=' + fixed + ' skipped=' + skipped)
+        // 记账落盘并入完成点：summary 行出现即台账已持久（二次启动跳过生效，行为级断言可确定性轮询）
+        if (ledgerDirty) { telem.meta.wsBackfillSkip = skipLedger; _telemetryScheduleFlush(); try { await _telemetryFlushNow() } catch (e) {} }
+        console.log('notes: workspace backfill done, fixed=' + fixed + ' skipped=' + skipped + (ledgerHit ? ' ledgered=' + ledgerHit : ''))   // 0.4.7-A⑥：skip 明细聚合成一行汇总
         return { fixed: fixed }
       } catch (e) { console.error('notes: workspace backfill error', e); return { fixed: 0, error: String(e && e.message || e) } }
     }

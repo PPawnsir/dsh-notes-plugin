@@ -136,12 +136,13 @@ var I18N_ZH = {
   'editor.syncing': '编辑中…',
   'editor.synced': '已同步源码',
   'editor.bodySyncing': '正文加载中…',   /* 0.4.6-A：正文在途窗同步点文案（不冒绿「已同步」）；editor.bodyLoading 系整理链路既有键，不复用 */
+  'editor.syncFailed': '加载失败',   /* 0.4.7-C：正文加载失败同步点统一失败态（红点 + 本文案，双端同口径；详情在横幅，点内不重复 msg） */
   'editor.modeSource': '源码模式',
   'editor.modeRich': '富文本模式',
   'editor.imageOnly': '仅支持图片文件',
   'editor.tableReadonly': '表格为只读，请切换源码模式编辑该区域',
   'editor.richRestored': '富文本模式已恢复可用',
-  'editor.richDisabled': '检测到白名单外语法 → 富文本入口置灰',
+  'editor.richDisabled': '这篇笔记含有富文本暂不支持的特殊语法，已退回纯文本编辑（内容不受影响，可照常编辑）',   /* 0.4.7-A②：先讲后果——消「白名单外语法」术语残留 */
   'editor.degReasonItem': '{label}（第 {line} 行：{sample}）',
   'editor.selectCodeFirst': '先选中要设为行内码的文字',
   'editor.selectLinkFirst': '先选中要加链接的文字',
@@ -158,6 +159,10 @@ var I18N_ZH = {
   'editor.organizeInstructPlaceholder': '告诉 AI 整理方向，如「突出待办事项」「精简为三条结论」；留空使用系统默认整理规则',
   'editor.organizeInstructConfirm': '开始整理',
   'editor.organizeInstructCancel': '取消',
+  /* 0.4.7-B⑥（notes-047-ux，实测反馈 n-muy9gdybdd40）：整理中态强化 + 失败驻留 + 超限前置校验 */
+  'editor.organizingVeil': 'AI 整理中，约需半分钟…',
+  'editor.organizeTooLong': '本篇 {n} 字超上限 {max}，建议分段整理',
+  'editor.organizeTooLongTip': '整理长度上限可在设置卡片「整理长度上限」调整；0 = 按所配模型自动',
   'editor.charCount': '{n} 字',
   'editor.backlinks': '反向链接',
   'editor.backlinksCount': '（{n}）',
@@ -224,6 +229,8 @@ var I18N_ZH = {
   'meta.organizeTip': 'AI 整理：按「{kind}」模板重写正文（替换后可撤销）',
   'meta.organizing': '整理中…',
   'meta.organize': '整理',
+  /* 0.4.7-B②b（notes-047-ux）：meta 行动区封板——动作超阈值收进「…」溢出菜单 */
+  'meta.actsMoreTip': '更多操作',
   'meta.dispatchTip': '派发待办到活跃会话',
   'meta.dispatchTipClient': '派发待办到会话（可补充具体要求）',
   'meta.dispatch': '派发',
@@ -366,7 +373,7 @@ var I18N_ZH = {
   'settings.memDisableTip': '停用 = 关闭引导约定笔记的注入（笔记保留可再启用）',
   'settings.memPending': '处理中…',
   'settings.memEnable': '启用沉淀引导…',
-  'settings.memEnableTip': '创建一条预填约定笔记（inject=true，contractType: memory-guide），引导 Agent 在任务收尾时把会话结论写为工作日志（kind=log，同权可见/可搜，注入硬禁）——与既有约定并行不冲突',
+  'settings.memEnableTip': '启用后，AI 会在每次任务收尾时把本次会话结论自动沉淀为工作日志（列表可见、可搜索，不占注入位）。点击 = 创建一条预填约定笔记即生效，与已有约定互不影响',   /* 0.4.7-A②：先讲后果——消字段名残留（inject/contractType/kind 不外露） */
   'settings.logWeek': '日志周聚合窗口',
   'settings.logWeekTip': '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行；缺省 7 天）',
   'settings.logWeekTipT': '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行）',
@@ -400,6 +407,14 @@ var I18N_ZH = {
   'settings.usageBudgetInvalid': '月度用量预算需为非负整数（0 = 关闭提醒）',
   'settings.usageBudgetOff': '已关闭月度用量预算提醒',
   'settings.savedUsageBudget': '已保存：月度用量预算 {v} tokens',
+  /* 0.4.7-B⑦（notes-047-ux）：整理长度上限设置项（LLM 区数字输入；0/缺省 = 按所配模型自动，生效值随 settings-get 透出） */
+  /* 0.4.7-B①b（notes-047-ux）：设置行说明文字 ⓘ 展开/收拢钮 title */
+  'settings.descExpandTip': '展开 / 收起完整说明',
+  'settings.organizeMax': '整理长度上限',
+  'settings.organizeMaxTip': 'AI 整理单次正文长度上限（字符），超过需分段整理；0 = 按所配模型自动（当前生效 {eff}）',
+  'settings.organizeMaxInvalid': '整理长度上限需为非负整数（0 = 按所配模型自动）',
+  'settings.organizeMaxAuto': '已恢复：整理长度上限按所配模型自动',
+  'settings.savedOrganizeMax': '已保存：整理长度上限 {v} 字符',
   'settings.savedAll': '设置已保存',
   'settings.restoredAll': '已还原：设置回滚到打开时的状态',
   'settings.restoreFailed': '还原失败：{msg}',
@@ -439,7 +454,7 @@ var I18N_ZH = {
   'inj.executing': '执行中…',
   'inj.logNoInject': '日志不参与注入',
   'inj.logNoInjectTip': '工作日志注入硬禁：host 强制 inject=false（injectForcedOff 硬闸）；日志同权——可见/可搜索/可编辑，注入目录恒不含',
-  'inj.sensTip': '敏感笔记：注入时自动脱敏（正文按行打码，键保留值遮蔽）',
+  'inj.sensTip': '敏感笔记：注入给 AI 时自动脱敏——按行打码（字段名保留、值隐藏为 ******），AI 要看原文需按 id 调取（note_get）',   /* 0.4.7-A②：先讲后果——消「键保留值遮蔽」术语残留 */
   'inj.sensBadge': '注入时自动脱敏',
   'inj.scopeGlobal': '全局',
   'inj.scopeSessions': '{n} 个会话',
@@ -468,6 +483,9 @@ var I18N_ZH = {
   'inj.mountPlaceholder': '如：改注入相关逻辑时、验收资料挂载时…',
   'inj.mountSave': '挂载',
   'inj.mountSkip': '不用建议，自己写',
+  /* 0.4.7-B④b（notes-047-ux，R2 漏网 n-mux79knmfjxt）：三态切「资料」弹挂载框的跳过档文案明确化——
+     仅三态/行内直改入口（角色切换在途）显示本文案并切角不挂载；建议器/预览等纯挂载入口仍用 inj.mountSkip；Esc/遮罩 = 取消不切换（零副作用） */
+  'inj.mountSkipSwitch': '仅切换角色，暂不挂载',
   'inj.mountSaved': '已挂载索引：{title}',
   'inj.mountFailed': '挂载失败：{msg}',
   // 0.4.3 验收修复（notes-043-preview-when-edit）：LLM 草稿预填 + 预览目录行点击补充/编辑
@@ -488,7 +506,7 @@ var I18N_ZH = {
   'inj.conflictRerun': '重新体检',
   'inj.conflictRunTip': '对全部注入中的约定做 LLM 两两冲突/取代检测（手动触发；敏感笔记正文打码后参与）',
   'inj.conflictRunning': '检测中…',
-  'inj.conflictRunningHint': 'LLM 正在两两比对约定，约需几秒…',
+  'inj.conflictRunningHint': 'LLM 正在两两比对约定，约定多时约需一两分钟…',   /* 0.4.7-A⑨：在途文案对齐 120s 重操作口径（原「约需几秒」系 8s 时代残留） */
   'inj.conflictError': '体检失败：{msg}',
   'inj.conflictEmpty': '未发现疑似冲突或取代的约定对（已检测 {n} 条约定）。',
   'inj.conflictRelConflict': '疑似冲突',
@@ -579,6 +597,8 @@ var I18N_ZH = {
   'disp.dispatched': '已派发待办到「{name}」（开始处理）',
   'disp.dispatchedQueued': '已排队到「{name}」（休眠会话 · 下次活动送达）',
   'disp.schedNew': '专属会话（首轮触发自动创建「定时 · 任务名」，后续复用）',
+  /* 0.4.7-B⑤（notes-047-ux）：专属会话复选框旁无界面提示行（今日实测教训：专属会话无 browser_* 等 GUI 附着工具） */
+  'disp.schedNewHint': '专属会话为无界面会话：无浏览器等 GUI 附着工具；需要浏览器走查的任务请指定常驻会话',
   'disp.schedNewTarget': '首轮自动创建专属会话',
   'disp.schedModelDefault': '默认模型（跟随宿主当前选择）',   /* 0.4.6-G：专属会话模型下拉缺省项（空值 = 声明不带 model/provider） */
   'disp.schedModelTip': '专属会话模型档位：{model}',          /* 0.4.6-G：调度行模型标注 tooltip + 下拉 title */

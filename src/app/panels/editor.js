@@ -11,6 +11,7 @@ function selectNote(id) {
   if (n && n.folder) { foldOpen[n.folder] = true; saveFoldOpen() }
   edNote = n ? Object.assign({}, n, { body: '' }) : null;
   edBodyLoaded = false; edBodyErr = '';   /* R-1 安全态复位：新笔记正文未加载前提交闸关闭、错误横幅清空（renderEd 在其后执行，DOM 初态一致） */
+  organizeErr = '';                        /* 0.4.7-B⑥a：换笔记清整理失败驻留条（驻留粒度 = 当前笔记） */
   degraded = { ok: true, reasons: [] };   /* 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果） */
   renderTree(); renderEd();
   if (n) {
@@ -74,10 +75,14 @@ function refreshLoadErrUI() {
     if (rt && !rt._bound) { rt._bound = true; rt.addEventListener('click', function () { if (selId) loadEdBody(selId) }) }
   }
   var locked = !!edBodyErr;
-  var ta = $('edSrc'); if (ta) { ta.readOnly = locked; ta.placeholder = edBodyPending() ? t('editor.bodySyncing') : t('editor.bodyPlaceholder') }   /* 0.4.6-B：源码正文在途窗 placeholder 转「正文加载中…」（不再空白；落定/出错即还原） */
+  /* 0.4.7-C ②b（notes-047-stability）：源码模式在途窗补同款锁（0.4.6-A 只锁富文本——在途窗源码可打字 = 落定回填盖掉输入的假同步洞）；
+     在途/失败两态都锁，落定（成功回填/失败重试后）解锁；placeholder 在途文案口径不动（0.4.6-B 锚） */
+  var ta = $('edSrc'); if (ta) { ta.readOnly = locked || edBodyPending(); ta.placeholder = edBodyPending() ? t('editor.bodySyncing') : t('editor.bodyPlaceholder') }   /* 0.4.6-B：源码正文在途窗 placeholder 转「正文加载中…」（不再空白；落定/出错即还原） */
   var ti = $('edTitle'); if (ti) ti.contentEditable = locked ? 'false' : 'true';
-  /* 0.4.6-A：富文本在正文在途窗同步锁编辑（假同步根修连带闸；源码 textarea 无同步态宣称，语义不动） */
+  /* 0.4.6-A：富文本在正文在途窗同步锁编辑（假同步根修连带闸） */
   var rich = $('edRich'); if (rich) rich.contentEditable = (locked || edBodyPending()) ? 'false' : 'true';
+  /* 0.4.7-C ②a：失败态同步点接管——错误进出/在途起止均经本函数收敛到同一呈现（旧口径失败后同步点滞留「加载中」橙点不落幕） */
+  setSyncStatus(false);
 }
 /* 0.4.6-A（notes-046-rich-freeze，UXR2 反馈 n-mux892tew6bf 现象①根修）：正文在途窗判定——
    笔记已选（edNote 在）而 notes-get 未落定（edBodyLoaded=false）且无错误横幅时，
@@ -100,12 +105,12 @@ function fillEdBody() {
   }
 }
 function triggerSave() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 900) }
-function doSave() {
-  if (!edNote) return;
-  /* 草稿态（notes-034-batch3）：首次有效编辑走 notes-create 落库（空内容闸在 doDraftCreate 内）；落库后 draftNote 清空、后续走正常 update */
-  if (draftNote) { doDraftCreate(); return }
-  if (!selId) return;
-  if (edBodyErr) return;   /* R-1 安全态：正文加载失败未恢复前自动保存整体暂停（含元数据）——横幅「重试」是唯一出口 */
+/* 0.4.7-C（notes-047-stability ①）：自动保存载荷构建单点化——doSave 与卸载兜底 flushPendingSave 共用同一构造（防双份漂移）；
+   null = 守卫拦截（无笔记/无选中/R-1 安全态暂停），调用方零动作 */
+function buildSavePayload() {
+  if (!edNote) return null;
+  if (!selId) return null;
+  if (edBodyErr) return null;   /* R-1 安全态：正文加载失败未恢复前自动保存整体暂停（含元数据）——横幅「重试」是唯一出口 */
   var keepQuick = (notes.find(function (x) { return x.id === selId }) || {}).tags || [];
   var tags = (edNote._tagsStr != null ? edNote._tagsStr : (edNote.tags || []).filter(function (t) { return t !== 'quick' }).join(', '))
     .split(/[,，;；]/).map(function (s) { return s.trim() }).filter(Boolean);
@@ -120,6 +125,13 @@ function doSave() {
   if (edBodyLoaded) { upd.body = edNote.body; if (upd.body === '') upd.confirmClearBody = true }
   if (upd.inject) upd.injectRole = edNote.injectRole === 'reference' ? 'reference' : 'convention';   /* 非 off 才带 injectRole（payload 禁 undefined） */
   if ((edNote.topic || '').trim()) upd.topic = edNote.topic.trim();
+  return upd;
+}
+function doSave() {
+  if (!edNote) return;
+  /* 草稿态（notes-034-batch3）：首次有效编辑走 notes-create 落库（空内容闸在 doDraftCreate 内）；落库后 draftNote 清空、后续走正常 update */
+  if (draftNote) { doDraftCreate(); return }
+  var upd = buildSavePayload(); if (!upd) return;   /* 0.4.7-C：载荷构建单点化（卸载 flush 同口径） */
   rpc('notes-update', upd).then(function (res) {
     if (res && res.error) { toast(res.error); return }
     $('edSaved').textContent = t('editor.autoSaved', { time: new Date().toTimeString().slice(0, 5) });
@@ -132,6 +144,18 @@ function doSave() {
     loadNotes(true);
     if (histCount === 0) probeHistCount(selId);   /* 首次真实保存产生首份快照（0→1 转折点）→ 补探「历史」入口 */
   }).catch(function (e) { toast(t('common.saveFailed', { msg: e && e.message || e })) });
+}
+/* 0.4.7-C（notes-047-stability ①）：页面卸载兜底 flush——<900ms debounce 窗口内的在途编辑立即落盘（不等到期）。
+   富文本在途先序列化回 edNote.body（beforeunload 期 DOM 仍在）；debounce 计时器取消后走 keepalive 直发（页面拆毁后仍送达）。
+   R-1 提交闸/edBodyErr 暂停语义经 buildSavePayload 与 doSave 同口径继承；无在途（saveTimer 空）零动作；
+   草稿在途：create 落库同走 keepalive（draftCreating 在飞时跳过——在途 create 自带沉降，防并发双建同口径） */
+function flushPendingSave() {
+  if (edMode === 'rich' && richDirty && edNote) syncFromRich('卸载冲刷');
+  if (!saveTimer) return;
+  clearTimeout(saveTimer); saveTimer = null;
+  if (draftNote) { if (!draftCreating) { var dp = draftPayloadOf(draftNote); if (dp) rpcKeepalive('notes-create', dp) } return; }
+  var upd = buildSavePayload(); if (!upd) return;
+  rpcKeepalive('notes-update', upd);
 }
 function injectScopeLabel(injectTo) {
   var arr = (injectTo || []).filter(function (t) { return t !== 'global' && t !== 'workspace' });
@@ -166,6 +190,10 @@ function renderEd() {
     + '<div class="deg" id="degBanner" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div>' + t('editor.degBanner') + '<span class="rs" id="degReasons"></span><br>' + t('editor.degBanner2') + '</div></div>'
     /* R-1 安全态横幅（正文加载失败）：复用 .deg 警告样式；edLoadErrMsg=错误详情，edLoadRetry=重试入口（refreshLoadErrUI 驱动显隐与锁定） */
     + '<div class="deg" id="edLoadErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="edLoadErrMsg"></span>' + t('editor.loadLockNote') + '<span id="edLoadRetry" style="cursor:pointer;color:var(--nacc);font-weight:600">' + t('editor.retry') + '</span></div></div>'
+    /* 0.4.7-B⑥a（notes-047-ux）：整理失败驻留条（复用 .deg 警告样式，手动 ✕ 才消失——替代一闪而过的 toast；refreshOrganizeUI 驱动） */
+    + '<div class="deg" id="orgErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="orgErrMsg"></span></div><span class="org-x" id="orgErrX" role="button" tabindex="0" title="' + t('common.close') + '">' + icon('i-x', 11) + '</span></div>'
+    /* 0.4.7-B⑥：整理中正文区遮罩（spinner + 「约需半分钟」文案——LLM 窗口期强反馈，消除「没反应」体感） */
+    + '<div class="org-veil" id="orgVeil" style="display:none"><span class="org-spin"></span><span>' + t('editor.organizingVeil') + '</span></div>'
     + '<textarea class="src" id="edSrc" spellcheck="false" placeholder="' + t('editor.bodyPlaceholder') + '"' + (edMode === 'source' ? '' : ' style="display:none"') + '></textarea>'
     + '<div class="rich-scroll rich-wrap" id="richScroll"' + (edMode === 'rich' ? '' : ' style="display:none"') + '>'
     + '<div class="rtb" id="rtb">'
@@ -179,7 +207,7 @@ function renderEd() {
     + '<button class="rtb-btn" data-a="quote" title="' + t('editor.tbQuote') + '">' + icon('i-quote', 14) + '</button>'
     + '<span class="rtb-sep"></span>'
     + '<button class="rtb-btn" data-a="image" title="' + t('editor.tbImage') + '">' + icon('i-image', 14) + '</button>'
-    + '<span class="sync' + ((edBodyPending() || richDirty) ? '' : ' ok') + '" id="syncPill"><span class="sd"></span><span id="syncTxt">' + (edBodyPending() ? t('editor.bodySyncing') : (richDirty ? t('editor.syncing') : t('editor.synced'))) + '</span></span>'
+    + '<span class="sync' + (edBodyErr ? ' err' : ((edBodyPending() || richDirty) ? '' : ' ok')) + '" id="syncPill"><span class="sd"></span><span id="syncTxt">' + (edBodyErr ? t('editor.syncFailed') : edBodyPending() ? t('editor.bodySyncing') : (richDirty ? t('editor.syncing') : t('editor.synced'))) + '</span></span>'   /* 0.4.7-C ②a：初态同走失败态分支（与 setSyncStatus 同一口径） */
     + '</div>'
     + '<div class="rich" id="edRich" contenteditable="true" spellcheck="false"></div>'
     + '</div>'
@@ -191,6 +219,7 @@ function renderEd() {
   $('edTitle').addEventListener('input', function () { if (!edNote) return; edNote.title = this.textContent.trim() || 'Untitled'; triggerSave() });
   bindEditorArea();
   refreshLoadErrUI();   /* R-1：DOM 重建后重挂安全态（横幅显隐 + 编辑锁定 + 重试绑定） */
+  refreshOrganizeUI();   /* 0.4.7-B⑥：DOM 重建后复态整理中遮罩/失败驻留条（同 refreshLoadErrUI 先例） */
 }
 /* 编辑区事件绑定（renderEd 重建 DOM 后重挂；元素级监听随重建不累积，document 级 selectionchange 在启动区挂一次） */
 function bindEditorArea() {
@@ -249,12 +278,13 @@ function bindRich(rich, wrap) {
     b.addEventListener('mousedown', function (ev) { ev.preventDefault(); toolbarAction(b.getAttribute('data-a')); });
   });
 }
-/* 同步态徽标（原型 syncPill）：编辑中…（橙点）/ 已同步源码（绿点）；0.4.6-A：正文在途窗 = 加载中…（橙点，不冒绿假同步） */
+/* 同步态徽标（原型 syncPill）：编辑中…（橙点）/ 已同步源码（绿点）；0.4.6-A：正文在途窗 = 加载中…（橙点，不冒绿假同步）；
+   0.4.7-C ②a：失败态统一——edBodyErr 在窗 = 红点「加载失败」（与横幅同口径；替代旧口径滞留橙/冒绿的双端不一） */
 function setSyncStatus(editing) {
   var pill = $('syncPill'); if (!pill) return;
   var pend = edBodyPending();
-  pill.className = 'sync' + (pend || editing ? '' : ' ok');
-  if ($('syncTxt')) $('syncTxt').textContent = pend ? t('editor.bodySyncing') : editing ? t('editor.syncing') : t('editor.synced');
+  pill.className = 'sync' + (edBodyErr ? ' err' : (pend || editing ? '' : ' ok'));
+  if ($('syncTxt')) $('syncTxt').textContent = edBodyErr ? t('editor.syncFailed') : pend ? t('editor.bodySyncing') : editing ? t('editor.syncing') : t('editor.synced');
 }
 /* 富文本 → 源码序列化（原型 syncFromRich）：内容无损最高优先——有变化才回写 body 并走既有 doSave 自动保存 */
 function syncFromRich(why) {

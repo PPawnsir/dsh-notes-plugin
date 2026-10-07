@@ -217,12 +217,14 @@
       try { const dp = permissionPresets && permissionPresets.defaultPreset; if (typeof dp === 'string' && dp) pp = { defaultPreset: dp } } catch (e) {}
       try {
         await loadSettings()
-        const out = { settings: settingsCache, models: await listAvailableModels(), lastInjectChars: lastInjectChars }
+        // 0.4.7-B⑦（notes-047-ux）：响应增带 organizeMaxChars 生效值（用户覆盖 || 模型表 || 12000 回落）——
+        //   整理引导卡超限前置校验的数据源（零新 RPC，同 defaultPreset 先例）；计算不抛错（内部全回落）
+        const out = { settings: settingsCache, models: await listAvailableModels(), lastInjectChars: lastInjectChars, organizeMaxChars: organizeMaxChars() }
         if (pp) out.permissionPresets = pp
         return out
       }
       catch (e) {
-        const out = { settings: settingsCache || {}, models: [], lastInjectChars: lastInjectChars, error: String(e.message || e) }
+        const out = { settings: settingsCache || {}, models: [], lastInjectChars: lastInjectChars, organizeMaxChars: organizeMaxChars(), error: String(e.message || e) }
         if (pp) out.permissionPresets = pp
         return out
       }
@@ -282,6 +284,12 @@
           if (patch.maxFolderDepth === null || patch.maxFolderDepth === undefined) delete settingsCache.maxFolderDepth
           else if (typeof patch.maxFolderDepth === 'number' && isFinite(patch.maxFolderDepth) && patch.maxFolderDepth >= 0) settingsCache.maxFolderDepth = Math.floor(patch.maxFolderDepth)
           else return { error: 'notes-settings-set: maxFolderDepth 需要非负数值（或 null 恢复缺省 3；0 = 不限层数）' }
+        }
+        // 0.4.7-B⑦（notes-047-ux）整理长度上限（字符）：正整数取整直存；0/null/undefined 删除 override = 跟随所配模型自动（模型表 || 12000 回落）
+        if ('organizeMaxChars' in patch) {
+          if (patch.organizeMaxChars === null || patch.organizeMaxChars === undefined || patch.organizeMaxChars === 0) delete settingsCache.organizeMaxChars
+          else if (typeof patch.organizeMaxChars === 'number' && isFinite(patch.organizeMaxChars) && patch.organizeMaxChars > 0) settingsCache.organizeMaxChars = Math.floor(patch.organizeMaxChars)
+          else return { error: 'notes-settings-set: organizeMaxChars 需要非负数值（0 = 按所配模型自动）' }
         }
         await saveSettings()
         return { ok: true, settings: settingsCache }

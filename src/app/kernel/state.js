@@ -117,6 +117,7 @@ var selMode = false, selIds = {};      // 列表多选态 + 勾选集合（noteI
 var archState = null;                  // 归档预览对话框状态：{ groups:null=加载中, checked:{sid:false=取消勾选}, expand:{sid:true}, pending }
 /* ===== 二期 ✨整理（notes-ai-organize 按 kind 模板重写正文，可撤销）+ 孤儿资产清理（notes-assets-prune） ===== */
 var organizing = false, organizeUndo = null;   // organizeUndo = 一次撤销栈（整理前正文字符串 | null）
+var organizeErr = '';                  // 0.4.7-B⑥a：整理失败驻留条文案（''=无；手动 ✕ / 换笔记 / 下次发起才清——替代 transient toast）
 var pruneState = null;                 // 资产清理对话框状态：{ data:null=扫描中, checked:{name:false=取消勾选}, pending }
 /* ===== P1 回收站（notes-list {includeDeleted:true} + notes-restore/notes-purge）===== */
 var trashState = null;                 // 回收站对话框状态：{ list:null=加载中, pending:执行中的笔记 id }

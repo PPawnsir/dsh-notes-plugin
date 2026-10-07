@@ -112,7 +112,7 @@ module.exports = {
     const helpersSrc = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'kernel', 'helpers.js'), 'utf8')
     const i18nBlock = helpersSrc.match(/\/\* ==== i18n-mech BEGIN ====[\s\S]*?\/\* ==== i18n-mech END ==== \*\//)[0]
     const els = {}
-    const mkEl = () => { let html = ''; const o = {}; Object.defineProperty(o, 'innerHTML', { get: () => html, set: (v) => { html = String(v); regIds(html) } }); o._html = () => html; return o }
+    const mkEl = () => { let html = ''; const o = {}; Object.defineProperty(o, 'innerHTML', { get: () => html, set: (v) => { html = String(v); regIds(html) } }); o._html = () => html; o.querySelectorAll = () => []; return o }   /* 0.4.7-B①b：设置卡 ⓘ 展开钮接线走 querySelectorAll——沙箱空集合桩（DOM 行为由 e2e 覆盖） */
     const regIds = (h) => { String(h).replace(/id="([^"]+)"/g, (m, id) => { if (!els[id]) els[id] = mkEl(); return m }) }
     const $ = (id) => els[id]
     const modalHtmls = []

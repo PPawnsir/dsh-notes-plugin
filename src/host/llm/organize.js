@@ -11,13 +11,15 @@
     async function _aiOrganize(args) {
       const body = args && typeof args.body === 'string' ? args.body : ''
       if (!body.trim()) return { error: '正文为空，无可整理内容' }
-      if (body.length > AI_ORGANIZE_MAX_CHARS) return { error: '正文过长（' + body.length + ' 字，上限 ' + AI_ORGANIZE_MAX_CHARS + ' 字），请分段整理' }
+      await loadSettings()
+      // 0.4.7-B⑦（notes-047-ux）：长度上限生效值 = 用户 settings.organizeMaxChars(>0) || 模型表 || 12000 回落；超限 error 文案带生效值
+      const orgMax = organizeMaxChars()
+      if (body.length > orgMax) return { error: '正文过长（' + body.length + ' 字，上限 ' + orgMax + ' 字），请分段整理' }
       const kind = KINDS.indexOf(args && args.kind) >= 0 ? args.kind : 'note'
       const title = args && typeof args.title === 'string' ? args.title.trim() : ''
       const instruction = args && typeof args.instruction === 'string' ? args.instruction.trim() : ''
       if (instruction.length > AI_ORGANIZE_INSTR_MAX_CHARS) return { error: '追加指令过长（' + instruction.length + ' 字，上限 ' + AI_ORGANIZE_INSTR_MAX_CHARS + ' 字），请精简后再试' }
       if (!llm) return { error: 'LLM 不可用（宿主无 llm 服务）' }
-      await loadSettings()
       const sel = resolveLlmSelection()
       if (!sel || !sel.provider || !sel.model) return { error: '未配置笔记 LLM 且无会话模型可跟随（可在设置卡片选配）' }
       const kindLabel = KIND_LABELS_ZH[kind] || '笔记'

@@ -99,9 +99,11 @@
     store.modal.mount = createStore({ open: false, id: '', title: '', when: '', pending: false, generating: false, edit: false, touched: false, genErr: '' })
     function setMountOpen(v) { store.modal.mount.set({ open: typeof v === 'function' ? v(store.modal.mount.get().open) : v }) }
     const mountOnConfirmedRef = { current: null }   // 确认回调（模块级单例镜像；打开时重置）
+    const mountOnSkipRef = { current: null }   // 0.4.7-B④b：跳过档回调（存在 = 角色切换在途——左钮改「仅切换角色，暂不挂载」）
     function openMountModal(n, opts) {
       if (!n) return
       mountOnConfirmedRef.current = (opts && typeof opts.onConfirmed === 'function') ? opts.onConfirmed : null
+      mountOnSkipRef.current = (opts && typeof opts.onSkip === 'function') ? opts.onSkip : null
       const edit = typeof n.existing === 'string'   // 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM）
       store.modal.mount.set({ open: true, id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, genErr: '' })
       if (edit) return
@@ -121,7 +123,7 @@
         store.modal.mount.set(nx)
       })
     }
-    function closeMountModal() { mountOnConfirmedRef.current = null; setMountOpen(false) }
+    function closeMountModal() { mountOnConfirmedRef.current = null; mountOnSkipRef.current = null; setMountOpen(false) }
     async function doMountSave() {
       const m = store.modal.mount.get()
       if (!m.id || m.pending) return
@@ -154,7 +156,9 @@
               ? e('div', { className: 'dsh-notes-inj-mount-gen' }, tt('inj.mountGen'))
               : (m.genErr ? e('div', { className: 'dsh-notes-inj-mount-generr dsh-nt', 'data-tooltip': m.genErr }, tt('inj.mountGenFail')) : null)),
           e('div', { className: 'dsh-notes-dispatch-actions' },
-            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => closeMountModal(), disabled: m.pending }, tt('inj.mountSkip')),
+            /* 0.4.7-B④b（R2 漏网 n-mux79knmfjxt）：左钮三岔文案明确化——角色切换在途（onSkip 在）=「仅切换角色，暂不挂载」（关卡+切档不落行）；
+               编辑模式 =「取消」；纯挂载入口（建议器/预览）= inj.mountSkip 原样。点遮罩 = 一律取消零副作用 */
+            e('button', { className: 'dsh-notes-dispatch-cancel', onClick: () => { const cb = mountOnSkipRef.current; closeMountModal(); if (cb) { try { cb() } catch (err) {} } }, disabled: m.pending }, mountOnSkipRef.current ? tt('inj.mountSkipSwitch') : (m.edit ? tt('common.cancel') : tt('inj.mountSkip'))),
             e('button', { className: 'dsh-notes-dispatch-ok', onClick: () => doMountSave(), disabled: m.pending }, m.pending ? '…' : tt('inj.mountSave')))))
     }
     // ===== 注入管理面板（设置卡片「注入管理」入口；notes-inject-manager）：全库注入总览 + 单行直改 + 多选批量 =====
@@ -258,8 +262,16 @@
         setError('')
         // 0.4.3 验收修复⑪：单行「设为资料」先开挂载弹层（LLM 预填 whenToUse；确认 = notes-mount 单点收口落行 + 翻 reference 档，
         //   取消零副作用——不先静默翻转）；modal 不叠 modal——先关注入管理面板（沿用卡②「先关再开」，清返回栈）；
-        //   确认后的收敛刷新由 doMountSave 统一承担（loadNotes + notifyNotesChanged）
-        if (role === 'reference') { setInjMgrOpen(false); injMgrBackRef.current = null; openMountModal({ id: n.id, title: n.title }); return }
+        //   确认后的收敛刷新由 doMountSave 统一承担（loadNotes + notifyNotesChanged）；
+        //   0.4.7-B④b：弹层第三岔「仅切换角色，暂不挂载」（onSkip）= 直走 injMgrSetDirect 切档不落索引行
+        if (role === 'reference') { setInjMgrOpen(false); injMgrBackRef.current = null; openMountModal({ id: n.id, title: n.title }, { onSkip: () => injMgrSetDirect(n, 'reference') }); return }
+        // 0.4.7-A④（notes-047-cleanup，0.4.6-E verifier 残留）：行内「设为约定」confirm 闸——单击直切约定档太秃，
+        //   与详情区三态同文案同口径（meta.convInjectConfirm，panel/editor.js 先例；injectScopeLabel 经 kernel/state.js 中转）；取消零副作用
+        if (role === 'convention' && !window.confirm(t('meta.convInjectConfirm', { title: n.title || n.id, scope: injectScopeLabel(n.injectTo) }))) return
+        await injMgrSetDirect(n, role)
+      }
+      // 单行直改落盘段（doInjMgrSet 非挂载路径 + 0.4.7-B④b 挂载框「仅切换角色」跳过档共用）：notes-update {inject, injectRole} + toast + 本地回写
+      async function injMgrSetDirect(n, role) {
         const upd = { id: n.id, inject: role !== 'off' }
         if (upd.inject) upd.injectRole = role   // 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘）
         try {

@@ -14,7 +14,7 @@
     // 组件经 props 注入，模块函数经 panelBridge.setMaxDepth/setSetMaxDepth/setSnap/setSetSnap/setInflight/setSetInflight 中转；
     // settingsOpenRef（Esc 栈）/usageBudgetRef（预算判定）/setPersistRef（已落盘镜像）/settingsFlushRef（Esc 兜底 flush）
     // 为模块级单例（plain object 与 useRef 等价——面板为 shell.overlay 单例）；whole.js 经 panelBridge.setSettingsOpen 回填别名中转互斥关闭
-    store.modal.settings = createStore({ open: false, data: null, llmProvider: '', llmModel: '', stale: '90', budget: '0', usageData: null, usageBudget: '0', saving: false, logWeek: '7', logRetention: '90' })
+    store.modal.settings = createStore({ open: false, data: null, llmProvider: '', llmModel: '', stale: '90', budget: '0', usageData: null, usageBudget: '0', saving: false, logWeek: '7', logRetention: '90', orgMax: '0' })
     const settingsOpenRef = { current: false }   // 设置卡片镜像（Esc 优先关设置卡片）
     const usageBudgetRef = { current: 0 }   // 预算镜像 ref：usage-get 与 settings-get 并发放射，toast 判定读 ref 防闭包过期
     const setPersistRef = { current: null }   // 已落盘值镜像（兜底 flush/还原只写真不同的键）
@@ -31,6 +31,7 @@
     function setSetSaving(v) { store.modal.settings.set({ saving: typeof v === 'function' ? v(store.modal.settings.get().saving) : v }) }
     function setSetLogWeek(v) { store.modal.settings.set({ logWeek: typeof v === 'function' ? v(store.modal.settings.get().logWeek) : v }) }
     function setSetLogRetention(v) { store.modal.settings.set({ logRetention: typeof v === 'function' ? v(store.modal.settings.get().logRetention) : v }) }
+    function setSetOrgMax(v) { store.modal.settings.set({ orgMax: typeof v === 'function' ? v(store.modal.settings.get().orgMax) : v }) }   // 0.4.7-B⑦：整理长度上限（0=按所配模型自动）
     // 设置卡片：打开即拉取 settings + 可用模型列表（host 探 llm 服务目录；探不到时 models=[]，控件退化为手输）
     function openSettings() {
       setSetLlmProvider(''); setSetLlmModel(''); setSettingsData(null); setUsageData(null); setError(''); setSettingsOpen(true)
@@ -54,6 +55,8 @@
         usageBudgetRef.current = (res.settings && typeof res.settings.usageBudgetMonthly === 'number') ? res.settings.usageBudgetMonthly : 0
         setSetLogWeek(String(res.settings && typeof res.settings.logWeekAfterDays === 'number' ? res.settings.logWeekAfterDays : 7))   // 工作记忆 v0：日志周聚合窗口，缺省 7
         setSetLogRetention(String(res.settings && typeof res.settings.logRetentionDays === 'number' ? res.settings.logRetentionDays : 90))   // 日志月聚合窗口，缺省 90（0=关闭本级）
+        // 0.4.7-B⑦（notes-047-ux）：整理长度上限——控件回显用户覆盖值（0=按所配模型自动）；生效值读 settings-get 增带的 organizeMaxChars（渲染期取 settingsData）
+        setSetOrgMax(String(res.settings && typeof res.settings.organizeMaxChars === 'number' && res.settings.organizeMaxChars > 0 ? res.settings.organizeMaxChars : 0))
         // dirty/还原基准（notes-settings-feedback）：打开时快照（UI 形态字符串口径，与控件受控值同构）+ 已落盘镜像初始化
         const snap0 = {
           llmP: (l && l.provider && l.model) ? l.provider : '', llmM: (l && l.provider && l.model) ? l.model : '',
@@ -63,6 +66,7 @@
           usageBudget: String(res.settings && typeof res.settings.usageBudgetMonthly === 'number' ? res.settings.usageBudgetMonthly : 0),
           logWeek: String(res.settings && typeof res.settings.logWeekAfterDays === 'number' ? res.settings.logWeekAfterDays : 7),
           logRetention: String(res.settings && typeof res.settings.logRetentionDays === 'number' ? res.settings.logRetentionDays : 90),
+          orgMax: String(res.settings && typeof res.settings.organizeMaxChars === 'number' && res.settings.organizeMaxChars > 0 ? res.settings.organizeMaxChars : 0),
         }
         panelBridge.setSetSnap(snap0); setPersistRef.current = snap0
         loadUsage()
@@ -103,11 +107,13 @@
       if ('usageBudgetMonthly' in patch) n.usageBudget = String(patch.usageBudgetMonthly)
       if ('logWeekAfterDays' in patch) n.logWeek = String(patch.logWeekAfterDays)
       if ('logRetentionDays' in patch) n.logRetention = String(patch.logRetentionDays)
+      if ('organizeMaxChars' in patch) n.orgMax = String(patch.organizeMaxChars > 0 ? patch.organizeMaxChars : 0)   // 0.4.7-B⑦：0 = 自动（host 删 override），镜像口径同控件
       setPersistRef.current = n
     }
     // 选择即保存：llm=null 恢复跟随当前会话（默认）；否则保存 { provider, model }
     function saveSettingsLlm(llm) {
       settingsSetQuiet({ llm: llm }).then(() => {
+        if (panelBridge.orgMaxCacheReset) panelBridge.orgMaxCacheReset()   /* 0.4.7-B⑦：模型变更 → 引导卡生效值缓存失效 */
         showToast(llm ? t('settings.savedLlm', { name: llm.provider + ' / ' + llm.model }) : t('settings.restoredFollow'))
       }).catch(err => setError(String(err.message || err)))
     }
@@ -183,6 +189,16 @@
         showToast(v === 0 ? t('settings.logMonthOff') : t('settings.savedLogMonth', { v: v }))
       }).catch(err => setError(String(err.message || err)))
     }
+    // 0.4.7-B⑦：整理长度上限（字符，0 = 按所配模型自动——host 侧删 override 回落模型表）：失焦/Enter 即保存（非负整数；非法输入报错不落盘）
+    function saveSettingsOrgMax() {
+      const raw = store.modal.settings.get().orgMax.trim()
+      if (!/^\d+$/.test(raw)) { setError(t('settings.organizeMaxInvalid')); return }
+      const v = parseInt(raw, 10)
+      settingsSetQuiet({ organizeMaxChars: v }).then(() => {
+        if (panelBridge.orgMaxCacheReset) panelBridge.orgMaxCacheReset()   /* 0.4.7-B⑦：上限变更 → 引导卡生效值缓存失效 */
+        showToast(v === 0 ? t('settings.organizeMaxAuto') : t('settings.savedOrganizeMax', { v: v }))
+      }).catch(err => setError(String(err.message || err)))
+    }
     // ===== 设置卡交互反馈（notes-settings-feedback）：显式保存 / 还原 / 关闭兜底 flush =====
     // 数值字段登记表（快照键 ↔ 设置 RPC 键 ↔ 校验文案 i18n key）：保存校验/兜底 flush/还原回滚三处共用同一份口径
     // （第 3 列为字典 key，用时 t() 取当下语言——登记表在模块加载期求值，不能直接存译文）
@@ -193,6 +209,7 @@
       ['usageBudget', 'usageBudgetMonthly', 'settings.usageBudgetInvalid'],
       ['logWeek', 'logWeekAfterDays', 'settings.logWeekInvalid'],
       ['logRetention', 'logRetentionDays', 'settings.logMonthInvalid'],
+      ['orgMax', 'organizeMaxChars', 'settings.organizeMaxInvalid'],
     ]
     // 「保存」：显式确认 + 兜底 flush——先校验全部数值字段（任一非法即中止并报错，改动保留继续编辑），
     // 再串行落盘全部「控件值 ≠ 已落盘」的键（串行防写竞态），全部成功后快照跟进 + toast「设置已保存」+ dirty 复位
@@ -207,9 +224,10 @@
       const setLogRetention = store.modal.settings.get().logRetention
       const setLlmProvider = store.modal.settings.get().llmProvider
       const setLlmModel = store.modal.settings.get().llmModel
+      const setOrgMax = store.modal.settings.get().orgMax
       const settingsData = store.modal.settings.get().data
       if (setSaving || !setSnap) return
-      const vals = { stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention }
+      const vals = { stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention, orgMax: setOrgMax }
       for (const f of SET_NUM_FIELDS) { if (!/^\d+$/.test(vals[f[0]].trim())) { setError(t(f[2])); return } }
       const p = setPersistRef.current || setSnap
       const patches = []
@@ -222,8 +240,9 @@
       for (const pt of patches) seq = seq.then(() => settingsSetQuiet(pt))
       seq.then(() => {
         setSetSaving(false)
+        if (panelBridge.orgMaxCacheReset) panelBridge.orgMaxCacheReset()   /* 0.4.7-B⑦：全量保存可能含 orgMax/llm → 引导卡生效值缓存失效（幂等廉价） */
         // 快照跟进到当前控件值（显式确认完成 → dirty 复位，保存按钮回禁用态）
-        panelBridge.setSetSnap({ llmP: setLlmProvider, llmM: setLlmModel, stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention })
+        panelBridge.setSetSnap({ llmP: setLlmProvider, llmM: setLlmModel, stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention, orgMax: setOrgMax })
         usageBudgetRef.current = parseInt(setUsageBudget.trim(), 10)
         showToast(t('settings.savedAll'))
       }, err => { setSetSaving(false); setError(t('common.saveFailed', { msg: String(err && err.message || err) })) })
@@ -244,7 +263,7 @@
         setSetSaving(false)
         setSetLlmProvider(s.llmP); setSetLlmModel(s.llmM)
         setSetStale(s.stale); panelBridge.setSetMaxDepth(s.maxDepth); setSetBudget(s.budget)
-        setSetUsageBudget(s.usageBudget); setSetLogWeek(s.logWeek); setSetLogRetention(s.logRetention)
+        setSetUsageBudget(s.usageBudget); setSetLogWeek(s.logWeek); setSetLogRetention(s.logRetention); setSetOrgMax(s.orgMax || '0')
         usageBudgetRef.current = parseInt(s.usageBudget, 10)
         showToast(t('settings.restoredAll'))
       }, err => { setSetSaving(false); setError(t('settings.restoreFailed', { msg: String(err && err.message || err) })) })
@@ -261,12 +280,13 @@
       const setUsageBudget = store.modal.settings.get().usageBudget
       const setLogWeek = store.modal.settings.get().logWeek
       const setLogRetention = store.modal.settings.get().logRetention
+      const setOrgMax = store.modal.settings.get().orgMax
       const p = setPersistRef.current
       if (!p) return
       const patches = []
       const models0 = (settingsData && settingsData.models) || []
       if (!models0.length && setLlmProvider.trim() && setLlmModel.trim() && (setLlmProvider !== p.llmP || setLlmModel !== p.llmM)) patches.push({ llm: { provider: setLlmProvider.trim(), model: setLlmModel.trim() } })
-      const vals = { stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention }
+      const vals = { stale: setStale, maxDepth: setMaxDepth, budget: setBudget, usageBudget: setUsageBudget, logWeek: setLogWeek, logRetention: setLogRetention, orgMax: setOrgMax }
       for (const f of SET_NUM_FIELDS) { const raw = vals[f[0]].trim(); if (/^\d+$/.test(raw) && raw !== p[f[0]]) { const o = {}; o[f[1]] = parseInt(raw, 10); patches.push(o) } }
       if (!patches.length) return
       let seq = Promise.resolve()
@@ -275,6 +295,17 @@
     }
     // ✕/Esc/点遮罩统一关闭入口：有未落盘改动先兜底 flush（fire-and-forget，落盘完成自 toast），再收起
     function closeSettings() { flushSettingsPending(); setSettingsOpen(false) }
+    // 0.4.7-B①b（notes-047-ux）：设置行 label 组件——说明文字 >60 字时限 2 行收折（.cl），行名旁出 ⓘ 钮展开/收拢（原生 button 键盘可达）；
+    //   展开态为本组件 useState（随行 key 存续；app modals/settings.js 的 setLabelHtml 同口径）
+    function SettingsRowLabel(props) {
+      const tt = useT()
+      const [exp, setExp] = React.useState(false)
+      const long = typeof props.sub === 'string' && props.sub.length > 60
+      return e('div', { className: 'dsh-notes-settings-label' },
+        props.label,
+        long ? e('button', { className: 'dsh-notes-settings-sx', type: 'button', title: tt('settings.descExpandTip'), 'aria-label': tt('settings.descExpandTip'), onClick: () => setExp(!exp) }, 'ⓘ') : null,
+        props.sub ? e('span', { className: 'dsh-notes-settings-label-s' + (long && !exp ? ' cl' : '') }, props.sub) : null)
+    }
     // 设置卡片宿主（modal，居中，复用派发 modal 的 mask/modal 风格）：通用结构——标题「设置」+ 设置项行列表
     // （每行：左 label + 右控件）。以后加设置项只需往 settingsRows 数组加行，结构不变。
     // 交互（notes-settings-feedback）：自动保存保留（选择即存/失焦/Enter 即存，走 notes-settings-set）；
@@ -292,6 +323,7 @@
       const setSaving = store.modal.settings.useSel(s => s.saving)
       const setLogWeek = store.modal.settings.useSel(s => s.logWeek)
       const setLogRetention = store.modal.settings.useSel(s => s.logRetention)
+      const setOrgMax = store.modal.settings.useSel(s => s.orgMax)
       // i18n 语言态（notes-042-i18n-mech）：订阅 langStore——切换语言本卡即时重渲染为新语言；tt = 本组件 t()
       const lang = langStore.useSel(s => s.lang)
       const tt = useT()
@@ -312,7 +344,8 @@
         const setDirty = setInflight > 0 || (setSnap ? (
           setLlmProvider !== setSnap.llmP || setLlmModel !== setSnap.llmM ||
           setStale !== setSnap.stale || setMaxDepth !== setSnap.maxDepth || setBudget !== setSnap.budget ||
-          setUsageBudget !== setSnap.usageBudget || setLogWeek !== setSnap.logWeek || setLogRetention !== setSnap.logRetention) : false)
+          setUsageBudget !== setSnap.usageBudget || setLogWeek !== setSnap.logWeek || setLogRetention !== setSnap.logRetention ||
+          setOrgMax !== (setSnap.orgMax || '0')) : false)
         const modelList = (settingsData && settingsData.models) || []
         // 下拉选项 = provider/model 组合，第一项「跟随当前会话（默认）」；
         // 已保存值不在列表中（如模型已下线）时追加一项保证回显正确
@@ -333,6 +366,9 @@
               e('input', { className: 'dsh-notes-settings-input', placeholder: 'provider', value: setLlmProvider, onChange: (ev) => setSetLlmProvider(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
               e('input', { className: 'dsh-notes-settings-input', placeholder: 'model', value: setLlmModel, onChange: (ev) => setSetLlmModel(ev.target.value), onBlur: saveSettingsLlmManual, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsLlmManual() } }),
               (setLlmProvider || setLlmModel) ? e('button', { className: 'dsh-notes-settings-clear', onClick: () => { setSetLlmProvider(''); setSetLlmModel(''); saveSettingsLlm(null) } }, tt('settings.followSession')) : null)
+        // 0.4.7-B⑦（notes-047-ux）：整理长度上限控件（LLM 区紧随模型行）——数值输入（字符），失焦/Enter 即保存；0 = 按所配模型自动（说明文字带生效值）
+        const orgMaxEff = (settingsData && typeof settingsData.organizeMaxChars === 'number' && settingsData.organizeMaxChars > 0) ? settingsData.organizeMaxChars : 12000
+        const orgMaxControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1000, value: setOrgMax, 'data-tooltip': tt('settings.organizeMaxTip', { eff: orgMaxEff }), onChange: (ev) => setSetOrgMax(ev.target.value), onBlur: saveSettingsOrgMax, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsOrgMax() } })
         // P1 时效衰减提醒控件：数值输入（天），失焦/Enter 即保存；0 = 关闭
         const staleControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1, value: setStale, 'data-tooltip': tt('settings.staleTipT'), onChange: (ev) => setSetStale(ev.target.value), onBlur: saveSettingsStale, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsStale() } })
         // 文件夹嵌套深度上限控件（同 staleDays 输入交互）：数值输入（层），失焦/Enter 即保存；0 = 不限层数
@@ -396,6 +432,8 @@
         const settingsRows = [
           { key: 'language', label: tt('settings.language'), sub: tt('settings.languageTip'), control: langControl },
           { key: 'llm', label: tt('settings.llm'), sub: tt('settings.llmTip'), control: llmControl },
+          // 0.4.7-B⑦：整理长度上限行（LLM 区紧随模型行；sub 带生效值 = settings-get 增带键，零新 RPC）
+          { key: 'organizemax', label: tt('settings.organizeMax'), sub: tt('settings.organizeMaxTip', { eff: orgMaxEff }), control: orgMaxControl },
           { key: 'usage', label: tt('settings.usage'), sub: tt('settings.usageTip'), control: usageControl },
           { key: 'usagebudget', label: tt('settings.usageBudget'), sub: tt('settings.usageBudgetTip'), control: usageBudgetControl },
           { key: 'stale', label: tt('settings.stale'), sub: tt('settings.staleTip'), control: staleControl },
@@ -423,16 +461,17 @@
                 e('button', { className: 'dsh-notes-settings-close dsh-nt', 'data-tooltip': tt('settings.closeTip'), onClick: closeSettings }, I('x', 12)))),
             /* 0.4.6-H：错误区锚定位 = 标题栏正下方（保存按钮旁视野内；原渲染在列表最底部） */
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
-            /* onboarding 轻量（notes-034-batch3）：设置卡顶部四概念一行一条速览（注入/约定·资料/目录注入/派发）——新用户前置解释 */
+            /* onboarding 轻量（notes-034-batch3）：设置卡顶部四概念一行一条速览（注入/约定·资料/目录注入/派发）——新用户前置解释；
+               0.4.7-B①c：bullet 逐条 .dsh-notes-onb-li 悬挂缩进（续行对齐文字起点，折行参差消除） */
             e('div', { className: 'dsh-notes-data-hint' },
               e('b', null, tt('settings.onboardTitle')),
-              e('div', null, tt('settings.onboardInject')),
-              e('div', null, tt('settings.onboardRoles')),
-              e('div', null, tt('settings.onboardCatalog')),
-              e('div', null, tt('settings.onboardDispatch'))),
+              e('div', { className: 'dsh-notes-onb-li' }, tt('settings.onboardInject')),
+              e('div', { className: 'dsh-notes-onb-li' }, tt('settings.onboardRoles')),
+              e('div', { className: 'dsh-notes-onb-li' }, tt('settings.onboardCatalog')),
+              e('div', { className: 'dsh-notes-onb-li' }, tt('settings.onboardDispatch'))),
             e('div', { className: 'dsh-notes-settings-list' },
               settingsRows.map(row => e('div', { key: row.key, className: 'dsh-notes-settings-row' },
-                e('div', { className: 'dsh-notes-settings-label' }, row.label, row.sub ? e('span', { className: 'dsh-notes-settings-label-s' }, row.sub) : null),
+                e(SettingsRowLabel, { label: row.label, sub: row.sub }),   /* 0.4.7-B①b：长说明收折 ⓘ 展开（组件态随行 key 存续） */
                 e('div', { className: 'dsh-notes-settings-control' }, row.control))))))
       })()
       : null

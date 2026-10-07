@@ -22,8 +22,32 @@
     // 机器信息模板（✨整理 prompt 的 note kind 内容适配分支：环境/机器清单/账号/门户）
     const MACHINE_TEMPLATE = '## 环境\n\n（环境名称与说明）\n\n## 机器清单\n\n（主机名 / IP / 用途）\n\n## 账号\n\n（登录方式与账号）\n\n## 门户\n\n（门户与入口地址）\n'
     const KIND_LABELS_ZH = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' }
-    const AI_ORGANIZE_MAX_CHARS = 12000   // ✨整理草稿上限（防 token 爆量）；超限报错引导分段
+    const AI_ORGANIZE_MAX_CHARS = 12000   // ✨整理草稿上限回落值（防 token 爆量）；0.4.7-B⑦ 起为「未知模型/未配置」回落档，超限报错引导分段
     const AI_ORGANIZE_INSTR_MAX_CHARS = 500   // 0.4.4-F：整理追加用户指令上限（trim 后计，超限报 error 不落 prompt）
+    // ---- 0.4.7-B⑦（notes-047-ux）模型 → 整理正文上限小表（字符）----
+    // 估算依据：整理 = 按模板重写全文，输入字符数 ≈ 输出字符数，瓶颈在模型单次「输出 token 上限」；
+    //   折算口径 ≈ 输出 token 上限 × 2 字符/token（中英混合保守）× 0.75 安全边际；超大输出窗模型实务封顶 32000（防 token 爆量本意）。
+    // 匹配 = model 名小写子串、命中第一行（先细后粗排列）；新增模型在此加行。未知模型回落 AI_ORGANIZE_MAX_CHARS。
+    const AI_ORGANIZE_MODEL_MAX = [
+      ['deepseek', 12000],    // deepseek-chat/reasoner 输出上限 8K tokens
+      ['kimi', 24000],      // kimi-k2/k3 输出上限 16K tokens 级
+      ['gpt-4o', 24000],    // 16K output
+      ['gpt-5', 32000],     // 大输出窗，实务封顶 32K
+      ['claude', 16000],    // 8K–64K 保守取档
+      ['qwen', 12000],      // 8K output
+      ['glm', 12000],       // 8K output 档
+      ['gemini', 24000],    // 16K output 档
+    ]
+    // 整理长度上限生效值（0.4.7-B⑦）：用户 settings.organizeMaxChars（>0 覆盖）优先 || 模型表（按解析出的当前模型）|| 12000 回落。
+    // 调用前须 loadSettings 就绪（organize/settings-get 两调用点均已 await）；模型解析失败/未配置 → 回落档（绝不抛错阻断）
+    function organizeMaxChars() {
+      const o = settingsCache && settingsCache.organizeMaxChars
+      if (typeof o === 'number' && isFinite(o) && o > 0) return Math.floor(o)
+      const sel = resolveLlmSelection()
+      const mid = sel && typeof sel.model === 'string' ? sel.model.toLowerCase() : ''
+      if (mid) { for (const row of AI_ORGANIZE_MODEL_MAX) { if (mid.indexOf(row[0]) >= 0) return row[1] } }
+      return AI_ORGANIZE_MAX_CHARS
+    }
     const cache = new Map()
 
     function noteFromParsed(id, p) {

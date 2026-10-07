@@ -280,6 +280,8 @@
               e('div', { className: 'dsh-notes-sched-next' + (schedForm && schedForm.err ? ' warn' : '') }, schedForm && schedForm.err ? ('⚠ ' + schedForm.err) : tt('disp.nextTrigger', { time: fmtDT(new Date(schedDeclNextMs(schedForm.decl, dispatchEditNote)).toISOString()) })),
               // 专属会话（0.4.4-B）：周期模式可勾 target='new'——首轮触发 host 自动创建「定时 · 任务名」会话并回写复用；仅一次（at）无复用场景不提供
               dispatchSchedMode !== 'once' ? e('label', { className: 'dsh-notes-sched-opt' }, e('input', { type: 'checkbox', checked: dispatchSchedNew, onChange: (ev) => setDispatchSchedNew(ev.target.checked) }), ' ' + tt('disp.schedNew')) : null,
+              // 0.4.7-B⑤（notes-047-ux）：专属会话无界面提示行（实测教训：专属会话无 browser_* 等 GUI 附着工具）——勾选即见
+              (dispatchSchedNew && dispatchSchedMode !== 'once') ? e('div', { className: 'dsh-notes-sched-new-hint' }, tt('disp.schedNewHint')) : null,
               // 专属会话模型下拉（0.4.6-G）：勾选专属会话 + 清单非空才显示（清单缺席静默降级）；清单外存量值补合成条目回显防丢档
               (dispatchSchedNew && dispatchSchedMode !== 'once' && dispatchSchedModels.length > 0) ? e('select', { className: 'dsh-notes-dispatch-select dsh-notes-sched-sel', 'data-tooltip': tt('disp.schedModelTip', { model: dispatchSchedModel || tt('disp.schedModelDefault') }), value: (dispatchSchedModel && dispatchSchedModels.some(m => m.provider + '/' + m.model === dispatchSchedModel)) ? dispatchSchedModel : (dispatchSchedModel || ''), onChange: (ev) => setDispatchSchedModel(ev.target.value) },
                 e('option', { value: '' }, tt('disp.schedModelDefault')),

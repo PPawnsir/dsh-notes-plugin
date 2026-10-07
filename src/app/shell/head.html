@@ -256,6 +256,24 @@
   .meta-act svg.ic{width:12px;height:12px}
   /* 二期 ✨整理按钮：整理中态（忙） */
   .meta-act.organize-btn.busy{opacity:.62;cursor:default;pointer-events:none}
+  /* 0.4.7-B②b（notes-047-ux）：meta 行动区封板——动作总数超 META_ACT_MAX 时中段收进「…」溢出菜单（动作相对顺序不动，仅收纳） */
+  .meta-more-wrap{position:relative;display:inline-flex}
+  .meta-act.meta-more{padding:3px 8px;font-weight:700;letter-spacing:1px}
+  .meta-more-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:70;min-width:120px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:4px;display:flex;flex-direction:column;gap:2px;align-items:stretch}
+  .meta-more-menu .meta-act{padding:5px 10px;white-space:nowrap}
+  /* 0.4.7-B④a（notes-047-ux，R2 漏网 n-mux79knmfjxt）：三态分段旁可见 ⓘ——tooltip 与三档原生 title 同文（合成），可聚焦 + 点击 toast 同文（触屏/键盘可达） */
+  .role-info{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin-left:2px;border-radius:50%;color:var(--nt3);cursor:help;user-select:none;font-size:11px;flex-shrink:0}
+  .role-info:hover{color:var(--nacc-tx);background:var(--nbg-hover)}
+  .role-info:focus-visible{outline:2px solid var(--nacc);outline-offset:1px}
+  /* 0.4.7-B⑥（notes-047-ux，实测 n-muy9gdybdd40）：整理中态强化——正文区遮罩（spinner + 「约需半分钟」文案）；整理失败驻留条（手动 ✕ 才消失） */
+  .org-veil{position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(22,22,26,.55);background:color-mix(in srgb, var(--npanel) 78%, transparent);color:var(--nt2);font-size:12.5px}
+  .org-veil .org-spin{width:16px;height:16px}
+  .org-spin{width:10px;height:10px;border:2px solid var(--nbd-soft);border-top-color:var(--nacc);border-radius:50%;animation:orgSpin .8s linear infinite;flex-shrink:0}
+  @keyframes orgSpin{to{transform:rotate(360deg)}}
+  #orgErr .org-x{margin-left:auto;cursor:pointer;color:var(--nt3);padding:0 4px;flex-shrink:0}
+  #orgErr .org-x:hover{color:var(--ntx)}
+  /* 0.4.7-B⑤（notes-047-ux）：派发弹窗专属会话无界面提示行 */
+  .sched-new-hint{font-size:10.5px;color:var(--nwarn);line-height:1.5;margin:4px 0 2px;padding-left:2px}
   /* ===== 双模式编辑器 v3（原型 design/notes-editor-v3.html；与面板 styles.css 同款无前缀；色板走上方 html[data-theme] 块，此处不加主题块以守住 v2 色板同步断言） ===== */
   .ed-main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
   .src{flex:1;width:100%;resize:none;border:0;outline:0;background:transparent;color:var(--ntx);font-family:var(--nmono);font-size:12.5px;line-height:1.8;padding:14px 24px 24px}
@@ -284,6 +302,8 @@
   .rtb .sync .sd{width:6px;height:6px;border-radius:50%;background:var(--nwarn)}
   html[data-theme="dark"] .rtb .sync.ok .sd{background:#56c88f}
   html[data-theme="light"] .rtb .sync.ok .sd{background:#2f9e6e}
+  .rtb .sync.err{color:var(--ndanger)}   /* 0.4.7-C ②a：失败态同步点统一（红点 + 失败文案，与 client 端 .dsh-notes-rtb-sync.err 同口径） */
+  .rtb .sync.err .sd{background:var(--ndanger)}
   .rich{flex:1;padding:14px 24px 64px;outline:none;font-size:13px;line-height:1.75;min-height:calc(100% - 40px);caret-color:var(--nacc)}
   .rich:empty::before{content:var(--i18n-ed-rich-ph,"正文…（富文本，编辑后失焦自动同步源码）");color:var(--nt3)}
   .rich p{margin:0 0 14px;word-break:break-word}
@@ -372,7 +392,8 @@
   /* ===== 通用 modal ===== */
   .mask{position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.45);display:grid;place-items:center}
   .modal{width:460px;max-width:calc(100vw - 60px);max-height:82vh;overflow-y:auto;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-lg);box-shadow:0 16px 48px rgba(0,0,0,.5);padding:16px}
-  .modal-t{font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;margin-bottom:12px}
+  /* 0.4.7-B①a（notes-047-ux）：弹窗标题栏 sticky——长弹窗（设置卡 16 节）滚动时标题栏动作区（保存/还原/✕）恒见；短弹窗零视觉差 */
+  .modal-t{font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;margin:-16px -16px 12px;padding:16px 16px 12px;position:sticky;top:-16px;background:var(--npanel);z-index:5;border-radius:var(--nr-lg) var(--nr-lg) 0 0}
   .modal-t .sub{font-size:10.5px;color:var(--nt3);font-weight:400}
   .modal-hint{font-size:11.5px;color:var(--nt3);line-height:1.6;margin-bottom:10px}
   .modal-err{font-size:11.5px;color:var(--ndanger);margin-top:10px;line-height:1.5;white-space:pre-wrap}
@@ -465,6 +486,13 @@
   .hist-preview{font-size:12px;line-height:1.7;background:var(--nbg);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:12px 14px;max-height:52vh;min-height:180px;overflow:auto;box-sizing:border-box}
   .set-label{flex:1;font-size:12.5px}
   .set-label .s{display:block;font-size:10.5px;color:var(--nt3);margin-top:2px;line-height:1.5}
+  /* 0.4.7-B①b（notes-047-ux）：描述文本瘦身——长说明（>60 字）限 2 行收折，行首 ⓘ 钮展开/收拢（键盘可聚焦） */
+  .set-label .s.cl{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .sx{display:inline-flex;align-items:center;justify-content:center;margin-left:4px;padding:0 3px;border:0;background:transparent;color:var(--nt3);font-size:10.5px;line-height:1.4;cursor:pointer;vertical-align:baseline;border-radius:4px;font-family:inherit}
+  .sx:hover{color:var(--nacc-tx);background:var(--nbg-hover)}
+  .sx:focus-visible{outline:2px solid var(--nacc);outline-offset:1px}
+  /* 0.4.7-B①c：概念速览 bullet 折行排版——悬挂缩进（续行对齐到「· 」之后的文字起点） */
+  .modal-hint .onb-li{padding-left:13px;text-indent:-13px}
   .set-ctrl{display:flex;align-items:center;gap:6px}
   .set-ctrl select{max-width:190px}
   /* LLM 用量区（设置卡片「LLM 用量」行）：数值两行竖排 */

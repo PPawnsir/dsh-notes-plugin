@@ -330,8 +330,8 @@
     // 专属会话创建（0.4.4-B）：agents.create 真实 agent（走注册 factory——持久化写把手 + 会话注册一体），
     //   setup 内 agentPresets.mount 绑定默认 preset（同 session-controller composeAgent 口径——无 preset 的裸 agent 无工具能力）；
     //   workspace.attachSession 落账（GUI 左侧列表可见性——工作区 sessionIds 经 header cwd 校验归组）；
-    //   sessionTitle.rename 命名「定时 · <任务名>」（观察面，失败不阻塞主链路）。
-    //   孤儿探测（0.4.5-A notes-045-debt-host）：创建前先按标题探测工作区账目内既有同名专属会话（target 回写失败窗口遗留），
+    //   sessionTitle.rename 命名「定时 · <任务名> · <id 末 6 位>」（0.4.7-A⑧ 起带 id 尾；观察面，失败不阻塞主链路）。
+    //   孤儿探测（0.4.5-A notes-045-debt-host；0.4.7-A⑧ 收窄为同笔记命中）：创建前先按带尾标题探测工作区账目内既有同名专属会话（target 回写失败窗口遗留），
     //   命中即复用其 sid 返回（reused:true，handle=null——非本轮创建，调用方回收路径跳过），未命中才新建（防重复建会话）。
     //   归属模型（实测结论）：create 经调用方 fiber 归属——插件重载/卸载会 dispose 该 agent，但会话日志已持久化，
     //   退化为休眠态（GUI 可见、用户打开即复活），后续触发由休眠送达通道（_queueDormantDispatch）承接，优雅降级不丢任务。
@@ -350,10 +350,16 @@
       if (!ws) ws = wl[0]
       const cwd = String((ws && ws.path) || '').trim()
       if (!cwd) return { error: '工作区缺 path（专属会话无 cwd 不可创建）' }
-      const name = '定时 · ' + String((note && note.title) || '任务').replace(/^定时\s*·?\s*/, '')
+      const name = '定时 · ' + String((note && note.title) || '任务').replace(/^定时\s*·?\s*/, '') + ' · ' + String((note && note.id) || 'unknown').slice(-6)
+      // 0.4.7-A⑧（notes-047-cleanup，用户实测 [[n-muy8azorkasl]] 同名复用 bug）：命名带笔记 id 末 6 位短尾——
+      //   调研结论：agents.create meta 走 dsh-session SessionHeader 封闭白名单（createdAt/cwd/parentSession/isSeeded/origin/delegationDepth/
+      //   agentPreset，store 建 header 时逐键显式挑拣），自定义 sourceNoteId 落盘即被丢弃、sessionQuery/sessionPersistence 读不回——
+      //   meta 盖章方案不可行，按卡退化方案采用标题短尾（探测只对同笔记复用 = 同 id 尾）。
+      //   修复前纯标题探测：跨笔记同名任务共享先建会话（B 笔记 preset/model 声明被静默丢弃——复用路径不补挂档位）。
+      //   存量无尾孤儿会话（0.4.7 前回写失败窗口遗留）不再命中——保持孤儿态不冒领（归属不可证，零迁移红线）。
       // 孤儿专属会话探测（0.4.5-A notes-045-debt-host，B 卡 verifier 遗留④）：「agents.create 成功但 target 回写落盘失败/
-      //   进程崩溃于回写前」的极端窗口下，工作区账目里已存在上次创建的同名专属会话——下 tick 若不探测会重复创建。
-      //   修复：创建前先按标题「定时 · <任务名>」探测既有专属会话（工作区 sessionIds 账目 + readTitleSnapshots 批量读标题，
+      //   进程崩溃于回写前」的极端窗口下，工作区账目里已存在上次创建的同名（含 id 尾）专属会话——下 tick 若不探测会重复创建。
+      //   修复：创建前先按标题「定时 · <任务名> · <id 末 6 位>」探测既有专属会话（工作区 sessionIds 账目 + readTitleSnapshots 批量读标题，
       //   live/持久化双覆盖，同 _activeSessions 数据源口径），命中则复用其 sid 回写 target（零新建），未命中才走新建。
       //   探测失败（服务缺失/读盘异常）静默降级为直接新建——与改造前行为等价，不扩散主链路。
       try {
@@ -367,7 +373,7 @@
             if (!r || r.status !== 'fulfilled' || !r.value) continue
             const rt = r.value.title && r.value.title.title
             const rsid = r.sessionId || (r.value.session && r.value.session.id)
-            // 标题精确命中专属会话命名形态即复用；handle=null（复用会话非本轮创建，调用方 dispose 回收路径天然跳过）
+            // 标题（含 id 尾）精确命中专属会话命名形态即复用；handle=null（复用会话非本轮创建，调用方 dispose 回收路径天然跳过）
             if (rt === name && rsid) return { sessionId: rsid, handle: null, name: name, reused: true }
           }
         }

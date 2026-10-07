@@ -1,7 +1,7 @@
 /* ================= 数据层：/dsh-notes RPC（与 lib/client.js 同模式） ================= */
 /* 0.4.6-B 韧性层（notes-046-rpc-resilience，巡检三角色同族证据 n-mux88x3knpsv/n-mux89mdj6tty/n-mux8a1l4k2nv）：
    裸 fetch 包装（无超时/无错误处理/挂起=空白假死）→ 三件套：
-   ① 超时：AbortController，缺省 RPC_TIMEOUT_MS；LLM 类长调用（host 侧 8s 级起）经 RPC_LLM_METHODS 显式放宽；
+   ① 超时：AbortController，缺省 RPC_TIMEOUT_MS；LLM 类长调用（host 侧 8s~120s 级：when-suggest 草稿 8s / 约定体检 120s——0.4.7-A⑨）经 RPC_LLM_METHODS 显式放宽；
    ② 超时/网络错误 → 结构化 {error} 返回（与 host error 形态一致，调用点零改动兼容）+ toast 显式告知（不静默）；
    ③ 挂起 > RPC_SLOW_MS → 非阻塞「连接慢」提示条（#rpcSlowBar，CSS pointer-events:none 不遮罩不阻断），全部落定后消失。
    红线：不改 host 协议形态；超时值集中本块常量可改；不引入第三方库；UI 提示不阻断操作。 */
@@ -39,4 +39,23 @@ function rpc(method, args) {
       toast(msg);   /* 错误不静默：韧性层显式 toast（调用点的业务横幅/错误条语义照旧） */
       return { error: msg };
     })
+}
+/* 0.4.7-C（notes-047-stability ①）：卸载兜底专用直发——页面拆毁期普通 fetch 常被取消，keepalive/sendBeacon 是卸载可靠通道。
+   自包含（不走 rpc() 超时/慢条三件套：卸载期计时器无意义）；sendBeacon 优先（浏览器保证投递尝试），
+   不支持/排队满回退 fetch keepalive；64KB keepalive 预算守卫——超预算回退普通 rpc() 尽力送达（宁可尽力不可硬失败）。
+   火忘语义：响应体无人消费，返回 Promise 仅为调用点形态兼容 */
+function rpcKeepalive(method, args) {
+  try {
+    var body = JSON.stringify({ method: method, args: args || {} });
+    if (body.length < 60000 && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      if (navigator.sendBeacon('/dsh-notes', new Blob([body], { type: 'application/json' }))) return Promise.resolve({ ok: true });
+    }
+    if (typeof fetch !== 'undefined') {
+      return fetch('/dsh-notes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body,
+        keepalive: body.length < 60000,
+      }).then(function (r) { return r.json() }).catch(function () { return {} });
+    }
+  } catch (e) {}
+  return Promise.resolve({});
 }

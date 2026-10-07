@@ -1,6 +1,6 @@
 // 节 90. 0.4.5-G 约定体检（约定冲突/冗余检测，notes-045-conflict-check）
-// 契约：host 新 RPC notes-conflict-check（llm/conflict.js + conflict.dist.js 双变体，when-suggest 同款 llm.stream + resolveLlmSelection + 8s 超时通道）：
-//   数据集 = inject=true && injectRole=convention（缺省同 convention） && !deleted 的笔记（标题+正文；敏感正文 maskSensitiveBody 按行打码后参与）；
+// 契约：host 新 RPC notes-conflict-check（llm/conflict.js + conflict.dist.js 双变体，llm.stream + resolveLlmSelection + 120s 超时通道（0.4.7-A⑨：8s→120s，手动重操作对齐客户端 LLM 护栏））：
+//   数据集 = inject=true && injectRole=convention（缺省同 convention） && !deleted && status!=='superseded'（0.4.7-A③：已废止不参与）的笔记（标题+正文；敏感正文 maskSensitiveBody 按行打码后参与）；
 //   <2 条 → { ok:true, pairs:[] } 零 LLM 调用；LLM 不可用/未配置/超时/输出非合法 JSON（剥围栏后 parse 失败或非数组）→ { error }；
 //   输出 [{aId,bId,relation:conflict|supersede,reason}] 逐条校验（幻觉 id/自配对/非法 relation 静默过滤 + 同一无序对去重）+ 回附 aTitle/bTitle。
 //   红线：只提名不执行（本通道零写入；「标已取代」由 client 走既有 notes-update status='superseded'，人工点击触发）；手动触发 v0 不进 cron；
@@ -30,13 +30,14 @@ module.exports = {
     assert.strictEqual(grabC(read90('server.js'), 'server.js'), grabC(read90('server.dist.js'), 'server.dist.js'), 'conflict-check 注册块 server 双变体逐字节一致（when-suggest 同看守口径）')
     assert(devList.indexOf('llm/conflict.js') < devList.indexOf('server.js') && distList.indexOf('llm/conflict.dist.js') < distList.indexOf('server.dist.js'), 'conflict 序位先于 server（_conflictCheck → notes-conflict-check 注册可见序）')
   })
-  await t('host 双产物：notes-conflict-check 注册 + 8s 超时/打码/谓词/容错锚 + 计量豁免锁定（USAGE_FEATURES 三功能口径不动）', () => {
+  await t('host 双产物：notes-conflict-check 注册 + 120s 超时/打码/谓词/容错锚 + 计量豁免锁定（USAGE_FEATURES 三功能口径不动）', () => {
     for (const pair of [[hostSrc, 'host 产物'], [indexSrc, 'index.mjs']]) {
       const s = pair[0], tag = pair[1]
       assert(s.indexOf("handle('notes-conflict-check'") >= 0, tag + ' notes-conflict-check RPC 注册')
-      assert(s.indexOf('const CONFLICT_CHECK_TIMEOUT_MS = 8000') >= 0, tag + ' 8s 超时锚（when-suggest 同款）')
+      assert(s.indexOf('const CONFLICT_CHECK_TIMEOUT_MS = 120000') >= 0, tag + ' 120s 超时锚（0.4.7-A⑨：8s→120s 手动重操作，对齐客户端 LLM 护栏 HOSTCALL/RPC_LLM_METHODS 120s）')
+      assert(s.indexOf("reject(new Error('体检超时（120s）'))") >= 0, tag + ' 超时错误文案锚（0.4.7-A⑨）')
       assert(s.indexOf('maskSensitiveBody(rawBody, n.id)') >= 0, tag + ' 敏感正文打码后参与锚')
-      assert(s.indexOf("n.inject === true && !n.deleted && (n.injectRole || 'convention') === 'convention'") >= 0, tag + ' 数据集谓词锚（仅约定桶/排除已删）')
+      assert(s.indexOf("n.inject === true && !n.deleted && n.status !== 'superseded' && (n.injectRole || 'convention') === 'convention'") >= 0, tag + ' 数据集谓词锚（仅约定桶/排除已删/排除已废止——0.4.7-A③ superseded 不参与冲突检测）')
       assert(s.indexOf('_list(undefined, undefined, undefined, false, true, true)') >= 0, tag + ' 全量列表六参锚（谓词即唯一选择口径）')
       assert(s.indexOf('LLM 输出非合法 JSON') >= 0 && s.indexOf('LLM 输出非 JSON 数组') >= 0, tag + ' JSON 容错双 error 锚')
       assert(s.indexOf('conv.length < 2') >= 0, tag + ' <2 条空态锚')
@@ -93,22 +94,25 @@ module.exports = {
     const cO = await H90['notes-create']({ title: '体检未注入90', body: '未注入正文 OFF90-BODY', topic: '其他' })
     const cD = await H90['notes-create']({ title: '体检已删约定90', body: '已删正文 DEL90-BODY', inject: true, topic: '约定' })
     await H90['notes-delete']({ id: cD.id })
+    // 0.4.7-A③（notes-047-cleanup）：已废止约定不参与冲突检测——superseded 注入中约定同样排除（total/双边 prompt 双口径）
+    const cX = await H90['notes-create']({ title: '体检已废止约定90', body: '已废止正文 SUP90-BODY', inject: true, status: 'superseded', topic: '约定' })
     const r = await H90['notes-conflict-check']({})
     assert(r && r.ok === true && Array.isArray(r.pairs), 'ok 路径返回 pairs 数组（实得 ' + JSON.stringify(r) + '）')
-    assert.strictEqual(r.total, 3, 'total=3（甲/乙/敏感约定；资料/未注入/已删不计入），实得 ' + r.total)
+    assert.strictEqual(r.total, 3, 'total=3（甲/乙/敏感约定；资料/未注入/已删/已废止不计入），实得 ' + r.total)
     assert.strictEqual(inst.streamCalls.length, 1, 'LLM 恰调用一次')
     const req = inst.streamCalls[0]
     const prompt = req.messages[0].content[0].text
     assert(prompt.indexOf('下面是 3 条正在注入') >= 0, 'prompt 数据集计数行 = 3 条约定')
     for (const n of [cA, cB, cS]) assert(prompt.indexOf('id=' + n.id) >= 0 && prompt.indexOf(n.title) >= 0, 'prompt 含约定 ' + n.title + '（id+标题）')
-    for (const n of [cR, cO, cD]) assert(prompt.indexOf(n.id) < 0 && prompt.indexOf(n.title) < 0, 'prompt 排除 ' + n.title)
+    for (const n of [cR, cO, cD, cX]) assert(prompt.indexOf(n.id) < 0 && prompt.indexOf(n.title) < 0, 'prompt 排除 ' + n.title)
     assert(prompt.indexOf('REF90-BODY') < 0 && prompt.indexOf('OFF90-BODY') < 0 && prompt.indexOf('DEL90-BODY') < 0, 'prompt 排除资料/未注入/已删正文')
+    assert(prompt.indexOf('SUP90-BODY') < 0, 'prompt 排除已废止约定正文（0.4.7-A③：superseded 不参与冲突检测）')
     assert(prompt.indexOf('sec-live-90ab') < 0, '敏感约定正文打码后才进 prompt（口令值零泄露）')
     assert(prompt.indexOf('******（敏感，note_get ' + cS.id + ' 获取）') >= 0, '敏感行落占位符（键保留值遮蔽，引导 note_get）')
     assert(prompt.indexOf('普通指令行') >= 0, '敏感约定非敏感行照常参与')
     assert(String(req.system || '').indexOf('约定治理') >= 0, 'system 提示词 = 约定治理助手')
     assert(req.temperature === 0, 'temperature 0（同款通道）')
-    await H90['notes-delete']({ id: cA.id }); await H90['notes-delete']({ id: cB.id }); await H90['notes-delete']({ id: cS.id }); await H90['notes-delete']({ id: cR.id }); await H90['notes-delete']({ id: cO.id })
+    await H90['notes-delete']({ id: cA.id }); await H90['notes-delete']({ id: cB.id }); await H90['notes-delete']({ id: cS.id }); await H90['notes-delete']({ id: cR.id }); await H90['notes-delete']({ id: cO.id }); await H90['notes-delete']({ id: cX.id })
   })
   await t('行为②输出校验：围栏剥离 + 幻觉 id/自配对/非法 relation/重复对逐条过滤 + 回附标题 + relation 白名单', async () => {
     let outText = ''
@@ -185,6 +189,8 @@ module.exports = {
       assert(s.indexOf('dsh-notes-conflict-sec') >= 0, tag + ' 内联展开区渲染锚（modal 不叠 modal：面板内新区）')
       assert(s.indexOf('setInjMgrConflict(null)') >= 0, tag + ' 面板重开复位锚')
       assert(s.indexOf("tt('inj.conflictTitle')") >= 0 && s.indexOf("tt('inj.conflictKeep')") >= 0 && s.indexOf("tt('inj.conflictSupA')") >= 0, tag + ' 文案走 tt() 字典锚')
+      // 0.4.7-A⑨：在途态反馈锚——按钮 busy（running 态禁用 + 文案切「检测中…」）+ 提示行走字典（长时操作预期管理）
+      assert(s.indexOf("injMgrConflict.running ? tt('inj.conflictRunning')") >= 0 && s.indexOf("tt('inj.conflictRunningHint')") >= 0, tag + ' 在途态锚（busy 按钮 + 提示行，0.4.7-A⑨）')
     }
   })
   await t('app.html 同款：injConflictHost 插槽 + renderInjConflict + 三动作 + rpc 锚；样式双端（styles.css + head.html）', () => {
@@ -195,6 +201,8 @@ module.exports = {
     assert(appSrc.indexOf("rpc('notes-update', { id: id, status: 'superseded' })") >= 0, 'app 标已取代 = notes-update status=superseded')
     assert(appSrc.indexOf('function doInjConflictDismiss(') >= 0 && appSrc.indexOf('function doInjConflictSupersede(') >= 0, 'app dismiss/supersede 双函数在位')
     assert(appSrc.indexOf("t('inj.conflictTitle')") >= 0 && appSrc.indexOf("t('inj.conflictEmpty'") >= 0, 'app 文案走 t() 字典锚')
+    // 0.4.7-A⑨：app 在途态同款锚（running 分支提示行 + 按钮禁用）
+    assert(appSrc.indexOf("cf.running") >= 0 && appSrc.indexOf("t('inj.conflictRunningHint')") >= 0, 'app 在途态锚（0.4.7-A⑨）')
     const css90 = fsNative.readFileSync(path.join(DIR, 'src', 'styles.css'), 'utf8')
     const head90 = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'shell', 'head.html'), 'utf8')
     assert(css90.indexOf('.dsh-notes-conflict-sec{') >= 0 && css90.indexOf('.dsh-notes-conflict-badge.con{') >= 0 && css90.indexOf('.dsh-notes-conflict-badge.sup{') >= 0, 'client styles.css 体检区+双徽章样式')
@@ -210,6 +218,9 @@ module.exports = {
       assert(pz === pe, k + ' 双端占位符同形（zh:' + pz + ' / en:' + pe + '）')
     }
     assert(zh['inj.conflictTitle'] === '约定体检' && zh['inj.conflictKeep'] === '保留两者', 'zh 核心文案锚')
+    // 0.4.7-A⑨：在途提示文案 = 120s 重操作口径（约定多时约需一两分钟），双语同义锚
+    assert(zh['inj.conflictRunningHint'].indexOf('一两分钟') >= 0, 'zh 在途提示 = 长时预期口径（0.4.7-A⑨，实得 ' + zh['inj.conflictRunningHint'] + '）')
+    assert(en['inj.conflictRunningHint'].indexOf('minute or two') >= 0, 'en 在途提示同款（实得 ' + en['inj.conflictRunningHint'] + '）')
   })
   await t('原型第四端：mock 演示数据（n-cf1/n-cf2 真实事故镜像）+ 内联区同构 + 文案与 zh 字典同文 + e2e 用例与 mock 锚', () => {
     const proto = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')

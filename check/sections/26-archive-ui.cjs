@@ -82,7 +82,9 @@ module.exports = {
     }
   })
   await t('app.html 同款：归档按钮（引导 title）+ 预览对话框 + 多选合并 + toast 撤销 + Esc', () => {
-    assert(appSrc.indexOf('id="btnArchive"') >= 0 && appSrc.indexOf('速记 = 划选文字松手弹出的快速记录（暂存）；点按弹出预览，勾选后把同一会话的速记归并成一篇正式笔记（可撤销）') >= 0, 'app.html 速记合并按钮 + 引导 title（notes-034-batch3 改名；0.4.5-D 首句微调；0.4.6-D 补速记概念）')
+    /* 0.4.7-B②a（notes-047-ux）：顶栏「速记合并」按钮撤除（与建议器首段「速记组 → 去归档」入口重复）——锚反转为「顶栏无按钮 + 建议器内入口保留」 */
+    assert(appSrc.indexOf('id="btnArchive"') < 0, 'app.html 顶栏速记合并按钮已撤（0.4.7-B②a）')
+    assert(appSrc.indexOf("id=\"sgGoArch\"") >= 0 && appSrc.indexOf('function openArchive()') >= 0, 'app.html 建议器内「去归档」入口保留（sgGoArch → openArchive）')
     assert(appSrc.indexOf("rpc('notes-archive-preview', {})") >= 0, 'app.html 预览走 notes-archive-preview')
     assert(appSrc.indexOf('归档预览') >= 0 && appSrc.indexOf('arch-list') >= 0 && appSrc.indexOf('arch-members') >= 0, 'app.html 预览对话框结构（组列表+成员明细）')
     assert(appSrc.indexOf('归档所选（') >= 0 && appSrc.indexOf('手动笔记不受影响；如需合并手动笔记，点侧栏底部「选择」勾选多条后，点底部操作条的「合并」。') >= 0, 'app.html 确认计数 + 手动笔记提示（0.4.6-D 指向底部操作条）')
@@ -95,13 +97,13 @@ module.exports = {
     assert(appSrc.indexOf('.selbar{') >= 0 && appSrc.indexOf('.arch-list{') >= 0, 'app.html selbar/arch 样式')
   })
   await t('原型 notes-ui-v2.html 硬性同步：归档按钮 tooltip + 预览对话框 + 多选操作条 + mock 归档 RPC', () => {
-    assert(protoV2Src.indexOf('id="btnArchive"') >= 0 && protoV2Src.indexOf('速记 = 划选文字松手弹出的快速记录（暂存）；点按弹出预览，勾选后把同一会话的速记归并成一篇正式笔记（可撤销）') >= 0, '原型速记合并按钮 tooltip 引导文案同步（notes-034-batch3 改名；0.4.5-D 首句微调；0.4.6-D 补速记概念）')
+    assert(protoV2Src.indexOf('id="btnArchive"') < 0 && protoV2Src.indexOf('id="sgGoArch"') >= 0, '原型顶栏速记合并按钮同步撤除 + 建议器内「去归档」入口保留（0.4.7-B②a）')
     assert(protoV2Src.indexOf('归档预览') >= 0 && protoV2Src.indexOf('arch-list') >= 0 && protoV2Src.indexOf('归档所选（') >= 0, '原型归档预览对话框示意同步')
     assert(protoV2Src.indexOf('id="btnSelMode"') >= 0 && protoV2Src.indexOf('id="selbar"') >= 0 && protoV2Src.indexOf('selbarN') >= 0, '原型多选合并操作条示意同步')
     for (const m of ['notes-archive-preview', 'notes-archive-undo']) assert(protoV2Src.indexOf("method === '" + m + "'") >= 0, '原型 mock 含 ' + m)
     assert(protoV2Src.indexOf('_mockArchUndo') >= 0, '原型 mock undo 事务（只保留最近一次）')
     // 原型与 app.html 的归档/多选 UI 标记双端一致（共享 CSS 选择器与 DOM id）
-    for (const k of ['arch-row', 'arch-check', 'arch-member', 'pick-check', 'selbar', 'btnArchive', 'btnSelMode', 'mergeTitle']) {
+    for (const k of ['arch-row', 'arch-check', 'arch-member', 'pick-check', 'selbar', 'btnSelMode', 'mergeTitle']) {   /* 0.4.7-B②a：btnArchive 随顶栏按钮撤除出列 */
       assert(protoV2Src.indexOf(k) >= 0 && appSrc.indexOf(k) >= 0, '归档/多选 UI 标记双端一致：' + k)
     }
   })

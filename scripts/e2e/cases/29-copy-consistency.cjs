@@ -47,8 +47,10 @@ module.exports = {
           }))
         H.t('自动保存刷新「更新」时间戳（陈旧哨兵被覆盖）', true)
 
-        /* ④ 归档预览：幽灵「右键合并」清零 + 指向底部操作条 + 空态速记概念解释 */
-        await page.click('#btnArchive')
+        /* ④ 归档预览：幽灵「右键合并」清零 + 指向底部操作条 + 空态速记概念解释
+           0.4.7-B②a：顶栏「速记合并」按钮已撤——预览弹窗入品 = 建议器速记组段「去归档」（0 组时隐藏）；
+           本例断言弹窗内文案（入口链路归用例㊚），经页面内全局函数直开（openArchive 为 app.html 顶层函数） */
+        await page.evaluate(() => openArchive())
         await page.waitForSelector('#modalHost .modal-t', { timeout: 8000 })
         await H.waitFor(page, '归档预览空态落定', async p =>
           p.evaluate(() => document.querySelector('#modalHost').textContent.indexOf('没有可归档的速记组') >= 0))
@@ -56,8 +58,7 @@ module.exports = {
         H.t('归档预览手动合并提示指向底部操作条「合并」（幽灵右键清零）',
           archTxt.indexOf('底部操作条的「合并」') >= 0 && archTxt.indexOf('右键合并') < 0, () => archTxt.slice(-120))
         H.t('归档空态补速记概念解释（速记 = 划选快速记录暂存）', archTxt.indexOf('速记 = 划选文字松手弹出的快速记录卡片产生的暂存笔记') >= 0)
-        H.t('顶栏「速记合并」tooltip 概念前置', await page.evaluate(() =>
-          document.querySelector('#btnArchive').title.indexOf('速记 = 划选文字松手弹出的快速记录') >= 0))
+        H.t('顶栏「速记合并」按钮已撤（0.4.7-B②a）', await page.evaluate(() => !document.querySelector('#btnArchive')))
         await page.click('#archCancel')
         await H.waitFor(page, '归档预览关闭', async p =>
           p.evaluate(() => document.querySelector('#modalHost').textContent === ''))

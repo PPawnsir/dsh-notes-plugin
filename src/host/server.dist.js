@@ -205,9 +205,9 @@
     // ==== when-suggest END ====
 
     // ==== conflict-check BEGIN ====（0.4.5-G 约定体检 notes-045-conflict-check：server.js 与 server.dist.js 本块逐字节一致，check 节 90 看守）
-    // notes-conflict-check {} → LLM 对全部注入中约定（inject=true && injectRole=convention && !deleted）两两检测冲突/被取代对，返回 { ok, pairs:[{aId,bId,aTitle,bTitle,relation,reason}], total }。
+    // notes-conflict-check {} → LLM 对全部注入中约定（inject=true && injectRole=convention && !deleted && status!=='superseded'（0.4.7-A③））两两检测冲突/被取代对，返回 { ok, pairs:[{aId,bId,aTitle,bTitle,relation,reason}], total }。
     // 只提名不执行：本通道零写入——「标已取代」裁决动作由 client 走既有 notes-update status='superseded'；敏感笔记正文打码后才进 prompt（maskSensitiveBody，llm/conflict.js 内）；
-    //   <2 条约定 → { ok, pairs: [] } 零 LLM 调用；LLM 不可用/未配置/超时（8s）/输出非合法 JSON → { error }（client 内联回显，不阻断面板）。
+    //   <2 条约定 → { ok, pairs: [] } 零 LLM 调用；LLM 不可用/未配置/超时（120s，0.4.7-A⑨）/输出非合法 JSON → { error }（client 内联回显，不阻断面板）。
     disposers.push(handle('notes-conflict-check', async (args) => {
       try { return await _conflictCheck(args || {}) } catch (e) { return { error: String(e.message || e) } }
     }))

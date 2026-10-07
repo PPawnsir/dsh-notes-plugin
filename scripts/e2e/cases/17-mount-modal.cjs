@@ -1,6 +1,8 @@
 'use strict'
-/* 0.4.3 验收修复⑪ 用例⑰：详情三态切「资料」→ 弹 whenToUse 挂载框（LLM 缺位回退预填标题）→ 取消零副作用 / 确认落行+翻档。
- * 链路锁：modal-first（不先静默翻转）→ injMountSkip = 不挂载不翻 inject；injMountSave = notes-mount（host 单点收口翻 reference）→ 树行 bolt 徽章 + 注入管理行资料档。
+/* 0.4.3 验收修复⑪ 用例⑰：详情三态切「资料」→ 弹 whenToUse 挂载框（LLM 缺位回退预填标题）→ Esc 取消零副作用 / 确认落行+翻档。
+ * 链路锁：modal-first（不先静默翻转）→ 取消（Esc/遮罩）= 不挂载不翻 inject；injMountSave = notes-mount（host 单点收口翻 reference）→ 树行 bolt 徽章 + 注入管理行资料档。
+ * 0.4.7-B④b（notes-047-ux）：本入口（角色切换在途）跳过钮语义改为「仅切换角色，暂不挂载」——零副作用口径改由 Esc/遮罩承接
+ *   （跳过档第三岔行为级锁见用例㊳ 38-ux-047b：跳过=切资料档 + notes-mount 零调用）。
  * 隔离纪律：用例自带新建笔记（e2e 各用例共享 mock host 状态，种子笔记 A 已被用例⑪置为约定档——不复用）。 */
 module.exports = {
   name: '⑰ 设为资料弹 whenToUse 挂载框：取消零副作用 / 确认落行翻档',
@@ -27,9 +29,10 @@ module.exports = {
         await H.waitFor(page, '挂载框预填非空（回退标题）', async p =>
           p.evaluate(() => { var ta = document.querySelector('#injMountWhen'); return ta && ta.value.trim().length > 0 }))
         H.t('挂载框预填文案非空（LLM 缺位回退标题路径）', true)
-        /* 取消（跳过）= 零副作用：不挂载不翻 inject（树行无 bolt 徽章） */
-        await page.click('#injMountSkip')
-        await H.waitFor(page, '跳过后挂载框关闭', async p => p.evaluate(() => !document.querySelector('#injMountWhen')))
+        /* 取消（Esc）= 零副作用：不挂载不翻 inject（树行无 bolt 徽章）。
+           0.4.7-B④b：跳过钮语义已改「仅切换角色，暂不挂载」（onSkip 第三岔）——取消零副作用口径 = Esc/遮罩 */
+        await page.keyboard.press('Escape')
+        await H.waitFor(page, 'Esc 后挂载框关闭', async p => p.evaluate(() => !document.querySelector('#injMountWhen')))
         await H.sleep(1200)   // 越过 900ms 自动保存窗口（若有误翻转会在此落盘并刷新出徽章）
         const boltAfterCancel = await boltCount()
         H.t('取消零副作用：树行无注入 bolt 徽章（未翻 inject）', boltAfterCancel === 0, () => '实得徽章数 ' + boltAfterCancel)

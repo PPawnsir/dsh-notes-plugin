@@ -1,3 +1,54 @@
+/* ===== 0.4.7-B②b（notes-047-ux）meta 行动区封板：动作总数 > META_ACT_MAX 时中段收进「…」溢出菜单 =====
+   规则：头 3 个（整理/派发/来源）+ 尾 2 个图标动作（置顶/删除，高频且既有断言锚 #mPin/#mDel 恒见）直出；
+   中段（历史/导出等）按原相对顺序入菜单。≤5 个动作 = 全直出零菜单（常态零变化）。
+   metaActsSplit 为纯函数（client panels/panel/editor.js 同文一份，check 锚定双端一致） */
+var META_ACT_MAX = 5;
+function metaActsSplit(keys) {
+  if (keys.length <= META_ACT_MAX) return { inline: keys, overflow: [] };
+  return { inline: keys.slice(0, 3).concat(keys.slice(keys.length - 2)), overflow: keys.slice(3, keys.length - 2) };
+}
+/* meta 行动区 HTML：动作段原位构建（id 不变 → 既有 onclick 接线零改动），溢出段搬进菜单容器 */
+function metaActsHtml(n) {
+  var acts = {
+    /* 二期 ✨整理：AI 按当前 kind 模板重写正文（notes-ai-organize；替换后 toast 可撤销一次）；0.4.7-B⑥：整理中 spinner + 禁用态 */
+    organize: '<span class="meta-act organize-btn' + (organizing ? ' busy' : '') + '" id="mOrganize" title="' + (organizing ? t('meta.organizingTip') : t('meta.organizeTip', { kind: kindLabel(edNote.kind) || t('meta.kindNote') })) + '">' + (organizing ? '<span class="org-spin"></span>' : icon('i-sparkle')) + (organizing ? t('meta.organizing') : t('meta.organize')) + '</span>',
+    dispatch: '<span class="meta-act" id="mDispatch" title="' + t('meta.dispatchTip') + '">' + icon('i-play') + t('meta.dispatch') + '</span>',
+    src: n.sessionId ? '<span class="meta-act" id="mSrc" title="' + t('meta.sourceTip') + '">' + icon('i-ext') + t('meta.source') + '</span>' : null,
+    /* 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数） */
+    hist: (histCount || 0) > 0 ? '<span class="meta-act" id="mHist" title="' + t('meta.histTip', { n: histCount }) + '">' + icon('i-clock') + t('meta.history') + '</span>' : null,
+    /* 0.4.5-F（notes-045-export-one）：一键导出单篇 MD（Blob 浏览器下载，零新 RPC；正文原样） */
+    export: '<span class="meta-act" id="mExport" title="' + t('meta.exportTip') + '">' + icon('i-down') + t('meta.export') + '</span>',
+    pin: '<span class="meta-act' + (isPinned(n) ? ' on' : '') + '" id="mPin" title="' + (isPinned(n) ? t('meta.unpin') : t('meta.pin')) + '">' + icon('i-pin') + '</span>',
+    del: '<span class="meta-act danger" id="mDel" title="' + t('meta.delTip') + '">' + icon('i-trash') + '</span>'
+  };
+  var keys = ['organize', 'dispatch'];
+  if (n.sessionId) keys.push('src');
+  if ((histCount || 0) > 0) keys.push('hist');
+  keys.push('export', 'pin', 'del');
+  var split = metaActsSplit(keys);
+  var h = split.inline.map(function (k) { return acts[k] }).join('');
+  if (split.overflow.length) {
+    h += '<span class="meta-more-wrap" id="mActsMoreWrap"><span class="meta-act meta-more" id="mActsMore" role="button" tabindex="0" title="' + t('meta.actsMoreTip') + '" aria-label="' + t('meta.actsMoreTip') + '">…</span>'
+      + '<span class="meta-more-menu" id="mActsMenu" style="display:none">' + split.overflow.map(function (k) { return acts[k] }).join('') + '</span></span>';
+  }
+  return h;
+}
+/* 溢出菜单外点收拢：document 级委托一次性挂载（renderMeta 重建菜单不受影响） */
+var metaActsDocBound = false;
+function metaActsBindOnce() {
+  if (metaActsDocBound) return;
+  metaActsDocBound = true;
+  document.addEventListener('click', function (ev) {
+    var m = $('mActsMenu'); if (!m || m.style.display === 'none') return;
+    var w = $('mActsMoreWrap'); if (w && w.contains(ev.target)) return;
+    m.style.display = 'none';
+  });
+}
+/* 0.4.7-B④a（R2 漏网 n-mux79knmfjxt）：三态 ⓘ tooltip 文案 = 三档原生 title 同文合成（单一文案源防漂移；触屏/键盘点击 toast 同文可达）；
+   分段符走 common.listSep（zh、/ en ", "）——client panels/panel/editor.js 同文一份 */
+function roleInfoTip() {
+  return t('meta.roleOff') + ' = ' + t('meta.roleOffTip') + t('common.listSep') + t('tree.roleConvention') + ' = ' + t('meta.roleConventionTip') + t('common.listSep') + t('tree.roleReference') + ' = ' + t('meta.roleReferenceTip');
+}
 function renderCrumb() {
   var n = edNote; if (!n) return;
   /* 面包屑文件夹段（notes-nested-folder-ui）：「父/子/孙」路径；0.4.3⑦ 文件视图拆除后点击 = 树内展开该文件夹（含祖先链），不切视图 */
@@ -37,7 +88,9 @@ function renderMeta() {
       : '<span class="meta-chip role-seg" id="mRole">' + icon('i-bolt')
       + '<span class="seg' + (role === 'off' ? ' on' : '') + '" data-role="off" title="' + t('meta.roleOffTip') + '">' + t('meta.roleOff') + '</span>'
       + '<span class="seg' + (role === 'convention' ? ' on' : '') + '" data-role="convention" title="' + t('meta.roleConventionTip') + '">' + t('tree.roleConvention') + '</span>'
-      + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="' + t('meta.roleReferenceTip') + '">' + t('tree.roleReference') + '</span></span>')
+      + '<span class="seg' + (role === 'reference' ? ' on' : '') + '" data-role="reference" title="' + t('meta.roleReferenceTip') + '">' + t('tree.roleReference') + '</span>'
+      /* 0.4.7-B④a：三态旁可见 ⓘ（tooltip=三档 title 合成同文；tabindex+role=button 键盘可达，点击/Enter 另 toast 同文兜底触屏） */
+      + '<span class="role-info" id="mRoleInfo" tabindex="0" role="button" title="' + roleInfoTip() + '" aria-label="' + roleInfoTip() + '">ⓘ</span></span>')
     + (role !== 'off' ? '<span class="scope-wrap" id="scopeWrap"><span class="meta-chip" id="scopeTrig" title="' + t('meta.scopeTip') + '">' + esc(injectScopeLabel(n.injectTo)) + ' ▾</span><div id="scopePanelHost"></div></span>' : '')
     + '<span class="meta-chip tgl' + (n.sensitive === true ? ' on' : '') + '" id="mSens" title="' + t('meta.sensTip') + '">' + icon('i-lock') + t('meta.sens') + '</span>'
     /* 0.4.4-D hidden chip（eye 图标）：隐藏中=列表/树不显示（跳转与搜索打开不受影响）；点击切回 */
@@ -54,16 +107,8 @@ function renderMeta() {
     + '<span class="tip" id="richTip">' + t('meta.richDegradedShort') + '</span>'
     + '</span>'
     + '<span class="kbd">Ctrl+/</span>'
-    /* 二期 ✨整理：AI 按当前 kind 模板重写正文（notes-ai-organize；替换后 toast 可撤销一次） */
-    + '<span class="meta-act organize-btn' + (organizing ? ' busy' : '') + '" id="mOrganize" title="' + (organizing ? t('meta.organizingTip') : t('meta.organizeTip', { kind: kindLabel(edNote.kind) || t('meta.kindNote') })) + '">' + icon('i-sparkle') + (organizing ? t('meta.organizing') : t('meta.organize')) + '</span>'
-    + '<span class="meta-act" id="mDispatch" title="' + t('meta.dispatchTip') + '">' + icon('i-play') + t('meta.dispatch') + '</span>'
-    + (n.sessionId ? '<span class="meta-act" id="mSrc" title="' + t('meta.sourceTip') + '">' + icon('i-ext') + t('meta.source') + '</span>' : '')
-    /* 历史版本面板入口（notes-history-ui）：有版本时才显示（选中笔记后 notes-history 探测计数） */
-    + ((histCount || 0) > 0 ? '<span class="meta-act" id="mHist" title="' + t('meta.histTip', { n: histCount }) + '">' + icon('i-clock') + t('meta.history') + '</span>' : '')
-    /* 0.4.5-F（notes-045-export-one）：一键导出单篇 MD（Blob 浏览器下载，零新 RPC；正文原样） */
-    + '<span class="meta-act" id="mExport" title="' + t('meta.exportTip') + '">' + icon('i-down') + t('meta.export') + '</span>'
-    + '<span class="meta-act' + (isPinned(n) ? ' on' : '') + '" id="mPin" title="' + (isPinned(n) ? t('meta.unpin') : t('meta.pin')) + '">' + icon('i-pin') + '</span>'
-    + '<span class="meta-act danger" id="mDel" title="' + t('meta.delTip') + '">' + icon('i-trash') + '</span>'
+    /* meta 行动区（0.4.7-B②b 封板）：有序动作组 → metaActsSplit 分直出/「…」溢出菜单（动作相对顺序不动，仅收纳） */
+    + metaActsHtml(n)
     + spHtml;
   $('kindSel').onchange = function () { edNote.kind = this.value; triggerSave(); renderMeta(); renderTree() };
   $('statusSel').onchange = function () { edNote.status = this.value; triggerSave(); renderMeta(); renderTree() };
@@ -78,23 +123,19 @@ function renderMeta() {
          确认 = 弹层内 notes-mount 单点收口（落索引行 + host 同步翻 reference 档）→ onConfirm 回填编辑器三态并保存 */
       if (r === 'reference') {
         /* ⑫ 收尾对齐：开弹层前查 notes-mount-list 取 existing（client editor 同款）——已挂载进编辑模式预填现文案，非草稿观感；查询失败静默回退草稿 */
+        /* 0.4.7-B④b（R2 漏网 n-mux79knmfjxt）：挂载框三岔——确认=挂载+切档（onConfirm）/「仅切换角色，暂不挂载」=切档不落索引行（onSkip）/Esc·遮罩·取消=零副作用不切换 */
+        var flipRef = function () {
+          edNote.inject = true; edNote.injectRole = 'reference';
+          if (!sessList.length) pullSessions();
+          scopeOpen = true;
+          triggerSave(); renderMeta();
+          toast(t('meta.injectOn', { role: t('tree.roleReference') }));
+        };
         rpc('notes-mount-list', {}).then(function (ml) {
           var line = ((ml && ml.lines) || []).filter(function (l) { return l.id === n.id })[0]
-          openMountModal({ id: n.id, title: n.title, existing: line ? line.when : undefined }, function () {
-            edNote.inject = true; edNote.injectRole = 'reference';
-            if (!sessList.length) pullSessions();
-            scopeOpen = true;
-            triggerSave(); renderMeta();
-            toast(t('meta.injectOn', { role: t('tree.roleReference') }));
-          })
+          openMountModal({ id: n.id, title: n.title, existing: line ? line.when : undefined }, flipRef, flipRef)
         }).catch(function () {
-          openMountModal({ id: n.id, title: n.title }, function () {
-            edNote.inject = true; edNote.injectRole = 'reference';
-            if (!sessList.length) pullSessions();
-            scopeOpen = true;
-            triggerSave(); renderMeta();
-            toast(t('meta.injectOn', { role: t('tree.roleReference') }));
-          })
+          openMountModal({ id: n.id, title: n.title }, flipRef, flipRef)
         });
         return;
       }
@@ -117,6 +158,21 @@ function renderMeta() {
   var dBadge = $('mDispBadge');
   if (dBadge) dBadge.onclick = function () { var host = $('dispHost'); if (!host) return; host.dataset.open = '1'; renderDispatches(); try { host.scrollIntoView({ block: 'nearest' }) } catch (e) {} };
   $('mOrganize').onclick = function () { if (!organizing) openOrganizeInstruct() };   /* 0.4.4-F：先弹追加指令引导卡（确认才进 doAiOrganize；取消零副作用） */
+  /* 0.4.7-B④a：三态 ⓘ——点击/Enter/Space toast 同文（触屏/键盘可达；悬停原生 title 不变）；
+     stopPropagation：元素可聚焦后 Enter/Space 不得再冒泡到 document 列表导航（keyboard.js Enter=打开焦点行） */
+  var roleInfoEl = $('mRoleInfo');
+  if (roleInfoEl) {
+    roleInfoEl.onclick = function () { toast(roleInfoTip()) };
+    roleInfoEl.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); toast(roleInfoTip()) } };
+  }
+  /* 0.4.7-B②b：行动区溢出菜单——触发钮开合（点击/Enter/Space）+ 点菜收拢 + 外点收拢（document 委托一次性挂载） */
+  var actsMoreEl = $('mActsMore');
+  if (actsMoreEl) {
+    metaActsBindOnce();
+    actsMoreEl.onclick = function (ev) { ev.stopPropagation(); var m = $('mActsMenu'); if (m) m.style.display = m.style.display === 'none' ? 'flex' : 'none' };
+    actsMoreEl.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); actsMoreEl.click() } };
+    $('mActsMenu').addEventListener('click', function () { $('mActsMenu').style.display = 'none' });
+  }
   var src = $('mSrc');
   if (src) src.onclick = function () { toast(t('meta.sourceToast', { short: shortSid(edNote.sessionId), full: edNote.sessionId })) };
   /* 历史版本面板入口（无版本时入口不渲染，需守卫） */

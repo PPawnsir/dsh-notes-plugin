@@ -32,9 +32,10 @@ module.exports = {
     assert(appEd.indexOf("$('edRich').contentEditable = pend ? 'false' : 'true';") >= 0, 'fillEdBody 在途窗锁编辑缺失')
   })
   await t('0.4.6-A app：同步点在途窗转「加载中」不冒绿（setSyncStatus + renderEd 初态双点位）', () => {
-    assert(appEd.indexOf("pill.className = 'sync' + (pend || editing ? '' : ' ok');") >= 0, 'setSyncStatus 在途窗去绿缺失')
-    assert(appEd.indexOf("$('syncTxt').textContent = pend ? t('editor.bodySyncing')") >= 0, 'setSyncStatus 加载中文案缺失')
-    assert(appEd.indexOf("'<span class=\"sync' + ((edBodyPending() || richDirty) ? '' : ' ok')") >= 0, 'renderEd 同步点初态在途窗判定缺失')
+    /* 0.4.7-C ②a 同构扩展：edBodyErr 在窗时统一红点「加载失败」分支优先于在途/绿态（锚文本含 err 分支前缀，在途语义不变） */
+    assert(appEd.indexOf("pill.className = 'sync' + (edBodyErr ? ' err' : (pend || editing ? '' : ' ok'));") >= 0, 'setSyncStatus 在途窗去绿缺失（0.4.7-C err 分支前缀须在）')
+    assert(appEd.indexOf("$('syncTxt').textContent = edBodyErr ? t('editor.syncFailed') : pend ? t('editor.bodySyncing')") >= 0, 'setSyncStatus 加载中文案缺失（0.4.7-C 失败文案分支须在）')
+    assert(appEd.indexOf("'<span class=\"sync' + (edBodyErr ? ' err' : ((edBodyPending() || richDirty) ? '' : ' ok'))") >= 0, 'renderEd 同步点初态在途窗判定缺失（0.4.7-C err 初态分支须在）')
   })
   await t('0.4.6-A app：refreshLoadErrUI 富文本在途窗同步锁编辑（R-1 错误锁定语义不动）+ switchMode 在途窗守卫', () => {
     assert(appEd.indexOf("rich.contentEditable = (locked || edBodyPending()) ? 'false' : 'true';") >= 0, 'refreshLoadErrUI 在途窗锁定缺失')
@@ -50,7 +51,8 @@ module.exports = {
     assert(exits >= 2, 'loadEdBody 出窗写入须 ≥2 处（then 落定 + catch 异常；实得 ' + exits + '）')
   })
   await t('0.4.6-A client：同步点在途窗不冒绿 + 富文本在途窗锁编辑', () => {
-    assert(cliEd.indexOf("className: 'dsh-notes-rtb-sync' + ((edBodyPending || richSyncing) ? '' : ' ok')") >= 0, 'client 同步点在途窗去绿缺失')
+    /* 0.4.7-C ②a 同构扩展：edLoadErr 在窗时统一红点「加载失败」分支优先（锚文本含 err 分支前缀，在途语义不变） */
+    assert(cliEd.indexOf("className: 'dsh-notes-rtb-sync' + (edLoadErr ? ' err' : ((edBodyPending || richSyncing) ? '' : ' ok'))") >= 0, 'client 同步点在途窗去绿缺失（0.4.7-C err 分支前缀须在）')
     assert(cliEd.indexOf("edBodyPending ? tt('editor.bodySyncing')") >= 0, 'client 同步点加载中文案缺失')
     assert(cliEd.indexOf("contentEditable: (edLoadErr || edBodyPending) ? false : true") >= 0, 'client 富文本在途窗锁编辑缺失')
   })

@@ -1,7 +1,7 @@
-/* ================= 顶栏：刷新 / 归档 / 主题 ================= */
+/* ================= 顶栏：刷新 / 建议 / 主题 ================= */
 /* 刷新假阳性修复（R-2）：等 loadNotes 真实结果——失败（res.error/网络异常）时 loadNotes 已弹「列表加载失败」，这里不再无条件报喜 */
+/* 0.4.7-B②a（notes-047-ux）：顶栏「速记合并」按钮撤除（与建议器首段「速记组 → 去归档」入口重复）——归档预览入口保留在建议器内 */
 $('btnRefresh').addEventListener('click', function () { searchIds = null; var p = loadNotes(); if (sessList.length) pullSessions(); p.then(function (ok) { if (ok) toast(t('common.refreshed')) }) });
-$('btnArchive').addEventListener('click', openArchive);
 /* 0.4.6-C（notes-046-ux-discovery）：顶栏「建议」入口（计数徽标 #suggestBd 由 modals/suggest.js renderSuggestBadge 驱动）；
    启动即拉一次计数（notes-suggest dry-run 零写入），后续随 loadNotes 链尾节流刷新（kernel/data.js） */
 $('btnSuggest').addEventListener('click', function () { openSuggest() });
@@ -14,7 +14,6 @@ $('btnSelMode').addEventListener('click', function () { selMode = !selMode; selI
 function renderChrome() {
   $('topSub').textContent = t('topbar.subtitle');
   $('btnRefresh').title = t('topbar.refreshTip'); $('btnRefresh').querySelector('.tb-t').textContent = t('topbar.refresh');
-  $('btnArchive').title = t('topbar.archiveTip'); $('btnArchive').querySelector('.tb-t').textContent = t('topbar.archive');
   $('btnSuggest').querySelector('.tb-t').textContent = t('topbar.suggest');   /* 0.4.6-C：title 由 renderSuggestBadge 按计数态写（suggestTip/suggestTipN） */
   renderSuggestBadge();
   $('btnTheme').title = t('topbar.themeTip'); $('btnTheme').querySelector('.tb-t').textContent = t('topbar.theme');

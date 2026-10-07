@@ -99,6 +99,11 @@ function renderSchedModelSel() {
   box.innerHTML = '<select class="minput sched-sel" id="dSchedModel" title="' + esc(t('disp.schedModelTip', { model: dState.schedModel || t('disp.schedModelDefault') })) + '">' + opts + '</select>';
   $('dSchedModel').onchange = function () { dState.schedModel = this.value };
 }
+/* 0.4.7-B⑤：无界面提示行显隐收敛点（勾选专属会话 + 非「仅一次」才显示——与模型/权限下拉同口径联动） */
+function renderSchedNewHint() {
+  var h = $('dSchedNewHint'); if (!h || !dState) return;
+  h.style.display = (dState.schedNew && dState.schedMode !== 'once') ? '' : 'none';
+}
 function pullActiveSessions() {
   rpc('notes-active-sessions', {}).then(function (res) {
     if (!res || !dState) return;
@@ -141,6 +146,8 @@ function renderDispatchModal() {
     + '<div class="sched-next" id="dSchedNext"></div>'
     /* 专属会话（0.4.4-B）：周期模式可勾 target='new'——首轮触发 host 自动创建「定时 · 任务名」会话并回写复用；仅一次（at）无复用场景不提供 */
     + '<label class="sched-opt" id="dSchedNewBox"' + (dState.schedMode === 'once' ? ' style="display:none"' : '') + '><input type="checkbox" id="dSchedNew"' + (dState.schedNew ? ' checked' : '') + '> ' + t('disp.schedNew') + '</label>'
+    /* 0.4.7-B⑤（notes-047-ux）：专属会话无界面提示行（实测教训：专属会话无 browser_* 等 GUI 附着工具）——勾选即见 */
+    + '<div class="sched-new-hint" id="dSchedNewHint"' + (dState.schedNew && dState.schedMode !== 'once' ? '' : ' style="display:none"') + '>' + t('disp.schedNewHint') + '</div>'
     /* 专属会话模型下拉宿主（0.4.6-G）：勾选专属会话且清单非空才显示（renderSchedModelSel 驱动，静默降级） */
     + '<span id="dSchedModelBox" style="display:none"></span>'
     /* 专属会话权限下拉宿主（0.4.7）：勾选专属会话即显示（renderSchedPresetSel 驱动，无清单依赖常显） */
@@ -170,9 +177,10 @@ function renderDispatchModal() {
     if (this.value === 'once' && dState.schedNew) { dState.schedNew = false; $('dSchedNew').checked = false; $('dispSessHostWrap').style.display = ''; }
     renderSchedModelSel();   /* 0.4.6-G：模式切换联动模型下拉显隐（仅一次无专属会话 → 同隐） */
     renderSchedPresetSel();   /* 0.4.7：模式切换联动权限下拉显隐（同模型下拉口径） */
+    renderSchedNewHint();   /* 0.4.7-B⑤：提示行同口径联动 */
     renderSchedNext();
   };
-  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; renderSchedModelSel(); renderSchedPresetSel(); };   /* 0.4.6-G：勾选专属会话才出模型下拉；0.4.7：同出权限下拉 */
+  $('dSchedNew').onchange = function () { dState.schedNew = this.checked; $('dispSessHostWrap').style.display = this.checked ? 'none' : ''; renderSchedModelSel(); renderSchedPresetSel(); renderSchedNewHint(); };   /* 0.4.6-G：勾选专属会话才出模型下拉；0.4.7：同出权限下拉；0.4.7-B⑤：同出无界面提示行 */
   $('dSchedN').oninput = function () { dState.schedN = this.value; renderSchedNext() };
   $('dSchedDow').onchange = function () { dState.schedDow = parseInt(this.value, 10); renderSchedNext() };
   $('dSchedAnchor').oninput = function () { dState.schedAnchor = this.value; renderSchedNext() };
@@ -180,6 +188,7 @@ function renderDispatchModal() {
   renderSchedNext();
   renderSchedModelSel();   /* 0.4.6-G：编辑模式回填/缓存清单就位时首轮渲染 */
   renderSchedPresetSel();   /* 0.4.7：权限下拉首轮渲染（预填态就位） */
+  renderSchedNewHint();   /* 0.4.7-B⑤：提示行首轮渲染（编辑态回填 schedNew 情形；markup 内联初态同款口径双保险） */
   renderDispatchSessList();
 }
 function renderDispatchSessList() {

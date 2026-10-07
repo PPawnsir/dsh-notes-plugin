@@ -4,6 +4,8 @@
 //   文件夹收起时树内容过短 → 无滚动条 → 滚动加载永不触发 → 窗口外条目无途径够到（反馈 n-muxyj3zodvf3 实证死锁）；
 //   新模型 = 分组各自分页（groupShown state + kernel/constants.js group-paging 纯函数核 + renderMoreRow 组尾按钮行），
 //   组内 cap PAGE_SIZE=50 性能闸保留（总渲染量 = Σ min(组命中, 50)，小库≈全量，与 app 端恒全量口径收敛）。
+// 0.4.7-D2（notes-047-panel-e2e-migrate）：④⑤ 行为级/边界 eval 探针退役，迁 e2e 真机用例㉞㊱（逐条映射见本节末尾块注）；
+//   本节余量 = ①结构锚 + ②退役锚 + ③sysKids 序位源锚（8 条）。
 module.exports = {
   id: "1.5",
   title: "1.5 T1.2 列表分组懒加载分页（0.4.6-J：四组同构 + 组尾加载行）",
@@ -66,87 +68,21 @@ module.exports = {
     assert(iSlice >= 0 && iConcat > iSlice, '分页 slice 先于 sys concat')
   })
 
-  // ===== ④ 行为级：eval group-paging 纯函数核 + renderMoreRow 真码（e 打桩记录元素；tt 走真实 zh 字典插值）=====
-  const blk = clientSrc.match(/\/\/ ==== group-paging BEGIN ====[\s\S]*?\/\/ ==== group-paging END ====/)[0]
-  const moreBlk = clientSrc.match(/\/\/ ==== more-row BEGIN ====([\s\S]*?)\/\/ ==== more-row END ====/)[1]
-  const zhDict = new Function(fsNative.readFileSync(path.join(DIR, 'src', 'i18n', 'zh.js'), 'utf8') + '\nreturn I18N_ZH')()
-  const mkSandbox = () => {
-    const e = (type, props, ...kids) => ({ type: type, props: props || {}, kids: kids })
-    const tt = (k, params) => { let s = zhDict[k] || k; for (const kk of Object.keys(params || {})) s = s.split('{' + kk + '}').join(String(params[kk])); return s }
-    return new Function('e', 'tt', 'PAGE_SIZE',
-      blk + '\n' + moreBlk + '\n' +
-      'var groupShown = {}\n' +
-      'var setGroupShown = function (up) { groupShown = typeof up === "function" ? up(groupShown) : up }\n' +
-      'return { get: function () { return groupShown }, setGroupShown: setGroupShown, groupShownOf: groupShownOf, groupPage: groupPage, groupMoreCount: groupMoreCount, groupPageNext: groupPageNext, renderMoreRow: renderMoreRow }'
-    )(e, tt, 50)
-  }
-  const mkNotes = (n, p) => Array.from({ length: n }, (_, i) => ({ id: (p || 'n') + i }))
-  await t('组内分页行为级：60 条同夹 → 首屏 50 + 组尾「还有 10 条」→ 点击 → 60 全渲染 + 行消失', () => {
-    const g = mkSandbox()
-    const kids60 = mkNotes(60)
-    assert.strictEqual(g.groupShownOf(g.get(), 'f1'), 50, '缺省显示数 = PAGE_SIZE')
-    assert.strictEqual(g.groupPage(kids60, g.get(), 'f1').length, 50, '首屏渲染 50 条')
-    const row = g.renderMoreRow('f1', 60)
-    assert(row && row.props.className === 'dsh-notes-more-row', '组尾加载行渲染（命中 60 > 显示 50）')
-    assert.strictEqual(row.kids[0], '加载更多（还有 10 条）', '文案 = 真实 zh 字典插值（实得 ' + row.kids[0] + '）')
-    row.props.onClick()   // 点击 → 该组显示数 += PAGE_SIZE
-    assert.strictEqual(g.get().f1, 100, '点击后该组显示数 100')
-    assert.strictEqual(g.groupPage(kids60, g.get(), 'f1').length, 60, '60 条全渲染')
-    assert.strictEqual(g.renderMoreRow('f1', 60), null, '加载行消失（命中 ≤ 显示数）')
-  })
-  await t('多组独立：A 夹翻页不影响 B 夹/置顶/未入夹/主题组显示数', () => {
-    const g = mkSandbox()
-    g.setGroupShown(prev => g.groupPageNext(prev, 'fA'))
-    assert.strictEqual(g.groupShownOf(g.get(), 'fA'), 100, 'A 夹已翻页')
-    for (const key of ['fB', 'pinned', 'unfiled', 'topic:运维']) assert.strictEqual(g.groupShownOf(g.get(), key), 50, key + ' 仍缺省 50')
-  })
-  await t('过滤/搜索/视图切换重置：groupShown 归 {} → 各组回缺省 50', () => {
-    const g = mkSandbox()
-    g.setGroupShown(prev => g.groupPageNext(prev, 'fA'))
-    g.setGroupShown({})   // 重置 effect 等价语义（effect 结构锚见上）
-    assert.strictEqual(g.groupShownOf(g.get(), 'fA'), 50, '翻页态清零')
-    assert.strictEqual(g.renderMoreRow('fA', 60).kids[0], '加载更多（还有 10 条）', '重置后加载行恢复')
-  })
-  await t('四组同构行为：置顶/未入夹/主题组各自分页 + 加载行（组标识锚 + 元素 key）', () => {
-    const g = mkSandbox()
-    for (const key of ['pinned', 'unfiled', 'topic:运维']) {
-      assert.strictEqual(g.groupPage(mkNotes(60), g.get(), key).length, 50, key + ' 首屏 50')
-      const row = g.renderMoreRow(key, 60)
-      assert(row && row.props.key === 'more-' + key, key + ' 加载行元素 key')
-      assert.strictEqual(row.kids[0], '加载更多（还有 10 条）', key + ' 文案')
-    }
-  })
-  await t('sysKids 不占分页名额回归：60 命中 → 50 切片 + 3 sys 置尾 = 53 渲染行，剩余计数仍按命中全量口径', () => {
-    const g = mkSandbox()
-    const kidsAll = mkNotes(60)
-    const sysRows = [{ id: 's1' }, { id: 's2' }, { id: 's3' }]
-    const kids = g.groupPage(kidsAll, g.get(), 'f1').concat(sysRows)
-    assert.strictEqual(kids.length, 53, '渲染行 = 分页切片 50 + sys 置尾 3')
-    assert.strictEqual(g.groupMoreCount(kidsAll, g.get(), 'f1'), 10, '剩余计数按命中全量（sys 行不占名额）')
-  })
-
-  // ===== ⑤ 纯算法边界（组分页口径，与 client 同一 eval 核）=====
-  await t('分组分页边界：0 条 / 恰好 50 / 51 条 / 累进翻页 / 越界安全', () => {
-    const g = mkSandbox()
-    assert.strictEqual(g.groupPage([], g.get(), 'k').length, 0, '0 条')
-    assert.strictEqual(g.renderMoreRow('k', 0), null, '0 条无加载行')
-    const a50 = mkNotes(50)
-    assert.strictEqual(g.groupPage(a50, g.get(), 'k').length, 50, '恰好 50 条全渲染')
-    assert.strictEqual(g.groupMoreCount(a50, g.get(), 'k'), 0, '恰好 50 无剩余')
-    assert.strictEqual(g.renderMoreRow('k', 50), null, '恰好 50 无加载行')
-    const a51 = mkNotes(51)
-    assert.strictEqual(g.groupPage(a51, g.get(), 'k').length, 50, '51 条首屏 50')
-    assert.strictEqual(g.renderMoreRow('k', 51).kids[0], '加载更多（还有 1 条）', '51 条 → 还有 1 条')
-    // 累进翻页：120 条 → 100（还有 20）→ 150（越界由 slice 天然钳制，全渲染 120，行消失）
-    const a120 = mkNotes(120)
-    let gs = g.groupPageNext(g.get(), 'k')
-    assert.strictEqual(g.groupPage(a120, gs, 'k').length, 100, '一次翻页渲染 100')
-    assert.strictEqual(g.groupMoreCount(a120, gs, 'k'), 20, '还有 20 条')
-    gs = g.groupPageNext(gs, 'k')
-    assert.strictEqual(g.groupPage(a120, gs, 'k').length, 120, '二次翻页全渲染 120（显示数越界安全）')
-    assert.strictEqual(g.groupMoreCount(a120, gs, 'k'), 0, '加载行消失')
-    // 越界安全：30 条 < 缺省显示数
-    assert.strictEqual(g.groupPage(mkNotes(30), g.get(), 'k2').length, 30, '30 条越界安全')
-  })
+  // ===== ④⑤ 行为级/边界 eval 探针——0.4.7-D2（notes-047-panel-e2e-migrate）已退役并迁真机 =====
+  // 退役裁决（「真机已覆盖的 eval 退役」原则，逐条映射；原断言均为 mkSandbox e 打桩 eval，真机版严格更强——
+  // 真 React 18 渲染树 + 真实点击事件链 + 真 mock RPC + 真 zh 字典插值后的 DOM 文本）：
+  //   「组内分页行为级：60 条同夹 → 首屏 50 + 还有 10 → 点击 → 60 全渲染 + 行消失」
+  //     → e2e ㉞（34-panel-group-paging：120 条 50→100→120 全真机点击链，含边界行可见性）+ ㊱ mount A 步①②（恰 60 条同夹同款路径）
+  //   「多组独立：A 夹翻页不影响 B 夹/置顶/未入夹/主题组显示数」
+  //     → ㊱ mount A 步②④（fA/fB 双向翻页互不影响）+ mount B 步②（置顶翻页后同批笔记的钉夹仍 50）
+  //   「过滤/搜索/视图切换重置：groupShown 归 {} → 各组回缺省 50」
+  //     → ㊱ mount A 步③⑤⑥（重置 effect 三依赖面 filters/searchText/view 各一条真机腿）
+  //   「四组同构行为：置顶/未入夹/主题组各自分页 + 加载行（组标识锚 + 元素 key）」
+  //     → ㊱ mount B 步①（四组各自 50+「还有 5 条」DOM 锁）+ 步②③④（置顶/主题/未入夹真机翻页；文件夹翻页 mount A 承接）
+  //   「sysKids 不占分页名额回归：60 命中 → 50 切片 + 3 sys 置尾 = 53 渲染行，剩余计数按命中全量」
+  //     → ㊱ mount A 步⑦（真 sysKids 补拉 RPC 链：53 行 + 置尾序位 + 还有 10 条 + 夹头计数 63 含 sys）
+  //   「分组分页边界：0 条 / 恰好 50 / 51 条 / 累进翻页 / 越界安全」
+  //     → ㊱ mount B 步⑤（0/恰好 50/51/30 四夹边界 DOM 锁）+ ㉞（120 累进翻页 50→100→120）
+  // 保留：①结构锚（PAGE_SIZE/纯函数核/state/消费点/样式/原型）②退役锚（含 tree.moreRows 字典键看守）③sysKids 序位源锚——静态锚非 eval 探针，不动。
   }
 }

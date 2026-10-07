@@ -247,14 +247,15 @@ module.exports = {
       assert(pair[1].indexOf('派发：把待办笔记派给指定会话执行，完成后自动回执闭环') >= 0, pair[0] + ' 派发 一行说明')
     }
   })
-  await t('顶栏「归档」改名「速记合并」（app + 原型 + client 三端；modal 归档语义不变；0.4.5-D 再改名）', () => {
-    const TIP = '速记 = 划选文字松手弹出的快速记录（暂存）；点按弹出预览，勾选后把同一会话的速记归并成一篇正式笔记（可撤销）'   /* 0.4.6-D：tooltip 补速记概念解释（R2 n-mux7as4ppskn） */
+  await t('顶栏「速记合并」按钮（app/原型）0.4.7-B②a 撤除 + client 标题栏保留 + 建议器内入口（modal 归档语义不变）', () => {
+    /* 0.4.7-B②a（notes-047-ux）：app/原型顶栏「速记合并」按钮撤除——与建议器首段「速记组 → 去归档」入口重复，0 组也占主行动位；
+       client 面板标题栏入口保留（面板顶栏按钮少无赘肉问题）；速记概念解释文案由 arch.empty/help.archive 承接 */
     for (const pair of [['app.html', APP_SRC49], ['原型', PROTO49]]) {
-      assert(pair[1].indexOf('id="btnArchive" title="' + TIP + '"') >= 0, pair[0] + ' 按钮 tooltip 改名引导')
-      assert(pair[1].indexOf('</svg><span class="tb-t">速记合并</span></button>') >= 0, pair[0] + ' 按钮可见 label=速记合并（文字包 tb-t，notes-041-topbar-400 窄宽收图标配套；0.4.5-D 改名）')
+      assert(pair[1].indexOf('id="btnArchive"') < 0, pair[0] + ' 顶栏速记合并按钮已撤（0.4.7-B②a）')
+      assert(pair[1].indexOf('id="sgGoArch"') >= 0, pair[0] + ' 建议器首段「去归档」入口保留')
       assert(pair[1].indexOf('归档：把同一会话的速记合并成一篇') < 0, pair[0] + ' 旧 tooltip 清零')
     }
-    assert(clientSrc.indexOf("onClick: openArchive, 'data-tooltip': tt('topbar.archiveTip')") >= 0 && clientSrc.indexOf(" }, tt('topbar.archive'))") >= 0, 'client 标题栏按钮改名速记合并 + tooltip（i18n 覆盖卡A 起走 t() 字典）')
+    assert(clientSrc.indexOf("onClick: openArchive, 'data-tooltip': tt('topbar.archiveTip')") >= 0 && clientSrc.indexOf(" }, tt('topbar.archive'))") >= 0, 'client 标题栏按钮保留速记合并 + tooltip（i18n 覆盖卡A 起走 t() 字典）')
     assert(CLIENT_PKG49.indexOf("onClick: openArchive, 'data-tooltip': tt('topbar.archiveTip')") >= 0, '发布包 client 同步（build-dist 已跑）')
     assert(clientSrc.indexOf('「速记合并」：把划选快速记录产生的速记暂存归并成一篇正式笔记') >= 0, '使用说明气泡同步改名（0.4.5-D 随按钮名；0.4.6-D 补概念 + 底部按钮路径）')
   })

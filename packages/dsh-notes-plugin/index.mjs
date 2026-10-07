@@ -892,8 +892,32 @@ export function apply(ctx) {
     // 机器信息模板（✨整理 prompt 的 note kind 内容适配分支：环境/机器清单/账号/门户）
     const MACHINE_TEMPLATE = '## 环境\n\n（环境名称与说明）\n\n## 机器清单\n\n（主机名 / IP / 用途）\n\n## 账号\n\n（登录方式与账号）\n\n## 门户\n\n（门户与入口地址）\n'
     const KIND_LABELS_ZH = { note: '笔记', decision: '决策', todo: '待办', link: '链接', quote: '引用', log: '日志' }
-    const AI_ORGANIZE_MAX_CHARS = 12000   // ✨整理草稿上限（防 token 爆量）；超限报错引导分段
+    const AI_ORGANIZE_MAX_CHARS = 12000   // ✨整理草稿上限回落值（防 token 爆量）；0.4.7-B⑦ 起为「未知模型/未配置」回落档，超限报错引导分段
     const AI_ORGANIZE_INSTR_MAX_CHARS = 500   // 0.4.4-F：整理追加用户指令上限（trim 后计，超限报 error 不落 prompt）
+    // ---- 0.4.7-B⑦（notes-047-ux）模型 → 整理正文上限小表（字符）----
+    // 估算依据：整理 = 按模板重写全文，输入字符数 ≈ 输出字符数，瓶颈在模型单次「输出 token 上限」；
+    //   折算口径 ≈ 输出 token 上限 × 2 字符/token（中英混合保守）× 0.75 安全边际；超大输出窗模型实务封顶 32000（防 token 爆量本意）。
+    // 匹配 = model 名小写子串、命中第一行（先细后粗排列）；新增模型在此加行。未知模型回落 AI_ORGANIZE_MAX_CHARS。
+    const AI_ORGANIZE_MODEL_MAX = [
+      ['deepseek', 12000],    // deepseek-chat/reasoner 输出上限 8K tokens
+      ['kimi', 24000],      // kimi-k2/k3 输出上限 16K tokens 级
+      ['gpt-4o', 24000],    // 16K output
+      ['gpt-5', 32000],     // 大输出窗，实务封顶 32K
+      ['claude', 16000],    // 8K–64K 保守取档
+      ['qwen', 12000],      // 8K output
+      ['glm', 12000],       // 8K output 档
+      ['gemini', 24000],    // 16K output 档
+    ]
+    // 整理长度上限生效值（0.4.7-B⑦）：用户 settings.organizeMaxChars（>0 覆盖）优先 || 模型表（按解析出的当前模型）|| 12000 回落。
+    // 调用前须 loadSettings 就绪（organize/settings-get 两调用点均已 await）；模型解析失败/未配置 → 回落档（绝不抛错阻断）
+    function organizeMaxChars() {
+      const o = settingsCache && settingsCache.organizeMaxChars
+      if (typeof o === 'number' && isFinite(o) && o > 0) return Math.floor(o)
+      const sel = resolveLlmSelection()
+      const mid = sel && typeof sel.model === 'string' ? sel.model.toLowerCase() : ''
+      if (mid) { for (const row of AI_ORGANIZE_MODEL_MAX) { if (mid.indexOf(row[0]) >= 0) return row[1] } }
+      return AI_ORGANIZE_MAX_CHARS
+    }
     const cache = new Map()
 
     function noteFromParsed(id, p) {
@@ -2102,13 +2126,15 @@ export function apply(ctx) {
     async function _aiOrganize(args) {
       const body = args && typeof args.body === 'string' ? args.body : ''
       if (!body.trim()) return { error: '正文为空，无可整理内容' }
-      if (body.length > AI_ORGANIZE_MAX_CHARS) return { error: '正文过长（' + body.length + ' 字，上限 ' + AI_ORGANIZE_MAX_CHARS + ' 字），请分段整理' }
+      await loadSettings()
+      // 0.4.7-B⑦（notes-047-ux）：长度上限生效值 = 用户 settings.organizeMaxChars(>0) || 模型表 || 12000 回落；超限 error 文案带生效值
+      const orgMax = organizeMaxChars()
+      if (body.length > orgMax) return { error: '正文过长（' + body.length + ' 字，上限 ' + orgMax + ' 字），请分段整理' }
       const kind = KINDS.indexOf(args && args.kind) >= 0 ? args.kind : 'note'
       const title = args && typeof args.title === 'string' ? args.title.trim() : ''
       const instruction = args && typeof args.instruction === 'string' ? args.instruction.trim() : ''
       if (instruction.length > AI_ORGANIZE_INSTR_MAX_CHARS) return { error: '追加指令过长（' + instruction.length + ' 字，上限 ' + AI_ORGANIZE_INSTR_MAX_CHARS + ' 字），请精简后再试' }
       if (!llm) return { error: 'LLM 不可用（宿主无 llm 服务）' }
-      await loadSettings()
       const sel = resolveLlmSelection()
       if (!sel || !sel.provider || !sel.model) return { error: '未配置笔记 LLM 且无会话模型可跟随（可在设置卡片选配）' }
       const kindLabel = KIND_LABELS_ZH[kind] || '笔记'
@@ -2160,8 +2186,9 @@ export function apply(ctx) {
     // （与开发版 host-impl.js 双边同步，逻辑逐行一致）
     // 背景：约定多了会打架（真实事故：日志隐身约定 vs 后来的同权裁决并存）。本通道提名「疑似冲突/疑似被取代」对，
     //   人工在注入管理面板内联结果区裁决（标 A/B 已取代 = notes-update status='superseded'；保留两者 = 会话内 dismiss）。
-    // 通道：notes-when-suggest 同款 llm.stream + resolveLlmSelection（设置 LLM 优先，缺省跟随会话），temperature 0，8s Promise.race 超时。
-    // 数据集谓词（行为级断言锁定）：inject=true && injectRole=convention（缺省值等同 convention） && !deleted ——
+    // 通道：llm.stream + resolveLlmSelection（设置 LLM 优先，缺省跟随会话），temperature 0，120s Promise.race 超时（0.4.7-A⑨ 起，见常量注）。
+    // 数据集谓词（行为级断言锁定）：inject=true && injectRole=convention（缺省值等同 convention） && !deleted && status!=='superseded' ——
+    //   （0.4.7-A③ notes-047-cleanup：已废止约定不参与冲突检测——superseded 是裁决终点，再参与提名只产噪音）；
     //   _list 六参全开（含 sys：谓词即唯一选择口径，sys 降噪不在此生效）；<2 条 → { ok:true, pairs:[] } 零 LLM 调用。
     // 红线：①敏感笔记正文经 maskSensitiveBody 按行打码后才进 prompt（键留值遮，占位符引导 note_get 自取）；
     //   ②只提名不执行——本函数零写入，status 翻转只能由用户点击触发 notes-update；
@@ -2170,14 +2197,16 @@ export function apply(ctx) {
     //   故直接迭代 llm.stream 而非 streamMetered；注册面能加 conflict 键，但计量口径变更会连带 usage 报表/UI/断言面漂移，本期注释注明暂不计量）。
     // 输出容错：剥离 ```json 围栏 → JSON.parse 失败/非数组 → { error }；逐条校验——幻觉 id（不在数据集）/aId=bId/非法 relation 条目静默过滤，
     //   reason 归一空白截断 200 字；同一无序对去重（先见者留）。
-    const CONFLICT_CHECK_TIMEOUT_MS = 8000        // 与 when-suggest 同款 8s 超时
+    const CONFLICT_CHECK_TIMEOUT_MS = 120000      // 0.4.7-A⑨（notes-047-cleanup，用户实测 8.7s 被打断）：8s → 120s——体检是「全部注入约定塞一个大 prompt 的单次流式调用」
+                                                //   （量级估算：N 条约定 × 正文截断 2000 字 ≈ 2N KB prompt，20 条 ≈ 40KB≈2万+ tokens 输入 + 两两比对输出，远超 when-suggest 单行草稿的轻量档）；
+                                                //   手动触发的重操作，对齐客户端 LLM 护栏口径（HOSTCALL/RPC_LLM_METHODS 120s，perf.js / app rpc.js）
     const CONFLICT_BODY_MAX_CHARS = 2000          // 单条约定正文入 prompt 上限（超出截断标注，防 token 爆）
     const CONFLICT_REASON_MAX_CHARS = 200         // reason 归一截断上限（防御性，UI 单行呈现）
     async function _conflictCheck(args) {
       if (!llm) return { error: 'LLM 不可用（宿主无 llm 服务）' }
       let all = []
       try { all = await _list(undefined, undefined, undefined, false, true, true) } catch (e) { return { error: String(e.message || e) } }
-      const conv = (all || []).filter(n => n && n.inject === true && !n.deleted && (n.injectRole || 'convention') === 'convention')
+      const conv = (all || []).filter(n => n && n.inject === true && !n.deleted && n.status !== 'superseded' && (n.injectRole || 'convention') === 'convention')
       if (conv.length < 2) return { ok: true, pairs: [], total: conv.length }
       await loadSettings()
       const sel = resolveLlmSelection()
@@ -2200,7 +2229,7 @@ export function apply(ctx) {
         '只输出 JSON 数组本身，不要输出解释、前言或代码围栏。\n\n' +
         listing + '\n\n只输出 JSON 数组：'
       let timer = null
-      const timeout = new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error('conflict-check 超时（8s）')), CONFLICT_CHECK_TIMEOUT_MS); if (timer && typeof timer.unref === 'function') timer.unref() })
+      const timeout = new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error('体检超时（120s）')), CONFLICT_CHECK_TIMEOUT_MS); if (timer && typeof timer.unref === 'function') timer.unref() })
       let text = ''
       try {
         await Promise.race([(async () => {
@@ -2539,9 +2568,9 @@ export function apply(ctx) {
     // ==== when-suggest END ====
 
     // ==== conflict-check BEGIN ====（0.4.5-G 约定体检 notes-045-conflict-check：server.js 与 server.dist.js 本块逐字节一致，check 节 90 看守）
-    // notes-conflict-check {} → LLM 对全部注入中约定（inject=true && injectRole=convention && !deleted）两两检测冲突/被取代对，返回 { ok, pairs:[{aId,bId,aTitle,bTitle,relation,reason}], total }。
+    // notes-conflict-check {} → LLM 对全部注入中约定（inject=true && injectRole=convention && !deleted && status!=='superseded'（0.4.7-A③））两两检测冲突/被取代对，返回 { ok, pairs:[{aId,bId,aTitle,bTitle,relation,reason}], total }。
     // 只提名不执行：本通道零写入——「标已取代」裁决动作由 client 走既有 notes-update status='superseded'；敏感笔记正文打码后才进 prompt（maskSensitiveBody，llm/conflict.js 内）；
-    //   <2 条约定 → { ok, pairs: [] } 零 LLM 调用；LLM 不可用/未配置/超时（8s）/输出非合法 JSON → { error }（client 内联回显，不阻断面板）。
+    //   <2 条约定 → { ok, pairs: [] } 零 LLM 调用；LLM 不可用/未配置/超时（120s，0.4.7-A⑨）/输出非合法 JSON → { error }（client 内联回显，不阻断面板）。
     disposers.push(handle('notes-conflict-check', async (args) => {
       try { return await _conflictCheck(args || {}) } catch (e) { return { error: String(e.message || e) } }
     }))
@@ -4383,8 +4412,8 @@ export function apply(ctx) {
     // 专属会话创建（0.4.4-B）：agents.create 真实 agent（走注册 factory——持久化写把手 + 会话注册一体），
     //   setup 内 agentPresets.mount 绑定默认 preset（同 session-controller composeAgent 口径——无 preset 的裸 agent 无工具能力）；
     //   workspace.attachSession 落账（GUI 左侧列表可见性——工作区 sessionIds 经 header cwd 校验归组）；
-    //   sessionTitle.rename 命名「定时 · <任务名>」（观察面，失败不阻塞主链路）。
-    //   孤儿探测（0.4.5-A notes-045-debt-host）：创建前先按标题探测工作区账目内既有同名专属会话（target 回写失败窗口遗留），
+    //   sessionTitle.rename 命名「定时 · <任务名> · <id 末 6 位>」（0.4.7-A⑧ 起带 id 尾；观察面，失败不阻塞主链路）。
+    //   孤儿探测（0.4.5-A notes-045-debt-host；0.4.7-A⑧ 收窄为同笔记命中）：创建前先按带尾标题探测工作区账目内既有同名专属会话（target 回写失败窗口遗留），
     //   命中即复用其 sid 返回（reused:true，handle=null——非本轮创建，调用方回收路径跳过），未命中才新建（防重复建会话）。
     //   归属模型（实测结论）：create 经调用方 fiber 归属——插件重载/卸载会 dispose 该 agent，但会话日志已持久化，
     //   退化为休眠态（GUI 可见、用户打开即复活），后续触发由休眠送达通道（_queueDormantDispatch）承接，优雅降级不丢任务。
@@ -4403,10 +4432,16 @@ export function apply(ctx) {
       if (!ws) ws = wl[0]
       const cwd = String((ws && ws.path) || '').trim()
       if (!cwd) return { error: '工作区缺 path（专属会话无 cwd 不可创建）' }
-      const name = '定时 · ' + String((note && note.title) || '任务').replace(/^定时\s*·?\s*/, '')
+      const name = '定时 · ' + String((note && note.title) || '任务').replace(/^定时\s*·?\s*/, '') + ' · ' + String((note && note.id) || 'unknown').slice(-6)
+      // 0.4.7-A⑧（notes-047-cleanup，用户实测 [[n-muy8azorkasl]] 同名复用 bug）：命名带笔记 id 末 6 位短尾——
+      //   调研结论：agents.create meta 走 dsh-session SessionHeader 封闭白名单（createdAt/cwd/parentSession/isSeeded/origin/delegationDepth/
+      //   agentPreset，store 建 header 时逐键显式挑拣），自定义 sourceNoteId 落盘即被丢弃、sessionQuery/sessionPersistence 读不回——
+      //   meta 盖章方案不可行，按卡退化方案采用标题短尾（探测只对同笔记复用 = 同 id 尾）。
+      //   修复前纯标题探测：跨笔记同名任务共享先建会话（B 笔记 preset/model 声明被静默丢弃——复用路径不补挂档位）。
+      //   存量无尾孤儿会话（0.4.7 前回写失败窗口遗留）不再命中——保持孤儿态不冒领（归属不可证，零迁移红线）。
       // 孤儿专属会话探测（0.4.5-A notes-045-debt-host，B 卡 verifier 遗留④）：「agents.create 成功但 target 回写落盘失败/
-      //   进程崩溃于回写前」的极端窗口下，工作区账目里已存在上次创建的同名专属会话——下 tick 若不探测会重复创建。
-      //   修复：创建前先按标题「定时 · <任务名>」探测既有专属会话（工作区 sessionIds 账目 + readTitleSnapshots 批量读标题，
+      //   进程崩溃于回写前」的极端窗口下，工作区账目里已存在上次创建的同名（含 id 尾）专属会话——下 tick 若不探测会重复创建。
+      //   修复：创建前先按标题「定时 · <任务名> · <id 末 6 位>」探测既有专属会话（工作区 sessionIds 账目 + readTitleSnapshots 批量读标题，
       //   live/持久化双覆盖，同 _activeSessions 数据源口径），命中则复用其 sid 回写 target（零新建），未命中才走新建。
       //   探测失败（服务缺失/读盘异常）静默降级为直接新建——与改造前行为等价，不扩散主链路。
       try {
@@ -4420,7 +4455,7 @@ export function apply(ctx) {
             if (!r || r.status !== 'fulfilled' || !r.value) continue
             const rt = r.value.title && r.value.title.title
             const rsid = r.sessionId || (r.value.session && r.value.session.id)
-            // 标题精确命中专属会话命名形态即复用；handle=null（复用会话非本轮创建，调用方 dispose 回收路径天然跳过）
+            // 标题（含 id 尾）精确命中专属会话命名形态即复用；handle=null（复用会话非本轮创建，调用方 dispose 回收路径天然跳过）
             if (rt === name && rsid) return { sessionId: rsid, handle: null, name: name, reused: true }
           }
         }
@@ -4932,12 +4967,14 @@ export function apply(ctx) {
       try { const dp = permissionPresets && permissionPresets.defaultPreset; if (typeof dp === 'string' && dp) pp = { defaultPreset: dp } } catch (e) {}
       try {
         await loadSettings()
-        const out = { settings: settingsCache, models: await listAvailableModels(), lastInjectChars: lastInjectChars }
+        // 0.4.7-B⑦（notes-047-ux）：响应增带 organizeMaxChars 生效值（用户覆盖 || 模型表 || 12000 回落）——
+        //   整理引导卡超限前置校验的数据源（零新 RPC，同 defaultPreset 先例）；计算不抛错（内部全回落）
+        const out = { settings: settingsCache, models: await listAvailableModels(), lastInjectChars: lastInjectChars, organizeMaxChars: organizeMaxChars() }
         if (pp) out.permissionPresets = pp
         return out
       }
       catch (e) {
-        const out = { settings: settingsCache || {}, models: [], lastInjectChars: lastInjectChars, error: String(e.message || e) }
+        const out = { settings: settingsCache || {}, models: [], lastInjectChars: lastInjectChars, organizeMaxChars: organizeMaxChars(), error: String(e.message || e) }
         if (pp) out.permissionPresets = pp
         return out
       }
@@ -4997,6 +5034,12 @@ export function apply(ctx) {
           if (patch.maxFolderDepth === null || patch.maxFolderDepth === undefined) delete settingsCache.maxFolderDepth
           else if (typeof patch.maxFolderDepth === 'number' && isFinite(patch.maxFolderDepth) && patch.maxFolderDepth >= 0) settingsCache.maxFolderDepth = Math.floor(patch.maxFolderDepth)
           else return { error: 'notes-settings-set: maxFolderDepth 需要非负数值（或 null 恢复缺省 3；0 = 不限层数）' }
+        }
+        // 0.4.7-B⑦（notes-047-ux）整理长度上限（字符）：正整数取整直存；0/null/undefined 删除 override = 跟随所配模型自动（模型表 || 12000 回落）
+        if ('organizeMaxChars' in patch) {
+          if (patch.organizeMaxChars === null || patch.organizeMaxChars === undefined || patch.organizeMaxChars === 0) delete settingsCache.organizeMaxChars
+          else if (typeof patch.organizeMaxChars === 'number' && isFinite(patch.organizeMaxChars) && patch.organizeMaxChars > 0) settingsCache.organizeMaxChars = Math.floor(patch.organizeMaxChars)
+          else return { error: 'notes-settings-set: organizeMaxChars 需要非负数值（0 = 按所配模型自动）' }
         }
         await saveSettings()
         return { ok: true, settings: settingsCache }
@@ -6248,7 +6291,7 @@ export function apply(ctx) {
         '- restore: { id } (undo delete/archive)\n' +
         '- archive: { groups? } (explicit archive, undoable once via the notes-archive-undo RPC). groups = whitelist [{memberIds:[noteId,...], title?}]: merge exactly those groups (memberIds must all exist and not be deleted; title overrides the default group title). Without groups: merge ONLY quick-capture notes grouped by session. Behavior change: manual notes are NEVER auto-grouped by tag anymore — pass explicit groups to merge them (preview quick groups first via the notes-archive-preview RPC).\n' +
         '- dispatch: { id, targetSessionId?, targetSessionName?, instruction? } (assemble the todo context plus your instruction into one user message and send it to a live session as a real task — or, when the target session is dormant (not live but persisted), queue it into the session\'s durable inbox with ZERO wake: it is delivered and processed on the session\'s next activity (the dispatch record carries queued:true in that case — 0.4.4-B); the handoff is recorded in the note\'s dispatches property with dispatchStatus=sent, and a 📤 line is appended to the note\'s lazily-created execution-log companion note「执行记录 · <标题>」(kind=log in folder「执行记录」— injection hard-disabled, visible/searchable/editable as usual; soft-linked via schedule.runLog for schedule conventions / top-level runLog field otherwise — 0.4.4-A 三表归一). Omit targetSessionId to list dispatchable sessions (live flag per entry — live:false entries are dormant and get queued delivery). Closed loop: closed via idle-transition receipt of the target session — an idle transition auto-flips that session\'s open dispatches to dispatchStatus=done and writes the receipt (dormant queued deliveries close the same way on next-activity idle, zero wake 零唤醒排队同理); update status=resolved remains available as a manual fallback（手动兜底）that force-closes all open dispatches of the note — since 0.4.5-I dispatch messages no longer instruct the target session to resolve the note.)\n' +
-        'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow?, provider?, model?, preset? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual, and a lazily-created execution-log note「执行记录 · @标题」is soft-linked via schedule.runLog — shared with manual dispatches of the same note (dispatch 📤 lines + receipt 📥/✅ lines land in one note) — the convention body itself is NEVER appended to (it is the dispatch payload; history would bloat and pollute future dispatch contexts). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived — OR the reserved literal target: \'new\' (periodic mode only — 0.4.4-B dedicated session: the first fire auto-creates a session named 定时 · <title> in the note\'s workspace, writes schedule.target back to the new sid, and every later round reuses that session via live-send or dormant queued delivery); model/provider: optional dedicated-session model pair (0.4.6-G — declare BOTH or NEITHER, non-empty strings; on target:\'new\' first fire they are passed to agents.create agentOptions, overriding the host default model selection — omitted = host default, zero migration; validity is NOT probed at declaration time, an invalid pair surfaces as schedule.lastError at fire time); preset: optional dedicated-session permission preset (0.4.7 — exactly \'danger-full-access\' | \'workspace-write\', no inherit; on target:\'new\' first fire it is applied via permissionPresets.set right after agents.create, overriding the host-pinned default preset — omitted = host default, zero migration; unknown values rejected at the write gate; service absent or set failure = schedule.lastError note, dispatch never blocked); unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status(sent|queued|error),receiptId}/lastError/runLog/declaredAt) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
+        'Scheduled dispatch (定时派发·约定即调度): create/update a convention note with contractType: \'dispatch-schedule\' + schedule: { at | every, target, action?, enabled?, anchor?, dow?, provider?, model?, preset? } — the host runs a resident 30s cron; when due it auto-dispatches the note body to the target session via the standard dispatch chain (source labeled 定时调度 @标题, receipts accumulate in dispatches as usual, and a lazily-created execution-log note「执行记录 · @标题」is soft-linked via schedule.runLog — shared with manual dispatches of the same note (dispatch 📤 lines + receipt 📥/✅ lines land in one note) — the convention body itself is NEVER appended to (it is the dispatch payload; history would bloat and pollute future dispatch contexts). Declaration red lines (enforced at write): exactly one of at (LOCAL ISO time WITHOUT timezone suffix, e.g. 2026-10-05T09:00 — must be future; Z/±offset suffix is rejected because the declaration is pinned to the host machine local timezone) / every (\'30m\'/\'12h\'/\'3d\'/\'1w\' or ms, >= 5min); anchor: \'HH:MM\' LOCAL wall-clock time (periodic mode only, requires a whole-day interval — pins the firing sequence to that local time: first fire = next anchor time, later fires stay on that time of day without drifting from creation/fire time; declarations WITHOUT anchor keep the legacy pure-interval semantics anchored at lastFiredAt||declaredAt||createdAt — zero migration); dow: 0-6 integer (weekly mode only, 0=Sunday, requires every:\'1w\' + anchor); target session must exist in a workspace and not be archived — OR the reserved literal target: \'new\' (periodic mode only — 0.4.4-B dedicated session: the first fire auto-creates a session named 定时 · <title> in the note\'s workspace, writes schedule.target back to the new sid, and every later round reuses that session via live-send or dormant queued delivery); model/provider: optional dedicated-session model pair (0.4.6-G — declare BOTH or NEITHER, non-empty strings; on target:\'new\' first fire they are passed to agents.create agentOptions, overriding the host default model selection — omitted = host default, zero migration; validity is NOT probed at declaration time, an invalid pair surfaces as schedule.lastError at fire time); preset: optional dedicated-session permission preset (0.4.7 — exactly \'danger-full-access\' | \'workspace-write\', no inherit; on target:\'new\' first fire it is applied via permissionPresets.set right after agents.create, overriding the host-pinned default preset — omitted = host default, zero migration; unknown values rejected at the write gate; service absent or set failure = schedule.lastError note, dispatch never blocked); unknown keys rejected. Machine state (lastFiredAt/lastRun{at,status(sent|queued|error),receiptId}/lastError/runLog/declaredAt) is host-managed in front-matter — reads via note_get, never write it by hand. Un-declare with contractType: \'\' + schedule: null.',
       parameters: {
         type: 'object',
         properties: {
@@ -6473,32 +6516,68 @@ export function apply(ctx) {
     // 存量一次性修补：agents 未就绪期创建的笔记 workspace 为空，导致“本工作区”注入范围严格匹配后永不命中。
     // 启动时按来源会话推导补填一次（只补空值）。注意：不用 _list()（它 await migrationDone，会与本补全死锁），
     // 直接走底层遍历；也不挂进 migrationDone 链——_list 只需等 legacy 迁移，补全异步自跑即可。
+    // 0.4.7-A⑥（notes-047-cleanup，用户活机钓出：每次启动重扫全库 + 不可推导的 16 篇逐行 console.log 刷屏）：
+    //   ①skip 明细聚合成一行汇总（fixed=N skipped=M ledgered=K），不再逐行刷屏；
+    //   ②sessionId 缺席/推导不到时先试笔记自身 cwd 字段——精确匹配 workspaceRegistry 注册 path 推导 workspace（创建时自会话上下文落盘的一手数据）；
+    //   ③仍不可推导的记账 telemetry.json meta.wsBackfillSkip（幂等：下次启动直接跳过，不再每次重扫同一批死账；想重试某篇删对应键即可）。
     const legacyDone = migrationDone
     // 0.4.3 验收修复⑤（notes-043-metrics-storage）：遥测一次性迁移 + 存量索引 §2 摘除挂在 legacy 迁移之后
     //   （旧「召回遥测（自动）」笔记可能随开发版目录迁移而来——等迁移落定再解析回填 telemetry.json，幂等，内部全吞异常）
     ;(async function () { try { await legacyDone } catch (e) {} try { await _recallMaybeMigrate() } catch (e) {} try { await _ledgerStripS2() } catch (e) {} })()
+    // 笔记自身 cwd → 工作区名（0.4.7-A⑥）：精确匹配 workspaceRegistry 注册 path（归一尾斜杠 + 大小写）才落 workspace——
+    //   未注册路径不猜（workspace 是「本工作区」注入范围匹配键，误填比空值更糟）；注册表缺席/空 → ''（调用方据此不记账，下次启动重试）
+    function _wsOfNoteCwd(cwd) {
+      const c = String(cwd || '').trim()
+      if (!c) return ''
+      if (!workspaceRegistry || typeof workspaceRegistry.list !== 'function') return ''
+      const wl = workspaceRegistry.list() || []
+      if (!wl.length) return ''
+      const norm = function (p) { return String(p || '').replace(/[\\/]+$/, '').toLowerCase() }
+      for (const w of wl) {
+        if (w && w.path && norm(w.path) === norm(c)) return String(w.title || '') || basename(w.path)
+      }
+      return ''
+    }
     async function fixLegacyWorkspaces() {
       try { await legacyDone } catch (e) {}
       try {
         const dirTarget = await fs.resolve(NOTES_DIR)
         const info = await fs.stat(dirTarget)
         if (!info) return { fixed: 0 }
+        // 不可推导跳过名单（0.4.7-A③幂等记账）：telemetry.json meta.wsBackfillSkip {id:1}——随遥测单写者通道原子落盘
+        const telem = await _telemetryLoad()
+        const skipLedger = (telem && telem.meta && typeof telem.meta.wsBackfillSkip === 'object' && telem.meta.wsBackfillSkip) || {}
+        let ledgerDirty = false
         const entries = await fs.listDir(dirTarget)
         let fixed = 0
         let skipped = 0
+        let ledgerHit = 0
         for (const entry of entries) {
           if (!entry.name || !entry.name.endsWith('.md')) continue
           const id = entry.name.replace(/\.md$/, '')
+          if (skipLedger[id]) { ledgerHit++; continue }   // 记账命中：本轮直接跳过（不再重扫死账）
           try {
             const n = await loadNote(id)
             if (n.deleted || n.workspace) continue
-            const ws = await _wsOfSession(n.sessionId)
-            if (!ws) { skipped++; console.log('notes: workspace backfill skip ' + id + ' (sid=' + (n.sessionId || 'none') + ', 推导不到 cwd)') ; continue }
+            let ws = await _wsOfSession(n.sessionId)
+            let conclusive = true
+            if (!ws && n.cwd) {
+              // sessionId 缺席/推导不到 → 笔记自身 cwd 兜底（注册表精确匹配）；注册表未就绪不记账（瞬态，下次启动重试）
+              if (workspaceRegistry && typeof workspaceRegistry.list === 'function' && (workspaceRegistry.list() || []).length) ws = _wsOfNoteCwd(n.cwd)
+              else conclusive = false
+            }
+            if (!ws) {
+              skipped++
+              if (conclusive) { skipLedger[id] = 1; ledgerDirty = true }   // 可定论的不可推导才记账（幂等跳过生效点）
+              continue
+            }
             await persistNote(Object.assign({}, n, { workspace: ws }))
             fixed++
           } catch (e) { skipped++; console.error('notes: workspace backfill item failed', id, e) }
         }
-        console.log('notes: workspace backfill done, fixed=' + fixed + ' skipped=' + skipped)
+        // 记账落盘并入完成点：summary 行出现即台账已持久（二次启动跳过生效，行为级断言可确定性轮询）
+        if (ledgerDirty) { telem.meta.wsBackfillSkip = skipLedger; _telemetryScheduleFlush(); try { await _telemetryFlushNow() } catch (e) {} }
+        console.log('notes: workspace backfill done, fixed=' + fixed + ' skipped=' + skipped + (ledgerHit ? ' ledgered=' + ledgerHit : ''))   // 0.4.7-A⑥：skip 明细聚合成一行汇总
         return { fixed: fixed }
       } catch (e) { console.error('notes: workspace backfill error', e); return { fixed: 0, error: String(e && e.message || e) } }
     }

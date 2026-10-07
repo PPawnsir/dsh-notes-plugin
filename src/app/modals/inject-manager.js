@@ -386,17 +386,21 @@ function setMountStat(mode, tip) {
   el.textContent = t(mode === 'gen' ? 'inj.mountGen' : 'inj.mountGenFail');
   if (tip) el.title = tip; else el.removeAttribute('title');
 }
-function openMountModal(n, onConfirm) {
+function openMountModal(n, onConfirm, onSkip) {
   if (!n) return;
   injMgrState = null; modalBackTo = null;
   var edit = typeof n.existing === 'string';   /* 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM） */
-  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, genErr: '', onConfirm: typeof onConfirm === 'function' ? onConfirm : null };
+  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, genErr: '', onConfirm: typeof onConfirm === 'function' ? onConfirm : null, onSkip: typeof onSkip === 'function' ? onSkip : null };
+  /* 0.4.7-B④b（notes-047-ux，R2 漏网 n-mux79knmfjxt）：左钮三岔文案明确化——
+     角色切换在途（onSkip 存在，三态/行内直改入口）=「仅切换角色，暂不挂载」（切档不落索引行）；编辑模式 =「取消」；
+     其余纯挂载入口（建议器/预览）= inj.mountSkip 原样。Esc/点遮罩 = 一律取消零副作用（不切换不挂载） */
+  var skipLabel = mountState.onSkip ? t('inj.mountSkipSwitch') : (edit ? t('common.cancel') : t('inj.mountSkip'));
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + (edit ? t('inj.mountEdit') : t('inj.mountTitle')) + '<span class="sub">' + t('inj.mountSub') + '</span></div>'
     + '<div class="inj-mount-body"><label class="inj-mount-label">' + t('inj.mountLabel') + '</label>'
     + '<textarea class="inj-mount-when" id="injMountWhen" rows="3" placeholder="' + esc(edit ? t('inj.mountPlaceholder') : t('inj.mountGen')) + '">' + esc(mountState.when) + '</textarea>'
     + '<div class="inj-mount-stat" id="injMountStat" style="display:none"></div></div>'
-    + '<div class="modal-acts"><button class="mbtn" id="injMountSkip">' + t('inj.mountSkip') + '</button>'
+    + '<div class="modal-acts"><button class="mbtn" id="injMountSkip">' + skipLabel + '</button>'
     + '<button class="mbtn primary" id="injMountSave">' + t('inj.mountSave') + '</button></div>'
   );
   $('injMountWhen').oninput = function () { if (mountState) mountState.touched = true };
@@ -422,7 +426,8 @@ function openMountModal(n, onConfirm) {
       setMountStat('err', mountState.genErr);
     });
   }
-  $('injMountSkip').onclick = function () { mountState = null; closeModal() };
+  /* 跳过/取消钮：onSkip 在途（角色切换入口）= 关卡 + 切档不挂载；否则 = 纯取消零副作用（0.4.7-B④b） */
+  $('injMountSkip').onclick = function () { var st = mountState; mountState = null; closeModal(); if (st && st.onSkip) { try { st.onSkip() } catch (e) {} } };
   $('injMountSave').onclick = function () {
     if (!mountState || mountState.pending) return;
     mountState.pending = true; mountState.when = $('injMountWhen').value;
@@ -445,21 +450,29 @@ function doInjMgrSet(n, role) {
   if (injMgrRole(n) === role) return;
   /* 0.4.3 验收修复⑪：单行「设为资料」先开挂载弹层（LLM 预填 whenToUse；确认 = notes-mount 单点收口落行 + 翻 reference 档，
      取消零副作用——不先静默翻转）；modal 不叠 modal——openMountModal 接管 modal 宿主（ injMgrState 清零由弹层入口承担），
-     确认后的收敛刷新由弹层保存路径统一承担（loadNotes） */
-  if (role === 'reference') { openMountModal({ id: n.id, title: n.title }); return }
+     确认后的收敛刷新由弹层保存路径统一承担（loadNotes）；
+     0.4.7-B④b：弹层第三岔「仅切换角色，暂不挂载」（onSkip）= 直走 injMgrSetDirect 切档不落索引行 */
+  if (role === 'reference') { openMountModal({ id: n.id, title: n.title }, null, function () { injMgrSetDirect(n, 'reference') }); return }
+  /* 0.4.7-A④（notes-047-cleanup，0.4.6-E verifier 残留）：行内「设为约定」confirm 闸——单击直切约定档太秃，
+     与详情区三态同文案同口径（meta.convInjectConfirm，editor-meta.js 先例）；取消零副作用。批量闸（doInjMgrBatch）同用原生 confirm */
+  if (role === 'convention' && !confirm(t('meta.convInjectConfirm', { title: n.title || n.id, scope: injectScopeLabel(n.injectTo) }))) return;
+  injMgrSetDirect(n, role);
+}
+/* 单行直改落盘段（doInjMgrSet 非挂载路径 + 0.4.7-B④b 挂载框「仅切换角色」跳过档共用）：notes-update {inject, injectRole} + toast + 本地回写；
+   反馈 toast 不挂 injMgrState 守卫（onSkip 路径弹层已接管宿主、管理面板态为空——写已落盘，反馈必须出声；面板 UI 回写才守卫） */
+function injMgrSetDirect(n, role) {
   var upd = { id: n.id, inject: role !== 'off' };
   if (upd.inject) upd.injectRole = role;   /* 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘） */
   rpc('notes-update', upd).then(function (res) {
-    if (!injMgrState) return;
-    if (res && res.error) { modalErr(res.error); return }
+    if (res && res.error) { if (injMgrState) modalErr(res.error); else toast(res.error); return }
     if (res && res.injectForcedOff) toast(t('inj.forcedOff', { title: n.title || n.id }));
     else toast(role === 'off' ? t('inj.injectOffToast', { title: n.title || n.id }) : t('inj.injectSetToast', { role: t(role === 'reference' ? 'tree.roleReference' : 'tree.roleConvention'), title: n.title || n.id }));
     /* 本地即时回写（injectEver 粘性：开启即曾注入），后台刷新对齐 host */
     n.inject = role !== 'off';
     if (role !== 'off') { n.injectRole = role; n.injectEver = true }
-    renderInjectManager();
+    if (injMgrState) renderInjectManager();
     loadNotes(true);
-  }).catch(function (e) { modalErr(t('inj.setFailed', { msg: e && e.message || e })) });
+  }).catch(function (e) { if (injMgrState) modalErr(t('inj.setFailed', { msg: e && e.message || e })); else toast(t('inj.setFailed', { msg: e && e.message || e })) });
 }
 /* 批量设为约定/资料/关闭：confirm 条数 → 逐条 notes-update（单条失败计数不中断）；完成后清选 + 刷新 */
 function doInjMgrBatch(role) {

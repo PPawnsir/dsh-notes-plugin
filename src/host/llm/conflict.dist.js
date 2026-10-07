@@ -2,8 +2,9 @@
     // （与开发版 host-impl.js 双边同步，逻辑逐行一致）
     // 背景：约定多了会打架（真实事故：日志隐身约定 vs 后来的同权裁决并存）。本通道提名「疑似冲突/疑似被取代」对，
     //   人工在注入管理面板内联结果区裁决（标 A/B 已取代 = notes-update status='superseded'；保留两者 = 会话内 dismiss）。
-    // 通道：notes-when-suggest 同款 llm.stream + resolveLlmSelection（设置 LLM 优先，缺省跟随会话），temperature 0，8s Promise.race 超时。
-    // 数据集谓词（行为级断言锁定）：inject=true && injectRole=convention（缺省值等同 convention） && !deleted ——
+    // 通道：llm.stream + resolveLlmSelection（设置 LLM 优先，缺省跟随会话），temperature 0，120s Promise.race 超时（0.4.7-A⑨ 起，见常量注）。
+    // 数据集谓词（行为级断言锁定）：inject=true && injectRole=convention（缺省值等同 convention） && !deleted && status!=='superseded' ——
+    //   （0.4.7-A③ notes-047-cleanup：已废止约定不参与冲突检测——superseded 是裁决终点，再参与提名只产噪音）；
     //   _list 六参全开（含 sys：谓词即唯一选择口径，sys 降噪不在此生效）；<2 条 → { ok:true, pairs:[] } 零 LLM 调用。
     // 红线：①敏感笔记正文经 maskSensitiveBody 按行打码后才进 prompt（键留值遮，占位符引导 note_get 自取）；
     //   ②只提名不执行——本函数零写入，status 翻转只能由用户点击触发 notes-update；
@@ -12,14 +13,16 @@
     //   故直接迭代 llm.stream 而非 streamMetered；注册面能加 conflict 键，但计量口径变更会连带 usage 报表/UI/断言面漂移，本期注释注明暂不计量）。
     // 输出容错：剥离 ```json 围栏 → JSON.parse 失败/非数组 → { error }；逐条校验——幻觉 id（不在数据集）/aId=bId/非法 relation 条目静默过滤，
     //   reason 归一空白截断 200 字；同一无序对去重（先见者留）。
-    const CONFLICT_CHECK_TIMEOUT_MS = 8000        // 与 when-suggest 同款 8s 超时
+    const CONFLICT_CHECK_TIMEOUT_MS = 120000      // 0.4.7-A⑨（notes-047-cleanup，用户实测 8.7s 被打断）：8s → 120s——体检是「全部注入约定塞一个大 prompt 的单次流式调用」
+                                                //   （量级估算：N 条约定 × 正文截断 2000 字 ≈ 2N KB prompt，20 条 ≈ 40KB≈2万+ tokens 输入 + 两两比对输出，远超 when-suggest 单行草稿的轻量档）；
+                                                //   手动触发的重操作，对齐客户端 LLM 护栏口径（HOSTCALL/RPC_LLM_METHODS 120s，perf.js / app rpc.js）
     const CONFLICT_BODY_MAX_CHARS = 2000          // 单条约定正文入 prompt 上限（超出截断标注，防 token 爆）
     const CONFLICT_REASON_MAX_CHARS = 200         // reason 归一截断上限（防御性，UI 单行呈现）
     async function _conflictCheck(args) {
       if (!llm) return { error: 'LLM 不可用（宿主无 llm 服务）' }
       let all = []
       try { all = await _list(undefined, undefined, undefined, false, true, true) } catch (e) { return { error: String(e.message || e) } }
-      const conv = (all || []).filter(n => n && n.inject === true && !n.deleted && (n.injectRole || 'convention') === 'convention')
+      const conv = (all || []).filter(n => n && n.inject === true && !n.deleted && n.status !== 'superseded' && (n.injectRole || 'convention') === 'convention')
       if (conv.length < 2) return { ok: true, pairs: [], total: conv.length }
       await loadSettings()
       const sel = resolveLlmSelection()
@@ -42,7 +45,7 @@
         '只输出 JSON 数组本身，不要输出解释、前言或代码围栏。\n\n' +
         listing + '\n\n只输出 JSON 数组：'
       let timer = null
-      const timeout = new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error('conflict-check 超时（8s）')), CONFLICT_CHECK_TIMEOUT_MS); if (timer && typeof timer.unref === 'function') timer.unref() })
+      const timeout = new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error('体检超时（120s）')), CONFLICT_CHECK_TIMEOUT_MS); if (timer && typeof timer.unref === 'function') timer.unref() })
       let text = ''
       try {
         await Promise.race([(async () => {

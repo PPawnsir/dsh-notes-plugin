@@ -13,6 +13,10 @@
 //   ⑤ 面板编辑器「整理」「派发」入口在位锁定（源码本就有——R2 观测与实现偏差，本卡以断言防回流）+
 //     .dsh-notes-meta-act flex-shrink:0 窄宽根修（flex 缺省 shrink 会把按钮挤没——「窄宽被裁」根因）。
 // 红线：tooltip 说后果口径延续 0.4.5-D；显示名不动；零新增 host RPC（计数复用 notes-suggest 既有响应）。
+// 0.4.7-D2（notes-047-panel-e2e-migrate）：面板侧（client）概念引导/建议按钮/体检直达/整理派发断言迁 e2e 真机用例㊲
+//   （37-panel-ux-discovery，装载发布产物 lib/client.js 真 React 渲染 + 真 RPC 录制）；逐条退役/保留裁决见各 t() 块注。
+//   保留不迁：app 侧锚（用例㉘已承接 app 真机）、原型锚、字典逐字锚、t③ @ 空态 eval（@ 候选源挂宿主 inputTriggers
+//   服务，harness ctx 契约不含——真机够不到）、t② 计数边界 eval（null/error/缺字段真机不经济）。
 module.exports = {
   id: "95",
   title: "95. 0.4.6-C 概念引导与治理入口信号（使用说明首屏概念 + 建议/体检入口提升带徽标 + @ 空态 + 📎 语义 + 面板整理派发锁定）",
@@ -20,11 +24,8 @@ module.exports = {
   const { t, section, assert, fsNative, path, DIR, clientSrc } = H
   section('95. 0.4.6-C 概念引导与治理入口信号（notes-046-ux-discovery）')
   const read = (p) => fsNative.readFileSync(path.join(DIR, p), 'utf8').replace(/\r\n/g, '\n')   // LF 归一：Windows CRLF 源文件的多行锚可比
-  const helpCli = read(path.join('src', 'client', 'popovers', 'help.js'))
-  const treeCli = read(path.join('src', 'client', 'panels', 'panel', 'tree.js'))
+  // 0.4.7-D2：helpCli/treeCli/chromeCli/edCli/cssPkg 五处面板侧源读取随断言迁真机㊲退役（不再消费）
   const suggCli = read(path.join('src', 'client', 'modals', 'suggest.js'))
-  const chromeCli = read(path.join('src', 'client', 'panels', 'panel', 'chrome.js'))
-  const edCli = read(path.join('src', 'client', 'panels', 'panel', 'editor.js'))
   const mentionSrc = read(path.join('src', 'client', 'triggers', 'mentions.js'))
   const stylesSrc = read(path.join('src', 'styles.css'))
   const appBody = read(path.join('src', 'app', 'shell', 'body.html'))
@@ -37,7 +38,6 @@ module.exports = {
   const proto = read(path.join('design', 'notes-ui-v2.html'))
   const appHtml = read(path.join('packages', 'dsh-notes-plugin', 'app.html'))
   const cliPkg = read(path.join('packages', 'dsh-notes-plugin', 'lib', 'client.js'))
-  const cssPkg = read(path.join('packages', 'dsh-notes-plugin', 'lib', 'styles.css'))
   const grab = (s, v) => new Function(s + '\nreturn ' + v)()
   const ZH95 = grab(read(path.join('src', 'i18n', 'zh.js')), 'I18N_ZH')
   const EN95 = grab(read(path.join('src', 'i18n', 'en.js')), 'I18N_EN')
@@ -45,22 +45,14 @@ module.exports = {
   const grabFn4 = (s, name, tag) => { const m = s.match(new RegExp('function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?\\n    \\}')); assert(m, tag + ' 缺 ' + name + '()（结构变更需同步本断言）'); return m && m[0] }
 
   // ===== ① 概念引导前置：client 使用说明气泡首屏「核心概念 30 秒」节 =====
-  await t('0.4.6-C 概念引导：使用说明气泡首屏五概念节（约定/资料/挂载/派发/隐藏 + more 指向设置卡完整版）+ 拼接产物锚', () => {
-    assert(helpCli.indexOf("e('h5', null, t('help.conceptTitle'))") >= 0, '概念节标题锚')
-    for (const k of ['help.conceptConvention', 'help.conceptReference', 'help.conceptMount', 'help.conceptDispatch', 'help.conceptHidden', 'help.conceptMore']) {
-      assert(helpCli.indexOf("t('" + k + "')") >= 0, 'help.js 引用 ' + k)
-    }
-    // 首屏位置锚：概念块在 h4 标题之后、操作清单（help.newPre）之前
-    const iH4 = helpCli.indexOf("e('h4', null, t('chrome.help'))")
-    const iConcept = helpCli.indexOf("dsh-notes-help-concepts")
-    const iOps = helpCli.indexOf("t('help.newPre')")
-    assert(iH4 >= 0 && iConcept > iH4 && iOps > iConcept, '概念节在标题后、操作清单前（首屏）')
-    assert(clientSrc.indexOf('dsh-notes-help-concepts') >= 0 && clientSrc.indexOf("t('help.conceptMount')") >= 0, '开发版拼接产物概念节锚')
-    assert(cliPkg.indexOf('dsh-notes-help-concepts') >= 0, '发布包 lib/client.js 概念节锚（需先跑 build-dist）')
-  })
-  await t('0.4.6-C 空态首笔记引导补概念指向（client 树空态 + app 空态双处 + 原型同步；设置卡概念速览完整版保留）', () => {
-    assert(treeCli.indexOf("tt('tree.emptyConcept')") >= 0 && treeCli.indexOf('dsh-notes-empty-concept') >= 0, 'client 树空态概念指向行')
-    assert(treeCli.indexOf("tt('tree.emptySub')") >= 0, '原空态引导行保留（叠加不替换）')
+  // 【0.4.7-D2 退役】原 t「使用说明气泡首屏五概念节 + 拼接产物锚」整条迁真机：e2e ㊲ 步④——
+  //   真机开气泡断言 h5「核心概念 30 秒」+ 五概念 li 逐字（真 zh 字典渲染，等价 helpCli 六键引用锚）+
+  //   more 行指向设置卡 + 首屏序位（概念块在操作清单前，DOM 文本序位锁，等价 iH4<iConcept<iOps 源序锚）；
+  //   产物锚（clientSrc/lib/client.js 概念节）由 harness 装载发布产物行为覆盖 + check 可复现断言兜底。
+  //   裁决：真机已覆盖且更强（渲染面 + 字典插值面），源锚退役。
+  await t('0.4.6-C 空态首笔记引导补概念指向（app 静态壳 + renderEd 双处 + 原型同步；设置卡概念速览完整版保留；client 树空态迁真机㊲）', () => {
+    // 【0.4.7-D2】client 树空态两锚（tt('tree.emptyConcept') + dsh-notes-empty-concept / emptySub 保留）退役——
+    //   e2e ㊲ mount B 真机空态渲染锁（概念行文本 + emptySub 叠加不替换）；本 t 余量 = app 双处 + 字典逐字 + 原型锚。
     const CONCEPT_APP = '写下的约定/资料可注入 Agent 会话——设置卡顶部「概念速览」30 秒看懂五个核心概念'
     assert(appBody.indexOf('class="ed-empty-concept">' + CONCEPT_APP) >= 0, 'app 静态壳空态概念行')
     assert(appEd.indexOf("t('editor.emptyConcept')") >= 0 && appEd.indexOf('ed-empty-concept') >= 0, 'app renderEd 动态空态概念行走字典')
@@ -84,33 +76,21 @@ module.exports = {
     assert(proto.indexOf('id="btnSuggest"') >= 0 && proto.indexOf('id="suggestBd"') >= 0 && proto.indexOf('function suggestPendingCount') >= 0, '原型按钮/徽标/计数函数同步')
     assert(proto.indexOf(".then(function () { refreshSuggestBadge() })") >= 0, '原型 loadNotes 链尾同款刷新')
   })
-  await t('0.4.6-C 建议入口（client）：标题栏「建议」按钮 + badge 切片订阅 + 打开/变更双触发防抖刷新 + 失败保旧值', () => {
-    assert(chromeCli.indexOf("onClick: () => openSuggest()") >= 0, '标题栏按钮 → openSuggest')
-    assert(chromeCli.indexOf("store.modal.suggest.useSel(s => s.badge)") >= 0, 'badge 切片订阅')
-    assert(chromeCli.indexOf("e('span', { className: 'dsh-notes-tcnt' }, String(suggestBadge))") >= 0, '计数徽标元素（>0 才渲染）')
-    assert(chromeCli.indexOf("tt('topbar.suggestTipN', { n: suggestBadge })") >= 0, '计数 tooltip 走字典')
-    assert(chromeCli.indexOf('React.useEffect(() => { if (open) refreshSuggestBadge() }, [open])') >= 0, '面板打开触发刷新')
-    assert(chromeCli.indexOf('noteRefreshListeners.add(fn)') >= 0 && chromeCli.indexOf('noteRefreshListeners.delete(fn)') >= 0, '笔记变更监听挂/卸成对')
+  await t('0.4.6-C 建议入口（client）：badge 初始值/防抖收口/失败保旧值/样式锚（渲染链路断言迁真机㊲）', () => {
+    // 【0.4.7-D2】已退役子项（e2e ㊲ 步②③ 真机覆盖，更强——真 RPC→真计数→真徽标 DOM）：
+    //   chromeCli「onClick openSuggest / badge 切片订阅 / tcnt 元素 / tooltip 走字典 / open 触发刷新 / 监听挂卸成对」、
+    //   suggCli「loadSuggest 成功同步徽标」、clientSrc+cliPkg 双产物徽标锚（harness 直接装载 lib/client.js 行为覆盖）。
+    // 保留子项（内部态/容错路径，真机不经济或不可达）：badge:-1 初值 / 1200ms 防抖 / 失败保旧值 / 样式锚。
     assert(suggCli.indexOf("badge: -1") >= 0, 'badge 初始 -1（未知不显示）')
     assert(suggCli.indexOf('timer.debounce(doRefreshSuggestBadge, 1200)') >= 0, '1.2s 防抖收口（写后频发路径）')
     assert(suggCli.indexOf('if (!res || res.error) return') >= 0, '失败/error 静默保旧值（不清零误报）')
-    assert(suggCli.indexOf('setSuggestBadge(suggestPendingCount(res))') >= 0, 'loadSuggest 成功即同步徽标（同一响应同一函数）')
     assert(stylesSrc.indexOf('.dsh-notes-tcnt{') >= 0, 'client 徽标样式')
-    assert(clientSrc.indexOf('dsh-notes-tcnt') >= 0 && cliPkg.indexOf('dsh-notes-tcnt') >= 0, '双端产物徽标锚（需先跑 build-dist）')
   })
-  // 计数一致（断言②核心）：suggestPendingCount 行为级 eval——计数 = notes-suggest 六段候选合计
-  await t('0.4.6-C 计数一致 eval：suggestPendingCount = notes-suggest 六段候选合计（边界 null/error/缺字段 → 0；双端同构）', () => {
+  // 计数一致：六段合计真机锁迁 e2e ㊲ 步③（fixture 六段齐备 → 徽标 12 + 建议框逐段计数——等价原 eval count(res)===12）；
+  // 本 t 余量 = 边界 eval（null/error/缺字段/单段——真机不经济）+ app 侧同构锚
+  await t('0.4.6-C 计数边界 eval：suggestPendingCount null/error/缺字段 → 0 + 单段计数（六段合计 12 迁真机㊲）；app 侧同构锚', () => {
     const fnCli = grabFn4(clientSrc, 'suggestPendingCount', 'clientSrc')
     const count = new Function(fnCli + '\nreturn suggestPendingCount')()
-    const res = {
-      archiveCandidates: [{}, {}],
-      staleCandidates: [{}, {}, {}],
-      orphanCandidates: [{}],
-      logHygieneCandidates: { weekly: [{}], monthly: [{}, {}] },
-      zeroRefMountCandidates: [{}],
-      hotUnmountedCandidates: [{}, {}],
-    }
-    assert.strictEqual(count(res), 12, '六段合计 2+3+1+1+2+1+2=12（实得 ' + count(res) + '）')
     assert.strictEqual(count(null), 0, 'null → 0')
     assert.strictEqual(count({ error: 'x' }), 0, 'error 形态 → 0')
     assert.strictEqual(count({}), 0, '缺字段 → 0（容错）')
@@ -123,15 +103,18 @@ module.exports = {
   })
 
   // ===== ②b 约定体检入口提升：建议框底栏直达（双端+原型） =====
-  await t('0.4.6-C 体检入口提升：建议框底栏「约定体检…」→ openInjectManager（modal 不叠 modal：先关建议框；双端+原型）', () => {
-    assert(suggCli.indexOf("tt('sugg.goConflict')") >= 0 && suggCli.indexOf("tt('sugg.goConflictTip')") >= 0, 'client 底栏体检按钮走字典')
-    assert(suggCli.indexOf('setSuggestOpen(false); openInjectManager()') >= 0, 'client 先关建议框再开注入管理（不叠 modal）')
+  await t('0.4.6-C 体检入口提升：app/原型底栏「约定体检…」链路锚（client 侧迁真机㊲：关建议框开注入管理不叠 modal）', () => {
+    // 【0.4.7-D2】client 侧两锚（tt('sugg.goConflict'/Tip) 字典引用 + setSuggestOpen(false);openInjectManager() 链）退役——
+    //   e2e ㊲ 步②尾真机点击链覆盖（建议框消失 + 注入管理开 + 体检区在案 + 恰一层 mask）；余量 = app/原型锚 + 阴性对照。
     assert(appSugg.indexOf('id="sgGoConflict"') >= 0 && appSugg.indexOf("closeModal(); suggestState = null; openInjectManager()") >= 0, 'app 底栏体检按钮 + 链路锚')
     assert(proto.indexOf('id="sgGoConflict"') >= 0 && proto.indexOf('openInjectManager()') >= 0, '原型体检入口同步')
     assert(cliPkg.indexOf('sgGoConflict') < 0, 'client 无残留 id 形态（React 端走字典键——本条为阴性对照）')
   })
 
   // ===== ③ @ 空态提示：mention.empty 行为级 eval（节 89 标记块内新行为） =====
+  // 【0.4.7-D2 保留裁决】本 eval 不迁真机：@ 候选源挂在宿主 inputTriggers 服务（会话输入框侧），
+  //   面板 harness 的 ctx 服务契约（slots/timer/sessions/workspaces/effect）不含 inputTriggers——面板内无 @ 触发面，
+  //   真机够不到，按「真机够不到的保留」原则 eval 原样保留。
   await t('0.4.6-C @ 空态：拉取成功零命中 → mention.empty 提示候选（无 value 不产出 chip）；拉取失败保持空数组静默', async () => {
     assert(mentionSrc.indexOf("t('mention.empty')") >= 0, 'mentions.js 引用 mention.empty')
     const grabBlock = (s, tag) => { const m = s.match(new RegExp('// ==== ' + tag + ' BEGIN ====[\\s\\S]*?// ==== ' + tag + ' END ====')); assert(m, 'clientSrc 缺标记块 ' + tag); return m && m[0] }
@@ -164,6 +147,8 @@ module.exports = {
   })
 
   // ===== ④ 📎 徽标 tooltip 数字语义写明（节 88 PAIRS 同步更新的交叉锚） =====
+  // 【0.4.7-D2 保留裁决】字典逐字锚保留（措辞精度守卫）；渲染面已由 e2e ㊲ 步①真机承接
+  //   （会话头部 📎3 + data-tooltip 含「约定 2 · 资料 1」「徽标数字 = 两者合计」+ 浮层双区计数）。
   await t('0.4.6-C 📎 tooltip 语义：徽标数字 = 约定+资料合计（双字典写明 + 组件引用在位）', () => {
     assert(ZH95['injBadge.tip'] === '本会话注入：约定 {m} · 资料 {k}（徽标数字 = 两者合计；点击查看明细）', 'zh 徽标数字语义写明')
     assert(EN95['injBadge.tip'].indexOf('badge = combined total') >= 0, 'en 徽标数字语义写明')
@@ -171,15 +156,13 @@ module.exports = {
   })
 
   // ===== ⑤ 面板编辑器「整理」「派发」入口在位锁定 + 窄宽根修 =====
-  await t('0.4.6-C 面板 meta 动作区「整理」「派发」在位锁定（client/app/原型三端）+ meta-act 窄宽 flex-shrink:0 根修', () => {
-    // 入口本就在源码中（R2 观测与实现偏差——本卡锁在位防回流；与使用说明 help.organize 承诺对齐）
-    assert(edCli.indexOf("dsh-notes-meta-act dsh-notes-organize-btn") >= 0 && edCli.indexOf('openOrganizeInstruct()') >= 0, 'client 面板「整理」按钮在位')
-    assert(edCli.indexOf("onClick: (ev) => { ev.stopPropagation(); openDispatch() }") >= 0, 'client 面板「派发」按钮在位')
+  await t('0.4.6-C meta 动作区「整理」「派发」在位锁定（app/原型锚；client 侧迁真机㊲ 含 computed flex-shrink:0 锁）', () => {
+    // 【0.4.7-D2】client 侧三锚退役——e2e ㊲ 步⑤真机覆盖且更强：edCli「整理/派发在位」→ 真 DOM 在位 +
+    //   点击接线锁（整理 → 追加指令弹卡 / 派发 → 派发弹窗）；stylesSrc+cssPkg meta-act 窄宽 CSS 锚 →
+    //   computed style flexShrink:0 + whiteSpace:nowrap 真机锁（harness 下发 lib/styles.css 真样式）。
+    //   余量 = app/原型在位锚（app 页真机由用例㉘承接）。
     assert(appEmeta.indexOf('id="mOrganize"') >= 0 && appEmeta.indexOf('id="mDispatch"') >= 0, 'app meta「整理」「派发」在位（既有对齐基准）')
     assert(proto.indexOf('id="mOrganize"') >= 0 && proto.indexOf('id="mDispatch"') >= 0, '原型 meta「整理」「派发」在位')
-    // 窄宽根修：flex 缺省 shrink 会把按钮文字挤没（R2「窄宽被裁」根因）——shrink:0 + nowrap 后整颗换行
-    assert(stylesSrc.indexOf('.dsh-notes-meta-act{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--nt3);padding:3px 9px;border-radius:var(--nr-sm);cursor:pointer;user-select:none;font-family:var(--nfont);flex-shrink:0;white-space:nowrap}') >= 0, 'meta-act flex-shrink:0 + nowrap 锚')
-    assert(cssPkg.indexOf('.dsh-notes-meta-act{') >= 0 && cssPkg.indexOf('flex-shrink:0;white-space:nowrap}') >= 0, 'lib/styles.css 产物同步（需先跑 build-dist）')
   })
 
   // ===== i18n 全套 + 产物同步 =====

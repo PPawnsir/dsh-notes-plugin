@@ -45,9 +45,9 @@
   <div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>dsh-notes</b>
   <span class="sub" id="topSub">你的笔记库 · 写下的约定与资料可注入 Agent 会话</span>
   <span class="sp"></span>
-  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（建议/切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新/速记保文字 -->
+  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（建议/切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新保文字；
+       0.4.7-B②a（notes-047-ux）：「速记合并」顶栏按钮撤除——与建议器首段「速记组 → 去归档」入口重复（0 组也占主行动位）；归档预览入口 = 顶栏「建议」→ 速记组段 -->
   <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg><span class="tb-t">刷新</span></button>
-  <button class="tbtn" id="btnArchive" title="速记 = 划选文字松手弹出的快速记录（暂存）；点按弹出预览，勾选后把同一会话的速记归并成一篇正式笔记（可撤销）"><svg class="ic"><use href="#i-check"/></svg><span class="tb-t">速记合并</span></button>
   <!-- 0.4.6-C（notes-046-ux-discovery）：治理入口提升到顶栏——整理建议 + 约定体检（建议框底栏）；有待办候选时 #suggestBd 计数徽标点亮（notes-suggest 六段合计） -->
   <button class="tbtn ico-only" id="btnSuggest" title="整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）"><svg class="ic"><use href="#i-sparkle"/></svg><span class="tb-t">建议</span><span class="cnt" id="suggestBd" style="display:none"></span></button>
   <button class="tbtn ico-only" id="btnTheme" title="切换主题（暗色/亮色）"><svg class="ic"><use href="#i-theme"/></svg><span class="tb-t">切换主题</span></button>
