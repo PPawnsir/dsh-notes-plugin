@@ -2588,9 +2588,32 @@ window.__ModuleLoader__.load({
         disposers.push(() => po.disconnect())
       }
     } catch (e2) {}
+    // ===== 0.4.8-A 遥测退避（notes-048-perf-backoff）：与开发版 src/client/kernel/perf.js 同构——rejection 吞掉 + 连败指数退避 + warn 一次性降级 =====
     // 每 30s 把计数器推给 host，汇总写入 perf-report.json（timer 经 ctx.get + ctx.effect）
+    var PERF_BACKOFF_BASE_MS = 30000   /* 退避基数（= 上报节拍） */
+    var PERF_BACKOFF_CAP_MS = 300000   /* 退避封顶 */
+    var perfFailStreak = 0             /* 连败计数 */
+    var perfBackoffUntil = 0           /* 退避闸门：该时刻前的 tick 跳过本次上报 */
     try {
-      var pd = typeof timer.interval === 'function' ? timer.interval(function () { try { rpc('notes-perf', { perf: JSON.parse(JSON.stringify(perf)) }) } catch (e2) {} }, 30000) : null
+      var pd = typeof timer.interval === 'function' ? timer.interval(function () {
+        try {
+          if (Date.now() < perfBackoffUntil) return   /* 退避窗口内跳过（连败指数退避生效中） */
+          var p = rpc('notes-perf', { perf: JSON.parse(JSON.stringify(perf)) })
+          if (!p || typeof p.then !== 'function') return
+          p.then(
+            function () {
+              if (perfFailStreak > 0) { try { console.warn('[notes-perf] telemetry report recovered after ' + perfFailStreak + ' consecutive failures') } catch (e2) {} }
+              perfFailStreak = 0
+              perfBackoffUntil = 0
+            },
+            function (e2) {
+              perfFailStreak++
+              perfBackoffUntil = Date.now() + Math.min(PERF_BACKOFF_BASE_MS * Math.pow(2, perfFailStreak), PERF_BACKOFF_CAP_MS)
+              if (perfFailStreak === 1) { try { console.warn('[notes-perf] telemetry report failed, backing off silently: ' + (e2 && e2.message || e2)) } catch (e3) {} }
+            }
+          )
+        } catch (e2) {}
+      }, 30000) : null
       if (typeof pd === 'function') ctx.effect(function () { return pd })
     } catch (e2) {}
     // 样式从 host 拉取（doc 级 <style> 注入，替代动态插件的 styles 服务）

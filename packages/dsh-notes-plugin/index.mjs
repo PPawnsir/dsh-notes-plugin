@@ -2381,11 +2381,19 @@ export function apply(ctx) {
     // 主通道：全局 Builtin `harness.handle`（原 host-impl.js 的 helper 姿势原样保留，只是补了 handler 表）。
     // 兜底通道：harness 缺失时同一批 handler 由 ctx.webServer.register 的 exact 路由承载。
     const handlers = {}
+    // ==== slow-rpc-log BEGIN ====（慢请求诊断钩 notes-048-perf-backoff③：server.js 与 server.dist.js 本块逐字节一致，check 节 107 提取比对 + 行为级 eval；改动必须双边同步）
+    // 巡检钓出「忙时饿死 vs 恒定挂起」取证面（反馈 n-muyg8rxawuds）：单请求处理 >5s 时 console.warn 一行（方法名+耗时）。
+    // 纯进程日志——不写笔记库、不进遥测（perf-report.json 口径零变化）、不动路由并发结构（本次只观测）；阈值集中常量可改。
+    const SLOW_RPC_LOG_MS = 5000
+    function slowRpcLog(name, ms) {
+      if (ms > SLOW_RPC_LOG_MS) { try { console.warn('[dsh-notes] 慢请求 ' + name + '：' + ms + 'ms（>5s）') } catch (e) {} }
+    }
+    // ==== slow-rpc-log END ====
     function handle(name, fn) {
       const wrapped = async (args) => {
         const t0 = Date.now()
         try { return await fn(args) }
-        finally { perfStats.rpc[name] = (perfStats.rpc[name] || 0) + 1; perfStats.rpcMs[name] = (perfStats.rpcMs[name] || 0) + (Date.now() - t0); writePerfReport() }
+        finally { const ms = Date.now() - t0; perfStats.rpc[name] = (perfStats.rpc[name] || 0) + 1; perfStats.rpcMs[name] = (perfStats.rpcMs[name] || 0) + ms; writePerfReport(); slowRpcLog(name, ms) }
       }
       handlers[name] = wrapped   // handler 表始终维护：webServer 兜底路由据此分发
       if (harnessRef && typeof harnessRef.handle === 'function') return harnessRef.handle(name, wrapped)

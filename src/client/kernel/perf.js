@@ -34,5 +34,35 @@
         disposers.push(() => po.disconnect())
       }
     } catch (e2) {}
+    // ===== 0.4.8-A 遥测退避（notes-048-perf-backoff；巡检钓出：宿主忙时 notes-perf 每 30s 准时超时，点火即发未接 rejection → console error 死循环刷屏 40+ 条，反馈 n-muyg8rxawuds）=====
+    // ①上报 promise 接 rejection 分支吞掉——遥测失败本就不该成用户可见 unhandled error（try/catch 只接同步异常，接不到 promise 拒绝）；
+    // ②连续失败指数退避：连败 N 次后顺延 min(2^N × 30s, 封顶 300s)（30s→60s→120s→240s→300s…，退避窗口内 tick 跳过本次上报），成功落定即复位回 30s 节拍；
+    // ③失败降级 console.warn 一次性（连败首条一条）+ 恢复时一条带连败计数——不再每 30s 一条刷屏。
+    // 红线：上报 payload 形态零变化（perf-report.json client 快照兼容）；阈值集中常量可改。
     // 每 30s 把计数器推给 host，汇总写入 perf-report.json
-    try { const pd = timer.interval(() => { try { host.call('notes-perf', { perf: JSON.parse(JSON.stringify(perf)) }) } catch (e2) {} }, 30000); disposers.push(pd) } catch (e2) {}
+    const PERF_BACKOFF_BASE_MS = 30000    // 退避基数（= 上报节拍）
+    const PERF_BACKOFF_CAP_MS = 300000    // 退避封顶
+    var perfFailStreak = 0                // 连败计数（var 形态：check 节 107 行为级 eval 经 with(Proxy) 沙箱可见）
+    var perfBackoffUntil = 0              // 退避闸门：该时刻前的 tick 跳过本次上报
+    try {
+      const pd = timer.interval(() => {
+        try {
+          if (Date.now() < perfBackoffUntil) return    // 退避窗口内跳过（连败指数退避生效中）
+          const p = host.call('notes-perf', { perf: JSON.parse(JSON.stringify(perf)) })
+          if (!p || typeof p.then !== 'function') return
+          p.then(
+            () => {
+              if (perfFailStreak > 0) { try { console.warn('[notes-perf] telemetry report recovered after ' + perfFailStreak + ' consecutive failures') } catch (e2) {} }
+              perfFailStreak = 0
+              perfBackoffUntil = 0
+            },
+            (e2) => {
+              perfFailStreak++
+              perfBackoffUntil = Date.now() + Math.min(PERF_BACKOFF_BASE_MS * Math.pow(2, perfFailStreak), PERF_BACKOFF_CAP_MS)
+              if (perfFailStreak === 1) { try { console.warn('[notes-perf] telemetry report failed, backing off silently: ' + (e2 && e2.message || e2)) } catch (e3) {} }
+            }
+          )
+        } catch (e2) {}
+      }, 30000)
+      disposers.push(pd)
+    } catch (e2) {}

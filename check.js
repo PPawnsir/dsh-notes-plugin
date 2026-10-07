@@ -180,6 +180,11 @@ const CORE = new Set([
   '0.4.6-B rpc 挂起提示条：>RPC_SLOW_MS 出现 / 落定消失（并发归并同一条）',
   // 103. 0.4.7-C 稳定性债（notes-047-stability：常驻 --core 防关闭丢稿/假同步回归——卸载 flush 行为级主断言）
   '0.4.7-C app flush（行为）：dirty 态触发关闭钩 → host 立即收到 notes-update（不等到期）+ 到期回调不双保存',
+  // 107. 0.4.8-A 遥测退避 + 慢请求诊断钩（notes-048-perf-backoff：常驻 --core 防遥测刷屏/诊断钩回归——退避序列与 6s 位移行为级主断言）
+  '0.4.8-A 遥测退避行为级：连败 60s→120s→240s→封顶 300s + 窗口跳票 + 成功复位（eval 打桩）',
+  '0.4.8-A 遥测 warn 降级：连败首条一条 + 恢复带计数 + 零 unhandled rejection（eval 打桩）',
+  'slow-rpc-log 标记块双包逐字节一致 + 行为级 eval（>5s 触发 / ≤5s 静默 / 纯进程日志红线）',
+  '0.4.8-A 慢请求诊断钩（行为）：6s 位移 mock → console.warn 一行（方法名+耗时），快请求静默（开发版+静态包）',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====
