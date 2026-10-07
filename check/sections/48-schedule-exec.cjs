@@ -532,6 +532,118 @@ module.exports = {
     }
   })
 
+  // ===== 0.4.7 首触防过去闸收紧（notes-047-anchor-firstfire）：原闸「候选 < nowMs 即跳日」过宽——30s 轮询时钟恒晚于锚点几秒~几分钟 =====
+  //   （虚拟时钟测试精确对齐等号全绿 = 测试时钟盲区，用户实测钓出：新建锚定任务首触永不触发）；收紧为「陈旧整天以上才跳」
+  //   （候选 < now 当日午夜），当日内错过的锚点当日内补发（与 at 单次停机补发语义对齐）；weekly/dow 分支 scan0 同款过宽同法收紧
+  await t('0.4.7 首触闸收紧（断言①）：当日建+当日锚点已过几分钟（轮询时钟）→ 当日内补发触发（修复前跳次日=首触永不触发）', async () => {
+    const LEG = 'n-anchor047a'
+    try {
+      const n0 = new Date(), y = n0.getFullYear(), mo = n0.getMonth(), dd = n0.getDate()
+      const baseIso = new Date(y, mo, dd, 20, 41, 42).toISOString()   // 当日 20:41:42 建（用户现场时刻复刻）
+      store.set(NOTES_DIR + '\\' + LEG + '.md', mdOf46F(LEG, '首触闸收紧约定', baseIso, { every: '1d', anchor: '20:45', target: LIVE_SID, action: 'dispatch', enabled: true, declaredAt: baseIso }))
+      let ev = await handlers['notes-schedule-eval']({ now: new Date(y, mo, dd, 20, 44, 59).toISOString() })
+      assert(ev.fired === 0 && ev.errors === 0, '锚点前 1min 不触发（实得 ' + JSON.stringify(ev) + '）')
+      // 断言①：now=当日 21:04:30（轮询 tick 晚于锚点 19 分钟）→ next=当日 20:45 → due=true（修复前闸跳次日 20:45、due=false——本断言锁定回归）
+      const tickClock = new Date(y, mo, dd, 21, 4, 30).toISOString()
+      const before = sentMessages.length
+      ev = await handlers['notes-schedule-eval']({ now: tickClock })
+      assert(ev.fired === 1 && ev.errors === 0, '断言①：当日锚点刚过 → 当日内补发触发（0.4.7 闸收紧，实得 ' + JSON.stringify(ev) + '）')
+      assert.strictEqual(sentMessages.length, before + 1, '恰好一次派发')
+      let g = await handlers['notes-get']({ id: LEG })
+      assert.strictEqual(g.note.schedule.lastFiredAt, tickClock, 'lastFiredAt=补发 tick 时刻（注入时钟）')
+      ev = await handlers['notes-schedule-eval']({ now: tickClock })
+      assert(ev.fired === 0, '同时钟防重')
+      // fired 分支不动（红线：:90 分支不注入该闸）：次日 20:45 准点再触发
+      ev = await handlers['notes-schedule-eval']({ now: new Date(y, mo, dd + 1, 20, 45, 0).toISOString() })
+      assert(ev.fired === 1 && ev.errors === 0, 'fired 分支不动：次日 20:45 准点触发（实得 ' + JSON.stringify(ev) + '）')
+      g = await handlers['notes-get']({ id: LEG })
+      assert.strictEqual(g.note.schedule.declaredAt, baseIso, 'declaredAt 不被触发触碰')
+    } finally {
+      await handlers['notes-delete']({ id: LEG })   // finally 清理：断言失败也不留活口污染后续节评估计数
+    }
+  })
+
+  await t('0.4.7 闸收紧不退化（断言②③④）：陈旧欠款仍跳日不补发 + 跨日 00:00 边界 + declaredAt 重锚当天不误触', async () => {
+    // 断言②：base=3 天前 10:00（declaredAt 同）、now=今日 15:00、anchor=09:00 → 候选陈旧整天以上 → next=明日 09:00、due=false（欠款不补发不退化）
+    const LEG = 'n-anchor047b'
+    try {
+      const n0 = new Date(), y = n0.getFullYear(), mo = n0.getMonth(), dd = n0.getDate()
+      const baseIso = new Date(y, mo, dd - 3, 10, 0, 0).toISOString()
+      store.set(NOTES_DIR + '\\' + LEG + '.md', mdOf46F(LEG, '陈旧欠款锚定约定', baseIso, { every: '1d', anchor: '09:00', target: LIVE_SID, action: 'dispatch', enabled: true, declaredAt: baseIso }))
+      let ev = await handlers['notes-schedule-eval']({ now: new Date(y, mo, dd, 15, 0, 0).toISOString() })
+      assert(ev.fired === 0 && ev.errors === 0, '断言②：陈旧欠款 → 今日不补发（实得 ' + JSON.stringify(ev) + '）')
+      const na = new Date(y, mo, dd + 1, 9, 0, 0).getTime()   // 明日 09:00
+      ev = await handlers['notes-schedule-eval']({ now: new Date(na - 60000).toISOString() })
+      assert(ev.fired === 0, '断言②：明日 09:00 前 1min 不触发')
+      ev = await handlers['notes-schedule-eval']({ now: new Date(na).toISOString() })
+      assert(ev.fired === 1 && ev.errors === 0, '断言②：next=明日 09:00 准点触发（实得 ' + JSON.stringify(ev) + '）')
+    } finally {
+      await handlers['notes-delete']({ id: LEG })
+    }
+    // 断言③：跨日边界——锚点 00:00（今日 10:00 建）→ now=今日 23:59 未来候选闸不插手；次日 00:00:30 tick 当日内补发（修复前跳后日=永不触发）
+    const LEG2 = 'n-anchor047c'
+    try {
+      const n0 = new Date(), y = n0.getFullYear(), mo = n0.getMonth(), dd = n0.getDate()
+      const baseIso = new Date(y, mo, dd, 10, 0, 0).toISOString()
+      store.set(NOTES_DIR + '\\' + LEG2 + '.md', mdOf46F(LEG2, '跨日零点锚定约定', baseIso, { every: '1d', anchor: '00:00', target: LIVE_SID, action: 'dispatch', enabled: true, declaredAt: baseIso }))
+      let ev = await handlers['notes-schedule-eval']({ now: new Date(y, mo, dd, 23, 59, 0).toISOString() })
+      assert(ev.fired === 0 && ev.errors === 0, '断言③：now=23:59 vs anchor=00:00 → 未来候选不触发（实得 ' + JSON.stringify(ev) + '）')
+      const midTick = new Date(y, mo, dd + 1, 0, 0, 30).toISOString()
+      ev = await handlers['notes-schedule-eval']({ now: midTick })
+      assert(ev.fired === 1 && ev.errors === 0, '断言③：跨日 00:00:30 tick → 零点锚点当日内补发（实得 ' + JSON.stringify(ev) + '）')
+      const g = await handlers['notes-get']({ id: LEG2 })
+      assert.strictEqual(g.note.schedule.lastFiredAt, midTick, 'lastFiredAt=跨日 tick 时刻')
+    } finally {
+      await handlers['notes-delete']({ id: LEG2 })
+    }
+    // 断言④：declaredAt 重锚回归（0.4.6-F 原修复场景 + anchor）——编辑存量锚定约定（declaredAt=今日 15:00）当天不误触发，下个锚定点才触发
+    const LEG3 = 'n-anchor047d'
+    try {
+      const n0 = new Date(), y = n0.getFullYear(), mo = n0.getMonth(), dd = n0.getDate()
+      const createdIso = new Date(y, mo, dd - 10, 9, 0, 0).toISOString()   // 老 createdAt（10 天前）
+      const declIso = new Date(y, mo, dd, 15, 0, 0).toISOString()         // 模拟「今日 15:00 刚编辑过声明」：declaredAt 重锚
+      store.set(NOTES_DIR + '\\' + LEG3 + '.md', mdOf46F(LEG3, '编辑重锚锚定约定', createdIso, { every: '1d', anchor: '09:00', target: LIVE_SID, action: 'dispatch', enabled: true, declaredAt: declIso }))
+      let ev = await handlers['notes-schedule-eval']({ now: new Date(y, mo, dd, 16, 0, 0).toISOString() })
+      assert(ev.fired === 0 && ev.errors === 0, '断言④：编辑锚定约定当天不误触发（declaredAt 重锚回归，实得 ' + JSON.stringify(ev) + '）')
+      ev = await handlers['notes-schedule-eval']({ now: new Date(y, mo, dd + 1, 9, 0, 0).toISOString() })
+      assert(ev.fired === 1 && ev.errors === 0, '断言④：下个锚定点（明日 09:00）准点触发（实得 ' + JSON.stringify(ev) + '）')
+    } finally {
+      await handlers['notes-delete']({ id: LEG3 })
+    }
+  })
+
+  await t('0.4.7 weekly 同款闸收紧：当日 dow 锚点刚过 → 当日内补发不跳下周；陈旧 weekly 欠款仍跳下周（scan0 抬升同款过宽复核）', async () => {
+    const LEG = 'n-anchor047e'
+    try {
+      const n0 = new Date(), y = n0.getFullYear(), mo = n0.getMonth(), dd = n0.getDate()
+      const dow = n0.getDay()   // 今日即 dow
+      const baseIso = new Date(y, mo, dd, 10, 0, 0).toISOString()   // 当日 10:00 建
+      store.set(NOTES_DIR + '\\' + LEG + '.md', mdOf46F(LEG, '周锚定首触约定', baseIso, { every: '1w', anchor: '10:30', dow: dow, target: LIVE_SID, action: 'dispatch', enabled: true, declaredAt: baseIso }))
+      // 当日 dow 锚点 10:30 刚过 5 分钟（轮询时钟）→ 当日内补发（修复前候选 < nowMs 跳下周 = 首触永不触发）
+      const tick = new Date(y, mo, dd, 10, 35, 0).toISOString()
+      const ev = await handlers['notes-schedule-eval']({ now: tick })
+      assert(ev.fired === 1 && ev.errors === 0, 'weekly 首触：当日锚点刚过 → 当日内补发不跳下周（0.4.7 同款收紧，实得 ' + JSON.stringify(ev) + '）')
+      const g = await handlers['notes-get']({ id: LEG })
+      assert.strictEqual(g.note.schedule.lastFiredAt, tick, 'lastFiredAt=weekly 补发 tick 时刻')
+    } finally {
+      await handlers['notes-delete']({ id: LEG })
+    }
+    const LEG2 = 'n-anchor047f'
+    try {
+      const n0 = new Date(), y = n0.getFullYear(), mo = n0.getMonth(), dd = n0.getDate()
+      const dow = n0.getDay()
+      const baseIso = new Date(y, mo, dd - 21, 10, 0, 0).toISOString()   // 3 周前（同星期几）
+      store.set(NOTES_DIR + '\\' + LEG2 + '.md', mdOf46F(LEG2, '周锚定陈旧约定', baseIso, { every: '1w', anchor: '10:30', dow: dow, target: LIVE_SID, action: 'dispatch', enabled: true, declaredAt: baseIso }))
+      // 陈旧 weekly 欠款：今日即 dow 但锚点已过 → 跳下周（首轮不补发，欠款语义不退化）
+      let ev = await handlers['notes-schedule-eval']({ now: new Date(y, mo, dd, 10, 35, 0).toISOString() })
+      assert(ev.fired === 0 && ev.errors === 0, '陈旧 weekly 欠款 → 今日不补发（实得 ' + JSON.stringify(ev) + '）')
+      ev = await handlers['notes-schedule-eval']({ now: new Date(y, mo, dd + 7, 10, 30, 0).toISOString() })
+      assert(ev.fired === 1 && ev.errors === 0, '下周同 dow 10:30 准点触发（实得 ' + JSON.stringify(ev) + '）')
+    } finally {
+      await handlers['notes-delete']({ id: LEG2 })
+    }
+  })
+
   // ===== 双包一致：标记块逐字节 + 静态包行为（webServer 路由链路全链路） =====
   await t('schedule-exec 标记块双包逐字节一致 + cron 装配静态锚点（host-impl / index.mjs）', () => {
     const grab = (s, tag) => { const m = s.match(/\/\/ ==== schedule-exec BEGIN ====[\s\S]*?\/\/ ==== schedule-exec END ====/); assert(m, tag + ' 缺 schedule-exec 标记块'); return m[0] }
@@ -554,6 +666,8 @@ module.exports = {
       assert(src.indexOf('declaredAt: 1') >= 0 && src.indexOf('function schedDeclChanged(') >= 0, tag + ' declaredAt 已知键 + 声明变更比对（0.4.6-F）')
       assert(src.indexOf('firedMs || declaredMs ||') >= 0, tag + ' 到期锚点 lastFiredAt||declaredAt||createdAt（0.4.6-F）')
       assert(src.indexOf('首触防过去候选') >= 0 && src.indexOf('!!firedMs, nowMs)') >= 0, tag + ' 首触防过去候选注入 nowMs（0.4.6-F）')
+      // 0.4.7（notes-047-anchor-firstfire）：闸收紧为「陈旧整天以上才跳」（first < nday0）——轮询时钟 vs 精确等号盲区热修，静态锚点双包看守
+      assert(src.indexOf('first < nday0') >= 0 && src.indexOf('firstDow < nday0') >= 0 && src.indexOf('notes-047-anchor-firstfire') >= 0, tag + ' 首触防过去闸收紧=陈旧整天以上才跳（0.4.7，daily+weekly 同款）')
     }
   })
 

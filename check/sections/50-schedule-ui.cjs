@@ -97,6 +97,14 @@ module.exports = {
     assert.strictEqual(ns.schedAnchorNextMs('09:00', undefined, 86400000, mkL(2026, 10, 5, 9, 0), true, mkL(2026, 10, 8, 12, 0)), mkL(2026, 10, 6, 9, 0), '已触发分支不注入防过去闸（停机补发语义保留，0.4.6-F）')
     assert.strictEqual(ns.schedAnchorNextMs('09:00', wDow, 604800000, wBase - 21 * 86400000, false, wBase), wFire, 'weekly 首触 base 陈旧（3 周前）→ now 之后首个 dow 09:00（0.4.6-F）')
     assert.strictEqual(ns.schedAnchorNextMs('09:00', wDow, 604800000, wBase, false, wBase - 86400000), wFire, 'weekly 首触 now 早于 base → 旧口径不插手（0.4.6-F 兼容）')
+    // 0.4.7（notes-047-anchor-firstfire）闸收紧：原闸「候选 < nowMs 即跳」过宽——30s 轮询时钟恒晚于锚点，首触永不触发；
+    //   收紧为「陈旧整天以上才跳」（候选 < now 当日午夜），当日内错过 → 当日内补发（与 host 同口径；修复前期望值=次日/下周 = 回归锁定）
+    assert.strictEqual(ns.schedAnchorNextMs('20:45', undefined, 86400000, mkL(2026, 10, 5, 20, 41), false, mkL(2026, 10, 5, 21, 4)), mkL(2026, 10, 5, 20, 45), '0.4.7 断言①：当日锚点 20:45 刚过（now=21:04 轮询时钟）→ 当日候选照常返回（修复前跳次日）')
+    assert.strictEqual(ns.schedAnchorNextMs('09:00', undefined, 86400000, mkL(2026, 10, 1, 8, 30), false, mkL(2026, 10, 5, 15, 0)), mkL(2026, 10, 6, 9, 0), '0.4.7 断言②：陈旧整天以上欠款 → 次日 09:00 不补发（语义不退化）')
+    assert.strictEqual(ns.schedAnchorNextMs('00:00', undefined, 86400000, mkL(2026, 10, 5, 10, 0), false, mkL(2026, 10, 5, 23, 59)), mkL(2026, 10, 6, 0, 0), '0.4.7 断言③：跨日边界 now=23:59 vs anchor=00:00 → 明日 00:00 未来候选闸不插手')
+    assert.strictEqual(ns.schedAnchorNextMs('00:00', undefined, 86400000, mkL(2026, 10, 5, 10, 0), false, mkL(2026, 10, 6, 0, 0) + 30000), mkL(2026, 10, 6, 0, 0), '0.4.7 断言③：跨日后 tick 晚 30s（00:00:30）→ 当日零点候选照常返回补发（修复前跳后日）')
+    assert.strictEqual(ns.schedAnchorNextMs('10:30', wDow, 604800000, mkL(2026, 10, 5, 10, 0), false, mkL(2026, 10, 5, 10, 35)), mkL(2026, 10, 5, 10, 30), '0.4.7 weekly 同款收紧：当日 dow 锚点刚过 5min → 当日内补发不跳下周（修复前跳下周）')
+    assert.strictEqual(ns.schedAnchorNextMs('09:00', wDow, 604800000, wBase - 21 * 86400000, false, wBase + 3600000), wFire + 7 * 86400000, '0.4.7 weekly 陈旧欠款 + 当日锚点已过 → 跳下周（欠款语义不退化）')
     const anchor = '2026-10-01T02:00:00.000Z'
     assert.strictEqual(ns.schedNextMs({ createdAt: anchor, schedule: { every: '3d' } }), Date.parse(anchor) + 3 * 86400000, '轮询未触发：createdAt + 间隔（同 host 锚点，无 anchor 存量兼容）')
     const fired = '2026-10-03T02:00:00.000Z'
@@ -120,6 +128,8 @@ module.exports = {
     for (const [src46, tag46] of [[appSrc, 'app.html'], [clientSrc, 'client'], [protoV2Src, '原型']]) {
       assert(src46.indexOf('declaredAt') >= 0, tag46 + ' 调度镜像含 declaredAt（0.4.6-F 声明重锚）')
       assert(src46.indexOf('首触防过去候选') >= 0, tag46 + ' 调度镜像含首触防过去候选（0.4.6-F）')
+      // 0.4.7（notes-047-anchor-firstfire）：首触防过去闸收紧=陈旧整天以上才跳——镜像同 host 口径静态看守
+      assert(src46.indexOf('first < nday0') >= 0 && src46.indexOf('firstDow < nday0') >= 0, tag46 + ' 调度镜像含 0.4.7 闸收紧（first < nday0 / firstDow < nday0，notes-047-anchor-firstfire）')
     }
     const li = ns.isoToLocalInput('2026-10-10T01:00:00.000Z')
     assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(li), 'datetime-local 形态（实得 ' + li + '）')

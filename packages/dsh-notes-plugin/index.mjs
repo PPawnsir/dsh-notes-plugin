@@ -4072,8 +4072,10 @@ export function apply(ctx) {
     //     声明未变更的改写（等价重提交/只改正文不过闸门）延续存量，缺省不留字段。到期锚点 = lastFiredAt || declaredAt || createdAt
     //     （字段缺省回退 = 存量零迁移）——修「编辑存量约定后当天误触发一轮」：旧口径锚点恒为 note.createdAt（编辑不推进），
     //     老约定（创建多日、从未触发）一经编辑 now-base 远超间隔即到期；重锚后锚点 = 本次声明时刻，下个调度点才触发。
-    //     every+anchor 首触防过去候选（schedAnchorNextMs 注入 nowMs）：首触候选落在过去（base 陈旧）→ 对齐「now 之后第一个锚定时刻」
-    //     ——首轮不补发，与⑤「轮询错过不追赶」口径对齐；已触发分支与 at 单次停机补发语义（⑤）不动。
+    //     every+anchor 首触防过去候选（schedAnchorNextMs 注入 nowMs）：首触候选陈旧整天以上（base 陈旧）→ 对齐「now 之后第一个锚定时刻」
+    //     ——首轮不补发，与⑤「轮询错过不追赶」口径对齐；当日内错过（轮询 tick 恒晚于锚点几秒~几分钟）→ 当日内补发
+    //     （0.4.7 闸收紧，notes-047-anchor-firstfire：原「候选 < nowMs 即跳日」在 30s 轮询时钟下首触永不触发——次日 tick 再跳后日）；
+    //     已触发分支与 at 单次停机补发语义（⑤）不动。
     //   ⑧专属会话 + 休眠送达（0.4.4-B，notes-044-dormant-dispatch）：target='new'（仅周期模式）= 首轮触发创建「定时 · <标题>」
     //     专属会话并随幂等生命线回写 target=新 sid（持久复用，后续轮次同 sid）；执行红线由「目标 live」改写为「目标可送达」——
     //     live 直通 / 持久化可达（stat 命中）走 _dispatch 休眠送达通道（durable inbox 排队，下次活动送达，零唤醒）；
@@ -4116,34 +4118,48 @@ export function apply(ctx) {
     //   首触（fired=false，base=declaredAt||createdAt，0.4.6-F）= base 之后第一个锚定时刻（weekly 限定 dow 星期几）；
     //   后续（fired=true，base=lastFiredAt）= base + 间隔 所在本地日的锚定时刻（weekly = 下一个 dow 锚定时刻）——
     //   触发延迟（停机错过）只推迟本次，后续仍落回同一时刻序列。
-    //   0.4.6-F（notes-046-sched-anchor）首触防过去候选：注入 nowMs 时，首触候选落在过去（base 陈旧：declaredAt 重锚前存量/停机多日）
+    //   0.4.6-F（notes-046-sched-anchor）首触防过去候选：注入 nowMs 时，首触候选陈旧（base 陈旧：declaredAt 重锚前存量/停机多日）
     //   → 对齐「now 之后第一个锚定时刻」（首轮不补发，与⑤轮询错过不追赶口径对齐）；已触发分支不注入该闸（停机补发一次语义保留）。
+    //   0.4.7（notes-047-anchor-firstfire）闸收紧：「落在过去」改判「陈旧整天以上」——候选 < now 当日午夜才跳日/跳周对齐；
+    //   候选仅在当日之内错过（nday0 ≤ 候选 < nowMs）正常返回 → 下个 tick 当日内补发（与⑤ at 单次停机补发语义对齐）。
+    //   坑（测试时钟盲区）：真实运行是 30s 轮询时钟，tick 恒晚于锚点几秒~几分钟、打不中精确等号——原口径 first < nowMs 即跳日，
+    //   新建锚定任务首触永不触发（次日 tick 再跳后日）；e2e/单元测试虚拟时钟精确对齐等号所以全绿，用户实测钓出。
     //   dow=0-6（0=周日，Date.getDay 口径）；ivMs 需整天倍数（写入闸门保证）。非法 → null
     function schedAnchorNextMs(anchor, dow, ivMs, baseMs, fired, nowMs) {
       const off = schedAnchorMs(anchor)
       if (off === null || !isFinite(baseMs) || !baseMs) return null
       const b = new Date(baseMs)
       const day0 = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime()   // base 所在本地日午夜
-      // 首触防过去候选（0.4.6-F）：now 有效且晚于 base 时扫描起点抬到 now 当日午夜（跳过陈旧欠款日）；已触发/无 nowMs 保持 base 当日起扫（旧口径）
+      // 首触防过去候选闸（0.4.7 收紧）：nday0 = now 当日午夜——候选 < nday0（陈旧整天以上）才跳日/跳周对齐；当日内错过照常返回 → 下个 tick 补发
       const hasNow = typeof nowMs === 'number' && isFinite(nowMs)
-      let scan0 = day0
-      if (!fired && hasNow && nowMs > baseMs) { const nd0 = new Date(nowMs); scan0 = new Date(nd0.getFullYear(), nd0.getMonth(), nd0.getDate()).getTime() }
+      const nd0 = hasNow ? new Date(nowMs) : null
+      const nday0 = nd0 ? new Date(nd0.getFullYear(), nd0.getMonth(), nd0.getDate()).getTime() : 0   // now 所在本地日午夜
       if (typeof dow === 'number') {
-        // weekly：自扫描起点逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow；首触 → 下一个 dow 且候选 ≥ now）
+        // weekly：自 base 当日逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow 准点；首触 → base 之后第一个 dow 锚定时刻）
+        let firstDow = null
         for (let i = 0; i < 14; i++) {
-          const dm = scan0 + i * 86400000
-          if (new Date(dm).getDay() === dow && dm + off > baseMs && (fired || !hasNow || dm + off >= nowMs)) return dm + off
+          const dm = day0 + i * 86400000
+          if (new Date(dm).getDay() === dow && dm + off > baseMs) { firstDow = dm + off; break }
         }
-        return null
+        if (firstDow === null) return null
+        if (fired || !hasNow) return firstDow
+        // 首触防过去候选（0.4.6-F → 0.4.7 收紧，与每日分支同法）：候选陈旧整天以上（< now 当日午夜）→ 对齐「now 之后第一个 dow 锚定时刻」
+        //   （首轮不补发）；当日内错过（今日 dow 锚点刚过几分钟）不跳周——下个 tick 当日内补发
+        if (firstDow < nday0) {
+          for (let j = 0; j < 14; j++) {
+            const dn = nday0 + j * 86400000
+            if (new Date(dn).getDay() === dow && dn + off >= nowMs) return dn + off
+          }
+          return null
+        }
+        return firstDow
       }
       if (typeof ivMs !== 'number' || !isFinite(ivMs) || ivMs % 86400000 !== 0) return null
       if (fired) { const f = new Date(baseMs + ivMs); return new Date(f.getFullYear(), f.getMonth(), f.getDate()).getTime() + off }
       // 首触：base 当日锚定时刻未到 → 当日；已过 → 次日
       const first = (day0 + off > baseMs ? day0 : day0 + 86400000) + off
-      // 首触防过去候选（0.4.6-F）：候选落在过去 → 对齐「now 之后第一个锚定时刻」（当日锚定未到 → 当日；已过 → 次日）
-      if (hasNow && first < nowMs) {
-        const nd = new Date(nowMs)
-        const nday0 = new Date(nd.getFullYear(), nd.getMonth(), nd.getDate()).getTime()
+      // 首触防过去候选（0.4.6-F → 0.4.7 收紧 first < nday0 陈旧整天以上才跳）：对齐「now 之后第一个锚定时刻」（当日锚定未到 → 当日；已过 → 次日）
+      if (hasNow && first < nday0) {
         return (nday0 + off >= nowMs ? nday0 : nday0 + 86400000) + off
       }
       return first
@@ -4310,7 +4326,7 @@ export function apply(ctx) {
     //   every：锚点 = lastFiredAt || declaredAt || createdAt（0.4.6-F 声明重锚：declaredAt=声明最近写入时刻，缺省回退 createdAt 存量零迁移）；
     //     now - 锚点 ≥ 间隔 → 到期（触发后 lastFiredAt=本次时刻对齐下周期，错过不追赶）；
     //   every + anchor（notes-034-sched-time 锚定时刻）：到期 = now ≥ 锚定序列下一时刻（schedAnchorNextMs 注入 nowMs——
-    //     首触防过去候选：候选落在过去对齐下一轮不补发，0.4.6-F；钉死本地 HH:MM 不漂移）；
+    //     首触防过去候选：候选陈旧整天以上对齐下一轮不补发（0.4.6-F；0.4.7 收紧——当日内错过当日内补发，notes-047-anchor-firstfire）；钉死本地 HH:MM 不漂移）；
     //   无 anchor 存量声明保持纯间隔语义（零迁移兼容）；非法声明（写入闸门已拦，此处双保险）一律不触发
     function schedDueAt(note, sched, nowMs) {
       const lastFiredMs = sched.lastFiredAt ? Date.parse(sched.lastFiredAt) : 0

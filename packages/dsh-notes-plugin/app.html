@@ -2912,26 +2912,36 @@ function schedAnchorMs(anchor) {
 /* 锚定时刻序列（同 host schedDueAt 锚定分支口径）：触发时刻钉死本地 HH:MM，不随创建/触发时刻漂移——
    首触（fired=false，base=declaredAt||createdAt，0.4.6-F）= base 之后第一个锚定时刻（weekly 限定 dow 星期几）；
    后续（fired=true，base=lastFiredAt）= base + 间隔 所在本地日的锚定时刻（weekly = 下一个 dow 锚定时刻）。
-   0.4.6-F 首触防过去候选：注入 nowMs 时首触候选落在过去（base 陈旧）→ 对齐「now 之后第一个锚定时刻」（首轮不补发，同 host）。
+   0.4.6-F 首触防过去候选：注入 nowMs 时首触候选陈旧（base 陈旧）→ 对齐「now 之后第一个锚定时刻」（首轮不补发，同 host）。
+   0.4.7 闸收紧（notes-047-anchor-firstfire，同 host）：「落在过去」改判「陈旧整天以上」——候选 < now 当日午夜才跳日/跳周对齐；
+   当日内错过（轮询 tick 恒晚于锚点几分钟，30s 轮询打不中精确等号）正常返回 → 当日内补发。
    dow=0-6（0=周日，Date.getDay 口径）；ivMs 需整天倍数。非法 → null */
 function schedAnchorNextMs(anchor, dow, ivMs, baseMs, fired, nowMs) {
   var off = schedAnchorMs(anchor);
   if (off === null || !isFinite(baseMs) || !baseMs) return null;
   var b = new Date(baseMs), day0 = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
-  /* 首触防过去候选（0.4.6-F，同 host）：now 有效且晚于 base 时扫描起点抬到 now 当日午夜；已触发/无 nowMs 保持旧口径 */
+  /* 首触防过去候选闸（0.4.7 收紧，同 host）：nday0 = now 当日午夜——候选 < nday0（陈旧整天以上）才跳日/跳周对齐，当日内错过照常返回补发 */
   var hasNow = typeof nowMs === 'number' && isFinite(nowMs);
-  var scan0 = day0;
-  if (!fired && hasNow && nowMs > baseMs) { var nd0 = new Date(nowMs); scan0 = new Date(nd0.getFullYear(), nd0.getMonth(), nd0.getDate()).getTime() }
+  var nd0 = hasNow ? new Date(nowMs) : null;
+  var nday0 = nd0 ? new Date(nd0.getFullYear(), nd0.getMonth(), nd0.getDate()).getTime() : 0;   /* now 所在本地日午夜 */
   if (typeof dow === 'number') {
-    /* weekly：自扫描起点逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow；首触 → 下一个 dow 且候选 ≥ now） */
-    for (var i = 0; i < 14; i++) { var dm = scan0 + i * 86400000; if (new Date(dm).getDay() === dow && dm + off > baseMs && (fired || !hasNow || dm + off >= nowMs)) return dm + off }
-    return null;
+    /* weekly：自 base 当日逐日找首个 getDay()===dow 且锚定时刻 > base 的候选（已触发 → 下周同 dow 准点；首触 → base 之后第一个 dow 锚定时刻） */
+    var firstDow = null;
+    for (var i = 0; i < 14; i++) { var dm = day0 + i * 86400000; if (new Date(dm).getDay() === dow && dm + off > baseMs) { firstDow = dm + off; break } }
+    if (firstDow === null) return null;
+    if (fired || !hasNow) return firstDow;
+    /* 首触防过去候选（0.4.6-F → 0.4.7 收紧，同 host）：候选陈旧整天以上（< now 当日午夜）→ 对齐「now 之后第一个 dow 锚定时刻」（首轮不补发）；当日内错过不跳周 */
+    if (firstDow < nday0) {
+      for (var j = 0; j < 14; j++) { var dn = nday0 + j * 86400000; if (new Date(dn).getDay() === dow && dn + off >= nowMs) return dn + off }
+      return null;
+    }
+    return firstDow;
   }
   if (typeof ivMs !== 'number' || !isFinite(ivMs) || ivMs % 86400000 !== 0) return null;
   if (fired) { var f = new Date(baseMs + ivMs); return new Date(f.getFullYear(), f.getMonth(), f.getDate()).getTime() + off }
-  /* 首触：base 当日锚定时刻未到 → 当日；已过 → 次日；候选落在过去（0.4.6-F）→ 对齐「now 之后第一个锚定时刻」 */
+  /* 首触：base 当日锚定时刻未到 → 当日；已过 → 次日；候选陈旧整天以上（0.4.6-F → 0.4.7 收紧 first < nday0）→ 对齐「now 之后第一个锚定时刻」 */
   var first = (day0 + off > baseMs ? day0 : day0 + 86400000) + off;
-  if (hasNow && first < nowMs) { var nd = new Date(nowMs), nday0 = new Date(nd.getFullYear(), nd.getMonth(), nd.getDate()).getTime(); return (nday0 + off >= nowMs ? nday0 : nday0 + 86400000) + off }
+  if (hasNow && first < nday0) { return (nday0 + off >= nowMs ? nday0 : nday0 + 86400000) + off }
   return first;
 }
 /* 频率人话：仅一次 <时间> / 每天 / 每周 / 每 N 天（锚定时刻声明带时刻后缀：每天 09:00 / 每周一 09:00 / 每 3 天 09:00）；非整天间隔（front-matter 裸编辑旁路值）兜底 每 N 小时/分钟/ms
