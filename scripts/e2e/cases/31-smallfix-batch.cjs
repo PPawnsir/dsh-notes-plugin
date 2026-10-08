@@ -128,12 +128,12 @@ module.exports = {
         H.t('全程零 console 错误', page.__consoleErrors.length === 0, () => JSON.stringify(page.__consoleErrors.slice(0, 3)))
       })
     } finally {
-      /* 清场：删造数笔记 + 删造数文件夹（mock delete 移出夹内笔记，故先删笔记再删夹） */
+      /* 清场：删造数笔记 + 删造数文件夹（0.4.8 契约对账起 mock delete 对齐 host 级联语义——含子内容须 cascade:true 整棵删） */
       try {
         if (seeded) {
           await rpc('notes-delete', { id: seeded.pinNote })
           await rpc('notes-delete', { id: seeded.sysNote })
-          await rpc('notes-folders', { op: 'delete', id: seeded.parent })
+          await rpc('notes-folders', { op: 'delete', id: seeded.parent, cascade: true })
         }
       } catch (e) {}
       await page.close().catch(() => {})

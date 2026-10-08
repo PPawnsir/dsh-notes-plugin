@@ -2,11 +2,19 @@
 /* e2e mock host：静态伺服 packages/dsh-notes-plugin/app.html + 最小 /dsh-notes RPC 内存实现。
  * 目的：让 app.html 脱离真实 DSH host 也能完整启动与交互（e2e 专用，不触真实笔记目录）。
  * RPC 口径与 host-impl.js 对齐的必要子集：notes-list/get/get-batch/create/update/delete/restore/purge/
- * search/folders/settings-get/set/usage-get/active-sessions/sessions/memory-guide/dispatch/export/history；
- * 其余返回 {ok:true}。数据存内存（种子 2 条笔记 + 1 个「工作日志」夹 + 1 条日志 + 1 个活跃会话），
- * 进程退出即弃——e2e 天然隔离、可重复。
+ * search/folders/settings-get/set/usage-get/active-sessions/sessions/workspaces/memory-guide/dispatch/dispatch-done/
+ * export/history/suggest/mount/mount-list/recall-stats/conflict-check/ai-organize/ping；其余返回 {ok:true}。
+ * 数据存内存（种子 2 条笔记 + 1 个「工作日志」夹 + 1 条日志 + 1 个活跃会话），进程退出即弃——e2e 天然隔离、可重复。
  * 0.4.3② e2e 卡（notes-043-e2e-cases）扩展：folders 状态化 CRUD、软删/恢复/彻底删除、
- * dispatch-schedule 建块链路、notes-export 冒烟、kind=log 同权口径（0.4.3⑦：默认列表/搜索即含日志）。 */
+ * dispatch-schedule 建块链路、notes-export 冒烟、kind=log 同权口径（0.4.3⑦：默认列表/搜索即含日志）。
+ *
+ * == 契约边界（0.4.8 notes-048-mock-contract-audit；常驻闸 = check/sections/113-mock-contract.cjs）==
+ * 必须一致（闸守）：envelope/嵌套条目键集、过滤语义（deleted/sys 缺省降噪/kind/tag/folder 递归子树口径）、
+ *   错误形态（{error:string} 键 + needCascade 等结构化错误键）、写入校验闸的存在性（空名/缺参/未知 op 拒绝）。
+ * 允许简化（节 113 豁免清单显式登记）：数据内容（计数/时间戳/正文/id 取值）/排序细节/错误文案措辞/LLM 产出/
+ *   宿主服务透传键（permissionPresets、会话标题后台补齐三键）/性能与缓存机制/schedule 声明写闸。
+ * 红线：mock 不是宿主复制品——只守契约点；漂移修复只改 mock/e2e 侧，真宿主零改动；
+ *   host 新增 RPC 时本文件三选一：实现 / 缺省 {ok:true} 直通并在节 113 豁免清单登记 / 面板 harness 特判。 */
 const http = require('http')
 const fs = require('fs')
 const path = require('path')
@@ -17,47 +25,62 @@ function nowIso() { return new Date().toISOString() }
 let idSeq = 0
 function newId() { return 'e2e-' + Date.now().toString(36) + '-' + (++idSeq) }
 
+/* 0.4.8 契约对账（节 113）：slim 键集逐键对齐 host kernel/persist.js slim()——
+ * 去 pinned 布尔（host 无此键：置顶 = status:'pinned'）与顶层 dispatchStatus（host 只发 dispatches 数组，状态机在条目内）；
+ * 补 workspace/cwd/logDate/entities/summarizedAt/origin/mergedFrom/archivedAt；schedule 缺省 null（host 口径，wire 恒带键）；
+ * injectRole 缺省归一 'convention'（host slim 同口径）；injectEver 粘性公式同 host（旧值 || inject）。 */
 function slimNote(n) {
   return {
-    id: n.id, title: n.title, kind: n.kind || 'note', topic: n.topic || '',
-    tags: n.tags || [], status: n.status || 'active', pinned: !!n.pinned,
-    inject: !!n.inject, injectRole: n.injectRole || '', injectEver: !!n.injectEver,
-    injectTo: n.injectTo || [], recall: n.recall !== false,
-    sensitive: !!n.sensitive, folder: n.folder || '', useCount: n.useCount || 0,
-    hidden: !!n.hidden,   /* 0.4.4-D：hidden 隐藏属性随 slim/get 下发（纯 UI 遮罩数据源，host 面零过滤） */
-    contractType: n.contractType || '', schedule: n.schedule || undefined,
-    deleted: !!n.deleted, dispatchStatus: n.dispatchStatus || '',
-    sessionId: n.sessionId || '',
+    id: n.id, title: n.title, topic: n.topic, workspace: n.workspace || '', folder: n.folder || '',
+    tags: n.tags || [], kind: n.kind || 'note', status: n.status || 'active',
+    inject: n.inject === true, injectEver: n.injectEver === true || n.inject === true,
+    injectTo: n.injectTo || [], injectRole: n.injectRole === 'reference' ? 'reference' : 'convention',
+    recall: n.recall !== false, sensitive: n.sensitive === true,
+    hidden: n.hidden === true,   /* 0.4.4-D：hidden 隐藏属性随 slim/get 下发（纯 UI 遮罩数据源，host 面零过滤） */
+    createdAt: n.createdAt, updatedAt: n.updatedAt,
+    sessionId: n.sessionId || '', cwd: n.cwd || '', logDate: n.logDate || '', entities: n.entities || [],
+    summarizedAt: n.summarizedAt || '', contractType: n.contractType || '', origin: n.origin || '',
+    schedule: n.schedule || null, mergedFrom: n.mergedFrom || [],
     /* 0.4.4-A：派发历史/执行记录跳转数据源（dispatches + 统一 runLog 软链 + refNote 回链） */
     dispatches: n.dispatches || [], runLog: n.runLog || '', refNote: n.refNote || '',
-    createdAt: n.createdAt, updatedAt: n.updatedAt,
-    preview: String(n.body || '').slice(0, 200),
+    useCount: n.useCount || 0, archivedAt: n.archivedAt || '',
+    deleted: n.deleted === true, preview: String(n.body || '').slice(0, 200),
   }
 }
 
 function createMockState() {
+  /* 0.4.8 契约对账（节 113）：种子字段集对齐 host _create 落库字段（slim 全键集有源）；
+     移除 pinned 布尔（host 无此字段，置顶 = status:'pinned'）；log 种子 recall:false（host kind=log 缺省口径） */
   const seed = (title, body, topic, extra) => Object.assign({
     id: newId(), title, body, topic, kind: 'note', tags: [], status: 'active',
-    pinned: false, inject: false, injectRole: '', injectTo: [], recall: true, folder: '', useCount: 0,
-    contractType: '', createdAt: nowIso(), updatedAt: nowIso(), deleted: false,
+    inject: false, injectEver: false, injectRole: 'convention', injectTo: [], recall: true, sensitive: false, hidden: false,
+    workspace: 'e2e-workspace', folder: '', sessionId: '', cwd: '', logDate: '', entities: [], summarizedAt: '',
+    contractType: '', origin: '', schedule: undefined, mergedFrom: [], dispatches: [], refNote: '', runLog: '',
+    useCount: 0, archivedAt: '', createdAt: nowIso(), updatedAt: nowIso(), deleted: false,
   }, extra || {})
   const notes = [
     seed('e2e 种子笔记 A', '种子正文 A（e2e mock 数据，仅内存）', 'e2e'),
     seed('e2e 种子笔记 B', '种子正文 B（e2e mock 数据，仅内存）', 'e2e'),
     /* kind=log 种子（挂在「工作日志」夹）：0.4.3⑦ 同权——默认列表/搜索即含（原隐身/includeLogs 定向召回口径已废） */
-    seed('e2e 日志条目 · 沉淀样板', '## 做了什么\n\n种子日志正文', '', { kind: 'log', folder: 'f-log-e2e' }),
+    seed('e2e 日志条目 · 沉淀样板', '## 做了什么\n\n种子日志正文', '', { kind: 'log', folder: 'f-log-e2e', recall: false, logDate: nowIso().slice(0, 10) }),
   ]
   const folders = [
     { id: 'f-log-e2e', name: '工作日志', parent: '', order: 0, count: 0 },
   ]
+  /* 会话条目键集对齐 host _activeSessions 输出（{id,short,name,cwd,workspace,live[,createdAt]}） */
   const sessions = [
-    { id: 'sess-e2e-0001', short: 'sess-e2e', name: 'e2e 模拟会话', workspace: 'e2e-workspace', live: true },
+    { id: 'sess-e2e-0001', short: 'sess-e2e', name: 'e2e 模拟会话', cwd: '', workspace: 'e2e-workspace', live: true },
   ]
-  const settings = {}
-  return { notes, folders, sessions, settings }
+  /* 工作区清单（notes-workspaces 数据源，host {id,title,cwd} 口径） */
+  const workspaces = [
+    { id: 'ws-e2e', title: 'e2e-workspace', cwd: '' },
+  ]
+  /* 0.4.8 契约对账：host 启动 ensure 注入索引根笔记即落 settings.indexNoteId（check 节 79 创建级锁口径）——
+     mock 预置同键占位值（与 notes-mount/mount-list 的占位索引 id 一致），settings-get/set 回显键集与 host 持平 */
+  const settings = { indexNoteId: 'e2e-inject-index' }
+  return { notes, folders, sessions, workspaces, settings }
 }
 
-function folderKids(state, parent) { return state.folders.filter(f => (f.parent || '') === (parent || '')) }
 function folderSubtreeIds(state, fid) {
   const out = {}; out[fid] = true
   let grow = true
@@ -66,6 +89,56 @@ function folderSubtreeIds(state, fid) {
     for (const f of state.folders) if (!out[f.id] && out[f.parent || '']) { out[f.id] = true; grow = true }
   }
   return out
+}
+/* 0.4.8 契约对账（节 113）：以下三函数为 host folders.js folder-tree-helpers 的 mock 侧同口径实现
+   （纯函数、数据全经入参——mock 只守契约点：过滤/计数/校验语义，零持久化零迁移管线） */
+function folderDepth(state, id) {
+  const byId = {}; for (const f of state.folders) byId[f.id] = f
+  let d = 0, cur = id
+  const seen = {}
+  while (cur && byId[cur] && !seen[cur]) { seen[cur] = true; d++; cur = byId[cur].parent }
+  return d
+}
+function folderSubtreeHeight(state, id, seen) {
+  seen = seen || {}
+  if (seen[id]) return 0
+  seen[id] = true
+  let h = 1
+  for (const f of state.folders) if (f.parent === id) { const kh = folderSubtreeHeight(state, f.id, seen) + 1; if (kh > h) h = kh }
+  return h
+}
+/* 挂载校验（create/reorder 拖父级共用）：parent 存在性 → cycle → 深度上限（maxDepth=0 不限）；null = 通过，否则中文错误串（与 host 同文案——错误文案本可豁免，本处顺手对齐） */
+function checkFolderAttach(state, selfId, parentId, maxDepth) {
+  if (!state.folders.some(x => x.id === parentId)) return '父文件夹不存在: ' + parentId
+  if (selfId) {
+    if (parentId === selfId) return '文件夹不能挂到自己下面'
+    if (folderSubtreeIds(state, selfId)[parentId]) return '文件夹不能挂到自己的子孙文件夹下面（cycle）'
+  }
+  if (maxDepth > 0) {
+    const d = folderDepth(state, parentId) + (selfId ? folderSubtreeHeight(state, selfId) : 1)
+    if (d > maxDepth) return '超过文件夹嵌套深度上限 maxFolderDepth=' + maxDepth + '（挂载后深度 ' + d + '；可在设置中调大或置 0 不限）'
+  }
+  return null
+}
+/* 有效文件夹（host effectiveFolder 同口径）：folder 指向清单外 id 的笔记按未分类对待（计数/过滤/级联一致） */
+function effectiveFolder(state, n) {
+  const f = (n && n.folder) || ''
+  if (!f) return ''
+  return state.folders.some(x => x.id === f) ? f : ''
+}
+/* folder 写入归一（host _resolveFolderArg 同口径）：id 精确命中 → 名称命中 → 否则 null（调用方整体拒绝不落库）；'' = 未分类 */
+function resolveFolderArg(state, v) {
+  const r = String(v == null ? '' : v).trim()
+  if (!r) return { id: '' }
+  const byId = state.folders.find(x => x.id === r)
+  if (byId) return { id: byId.id }
+  const byName = state.folders.find(x => x.name === r)
+  if (byName) return { id: byName.id }
+  return null
+}
+function maxFolderDepthLimit(state) {
+  const v = state.settings && state.settings.maxFolderDepth
+  return (typeof v === 'number' && isFinite(v) && v >= 0) ? Math.floor(v) : 3
 }
 
 function handleRpc(state, method, args) {
@@ -80,144 +153,320 @@ function handleRpc(state, method, args) {
       if (!explicitEntry) list = list.filter(n => (n.kind || 'note') !== 'sys')
       if (args && args.kind) list = list.filter(n => (n.kind || 'note') === args.kind)
       if (args && args.tag) list = list.filter(n => (n.tags || []).indexOf(args.tag) >= 0)
-      if (args && args.folder !== undefined) list = args.folder === '' ? list.filter(n => !(n.folder || '')) : list.filter(n => (n.folder || '') === args.folder)
-      list.sort((a, b) => (b.pinned - a.pinned) || String(b.updatedAt).localeCompare(String(a.updatedAt)))
+      /* 0.4.8 契约对账：folder 过滤对齐 host 递归子树口径（非空 id = 该夹及全部子孙夹内笔记；'' = 未分类；
+         悬空 folder 引用经 effectiveFolder 归未分类——与计数/级联同一谓词） */
+      if (args && args.folder !== undefined) {
+        if (args.folder === '') list = list.filter(n => effectiveFolder(state, n) === '')
+        else { const sub = folderSubtreeIds(state, args.folder); list = list.filter(n => !!sub[effectiveFolder(state, n)]) }
+      }
+      /* 置顶（status:'pinned'）优先 + 更新时间降序（host _list 同口径；排序细节本属豁免面，顺手对齐） */
+      list.sort((a, b) => ((b.status === 'pinned') - (a.status === 'pinned')) || String(b.updatedAt).localeCompare(String(a.updatedAt)))
       return { notes: list.map(slimNote) }
     }
     case 'notes-get': {
       const n = notes.find(x => x.id === (args && args.id) && ((args && args.includeDeleted) || !x.deleted))
-      /* 0.4.4-A：补 dispatches/schedule/runLog/refNote（派发历史行 + 计划块 + open-by-id 直开执行记录的数据源）；contractType 一并带（计划块 isSched 判据） */
-      return n ? { note: { id: n.id, title: n.title, body: n.body || '', topic: n.topic, tags: n.tags, status: n.status, kind: n.kind, folder: n.folder || '', hidden: !!n.hidden, dispatches: n.dispatches || [], contractType: n.contractType || '', schedule: n.schedule || undefined, runLog: n.runLog || '', refNote: n.refNote || '', inject: !!n.inject, createdAt: n.createdAt, updatedAt: n.updatedAt } } : { error: 'not found' }
+      /* 0.4.8 契约对账：note = slim 全键集 + body（host 口径 slim(n)+body；含 dispatches/schedule/runLog/refNote/contractType——
+         派发历史行 + 计划块 + open-by-id 直开执行记录的数据源）。错误形态 {error:string} 同 host（文案豁免）。 */
+      return n ? { note: Object.assign(slimNote(n), { body: n.body || '' }) } : { error: 'not found' }
     }
     case 'notes-get-batch': {
-      const ids = (args && args.ids) || []
-      return { notes: notes.filter(n => ids.indexOf(n.id) >= 0).map(n => ({ id: n.id, body: n.body || '', updatedAt: n.updatedAt })) }
+      /* 0.4.8 契约对账：补 missing 键（host 口径——已删/墓碑/不存在计入 missing 不报错，调用方按缺口径重试） */
+      const ids = (args && Array.isArray(args.ids)) ? args.ids : []
+      const found = [], missing = []
+      for (const id of ids) {
+        const n = notes.find(x => x.id === id && !x.deleted)
+        if (n) found.push({ id: n.id, body: n.body || '', updatedAt: n.updatedAt })
+        else missing.push(id)
+      }
+      return { notes: found, missing: missing }
     }
     case 'notes-create': {
       const a = args || {}
+      const kind = a.kind || 'note'
+      /* folder 写入归一 + 非法显式拒绝（host folder-arg-norm 同口径：名称→id；未知值整体报错不落库） */
+      let folder = ''
+      if (a.folder !== undefined && a.folder !== '') {
+        const rf = resolveFolderArg(state, a.folder)
+        if (!rf) return { error: 'folder 未知文件夹 id 或名称：' + String(a.folder) }
+        folder = rf.id
+      }
+      /* kind=log 隐身硬闸（host 同口径）：inject 强制 false + injectForcedOff 回执告知；log/sys recall 缺省 false */
+      const injectForcedOff = kind === 'log' && a.inject === true
       const n = {
-        id: newId(), title: a.title || 'Untitled', body: a.body || '', topic: a.topic || '',
-        kind: a.kind || 'note', tags: a.tags || [], status: a.status || 'active', pinned: false,
-        inject: !!a.inject, injectRole: a.injectRole || '', injectTo: a.injectTo || [], recall: a.recall !== false,
-        folder: a.folder || '', useCount: 0, sensitive: !!a.sensitive, hidden: !!a.hidden,
-        contractType: a.contractType || '', schedule: a.schedule || undefined,
+        id: newId(), title: a.title || 'Untitled', body: a.body || '', topic: a.topic || '未分类',
+        workspace: 'e2e-workspace', folder: folder, tags: a.tags || [],
+        kind: kind, status: a.status || 'active',
+        inject: kind === 'log' ? false : a.inject === true,
+        injectEver: kind === 'log' ? false : a.inject === true,
+        injectRole: a.injectRole === 'reference' ? 'reference' : 'convention', injectTo: a.injectTo || [],
+        recall: (kind === 'log' || kind === 'sys') ? a.recall === true : a.recall !== false,
+        useCount: 0, sensitive: !!a.sensitive, hidden: !!a.hidden,
+        contractType: a.contractType || '', origin: '', schedule: a.schedule || undefined,
+        mergedFrom: [], dispatches: [], refNote: '', runLog: '', archivedAt: '',
+        /* schedule/contractType 声明校验闸豁免（节 113 登记）：mock 直通存储，host 红线校验由 check 节 48/59 看守 */
         /* 0.4.7-B（用例㊱/㊲）：sessionId 透传（host 真实场景 quick/速记落库即带会话来源）——驱动 meta「来源」动作进溢出菜单演习面 */
         sessionId: typeof a.sessionId === 'string' ? a.sessionId : '',
+        cwd: '', logDate: a.logDate || (kind === 'log' ? nowIso().slice(0, 10) : ''), entities: [], summarizedAt: '',
         createdAt: nowIso(), updatedAt: nowIso(), deleted: false,
       }
       notes.push(n)
-      return { id: n.id, note: slimNote(n) }
+      /* 0.4.8 契约对账：响应键集对齐 host _create（{id,topic,title,kind,status} + 条件键 injectForcedOff）；
+         旧形 {id, note} 是漂移（host 从未回传 note 回显）——消费方（app/client newnote 链路）只读 res.id，真实宿主口径 */
+      const r = { id: n.id, topic: n.topic, title: n.title, kind: n.kind, status: n.status }
+      if (injectForcedOff) r.injectForcedOff = true
+      /* sensitiveSuggested 豁免：mock 不做敏感模式识别（host 命中才带键；fixture 语料不触发） */
+      return r
     }
     case 'notes-update': {
       const n = notes.find(x => x.id === (args && args.id) && !x.deleted)
       if (!n) return { error: 'not found' }
       const a = args || {}
-      for (const k of ['title', 'body', 'topic', 'tags', 'status', 'pinned', 'kind', 'folder', 'inject', 'injectRole', 'injectTo', 'recall', 'sensitive', 'hidden', 'contractType', 'schedule']) {
+      /* R-1 空正文覆盖闸（host 同口径）：body:'' 覆盖非空正文需显式 confirmClearBody:true，否则结构化拒绝 */
+      if (a.body === '' && n.body && a.confirmClearBody !== true) {
+        return { error: 'notes-update 拒绝执行：body 为空串将覆盖现有非空正文（R-1 数据丢失防护）。如确认为有意清空，请显式传 confirmClearBody: true 重试' }
+      }
+      /* folder 写入归一 + 非法显式拒绝（同 create 闸） */
+      if (a.folder !== undefined && a.folder !== '') {
+        const rf = resolveFolderArg(state, a.folder)
+        if (!rf) return { error: 'folder 未知文件夹 id 或名称：' + String(a.folder) }
+        n.folder = rf.id
+      } else if (a.folder === '') n.folder = ''
+      const effKind = (a.kind !== undefined ? a.kind : n.kind) || 'note'
+      /* 隐身硬闸（host 三轮补闸同口径）：生效 kind=log 时 inject 无条件强制 false + injectForcedOff 回执；
+         inject 显式置 true 拉起 injectEver（单向粘性，置 false/不传不回退） */
+      let injectForcedOff = false
+      if (a.inject !== undefined) {
+        if (effKind === 'log' && a.inject === true) { n.inject = false; injectForcedOff = true }
+        else { n.inject = a.inject === true; if (a.inject === true) n.injectEver = true }
+      }
+      if (effKind === 'log' && n.inject !== false) { n.inject = false; injectForcedOff = true }
+      for (const k of ['title', 'body', 'topic', 'tags', 'status', 'kind', 'injectTo', 'sensitive', 'hidden', 'contractType', 'schedule']) {
         if (k in a) n[k] = a[k]
       }
+      if (a.recall !== undefined) n.recall = a.recall !== false
+      if (a.injectRole !== undefined) n.injectRole = a.injectRole === 'reference' ? 'reference' : 'convention'
+      /* 保底联动（host _update 同口径）：显式置 resolved → 全部未闭环派发翻 done（dispatchStatus/doneAt/receipt），回执计数随响应 */
+      let dispatchClosed = 0
+      if (a.status === 'resolved') {
+        for (const rec of (n.dispatches || [])) {
+          if (rec.dispatchStatus === 'done') continue
+          rec.done = true; rec.dispatchStatus = 'done'; rec.doneAt = nowIso(); rec.receipt = 'resolved'
+          dispatchClosed++
+        }
+      }
       n.updatedAt = nowIso()
-      return { ok: true, note: slimNote(n) }
+      /* 0.4.8 契约对账：响应键集对齐 host _update（{id,kind,status,dispatchClosed} + 条件键 injectForcedOff）；
+         旧形 {ok, note} 是漂移（host 无 ok 键、不回传 note）——消费方只读 res.error，真实宿主口径 */
+      const r = { id: n.id, kind: n.kind, status: n.status, dispatchClosed: dispatchClosed }
+      if (injectForcedOff) r.injectForcedOff = true
+      return r
     }
     case 'notes-search': {
-      const q = String((args && args.query != null ? args.query : (args && args.q) || '')).toLowerCase()
+      /* 0.4.8 契约对账：过滤管线对齐 host _search——sys 缺省降噪（显式 kind/tag/具体文件夹入口放行）+
+         kind/tag/topic/folder（递归子树）过滤 + sensitive/inject 三态组合过滤；haystack 含 topic/tags（host 同口径）；
+         matches 命中字段三档（title/tags/body；topic-only 命中 = 空数组，host searchMatchFields 同口径） */
+      const a = args || {}
+      const q = String(a.query != null ? a.query : (a.q || '')).toLowerCase()
+      const explicitEntry = !!(a.kind || a.tag || (a.folder !== undefined && a.folder !== ''))
+      let list = notes.filter(n => !n.deleted)
+      if (!explicitEntry) list = list.filter(n => (n.kind || 'note') !== 'sys')
+      if (a.tag) list = list.filter(n => (n.tags || []).indexOf(a.tag) >= 0)
+      if (a.topic) list = list.filter(n => n.topic === a.topic)
+      if (a.kind) list = list.filter(n => (n.kind || 'note') === a.kind)
+      if (a.folder !== undefined) {
+        if (a.folder === '') list = list.filter(n => effectiveFolder(state, n) === '')
+        else { const sub = folderSubtreeIds(state, a.folder); list = list.filter(n => !!sub[effectiveFolder(state, n)]) }
+      }
+      if (a.sensitive === true) list = list.filter(n => n.sensitive === true)
+      if (a.sensitive === false) list = list.filter(n => n.sensitive !== true)
+      if (a.inject === true) list = list.filter(n => n.inject === true)
+      if (a.inject === false) list = list.filter(n => n.inject !== true)
+      if (q) {
+        list = list.filter(n => ((n.title || '') + ' ' + (n.body || '') + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ')).toLowerCase().indexOf(q) >= 0)
+      }
+      list.sort((x, y) => ((y.status === 'pinned') - (x.status === 'pinned')) || String(y.updatedAt).localeCompare(String(x.updatedAt)))
       return {
-        notes: notes.filter(n => !n.deleted && (n.title + (n.body || '')).toLowerCase().indexOf(q) >= 0)
-          .map(n => Object.assign(slimNote(n), { matches: [n.title.toLowerCase().indexOf(q) >= 0 ? 'title' : 'body'] })),
+        notes: list.map(n => {
+          const s = slimNote(n)
+          if (q) {
+            const matches = []
+            if ((n.title || '').toLowerCase().indexOf(q) >= 0) matches.push('title')
+            if ((n.tags || []).join(' ').toLowerCase().indexOf(q) >= 0) matches.push('tags')
+            if ((n.body || '').toLowerCase().indexOf(q) >= 0) matches.push('body')
+            s.matches = matches
+          }
+          return s
+        }),
       }
     }
     case 'notes-delete': {
+      /* 0.4.8 契约对账：响应键集对齐 host _delete（{id}——host 无 ok 键）；消费方只读 res.error */
       const n = notes.find(x => x.id === (args && args.id) && !x.deleted)
       if (!n) return { error: 'not found' }
       n.deleted = true
       n.updatedAt = nowIso()
-      return { ok: true }
+      return { id: n.id }
     }
     case 'notes-restore': {
       const n = notes.find(x => x.id === (args && args.id) && x.deleted)
       if (!n) return { error: 'not found' }
       n.deleted = false
       n.updatedAt = nowIso()
-      return { ok: true }
+      return { id: n.id }
     }
     case 'notes-purge': {
-      const i = notes.findIndex(x => x.id === (args && args.id) && x.deleted)
+      /* 0.4.8 契约对账：响应键集对齐 host _purge（{id,purged,mode,historyPurged}）；安全闸同 host（仅限已软删） */
+      const i = notes.findIndex(x => x.id === (args && args.id))
       if (i < 0) return { error: 'not found' }
+      if (!notes[i].deleted) return { error: '笔记未删除：彻底删除请先移入回收站（软删除）' }
       notes.splice(i, 1)
-      return { ok: true }
+      return { id: (args && args.id), purged: true, mode: 'mem', historyPurged: 0 }
     }
     case 'notes-folders': {
+      /* 0.4.8 契约对账（节 113）：逐 op 对齐 host folders.js _folders——响应键集/校验闸/错误形态全对齐：
+         list {folders[{id,name,order,parent,depth,count,hidden,sys}], unfiled} / create {ok,folder}（缺 name/父夹非法拒绝）/
+         rename {ok,id,name} / set-flags {ok,id,hidden,sys} / delete 缺省 needCascade 拒绝 + cascade 软删子树笔记 /
+         reorder {ok,folders}（parents 为 {fid:parent} 映射——旧 mock 误读为数组是漂移）/ 未知 op 结构化错误 */
       const a = args || {}
-      if (a.op === 'create') {
-        const f = { id: newId(), name: String(a.name || '').trim(), parent: a.parent || '', order: state.folders.length, count: 0 }
+      const op = a.op || 'list'
+      if (op === 'create') {
+        const name = String(a.name || '').trim()
+        if (!name) return { error: 'notes-folders.create 需要 name' }
+        let parent = ''
+        if (a.parent) {
+          parent = String(a.parent)
+          const attachErr = checkFolderAttach(state, null, parent, maxFolderDepthLimit(state))
+          if (attachErr) return { error: 'notes-folders.create ' + attachErr }
+        }
+        const maxOrder = state.folders.reduce((m, f) => Math.max(m, f.order || 0), -1)
+        const f = { id: newId(), name: name, order: maxOrder + 1 }
+        if (parent) f.parent = parent
+        if (a.sys === true) f.sys = true   /* 0.4.4-G：机器属性创建直入（与 host 同口径） */
         state.folders.push(f)
-        return { folder: f }
+        /* 响应 folder = 落库对象浅拷（条件键同 host：parent 仅非根级带、sys 仅 true 带——wire 键集逐键一致） */
+        return { ok: true, folder: Object.assign({}, f) }
       }
       if (a.op === 'rename') {
+        if (!a.id) return { error: 'notes-folders.rename 需要 id' }
+        const name = String(a.name || '').trim()
+        if (!name) return { error: 'notes-folders.rename 需要 name' }
         const f = state.folders.find(x => x.id === a.id)
-        if (!f) return { error: 'not found' }
-        f.name = String(a.name || '').trim()
-        return { ok: true }
+        if (!f) return { error: '文件夹不存在: ' + a.id }
+        f.name = name
+        return { ok: true, id: f.id, name: f.name }
       }
       /* 0.4.4-D：set-flags 显隐标记写入通道（{id, hidden}——true 落 / false 摘字段回缺省，与 host folders.js 同口径）；
          0.4.4-G：同通道扩 sys 键（两键独立——仅显式传入的键才触碰；sys:false 落显式 false 墓碑，与 host 懒迁移墓碑语义同口径） */
       if (a.op === 'set-flags') {
+        if (!a.id) return { error: 'notes-folders.set-flags 需要 id' }
         const f = state.folders.find(x => x.id === a.id)
-        if (!f) return { error: 'not found' }
+        if (!f) return { error: '文件夹不存在: ' + a.id }
         if (a.hidden !== undefined) { if (a.hidden === true) f.hidden = true; else delete f.hidden }
         if (a.sys !== undefined) { if (a.sys === true) f.sys = true; else f.sys = false }
         return { ok: true, id: f.id, hidden: f.hidden === true, sys: f.sys === true }
       }
       if (a.op === 'delete') {
+        /* 级联语义对齐 host：缺省拒绝含子内容（子孙夹/子树笔记）的删除（needCascade 结构化错误）；
+           cascade:true = 整棵子树夹出清单 + 其下笔记逐条软删进回收站（旧 mock「移出文件夹」是漂移——host 实为软删可恢复）；
+           计数口径同 host：子树笔记经平铺 _list 同族口径统计（kind=sys 不计入不删除） */
+        if (!a.id) return { error: 'notes-folders.delete 需要 id' }
+        const target = state.folders.find(x => x.id === a.id)
+        if (!target) return { error: '文件夹不存在: ' + a.id }
         const sub = folderSubtreeIds(state, a.id)
+        const childFolders = state.folders.filter(f => f.id !== a.id && sub[f.id]).length
+        const notesInSubtree = notes.filter(n => !n.deleted && (n.kind || 'note') !== 'sys' && sub[effectiveFolder(state, n)])
+        if ((childFolders > 0 || notesInSubtree.length > 0) && a.cascade !== true) {
+          return { error: 'notes-folders.delete 拒绝：文件夹「' + target.name + '」含子内容（子文件夹 ' + childFolders + ' 个 / 笔记 ' + notesInSubtree.length + ' 条），删除需显式传 cascade: true——文件夹结构整棵删除不可恢复，其下笔记软删除进回收站可恢复', needCascade: true, childFolders: childFolders, notes: notesInSubtree.length }
+        }
+        for (const n of notesInSubtree) { n.deleted = true; n.updatedAt = nowIso() }
         state.folders = state.folders.filter(x => !sub[x.id])
-        notes.forEach(n => { if (sub[n.folder || '']) n.folder = '' })
-        return { ok: true }
+        return { ok: true, id: a.id, folders: childFolders + 1, notes: notesInSubtree.length }
       }
       if (a.op === 'reorder') {
-        const ids = a.ids || []
-        state.folders.sort((x, y) => {
-          const ix = ids.indexOf(x.id), iy = ids.indexOf(y.id)
-          return (ix < 0 ? 999 : ix) - (iy < 0 ? 999 : iy)
-        })
-        ;(a.parents || []).forEach((p, i) => { const f = state.folders[i]; if (f) f.parent = p || '' })
-        return { ok: true }
+        /* parents 映射 {folderId: parentId|''}（host 口径；旧 mock 按数组下标应用是漂移）——逐个校验存在性/cycle/深度后应用；
+           '' = 回根级（摘 parent 字段）；入列按 ids 序 + 未入列保持原相对顺序追加，order 归一 0..n-1 */
+        if (!Array.isArray(a.ids)) return { error: 'notes-folders.reorder 需要 ids 数组' }
+        const ids = a.ids.map(String)
+        const rank = {}
+        ids.forEach((id, i) => { rank[id] = i })
+        if (a.parents && typeof a.parents === 'object') {
+          const maxDepth = maxFolderDepthLimit(state)
+          const byId = {}
+          for (const f of state.folders) byId[f.id] = f
+          for (const fid of Object.keys(a.parents)) {
+            if (!byId[fid]) return { error: 'notes-folders.reorder 文件夹不存在: ' + fid }
+            const np = a.parents[fid] ? String(a.parents[fid]) : ''
+            if (np) {
+              const attachErr = checkFolderAttach(state, fid, np, maxDepth)
+              if (attachErr) return { error: 'notes-folders.reorder ' + attachErr }
+              byId[fid].parent = np
+            } else delete byId[fid].parent
+          }
+        }
+        const inList = state.folders.filter(f => rank[f.id] !== undefined).sort((x, y) => rank[x.id] - rank[y.id])
+        const outList = state.folders.filter(f => rank[f.id] === undefined).sort((x, y) => (x.order || 0) - (y.order || 0))
+        const merged = inList.concat(outList)
+        merged.forEach((f, i) => { f.order = i })
+        state.folders = merged
+        return { ok: true, folders: merged.map(f => ({ id: f.id, name: f.name, order: f.order, parent: f.parent || '', hidden: f.hidden === true, sys: f.sys === true })) }
       }
+      if (op !== 'list') return { error: 'notes-folders: 未知 op：' + String(op) + '（期望 list/create/rename/set-flags/delete/reorder）' }
       /* 0.4.3⑩ 计数口径与 host 对齐（真实计数替代静态 0）：文件夹 count = 递归子树内全部非删除笔记（含 sys，与定向视图一致）；
-         unfiled 与⑨「未分类」平铺同族——sys 不计入 */
+         unfiled 与⑨「未分类」平铺同族——sys 不计入；悬空 folder 引用归 unfiled（effectiveFolder 同 host） */
       const direct = {}
       let unfiled = 0
       for (const n of notes) {
         if (n.deleted) continue
-        const f = n.folder || ''
-        if (f && state.folders.some(x => x.id === f)) direct[f] = (direct[f] || 0) + 1
+        const f = effectiveFolder(state, n)
+        if (f) direct[f] = (direct[f] || 0) + 1
         else if ((n.kind || 'note') !== 'sys') unfiled++
       }
       return {
-        folders: state.folders.slice().sort((x, y) => x.order - y.order).map(f => {
+        folders: state.folders.slice().sort((x, y) => (x.order || 0) - (y.order || 0)).map(f => {
           const sub = folderSubtreeIds(state, f.id)
           let count = 0
           for (const sid in sub) count += direct[sid] || 0
-          return Object.assign({}, f, { count })
+          /* 0.4.8 契约对账：条目键集对齐 host（恒带 parent/depth/hidden/sys——旧 mock 缺 depth 且 hidden/sys 缺席是漂移） */
+          return { id: f.id, name: f.name, order: f.order || 0, parent: f.parent || '', depth: folderDepth(state, f.id), count: count, hidden: f.hidden === true, sys: f.sys === true }
         }),
         unfiled,
       }
     }
     /* 0.4.7-B⑦（用例㊱/㊲）：mock 镜像 host settings-get 增带 organizeMaxChars 生效值——用户覆盖优先，缺省回落 12000
-       （mock 不模拟模型表：host 侧模型映射由 check 节 106 行为级断言锁定） */
-    case 'notes-settings-get': return { settings: state.settings, modelsDir: '', organizeMaxChars: (state.settings.organizeMaxChars > 0 ? state.settings.organizeMaxChars : 12000) }
-    /* 0.4.7-B⑦：settings-set 兼容平铺 patch（host 真实形态 {organizeMaxChars: n}）与旧 {settings:{}} 包壳两形态；0 = 删 override（自动档） */
+       （mock 不模拟模型表：host 侧模型映射由 check 节 106 行为级断言锁定）
+       0.4.8 契约对账：键集对齐 host（{settings, models, lastInjectChars, organizeMaxChars}）——旧键 modelsDir 是漂移
+       （host 从未发送该键）；permissionPresets 为宿主服务透传键，mock 不模拟（节 113 豁免登记，client 缺键有降级预填） */
+    case 'notes-settings-get': return { settings: state.settings, models: [], lastInjectChars: 0, organizeMaxChars: (state.settings.organizeMaxChars > 0 ? state.settings.organizeMaxChars : 12000) }
+    /* 0.4.7-B⑦：settings-set 兼容平铺 patch（host 真实形态 {organizeMaxChars: n}）与旧 {settings:{}} 包壳两形态；0 = 删 override（自动档）
+       0.4.8 契约对账：响应补 settings 回显（host {ok,settings} 口径）；白名单/类型校验闸豁免（节 113 登记——e2e 只发合法键，host 校验由 check 节 17-5/56 看守） */
     case 'notes-settings-set': {
       const patch = (args && args.settings) || args || {}
       Object.keys(patch).forEach(k => {
         if (patch[k] === null || patch[k] === undefined || (k === 'organizeMaxChars' && patch[k] === 0)) delete state.settings[k]
         else state.settings[k] = patch[k]
       })
-      return { ok: true }
+      return { ok: true, settings: state.settings }
     }
-    /* 0.4.8（用例㊻）：mock 对齐 host 真实形态（原 {usage:{}} 残形会让设置卡用量区渲染崩——today.total 读undefined） */
-    case 'notes-usage-get': return { today: { total: 0 }, week: { total: 0 }, month: { total: 0 }, allTime: { total: 0 }, byFeature: { classify: { allTime: 0 }, organize: { allTime: 0 }, summarize: { allTime: 0 } }, calls: 0, estimatedTokens: 0 }
+    /* 0.4.8 契约对账：键集对齐 host usageReport——四窗桶全键 {classify,organize,summarize,total} +
+       byFeature 每功能 {today,week,month,allTime} + estimatedTokens/exactTokens/calls（旧 mock 桶缺三功能键、缺 exactTokens 是漂移） */
+    case 'notes-usage-get': {
+      const zb = () => ({ classify: 0, organize: 0, summarize: 0, total: 0 })
+      const fb = () => ({ today: 0, week: 0, month: 0, allTime: 0 })
+      return { today: zb(), week: zb(), month: zb(), allTime: zb(), byFeature: { classify: fb(), organize: fb(), summarize: fb() }, estimatedTokens: 0, exactTokens: 0, calls: 0 }
+    }
     case 'notes-active-sessions': return { sessions: state.sessions.slice() }
     case 'notes-sessions': return { sessions: state.sessions.slice() }
+    /* 0.4.8 契约对账：notes-workspaces 由缺省 {ok:true} 升格为真实形状（host {workspaces:[{id,title,cwd}]}——派发弹窗「新建会话」下拉数据源） */
+    case 'notes-workspaces': return { workspaces: state.workspaces.slice() }
+    /* 0.4.8 契约对账：notes-dispatch-done 由缺省 {ok:true} 升格为真实形状（host {ok,id}）+ 状态机翻转（done/dispatchStatus/doneAt/receipt='manual'） */
+    case 'notes-dispatch-done': {
+      const dn = notes.find(x => x.id === (args && args.id) && !x.deleted)
+      if (!dn) return { error: 'not found' }
+      const di = args && args.dispatchIndex
+      const drec = (dn.dispatches || [])[di]
+      if (drec && drec.dispatchStatus !== 'done') { drec.done = true; drec.dispatchStatus = 'done'; drec.doneAt = nowIso(); drec.receipt = 'manual'; dn.updatedAt = nowIso() }
+      return { ok: true, id: dn.id }
+    }
     case 'notes-dispatch': {
       /* 0.4.4-A（notes-044-dispatch-receipts）最小对齐 host _dispatch 执行记录链路：登记 dispatches +
          懒创建执行记录伴生笔记（kind=log + 「执行记录」夹懒建 + refNote 回链 + 📤 派发行 + runLog 软链回写——
@@ -243,12 +492,15 @@ function handleRpc(state, method, args) {
       const rest = String(rl.body || '').split('\n').filter(l => /^- /.test(l))
       rl.body = '机器托管笔记（请勿手动清理，由派发管线维护）：e2e mock 说明块。\n\n## 执行记录（自动）\n\n' + [line].concat(rest).join('\n') + '\n'
       n.updatedAt = nowIso(); rl.updatedAt = nowIso()
-      return { ok: true, id: n.id, sessionId: rec.sessionId, sessionName: rec.sessionName, dispatch: rec }
+      /* 0.4.8 契约对账：补 queued 键（host _dispatch 恒带 queued 布尔——live=false 休眠送达为 true；mock 恒 live 语义 = false） */
+      return { ok: true, id: n.id, sessionId: rec.sessionId, sessionName: rec.sessionName, queued: false, dispatch: rec }
     }
     case 'notes-export': {
+      /* 0.4.8 契约对账：键集对齐 host _export（{exported, foldersFile, telemetry, assets, target}——无 ok 键；
+         旧 mock 多 ok 缺 foldersFile/telemetry/assets 是漂移）；空 dir 错误形态同 host（文案顺手对齐） */
       const dir = String((args && args.dir) || '').trim()
-      if (!dir) return { error: 'notes-export.dir 目录不能为空' }
-      return { ok: true, exported: notes.filter(n => !n.deleted).length, target: dir }
+      if (!dir) return { error: 'notes-export 需要 dir（目标目录）' }
+      return { exported: notes.filter(n => !n.deleted).length, foldersFile: true, telemetry: false, assets: 0, target: dir }
     }
     case 'notes-history': return { versions: [] }
     case 'notes-ai-organize': {
@@ -261,7 +513,43 @@ function handleRpc(state, method, args) {
       if (oiBody.indexOf('[org-err]') >= 0) return { error: 'mock 整理失败演示（[org-err] 标记）' }
       return { ok: true, body: '## 已整理\n\n[指令:' + (oiInstr || '(无)') + ']\n\n' + oiBody + '\n', kind: (args && args.kind) || 'note' }
     }
-    case 'notes-memory-guide': return { guide: '' }
+    /* 0.4.8 契约对账：notes-memory-guide 由残形 {guide:''}（host 无任何 op 返回该形状——纯漂移）升格为 host _memoryGuide
+       op 分型同口径：status {enabled,noteId,guideIds} / check {enabled,already,noteId} / enable {ok,id[,already][,revived],folderId}
+       （懒建「工作日志」夹 + 引导约定笔记，contractType 主键 + tag 兼容识别）/ disable {ok,disabled[,id]} / 未知 op {error}。
+       简化（节 113 登记）：不做注入预览渲染与 origin 联动打标——身份/状态语义守契约，数据内容简化。 */
+    case 'notes-memory-guide': {
+      const a = args || {}
+      const op = a.op || 'status'
+      const isGuide = (n) => n.contractType === 'memory-guide' || (n.tags || []).indexOf('memory-guide') >= 0
+      const guides = notes.filter(n => !n.deleted && isGuide(n))
+      const active = guides.find(n => n.inject === true) || null
+      if (op === 'status') return { enabled: !!active, noteId: active ? active.id : (guides[0] ? guides[0].id : ''), guideIds: guides.map(n => n.id) }
+      if (op === 'check') return { enabled: !!active, already: !!active, noteId: active ? active.id : '' }
+      if (op === 'enable') {
+        if (active) return { ok: true, id: active.id, already: true }
+        const scope = Array.isArray(a.scope) ? a.scope.map(String) : []
+        const dormant = guides.find(n => n.inject !== true && (n.kind || 'note') !== 'log')
+        let fld = state.folders.find(f => f.name === '工作日志')
+        if (!fld) { fld = { id: newId(), name: '工作日志', parent: '', order: state.folders.reduce((m, f) => Math.max(m, f.order || 0), -1) + 1, sys: true }; state.folders.push(fld) }
+        if (dormant) { dormant.inject = true; dormant.injectEver = true; dormant.injectTo = scope; dormant.updatedAt = nowIso(); return { ok: true, id: dormant.id, revived: true, folderId: fld.id } }
+        const g = {
+          id: newId(), title: '约定：工作日志沉淀（工作记忆 v0）', body: '（e2e mock 引导占位正文）', topic: '约定',
+          workspace: 'e2e-workspace', folder: fld.id, tags: ['memory-guide'], kind: 'note', status: 'active',
+          inject: true, injectEver: true, injectRole: 'convention', injectTo: scope, recall: true, sensitive: false, hidden: false,
+          sessionId: '', cwd: '', logDate: '', entities: [], summarizedAt: '', contractType: 'memory-guide', origin: 'memory-guide',
+          schedule: undefined, mergedFrom: [], dispatches: [], refNote: '', runLog: '', useCount: 0, archivedAt: '',
+          createdAt: nowIso(), updatedAt: nowIso(), deleted: false,
+        }
+        notes.push(g)
+        return { ok: true, id: g.id, folderId: fld.id }
+      }
+      if (op === 'disable') {
+        if (!active) return { ok: true, disabled: false }
+        active.inject = false; active.updatedAt = nowIso()
+        return { ok: true, disabled: true, id: active.id }
+      }
+      return { error: 'notes-memory-guide: 未知 op：' + String(op) + '（期望 check/enable/status/disable）' }
+    }
     case 'notes-conflict-check': {
       /* 0.4.5-G（notes-045-conflict-check）约定体检 mock（契约同 host：{} → { ok, pairs:[{aId,bId,aTitle,bTitle,relation,reason}], total }）：
          数据集谓词同 host（inject=true && injectRole=convention && !deleted），<2 条空态零提名；
@@ -293,24 +581,42 @@ function handleRpc(state, method, args) {
     /* 0.4.6-E（用例㉚）：状态化挂载登记——_mounts[id]=whenToUse（幂等换文案同 key 覆盖）；
        挂载成功后从 _suggestHot 摘除该候选（模拟 host 真实收敛：已挂载不再提名高频未挂载） */
     case 'notes-mount': {
+      /* 0.4.8 契约对账：键集对齐 host（{ok,id,indexNoteId,whenToUse}）+ 校验闸同口径（缺 id/笔记不存在/kind=log 拒绝）+
+         挂载 ⇔ 资料档不变量（host ⑪ 单点收口：落行同时翻 inject=true + injectRole=reference）；
+         indexNoteId 为占位常量（节 113 登记：mock 不建真实注入索引笔记——数据内容简化，键在即可） */
       const mid = String((args && args.id) || '')
-      if (!mid) return { error: 'not found' }
+      if (!mid) return { error: 'notes-mount 需要 id' }
+      const mn = notes.find(x => x.id === mid && !x.deleted)
+      if (!mn) return { error: 'notes-mount: 笔记不存在' }
+      if ((mn.kind || 'note') === 'log') return { error: 'notes-mount: kind=log 工作日志不参与注入，不可挂载' }
+      const when = (args && args.whenToUse === undefined) || (args && args.whenToUse === null) ? String(mn.title || '') : String((args && args.whenToUse) || '')
+      mn.inject = true; mn.injectEver = true; mn.injectRole = 'reference'; mn.updatedAt = nowIso()
       state._mounts = state._mounts || {}
-      state._mounts[mid] = String((args && args.whenToUse) || '')
+      state._mounts[mid] = when
       if (Array.isArray(state._suggestHot)) state._suggestHot = state._suggestHot.filter(h => h.id !== mid)
-      return { ok: true }
+      return { ok: true, id: mid, indexNoteId: 'e2e-inject-index', whenToUse: when }
     }
-    case 'notes-mount-list': return { lines: Object.keys(state._mounts || {}).map(id => ({ id: id, when: state._mounts[id] })) }
+    /* 0.4.8 契约对账：键集对齐 host（{indexNoteId, lines:[{id,when,raw}]}——旧 mock 缺 indexNoteId 与行 raw 是漂移） */
+    case 'notes-mount-list': return {
+      indexNoteId: Object.keys(state._mounts || {}).length ? 'e2e-inject-index' : null,
+      lines: Object.keys(state._mounts || {}).map(id => ({ id: id, when: state._mounts[id], raw: '- [[' + id + ']] ' + state._mounts[id] })),
+    }
     /* 0.4.6-E（用例㉚）：账本快照 fixture——ledger.mountTotal 定格 0（快照陈旧语义， cron 节拍不随挂载动作）+
        lastFlush（截至时刻数据源）+ mountNow = 实时挂载计数（每次打开注入管理即新鲜） */
     case 'notes-recall-stats': {
+      /* 0.4.8 契约对账：channels 五通道桶键集对齐 host _recallComputeStats（inject/mount/search/get/catalog，
+         每桶 {delivered,deliveries,used,uses,rate}——旧 mock 空对象是漂移） */
+      const ch = () => ({ delivered: 0, deliveries: 0, used: 0, uses: 0, rate: null })
       return {
-        ok: true, noteId: null, sinceDays: 7, fromDay: '', events: 0, channels: {},
+        ok: true, noteId: null, sinceDays: 7, fromDay: '', events: 0,
+        channels: { inject: ch(), mount: ch(), search: ch(), get: ch(), catalog: ch() },
         ledger: { at: state._ledgerAt || nowIso(), trigger: 'cron', mountTotal: 0, weekLogs: 0, weekRefs: 0, top: [], zeroRefCount: 0, zeroRef: [], useRank: [] },
         lastFlush: nowIso(), mountNow: Object.keys(state._mounts || {}).length,
       }
     }
-    case 'notes-ping': return { ok: true }
+    /* 0.4.8 契约对账：notes-ping 对齐静态包 server.dist.js 形状 {ok,pong,echo}（dev host 未注册本方法——dist 独有，
+       键集由节 113 静态断言锁定，活体对账基准为 dev host 故不入活体矩阵） */
+    case 'notes-ping': return { ok: true, pong: Date.now(), echo: (args && typeof args === 'object') ? args : null }
     default: return { ok: true }
   }
 }

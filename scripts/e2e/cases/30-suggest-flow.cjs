@@ -26,6 +26,9 @@ module.exports = {
     }, title)
     const m0 = await rpc('notes-recall-stats', {})
     const mountBase = (m0 && typeof m0.mountNow === 'number') ? m0.mountNow : 0
+    /* 0.4.8 契约对账（notes-048-mock-contract-audit）：mock notes-mount 已对齐 host 存在性校验闸——
+       高频候选合成 id（sg-hot-*）必须在 mock state 预建真实笔记（否则挂载被拒，真机口径）；用例结束清零纪律不变 */
+    const hotIds = {}
     try {
       await H.step(page, '30-suggest-flow', async () => {
         /* ===== ① 约定档二次确认闸：dismiss 零副作用 / accept 生效 ===== */
@@ -74,6 +77,12 @@ module.exports = {
         const hot = []
         for (let i = 1; i <= 25; i++) hot.push({ id: 'sg-hot-' + i, title: 'e2e 高频候选 ' + String(i).padStart(2, '0'), topic: '', hits: 5, updatedAt: '' })
         state._suggestHot = hot
+        /* 高频候选同步预建真实笔记（契约闸造数，字段集对齐 mock 种子口径）——挂载目标真实存在 */
+        const nowIso30 = new Date().toISOString()
+        for (const h of hot) {
+          hotIds[h.id] = true
+          state.notes.push({ id: h.id, title: h.title, body: 'e2e 高频候选占位正文（契约闸造数）', topic: '', kind: 'note', tags: [], status: 'active', inject: false, injectEver: false, injectRole: 'convention', injectTo: [], recall: true, sensitive: false, hidden: false, workspace: 'e2e-workspace', folder: '', sessionId: '', cwd: '', logDate: '', entities: [], summarizedAt: '', contractType: '', origin: '', schedule: undefined, mergedFrom: [], dispatches: [], refNote: '', runLog: '', useCount: 0, archivedAt: '', createdAt: nowIso30, updatedAt: nowIso30, deleted: false })
+        }
         await page.click('#btnSuggest')
         await page.waitForSelector('#suggestList', { timeout: 8000 })
         await H.waitFor(page, '建议器数据到位（高频段 25 条）', async p =>
@@ -123,11 +132,12 @@ module.exports = {
         H.t('统计行含「截至 HH:MM」时刻标注', /截至 \d{2}:\d{2}/.test(rowTxt), () => '实得行：' + rowTxt)
         H.t('挂载计数实时（mountNow=' + (mountBase + 2) + '，快照 mountTotal=0 不参与）', rowTxt.indexOf('挂载 ' + (mountBase + 2)) >= 0, () => '实得行：' + rowTxt)
 
-        /* 清理共享 mock 状态（零耦合纪律） */
+        /* 清理共享 mock 状态（零耦合纪律：候选清单 + 预建笔记同步摘除） */
         state._suggestHot = null
+        state.notes = state.notes.filter(n => !hotIds[n.id])
         H.t('无 console error / pageerror', page.__consoleErrors.length === 0, () => page.__consoleErrors.slice(0, 3).join(' | '))
         await H.screenshot(page, '30-suggest-flow')
       })
-    } finally { state._suggestHot = null; await page.context().close() }
+    } finally { state._suggestHot = null; state.notes = state.notes.filter(n => !hotIds[n.id]); await page.context().close() }
   },
 }

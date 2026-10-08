@@ -243,6 +243,15 @@ node check.js --core --only=40  # 可组合：选中节内再按 CORE 名单过�
 
 > ⚠️ 关键：`t(name, fn)` 必须 `await fn()`——曾不同步导致 async 断言未执行就 passed++（假通过）。修复后暴露并修正了 5 个假通过。
 
+### e2e mock 与宿主契约边界（0.4.8 起常驻，check 节 113 看守）
+
+e2e/面板 harness 的全部可信度压在 mock（`scripts/e2e/server.cjs` handleRpc + `panel-harness.cjs` 桩）对宿主的诚实度上。契约边界如下——**必须一致**的点由节 113 活体闸（真 handler⇄mock 同 fixture 对账）常驻看守，**允许简化**的点必须在该节豁免清单显式登记（防「为绿而复刻 host」）：
+
+- **必须一致**：envelope/嵌套条目键集（含 slim 全键集、folders 条目、usage 桶等）；过滤语义（deleted 缺省排除 / kind=sys 缺省降噪与显式入口放行 / kind/tag/folder 递归子树 / sensitive/inject 三态组合）；错误形态（`{error:string}` 键 + needCascade 等结构化错误键）；写入校验闸的存在性（空名/缺参/未知 op/R-1 空正文覆盖闸/文件夹挂载校验/log 隐身硬闸）。
+- **允许简化**：数据内容（计数/时间戳/正文/id 取值/排序细节）；错误文案措辞；LLM 产出；宿主服务透传键（permissionPresets、会话标题后台补齐三键）；性能/缓存/落盘机制；schedule 声明写闸与 settings-set 白名单校验（host 侧由对应 check 节看守）。
+- **host 新增 RPC 时 mock 三选一**：实现（对齐契约点）/ 缺省 `{ok:true}` 直通并在节 113 `EXEMPT_REGISTRATION` 登记理由 / 面板 harness 特判（notes-css 先例）。mock 私建宿主没有的方法恒红。
+- **漂移修复方向**：只改 mock/e2e 侧向宿主对齐，真宿主零改动（发现宿主 bug 不修，报主窗口裁决）。0.4.8 审计修复的 17 处漂移清单见 `check/sections/113-mock-contract.cjs` 头注。
+
 ## 已知问题：Windows 沙箱后端
 
 Windows 上 DSH 的 `workspace-write` 沙箱模式不可用（"Windows ACL temp root must be outside the workspace"）。**症状隐蔽**：读正常（列表能渲染），写/删静默失败（不落盘）。
