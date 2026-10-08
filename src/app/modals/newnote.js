@@ -10,12 +10,13 @@ function doNewNote() {
   /* 从在编辑笔记切到草稿前，先把富文本在途编辑序列化落回并保存（与 selectNote 同款：防 900ms debounce 打到草稿上） */
   if (edMode === 'rich' && richDirty && edNote) { syncFromRich('新建切换'); doSave(); }
   var seedFolder = '';   /* 0.4.3⑦：文件视图拆除——原「文件夹视图落当前文件夹」种子随之移除（落未分类/编辑期再归类） */
-  var seedTopic = view.type === 'topic' ? view.id : '';
+  /* 0.4.8（notes-048-topic-tag-merge）：主题视图 = 标签视图（view.type 键名不动）——新建种子落 tags（topic 字段废弃并入标签，不再预填 topic） */
+  var seedTag = view.type === 'topic' && view.id && view.id !== '分类中' ? view.id : '';
   var kind0 = filters.kinds.length === 1 && filters.kinds[0] !== 'sys' ? filters.kinds[0] : 'note';   /* 0.4.3⑩：「机器」档（sys）下新建回退 note——sys 为机器托管 kind，人工新建不预填 */
   /* 二期 kind 模板骨架：筛选中心类型组恰选 1 个时按该 kind 预填（note=空自由格式）——预填不算「有效编辑」，零输入放弃仍不落库 */
   draftNote = {
     id: '', title: '', body: KIND_TEMPLATES[kind0] || '', kind: kind0, status: 'active',
-    tags: [], topic: seedTopic, folder: seedFolder, inject: false, injectTo: [], recall: true,
+    tags: seedTag ? [seedTag] : [], topic: '', folder: seedFolder, inject: false, injectTo: [], recall: true,
     sensitive: false, injectRole: 'convention', dispatches: [], useCount: 0,
     createdAt: '', updatedAt: '', sessionId: '', _tagsStr: null
   };
@@ -29,19 +30,22 @@ function doNewNote() {
   var ti = $('edTitle'); if (ti) ti.focus();
 }
 /* 草稿落库 payload（doDraftCreate/flushDraftCreate 共用）：有效内容闸（标题/正文非空；'Untitled' 占位视为空标题）——全空返回 null 不落库；
-   字段集与 doSave 的 upd 同口径（标签解析 / topic trim / injectRole 仅 inject 时携带） */
+   字段集与 doSave 的 upd 同口径（标签解析 / injectRole 仅 inject 时携带）；
+   0.4.8（notes-048-topic-tag-merge）：标签 = chips（d.tags）∪ 在途输入串（_tagsStr）；草稿 topic（废弃字段）并入 tags 后不再携带（host 缺省未分类，读侧 effTags 同源） */
 function draftPayloadOf(d) {
   var title = (d.title || '').trim(); if (title === 'Untitled') title = '';
   if (!title && !(d.body || '').trim()) return null;
-  var tags = (d._tagsStr != null ? d._tagsStr : (d.tags || []).filter(function (t) { return t !== 'quick' }).join(', '))
-    .split(/[,，;；]/).map(function (s) { return s.trim() }).filter(Boolean);
+  var tags = (d.tags || []).filter(function (t) { return t !== 'quick' }).map(function (s) { return String(s).trim() }).filter(Boolean);
+  if (d._tagsStr != null) d._tagsStr.split(/[,，;；]/).forEach(function (s) { s = s.trim(); if (s && tags.indexOf(s) < 0) tags.push(s) });
   var p = {
     title: title, body: d.body || '', tags: tags,
     kind: d.kind || 'note', status: d.status || 'active', inject: d.inject === true,
     injectTo: d.injectTo || [], recall: d.recall !== false, sensitive: d.sensitive === true
   };
   if (p.inject) p.injectRole = d.injectRole === 'reference' ? 'reference' : 'convention';
-  if ((d.topic || '').trim()) p.topic = d.topic.trim();
+  /* 0.4.8 写侧惰性落盘：草稿 topic 非空且≠未分类/≠分类中（瞬态占位不落标签）→ 并入 tags（去重）；topic 字段不再随 create 携带 */
+  var tp0 = (d.topic || '').trim();
+  if (tp0 && tp0 !== '未分类' && tp0 !== '分类中' && p.tags.indexOf(tp0) < 0) p.tags.push(tp0);
   if (d.folder) p.folder = d.folder;
   return p;
 }

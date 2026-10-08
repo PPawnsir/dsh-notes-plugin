@@ -137,7 +137,7 @@ module.exports = {
         /* 步⑥ 重置腿三（view 依赖）：fA 先翻页 → 主题视图切换 → 回全视图 → fA 回 50+加载行 */
         await clickMore(hA, 'folder', 'A夹')
         await waitBox(hA, 'fA 再翻页 60 全量', 'folder', 'A夹', b => b.rows === 60 && b.more === null)
-        await hA.page.locator('.dsh-notes-tree .dsh-notes-sec-toggle', { hasText: '主题' }).first().click()   /* 展开主题区 */
+        await hA.page.locator('.dsh-notes-tree .dsh-notes-sec-toggle', { hasText: '标签' }).first().click()   /* 展开标签区（0.4.8 主题并入标签） */
         const topicRow = hA.page.locator('.dsh-notes-tree .dsh-notes-topic-row', { hasText: '归置' }).first()
         await topicRow.waitFor({ timeout: 8000 })
         await topicRow.locator('.dsh-notes-row-vfilter').click()   /* 行尾过滤图标 → 主题视图 */
@@ -197,8 +197,8 @@ module.exports = {
         H.t('B① 四组同构·文件夹组：钉夹首屏 50 行 + 加载行（组标识 folder.id；与置顶组同一份笔记各自分页）', true)
         await waitBox(hB, '未入夹区首屏 50 行 + 还有 5 条', 'unfiled', '', b => b.rows === 50 && b.more === '加载更多（还有 5 条）')
         H.t('B① 四组同构·未入夹区：首屏 50 行 + 加载行（组标识 unfiled）', true)
-        /* 主题组：主题区缺省折叠 → 展开 → 点主题行展开 → 50+加载行 */
-        await hB.page.locator('.dsh-notes-tree .dsh-notes-sec-toggle', { hasText: '主题' }).first().click()
+        /* 主题组：标签区缺省折叠 → 展开 → 点主题行展开 → 50+加载行（0.4.8 主题并入标签，组头文案「标签」） */
+        await hB.page.locator('.dsh-notes-tree .dsh-notes-sec-toggle', { hasText: '标签' }).first().click()
         await hB.page.locator('.dsh-notes-tree .dsh-notes-topic-row', { hasText: '运维' }).first().click()
         await waitBox(hB, '主题组首屏 50 行 + 还有 5 条', 'topic', '运维', b => b.rows === 50 && b.more === '加载更多（还有 5 条）')
         H.t('B① 四组同构·主题组：展开后首屏 50 行 + 加载行（组标识 topic:运维）', true)

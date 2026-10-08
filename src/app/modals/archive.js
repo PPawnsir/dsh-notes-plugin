@@ -79,7 +79,7 @@ function doArchiveUndo() {
     afterArchiveRefresh();
   }).catch(function (e) { toast(t('arch.undoFailed', { msg: e && e.message || e })) });
 }
-/* 多选合并：操作条「合并」→ 标题输入（默认 = 所选最早更新笔记的 topic）→ notes-archive 单组 */
+/* 多选合并：操作条「合并」→ 标题输入（默认 = 所选最早更新笔记的首枚有效标签 effTagsUi——0.4.8 主题并入标签后同口径）→ notes-archive 单组 */
 function openMerge() {
   var ids = Object.keys(selIds);
   if (ids.length < 2) { toast(t('arch.needTwo')); return }
@@ -87,7 +87,7 @@ function openMerge() {
   openModal(
     '<div class="modal-t">' + icon('i-note', 13) + ' ' + t('arch.mergeTitle') + '</div>'
     + '<div class="modal-hint">' + t('arch.mergeHint', { n: ids.length }) + '</div>'
-    + '<input class="minput" id="mergeTitle" value="' + esc((sel[0] && sel[0].topic) || t('arch.mergeDefault')) + '" placeholder="' + t('arch.mergePlaceholder') + '">'
+    + '<input class="minput" id="mergeTitle" value="' + esc((sel[0] && effTagsUi(sel[0])[0]) || t('arch.mergeDefault')) + '" placeholder="' + t('arch.mergePlaceholder') + '">'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
     + '<div class="modal-acts"><button class="mbtn" id="mgCancel">' + t('common.cancel') + '</button><button class="mbtn primary" id="mgOk">' + t('sel.merge') + '</button></div>'
   );

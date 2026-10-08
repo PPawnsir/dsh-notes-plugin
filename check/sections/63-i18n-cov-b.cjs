@@ -25,7 +25,7 @@ module.exports = {
   const clientPkgSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
   const stylesPkgSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'styles.css'), 'utf8')
   const protoSrc = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
-  // 覆盖卡 B 抽串清单（171 条 = editor.* 52 + meta.* 118 + common.listSep 1；key=表面.语义；
+  // 覆盖卡 B 抽串清单（167 条 = editor.* 52 + meta.* 114 + common.listSep 1（0.4.8 主题并入标签：meta.topic* 五键退役 +tagRemoveTip）；key=表面.语义；
   // 0.4.3⑦：meta.crumbFolderTip → meta.crumbFolderExpandTip（文件视图拆除，面包屑改树内展开）+ meta.logNoInject/logNoInjectTip 新增（注入硬关 UI 化）；
   // 0.4.3 验收修复⑪：meta.recall/recallTip/recallTipNote/recallOn/recallOff 五键退役（「目录可见」chip 拆除，notes-043-mount-ux-final））
   const KEYS = [
@@ -43,11 +43,11 @@ module.exports = {
     'editor.noOrganizeUndo', 'editor.organizeUndone', 'editor.charCount', 'editor.backlinks',
     'editor.backlinksCount', 'editor.backlinksWarming', 'editor.backlinkJumpTip', 'editor.backlinksEmpty',
     'meta.crumbFolderExpandTip', 'meta.crumbTopicTip', 'meta.crumbTopicViewTip', 'meta.uncategorized',
-    'meta.unsavedDraft', 'meta.filteredByTopic', 'meta.noTopic', 'meta.kindTip',
+    'meta.unsavedDraft', 'meta.filteredByTopic', 'meta.kindTip',
     'meta.kindTipFull', 'meta.kindNote', 'meta.kindDecision', 'meta.kindTodo',
     'meta.kindLink', 'meta.kindQuote', 'meta.kindLog', 'meta.statusTip',
-    'meta.topicTip', 'meta.topicTipClient', 'meta.topicPlaceholder', 'meta.topicFilterTip',
-    'meta.tagsTip', 'meta.tagsTipClient', 'meta.tagsPlaceholder', 'meta.folderTip',
+    /* 0.4.8（notes-048-topic-tag-merge）：meta.topicTip/topicTipClient/topicPlaceholder/topicFilterTip/noTopic 五键随主题 chip 下线退役；+meta.tagRemoveTip（标签编辑控件 ✕） */
+    'meta.tagsTip', 'meta.tagsTipClient', 'meta.tagsPlaceholder', 'meta.tagRemoveTip', 'meta.folderTip',
     'meta.useCountTip', 'meta.useCount', 'meta.dispPendingTip', 'meta.dispDoneTip',
     'meta.dispPending', 'meta.dispDone', 'meta.roleOffTip', 'meta.roleOff',
     'meta.logNoInject', 'meta.logNoInjectTip',
@@ -79,9 +79,10 @@ module.exports = {
   const grab = (s, v) => new Function(s + '\nreturn ' + v)()
   const zh = grab(zhSrc, 'I18N_ZH'), en = grab(enSrc, 'I18N_EN')
 
-  // ===== ① 字典双向覆盖：171 条 editor/meta/common.listSep key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
-  await t('覆盖B 字典双向覆盖：171 条 editor/meta key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
-    assert.strictEqual(KEYS.length, 171, '抽串清单条数（实得 ' + KEYS.length + '）')
+  // ===== ① 字典双向覆盖：167 条 editor/meta/common.listSep key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
+  //   （0.4.8 notes-048-topic-tag-merge：主题 chip 下线——meta.topicTip/topicTipClient/topicPlaceholder/topicFilterTip/noTopic 五键退役 +meta.tagRemoveTip，171→167）
+  await t('覆盖B 字典双向覆盖：167 条 editor/meta key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
+    assert.strictEqual(KEYS.length, 167, '抽串清单条数（实得 ' + KEYS.length + '；0.4.8 主题并入标签：-5 退役 +1 tagRemoveTip = 167）')
     for (const k of KEYS) {
       assert(typeof zh[k] === 'string' && zh[k], 'zh 缺 key/空值：' + k)
       assert(typeof en[k] === 'string' && en[k], 'en 缺 key/空值：' + k)
@@ -119,7 +120,7 @@ module.exports = {
   })
 
   // ===== ③ 行为级：eval 字典 + app i18n 块——取值/插值/en 态逐条非裸 key/回退 =====
-  await t('行为级：覆盖B key 双语取值 + {name} 插值 + en 态 171 条逐条非裸 key', () => {
+  await t('行为级：覆盖B key 双语取值 + {name} 插值 + en 态 167 条逐条非裸 key', () => {
     const helpersSrc = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'kernel', 'helpers.js'), 'utf8')
     const i18nBlock = helpersSrc.match(/\/\* ==== i18n-mech BEGIN ====[\s\S]*?\/\* ==== i18n-mech END ==== \*\//)[0]
     const mk = (stored) => new Function('localStorage', 'render', zhSrc + '\n' + enSrc + '\n' + i18nBlock + '\nreturn { t: t }')({ getItem: () => stored, setItem: () => {} }, () => {})

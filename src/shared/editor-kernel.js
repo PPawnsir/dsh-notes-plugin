@@ -298,4 +298,21 @@ function wikiAcFilter(notes, query) {
   out.sort(function (a, b) { var x = String(a.updatedAt || ''), y = String(b.updatedAt || ''); return x < y ? 1 : x > y ? -1 : 0 })
   return out.slice(0, WIKI_AC_MAX)
 }
+// ===== 0.4.8 三重分类收敛 B 方案（notes-048-topic-tag-merge）：主题废弃并入标签——读侧虚拟合并单一事实源 =====
+// effTags(note) = tags ∪ {topic}：tags 元素 trim 去空 + 精确去重保序；topic trim 后非空且≠「未分类」才追加（tags 已含同名不重复）。
+// 大小写敏感（与 host tag 精确过滤同口径：'Dev' ≠ 'dev' 各自成组）；「分类中」占位主题照常并入
+// （侧栏标签树显示映射 tree.classifying「识别中」，编辑器标签控件/面包屑自行剔除该占位）。
+// 纯读侧口径：磁盘 .md 零改动（懒迁移红线——写侧惰性落盘在保存路径：app 编辑器保存载荷 / client 面板自动保存 / host note_manage 工具面，
+// 存量 topic 笔记首次保存即合并进 tags 并清空 topic；本函数永不写盘）。
+function effTags(n) {
+  var out = []
+  var tags = (n && n.tags) || []
+  for (var i = 0; i < tags.length; i++) { var v = String(tags[i] == null ? '' : tags[i]).trim(); if (v && out.indexOf(v) < 0) out.push(v) }
+  var tp = String(n && n.topic != null ? n.topic : '').trim()
+  if (tp && tp !== '未分类' && out.indexOf(tp) < 0) out.push(tp)
+  return out
+}
+// effTagsUi(n)：UI 呈现面（行尾标签字/面包屑标签段/编辑器标签控件 chips）——effTags 剔除「分类中」瞬态占位
+// （分类回填完成前不成 chip/ crumb 段；侧栏标签树的「识别中」分组仍由 effTags 原始口径承担，不在本函数剔除）
+function effTagsUi(n) { return effTags(n).filter(function (x) { return x !== '分类中' }) }
 // ===== end 双模式编辑器内核 v3 =====

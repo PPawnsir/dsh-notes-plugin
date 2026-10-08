@@ -1,4 +1,16 @@
 /* ================= 选中与编辑器 ================= */
+/* 0.4.8（notes-048-topic-tag-merge）：编辑器选中折叠——topic 非空且≠未分类/≠分类中（瞬态占位不落标签）时折入 tags（去重），
+   标签控件 chips 即「读侧合并后」的全量标签；topic 字段本体保留不清（buildSavePayload 据此判定落盘清空——写侧惰性落盘）。
+   每个 edNote 赋值点都要过本函数（selectNote/open-by-id/loadEdBody/refreshSelected），防刷新换代丢折叠 */
+function edFoldTopic(n) {
+  if (!n) return n;
+  var tp = (n.topic || '').trim();
+  if (tp && tp !== '未分类' && tp !== '分类中') {
+    n.tags = (n.tags || []).slice();
+    if (n.tags.indexOf(tp) < 0) n.tags.push(tp);
+  }
+  return n;
+}
 function selectNote(id) {
   /* 草稿切走兜底（notes-034-batch3）：有内容的草稿先 flush 落库（fire-and-forget，不阻塞切换）；空草稿直接弃——零 Untitled 残留；
      落库在途（draftCreating）时跳过 flush——在途 create 沉降后自行 toast + 刷新列表（防并发双建） */
@@ -9,7 +21,7 @@ function selectNote(id) {
   focusId = id;   /* 选中同步键盘焦点行（j/k 从当前选中行继续） */
   var n = notes.find(function (x) { return x.id === id });
   if (n && n.folder) { foldOpen[n.folder] = true; saveFoldOpen() }
-  edNote = n ? Object.assign({}, n, { body: '' }) : null;
+  edNote = n ? edFoldTopic(Object.assign({}, n, { body: '' })) : null;   /* 0.4.8：topic 折入 tags（标签控件 chips 数据源） */
   edBodyLoaded = false; edBodyErr = '';   /* R-1 安全态复位：新笔记正文未加载前提交闸关闭、错误横幅清空（renderEd 在其后执行，DOM 初态一致） */
   organizeErr = '';                        /* 0.4.7-B⑥a：换笔记清整理失败驻留条（驻留粒度 = 当前笔记） */
   degraded = { ok: true, reasons: [] };   /* 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果） */
@@ -25,7 +37,7 @@ function selectNote(id) {
       if (selId !== id) return;   /* 迟到响应守卫（同 loadEdBody 口径）：用户已切走零副作用 */
       if (res && res.note) {
         histCount = null; probeHistCount(id);
-        edNote = res.note; edBodyLoaded = true; edBodyErr = '';
+        edNote = edFoldTopic(res.note); edBodyLoaded = true; edBodyErr = '';   /* 0.4.8：open-by-id 同折叠 */
         wikiBodies[id] = { body: edNote.body || '', updatedAt: res.note.updatedAt || '' };   /* 双链索引即时新鲜 */
         degraded = analyzeMarkdown(edNote.body || '');
         if (edMode === 'rich' && !degraded.ok) edMode = 'source';
@@ -44,7 +56,7 @@ function loadEdBody(id) {
     if (selId !== id) return;   /* 迟到响应：新笔记有自己的加载流程，勿动其状态 */
     edLoading = false;
     if (res && res.note) {
-      edNote = res.note;
+      edNote = edFoldTopic(res.note);   /* 0.4.8：正文落定回填同折叠（topic → tags） */
       edBodyLoaded = true;   /* R-1 正文提交闸：全局唯一放行点 */
       wikiBodies[id] = { body: edNote.body || '', updatedAt: res.note.updatedAt || '' };   /* 双链索引即时新鲜（不等后台补缺） */
       /* 正文到达后跑降级分析；富文本模式下新正文含白名单外语法 → 回落源码模式 */
@@ -112,9 +124,13 @@ function buildSavePayload() {
   if (!selId) return null;
   if (edBodyErr) return null;   /* R-1 安全态：正文加载失败未恢复前自动保存整体暂停（含元数据）——横幅「重试」是唯一出口 */
   var keepQuick = (notes.find(function (x) { return x.id === selId }) || {}).tags || [];
-  var tags = (edNote._tagsStr != null ? edNote._tagsStr : (edNote.tags || []).filter(function (t) { return t !== 'quick' }).join(', '))
-    .split(/[,，;；]/).map(function (s) { return s.trim() }).filter(Boolean);
+  /* 0.4.8（notes-048-topic-tag-merge）：标签控件化——chips 已提交标签（edNote.tags，选中时 edFoldTopic 已把 topic 折入）
+     为唯一事实源；在途输入串（_tagsStr，未按分隔符的尾部）同样并入落盘（输入即所得，与旧「整串即标签集」口径对齐） */
+  var tags = (edNote.tags || []).filter(function (t) { return t !== 'quick' }).map(function (s) { return String(s).trim() }).filter(Boolean);
+  if (edNote._tagsStr != null) edNote._tagsStr.split(/[,，;；]/).forEach(function (s) { s = s.trim(); if (s && tags.indexOf(s) < 0) tags.push(s) });
+  tags = tags.filter(function (v, i) { return tags.indexOf(v) === i });   /* 精确去重（chips 与在途合并后） */
   if (keepQuick.indexOf('quick') >= 0 && tags.indexOf('quick') < 0) tags.push('quick');
+  edNote.tags = tags.slice();   /* 回写本地：保存后 renderMeta chips 与落盘一致（不等列表刷新换代） */
   var upd = {
     id: selId, title: edNote.title, tags: tags,
     kind: edNote.kind, status: edNote.status, inject: edNote.inject === true,
@@ -124,7 +140,10 @@ function buildSavePayload() {
      已加载基础上清空为空串 = 用户有意为之，附 confirmClearBody:true 显式过 host 空覆盖兜底闸（empty-body-overwrite-guard） */
   if (edBodyLoaded) { upd.body = edNote.body; if (upd.body === '') upd.confirmClearBody = true }
   if (upd.inject) upd.injectRole = edNote.injectRole === 'reference' ? 'reference' : 'convention';   /* 非 off 才带 injectRole（payload 禁 undefined） */
-  if ((edNote.topic || '').trim()) upd.topic = edNote.topic.trim();
+  /* 0.4.8 写侧惰性落盘：topic 非空且≠未分类/≠分类中（瞬态占位不触写）→ 落盘清空（tags 已经 edFoldTopic 折入该值；
+     用户 ✕ 移除该 chip 时本清空同样生效 = 显式移除被尊重）。磁盘 .md 仅此路径懒迁移，绝不批量改写存量 */
+  var tp0 = (edNote.topic || '').trim();
+  if (tp0 && tp0 !== '未分类' && tp0 !== '分类中') { upd.topic = ''; edNote.topic = '' }
   return upd;
 }
 function doSave() {

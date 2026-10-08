@@ -67,7 +67,7 @@ module.exports = {
       assert(s.indexOf('if (selMode) { toggleSelId(n.id); return }') >= 0, pair[0] + ' 多选态行点击=勾选（不打开笔记）')
       assert(s.indexOf('dsh-notes-selbar') >= 0 && s.indexOf("t('sel.selCount', { n: Object.keys(selIds).length })") >= 0, pair[0] + ' 底部浮动操作条（已选 N 条，覆盖卡F 起走 t()）')
       assert(s.indexOf('至少选择 2 条笔记') >= 0, pair[0] + ' 少于 2 条提示')
-      assert(s.indexOf("'合并后标题…'") >= 0 && s.indexOf("(sel[0] && sel[0].topic) || '合并笔记'") >= 0, pair[0] + ' 合并标题输入框（默认=所选最早 topic）')
+      assert(s.indexOf("'合并后标题…'") >= 0 && s.indexOf("(sel[0] && effTagsUi(sel[0])[0]) || '合并笔记'") >= 0, pair[0] + ' 合并标题输入框（默认=所选最早笔记的首枚有效标签；0.4.8 主题并入标签后同口径 effTagsUi）')
       assert(s.indexOf('const g = { memberIds: ids }; if (t) g.title = t') >= 0, pair[0] + ' 单组 payload（title 空则不传，禁 undefined）')
       assert(s.indexOf("showToast('已合并所选 ' + ids.length + ' 条', { label: '撤销', fn: doArchiveUndo })") >= 0, pair[0] + ' 合并成功 toast 带撤销')
     }

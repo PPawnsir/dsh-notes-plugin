@@ -248,6 +248,12 @@
   .meta-chip select,.meta-chip input{border:0;background:transparent;color:inherit;font:inherit;outline:0;cursor:pointer}
   .meta-chip input{cursor:text;min-width:0}
   .meta-chip input::placeholder{color:var(--nt3)}
+  /* 0.4.8（notes-048-topic-tag-merge）：标签编辑控件（主题 chip 下线，标签 chip 升级为可增删）——chip 丸 + ✕ 移除 + 添加输入（与 app head.html 同构） */
+  .meta-chip.tag-ed{cursor:default}
+  .meta-chip .tchip{display:inline-flex;align-items:center;gap:3px;background:var(--nbg-sel);color:var(--nacc-tx);border-radius:10px;padding:0 6px;font-size:10.5px;line-height:16px}
+  .meta-chip .tchip .tx{cursor:pointer;opacity:.7;font-size:10px;display:inline-flex}
+  .meta-chip .tchip .tx:hover{opacity:1}
+  .meta-chip .tag-add{border:0;background:transparent;color:inherit;font:inherit;font-size:11px;outline:0;padding:0;width:64px;cursor:text}
   .meta-chip select option{color:var(--ntx);background:var(--npanel)}
   .meta-sp{flex:1}
   .meta-act{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--nt3);padding:3px 9px;border-radius:var(--nr-sm);cursor:pointer}
@@ -537,6 +543,8 @@
   <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5M7 4h10l-1.5 6.5 3 4.5h-13l3-4.5Z"/></symbol>
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 7a2 2 0 0 1 2-2h4l2 2.5h6a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/></symbol>
   <symbol id="i-topic" viewBox="0 0 24 24"><path d="M12 3l2.2 5.6L20 11l-5.8 2.4L12 19l-2.2-5.6L4 11l5.8-2.4Z"/></symbol>
+  <!-- 0.4.8（notes-048-topic-tag-merge）：主题并入标签——标签树分组头/标签编辑控件图标（与 client icons.js tag 同形） -->
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M4 4h7l9 9-7 7-9-9Z"/><circle cx="8" cy="8" r="1.6"/></symbol>
   <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L11 21l8-10.5h-6Z"/></symbol>
   <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5.5v13l11-6.5Z"/></symbol>
@@ -568,7 +576,7 @@
   <span class="sp"></span>
   <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（建议/切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新保文字；
        0.4.7-B②a（notes-047-ux）：「速记合并」顶栏按钮撤除——与建议器首段「速记组 → 去归档」入口重复（0 组也占主行动位）；归档预览入口 = 顶栏「建议」→ 速记组段 -->
-  <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg><span class="tb-t">刷新</span></button>
+  <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 标签分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg><span class="tb-t">刷新</span></button>
   <!-- 0.4.6-C（notes-046-ux-discovery）：治理入口提升到顶栏——整理建议 + 约定体检（建议框底栏）；有待办候选时 #suggestBd 计数徽标点亮（notes-suggest 六段合计） -->
   <button class="tbtn ico-only" id="btnSuggest" title="整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）"><svg class="ic"><use href="#i-sparkle"/></svg><span class="tb-t">建议</span><span class="cnt" id="suggestBd" style="display:none"></span></button>
   <button class="tbtn ico-only" id="btnTheme" title="切换主题（暗色/亮色）"><svg class="ic"><use href="#i-theme"/></svg><span class="tb-t">切换主题</span></button>
@@ -1369,8 +1377,8 @@ var focusId = null;            // 键盘导航焦点行（j/k/↑↓ 移动高�
 var dragId = null, dragFolderId = null, saveTimer = null, searchTimer = null;   /* dragFolderId = 文件夹换父拖拽源（与笔记拖拽互斥） */
 var sessList = [], sessPending = [];   // 注入范围浮层会话源（notes-sessions）
 var foldOpen = loadFoldOpen();         // 文件夹折叠态（localStorage；缺省全展开）
-var topicOpen = {};                    // 主题过滤行原地展开态（点行主体=展开/收起子列表；session 内有效，不持久化）
-var topicSecOpen = false;              // 主题过滤区整体折叠态（缺省折叠：常态只显示「主题 (N)」一行，点分组头展开；session 内记忆，不持久化）
+var topicOpen = {};                    // 标签过滤行原地展开态（0.4.8：主题并入标签，键名不动防地震；点行主体=展开/收起子列表；session 内有效，不持久化）
+var topicSecOpen = false;              // 标签过滤区整体折叠态（缺省折叠：常态只显示「标签 (N)」一行，点分组头展开；session 内记忆，不持久化）
 var scopeOpen = false;
 /* ===== 显式归档 UI + 手动笔记多选合并（契约：notes-archive-preview / notes-archive {groups:[{memberIds,title?}]} / notes-archive-undo） ===== */
 var selMode = false, selIds = {};      // 列表多选态 + 勾选集合（noteId → true；与搜索/过滤共存，按 id 记账）
@@ -1391,6 +1399,29 @@ var suggestState = null;               // 整理建议对话框状态：{ data:n
 /* ================= 基础工具 ================= */
 function $(id) { return document.getElementById(id) }
 function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+/* ===== 0.4.8 三重分类收敛 B 方案（notes-048-topic-tag-merge）：主题废弃并入标签——读侧虚拟合并（与 src/shared/editor-kernel.js effTags 同口径演示副本）=====
+   effTags(note) = tags ∪ {topic}：tags 元素 trim 去空 + 精确去重保序；topic trim 后非空且≠「未分类」才追加；大小写敏感（与 host tag 精确过滤同口径）。
+   纯读侧口径：磁盘零改动（懒迁移——写侧惰性落盘在保存路径 doSave/draftPayloadOf，存量 topic 笔记首次保存即合并进 tags 并清空 topic） */
+function effTags(n) {
+  var out = []
+  var tags = (n && n.tags) || []
+  for (var i = 0; i < tags.length; i++) { var v = String(tags[i] == null ? '' : tags[i]).trim(); if (v && out.indexOf(v) < 0) out.push(v) }
+  var tp = String(n && n.topic != null ? n.topic : '').trim()
+  if (tp && tp !== '未分类' && out.indexOf(tp) < 0) out.push(tp)
+  return out
+}
+/* effTagsUi：UI 呈现面（行尾标签字/面包屑标签段/标签控件 chips）——effTags 剔除「分类中」瞬态占位（标签树的「识别中」分组仍由 effTags 原始口径承担） */
+function effTagsUi(n) { return effTags(n).filter(function (x) { return x !== '分类中' }) }
+/* 编辑器选中折叠（与 app panels/editor.js edFoldTopic 同文）：topic 非空且≠未分类/≠分类中 时折入 tags（去重）；topic 字段本体保留（doSave 据此落盘清空） */
+function edFoldTopic(n) {
+  if (!n) return n;
+  var tp = (n.topic || '').trim();
+  if (tp && tp !== '未分类' && tp !== '分类中') {
+    n.tags = (n.tags || []).slice();
+    if (n.tags.indexOf(tp) < 0) n.tags.push(tp);
+  }
+  return n;
+}
 // 搜索关键词 <mark> 高亮（搜索体验升级；与 app.html 同源，check.js 断言一致）。
 // 安全红线：先 esc 再包 <mark>——标题/查询词都先经 esc 转义，正则只对转义后文本起作用，插入的仅 <mark> 标签本身；
 // 禁止直接 innerHTML 拼原文（本函数输出可安全进 innerHTML：原文中的脚本标签/img onerror 等已被转义为纯文本）。
@@ -1551,26 +1582,27 @@ function pullSessions() {
   }).catch(function () {})
 }
 
-/* ================= 视图求值：主题 ∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索 ================= */
+/* ================= 视图求值：标签 ∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索（0.4.8：主题并入标签，view.type='topic' 键名不动） ================= */
 /* 0.4.3⑦：「文件视图」（文件夹视图）模式整体拆除——view 取值收窄为 all | topic；日志同权，无隐身渲染守卫 */
 function matches(n) {
-  if (view.type === 'topic') { if ((n.topic || '') !== view.id) return false }
+  if (view.type === 'topic') { if (effTags(n).indexOf(view.id) < 0) return false }   /* 0.4.8：标签视图过滤吃 effTags（tags ∪ topic 虚拟合并；多值——含该标签即命中） */
   if (!matchFilters(n, filters)) return false;
   if (searchText) {
     var q = searchText.toLowerCase();
-    var local = ((n.title || '') + ' ' + (n.preview || '') + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ') + ' ' + fname(n.folder)).toLowerCase().indexOf(q) >= 0;
+    var local = ((n.title || '') + ' ' + (n.preview || '') + ' ' + effTags(n).join(' ') + ' ' + fname(n.folder)).toLowerCase().indexOf(q) >= 0;   /* 0.4.8：搜索 hay 改吃 effTags（tags ∪ topic 一句覆盖） */
     var remote = searchIds ? searchIds.indexOf(n.id) >= 0 : false;
     if (!local && !remote) return false;
   }
   return true;
 }
 
-/* ================= 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0，如仅 topic 命中)；同级 updatedAt 降序（比较在 renderTree） ================= */
+/* ================= 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0)；同级 updatedAt 降序（比较在 renderTree）。
+   0.4.8：标签档本地估算吃 effTags（tags ∪ topic——存量 topic 命中现归标签档） ================= */
 function relRank(n, q) {
   var m = searchMeta[n.id];   /* host notes-search 返回的 matches 命中字段（全文口径）优先；无则按本地字段估算（preview 仅前 200 字，正文命中可能低估） */
   if (m && m.length) { if (m.indexOf('title') >= 0) return 3; if (m.indexOf('tags') >= 0) return 2; if (m.indexOf('body') >= 0) return 1; return 0 }
   if ((n.title || '').toLowerCase().indexOf(q) >= 0) return 3;
-  if ((n.tags || []).join(' ').toLowerCase().indexOf(q) >= 0) return 2;
+  if (effTags(n).join(' ').toLowerCase().indexOf(q) >= 0) return 2;
   if ((n.preview || '').toLowerCase().indexOf(q) >= 0) return 1;
   return 0;
 }
@@ -1632,7 +1664,7 @@ function reSearch() { if (searchText.trim()) { clearTimeout(searchTimer); search
 function noteRow(n, inFolderCtx) {
   var tail = '';
   if (view.type === 'topic' && n.folder) tail += '<span class="fbadge">' + icon('i-folder', 9) + esc(fname(n.folder)) + '</span>';
-  else if (inFolderCtx && n.topic) tail += '<span class="tp" title="主题：' + esc(n.topic) + '">' + esc(n.topic) + '</span>';
+  else if (inFolderCtx && effTagsUi(n).length) tail += '<span class="tp" title="标签：' + esc(effTagsUi(n).join(' · ')) + '">' + esc(effTagsUi(n).join(' · ')) + '</span>';   /* 0.4.8：行尾主题字 → 标签字（effTagsUi） */
   else tail += '<span class="tp">' + fmtD(n.updatedAt) + '</span>';
   /* 多选态：行首复选框 + pick 高亮（行点击=勾选，由树事件委托统一处理） */
   return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + (selMode && selIds[n.id] ? ' pick' : '') + '" data-note="' + n.id + '" draggable="true">'
@@ -1687,7 +1719,7 @@ function renderTree() {
   /* 过滤激活（视图/筛选中心/搜索任一）：含命中的文件夹/主题强制展开（纯渲染态，不写回 foldOpen/topicOpen——清除过滤即恢复手动折叠态），分组计数切换为命中数 */
   var filtering = view.type !== 'all' || !!searchText || filtersActiveCount() > 0;
   var h = '';
-  var vt = view.type === 'topic' ? ('主题 · ' + view.id) : '全部笔记';   /* 0.4.3⑦：文件夹视图标题分支随「文件视图」拆除移除 */
+  var vt = view.type === 'topic' ? ('标签 · ' + view.id) : '全部笔记';   /* 0.4.3⑦：文件夹视图标题分支随「文件视图」拆除移除；0.4.8：主题视图 → 标签视图（view.type 键名不动） */
   h += '<div class="sec-h">' + icon('i-filter', 11) + esc(vt) + (view.type === 'topic' ? ' <span style="letter-spacing:0;text-transform:none;font-weight:500">（跨文件夹 ' + vis.length + ' 条）</span>' : '') + (view.type !== 'all' ? '<span class="add" id="viewClear" title="清除视图过滤">✕</span>' : '') + '</div>';
   /* 置顶聚合组（筛选中心「置顶」条件激活时不再重复展示） */
   if (!filters.pinned) {
@@ -1713,26 +1745,30 @@ function renderTree() {
     h += '<div class="unfiled-hint">拖到此处移出文件夹</div>';
     h += '</div>';
   }
-  /* 主题全局过滤器（整区默认折叠：常态只显示「主题 (N)」一行，点分组头展开/收起（topicSecOpen，session 记忆不持久化）；
-     展开行为与置顶折叠组同款：过滤激活且有主题命中时纯计算 OR 自动展开（不写回 topicSecOpen——清除过滤即恢复），计数切换为命中主题数） */
-  var allTopics = {};
-  notes.forEach(function (n) { if (n.topic) allTopics[n.topic] = (allTopics[n.topic] || 0) + 1 });
-  var topicNames = Object.keys(allTopics).sort();
+  /* 标签全局过滤区（0.4.8 三重分类收敛 B 方案 notes-048-topic-tag-merge：主题废弃并入标签——分组数据源 = effTags(n)
+     （tags ∪ {topic} 读侧虚拟合并，磁盘零改动）；多值分组：一篇可在多个标签下出现（语义自然）；组头计数 = 去重篇数；
+     原「未分类」主题桶消失（topic 空/未分类且无 tags 的笔记不进任何标签组；未入夹区不受影响）；
+     整区默认折叠同旧主题区（topicSecOpen，session 记忆不持久化）；过滤激活命中自动展开（纯计算 OR 不写回）；
+     变量名沿用 topic*（分组键 = 标签名；状态/键名不动防地震，语义切换注释在此） */
+  var allTags = {};
+  notes.forEach(function (n) { var et = effTags(n); for (var ei = 0; ei < et.length; ei++) { var tg0 = et[ei]; (allTags[tg0] = allTags[tg0] || {})[n.id] = true } });
+  var topicNames = Object.keys(allTags).sort();
   var topicHitSet = {};
-  vis.forEach(function (n) { if (n.topic) topicHitSet[n.topic] = true });
+  vis.forEach(function (n) { var eh = effTags(n); for (var ei2 = 0; ei2 < eh.length; ei2++) topicHitSet[eh[ei2]] = true });
   var topicHitCount = Object.keys(topicHitSet).length;
   var tSecOpen = topicSecOpen || (filtering && topicHitCount > 0);
-  h += '<div class="sec-h" data-tsec="1" style="cursor:pointer"><span class="caret' + (tSecOpen ? ' open' : '') + '">' + icon('i-chev') + '</span>' + icon('i-topic', 11) + ' 主题 (' + (filtering ? topicHitCount : topicNames.length) + ')<span class="add" style="cursor:default">跨文件夹</span></div>';
+  h += '<div class="sec-h" data-tsec="1" style="cursor:pointer"><span class="caret' + (tSecOpen ? ' open' : '') + '">' + icon('i-chev') + '</span>' + icon('i-tag', 11) + ' 标签 (' + (filtering ? topicHitCount : topicNames.length) + ')<span class="add" style="cursor:default">跨文件夹</span></div>';
   if (tSecOpen) topicNames.forEach(function (t) {
     var on = view.type === 'topic' && view.id === t;
-    var tkids = vis.filter(function (n) { return (n.topic || '') === t });
-    /* 过滤激活自动展开：含命中的主题行强制展开（不写回 topicOpen，清除过滤即恢复）；计数同步切换为命中数 */
+    /* 多值分组：effTags 含该标签即归入（一篇可出现在多个标签组；组内计数 = 命中篇数） */
+    var tkids = vis.filter(function (n) { return effTags(n).indexOf(t) >= 0 });
+    /* 过滤激活自动展开：含命中的标签行强制展开（不写回 topicOpen，清除过滤即恢复）；计数同步切换为命中数 */
     var tOpen = !!topicOpen[t] || (filtering && tkids.length > 0);
-    /* 行主体单击=原地展开/收起该主题子列表（topicOpen，不持久化）；行尾 vfilter 图标=主题视图（跨文件夹过滤） */
+    /* 行主体单击=原地展开/收起该标签子列表（topicOpen，不持久化）；行尾 vfilter 图标=标签视图（跨文件夹过滤） */
     h += '<div class="row topic-row' + (on ? ' on' : '') + '" data-topic="' + esc(t) + '">'
       + '<span class="caret' + (tOpen ? ' open' : '') + '">' + icon('i-chev') + '</span>'
-      + '<span class="ic-slot">' + icon('i-topic', 12) + '</span><span class="nm">' + esc(t) + '</span><span class="n">' + (filtering ? tkids.length : allTopics[t]) + '</span>'
-      + '<span class="vfilter' + (on ? ' on' : '') + '" title="主题视图（跨文件夹过滤）">' + icon('i-filter', 11) + '</span></div>';
+      + '<span class="ic-slot">' + icon('i-tag', 12) + '</span><span class="nm">' + esc(t === '分类中' ? '识别中' : t) + '</span><span class="n">' + (filtering ? tkids.length : Object.keys(allTags[t]).length) + '</span>'
+      + '<span class="vfilter' + (on ? ' on' : '') + '" title="标签视图（跨文件夹过滤）">' + icon('i-filter', 11) + '</span></div>';
     if (tOpen && tkids.length) { h += '<div class="nested">'; tkids.forEach(function (n) { h += noteRow(n, false) }); h += '</div>' }
   });
   /* 空结果态：提示 + 「清空筛选条件」快捷链接（筛选中心口径⑦）；
@@ -1769,13 +1805,13 @@ $('tree').addEventListener('click', function (ev) {
     var fid2 = frow.dataset.fold;
     foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); renderTree(); return
   }
-  /* 主题过滤区分组头：点击=整区展开/收起（topicSecOpen；列表内主题行原地展开行为不变） */
+  /* 标签过滤区分组头（0.4.8：主题并入标签，data-tsec/data-topic 属性名不动防地震）：点击=整区展开/收起（topicSecOpen；列表内标签行原地展开行为不变） */
   var tsec = ev.target.closest('[data-tsec]');
   if (tsec) { topicSecOpen = !topicSecOpen; renderTree(); return }
   var trow = ev.target.closest('[data-topic]');
   if (trow) {
     var t = trow.dataset.topic;
-    /* 主题行：行尾过滤图标=主题视图（跨文件夹过滤）；行主体=原地展开/收起该主题子列表 */
+    /* 标签行：行尾过滤图标=标签视图（跨文件夹过滤）；行主体=原地展开/收起该标签子列表 */
     if (vf) { view = view.type === 'topic' && view.id === t ? { type: 'all', id: '' } : { type: 'topic', id: t }; render(); return }
     topicOpen[t] = !topicOpen[t]; renderTree(); return
   }
@@ -1991,13 +2027,13 @@ function selectNote(id) {
   focusId = id;   /* 选中同步键盘焦点行（j/k 从当前选中行继续） */
   var n = notes.find(function (x) { return x.id === id });
   if (n && n.folder) { foldOpen[n.folder] = true; saveFoldOpen() }
-  edNote = n ? Object.assign({}, n, { body: '' }) : null;
+  edNote = n ? edFoldTopic(Object.assign({}, n, { body: '' })) : null;   /* 0.4.8：topic 折入 tags（标签控件 chips 数据源） */
   organizeErr = '';   /* 0.4.7-B⑥a：换笔记清整理失败驻留条（驻留粒度 = 当前笔记） */
   renderTree(); renderEd();
   if (n) {
     histCount = null; probeHistCount(id);   /* 换笔记重置「历史」入口可见性，随即探测版本计数 */
     rpc('notes-get', { id: id }).then(function (res) {
-      if (res && res.note && selId === id) { edNote = res.note; fillEdBody(); renderEdFoot(); }
+      if (res && res.note && selId === id) { edNote = edFoldTopic(res.note); fillEdBody(); renderEdFoot(); }   /* 0.4.8：正文落定回填同折叠 */
     }).catch(function () {})
   }
 }
@@ -2009,16 +2045,21 @@ function doSave() {
   if (draftNote) { doDraftCreate(); return }
   if (!selId) return;
   var keepQuick = (notes.find(function (x) { return x.id === selId }) || {}).tags || [];
-  var tags = (edNote._tagsStr != null ? edNote._tagsStr : (edNote.tags || []).filter(function (t) { return t !== 'quick' }).join(', '))
-    .split(/[,，;；]/).map(function (s) { return s.trim() }).filter(Boolean);
+  /* 0.4.8：标签 = chips（edNote.tags，选中时 edFoldTopic 已把 topic 折入）∪ 在途输入串（_tagsStr，未按分隔符的尾部同落盘） */
+  var tags = (edNote.tags || []).filter(function (t) { return t !== 'quick' }).map(function (s) { return String(s).trim() }).filter(Boolean);
+  if (edNote._tagsStr != null) edNote._tagsStr.split(/[,，;；]/).forEach(function (s) { s = s.trim(); if (s && tags.indexOf(s) < 0) tags.push(s) });
+  tags = tags.filter(function (v, i) { return tags.indexOf(v) === i });
   if (keepQuick.indexOf('quick') >= 0 && tags.indexOf('quick') < 0) tags.push('quick');
+  edNote.tags = tags.slice();   /* 回写本地：保存后 renderMeta chips 与落盘一致 */
   var upd = {
     id: selId, title: edNote.title, tags: tags, body: edNote.body,
     kind: edNote.kind, status: edNote.status, inject: edNote.inject === true,
     injectTo: edNote.injectTo || [], recall: edNote.recall !== false
   };
   if (upd.inject) upd.injectRole = edNote.injectRole === 'reference' ? 'reference' : 'convention';   /* 非 off 才带 injectRole（payload 禁 undefined） */
-  if ((edNote.topic || '').trim()) upd.topic = edNote.topic.trim();
+  /* 0.4.8 写侧惰性落盘：topic 非空且≠未分类/≠分类中（瞬态占位不触写）→ 落盘清空（tags 已含折叠值；✕ 移除该 chip 时清空同样生效） */
+  var tp0 = (edNote.topic || '').trim();
+  if (tp0 && tp0 !== '未分类' && tp0 !== '分类中') { upd.topic = ''; edNote.topic = '' }
   rpc('notes-update', upd).then(function (res) {
     if (res && res.error) { toast(res.error); return }
     $('edSaved').textContent = '✓ 已自动保存 ' + new Date().toTimeString().slice(0, 5);
@@ -2144,8 +2185,11 @@ function renderCrumb() {
   var fhtml = '';
   if (n.folder) folderPath(n.folder).forEach(function (pf) { fhtml += '<span class="lnk crumb-f" data-fid="' + pf.id + '" title="在目录树中展开：' + esc(pf.name) + '">' + esc(pf.name) + '</span><span class="sep">/</span>' });
   $('edCrumb').innerHTML = fhtml
-    + '<span class="lnk" id="crumbTopic" title="按主题全局过滤（跨文件夹）">' + esc(n.topic || '未分类') + '</span><span class="sep">/</span><span>' + esc(n.id || '未保存草稿') + '</span>';
-  $('crumbTopic').onclick = function () { view = { type: 'topic', id: n.topic || '未分类' }; render(); toast('已按主题过滤：' + (n.topic || '未分类')) };
+    /* 0.4.8（notes-048-topic-tag-merge）：面包屑主题段 → 标签段——首枚有效标签（effTagsUi 剔「分类中」占位）；无标签整段不渲染（「未分类」歧义消除）；点击 = 标签视图 */
+    + (effTagsUi(n)[0] ? '<span class="lnk" id="crumbTopic" title="按标签全局过滤（跨文件夹）">' + esc(effTagsUi(n)[0]) + '</span><span class="sep">/</span>' : '')
+    + '<span>' + esc(n.id || '未保存草稿') + '</span>';
+  var ctp = $('crumbTopic');
+  if (ctp) ctp.onclick = function () { view = { type: 'topic', id: effTagsUi(edNote)[0] }; render(); toast('已按标签过滤：' + effTagsUi(edNote)[0]) };
   $('edCrumb').querySelectorAll('.crumb-f').forEach(function (el) {
     el.onclick = function () { var fid = el.getAttribute('data-fid'); folderPath(fid).forEach(function (af) { foldOpen[af.id] = true }); saveFoldOpen(); render() };
   });
@@ -2222,7 +2266,9 @@ function roleInfoTip() {
 }
 function renderMeta() {
   var n = edNote; if (!n) return;
-  var tagsStr = n._tagsStr != null ? n._tagsStr : (n.tags || []).filter(function (t) { return t !== 'quick' }).join(', ');
+  /* 0.4.8（notes-048-topic-tag-merge）：标签编辑控件 chips 数据源 = edNote.tags（选中时 edFoldTopic 已把 topic 折入）；
+     quick 速记标记不渲染；_tagsStr = 添加输入框在途文本（未提交片段） */
+  var edMetaTags = (n.tags || []).filter(function (t) { return t !== 'quick' && t !== '分类中' });
   /* 派发计划块 + 关联调度清单（notes-034-sched-detail）：meta 尾部全宽行；无调度零渲染（空串零 DOM 痕迹）；
      涉及调度时按需一次 includeLogs 兜底（log 型调度约定旁路，见 ensureSchedPeers） */
   var spHtml = schedPlanHtml(n, schedPeerSource());
@@ -2234,8 +2280,10 @@ function renderMeta() {
     + Object.keys(KIND).filter(function (k) { return k !== 'sys' || k === (n.kind || 'note') }).map(function (k) { return '<option value="' + k + '"' + (k === (n.kind || 'note') ? ' selected' : '') + '>' + KIND[k] + '</option>' }).join('') + '</select></span>'   /* 0.4.3⑩：sys 为机器托管 kind——仅当前笔记已是 sys 时渲染该选项（显示保真），人工不可转入 */
     + '<span class="meta-chip" title="状态"><select id="statusSel">'
     + ['active', 'resolved', 'superseded'].map(function (s) { return '<option value="' + s + '"' + (s === (isPinned(n) ? 'active' : n.status || 'active') ? ' selected' : '') + '>' + STATUS_LABEL[s] + '</option>' }).join('') + '</select></span>'
-    + '<span class="meta-chip" title="主题（自动识别，可直接改；改后自动保存）">' + icon('i-topic') + '<input id="mTopicInput" size="8" placeholder="主题" value="' + esc(n.topic === '分类中' ? '' : (n.topic || '')) + '"></span>'
-    + '<span class="meta-chip" title="标签，逗号分隔">' + icon('i-filter') + '<input id="mTagsInput" size="10" placeholder="标签…" value="' + esc(tagsStr) + '"></span>'
+    /* 0.4.8：主题 chip 下线；标签 chip 升级为编辑控件——已提交标签 chips（✕ 移除）+ 添加输入（Enter/逗号/分号提交片段，失焦提交余量） */
+    + '<span class="meta-chip tag-ed" title="标签（Enter/逗号添加，✕ 移除；自动保存）">' + icon('i-tag')
+    + edMetaTags.map(function (tg) { return '<span class="tchip">' + esc(tg) + '<span class="tx" role="button" tabindex="0" title="移除标签" aria-label="移除标签" data-tg="' + esc(tg) + '">' + icon('i-x', 9) + '</span></span>' }).join('')
+    + '<input class="tag-add" id="mTagsInput" size="6" placeholder="添加标签…" value="' + esc(n._tagsStr || '') + '"></span>'
     + (fname(n.folder) ? '<span class="meta-chip">' + icon('i-folder') + esc(fname(n.folder)) + '</span>' : '')
     /* 使用遥测（P2）：详情 meta chip「被引用 N 次」（0 次不显示） */
     + ((n.useCount || 0) > 0 ? '<span class="meta-chip" title="被 AI 查阅过 ' + n.useCount + ' 次">' + icon('i-quote') + '被引用 ' + n.useCount + ' 次</span>' : '')
@@ -2260,8 +2308,33 @@ function renderMeta() {
     + spHtml;
   $('kindSel').onchange = function () { edNote.kind = this.value; triggerSave(); renderMeta(); renderTree() };
   $('statusSel').onchange = function () { edNote.status = this.value; triggerSave(); renderMeta(); renderTree() };
-  $('mTopicInput').oninput = function () { edNote.topic = this.value; triggerSave() };
-  $('mTagsInput').oninput = function () { edNote._tagsStr = this.value; triggerSave() };
+  /* 0.4.8：标签编辑控件接线——✕ 移除 / Enter·逗号·分号提交片段 / 失焦提交余量（与 app panels/editor-meta.js 同构） */
+  function commitTagInput(commitAll) {
+    var inp = $('mTagsInput');
+    var v = inp ? inp.value : (edNote._tagsStr || '');
+    var parts = v.split(/[,，;；]/);
+    var tail = commitAll ? '' : parts.pop();
+    var added = false;
+    parts.forEach(function (s) { s = s.trim(); if (s && s !== 'quick' && s !== '分类中' && (edNote.tags || []).indexOf(s) < 0) { (edNote.tags = edNote.tags || []).push(s); added = true } });
+    edNote._tagsStr = commitAll ? null : tail;
+    return added;
+  }
+  $('mTagsInput').oninput = function () {
+    if (/[,，;；]/.test(this.value)) { commitTagInput(false); triggerSave(); renderMeta(); var ni = $('mTagsInput'); if (ni) { ni.focus(); ni.setSelectionRange(ni.value.length, ni.value.length) } }
+    else { edNote._tagsStr = this.value; triggerSave() }
+  };
+  $('mTagsInput').onkeydown = function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); commitTagInput(true); triggerSave(); renderMeta() } };
+  $('mTagsInput').onchange = function () { commitTagInput(true); triggerSave(); renderMeta() };
+  $('edMeta').querySelectorAll('.tchip .tx').forEach(function (x) {
+    x.onmousedown = function (ev) { ev.preventDefault() };   /* 保输入框焦点（防 blur-onchange 重渲抢走点击目标） */
+    function removeTag() {
+      var tg = x.getAttribute('data-tg');
+      edNote.tags = (edNote.tags || []).filter(function (v) { return v !== tg });
+      triggerSave(); renderMeta();
+    }
+    x.onclick = removeTag;
+    x.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); removeTag() } };
+  });
   var mRoleEl = $('mRole');   /* kind=log 时注入开关不渲染（0.4.3⑦ 硬关 UI 化）——守卫防空指针 */
   if (mRoleEl) mRoleEl.querySelectorAll('.seg').forEach(function (seg) {
     seg.onclick = function () {
@@ -2501,12 +2574,13 @@ function doNewNote() {
   /* 草稿期重复点击 = 聚焦标题继续写（不重建草稿、不丢在途输入） */
   if (draftNote) { var t0 = $('edTitle'); if (t0) t0.focus(); return }
   var seedFolder = '';   /* 0.4.3⑦：文件视图拆除——原「文件夹视图落当前文件夹」种子随之移除（落未分类/编辑期再归类） */
-  var seedTopic = view.type === 'topic' ? view.id : '';
+  /* 0.4.8：主题视图 = 标签视图——新建种子落 tags（topic 字段废弃并入标签；「分类中」占位不预填） */
+  var seedTag = view.type === 'topic' && view.id && view.id !== '分类中' ? view.id : '';
   var kind0 = filters.kinds.length === 1 && filters.kinds[0] !== 'sys' ? filters.kinds[0] : 'note';   /* 0.4.3⑩：「机器」档（sys）下新建回退 note——sys 为机器托管 kind，人工新建不预填 */
   /* 二期 kind 模板骨架：筛选中心类型组恰选 1 个时按该 kind 预填（note=空自由格式）——预填不算「有效编辑」，零输入放弃仍不落库 */
   draftNote = {
     id: '', title: '', body: KIND_TEMPLATES[kind0] || '', kind: kind0, status: 'active',
-    tags: [], topic: seedTopic, folder: seedFolder, inject: false, injectTo: [], recall: true,
+    tags: seedTag ? [seedTag] : [], topic: '', folder: seedFolder, inject: false, injectTo: [], recall: true,
     sensitive: false, injectRole: 'convention', dispatches: [], useCount: 0,
     createdAt: '', updatedAt: '', sessionId: '', _tagsStr: null
   };
@@ -2521,15 +2595,17 @@ function doNewNote() {
 function draftPayloadOf(d) {
   var title = (d.title || '').trim(); if (title === 'Untitled') title = '';
   if (!title && !(d.body || '').trim()) return null;
-  var tags = (d._tagsStr != null ? d._tagsStr : (d.tags || []).filter(function (t) { return t !== 'quick' }).join(', '))
-    .split(/[,，;；]/).map(function (s) { return s.trim() }).filter(Boolean);
+  /* 0.4.8：标签 = chips（d.tags）∪ 在途输入串（_tagsStr）；草稿 topic（废弃字段）并入 tags 后不再携带（host 缺省未分类，读侧 effTags 同源） */
+  var tags = (d.tags || []).filter(function (t) { return t !== 'quick' }).map(function (s) { return String(s).trim() }).filter(Boolean);
+  if (d._tagsStr != null) d._tagsStr.split(/[,，;；]/).forEach(function (s) { s = s.trim(); if (s && tags.indexOf(s) < 0) tags.push(s) });
   var p = {
     title: title, body: d.body || '', tags: tags,
     kind: d.kind || 'note', status: d.status || 'active', inject: d.inject === true,
     injectTo: d.injectTo || [], recall: d.recall !== false, sensitive: d.sensitive === true
   };
   if (p.inject) p.injectRole = d.injectRole === 'reference' ? 'reference' : 'convention';
-  if ((d.topic || '').trim()) p.topic = d.topic.trim();
+  var tp0 = (d.topic || '').trim();
+  if (tp0 && tp0 !== '未分类' && tp0 !== '分类中' && p.tags.indexOf(tp0) < 0) p.tags.push(tp0);
   if (d.folder) p.folder = d.folder;
   return p;
 }
@@ -3548,7 +3624,7 @@ function openInjectManager(from) {
   openModal(
     '<div class="modal-t">' + icon('i-bolt', 13) + ' 注入管理<span class="sub">全库注入总览 · 单行直改 / 多选批量 · 日志不参与注入 · 调度任务区（定时派发）</span></div>'
     + '<div class="injmgr-bar"><div class="injmgr-chips" id="injMgrChips"></div>'
-    + '<input class="injmgr-search" id="injMgrSearch" placeholder="搜索标题 / 主题 / 标签…"></div>'
+    + '<input class="injmgr-search" id="injMgrSearch" placeholder="搜索标题 / 标签…"></div>'
     + '<div id="injSchedHost"></div>'
     + '<div id="injConflictHost"></div>'
     + '<div id="injMgrBody"><div class="modal-hint">加载中…</div></div>'
@@ -3581,7 +3657,7 @@ function injMgrShownList() {
   var w = { convention: 0, reference: 1, off: 2 };
   var shown = st.list.slice().sort(function (a, b) { return (w[injMgrRole(a)] - w[injMgrRole(b)]) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) });
   if (st.filter !== 'all') shown = shown.filter(function (n) { return injMgrRole(n) === st.filter });
-  if (st.q) shown = shown.filter(function (n) { return (n.title || '').toLowerCase().indexOf(st.q) >= 0 || (n.topic || '').toLowerCase().indexOf(st.q) >= 0 || (n.tags || []).join(' ').toLowerCase().indexOf(st.q) >= 0 });
+  if (st.q) shown = shown.filter(function (n) { return (n.title || '').toLowerCase().indexOf(st.q) >= 0 || effTags(n).join(' ').toLowerCase().indexOf(st.q) >= 0 });   /* 0.4.8：检索面改吃 effTags（tags ∪ topic 一句覆盖） */
   return shown;
 }
 function renderInjectManager() {
@@ -4276,7 +4352,7 @@ function renderSuggestList() {
   h += stale.length
     ? '<div class="arch-list">' + stale.map(function (n) {
         return '<div class="arch-row"><span class="ti" title="' + esc(n.title || 'Untitled') + '">' + esc(n.title || 'Untitled') + '</span>'
-          + '<span class="meta">' + esc(n.topic || '未分类') + ' · ' + n.staleDays + ' 天未更新</span></div>'
+          + '<span class="meta">' + esc(effTagsUi(n)[0] || '未分类') + ' · ' + n.staleDays + ' 天未更新</span></div>'   /* 0.4.8：主题显示位改吃 effTagsUi */
       }).join('') + '</div>'
     : '<div class="modal-hint">没有过期且从未被引用的笔记。</div>';
   h += '</div>';
@@ -4285,7 +4361,7 @@ function renderSuggestList() {
   h += orphans.length
     ? '<div class="arch-list">' + orphans.map(function (n) {
         return '<div class="arch-row"><span class="ti" title="' + esc(n.title || 'Untitled') + '">' + esc(n.title || 'Untitled') + '</span>'
-          + '<span class="meta">' + esc(n.topic || '未分类') + ' · ' + esc(n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—') + '</span>'
+          + '<span class="meta">' + esc(effTagsUi(n)[0] || '未分类') + ' · ' + esc(n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—') + '</span>'
           + '<button class="mbtn trash-act sg-view" data-id="' + esc(n.id) + '">查看</button></div>'
       }).join('') + '</div>'
     : '<div class="modal-hint">没有孤儿笔记（无双链关联且从未被引用）。</div>';
@@ -4413,7 +4489,7 @@ function saveCap() {
     : rpc('notes-quick', { text: text, sessionId: '', cwd: '', kind: 'quote' });
   call.then(function (res) {
     if (res && res.error) { toast(res.error); return }
-    toast(res && res.merged ? '已合并进今日速记' : '已记录为引用（主题分类由 host LLM 异步回填）');
+    toast(res && res.merged ? '已合并进今日速记' : '已记录为引用（标签分类由 host LLM 异步回填）');
     loadNotes(true).then(function () { if (res && res.id && !res.merged) selectNote(res.id) });
     /* 分类异步回填：延迟静默重拉两次，标题/主题自动刷新可见 */
     setTimeout(function () { loadNotes(true) }, 4000);
@@ -4503,7 +4579,7 @@ function doArchiveUndo() {
     afterArchiveRefresh();
   }).catch(function (e) { toast('撤销失败：' + (e && e.message || e)) });
 }
-/* 多选合并：操作条「合并」→ 标题输入（默认 = 所选最早更新笔记的 topic）→ notes-archive 单组 */
+/* 多选合并：操作条「合并」→ 标题输入（默认 = 所选最早更新笔记的首枚有效标签 effTagsUi——0.4.8 主题并入标签后同口径）→ notes-archive 单组 */
 function openMerge() {
   var ids = Object.keys(selIds);
   if (ids.length < 2) { toast('至少选择 2 条笔记'); return }
@@ -4511,7 +4587,7 @@ function openMerge() {
   openModal(
     '<div class="modal-t">' + icon('i-note', 13) + ' 合并所选笔记</div>'
     + '<div class="modal-hint">把所选的 ' + ids.length + ' 条笔记合并为一篇（正文按更新时间分节拼接，原笔记软删除，可撤销）。</div>'
-    + '<input class="minput" id="mergeTitle" value="' + esc((sel[0] && sel[0].topic) || '合并笔记') + '" placeholder="合并后标题…">'
+    + '<input class="minput" id="mergeTitle" value="' + esc((sel[0] && effTagsUi(sel[0])[0]) || '合并笔记') + '" placeholder="合并后标题…">'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
     + '<div class="modal-acts"><button class="mbtn" id="mgCancel">取消</button><button class="mbtn primary" id="mgOk">合并</button></div>'
   );

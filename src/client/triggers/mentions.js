@@ -34,12 +34,12 @@
       return mentionCache.inflight
     }
     // 候选过滤（纯函数，check 行为级 eval 锚）：软删/sys 组件侧兜底双闸（host 缺省口径已排，复评防回归）；
-    // query 命中标题/主题/标签（小写折叠子串）；上限 MENTION_MAX
+    // query 命中标题/标签（0.4.8：主题并入标签——hay 吃 effTags = tags ∪ topic 读侧虚拟合并；小写折叠子串）；上限 MENTION_MAX
     function mentionFilter(notes, query) {
       const q = String(query || '').trim().toLowerCase()
       const alive = (notes || []).filter((n) => n && !n.deleted && (n.kind || 'note') !== 'sys')
       const hit = !q ? alive : alive.filter((n) => {
-        const hay = [n.title, n.topic].concat(Array.isArray(n.tags) ? n.tags : []).join('\n').toLowerCase()
+        const hay = [n.title].concat(effTags(n)).join('\n').toLowerCase()
         return hay.indexOf(q) >= 0
       })
       return hit.slice(0, MENTION_MAX)
@@ -51,13 +51,13 @@
     }
     // serialize 失败透明降级文案（含标题/检索 id，对 Agent 与用户可见，非静默吞错）
     function mentionFallbackText(ref) { return t('mention.fetchFailed', { title: mentionTitleOf(ref) }) }
-    // 单行候选投影：name=标题（pick 载荷/精确匹配键/第一检索键）；description=主题 · 类型（MenuView 实际渲染的副行字段）；
-    // section=分组小标题（相邻同组共享去重）；value=笔记 id（onPick 原样回传）
+    // 单行候选投影：name=标题（pick 载荷/精确匹配键/第一检索键）；description=首枚有效标签 · 类型（0.4.8：主题并入标签——
+    // effTagsUi = tags ∪ topic 剔「分类中」占位；MenuView 实际渲染的副行字段）；section=分组小标题（相邻同组共享去重）；value=笔记 id（onPick 原样回传）
     function mentionCandidate(n) {
       const title = String(n.title || '').trim() || t('tree.untitled')
-      const topic = String(n.topic || '').trim()
+      const tag0 = effTagsUi(n)[0] || ''
       const kl = kindLabel(n.kind || 'note')
-      const desc = topic && kl ? topic + ' · ' + kl : (topic || kl)
+      const desc = tag0 && kl ? tag0 + ' · ' + kl : (tag0 || kl)
       return {
         name: title,
         description: desc || undefined,

@@ -54,16 +54,23 @@ function renderCrumb() {
   /* 面包屑文件夹段（notes-nested-folder-ui）：「父/子/孙」路径；0.4.3⑦ 文件视图拆除后点击 = 树内展开该文件夹（含祖先链），不切视图 */
   var fhtml = '';
   if (n.folder) folderPath(n.folder).forEach(function (pf) { fhtml += '<span class="lnk crumb-f" data-fid="' + pf.id + '" title="' + t('meta.crumbFolderExpandTip', { name: esc(pf.name) }) + '">' + esc(pf.name) + '</span><span class="sep">/</span>' });
+  /* 0.4.8（notes-048-topic-tag-merge）：面包屑主题段 → 标签段——首枚有效标签（effTagsUi = tags ∪ topic，剔「分类中」占位）；
+     无标签整段不渲染（「未分类」歧义消除：文件夹未分类与主题未分类同名混淆就此消失）；点击 = 标签视图（跨文件夹过滤，view.type 键名不动） */
+  var firstTag = effTagsUi(n)[0] || '';
   $('edCrumb').innerHTML = fhtml
-    + '<span class="lnk" id="crumbTopic" title="' + t('meta.crumbTopicTip') + '">' + esc(n.topic || t('meta.uncategorized')) + '</span><span class="sep">/</span><span>' + esc(n.id || t('meta.unsavedDraft')) + '</span>';
-  $('crumbTopic').onclick = function () { view = { type: 'topic', id: n.topic || '未分类' }; render(); toast(t('meta.filteredByTopic', { name: n.topic || t('meta.uncategorized') })) };
+    + (firstTag ? '<span class="lnk" id="crumbTopic" title="' + t('meta.crumbTopicTip') + '">' + esc(firstTag) + '</span><span class="sep">/</span>' : '')
+    + '<span>' + esc(n.id || t('meta.unsavedDraft')) + '</span>';
+  var ctp = $('crumbTopic');
+  if (ctp) ctp.onclick = function () { view = { type: 'topic', id: firstTag }; render(); toast(t('meta.filteredByTopic', { name: firstTag })) };
   $('edCrumb').querySelectorAll('.crumb-f').forEach(function (el) {
     el.onclick = function () { var fid = el.getAttribute('data-fid'); folderPath(fid).forEach(function (af) { foldOpen[af.id] = true }); saveFoldOpen(); render() };
   });
 }
 function renderMeta() {
   var n = edNote; if (!n) return;
-  var tagsStr = n._tagsStr != null ? n._tagsStr : (n.tags || []).filter(function (t) { return t !== 'quick' }).join(', ');
+  /* 0.4.8（notes-048-topic-tag-merge）：标签编辑控件 chips 数据源 = edNote.tags（选中时 edFoldTopic 已把 topic 折入）；
+     quick 速记标记不渲染（保存链路 keepQuick 保留）；_tagsStr = 添加输入框在途文本（未提交片段） */
+  var edMetaTags = (n.tags || []).filter(function (t) { return t !== 'quick' && t !== '分类中' });
   /* 派发计划块 + 关联调度清单（notes-034-sched-detail）：meta 尾部全宽行；无调度零渲染（空串零 DOM 痕迹）；
      涉及调度时按需一次 includeLogs 兜底（log 型调度约定旁路，见 ensureSchedPeers） */
   var spHtml = schedPlanHtml(n, schedPeerSource());
@@ -75,8 +82,10 @@ function renderMeta() {
     + Object.keys(KIND).filter(function (k) { return k !== 'sys' || k === (n.kind || 'note') }).map(function (k) { return '<option value="' + k + '"' + (k === (n.kind || 'note') ? ' selected' : '') + '>' + kindLabel(k) + '</option>' }).join('') + '</select></span>'   /* i18n 覆盖卡F（B 卡交接②）：kind 下拉选项经 kindLabel() 条件映射走 t()（KIND 字面量仅作锚）；0.4.3⑩：sys 为机器托管 kind——仅当前笔记已是 sys 时渲染该选项（显示保真），人工不可转入 */
     + '<span class="meta-chip" title="' + t('meta.statusTip') + '"><select id="statusSel">'
     + ['active', 'resolved', 'superseded'].map(function (s) { return '<option value="' + s + '"' + (s === (isPinned(n) ? 'active' : n.status || 'active') ? ' selected' : '') + '>' + statusLabel(s) + '</option>' }).join('') + '</select></span>'   /* i18n 覆盖卡F（B 卡交接②）：status 下拉选项经 statusLabel() 条件映射走 t()（meta.status* 本卡建） */
-    + '<span class="meta-chip" title="' + t('meta.topicTip') + '">' + icon('i-topic') + '<input id="mTopicInput" size="8" placeholder="' + t('meta.topicPlaceholder') + '" value="' + esc(n.topic === '分类中' ? '' : (n.topic || '')) + '"></span>'
-    + '<span class="meta-chip" title="' + t('meta.tagsTip') + '">' + icon('i-filter') + '<input id="mTagsInput" size="10" placeholder="' + t('meta.tagsPlaceholder') + '" value="' + esc(tagsStr) + '"></span>'
+    /* 0.4.8（notes-048-topic-tag-merge）：主题 chip 下线；标签 chip 升级为编辑控件——已提交标签 chips（✕ 移除）+ 添加输入（Enter/逗号/分号提交片段，失焦提交余量） */
+    + '<span class="meta-chip tag-ed" title="' + t('meta.tagsTip') + '">' + icon('i-tag')
+    + edMetaTags.map(function (tg) { return '<span class="tchip">' + esc(tg) + '<span class="tx" role="button" tabindex="0" title="' + esc(t('meta.tagRemoveTip')) + '" aria-label="' + esc(t('meta.tagRemoveTip')) + '" data-tg="' + esc(tg) + '">' + icon('i-x', 9) + '</span></span>' }).join('')
+    + '<input class="tag-add" id="mTagsInput" size="6" placeholder="' + t('meta.tagsPlaceholder') + '" value="' + esc(n._tagsStr || '') + '"></span>'
     + (fname(n.folder) ? '<span class="meta-chip">' + icon('i-folder') + esc(fname(n.folder)) + '</span>' : '')
     /* 使用遥测（P2）：详情 meta chip「被引用 N 次」（0 次不显示） */
     + ((n.useCount || 0) > 0 ? '<span class="meta-chip" title="' + t('meta.useCountTip', { n: n.useCount }) + '">' + icon('i-quote') + t('meta.useCount', { n: n.useCount }) + '</span>' : '')
@@ -112,8 +121,34 @@ function renderMeta() {
     + spHtml;
   $('kindSel').onchange = function () { edNote.kind = this.value; triggerSave(); renderMeta(); renderTree() };
   $('statusSel').onchange = function () { edNote.status = this.value; triggerSave(); renderMeta(); renderTree() };
-  $('mTopicInput').oninput = function () { edNote.topic = this.value; triggerSave() };
-  $('mTagsInput').oninput = function () { edNote._tagsStr = this.value; triggerSave() };
+  /* 0.4.8（notes-048-topic-tag-merge）：标签编辑控件接线——✕ 移除 / Enter·逗号·分号提交片段 / 失焦提交余量；
+     提交即去重并入 edNote.tags + triggerSave（topic → tags 写侧合并由 buildSavePayload 承担；分类中/quick 占位拒收） */
+  function commitTagInput(commitAll) {
+    var inp = $('mTagsInput');
+    var v = inp ? inp.value : (edNote._tagsStr || '');
+    var parts = v.split(/[,，;；]/);
+    var tail = commitAll ? '' : parts.pop();
+    var added = false;
+    parts.forEach(function (s) { s = s.trim(); if (s && s !== 'quick' && s !== '分类中' && (edNote.tags || []).indexOf(s) < 0) { (edNote.tags = edNote.tags || []).push(s); added = true } });
+    edNote._tagsStr = commitAll ? null : tail;
+    return added;
+  }
+  $('mTagsInput').oninput = function () {
+    if (/[,，;；]/.test(this.value)) { commitTagInput(false); triggerSave(); renderMeta(); var ni = $('mTagsInput'); if (ni) { ni.focus(); ni.setSelectionRange(ni.value.length, ni.value.length) } }
+    else { edNote._tagsStr = this.value; triggerSave() }
+  };
+  $('mTagsInput').onkeydown = function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); commitTagInput(true); triggerSave(); renderMeta() } };
+  $('mTagsInput').onchange = function () { commitTagInput(true); triggerSave(); renderMeta() };
+  $('edMeta').querySelectorAll('.tchip .tx').forEach(function (x) {
+    x.onmousedown = function (ev) { ev.preventDefault() };   /* 保输入框焦点：✕ 点击不触发 blur-onchange 重渲（防点击目标被提前销毁） */
+    function removeTag() {
+      var tg = x.getAttribute('data-tg');
+      edNote.tags = (edNote.tags || []).filter(function (v) { return v !== tg });
+      triggerSave(); renderMeta();
+    }
+    x.onclick = removeTag;
+    x.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); removeTag() } };
+  });
   var mRoleEl = $('mRole');   /* kind=log 时注入开关不渲染（0.4.3⑦ 硬关 UI 化）——守卫防空指针 */
   if (mRoleEl) mRoleEl.querySelectorAll('.seg').forEach(function (seg) {
     seg.onclick = function () {
@@ -376,7 +411,7 @@ function refreshSelected() {
     if (res && res.note && selId === id) {
       var editing = document.activeElement && (document.activeElement === $('edSrc') || document.activeElement === $('edRich') || document.activeElement === $('edTitle'));
       var body = edNote ? edNote.body : '';
-      edNote = res.note;
+      edNote = edFoldTopic(res.note);   /* 0.4.8：后台刷新换代同折叠（topic → tags；标签控件 chips 数据源不失真） */
       if (editing) edNote.body = body;   /* 编辑中不覆盖正文（防焦点内回填顶掉击键） */
       degraded = analyzeMarkdown(edNote.body || '');
       renderEd();

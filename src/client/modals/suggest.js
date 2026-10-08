@@ -178,7 +178,7 @@
                         ? e('div', { className: 'dsh-notes-arch-list' },
                             stale.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
                               e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
-                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || tt('meta.uncategorized')) + ' · ' + tt('sugg.staleDays', { n: n.staleDays })))))
+                              e('span', { className: 'dsh-notes-arch-meta' }, (effTagsUi(n)[0] || tt('meta.uncategorized')) + ' · ' + tt('sugg.staleDays', { n: n.staleDays })))))   /* 0.4.8：主题显示位改吃 effTagsUi（tags ∪ topic） */
                         : e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.staleEmpty'))),
                     e('div', { className: 'dsh-notes-suggest-sec' },
                       e('div', { className: 'dsh-notes-suggest-sec-t' }, tt('sugg.secOrphan'), e('span', { className: 'dsh-notes-suggest-sec-n' }, tt('sugg.countItems', { n: orphans.length }))),
@@ -186,7 +186,7 @@
                         ? e('div', { className: 'dsh-notes-arch-list' },
                             orphans.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
                               e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
-                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || tt('meta.uncategorized')) + ' · ' + (n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—')),
+                              e('span', { className: 'dsh-notes-arch-meta' }, (effTagsUi(n)[0] || tt('meta.uncategorized')) + ' · ' + (n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—')),
                               e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(n.id) }, tt('sugg.view')))))
                         : e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.orphanEmpty'))),
                     // ④ 日志卫生（工作记忆 v0 裁决 B②：超窗旧日志两级聚合提名——只提名不执行，v0 展开明细逐条过目）
@@ -213,7 +213,7 @@
                         ? e('div', { className: 'dsh-notes-arch-list' },
                             zeroRef.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
                               e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
-                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || tt('meta.uncategorized')) + (n.when ? ' · ' + n.when : '')),
+                              e('span', { className: 'dsh-notes-arch-meta' }, (effTagsUi(n)[0] || tt('meta.uncategorized')) + (n.when ? ' · ' + n.when : '')),
                               e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestEditWhen(n) }, tt('sugg.editWhen')),
                               e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestUnmount(n) }, tt('sugg.unmount')))))
                         : e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.zeroRefEmpty'))),
@@ -223,7 +223,7 @@
                       e('div', { className: 'dsh-notes-arch-list' },
                         hot.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
                           e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
-                          e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || tt('meta.uncategorized')) + ' · ' + tt('sugg.hotMeta', { d: winDays, n: n.hits })),
+                          e('span', { className: 'dsh-notes-arch-meta' }, (effTagsUi(n)[0] || tt('meta.uncategorized')) + ' · ' + tt('sugg.hotMeta', { d: winDays, n: n.hits })),
                           e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestMountNote(n) }, tt('sugg.mount')))))) : null,
                     e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.criteriaClient'))),
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,

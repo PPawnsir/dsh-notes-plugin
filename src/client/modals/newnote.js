@@ -42,14 +42,15 @@
           // 二期 kind 模板骨架：按所选类型预填（note=空自由格式；机器信息类由 ✨整理按内容适配，建时不预判）
           const payload = { title: title, body: KIND_TEMPLATES[newNoteKind] || '', kind: newNoteKind }
           if (createFolder) payload.folder = createFolder
-          if (view.type === 'topic' && view.id) payload.topic = view.id
+          /* 0.4.8（notes-048-topic-tag-merge）：主题视图 = 标签视图（view.type 键名不动）——新建种子落 tags（topic 字段废弃并入标签；「分类中」占位不预填） */
+          if (view.type === 'topic' && view.id && view.id !== '分类中') payload.tags = [view.id]
           const res = await host.call('notes-create', payload)
           if (res && res.error) { setError(res.error); return }
           setNewNoteOpen(false); setNewNoteTitle('')
           showToast(t('newnote.created'))
           // 立即用创建返回值选中新笔记（不等列表刷新，避免列表时序影响选中链路）
           if (res && res.id) {
-            panelBridge.selectNote({ id: res.id, title: res.title || title, topic: res.topic || payload.topic || '', kind: res.kind || 'note', status: res.status || 'active', folder: createFolder, tags: [], inject: false, injectTo: [], sensitive: false })
+            panelBridge.selectNote({ id: res.id, title: res.title || title, topic: res.topic || '', kind: res.kind || 'note', status: res.status || 'active', folder: createFolder, tags: payload.tags || [], inject: false, injectTo: [], sensitive: false })
             panelBridge.setFlashId(res.id); panelBridge.later(() => panelBridge.setFlashId(null), 1800)
             // 聚焦正文：等选中态渲染出 textarea 再 focus（富文本态先切回源码态，否则没有 textarea 可聚焦）
             panelBridge.setEditorModeState('source')

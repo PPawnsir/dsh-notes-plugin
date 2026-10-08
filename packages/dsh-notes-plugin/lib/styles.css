@@ -347,9 +347,15 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-role-opt.on{background:var(--nbg-sel);color:var(--nacc-tx);font-weight:600}
 .dsh-notes-meta-select{border:0;background:transparent;color:inherit;font:inherit;font-size:11px;outline:0;cursor:pointer;padding:0}
 .dsh-notes-meta-select option{color:var(--ntx);background:var(--npanel)}
-.dsh-notes-meta-topic-input{width:76px;border:0;background:transparent;color:inherit;font:inherit;font-size:11px;outline:0;padding:0}
+/* 0.4.8（notes-048-topic-tag-merge）：主题 chip 下线（.dsh-notes-meta-topic-input 随删）；标签 chip 升级为编辑控件——chips + ✕ + 添加输入 */
 .dsh-notes-meta-tags-input{width:110px;border:0;background:transparent;color:inherit;font:inherit;font-size:11px;outline:0;padding:0}
-.dsh-notes-meta-topic-input::placeholder,.dsh-notes-meta-tags-input::placeholder{color:var(--nt3)}
+.dsh-notes-meta-tags-input::placeholder{color:var(--nt3)}
+.dsh-notes-tag-ed{cursor:default}
+.dsh-notes-tchip{display:inline-flex;align-items:center;gap:3px;background:var(--nbg-sel);color:var(--nacc-tx);border-radius:10px;padding:0 6px;font-size:10.5px;line-height:16px}
+.dsh-notes-tchip-x{display:inline-flex;cursor:pointer;opacity:.7;border-radius:3px}
+.dsh-notes-tchip-x:hover{opacity:1}
+.dsh-notes-tchip-x .dsh-ic{width:9px;height:9px}
+.dsh-notes-tag-add{width:64px;cursor:text}
 .dsh-notes-meta-jump{display:grid;place-items:center;color:var(--nt3);cursor:pointer;border-radius:3px;padding:1px;flex-shrink:0}
 .dsh-notes-meta-jump:hover{color:var(--nacc)}
 .dsh-notes-meta-jump .dsh-ic{width:10px;height:10px}

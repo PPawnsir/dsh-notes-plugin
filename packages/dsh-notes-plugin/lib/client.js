@@ -198,7 +198,7 @@ window.__ModuleLoader__.load({
       'settings.languageTip': '界面语言（本地记忆，切换即生效）',
       /* ===== 覆盖卡 A（notes-042-i18n-cov-a）：顶栏 + 侧栏树 + hintbar ===== */
       'topbar.subtitle': '你的笔记库 · 写下的约定与资料可注入 Agent 会话',
-      'topbar.refreshTip': '重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）',
+      'topbar.refreshTip': '重新拉取列表/文件夹（LLM 标签分类为异步回填，刷新可见）',
       'topbar.archiveTip': '速记 = 划选文字松手弹出的快速记录（暂存）；点按弹出预览，勾选后把同一会话的速记归并成一篇正式笔记（可撤销）',   /* 0.4.6-D：补速记概念解释（R2 n-mux7as4ppskn：主按钮位零解释） */
       'topbar.themeTip': '切换主题（暗色/亮色）',
       'topbar.homeTip': '返回 DSH 主界面',
@@ -212,7 +212,7 @@ window.__ModuleLoader__.load({
       'side.splitterTip': '拖拽调整侧栏宽度（双击重置）',
       'side.fchipStatusTip': '筛选条件：状态 / {label}（点 × 移除）',
       'side.fchipKindTip': '筛选条件：类型 / {label}（点 × 移除）',
-      'tree.topicTip': '主题：{topic}',
+      'tree.topicTip': '标签：{topic}',
       'tree.untitled': '无标题',
       'tree.injectTip': '注入为上下文 · {role}',
       'tree.roleReference': '资料',
@@ -230,7 +230,7 @@ window.__ModuleLoader__.load({
       /* 0.4.6-J（notes-046-group-paging）：组尾加载行（分组分页：置顶/文件夹/未入夹/主题四组同构，点击该组 += PAGE_SIZE） */
       'tree.moreRows': '加载更多（还有 {n} 条）',
       'tree.countN': '{n} 条',
-      'tree.viewTopic': '主题 · {id}',
+      'tree.viewTopic': '标签 · {id}',
       'tree.viewAll': '全部笔记',
       'tree.crossFolderCount': '（跨文件夹 {n} 条）',
       'tree.clearViewTip': '清除视图过滤',
@@ -239,9 +239,9 @@ window.__ModuleLoader__.load({
       'tree.addFolderTip': '新建文件夹',
       'tree.dropOutHint': '拖到此处移出文件夹',
       'tree.dropRootHint': '拖到此处移回根级',
-      'tree.topicsHeader': '主题 ({n})',
+      'tree.topicsHeader': '标签 ({n})',
       'tree.crossFolder': '跨文件夹',
-      'tree.topicViewTip': '主题视图（跨文件夹过滤）',
+      'tree.topicViewTip': '标签视图（跨文件夹过滤）',
       'tree.noMatch': '无匹配笔记',
       /* 0.4.6-D（R2 n-mux7as3gnrru）：搜索空态引导行——动作出口（更短关键词提示 + 新建一篇按钮） */
       'tree.noMatchGuide': '试试更短的关键词，或',
@@ -345,12 +345,11 @@ window.__ModuleLoader__.load({
       /* 0.4.8（notes-048-wiki-autocomplete）：源码模式 [[ 双链输入补全——零命中空态行（不可选） */
       'editor.wikiAcEmpty': '无匹配笔记',
       'meta.crumbFolderExpandTip': '在目录树中展开：{name}',
-      'meta.crumbTopicTip': '按主题全局过滤（跨文件夹）',
-      'meta.crumbTopicViewTip': '查看同主题全部笔记',
+      'meta.crumbTopicTip': '按标签全局过滤（跨文件夹）',
+      'meta.crumbTopicViewTip': '查看同标签全部笔记',
       'meta.uncategorized': '未分类',
       'meta.unsavedDraft': '未保存草稿',
-      'meta.filteredByTopic': '已按主题过滤：{name}',
-      'meta.noTopic': '该笔记尚未识别主题',
+      'meta.filteredByTopic': '已按标签过滤：{name}',
       'meta.kindTip': '类型',
       'meta.kindTipFull': '笔记类型',
       'meta.kindNote': '笔记',
@@ -361,13 +360,11 @@ window.__ModuleLoader__.load({
       'meta.kindLog': '日志',
       'meta.kindSys': '机器',
       'meta.statusTip': '状态',
-      'meta.topicTip': '主题（自动识别，可直接改；改后自动保存）',
-      'meta.topicTipClient': '主题（可直接编辑；点右侧按钮按主题全局过滤）',
-      'meta.topicPlaceholder': '主题',
-      'meta.topicFilterTip': '按主题全局过滤',
-      'meta.tagsTip': '标签，逗号分隔',
-      'meta.tagsTipClient': '标签（逗号分隔；convention 标签已由注入开关替代）',
-      'meta.tagsPlaceholder': '标签…',
+      /* 0.4.8（notes-048-topic-tag-merge）：主题废弃并入标签——meta.topicTip/topicTipClient/topicPlaceholder/topicFilterTip/noTopic 五键随主题 chip 下线退役；topic 键名保留防键名地震（crumbTopicTip/filteredByTopic 等仍承载标签段文案） */
+      'meta.tagsTip': '标签（Enter/逗号添加，✕ 移除；自动保存）',
+      'meta.tagsTipClient': '标签（主题已并入；Enter/逗号添加，✕ 移除）',
+      'meta.tagsPlaceholder': '添加标签…',
+      'meta.tagRemoveTip': '移除标签',
       'meta.folderTip': '所在文件夹',
       'meta.useCountTip': '被 AI 查阅过 {n} 次',
       'meta.useCount': '被引用 {n} 次',
@@ -613,7 +610,7 @@ window.__ModuleLoader__.load({
       'common.schedNMinutes': '每 {n} 分钟',
       'common.schedNMs': '每 {n}ms',
       'inj.titleSub': '全库注入总览 · 单行直改 / 多选批量 · 日志不参与注入 · 调度任务区（定时派发）',
-      'inj.searchPlaceholder': '搜索标题 / 主题 / 标签…',
+      'inj.searchPlaceholder': '搜索标题 / 标签…',
       'inj.loadFailed': '加载失败：{msg}',
       'inj.chipAll': '全部 {n}',
       'inj.chipConvention': '约定 {n}',
@@ -992,8 +989,8 @@ window.__ModuleLoader__.load({
       'cap.noSelection': '无选区可复制',
       'cap.merged': '已合并进今日速记',
       'cap.mergedClient': '已合并到本次速记',
-      'cap.savedQuote': '已记录为引用（主题分类由 host LLM 异步回填）',
-      'cap.savedClient': '已记录，正在识别主题…',
+      'cap.savedQuote': '已记录为引用（标签分类由 host LLM 异步回填）',
+      'cap.savedClient': '已记录，正在识别标签…',
       'cap.savedPlain': '已记录',
       'cap.savedCtx': '已记录并注入为上下文（{role}）',
       'cap.savedTags': '已记录并标记 {tags}',
@@ -1014,7 +1011,7 @@ window.__ModuleLoader__.load({
       'help.newPost': ' 弹出新建窗口：输入标题、选类型，点「创建」立即落库并编辑正文（全窗口页 + 号新建为草稿先行：输入即落库）',
       'help.capture': '在页面划选文字松手，弹出快速记录卡片（自动识别为引用）',
       'help.mergeWin': '同一会话 10 分钟内的速记自动合并',
-      'help.topic': '点面包屑/编辑器里的主题可按主题全局过滤（跨文件夹）',
+      'help.topic': '点面包屑里的标签可按标签全局过滤（跨文件夹）',
       'help.drag': '拖笔记到文件夹行移入，拖到树根部未入夹笔记区移出（拖拽中显示落点提示）',
       'help.keysLead': '快捷键：',
       'help.keysSearch': ' 搜索（框内 ',
@@ -1089,7 +1086,7 @@ window.__ModuleLoader__.load({
       'settings.languageTip': 'UI language (remembered locally, applies immediately)',
       /* ===== Coverage card A (notes-042-i18n-cov-a): topbar + sidebar tree + hintbar ===== */
       'topbar.subtitle': 'Your note library · conventions and references you write can be injected into Agent sessions',
-      'topbar.refreshTip': 'Reload the list and folders (LLM topic classification backfills asynchronously; refresh to see it)',
+      'topbar.refreshTip': 'Reload the list and folders (LLM tag classification backfills asynchronously; refresh to see it)',
       'topbar.archiveTip': 'Quick notes = temporary captures from the select-and-release card; click to open a preview, then checked groups of the same session merge into one formal note (undoable)',   /* 0.4.6-D: quick-note concept explained (R2 n-mux7as4ppskn) */
       'topbar.themeTip': 'Toggle theme (dark/light)',
       'topbar.homeTip': 'Back to DSH Home',
@@ -1103,7 +1100,7 @@ window.__ModuleLoader__.load({
       'side.splitterTip': 'Drag to resize the sidebar (double-click to reset)',
       'side.fchipStatusTip': 'Filter: status / {label} (click × to remove)',
       'side.fchipKindTip': 'Filter: type / {label} (click × to remove)',
-      'tree.topicTip': 'Topic: {topic}',
+      'tree.topicTip': 'Tags: {topic}',
       'tree.untitled': 'Untitled',
       'tree.injectTip': 'Injected as context · {role}',
       'tree.roleReference': 'reference',
@@ -1121,7 +1118,7 @@ window.__ModuleLoader__.load({
       /* 0.4.6-J (notes-046-group-paging): group-tail load-more row (per-group paging: pinned / folders / unfiled / topics, click += PAGE_SIZE) */
       'tree.moreRows': 'Load more ({n} more)',
       'tree.countN': '{n}',
-      'tree.viewTopic': 'Topic · {id}',
+      'tree.viewTopic': 'Tag · {id}',
       'tree.viewAll': 'All notes',
       'tree.crossFolderCount': '({n} across folders)',
       'tree.clearViewTip': 'Clear view filter',
@@ -1130,9 +1127,9 @@ window.__ModuleLoader__.load({
       'tree.addFolderTip': 'New folder',
       'tree.dropOutHint': 'Drop here to remove from folder',
       'tree.dropRootHint': 'Drop here to move back to the root level',
-      'tree.topicsHeader': 'Topics ({n})',
+      'tree.topicsHeader': 'Tags ({n})',
       'tree.crossFolder': 'Across folders',
-      'tree.topicViewTip': 'Topic view (cross-folder filter)',
+      'tree.topicViewTip': 'Tag view (cross-folder filter)',
       'tree.noMatch': 'No matching notes',
       /* 0.4.6-D (R2 n-mux7as3gnrru): search empty-state guidance — action exits (shorter keyword hint + create button) */
       'tree.noMatchGuide': 'Try a shorter keyword, or',
@@ -1236,12 +1233,11 @@ window.__ModuleLoader__.load({
       /* 0.4.8 (notes-048-wiki-autocomplete): source-mode [[ wiki-link autocomplete — zero-hit empty row (not selectable) */
       'editor.wikiAcEmpty': 'No matching notes',
       'meta.crumbFolderExpandTip': 'Expand in tree: {name}',
-      'meta.crumbTopicTip': 'Filter globally by topic (across folders)',
-      'meta.crumbTopicViewTip': 'View all notes with this topic',
+      'meta.crumbTopicTip': 'Filter globally by tag (across folders)',
+      'meta.crumbTopicViewTip': 'View all notes with this tag',
       'meta.uncategorized': 'Uncategorized',
       'meta.unsavedDraft': 'Unsaved draft',
-      'meta.filteredByTopic': 'Filtered by topic: {name}',
-      'meta.noTopic': 'This note has no recognized topic yet',
+      'meta.filteredByTopic': 'Filtered by tag: {name}',
       'meta.kindTip': 'Type',
       'meta.kindTipFull': 'Note type',
       'meta.kindNote': 'Note',
@@ -1252,13 +1248,11 @@ window.__ModuleLoader__.load({
       'meta.kindLog': 'Log',
       'meta.kindSys': 'Machine',
       'meta.statusTip': 'Status',
-      'meta.topicTip': 'Topic (auto-detected; edit directly; autosaved on change)',
-      'meta.topicTipClient': 'Topic (edit directly; use the button on the right to filter globally by topic)',
-      'meta.topicPlaceholder': 'Topic',
-      'meta.topicFilterTip': 'Filter globally by topic',
-      'meta.tagsTip': 'Tags, comma-separated',
-      'meta.tagsTipClient': 'Tags (comma-separated; the convention tag has been replaced by the injection toggle)',
-      'meta.tagsPlaceholder': 'Tags…',
+      /* 0.4.8 (notes-048-topic-tag-merge): topic deprecated and merged into tags — meta.topicTip/topicTipClient/topicPlaceholder/topicFilterTip/noTopic retired with the topic chip; topic key names kept where still referenced (crumb/filter toasts) to avoid a key-name earthquake */
+      'meta.tagsTip': 'Tags (Enter/comma to add, ✕ to remove; autosaved)',
+      'meta.tagsTipClient': 'Tags (topics merged in; Enter/comma to add, ✕ to remove)',
+      'meta.tagsPlaceholder': 'Add tag…',
+      'meta.tagRemoveTip': 'Remove tag',
       'meta.folderTip': 'Containing folder',
       'meta.useCountTip': 'Consulted by the Agent {n} times',
       'meta.useCount': 'Referenced {n} times',
@@ -1505,7 +1499,7 @@ window.__ModuleLoader__.load({
       'common.schedNMinutes': 'Every {n} minutes',
       'common.schedNMs': 'Every {n}ms',
       'inj.titleSub': 'Library-wide injection overview · inline editing / multi-select batch · logs do not participate in injection · schedules area (scheduled dispatch)',
-      'inj.searchPlaceholder': 'Search title / topic / tags…',
+      'inj.searchPlaceholder': 'Search title / tags…',
       'inj.loadFailed': 'Load failed: {msg}',
       'inj.chipAll': 'All {n}',
       'inj.chipConvention': 'Convention {n}',
@@ -1883,8 +1877,8 @@ window.__ModuleLoader__.load({
       'cap.noSelection': 'No selection to copy',
       'cap.merged': 'Merged into the quick note of the day',
       'cap.mergedClient': 'Merged into this quick note',
-      'cap.savedQuote': 'Saved as a quote (the host LLM backfills the topic asynchronously)',
-      'cap.savedClient': 'Saved, recognizing the topic…',
+      'cap.savedQuote': 'Saved as a quote (the host LLM backfills the tag asynchronously)',
+      'cap.savedClient': 'Saved, recognizing the tag…',
       'cap.savedPlain': 'Saved',
       'cap.savedCtx': 'Saved and injected as context ({role})',
       'cap.savedTags': 'Saved and tagged {tags}',
@@ -1905,7 +1899,7 @@ window.__ModuleLoader__.load({
       'help.newPost': ' to open the new-note dialog: enter a title, pick a kind, and "Create" saves it instantly for editing (the full-window page opens a draft first: typing auto-saves it)',
       'help.capture': 'Select text on the page and release to pop up the quick-capture card (auto-recognized as a quote)',
       'help.mergeWin': 'Quick notes within 10 minutes in the same session merge automatically',
-      'help.topic': 'Click a topic in the breadcrumb/editor to filter globally by topic (cross-folder)',
+      'help.topic': 'Click a tag in the breadcrumb to filter globally by tag (cross-folder)',
       'help.drag': 'Drag a note onto a folder row to move it in, or onto the unfiled area at the tree root to move it out (drop hints shown while dragging)',
       'help.keysLead': 'Shortcuts: ',
       'help.keysSearch': ' search (inside the box, ',
@@ -2577,6 +2571,23 @@ window.__ModuleLoader__.load({
       out.sort(function (a, b) { var x = String(a.updatedAt || ''), y = String(b.updatedAt || ''); return x < y ? 1 : x > y ? -1 : 0 })
       return out.slice(0, WIKI_AC_MAX)
     }
+    // ===== 0.4.8 三重分类收敛 B 方案（notes-048-topic-tag-merge）：主题废弃并入标签——读侧虚拟合并单一事实源 =====
+    // effTags(note) = tags ∪ {topic}：tags 元素 trim 去空 + 精确去重保序；topic trim 后非空且≠「未分类」才追加（tags 已含同名不重复）。
+    // 大小写敏感（与 host tag 精确过滤同口径：'Dev' ≠ 'dev' 各自成组）；「分类中」占位主题照常并入
+    // （侧栏标签树显示映射 tree.classifying「识别中」，编辑器标签控件/面包屑自行剔除该占位）。
+    // 纯读侧口径：磁盘 .md 零改动（懒迁移红线——写侧惰性落盘在保存路径：app 编辑器保存载荷 / client 面板自动保存 / host note_manage 工具面，
+    // 存量 topic 笔记首次保存即合并进 tags 并清空 topic；本函数永不写盘）。
+    function effTags(n) {
+      var out = []
+      var tags = (n && n.tags) || []
+      for (var i = 0; i < tags.length; i++) { var v = String(tags[i] == null ? '' : tags[i]).trim(); if (v && out.indexOf(v) < 0) out.push(v) }
+      var tp = String(n && n.topic != null ? n.topic : '').trim()
+      if (tp && tp !== '未分类' && out.indexOf(tp) < 0) out.push(tp)
+      return out
+    }
+    // effTagsUi(n)：UI 呈现面（行尾标签字/面包屑标签段/编辑器标签控件 chips）——effTags 剔除「分类中」瞬态占位
+    // （分类回填完成前不成 chip/ crumb 段；侧栏标签树的「识别中」分组仍由 effTags 原始口径承担，不在本函数剔除）
+    function effTagsUi(n) { return effTags(n).filter(function (x) { return x !== '分类中' }) }
     // ===== end 双模式编辑器内核 v3 =====
     // 性能自检计数器：浏览器控制台执行 JSON.stringify(window.__dshNotesPerf) 可取数诊断
     const now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now()
@@ -2714,12 +2725,12 @@ window.__ModuleLoader__.load({
       return mentionCache.inflight
     }
     // 候选过滤（纯函数，check 行为级 eval 锚）：软删/sys 组件侧兜底双闸（host 缺省口径已排，复评防回归）；
-    // query 命中标题/主题/标签（小写折叠子串）；上限 MENTION_MAX
+    // query 命中标题/标签（0.4.8：主题并入标签——hay 吃 effTags = tags ∪ topic 读侧虚拟合并；小写折叠子串）；上限 MENTION_MAX
     function mentionFilter(notes, query) {
       const q = String(query || '').trim().toLowerCase()
       const alive = (notes || []).filter((n) => n && !n.deleted && (n.kind || 'note') !== 'sys')
       const hit = !q ? alive : alive.filter((n) => {
-        const hay = [n.title, n.topic].concat(Array.isArray(n.tags) ? n.tags : []).join('\n').toLowerCase()
+        const hay = [n.title].concat(effTags(n)).join('\n').toLowerCase()
         return hay.indexOf(q) >= 0
       })
       return hit.slice(0, MENTION_MAX)
@@ -2731,13 +2742,13 @@ window.__ModuleLoader__.load({
     }
     // serialize 失败透明降级文案（含标题/检索 id，对 Agent 与用户可见，非静默吞错）
     function mentionFallbackText(ref) { return t('mention.fetchFailed', { title: mentionTitleOf(ref) }) }
-    // 单行候选投影：name=标题（pick 载荷/精确匹配键/第一检索键）；description=主题 · 类型（MenuView 实际渲染的副行字段）；
-    // section=分组小标题（相邻同组共享去重）；value=笔记 id（onPick 原样回传）
+    // 单行候选投影：name=标题（pick 载荷/精确匹配键/第一检索键）；description=首枚有效标签 · 类型（0.4.8：主题并入标签——
+    // effTagsUi = tags ∪ topic 剔「分类中」占位；MenuView 实际渲染的副行字段）；section=分组小标题（相邻同组共享去重）；value=笔记 id（onPick 原样回传）
     function mentionCandidate(n) {
       const title = String(n.title || '').trim() || t('tree.untitled')
-      const topic = String(n.topic || '').trim()
+      const tag0 = effTagsUi(n)[0] || ''
       const kl = kindLabel(n.kind || 'note')
-      const desc = topic && kl ? topic + ' · ' + kl : (topic || kl)
+      const desc = tag0 && kl ? tag0 + ' · ' + kl : (tag0 || kl)
       return {
         name: title,
         description: desc || undefined,
@@ -2960,13 +2971,13 @@ window.__ModuleLoader__.load({
     function setMergeOpen(v) { const nv = typeof v === 'function' ? v(mergeOpenRef.current) : v; mergeOpenRef.current = nv; store.modal.merge.set({ open: nv }) }
     function setMergeTitle(v) { store.modal.merge.set({ title: typeof v === 'function' ? v(store.modal.merge.get().title) : v }) }
     function setMergePending(v) { store.modal.merge.set({ pending: typeof v === 'function' ? v(store.modal.merge.get().pending) : v }) }
-    // 打开合并标题输入框：默认标题 = 所选笔记中最早更新者的 topic（原型口径）
+    // 打开合并标题输入框：默认标题 = 所选笔记中最早更新者的首枚有效标签（0.4.8 主题并入标签后同口径：effTagsUi = tags ∪ topic，剔占位）
     function openMerge() {
       const selIdsNow = panelBridge.selIds || {}
       const ids = Object.keys(selIdsNow)
       if (ids.length < 2) { showToast('至少选择 2 条笔记'); return }
       const sel = (panelBridge.notes || []).filter(n => selIdsNow[n.id]).sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')))
-      setMergeTitle((sel[0] && sel[0].topic) || '合并笔记'); setMergePending(false); setError(''); setMergeOpen(true)
+      setMergeTitle((sel[0] && effTagsUi(sel[0])[0]) || '合并笔记'); setMergePending(false); setError(''); setMergeOpen(true)
     }
     // 多选合并标题输入框宿主（多选操作条「合并」入口）
     function MergeModal(props) {
@@ -3046,14 +3057,15 @@ window.__ModuleLoader__.load({
           // 二期 kind 模板骨架：按所选类型预填（note=空自由格式；机器信息类由 ✨整理按内容适配，建时不预判）
           const payload = { title: title, body: KIND_TEMPLATES[newNoteKind] || '', kind: newNoteKind }
           if (createFolder) payload.folder = createFolder
-          if (view.type === 'topic' && view.id) payload.topic = view.id
+          /* 0.4.8（notes-048-topic-tag-merge）：主题视图 = 标签视图（view.type 键名不动）——新建种子落 tags（topic 字段废弃并入标签；「分类中」占位不预填） */
+          if (view.type === 'topic' && view.id && view.id !== '分类中') payload.tags = [view.id]
           const res = await rpc('notes-create', payload)
           if (res && res.error) { setError(res.error); return }
           setNewNoteOpen(false); setNewNoteTitle('')
           showToast(t('newnote.created'))
           // 立即用创建返回值选中新笔记（不等列表刷新，避免列表时序影响选中链路）
           if (res && res.id) {
-            panelBridge.selectNote({ id: res.id, title: res.title || title, topic: res.topic || payload.topic || '', kind: res.kind || 'note', status: res.status || 'active', folder: createFolder, tags: [], inject: false, injectTo: [], sensitive: false })
+            panelBridge.selectNote({ id: res.id, title: res.title || title, topic: res.topic || '', kind: res.kind || 'note', status: res.status || 'active', folder: createFolder, tags: payload.tags || [], inject: false, injectTo: [], sensitive: false })
             panelBridge.setFlashId(res.id); panelBridge.later(() => panelBridge.setFlashId(null), 1800)
             // 聚焦正文：等选中态渲染出 textarea 再 focus（富文本态先切回源码态，否则没有 textarea 可聚焦）
             panelBridge.setEditorModeState('source')
@@ -3586,7 +3598,8 @@ window.__ModuleLoader__.load({
       }
       return sExportOpen ? (() => {
         const tagSet = {}
-        for (const n of notes) for (const tg of (n.tags || [])) tagSet[tg] = true
+        /* 0.4.8（notes-048-topic-tag-merge）：导出标签档选项吃 effTagsUi（tags ∪ topic 剔「分类中」占位）——存量仅 topic 命中的笔记可选、不成孤儿（host 侧 scope.tag 同口径过滤） */
+        for (const n of notes) for (const tg of effTagsUi(n)) tagSet[tg] = true
         const tagOptions = Object.keys(tagSet).sort()
         return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setSExportOpen(false) } },
           e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },
@@ -4125,7 +4138,7 @@ window.__ModuleLoader__.load({
         const injMgrWeight = { convention: 0, reference: 1, off: 2 }
         let shown = listAll.slice().sort((a, b) => (injMgrWeight[injMgrRole(a)] - injMgrWeight[injMgrRole(b)]) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
         if (injMgrFilter !== 'all') shown = shown.filter(n => injMgrRole(n) === injMgrFilter)
-        if (injMgrQ) shown = shown.filter(n => (n.title || '').toLowerCase().indexOf(injMgrQ) >= 0 || (n.topic || '').toLowerCase().indexOf(injMgrQ) >= 0 || (n.tags || []).join(' ').toLowerCase().indexOf(injMgrQ) >= 0)
+        if (injMgrQ) shown = shown.filter(n => (n.title || '').toLowerCase().indexOf(injMgrQ) >= 0 || effTags(n).join(' ').toLowerCase().indexOf(injMgrQ) >= 0)   // 0.4.8：检索面改吃 effTags（tags ∪ topic 一句覆盖，存量 topic 可搜）
         const selectable = shown.filter(n => n.kind !== 'log')   // log 行不可选（注入硬关 UI 化，0.4.3⑦）
         const selCnt = Object.keys(injMgrSel).length
         const allChecked = selectable.length > 0 && selectable.every(n => injMgrSel[n.id])
@@ -4479,7 +4492,7 @@ window.__ModuleLoader__.load({
                         ? e('div', { className: 'dsh-notes-arch-list' },
                             stale.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
                               e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
-                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || tt('meta.uncategorized')) + ' · ' + tt('sugg.staleDays', { n: n.staleDays })))))
+                              e('span', { className: 'dsh-notes-arch-meta' }, (effTagsUi(n)[0] || tt('meta.uncategorized')) + ' · ' + tt('sugg.staleDays', { n: n.staleDays })))))   /* 0.4.8：主题显示位改吃 effTagsUi（tags ∪ topic） */
                         : e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.staleEmpty'))),
                     e('div', { className: 'dsh-notes-suggest-sec' },
                       e('div', { className: 'dsh-notes-suggest-sec-t' }, tt('sugg.secOrphan'), e('span', { className: 'dsh-notes-suggest-sec-n' }, tt('sugg.countItems', { n: orphans.length }))),
@@ -4487,7 +4500,7 @@ window.__ModuleLoader__.load({
                         ? e('div', { className: 'dsh-notes-arch-list' },
                             orphans.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
                               e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
-                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || tt('meta.uncategorized')) + ' · ' + (n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—')),
+                              e('span', { className: 'dsh-notes-arch-meta' }, (effTagsUi(n)[0] || tt('meta.uncategorized')) + ' · ' + (n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—')),
                               e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestViewNote(n.id) }, tt('sugg.view')))))
                         : e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.orphanEmpty'))),
                     // ④ 日志卫生（工作记忆 v0 裁决 B②：超窗旧日志两级聚合提名——只提名不执行，v0 展开明细逐条过目）
@@ -4514,7 +4527,7 @@ window.__ModuleLoader__.load({
                         ? e('div', { className: 'dsh-notes-arch-list' },
                             zeroRef.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
                               e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
-                              e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || tt('meta.uncategorized')) + (n.when ? ' · ' + n.when : '')),
+                              e('span', { className: 'dsh-notes-arch-meta' }, (effTagsUi(n)[0] || tt('meta.uncategorized')) + (n.when ? ' · ' + n.when : '')),
                               e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestEditWhen(n) }, tt('sugg.editWhen')),
                               e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestUnmount(n) }, tt('sugg.unmount')))))
                         : e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.zeroRefEmpty'))),
@@ -4524,7 +4537,7 @@ window.__ModuleLoader__.load({
                       e('div', { className: 'dsh-notes-arch-list' },
                         hot.map(n => e('div', { key: n.id, className: 'dsh-notes-arch-row' },
                           e('span', { className: 'dsh-notes-arch-ti', title: n.title || 'Untitled' }, n.title || 'Untitled'),
-                          e('span', { className: 'dsh-notes-arch-meta' }, (n.topic || tt('meta.uncategorized')) + ' · ' + tt('sugg.hotMeta', { d: winDays, n: n.hits })),
+                          e('span', { className: 'dsh-notes-arch-meta' }, (effTagsUi(n)[0] || tt('meta.uncategorized')) + ' · ' + tt('sugg.hotMeta', { d: winDays, n: n.hits })),
                           e('button', { className: 'dsh-notes-trash-act', onClick: () => suggestMountNote(n) }, tt('sugg.mount')))))) : null,
                     e('div', { className: 'dsh-notes-data-hint' }, tt('sugg.criteriaClient'))),
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
@@ -6412,7 +6425,7 @@ window.__ModuleLoader__.load({
         function jumpToWikiTarget(target) {
           const n = resolveWikiTarget(target)
           if (!n) { showToast(t('wiki.targetNotFound', { target: target })); return }
-          const vis = (view.type === 'all' || (view.type === 'topic' && (n.topic || '') === view.id))
+          const vis = (view.type === 'all' || (view.type === 'topic' && effTags(n).indexOf(view.id) >= 0))   /* 0.4.8：标签视图判定吃 effTags（tags ∪ topic 虚拟合并） */
             && matchFilters(n, filters)   /* 0.4.3⑦：文件夹视图分支随「文件视图」拆除移除（view 取值收窄 all | topic） */
           if (!vis) { setView({ type: 'all', id: '' }); setFilters(FILTERS0()) }
           selectNote(n)
@@ -6448,15 +6461,15 @@ window.__ModuleLoader__.load({
         // value=该组当前显示条数（缺省 PAGE_SIZE，groupShownOf 兜底）；全局 flat 窗口切片退役（四组曾共享同一窗口：
         // 文件夹收起时树内容过短 → 无滚动条 → 滚动加载永不触发 → 窗口外条目够不到，反馈 n-muxyj3zodvf3 实证死锁）
         const [groupShown, setGroupShown] = React.useState({})
-        // 主题过滤行原地展开态（点行主体=展开/收起该主题子列表；object map，session 内有效，不持久化；缺省折叠）
+        // 标签过滤行原地展开态（0.4.8：主题并入标签，state 名不动防地震；点行主体=展开/收起该标签子列表；object map，session 内有效，不持久化；缺省折叠）
         const [topicExpanded, setTopicExpanded] = React.useState({})
-        // 主题过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「主题 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
+        // 标签过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「标签 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
         const [topicSecOpen, setTopicSecOpen] = React.useState(false)
         // 拖拽进行中标记（dragstart 置位 / dragend 复位）：驱动未入夹区「移出文件夹」落点提示行渲染（空态下保证拖拽中仍有可拖出落点）
         const [dragActive, setDragActive] = React.useState(false)
         // 搜索/视图/筛选中心条件变化时重置分组分页（各组新结果从头开始；0.4.6-J 沿用原重置 effect 依赖面）
         React.useEffect(() => { setGroupShown({}) }, [searchText, searchIds, view, filters])
-        // 主题过滤行原地展开切换（与文件夹 toggleFolder 同义「点哪个展开哪个」；不持久化）
+        // 标签过滤行原地展开切换（与文件夹 toggleFolder 同义「点哪个展开哪个」；不持久化）
         function toggleTopicExpanded(tn) { setTopicExpanded(prev => { const next = Object.assign({}, prev); next[tn] = !next[tn]; return next }) }
         // ===== 拖拽挪入/挪出文件夹（HTML5 DnD；与右键「移动到文件夹」共用 ctxMoveToFolder 移动逻辑）=====
         // dragstart：noteId 记到 ref + dataTransfer（Firefox 需 setData 才能起拖），源行加 .dragging 半透明
@@ -6554,8 +6567,10 @@ window.__ModuleLoader__.load({
           // 行尾（原型 noteRow）：主题视图内显示所属文件夹徽章；文件夹上下文内显示淡灰主题字（方案A）；其余显示日期
           function renderNoteRow(n, inFolderCtx) {
             let tail
+            /* 0.4.8（notes-048-topic-tag-merge）：主题并入标签——行尾标签字改吃 effTagsUi（tags ∪ topic 读侧虚拟合并，剔「分类中」占位；无标签回落日期） */
+            const uiTags = inFolderCtx ? effTagsUi(n) : []
             if (view.type === 'topic' && (n.folder || '')) tail = e('span', { className: 'dsh-notes-fbadge' }, I('folder', 9), folderName(n.folder))
-            else if (inFolderCtx && n.topic && n.topic !== '分类中') tail = e('span', { className: 'dsh-notes-note-tp', title: tt('tree.topicTip', { topic: n.topic }) }, n.topic)
+            else if (inFolderCtx && uiTags.length) tail = e('span', { className: 'dsh-notes-note-tp', title: tt('tree.topicTip', { topic: uiTags.join(' · ') }) }, uiTags.join(' · '))
             else tail = e('span', { className: 'dsh-notes-note-dt' }, n.updatedAt ? fmtDT(n.updatedAt).slice(5, 10) : '')
             // 多选态：行点击=勾选/取消（不再打开笔记），行首渲染复选框；与搜索/过滤共存（勾选按 noteId 记账，过滤不清选）
             return e('div', { key: n.id, className: 'dsh-notes-note-row' + (selected === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (flashId === n.id ? ' flash' : '') + (n.status === 'resolved' ? ' resolved' : '') + (n.status === 'superseded' ? ' superseded' : '') + (n.hidden === true ? ' hid' : '') + (selMode && selIds[n.id] ? ' pick' : ''), onClick: () => { if (selMode) { toggleSelId(n.id); return } selectNote(n) }, onContextMenu: (ev) => openCtxMenu(ev, n), draggable: true, onDragStart: (ev) => onNoteDragStart(ev, n), onDragEnd: (ev) => onNoteDragEnd(ev) },
@@ -6688,36 +6703,40 @@ window.__ModuleLoader__.load({
               renderMoreRow('unfiled', unfiledHits.length),
               dragActive ? e('div', { key: 'unfiled-hint', className: 'dsh-notes-unfiled-hint' }, dragFolderIdRef.current ? tt('tree.dropRootHint') : tt('tree.dropOutHint')) : null))
           }
-          // 主题全局过滤（原型底部区）：全库主题 + 计数；点行主体 = 原地展开/收起该主题的笔记子列表（topicExpanded，不持久化）；
-          // 主题视图（跨文件夹过滤）降级为行尾过滤图标按钮（不抢占单击）
-          const allTopics = {}
-          notes.forEach(n => { if (n.topic) allTopics[n.topic] = (allTopics[n.topic] || 0) + 1 })
-          const topicNames = Object.keys(allTopics).sort()
+          // 标签全局过滤区（0.4.8 三重分类收敛 B 方案 notes-048-topic-tag-merge：主题废弃并入标签——分组数据源 = effTags(n)
+          // （tags ∪ {topic} 读侧虚拟合并，磁盘 .md 零改动）；多值分组：一篇可在多个标签下出现（语义自然）；组头计数 = 去重篇数；
+          // 原「未分类」主题桶消失（topic 空/未分类且无 tags 的笔记不进任何标签组；未入夹区不受影响）；
+          // 点行主体 = 原地展开/收起该标签的笔记子列表（topicExpanded，不持久化）；标签视图（跨文件夹过滤）为行尾过滤图标按钮（不抢占单击）；
+          // 变量名沿用 topic*（分组键 = 标签名；状态/键名不动防地震，语义切换注释在此）
+          const allTags = {}
+          notes.forEach(n => { effTags(n).forEach(tg => { (allTags[tg] = allTags[tg] || {})[n.id] = true }) })
+          const topicNames = Object.keys(allTags).sort()
           if (topicNames.length) {
-            // 整区默认折叠（notes-topic-collapse）：常态只显示「主题 (N)」一行（N=主题数），点分组头展开/收起（topicSecOpen，session 记忆不持久化）；
-            // 展开行为与置顶折叠组（PINNED_KEY）同款：过滤激活且有主题命中时纯计算 OR 自动展开（不写回 topicSecOpen——清除过滤即恢复手动折叠态），
-            // 头部计数同步切换为命中主题数（folders「过滤激活=命中数」同口径）
+            // 整区默认折叠（notes-topic-collapse）：常态只显示「标签 (N)」一行（N=标签数），点分组头展开/收起（topicSecOpen，session 记忆不持久化）；
+            // 展开行为与置顶折叠组（PINNED_KEY）同款：过滤激活且有标签命中时纯计算 OR 自动展开（不写回 topicSecOpen——清除过滤即恢复手动折叠态），
+            // 头部计数同步切换为命中标签数（folders「过滤激活=命中数」同口径）
             const topicHitSet = {}
-            filtered.forEach(n => { if (n.topic) topicHitSet[n.topic] = true })
+            filtered.forEach(n => { effTags(n).forEach(tg => { topicHitSet[tg] = true }) })
             const topicHitCount = Object.keys(topicHitSet).length
             const topicSecOpenEff = topicSecOpen || (filtersActive && topicHitCount > 0)
             treeEls.push(e('div', { key: 'sec-topics', className: 'dsh-notes-sec-h dsh-notes-sec-toggle', onClick: () => setTopicSecOpen(!topicSecOpen) },
               e('span', { className: 'dsh-notes-caret' + (topicSecOpenEff ? ' open' : '') }, I('chev', 10)),
-              I('topic', 11),
+              I('tag', 11),
               e('span', { className: 'dsh-notes-sec-h-t' }, tt('tree.topicsHeader', { n: filtersActive ? topicHitCount : topicNames.length })),
               e('span', { className: 'dsh-notes-sec-h-sub' }, tt('tree.crossFolder'))))
             if (topicSecOpenEff) topicNames.forEach(tn => {
-              const tkidsAll = filtered.filter(n => (n.topic || '') === tn)
-              // 过滤激活自动展开：含命中的主题行强制展开（纯计算 OR，不写回 topicExpanded——清除过滤即恢复）；计数同步切换为命中数
+              // 多值分组：effTags 含该标签即归入（一篇可出现在多个标签组；组内计数 = 命中篇数）
+              const tkidsAll = filtered.filter(n => effTags(n).indexOf(tn) >= 0)
+              // 过滤激活自动展开：含命中的标签行强制展开（纯计算 OR，不写回 topicExpanded——清除过滤即恢复）；计数同步切换为命中数
               const tOpen = !!topicExpanded[tn] || (filtersActive && tkidsAll.length > 0)
               treeEls.push(e('div', { key: 'tp-' + tn, className: 'dsh-notes-row dsh-notes-topic-row' + (view.type === 'topic' && view.id === tn ? ' on' : ''), onClick: () => toggleTopicExpanded(tn) },
                 e('span', { className: 'dsh-notes-caret' + (tOpen ? ' open' : '') }, I('chev', 10)),
-                e('span', { className: 'dsh-notes-ic-slot' }, I('topic', 12)),
+                e('span', { className: 'dsh-notes-ic-slot' }, I('tag', 12)),
                 e('span', { className: 'dsh-notes-row-nm' }, tn === '分类中' ? tt('tree.classifying') : tn),
-                e('span', { className: 'dsh-notes-row-n' }, filtersActive ? tkidsAll.length : allTopics[tn]),
+                e('span', { className: 'dsh-notes-row-n' }, filtersActive ? tkidsAll.length : Object.keys(allTags[tn]).length),
                 e('span', { className: 'dsh-notes-row-vfilter dsh-nt' + (view.type === 'topic' && view.id === tn ? ' on' : ''), 'data-tooltip': tt('tree.topicViewTip'), onClick: (ev) => { ev.stopPropagation(); setView(view.type === 'topic' && view.id === tn ? { type: 'all', id: '' } : { type: 'topic', id: tn }) } }, I('filter', 11))))
               if (tOpen) {
-                // 0.4.6-J：主题组独立分页（组标识 'topic:'+tn；命中全量 tkidsAll 截当前显示数，组尾加载行翻页）
+                // 0.4.6-J：标签组独立分页（组标识 'topic:'+tn 键名不动；命中全量 tkidsAll 截当前显示数，组尾加载行翻页）
                 const tkids = groupPage(tkidsAll, groupShown, 'topic:' + tn)
                 if (tkids.length) { tkids.forEach(n => { treeIds.push(n.id) }); treeEls.push(e('div', { key: 'tpk-' + tn, className: 'dsh-notes-nested' }, tkids.map(n => renderNoteRow(n, false)), renderMoreRow('topic:' + tn, tkidsAll.length))) }
               }
@@ -6791,7 +6810,9 @@ window.__ModuleLoader__.load({
         const tt = useT()
         const [edTitle, setEdTitle] = React.useState('')
         const [edTopic, setEdTopic] = React.useState('')
-        const [edTags, setEdTags] = React.useState('')
+        const [edTags, setEdTags] = React.useState('')   // 0.4.8 起语义收窄 = 「添加标签」输入框在途文本（已提交标签归 edTagList chips）
+        // 0.4.8（notes-048-topic-tag-merge）：标签编辑控件 chips——选中时 effTags 折叠（topic 折入，剔 quick/分类中占位），✕ 移除 / Enter·逗号提交
+        const [edTagList, setEdTagList] = React.useState([])
         const [edBody, setEdBody] = React.useState('')
         const [edKind, setEdKind] = React.useState('note')
         const [edStatus, setEdStatus] = React.useState('active')
@@ -6855,6 +6876,7 @@ window.__ModuleLoader__.load({
         const edTitleRef = React.useRef('')
         const edTopicRef = React.useRef('')
         const edTagsRef = React.useRef('')
+        const edTagListRef = React.useRef([])   // 0.4.8：chips 镜像（doSave debounce 闭包读最新值）
         const edBodyRef = React.useRef('')
         const edKindRef = React.useRef('note')
         const edStatusRef = React.useRef('active')
@@ -6872,7 +6894,9 @@ window.__ModuleLoader__.load({
           if (n.folder) expandFolder(n.folder)
           setSelected(n.id); setFocusId(n.id); setEdTitle(n.title); setEdTopic(n.topic && n.topic !== '分类中' ? n.topic : '')
           keepQuickRef.current = (n.tags || []).indexOf('quick') >= 0
-          setEdTags((n.tags || []).filter(t => t !== 'quick').join(', '))
+          /* 0.4.8：标签控件 chips = effTags 折叠（tags ∪ topic，剔 quick 速记标记/「分类中」瞬态占位）；添加输入框清空 */
+          setEdTagList(effTags(n).filter(t => t !== 'quick' && t !== '分类中'))
+          setEdTags('')
           setEdKind(n.kind || 'note'); setEdStatus(n.status || 'active'); setEdRole(n.inject ? (n.injectRole || 'convention') : 'off'); setEdScope(n.injectTo || []); setEdSens(n.sensitive === true)
           setEdHidden(n.hidden === true)   // 0.4.4-D：hidden 状态回填（open-by-id 旁路笔记同口径——跳转打开 hidden 笔记编辑器/meta chip 正常渲染）
           setEdBody('')
@@ -6946,23 +6970,48 @@ window.__ModuleLoader__.load({
           if (!id) return
           if (edLoadErrRef.current) return   // R-1 安全态：正文加载失败未恢复，自动保存整体暂停（横幅「重试」是唯一出口）
           setError('')
-          const tags = (edTagsRef.current || '').split(/[,，;；]/).map(s => s.trim()).filter(Boolean)
+          /* 0.4.8（notes-048-topic-tag-merge）：标签 = chips（edTagListRef，选中时 effTags 已把 topic 折入）∪ 添加框在途文本（未按分隔符的尾部同落盘）；
+             写侧惰性落盘：topic 非空且≠未分类/≠分类中（瞬态占位不触写）→ 落盘清空（tags 已含折叠值；✕ 移除该 chip 时清空同样生效 = 显式移除被尊重） */
+          let tags = edTagListRef.current.map(s => String(s).trim()).filter(Boolean)
+          ;(edTagsRef.current || '').split(/[,，;；]/).forEach(s => { s = s.trim(); if (s && tags.indexOf(s) < 0) tags.push(s) })
+          tags = tags.filter((v, i) => tags.indexOf(v) === i)
           if (keepQuickRef.current && tags.indexOf('quick') < 0) tags.push('quick')
           const upd = { id: id, title: edTitleRef.current, tags: tags, kind: edKindRef.current, status: edStatusRef.current, inject: edRoleRef.current !== 'off', injectTo: edScopeRef.current, sensitive: edSensRef.current === true, hidden: edHiddenRef.current === true }
           // R-1 正文提交闸：仅 notes-get 成功加载过正文（edBodyLoadedRef）才携带 body（host 对 undefined 保留原内容，防竞态清空正文）；
           // 已加载基础上清空为空串 = 用户有意为之，附 confirmClearBody:true 显式过 host 空覆盖兜底闸（empty-body-overwrite-guard）
           if (edBodyLoadedRef.current) { upd.body = edBodyRef.current; if (upd.body === '') upd.confirmClearBody = true }
           if (upd.inject) upd.injectRole = edRoleRef.current   // 非 off 才带 injectRole（off 态不带，payload 禁 undefined；host 仅 inject=true 落盘）
-          if ((edTopicRef.current || '').trim()) upd.topic = edTopicRef.current.trim()
+          const tp0 = (edTopicRef.current || '').trim()
+          if (tp0 && tp0 !== '未分类' && tp0 !== '分类中') upd.topic = ''
           try {
             const res = await rpc('notes-update', upd)
             if (res && res.error) { setError(res.error); return }
+            if (upd.topic === '') setEdTopic('')   // 0.4.8：topic 落盘清空后同步本地态（后续保存不再重发清空）
             setSavedAt(Date.now())
             bumpWikiBody(id, edBodyRef.current, '')   // 双链索引：自有正文即时新鲜（updatedAt 置空 → loadNotes 后索引复核 reconcile）
             await loadNotes(true); notifyNotesChanged()
             if (histCountRef.current === 0) probeHistCount(id)   // 首次真实保存产生首份快照（0→1 转折点）→ 补探「历史」入口
           } catch (err) { setError(String(err.message || err)) }
         }
+        // ===== 0.4.8（notes-048-topic-tag-merge）标签编辑控件：✕ 移除 / Enter·逗号·分号提交片段 / 失焦提交余量 =====
+        // chips（edTagList）= 已提交标签唯一事实源（选中时 effTags 折叠 topic）；添加框在途文本（edTags）未提交，
+        // doSave 落盘时两者并集（输入即所得）。quick 速记标记 / 「分类中」瞬态占位拒收为标签。
+        function addEdTags(parts) {
+          const list = edTagListRef.current.slice()
+          let added = false
+          for (const s0 of parts) { const s = String(s0 == null ? '' : s0).trim(); if (s && s !== 'quick' && s !== '分类中' && list.indexOf(s) < 0) { list.push(s); added = true } }
+          if (added) setEdTagList(list)
+          return added
+        }
+        function onTagInput(ev) {
+          const v = ev.target.value
+          if (/[,，;；]/.test(v)) { const parts = v.split(/[,，;；]/); const tail = parts.pop(); addEdTags(parts); setEdTags(tail) }   /* 分隔符前片段即提交为 chips，尾部留在输入框续打 */
+          else setEdTags(v)
+          triggerAutoSave()
+        }
+        function commitTagInputAll() { addEdTags((edTagsRef.current || '').split(/[,，;；]/)); setEdTags(''); triggerAutoSave() }
+        function onTagKeyDown(ev) { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); commitTagInputAll() } }
+        function removeEdTag(tg) { setEdTagList(edTagListRef.current.filter(x => x !== tg)); triggerAutoSave() }
         // 软删除（notes-034-c-confirm）：确认强度 = 不可恢复性——软删可恢复 → 轻：无 confirm 直接删，撤销 toast 兜底（回收站亦可恢复）；
         // 不可恢复的 purge（回收站「彻底删除」）才保留双确认
         async function doDelete(id) {
@@ -6971,7 +7020,7 @@ window.__ModuleLoader__.load({
           try {
             const res = await rpc('notes-delete', { id: id })
             if (res.error) { setError(res.error); return }
-            if (selected === id) { setSelected(null); setEdTitle(''); setEdTopic(''); setEdTags(''); setEdBody('') }
+            if (selected === id) { setSelected(null); setEdTitle(''); setEdTopic(''); setEdTags(''); setEdTagList([]); setEdBody('') }
             showToast(tt('meta.deleted'), { label: tt('meta.undo'), fn: () => undoDelete(id) })
             await loadNotes(true); notifyNotesChanged()
           } catch (err) { setError(String(err.message || err)) }
@@ -7511,12 +7560,13 @@ window.__ModuleLoader__.load({
           const gone = {}
           for (const id of mergedMemberIds) gone[id] = true
           setSelIds(prev => { const next = {}; let dirty = false; for (const k of Object.keys(prev)) { if (gone[k]) dirty = true; else next[k] = true } return dirty ? next : prev })
-          if (selected && gone[selected]) { setSelected(null); setEdTitle(''); setEdTopic(''); setEdTags(''); setEdBody('') }
+          if (selected && gone[selected]) { setSelected(null); setEdTitle(''); setEdTopic(''); setEdTags(''); setEdTagList([]); setEdBody('') }
         }
         // 同步编辑字段 ref（供自动保存 debounce 读最新值）
         edTitleRef.current = edTitle
         edTopicRef.current = edTopic
         edTagsRef.current = edTags
+        edTagListRef.current = edTagList   // 0.4.8：chips 镜像同步
         edBodyRef.current = edBody
         edKindRef.current = edKind
         edStatusRef.current = edStatus
@@ -7567,12 +7617,14 @@ window.__ModuleLoader__.load({
           // 当前选中笔记（编辑器区多处用）；0.4.4-A：open-by-id 旁路回退（缓存未命中的执行记录笔记直开渲染）
           const curNote = notes.find(n => n.id === selected) || (openByIdNote && openByIdNote.id === selected ? openByIdNote : null)
           const curFolderName = curNote && curNote.folder ? folderName(curNote.folder) : ''
-          const curTopicName = curNote && curNote.topic && curNote.topic !== '分类中' ? curNote.topic : ''
-          // 主题全局过滤跳转（面包屑主题段 + 主题 chip 跳钮共用）：未识别主题时提示不跳转
+          /* 0.4.8（notes-048-topic-tag-merge）：面包屑主题段 → 标签段——首枚有效标签（effTags 剔「分类中」占位）；
+             无标签整段不渲染（「未分类」歧义消除）；函数名 jumpToTopicFilter 沿用（view.type='topic' 键名不动，语义 = 标签视图） */
+          const curFirstTag = curNote ? (effTags(curNote).filter(x => x !== '分类中')[0] || '') : ''
+          // 标签全局过滤跳转（面包屑标签段）：无标签时该段不渲染，跳转不可达（守卫兜底不提示）
           function jumpToTopicFilter() {
-            if (!curTopicName) { showToast(tt('meta.noTopic')); return }
-            setView({ type: 'topic', id: curTopicName })
-            showToast(tt('meta.filteredByTopic', { name: curTopicName }))
+            if (!curFirstTag) return
+            setView({ type: 'topic', id: curFirstTag })
+            showToast(tt('meta.filteredByTopic', { name: curFirstTag }))
           }
           const curDispatches = (curNote && curNote.dispatches) || []
           // 0.4.4-A（notes-044-dispatch-receipts）三表归一：执行记录伴生笔记软链（调度约定 schedule.runLog / 非调度顶层 runLog）——派发历史行尾「执行记录 ↗」跳转目标
@@ -7638,8 +7690,9 @@ window.__ModuleLoader__.load({
               curNote.folder ? folderPathOf(curNote.folder).map(pf => e(React.Fragment, { key: 'crumbf-' + pf.id },
                 e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': tt('meta.crumbFolderExpandTip', { name: pf.name }), onClick: () => { folderPathOf(pf.id).forEach(af => expandFolder(af.id)) } }, pf.name),
                 e('span', { className: 'dsh-notes-crumb-sep' }, '/'))) : null,
-              e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': tt('meta.crumbTopicViewTip'), onClick: jumpToTopicFilter }, curTopicName || tt('meta.uncategorized')),
-              e('span', { className: 'dsh-notes-crumb-sep' }, '/'),
+              /* 0.4.8：面包屑标签段——有首枚有效标签才渲染（无标签整段省略，「未分类」歧义消除） */
+              curFirstTag ? e('span', { className: 'dsh-notes-crumb-lnk dsh-nt', 'data-tooltip': tt('meta.crumbTopicViewTip'), onClick: jumpToTopicFilter }, curFirstTag) : null,
+              curFirstTag ? e('span', { className: 'dsh-notes-crumb-sep' }, '/') : null,
               e('span', null, curNote.id)),
             e('input', { className: 'dsh-notes-ed-title', placeholder: tt('tree.untitled'), value: edTitle, readOnly: !!edLoadErr, onChange: (ev) => { setEdTitle(ev.target.value); triggerAutoSave() } }),
             e('div', { className: 'dsh-notes-ed-meta' },
@@ -7654,10 +7707,7 @@ window.__ModuleLoader__.load({
                   e('option', { value: 'log' }, tt('meta.kindLog')),
                   /* 0.4.3⑩：sys 为机器托管 kind——仅当前笔记已是 sys 时渲染该选项（显示保真，防受控 select 回退首项误导），人工不可转入 */
                   edKind === 'sys' ? e('option', { value: 'sys' }, tt('meta.kindSys')) : null)),
-              e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.topicTipClient') },
-                I('topic', 11),
-                e('input', { className: 'dsh-notes-meta-topic-input', placeholder: tt('meta.topicPlaceholder'), value: edTopic, onChange: (ev) => { setEdTopic(ev.target.value); triggerAutoSave() } }),
-                e('span', { className: 'dsh-notes-meta-jump dsh-nt', 'data-tooltip': tt('meta.topicFilterTip'), onClick: jumpToTopicFilter }, I('filter', 10))),
+              /* 0.4.8（notes-048-topic-tag-merge）：主题 chip 下线（topic 字段废弃并入标签；存量 topic 经 effTags 折叠进标签 chips / 保存时写侧惰性落盘清空） */
               curFolderName ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.folderTip') }, I('folder', 11), curFolderName) : null,
               // 使用遥测（P2）：详情 meta chip「被引用 N 次」（0 次不显示）
               (curNote.useCount || 0) > 0 ? e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.useCountTip', { n: curNote.useCount }) }, I('quote', 11), tt('meta.useCount', { n: curNote.useCount })) : null,
@@ -7685,9 +7735,15 @@ window.__ModuleLoader__.load({
               e('span', { className: 'dsh-notes-meta-chip tgl' + (edSens ? ' on' : ''), onClick: toggleSens, 'data-tooltip': tt('meta.sensTip') }, I('lock', 11), tt('meta.sens')),
               // 0.4.4-D hidden chip（eye 图标）：隐藏中=列表/树不显示（跳转与搜索打开不受影响）；点击切回
               e('span', { className: 'dsh-notes-meta-chip tgl' + (edHidden ? ' on' : ''), onClick: toggleHidden, 'data-tooltip': tt('meta.hiddenTip') }, I('eye', 11), tt('meta.hidden')),
-              e('span', { className: 'dsh-notes-meta-chip', 'data-tooltip': tt('meta.tagsTipClient') },
+              /* 0.4.8（notes-048-topic-tag-merge）：标签 chip 升级为编辑控件——已提交标签 chips（✕ 移除）+ 添加输入（Enter/逗号/分号提交片段，失焦提交余量） */
+              e('span', { className: 'dsh-notes-meta-chip dsh-notes-tag-ed', 'data-tooltip': tt('meta.tagsTipClient') },
                 I('tag', 11),
-                e('input', { className: 'dsh-notes-meta-tags-input', placeholder: tt('meta.tagsTip'), value: edTags, onChange: (ev) => { setEdTags(ev.target.value); triggerAutoSave() } })),
+                edTagList.map(tg => e('span', { key: 'tg-' + tg, className: 'dsh-notes-tchip' }, tg,
+                  e('span', { className: 'dsh-notes-tchip-x dsh-nt', role: 'button', tabIndex: 0, 'data-tooltip': tt('meta.tagRemoveTip'), 'aria-label': tt('meta.tagRemoveTip'),
+                    onMouseDown: (ev) => { ev.preventDefault() },   /* 保输入框焦点（防 blur-onBlur 提交重渲抢走点击目标） */
+                    onClick: (ev) => { ev.stopPropagation(); removeEdTag(tg) },
+                    onKeyDown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); removeEdTag(tg) } } }, I('x', 9)))),
+                e('input', { className: 'dsh-notes-meta-tags-input dsh-notes-tag-add', placeholder: tt('meta.tagsPlaceholder'), value: edTags, onChange: onTagInput, onKeyDown: onTagKeyDown, onBlur: commitTagInputAll })),
               e('span', { className: 'dsh-notes-meta-sp' }),
               // 双模式两段开关（原型 .modeseg）：源码 ⇄ 富文本；降级态富文本段置灰 + tooltip 给出原因
               e('span', { className: 'dsh-notes-modeseg', role: 'group', 'aria-label': tt('meta.modeAria') },
@@ -8573,11 +8629,13 @@ window.__ModuleLoader__.load({
         // 搜索关键词 <mark> 高亮（防 XSS）已迁 panel/search.js（模块级纯函数 highlight，序位在前对本面板可见）：q 先做正则元字符转义，split 片段全是纯文本、经 React 转义渲染后再包 mark 元素——绝不用 innerHTML 拼原文
         // folderName 已随 popovers/folder-menu.js 迁出（经解构接入；树行尾/视图头/面包屑沿用）
         const q = searchText.trim().toLowerCase()
-        const localFiltered = q ? notes.filter(n => { const hay = ((n.title || '') + ' ' + (n.preview || '') + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ') + ' ' + folderName(n.folder)).toLowerCase(); return hay.indexOf(q) >= 0 }) : notes
+        // 0.4.8（notes-048-topic-tag-merge）：搜索 hay 改吃 effTags（tags ∪ topic 读侧虚拟合并一句覆盖，存量 topic 可搜）
+        const localFiltered = q ? notes.filter(n => { const hay = ((n.title || '') + ' ' + (n.preview || '') + ' ' + effTags(n).join(' ') + ' ' + folderName(n.folder)).toLowerCase(); return hay.indexOf(q) >= 0 }) : notes
         // 搜索结果取 host 全文 + 本地即时的并集，RPC 失败/延迟时本地结果保底
         let filtered = searchIds ? notes.filter(n => searchIds.indexOf(n.id) >= 0 || localFiltered.indexOf(n) >= 0) : localFiltered
         // 视图求值（原型 matches）：view 单选（all/topic）∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索
-        if (view.type === 'topic') filtered = filtered.filter(n => (n.topic || '') === view.id)
+        // 0.4.8：view.type='topic' 语义 = 标签视图（view.id = 标签名，键名不动防地震）——多值分组，含该 effTag 即命中
+        if (view.type === 'topic') filtered = filtered.filter(n => effTags(n).indexOf(view.id) >= 0)
         // 日志同权（0.4.3⑦）：无隐身渲染守卫——日志与普通笔记同一过滤管线（类型组勾选「日志」= 只看日志，与普通 kind 过滤同语义）
         filtered = filtered.filter(n => matchFilters(n, filters))
         // 0.4.4-D hidden 纯 UI 遮罩：显隐开关关 → hidden 项从求值结果滤除（树/置顶组/未入夹/主题区同管线一并消失）；
@@ -8614,13 +8672,14 @@ window.__ModuleLoader__.load({
             return true
           }
         })()
-        // 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0，如仅 topic 命中)，同级 updatedAt 降序；
-        // 命中字段优先取 host notes-search 返回的 matches（全文口径），无则按本地字段估算（preview 仅前 200 字，正文命中可能低估）；无搜索词时退化为 host 序
+        // 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0)，同级 updatedAt 降序；
+        // 命中字段优先取 host notes-search 返回的 matches（全文口径），无则按本地字段估算（preview 仅前 200 字，正文命中可能低估）；无搜索词时退化为 host 序；
+        // 0.4.8：标签档本地估算吃 effTags（tags ∪ topic——存量 topic 命中现归标签档）
         function relRank(n) {
           const m = searchMatches[n.id]
           if (m && m.length) { if (m.indexOf('title') >= 0) return 3; if (m.indexOf('tags') >= 0) return 2; if (m.indexOf('body') >= 0) return 1; return 0 }
           if ((n.title || '').toLowerCase().indexOf(q) >= 0) return 3
-          if ((n.tags || []).join(' ').toLowerCase().indexOf(q) >= 0) return 2
+          if (effTags(n).join(' ').toLowerCase().indexOf(q) >= 0) return 2
           if ((n.preview || '').toLowerCase().indexOf(q) >= 0) return 1
           return 0
         }

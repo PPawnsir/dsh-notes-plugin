@@ -347,7 +347,10 @@
       let notes = []
       let folderName = ''
       if (scope.tag) {
-        notes = await _list(String(scope.tag))
+        // 0.4.8（notes-048-topic-tag-merge）：导出标签档吃 effTags 口径（tags ∪ topic 读侧虚拟合并）——存量仅 topic 命中的笔记不成孤儿；
+        // sys 机器笔记放行口径同旧 _list(tag) 通道（tag 过滤非缺省降噪面）
+        const tgv048 = String(scope.tag).trim()
+        notes = (await _list(undefined, undefined, undefined, undefined, undefined, true)).filter(function (n) { return effTagsOf(n).indexOf(tgv048) >= 0 })
       } else if (scope.folder) {
         const rf = await resolveFolderRef(scope.folder)
         if (!rf) return { error: 'notes-export-single 文件夹不存在：' + scope.folder }

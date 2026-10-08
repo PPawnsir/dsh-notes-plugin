@@ -92,7 +92,7 @@ function renderSuggestList() {
   h += stale.length
     ? '<div class="arch-list">' + stale.map(function (n) {
         return '<div class="arch-row"><span class="ti" title="' + esc(n.title || 'Untitled') + '">' + esc(n.title || 'Untitled') + '</span>'
-          + '<span class="meta">' + esc(n.topic || t('meta.uncategorized')) + ' · ' + t('sugg.staleDays', { n: n.staleDays }) + '</span></div>'
+          + '<span class="meta">' + esc(effTagsUi(n)[0] || t('meta.uncategorized')) + ' · ' + t('sugg.staleDays', { n: n.staleDays }) + '</span></div>'   /* 0.4.8：主题显示位改吃 effTagsUi（tags ∪ topic） */
       }).join('') + '</div>'
     : '<div class="modal-hint">' + t('sugg.staleEmpty') + '</div>';
   h += '</div>';
@@ -101,7 +101,7 @@ function renderSuggestList() {
   h += orphans.length
     ? '<div class="arch-list">' + orphans.map(function (n) {
         return '<div class="arch-row"><span class="ti" title="' + esc(n.title || 'Untitled') + '">' + esc(n.title || 'Untitled') + '</span>'
-          + '<span class="meta">' + esc(n.topic || t('meta.uncategorized')) + ' · ' + esc(n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—') + '</span>'
+          + '<span class="meta">' + esc(effTagsUi(n)[0] || t('meta.uncategorized')) + ' · ' + esc(n.updatedAt ? fmtDT(n.updatedAt).slice(0, 10) : '—') + '</span>'
           + '<button class="mbtn trash-act sg-view" data-id="' + esc(n.id) + '">' + t('sugg.view') + '</button></div>'
       }).join('') + '</div>'
     : '<div class="modal-hint">' + t('sugg.orphanEmpty') + '</div>';
@@ -131,7 +131,7 @@ function renderSuggestList() {
   h += zr.length
     ? '<div class="arch-list">' + zr.map(function (n) {
         return '<div class="arch-row"><span class="ti" title="' + esc(n.title || 'Untitled') + '">' + esc(n.title || 'Untitled') + '</span>'
-          + '<span class="meta">' + esc(n.topic || t('meta.uncategorized')) + (n.when ? ' · ' + esc(n.when) : '') + '</span>'
+          + '<span class="meta">' + esc(effTagsUi(n)[0] || t('meta.uncategorized')) + (n.when ? ' · ' + esc(n.when) : '') + '</span>'
           + '<button class="mbtn trash-act sg-editwhen" data-id="' + esc(n.id) + '">' + t('sugg.editWhen') + '</button>'
           + '<button class="mbtn trash-act sg-unmount" data-id="' + esc(n.id) + '">' + t('sugg.unmount') + '</button></div>'
       }).join('') + '</div>'
@@ -142,7 +142,7 @@ function renderSuggestList() {
     h += '<div class="sg-sec"><div class="sg-sec-t">' + t('sugg.secHot') + '<span class="sg-sec-n">' + t('sugg.countItems', { n: hot.length }) + '</span></div>';
     h += '<div class="arch-list">' + hot.map(function (n) {
       return '<div class="arch-row"><span class="ti" title="' + esc(n.title || 'Untitled') + '">' + esc(n.title || 'Untitled') + '</span>'
-        + '<span class="meta">' + esc(n.topic || t('meta.uncategorized')) + ' · ' + esc(t('sugg.hotMeta', { d: winDays, n: n.hits })) + '</span>'
+        + '<span class="meta">' + esc(effTagsUi(n)[0] || t('meta.uncategorized')) + ' · ' + esc(t('sugg.hotMeta', { d: winDays, n: n.hits })) + '</span>'
         + '<button class="mbtn trash-act sg-mount" data-id="' + esc(n.id) + '">' + t('sugg.mount') + '</button></div>'
     }).join('') + '</div>';
     h += '</div>';

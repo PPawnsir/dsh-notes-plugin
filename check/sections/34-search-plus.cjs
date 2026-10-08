@@ -165,11 +165,14 @@ module.exports = {
 
   // ---- 34.4 相关度排序（标题 > 标签 > 正文 > 其他，同级 updatedAt 降序）----
   await t('相关度排序比较器行为（app.html/原型 relRank + 比较器提取执行）', () => {
+    /* 0.4.8（notes-048-topic-tag-merge）：relRank 标签档本地估算改吃 effTags（tags ∪ topic）——eval 沙箱注入内核真码 */
+    const kernelSrc34 = fsNative.readFileSync(path.join(DIR, 'src', 'shared', 'editor-kernel.js'), 'utf8')
+    const effTags34 = new Function(grabFn(kernelSrc34, 'effTags', 'editor-kernel.js') + '\nreturn effTags')()
     for (const pair of [['app.html', appSrc], ['原型 notes-ui-v2.html', protoV2Src]]) {
       const s = pair[1], label = pair[0]
       const relSrc = grabFn(s, 'relRank', label)
       const meta = { 'n-t': ['title'], 'n-t2': ['title'], 'n-g': ['tags'], 'n-b': ['body'] }
-      const relRank = new Function('searchMeta', relSrc + '\nreturn relRank')(meta)
+      const relRank = new Function('searchMeta', 'effTags', relSrc + '\nreturn relRank')(meta, effTags34)
       assert.strictEqual(relRank({ id: 'n-l', title: 'XqX', tags: [], preview: '' }, 'q'), 3, label + ' 无 meta 时本地估算标题命中=3')
       assert.strictEqual(relRank({ id: 'n-x', title: '', tags: [], preview: '' }, 'q'), 0, label + ' 无命中=0 档')
       const cm = s.match(/if \(sortBy === 'rel' && qRel\) vis\.sort\(function \(a, b\) \{ return ([^\r\n]+) \}\);/)

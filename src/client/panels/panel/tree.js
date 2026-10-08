@@ -27,15 +27,15 @@
         // value=该组当前显示条数（缺省 PAGE_SIZE，groupShownOf 兜底）；全局 flat 窗口切片退役（四组曾共享同一窗口：
         // 文件夹收起时树内容过短 → 无滚动条 → 滚动加载永不触发 → 窗口外条目够不到，反馈 n-muxyj3zodvf3 实证死锁）
         const [groupShown, setGroupShown] = React.useState({})
-        // 主题过滤行原地展开态（点行主体=展开/收起该主题子列表；object map，session 内有效，不持久化；缺省折叠）
+        // 标签过滤行原地展开态（0.4.8：主题并入标签，state 名不动防地震；点行主体=展开/收起该标签子列表；object map，session 内有效，不持久化；缺省折叠）
         const [topicExpanded, setTopicExpanded] = React.useState({})
-        // 主题过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「主题 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
+        // 标签过滤区整体折叠态（notes-topic-collapse：缺省折叠——常态只显示「标签 (N)」一行，点击展开/收起列表；session 内记忆，不持久化）
         const [topicSecOpen, setTopicSecOpen] = React.useState(false)
         // 拖拽进行中标记（dragstart 置位 / dragend 复位）：驱动未入夹区「移出文件夹」落点提示行渲染（空态下保证拖拽中仍有可拖出落点）
         const [dragActive, setDragActive] = React.useState(false)
         // 搜索/视图/筛选中心条件变化时重置分组分页（各组新结果从头开始；0.4.6-J 沿用原重置 effect 依赖面）
         React.useEffect(() => { setGroupShown({}) }, [searchText, searchIds, view, filters])
-        // 主题过滤行原地展开切换（与文件夹 toggleFolder 同义「点哪个展开哪个」；不持久化）
+        // 标签过滤行原地展开切换（与文件夹 toggleFolder 同义「点哪个展开哪个」；不持久化）
         function toggleTopicExpanded(tn) { setTopicExpanded(prev => { const next = Object.assign({}, prev); next[tn] = !next[tn]; return next }) }
         // ===== 拖拽挪入/挪出文件夹（HTML5 DnD；与右键「移动到文件夹」共用 ctxMoveToFolder 移动逻辑）=====
         // dragstart：noteId 记到 ref + dataTransfer（Firefox 需 setData 才能起拖），源行加 .dragging 半透明
@@ -133,8 +133,10 @@
           // 行尾（原型 noteRow）：主题视图内显示所属文件夹徽章；文件夹上下文内显示淡灰主题字（方案A）；其余显示日期
           function renderNoteRow(n, inFolderCtx) {
             let tail
+            /* 0.4.8（notes-048-topic-tag-merge）：主题并入标签——行尾标签字改吃 effTagsUi（tags ∪ topic 读侧虚拟合并，剔「分类中」占位；无标签回落日期） */
+            const uiTags = inFolderCtx ? effTagsUi(n) : []
             if (view.type === 'topic' && (n.folder || '')) tail = e('span', { className: 'dsh-notes-fbadge' }, I('folder', 9), folderName(n.folder))
-            else if (inFolderCtx && n.topic && n.topic !== '分类中') tail = e('span', { className: 'dsh-notes-note-tp', title: tt('tree.topicTip', { topic: n.topic }) }, n.topic)
+            else if (inFolderCtx && uiTags.length) tail = e('span', { className: 'dsh-notes-note-tp', title: tt('tree.topicTip', { topic: uiTags.join(' · ') }) }, uiTags.join(' · '))
             else tail = e('span', { className: 'dsh-notes-note-dt' }, n.updatedAt ? fmtDT(n.updatedAt).slice(5, 10) : '')
             // 多选态：行点击=勾选/取消（不再打开笔记），行首渲染复选框；与搜索/过滤共存（勾选按 noteId 记账，过滤不清选）
             return e('div', { key: n.id, className: 'dsh-notes-note-row' + (selected === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (flashId === n.id ? ' flash' : '') + (n.status === 'resolved' ? ' resolved' : '') + (n.status === 'superseded' ? ' superseded' : '') + (n.hidden === true ? ' hid' : '') + (selMode && selIds[n.id] ? ' pick' : ''), onClick: () => { if (selMode) { toggleSelId(n.id); return } selectNote(n) }, onContextMenu: (ev) => openCtxMenu(ev, n), draggable: true, onDragStart: (ev) => onNoteDragStart(ev, n), onDragEnd: (ev) => onNoteDragEnd(ev) },
@@ -267,36 +269,40 @@
               renderMoreRow('unfiled', unfiledHits.length),
               dragActive ? e('div', { key: 'unfiled-hint', className: 'dsh-notes-unfiled-hint' }, dragFolderIdRef.current ? tt('tree.dropRootHint') : tt('tree.dropOutHint')) : null))
           }
-          // 主题全局过滤（原型底部区）：全库主题 + 计数；点行主体 = 原地展开/收起该主题的笔记子列表（topicExpanded，不持久化）；
-          // 主题视图（跨文件夹过滤）降级为行尾过滤图标按钮（不抢占单击）
-          const allTopics = {}
-          notes.forEach(n => { if (n.topic) allTopics[n.topic] = (allTopics[n.topic] || 0) + 1 })
-          const topicNames = Object.keys(allTopics).sort()
+          // 标签全局过滤区（0.4.8 三重分类收敛 B 方案 notes-048-topic-tag-merge：主题废弃并入标签——分组数据源 = effTags(n)
+          // （tags ∪ {topic} 读侧虚拟合并，磁盘 .md 零改动）；多值分组：一篇可在多个标签下出现（语义自然）；组头计数 = 去重篇数；
+          // 原「未分类」主题桶消失（topic 空/未分类且无 tags 的笔记不进任何标签组；未入夹区不受影响）；
+          // 点行主体 = 原地展开/收起该标签的笔记子列表（topicExpanded，不持久化）；标签视图（跨文件夹过滤）为行尾过滤图标按钮（不抢占单击）；
+          // 变量名沿用 topic*（分组键 = 标签名；状态/键名不动防地震，语义切换注释在此）
+          const allTags = {}
+          notes.forEach(n => { effTags(n).forEach(tg => { (allTags[tg] = allTags[tg] || {})[n.id] = true }) })
+          const topicNames = Object.keys(allTags).sort()
           if (topicNames.length) {
-            // 整区默认折叠（notes-topic-collapse）：常态只显示「主题 (N)」一行（N=主题数），点分组头展开/收起（topicSecOpen，session 记忆不持久化）；
-            // 展开行为与置顶折叠组（PINNED_KEY）同款：过滤激活且有主题命中时纯计算 OR 自动展开（不写回 topicSecOpen——清除过滤即恢复手动折叠态），
-            // 头部计数同步切换为命中主题数（folders「过滤激活=命中数」同口径）
+            // 整区默认折叠（notes-topic-collapse）：常态只显示「标签 (N)」一行（N=标签数），点分组头展开/收起（topicSecOpen，session 记忆不持久化）；
+            // 展开行为与置顶折叠组（PINNED_KEY）同款：过滤激活且有标签命中时纯计算 OR 自动展开（不写回 topicSecOpen——清除过滤即恢复手动折叠态），
+            // 头部计数同步切换为命中标签数（folders「过滤激活=命中数」同口径）
             const topicHitSet = {}
-            filtered.forEach(n => { if (n.topic) topicHitSet[n.topic] = true })
+            filtered.forEach(n => { effTags(n).forEach(tg => { topicHitSet[tg] = true }) })
             const topicHitCount = Object.keys(topicHitSet).length
             const topicSecOpenEff = topicSecOpen || (filtersActive && topicHitCount > 0)
             treeEls.push(e('div', { key: 'sec-topics', className: 'dsh-notes-sec-h dsh-notes-sec-toggle', onClick: () => setTopicSecOpen(!topicSecOpen) },
               e('span', { className: 'dsh-notes-caret' + (topicSecOpenEff ? ' open' : '') }, I('chev', 10)),
-              I('topic', 11),
+              I('tag', 11),
               e('span', { className: 'dsh-notes-sec-h-t' }, tt('tree.topicsHeader', { n: filtersActive ? topicHitCount : topicNames.length })),
               e('span', { className: 'dsh-notes-sec-h-sub' }, tt('tree.crossFolder'))))
             if (topicSecOpenEff) topicNames.forEach(tn => {
-              const tkidsAll = filtered.filter(n => (n.topic || '') === tn)
-              // 过滤激活自动展开：含命中的主题行强制展开（纯计算 OR，不写回 topicExpanded——清除过滤即恢复）；计数同步切换为命中数
+              // 多值分组：effTags 含该标签即归入（一篇可出现在多个标签组；组内计数 = 命中篇数）
+              const tkidsAll = filtered.filter(n => effTags(n).indexOf(tn) >= 0)
+              // 过滤激活自动展开：含命中的标签行强制展开（纯计算 OR，不写回 topicExpanded——清除过滤即恢复）；计数同步切换为命中数
               const tOpen = !!topicExpanded[tn] || (filtersActive && tkidsAll.length > 0)
               treeEls.push(e('div', { key: 'tp-' + tn, className: 'dsh-notes-row dsh-notes-topic-row' + (view.type === 'topic' && view.id === tn ? ' on' : ''), onClick: () => toggleTopicExpanded(tn) },
                 e('span', { className: 'dsh-notes-caret' + (tOpen ? ' open' : '') }, I('chev', 10)),
-                e('span', { className: 'dsh-notes-ic-slot' }, I('topic', 12)),
+                e('span', { className: 'dsh-notes-ic-slot' }, I('tag', 12)),
                 e('span', { className: 'dsh-notes-row-nm' }, tn === '分类中' ? tt('tree.classifying') : tn),
-                e('span', { className: 'dsh-notes-row-n' }, filtersActive ? tkidsAll.length : allTopics[tn]),
+                e('span', { className: 'dsh-notes-row-n' }, filtersActive ? tkidsAll.length : Object.keys(allTags[tn]).length),
                 e('span', { className: 'dsh-notes-row-vfilter dsh-nt' + (view.type === 'topic' && view.id === tn ? ' on' : ''), 'data-tooltip': tt('tree.topicViewTip'), onClick: (ev) => { ev.stopPropagation(); setView(view.type === 'topic' && view.id === tn ? { type: 'all', id: '' } : { type: 'topic', id: tn }) } }, I('filter', 11))))
               if (tOpen) {
-                // 0.4.6-J：主题组独立分页（组标识 'topic:'+tn；命中全量 tkidsAll 截当前显示数，组尾加载行翻页）
+                // 0.4.6-J：标签组独立分页（组标识 'topic:'+tn 键名不动；命中全量 tkidsAll 截当前显示数，组尾加载行翻页）
                 const tkids = groupPage(tkidsAll, groupShown, 'topic:' + tn)
                 if (tkids.length) { tkids.forEach(n => { treeIds.push(n.id) }); treeEls.push(e('div', { key: 'tpk-' + tn, className: 'dsh-notes-nested' }, tkids.map(n => renderNoteRow(n, false)), renderMoreRow('topic:' + tn, tkidsAll.length))) }
               }

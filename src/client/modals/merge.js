@@ -8,13 +8,13 @@
     function setMergeOpen(v) { const nv = typeof v === 'function' ? v(mergeOpenRef.current) : v; mergeOpenRef.current = nv; store.modal.merge.set({ open: nv }) }
     function setMergeTitle(v) { store.modal.merge.set({ title: typeof v === 'function' ? v(store.modal.merge.get().title) : v }) }
     function setMergePending(v) { store.modal.merge.set({ pending: typeof v === 'function' ? v(store.modal.merge.get().pending) : v }) }
-    // 打开合并标题输入框：默认标题 = 所选笔记中最早更新者的 topic（原型口径）
+    // 打开合并标题输入框：默认标题 = 所选笔记中最早更新者的首枚有效标签（0.4.8 主题并入标签后同口径：effTagsUi = tags ∪ topic，剔占位）
     function openMerge() {
       const selIdsNow = panelBridge.selIds || {}
       const ids = Object.keys(selIdsNow)
       if (ids.length < 2) { showToast('至少选择 2 条笔记'); return }
       const sel = (panelBridge.notes || []).filter(n => selIdsNow[n.id]).sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')))
-      setMergeTitle((sel[0] && sel[0].topic) || '合并笔记'); setMergePending(false); setError(''); setMergeOpen(true)
+      setMergeTitle((sel[0] && effTagsUi(sel[0])[0]) || '合并笔记'); setMergePending(false); setError(''); setMergeOpen(true)
     }
     // 多选合并标题输入框宿主（多选操作条「合并」入口）
     function MergeModal(props) {

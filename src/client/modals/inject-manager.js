@@ -332,7 +332,7 @@
         const injMgrWeight = { convention: 0, reference: 1, off: 2 }
         let shown = listAll.slice().sort((a, b) => (injMgrWeight[injMgrRole(a)] - injMgrWeight[injMgrRole(b)]) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
         if (injMgrFilter !== 'all') shown = shown.filter(n => injMgrRole(n) === injMgrFilter)
-        if (injMgrQ) shown = shown.filter(n => (n.title || '').toLowerCase().indexOf(injMgrQ) >= 0 || (n.topic || '').toLowerCase().indexOf(injMgrQ) >= 0 || (n.tags || []).join(' ').toLowerCase().indexOf(injMgrQ) >= 0)
+        if (injMgrQ) shown = shown.filter(n => (n.title || '').toLowerCase().indexOf(injMgrQ) >= 0 || effTags(n).join(' ').toLowerCase().indexOf(injMgrQ) >= 0)   // 0.4.8：检索面改吃 effTags（tags ∪ topic 一句覆盖，存量 topic 可搜）
         const selectable = shown.filter(n => n.kind !== 'log')   // log 行不可选（注入硬关 UI 化，0.4.3⑦）
         const selCnt = Object.keys(injMgrSel).length
         const allChecked = selectable.length > 0 && selectable.every(n => injMgrSel[n.id])

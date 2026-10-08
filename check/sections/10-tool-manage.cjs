@@ -18,10 +18,12 @@ module.exports = {
     assert(tMgrList.action === 'list' && Array.isArray(tMgrList.notes))
   })
   const tMgrUpd = await noteManage.execute({ id: tMgr1.id, action: 'update', topic: '设计-改' })
-  await t('manage.update 改 topic', async () => {
+  await t('manage.update topic 并入 tags 且清空（0.4.8 主题并入标签·懒合并；create 的 设计 + update 的 设计-改 双双入 tags）', async () => {
     assert.strictEqual(tMgrUpd.action, 'update')
+    assert.strictEqual(tMgrUpd.topicMerged, true, '回执 topicMerged 标记（实得 ' + JSON.stringify(tMgrUpd) + '）')
     const g = await handlers['notes-get']({ id: tMgr1.id })
-    assert.strictEqual(g.note.topic, '设计-改')
+    assert.strictEqual(g.note.topic, '', 'topic 落盘清空（实得 ' + JSON.stringify(g.note.topic) + '）')
+    assert.deepStrictEqual((g.note.tags || []).slice().sort(), ['设计', '设计-改'], 'create/update 显式 topic 均并入 tags（去重保序；实得 ' + JSON.stringify(g.note.tags) + '）')
   })
   const tMgrDel = await noteManage.execute({ id: tMgr1.id, action: 'delete' })
   await t('manage.delete 软删除', async () => {

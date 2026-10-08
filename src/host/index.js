@@ -18,7 +18,7 @@
         properties: {
           query: { type: 'string', description: 'Free-text query against title, body, topic, and tags. Omit to list all (optionally filtered by tag/topic/kind/folder/sensitive/inject).' },
           tag: { type: 'string', description: 'Optional tag filter (exact match)' },
-          topic: { type: 'string', description: 'Optional topic filter (exact match)' },
+          topic: { type: 'string', description: 'Optional topic filter (exact match) — DEPRECATED legacy field (0.4.8: the topic concept was merged into tags; prefer the tag filter)' },
           kind: { type: 'string', enum: KINDS, description: 'Optional kind filter: note/decision/todo/link/quote/log/sys. Pass log to see only work logs; pass sys to see machine-managed notes (excluded from default unfiltered results).' },
           folder: { type: 'string', description: 'Optional folder filter: folder id or exact folder name; empty string = unfiled notes (未分类). Non-empty filter is a recursive subtree match — it returns notes in that folder AND all its descendant folders (folders nest via parent; maxFolderDepth setting, default 3).' },
           sensitive: { type: 'boolean', description: 'Optional sensitive filter: true = only sensitive (masked) notes, false = exclude sensitive notes. Omit = no filter.' },
@@ -78,10 +78,11 @@
         'sensitive (boolean) marks the note as containing secrets (passwords/tokens/keys); default false. When true, injected text (conventions) masks secret-looking lines — keys and structure are kept, only values are hidden as ******（敏感，note_get <id> 获取）— so agents must call note_get for the original. Create/quick responses may return sensitiveSuggested: true when the body matches secret patterns; quick-capture notes are auto-flagged sensitive instead.\n\n' +
         'hidden (boolean, default false) is the OS-style hidden attribute (0.4.4-D): hidden notes are masked out of the notes panel tree/lists only — a pure client-side UI filter governed by the panel「显示隐藏」toggle (localStorage-persisted). Agents and all read/write paths are UNAFFECTED: note_search/note_get/note_manage see hidden notes exactly like normal ones, and opening a hidden note via backlink/dispatch/search hit renders and edits normally. Folders carry the same flag via the notes-folders RPC op:\'set-flags\' { id, hidden } (a hidden folder masks its row and its nested subtree from the tree).\n\n' +
         'folder (string) assigns a note to a virtual folder: pass a folder id or an exact folder name — a name is normalized to its folder id on write, and an unknown id/name is rejected with an error (never silently filed as unfiled); "" or omitted = unfiled (未分类). Folders (name/order/parent/hidden) are managed via the notes-folders RPC (list/create/rename/delete/reorder/set-flags): folders NEST via a parent field (maxFolderDepth setting caps the depth, default 3, 0 = unlimited), any folder filter is a recursive subtree match (a folder includes notes in all its descendant folders), and deleting a folder that still has child folders or notes requires explicit cascade:true — the folder structure is removed for good while its notes are soft-deleted into the trash and can be restored (restored notes fall back to unfiled when their folder is gone).\n\n' +
+        'topic (string) is DEPRECATED since 0.4.8 — the topic concept was merged into tags: on create/update an explicit non-empty topic (≠ 未分类) is merged into tags (deduped) and the stored topic is cleared on write (lazy write-side migration; existing .md files are NEVER batch-rewritten). Reads treat tags ∪ {topic} as effective tags (effTags, panel/app sidebar tag tree). Prefer tags for all new writes.\n\n' +
         'Actions:\n' +
-        '- create: { title, body, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, hidden?, folder?, sessionId?, cwd?, workspace?, logDate? }\n' +
+        '- create: { title, body, topic? (deprecated → merged into tags), tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, hidden?, folder?, sessionId?, cwd?, workspace?, logDate? }\n' +
         '- list: { tag?, topic?, kind?, folder?, includeLogs? } (no id/title/body needed; work logs kind=log are first-class and included by default — includeLogs is a kept no-op for backward compatibility; machine notes kind=sys are excluded from the default unfiltered list — pass kind:\'sys\', tag, or folder to see them)\n' +
-        '- update: { id, title?, body?, topic?, tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, hidden?, confirmClearBody? } (setting body to "" while the stored body is non-empty is REJECTED unless confirmClearBody:true — R-1 data-loss guard against silent empty-body overwrite; setting status to "resolved" auto-closes the dispatch loop: all open entries in the note\'s dispatches are marked dispatchStatus=done with doneAt — kept as a manual fallback（手动兜底）to force-close the loop; since 0.4.5-I dispatched todos no longer ask the target session to resolve the note — the target session\'s idle transition closes the receipt automatically)\n' +
+        '- update: { id, title?, body?, topic? (deprecated → merged into tags + cleared), tags?, kind?, status?, inject?, injectRole?, injectTo?, recall?, sensitive?, hidden?, confirmClearBody? } (setting body to "" while the stored body is non-empty is REJECTED unless confirmClearBody:true — R-1 data-loss guard against silent empty-body overwrite; setting status to "resolved" auto-closes the dispatch loop: all open entries in the note\'s dispatches are marked dispatchStatus=done with doneAt — kept as a manual fallback（手动兜底）to force-close the loop; since 0.4.5-I dispatched todos no longer ask the target session to resolve the note — the target session\'s idle transition closes the receipt automatically)\n' +
         '- move: { id, folder } (move note into a virtual folder — folders nest, so any folder id at any depth is valid; folder = folder id or exact folder name, "" = move out to unfiled)\n' +
         '- delete: { id } (soft delete; restorable via restore)\n' +
         '- restore: { id } (undo delete/archive)\n' +
@@ -97,7 +98,7 @@
           title: { type: 'string', description: 'Title (create/update)' },
           body: { type: 'string', description: 'Markdown body (create/update)' },
           confirmClearBody: { type: 'boolean', description: 'Explicit confirmation (update only): required when setting body to "" while the stored body is non-empty — R-1 data-loss guard rejects silent empty-body overwrite without it.' },
-          topic: { type: 'string', description: 'Topic (create/update; defaults to 未分类)' },
+          topic: { type: 'string', description: 'DEPRECATED since 0.4.8 (topic merged into tags): an explicit non-empty value (≠ 未分类) is merged into tags (deduped) and the stored topic is cleared; field kept for backward compatibility — prefer tags. Default 未分类' },
           tags: { type: 'array', items: { type: 'string' }, description: 'Tags (create/update)' },
           kind: { type: 'string', enum: KINDS, description: 'Kind (create/update): note/decision/todo/link/quote/log/sys; default note. log = work log（同权：默认列表/搜索可见可编辑；inject 强制关闭，recall 缺省 false 注入目录恒不含）; sys = 机器托管笔记（缺省列表/检索降噪排除，显式 kind=sys/tag/folder 过滤可见——一般由系统内部创建，手写请改用其他 kind）' },
           status: { type: 'string', enum: STATUSES, description: 'Status (create/update): active/pinned/resolved/superseded; default active' },
@@ -144,12 +145,15 @@
               if (!rf) return { error: '文件夹不存在：' + String(folder) }
               folder = rf.id
             }
-            const r = await _create(args.title, args.body, args.tags, args.topic, {
+            // 0.4.8（notes-048-topic-tag-merge）：显式 topic 入参并入 tags（写侧惰性落盘；空/未分类/分类中占位透传不动——分类中占位永不成标签）
+            const tmC = topicMergeWrite(args.tags, args.topic)
+            const r = await _create(args.title, args.body, tmC ? tmC.tags : args.tags, tmC ? '' : args.topic, {
               sessionId: args.sessionId, cwd: args.cwd, workspace: args.workspace,
               kind: args.kind, status: args.status, inject: args.inject, injectRole: args.injectRole, injectTo: args.injectTo,
               folder: folder, recall: args.recall, sensitive: args.sensitive, hidden: args.hidden, logDate: args.logDate, contractType: args.contractType, schedule: args.schedule
             })
             const out = { action: 'create', id: r.id, topic: r.topic, kind: r.kind, status: r.status, message: 'Note created' }
+            if (tmC) { out.topicMerged = true; out.message += '（topic 已并入 tags：合并去重落盘，topic 字段已清空——0.4.8 懒合并）' }
             // 敏感模式自动识别建议透传（create 不强制落 sensitive，由调用方决策）
             if (r.sensitiveSuggested) { out.sensitiveSuggested = true; out.message += '（检测到疑似敏感信息，建议 sensitive: true 开启注入脱敏）' }
             // 日志隐身硬闸命中告知（kind=log 强制 inject=false、recall 缺省 false）
@@ -180,10 +184,21 @@
             // 定时派发：公共写入口 contractType 白名单（'' / dispatch-schedule；其余契约类型系统内部管理）
             const ctErr1 = schedPublicContractTypeError(args.contractType)
             if (ctErr1) return { error: ctErr1 }
-            const r = await _update(args.id, args.title, args.body, args.tags, args.topic, args.kind, args.status, args.inject, args.injectTo, undefined, args.recall, args.injectRole, args.sensitive, { confirmClearBody: args.confirmClearBody === true, contractType: args.contractType, schedule: args.schedule, hidden: args.hidden })
+            // 0.4.8（notes-048-topic-tag-merge）：显式 topic 入参并入 tags + topic 落盘清空（写侧惰性落盘）；
+            // tags 未显式传时读存量 tags 合并（缓存命中零额外磁盘读）；空/未分类/分类中占位透传不动（兼容旧调用）
+            let upTags = args.tags, upTopic = args.topic
+            if (topicMergeWrite(null, args.topic)) {
+              if (upTags === undefined) { const curN = await _get(args.id); upTags = (curN && curN.tags) || [] }
+              upTags = topicMergeWrite(upTags, args.topic).tags; upTopic = ''
+            }
+            const r = await _update(args.id, args.title, args.body, upTags, upTopic, args.kind, args.status, args.inject, args.injectTo, undefined, args.recall, args.injectRole, args.sensitive, { confirmClearBody: args.confirmClearBody === true, contractType: args.contractType, schedule: args.schedule, hidden: args.hidden })
             // P3 派发闭环：resolved 联动回执了派发时在消息里明示（agent 可感知闭环已发生）
             // 工作记忆 v0：kind=log 隐身硬闸命中时告知（inject 被强制关闭）
-            return { action: 'update', id: args.id, kind: r.kind, status: r.status, dispatchClosed: r.dispatchClosed || 0, injectForcedOff: r.injectForcedOff === true, message: 'Note updated' + (r.dispatchClosed ? '；已自动回执 ' + r.dispatchClosed + ' 条派发（dispatchStatus→done）' : '') + (r.injectForcedOff ? '（kind=log 工作日志不参与注入：inject 已强制关闭）' : '') }
+            // 0.4.8：topic 合并命中时告知（已并入 tags 且清空）
+            const topicMerged = upTopic === '' && args.topic !== undefined && args.topic !== ''
+            const outU = { action: 'update', id: args.id, kind: r.kind, status: r.status, dispatchClosed: r.dispatchClosed || 0, injectForcedOff: r.injectForcedOff === true, message: 'Note updated' + (topicMerged ? '（topic 已并入 tags：合并去重落盘，topic 字段已清空——0.4.8 懒合并）' : '') + (r.dispatchClosed ? '；已自动回执 ' + r.dispatchClosed + ' 条派发（dispatchStatus→done）' : '') + (r.injectForcedOff ? '（kind=log 工作日志不参与注入：inject 已强制关闭）' : '') }
+            if (topicMerged) outU.topicMerged = true
+            return outU
           }
           if (action === 'delete') {
             if (!args.id) return { error: 'note_manage.delete 需要 id' }

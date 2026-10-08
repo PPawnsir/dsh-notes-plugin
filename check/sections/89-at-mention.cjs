@@ -26,7 +26,12 @@ module.exports = {
   // 真字典 t()：与 kernel/i18n.js tLookup 同口径（当前语言 → zh 基准 → key；{name} 插值）
   const mkT = (dict) => (key, vars) => { let s = dict[key]; if (s == null) s = zh[key]; if (s == null) return key; if (vars) s = s.replace(/\{(\w+)\}/g, (m, n) => (vars[n] != null ? String(vars[n]) : m)); return s }
   const mkKindLabel = (tFn) => (k) => tFn('meta.kind' + String(k || '').charAt(0).toUpperCase() + String(k || '').slice(1))
-  // 行为级 eval 环境：提取 notes-mention-source 标记块真码，注入 mock host/t/kindLabel/noteRefreshListeners
+  // 0.4.8（notes-048-topic-tag-merge）：mentionFilter/mentionCandidate 改吃内核 effTags/effTagsUi（主题并入标签）——eval 沙箱注入内核真码
+  const kernelSrc89 = read(path.join('src', 'shared', 'editor-kernel.js'))
+  const k0 = kernelSrc89.indexOf('// ===== 0.4.8 三重分类收敛'), k1 = kernelSrc89.indexOf('// ===== end 双模式编辑器内核 v3 =====')
+  assert(k0 >= 0 && k1 > k0, 'editor-kernel.js 含 0.4.8 effTags 标记区间')
+  const effFns89 = new Function(kernelSrc89.slice(k0, k1) + '\nreturn { effTags: effTags, effTagsUi: effTagsUi }')()
+  // 行为级 eval 环境：提取 notes-mention-source 标记块真码，注入 mock host/t/kindLabel/noteRefreshListeners + 内核 effTags/effTagsUi
   const mkEnv = (opts) => {
     const o = opts || {}
     const calls = []
@@ -35,9 +40,9 @@ module.exports = {
     const noteRefreshListeners = { add: (fn) => listeners.add(fn), delete: (fn) => listeners.delete(fn), has: (fn) => listeners.has(fn) }
     const tFn = mkT(o.lang === 'en' ? en : zh)
     const block = grabBlock(clientSrc, 'notes-mention-source')
-    const api = new Function('host', 't', 'kindLabel', 'noteRefreshListeners',
+    const api = new Function('host', 't', 'kindLabel', 'noteRefreshListeners', 'effTags', 'effTagsUi',
       block + '\nreturn { createNotesMentionSource: createNotesMentionSource, mentionFilter: mentionFilter, mentionCandidate: mentionCandidate, mentionFallbackText: mentionFallbackText, mentionNotesInvalidate: mentionNotesInvalidate, ensureMentionNotes: ensureMentionNotes, mentionCache: mentionCache }'
-    )(host, tFn, mkKindLabel(tFn), noteRefreshListeners)
+    )(host, tFn, mkKindLabel(tFn), noteRefreshListeners, effFns89.effTags, effFns89.effTagsUi)
     return Object.assign({ calls: calls, listeners: listeners, noteRefreshListeners: noteRefreshListeners, t: tFn }, api)
   }
 
@@ -62,8 +67,8 @@ module.exports = {
     assert.strictEqual(typeof src0.codec.clipboardText, 'function', 'codec.clipboardText 在案')
   })
 
-  // ===== ② 候选过滤行为级 eval：sys/软删排除 + query 命中标题/主题/标签 + 上限 8 条 =====
-  await t('mentionFilter 行为级 eval：sys/软删组件侧双闸排除 + query 命中标题/主题/标签（小写折叠）+ 上限 8 条', () => {
+  // ===== ② 候选过滤行为级 eval：sys/软删排除 + query 命中标题/标签（0.4.8 effTags 虚拟合并：存量 topic 并入标签面）+ 上限 8 条 =====
+  await t('mentionFilter 行为级 eval：sys/软删组件侧双闸排除 + query 命中标题/标签（0.4.8 主题并入标签·effTags；小写折叠）+ 上限 8 条', () => {
     const env = mkEnv()
     const mk = (i, over) => Object.assign({ id: 'n-' + i, title: '笔记' + i, kind: 'note', tags: [] }, over)
     const notes = [
@@ -103,11 +108,11 @@ module.exports = {
     assert.strictEqual(cands.length, 2, '候选行数 = 清单全量（未超限）')
     assert.strictEqual(cands[0].name, '架构决策', 'name = 标题（pick 载荷/检索键）')
     assert.strictEqual(cands[0].section, '笔记', 'section = mention.section（zh）')
-    assert.strictEqual(cands[0].description, '架构 · 决策', 'description = 主题 · 类型（MenuView 实际渲染的副行字段）')
+    assert.strictEqual(cands[0].description, 'dsh · 决策', 'description = 首枚有效标签 · 类型（0.4.8 effTagsUi：tags 先于 topic——实得 ' + cands[0].description + '）')
     assert.strictEqual(cands[0].icon, 'file', 'icon = file 字形令牌')
     assert.strictEqual(cands[0].value, 'n-a1', 'value = 笔记 id（onPick 不透明载荷）')
     assert.strictEqual(cands[1].name, '无标题', '空标题回退 tree.untitled')
-    assert.strictEqual(cands[1].description, '笔记', '无主题行 description 只剩类型词')
+    assert.strictEqual(cands[1].description, '笔记', '无标签行 description 只剩类型词（0.4.8 主题并入标签）')
     assert(env.mentionCache.notes !== null, '首拉后缓存暖（warm 数据源）')
     // signal aborted（查询更迭/菜单关闭）→ 空
     assert.deepStrictEqual(await src.candidates({ sessionId: 'session-x' }, { query: '', position: 'inline', drilled: false, signal: { aborted: true } }), [], 'signal aborted 返回空')

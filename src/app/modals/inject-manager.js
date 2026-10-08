@@ -187,7 +187,7 @@ function injMgrShownList() {
   var w = { convention: 0, reference: 1, off: 2 };
   var shown = st.list.slice().sort(function (a, b) { return (w[injMgrRole(a)] - w[injMgrRole(b)]) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) });
   if (st.filter !== 'all') shown = shown.filter(function (n) { return injMgrRole(n) === st.filter });
-  if (st.q) shown = shown.filter(function (n) { return (n.title || '').toLowerCase().indexOf(st.q) >= 0 || (n.topic || '').toLowerCase().indexOf(st.q) >= 0 || (n.tags || []).join(' ').toLowerCase().indexOf(st.q) >= 0 });
+  if (st.q) shown = shown.filter(function (n) { return (n.title || '').toLowerCase().indexOf(st.q) >= 0 || effTags(n).join(' ').toLowerCase().indexOf(st.q) >= 0 });   /* 0.4.8（notes-048-topic-tag-merge）：检索面改吃 effTags（tags ∪ topic 一句覆盖，存量 topic 可搜） */
   return shown;
 }
 function renderInjectManager() {

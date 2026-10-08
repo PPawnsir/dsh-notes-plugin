@@ -50,7 +50,8 @@
       }
       return sExportOpen ? (() => {
         const tagSet = {}
-        for (const n of notes) for (const tg of (n.tags || [])) tagSet[tg] = true
+        /* 0.4.8（notes-048-topic-tag-merge）：导出标签档选项吃 effTagsUi（tags ∪ topic 剔「分类中」占位）——存量仅 topic 命中的笔记可选、不成孤儿（host 侧 scope.tag 同口径过滤） */
+        for (const n of notes) for (const tg of effTagsUi(n)) tagSet[tg] = true
         const tagOptions = Object.keys(tagSet).sort()
         return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setSExportOpen(false) } },
           e('div', { className: 'dsh-notes-settings-modal dsh-notes-data-modal' },

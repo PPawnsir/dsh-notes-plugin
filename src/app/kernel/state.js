@@ -109,8 +109,8 @@ var sessList = [], sessPending = [];   // 注入范围浮层会话源（notes-se
 var foldOpen = loadFoldOpen();         // 文件夹折叠态（localStorage；缺省全展开）
 var sysKids = {};                      // 0.4.4-C：文件夹显式展开按需补拉的 sys 子行缓存（fid → { stamp, rows }；stamp=取数时 notes 缓存身份，刷新防陈旧）
 var sysKidsInflight = {};              // 0.4.4-C：补拉在途去重闸（fid → true；快速连点/刷新重入不并发重复请求）
-var topicOpen = {};                    // 主题过滤行原地展开态（点行主体=展开/收起子列表；session 内有效，不持久化）
-var topicSecOpen = false;              // 主题过滤区整体折叠态（缺省折叠：常态只显示「主题 (N)」一行，点分组头展开；session 内记忆，不持久化）
+var topicOpen = {};                    // 标签过滤行原地展开态（0.4.8：主题并入标签，键名不动防地震；点行主体=展开/收起子列表；session 内有效，不持久化）
+var topicSecOpen = false;              // 标签过滤区整体折叠态（缺省折叠：常态只显示「标签 (N)」一行，点分组头展开；session 内记忆，不持久化）
 var scopeOpen = false;
 /* ===== 显式归档 UI + 手动笔记多选合并（契约：notes-archive-preview / notes-archive {groups:[{memberIds,title?}]} / notes-archive-undo） ===== */
 var selMode = false, selIds = {};      // 列表多选态 + 勾选集合（noteId → true；与搜索/过滤共存，按 id 记账）

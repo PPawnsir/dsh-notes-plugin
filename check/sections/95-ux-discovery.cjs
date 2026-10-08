@@ -121,11 +121,16 @@ module.exports = {
     const block = grabBlock(clientSrc, 'notes-mention-source')
     const mkT = (dict) => (key, vars) => { let s = dict[key]; if (s == null) s = ZH95[key]; if (s == null) return key; if (vars) s = s.replace(/\{(\w+)\}/g, (m, n) => (vars[n] != null ? String(vars[n]) : m)); return s }
     const kindLabel = (k) => mkT(ZH95)('meta.kind' + String(k || '').charAt(0).toUpperCase() + String(k || '').slice(1))
+    /* 0.4.8（notes-048-topic-tag-merge）：mentionFilter/mentionCandidate 吃内核 effTags/effTagsUi（主题并入标签）——eval 沙箱注入内核真码 */
+    const kernelSrc95 = fsNative.readFileSync(path.join(DIR, 'src', 'shared', 'editor-kernel.js'), 'utf8')
+    const k95a = kernelSrc95.indexOf('// ===== 0.4.8 三重分类收敛'), k95b = kernelSrc95.indexOf('// ===== end 双模式编辑器内核 v3 =====')
+    assert(k95a >= 0 && k95b > k95a, 'editor-kernel.js 含 0.4.8 effTags 标记区间')
+    const effFns95 = new Function(kernelSrc95.slice(k95a, k95b) + '\nreturn { effTags: effTags, effTagsUi: effTagsUi }')()
     const mkEnv = (call) => {
       const host = { call: call }
-      return new Function('host', 't', 'kindLabel', 'noteRefreshListeners',
+      return new Function('host', 't', 'kindLabel', 'noteRefreshListeners', 'effTags', 'effTagsUi',
         block + '\nreturn { createNotesMentionSource: createNotesMentionSource, mentionCache: mentionCache }'
-      )(host, mkT(ZH95), kindLabel, { add: () => {}, delete: () => {} })
+      )(host, mkT(ZH95), kindLabel, { add: () => {}, delete: () => {} }, effFns95.effTags, effFns95.effTagsUi)
     }
     const REQ = { query: '不存在的词', position: 'inline', drilled: false, signal: { aborted: false } }
     // 拉取成功 + 零命中 → 单条提示候选（name=字典文案 / section=笔记 / 无 value）

@@ -83,7 +83,7 @@ module.exports = {
     assert(clientSrc.indexOf("folderSel === 'pinned'") < 0 && clientSrc.indexOf("folderSel !== 'all'") < 0, 'folderSel 过滤分支已移除')
     assert(clientSrc.indexOf('groupByTopic') < 0, '未分类主题二级分组已移除（未入夹笔记根级直显平铺，主题聚合由「主题过滤」区承担不重复）')
     assert(clientSrc.indexOf("const unfiledKids = unfiled.map(n => { treeIds.push(n.id); return renderNoteRow(n, false) })") >= 0, '未入夹笔记根级平铺直渲（无主题分组头/nested 包裹）')
-    assert(clientSrc.indexOf('notes.forEach(n => { if (n.topic) allTopics[n.topic]') >= 0, '主题过滤区统计全库主题（不按当前过滤）')
+    assert(clientSrc.indexOf('notes.forEach(n => { effTags(n).forEach(tg => { (allTags[tg] = allTags[tg] || {})[n.id] = true }) })') >= 0, '标签过滤区统计全库 effTags（0.4.8 多值分组：tags ∪ topic，不按当前过滤）')
     assert(/setView\(view\.type === 'topic' && view\.id === tn \? \{ type: 'all', id: '' \} : \{ type: 'topic', id: tn \}\)/.test(clientSrc), '主题行尾过滤图标切换主题视图/全部（行主体单击已让位原地展开）')
     assert(!/setView\(view\.type === 'folder'/.test(clientSrc), '0.4.3⑦：文件夹行尾过滤图标（进文件夹视图）已拆除——树展开即文件夹浏览')
     assert(clientSrc.indexOf("const createFolder = (selNote && selNote.folder) || ''") >= 0, '新建落位：选中笔记所在文件夹/未分类（文件夹视图落位分支随拆除移除）')
@@ -141,8 +141,8 @@ module.exports = {
     assert(clientSrc.indexOf("const pinOpen = isFolderExpanded(PINNED_KEY) || (filtersActive && pinnedAll.length > 0)") >= 0, '置顶组过滤命中自动展开')
     assert(clientSrc.indexOf("const fOpen = isFolderExpanded(f.id) || (filtersActive && subHits > 0)") >= 0, '文件夹过滤命中自动展开（子树命中口径，无命中保持折叠）')
     assert(clientSrc.indexOf("const cnt = filtersActive ? subHits : (f.count || 0)") >= 0, '文件夹计数：过滤激活 = 子树命中数（无命中 0）/ 否则 = 子树总数（host count 已递归）')
-    assert(clientSrc.indexOf("const tOpen = !!topicExpanded[tn] || (filtersActive && tkidsAll.length > 0)") >= 0, '主题行过滤命中自动展开')
-    assert(clientSrc.indexOf("filtersActive ? tkidsAll.length : allTopics[tn]") >= 0, '主题行计数：过滤激活 = 命中数 / 否则 = 全库数')
+    assert(clientSrc.indexOf("const tOpen = !!topicExpanded[tn] || (filtersActive && tkidsAll.length > 0)") >= 0, '标签行过滤命中自动展开（0.4.8 语义切换，变量名沿用）')
+    assert(clientSrc.indexOf("filtersActive ? tkidsAll.length : Object.keys(allTags[tn]).length") >= 0, '标签行计数：过滤激活 = 命中数 / 否则 = 全库去重篇数（0.4.8 多值分组）')
     // 恢复断言：自动展开为纯计算（isFolderExpanded OR），折叠态写入口仍只有 toggleFolder/expandFolder——过滤清除即恢复手动折叠
     assert(/function toggleFolder\(id\)/.test(clientSrc) && /function expandFolder\(id\)/.test(clientSrc), '折叠态写入口保持（toggleFolder/expandFolder）')
     // ④ 发布包 client.js 同步（需先跑 scripts/build-dist.cjs）
@@ -156,8 +156,8 @@ module.exports = {
       assert(s.indexOf("var filtering = view.type !== 'all' || !!searchText || filtersActiveCount() > 0;") >= 0, label + ' 过滤激活标记（视图/筛选中心/搜索任一）')
       assert(s.indexOf("var open = (foldOpen[f.id] !== false) || (filtering && subHits > 0);") >= 0, label + ' 文件夹过滤命中自动展开（子树命中口径，不写回 foldOpen）')
       assert(s.indexOf("(filtering ? subHits : (f.count != null ? f.count : kids.length))") >= 0, label + ' 文件夹计数：过滤激活 = 子树命中数')
-      assert(s.indexOf("var tOpen = !!topicOpen[t] || (filtering && tkids.length > 0);") >= 0, label + ' 主题行过滤命中自动展开（不写回 topicOpen）')
-      assert(s.indexOf("(filtering ? tkids.length : allTopics[t])") >= 0, label + ' 主题行计数：过滤激活 = 命中数')
+      assert(s.indexOf("var tOpen = !!topicOpen[t] || (filtering && tkids.length > 0);") >= 0, label + ' 标签行过滤命中自动展开（不写回 topicOpen；0.4.8 语义切换）')
+      assert(s.indexOf("(filtering ? tkids.length : Object.keys(allTags[t]).length)") >= 0, label + ' 标签行计数：过滤激活 = 命中数 / 否则 = 全库去重篇数（0.4.8 多值分组）')
       if (label === 'app.html') assert(s.indexOf("' ' + t('tree.pinned') + '<span class=\"cnt2\">' + pins.length + '</span></div>'") >= 0, label + ' 置顶组计数（i18n 覆盖卡A 起走 t() 字典）')
       else assert(s.indexOf("' 置顶<span class=\"cnt2\">' + pins.length + '</span></div>'") >= 0, label + ' 置顶组计数')
       assert(s.indexOf(">未分类<span class=\"cnt2\">") < 0, label + ' 未入夹「未分类」分组头/分区计数已移除（同级直显，落点 = 包裹容器）')
@@ -206,21 +206,21 @@ module.exports = {
       assert(s.indexOf("el.querySelector('[data-note]')) el.classList.remove('drag-on'); else el.remove()") >= 0, label + ' dragend 清理拖拽态（摘 drag-on / 移除临时容器）')
     }
   })
-  await t('主题过滤区默认折叠（notes-topic-collapse）：常态「主题 (N)」一行 + 点击展开 + 过滤命中自动展开+计数（四端同步）', () => {
+  await t('标签过滤区默认折叠（notes-topic-collapse）：常态「标签 (N)」一行 + 点击展开 + 过滤命中自动展开+计数（四端同步；0.4.8 主题并入标签，topic* 键名/状态名沿用）', () => {
     const appSrcC = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
     const protoSrcC = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
     // ① client：整区折叠态（缺省折叠，session 记忆不持久化）+ 分组头 sec-toggle 点击展开/收起（置顶折叠组 PINNED_KEY 同款机制）
     assert(/const \[topicSecOpen, setTopicSecOpen\] = React\.useState\(false\)/.test(clientSrc), 'topicSecOpen state（缺省折叠，session 记忆不持久化）')
     assert(clientSrc.indexOf("key: 'sec-topics', className: 'dsh-notes-sec-h dsh-notes-sec-toggle', onClick: () => setTopicSecOpen(!topicSecOpen)") >= 0, '主题区分组头 = sec-toggle 点击展开/收起')
     assert(clientSrc.indexOf("'dsh-notes-caret' + (topicSecOpenEff ? ' open' : '')") >= 0, '分组头 caret 随展开态旋转')
-    // ② 常态只显示「主题 (N)」一行（N=主题数）；过滤激活计数切换为命中主题数（folders「过滤激活=命中数」同口径）
-    assert(clientSrc.indexOf("tt('tree.topicsHeader', { n: filtersActive ? topicHitCount : topicNames.length })") >= 0, '常态「主题 (N)」一行；过滤激活计数=命中主题数（i18n 覆盖卡A 起走 t() 字典）')
-    assert(clientSrc.indexOf('const topicHitCount = Object.keys(topicHitSet).length') >= 0, '命中主题数统计（filtered 口径）')
+    // ② 常态只显示「标签 (N)」一行（N=标签数）；过滤激活计数切换为命中标签数（folders「过滤激活=命中数」同口径）
+    assert(clientSrc.indexOf("tt('tree.topicsHeader', { n: filtersActive ? topicHitCount : topicNames.length })") >= 0, '常态「标签 (N)」一行；过滤激活计数=命中标签数（i18n 覆盖卡A 起走 t() 字典；0.4.8 键名沿用）')
+    assert(clientSrc.indexOf('const topicHitCount = Object.keys(topicHitSet).length') >= 0, '命中标签数统计（filtered 口径）')
     // ③ 过滤命中自动展开：纯计算 OR，不写回 topicSecOpen（清除过滤即恢复手动折叠态）；列表仅展开时渲染
     assert(clientSrc.indexOf('const topicSecOpenEff = topicSecOpen || (filtersActive && topicHitCount > 0)') >= 0, '过滤命中自动展开（纯计算 OR，不写回）')
-    assert(clientSrc.indexOf('if (topicSecOpenEff) topicNames.forEach(tn => {') >= 0, '主题列表折叠门控（仅展开时渲染）')
-    // 列表内行为不变：主题行原地展开/收起子列表（topicExpanded）+ 行尾主题视图过滤图标
-    assert(clientSrc.indexOf('onClick: () => toggleTopicExpanded(tn)') >= 0 && clientSrc.indexOf("key: 'tpk-' + tn") >= 0, '列表内主题行原地展开行为不变')
+    assert(clientSrc.indexOf('if (topicSecOpenEff) topicNames.forEach(tn => {') >= 0, '标签列表折叠门控（仅展开时渲染）')
+    // 列表内行为不变：标签行原地展开/收起子列表（topicExpanded）+ 行尾标签视图过滤图标
+    assert(clientSrc.indexOf('onClick: () => toggleTopicExpanded(tn)') >= 0 && clientSrc.indexOf("key: 'tpk-' + tn") >= 0, '列表内标签行原地展开行为不变')
     // ④ 发布包 lib/client.js 同步（需先跑 scripts/build-dist.cjs）
     for (const k of ['const topicSecOpenEff = topicSecOpen || (filtersActive && topicHitCount > 0)', "tt('tree.topicsHeader', { n: filtersActive ? topicHitCount : topicNames.length })", 'if (topicSecOpenEff) topicNames.forEach(tn => {']) {
       assert(clientPkgSrc.indexOf(k) >= 0, '发布包 lib/client.js 缺「' + k.slice(0, 30) + '…」（需先跑 scripts/build-dist.cjs）')
@@ -230,10 +230,10 @@ module.exports = {
       const s = pair[1], label = pair[0]
       assert(s.indexOf('var topicSecOpen = false;') >= 0, label + ' topicSecOpen 缺省折叠（session 记忆不持久化）')
       assert(s.indexOf('data-tsec="1"') >= 0 && s.indexOf('var tSecOpen = topicSecOpen || (filtering && topicHitCount > 0);') >= 0, label + ' 分组头单行 + 过滤命中自动展开（纯计算不写回）')
-      assert(s.indexOf(label === 'app.html' ? "' ' + t('tree.topicsHeader', { n: filtering ? topicHitCount : topicNames.length })" : "' 主题 (' + (filtering ? topicHitCount : topicNames.length)") >= 0, label + ' 常态「主题 (N)」计数；过滤激活=命中主题数（app 走 t() 字典，i18n 覆盖卡A）')
-      assert(s.indexOf('if (tSecOpen) topicNames.forEach(function (t) {') >= 0, label + ' 主题列表折叠门控（仅展开时渲染）')
+      assert(s.indexOf(label === 'app.html' ? "' ' + t('tree.topicsHeader', { n: filtering ? topicHitCount : topicNames.length })" : "' 标签 (' + (filtering ? topicHitCount : topicNames.length)") >= 0, label + ' 常态「标签 (N)」计数；过滤激活=命中标签数（app 走 t() 字典，i18n 覆盖卡A；0.4.8 主题并入标签）')
+      assert(s.indexOf('if (tSecOpen) topicNames.forEach(function (t) {') >= 0, label + ' 标签列表折叠门控（仅展开时渲染）')
       assert(/topicSecOpen = !topicSecOpen; renderTree\(\); return/.test(s), label + ' 树事件委托：点分组头切换 topicSecOpen')
-      assert(s.indexOf('topicOpen[t] = !topicOpen[t]') >= 0, label + ' 列表内主题行原地展开行为不变（topicOpen）')
+      assert(s.indexOf('topicOpen[t] = !topicOpen[t]') >= 0, label + ' 列表内标签行原地展开行为不变（topicOpen）')
     }
   })
   await t('client 移动到文件夹 + 文件夹右键管理（v2 纯文字标签，开发版 + 发布包同步）', () => {

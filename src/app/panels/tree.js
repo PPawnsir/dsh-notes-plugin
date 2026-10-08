@@ -5,8 +5,10 @@
    「文件视图」（文件夹视图）模式同卡整体拆除：行尾漏斗入口/求值分支/样式移除，树展开即文件夹浏览 */
 function noteRow(n, inFolderCtx) {
   var tail = '';
+  /* 0.4.8（notes-048-topic-tag-merge）：主题并入标签——行尾标签字改吃 effTagsUi（tags ∪ topic 读侧虚拟合并，剔「分类中」占位；无标签回落日期） */
+  var uiTags = inFolderCtx ? effTagsUi(n) : null;
   if (view.type === 'topic' && n.folder) tail += '<span class="fbadge">' + icon('i-folder', 9) + esc(fname(n.folder)) + '</span>';
-  else if (inFolderCtx && n.topic) tail += '<span class="tp" title="' + esc(t('tree.topicTip', { topic: n.topic })) + '">' + esc(n.topic) + '</span>';
+  else if (inFolderCtx && uiTags.length) tail += '<span class="tp" title="' + esc(t('tree.topicTip', { topic: uiTags.join(' · ') })) + '">' + esc(uiTags.join(' · ')) + '</span>';
   else tail += '<span class="tp">' + fmtD(n.updatedAt) + '</span>';
   /* 多选态：行首复选框 + pick 高亮（行点击=勾选，由树事件委托统一处理） */
   return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + (n.hidden === true ? ' hid' : '') + (selMode && selIds[n.id] ? ' pick' : '') + '" data-note="' + n.id + '" draggable="true">'
@@ -157,26 +159,31 @@ function renderTree() {
     h += '<div class="unfiled-hint">' + t('tree.dropOutHint') + '</div>';
     h += '</div>';
   }
-  /* 主题全局过滤器（整区默认折叠：常态只显示「主题 (N)」一行，点分组头展开/收起（topicSecOpen，session 记忆不持久化）；
-     展开行为与置顶折叠组同款：过滤激活且有主题命中时纯计算 OR 自动展开（不写回 topicSecOpen——清除过滤即恢复），计数切换为命中主题数） */
-  var allTopics = {};
-  notes.forEach(function (n) { if (n.topic) allTopics[n.topic] = (allTopics[n.topic] || 0) + 1 });
-  var topicNames = Object.keys(allTopics).sort();
+  /* 标签全局过滤区（0.4.8 三重分类收敛 B 方案 notes-048-topic-tag-merge：主题废弃并入标签——分组数据源 = effTags(n)
+     （tags ∪ {topic} 读侧虚拟合并，磁盘 .md 零改动）；多值分组：一篇可在多个标签下出现（语义自然）；组头计数 = 去重篇数；
+     原「未分类」主题桶消失（topic 空/未分类且无 tags 的笔记不进任何标签组；未入夹区不受影响）；
+     整区默认折叠同旧主题区（topicSecOpen，session 记忆不持久化）；过滤激活命中自动展开（纯计算 OR 不写回，清除过滤即恢复）；
+     变量名沿用 topic*（分组键 = 标签名；状态/键名不动防地震，语义切换注释在此） */
+  var allTags = {};
+  notes.forEach(function (n) { var et = effTags(n); for (var ei = 0; ei < et.length; ei++) { var tg0 = et[ei]; (allTags[tg0] = allTags[tg0] || {})[n.id] = true } });
+  var topicNames = Object.keys(allTags).sort();
   var topicHitSet = {};
-  vis.forEach(function (n) { if (n.topic) topicHitSet[n.topic] = true });
+  vis.forEach(function (n) { var eh = effTags(n); for (var ei2 = 0; ei2 < eh.length; ei2++) topicHitSet[eh[ei2]] = true });
   var topicHitCount = Object.keys(topicHitSet).length;
   var tSecOpen = topicSecOpen || (filtering && topicHitCount > 0);
-  h += '<div class="sec-h" data-tsec="1" style="cursor:pointer"><span class="caret' + (tSecOpen ? ' open' : '') + '">' + icon('i-chev') + '</span>' + icon('i-topic', 11) + ' ' + t('tree.topicsHeader', { n: filtering ? topicHitCount : topicNames.length }) + '<span class="add" style="cursor:default">' + t('tree.crossFolder') + '</span></div>';
-  var topicViewTip = t('tree.topicViewTip');   /* 覆盖卡A：forEach 回调形参 t（主题名）遮蔽全局 t()——tooltip 串前置提升 */
+  h += '<div class="sec-h" data-tsec="1" style="cursor:pointer"><span class="caret' + (tSecOpen ? ' open' : '') + '">' + icon('i-chev') + '</span>' + icon('i-tag', 11) + ' ' + t('tree.topicsHeader', { n: filtering ? topicHitCount : topicNames.length }) + '<span class="add" style="cursor:default">' + t('tree.crossFolder') + '</span></div>';
+  var topicViewTip = t('tree.topicViewTip');   /* 覆盖卡A：forEach 回调形参 t（标签名）遮蔽全局 t()——tooltip 串前置提升 */
+  var classifyingLabel = t('tree.classifying');   /* 「分类中」占位标签显示映射「识别中」（双端同口径；LLM 回填完成即消失） */
   if (tSecOpen) topicNames.forEach(function (t) {
     var on = view.type === 'topic' && view.id === t;
-    var tkids = vis.filter(function (n) { return (n.topic || '') === t });
-    /* 过滤激活自动展开：含命中的主题行强制展开（不写回 topicOpen，清除过滤即恢复）；计数同步切换为命中数 */
+    /* 多值分组：effTags 含该标签即归入（一篇可出现在多个标签组；计数 = 组内去重篇数） */
+    var tkids = vis.filter(function (n) { return effTags(n).indexOf(t) >= 0 });
+    /* 过滤激活自动展开：含命中的标签行强制展开（不写回 topicOpen，清除过滤即恢复）；计数同步切换为命中数 */
     var tOpen = !!topicOpen[t] || (filtering && tkids.length > 0);
-    /* 行主体单击=原地展开/收起该主题子列表（topicOpen，不持久化）；行尾 vfilter 图标=主题视图（跨文件夹过滤） */
+    /* 行主体单击=原地展开/收起该标签子列表（topicOpen，不持久化）；行尾 vfilter 图标=标签视图（跨文件夹过滤） */
     h += '<div class="row topic-row' + (on ? ' on' : '') + '" data-topic="' + esc(t) + '">'
       + '<span class="caret' + (tOpen ? ' open' : '') + '">' + icon('i-chev') + '</span>'
-      + '<span class="ic-slot">' + icon('i-topic', 12) + '</span><span class="nm">' + esc(t) + '</span><span class="n">' + (filtering ? tkids.length : allTopics[t]) + '</span>'
+      + '<span class="ic-slot">' + icon('i-tag', 12) + '</span><span class="nm">' + esc(t === '分类中' ? classifyingLabel : t) + '</span><span class="n">' + (filtering ? tkids.length : Object.keys(allTags[t]).length) + '</span>'
       + '<span class="vfilter' + (on ? ' on' : '') + '" title="' + topicViewTip + '">' + icon('i-filter', 11) + '</span></div>';
     if (tOpen && tkids.length) { h += '<div class="nested">'; tkids.forEach(function (n) { h += noteRow(n, false) }); h += '</div>' }
   });
@@ -223,13 +230,13 @@ $('tree').addEventListener('click', function (ev) {
     if (foldOpen[fid2] === false) ensureSysKids(fid2);
     foldOpen[fid2] = foldOpen[fid2] === false ? true : false; saveFoldOpen(); renderTree(); return
   }
-  /* 主题过滤区分组头：点击=整区展开/收起（topicSecOpen；列表内主题行原地展开行为不变） */
+  /* 标签过滤区分组头（0.4.8：主题并入标签，data-tsec/data-topic 属性名不动防地震）：点击=整区展开/收起（topicSecOpen；列表内标签行原地展开行为不变） */
   var tsec = ev.target.closest('[data-tsec]');
   if (tsec) { topicSecOpen = !topicSecOpen; renderTree(); return }
   var trow = ev.target.closest('[data-topic]');
   if (trow) {
     var t = trow.dataset.topic;
-    /* 主题行：行尾过滤图标=主题视图（跨文件夹过滤）；行主体=原地展开/收起该主题子列表 */
+    /* 标签行：行尾过滤图标=标签视图（跨文件夹过滤，view.type='topic' 键名不动）；行主体=原地展开/收起该标签子列表 */
     if (vf) { view = view.type === 'topic' && view.id === t ? { type: 'all', id: '' } : { type: 'topic', id: t }; render(); return }
     topicOpen[t] = !topicOpen[t]; renderTree(); return
   }

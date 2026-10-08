@@ -247,6 +247,12 @@
   .meta-chip select,.meta-chip input{border:0;background:transparent;color:inherit;font:inherit;outline:0;cursor:pointer}
   .meta-chip input{cursor:text;min-width:0}
   .meta-chip input::placeholder{color:var(--nt3)}
+  /* 0.4.8（notes-048-topic-tag-merge）：标签编辑控件（主题 chip 下线，标签 chip 升级为可增删）——chip 丸 + ✕ 移除 + 添加输入 */
+  .meta-chip.tag-ed{cursor:default}
+  .meta-chip .tchip{display:inline-flex;align-items:center;gap:3px;background:var(--nbg-sel);color:var(--nacc-tx);border-radius:10px;padding:0 6px;font-size:10.5px;line-height:16px}
+  .meta-chip .tchip .tx{cursor:pointer;opacity:.7;font-size:10px;display:inline-flex}
+  .meta-chip .tchip .tx:hover{opacity:1}
+  .meta-chip .tag-add{border:0;background:transparent;color:inherit;font:inherit;font-size:11px;outline:0;padding:0;width:64px;cursor:text}
   .meta-chip select option{color:var(--ntx);background:var(--npanel)}
   .meta-sp{flex:1}
   .meta-act{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--nt3);padding:3px 9px;border-radius:var(--nr-sm);cursor:pointer}

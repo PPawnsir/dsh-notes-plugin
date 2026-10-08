@@ -373,11 +373,13 @@
         // 搜索关键词 <mark> 高亮（防 XSS）已迁 panel/search.js（模块级纯函数 highlight，序位在前对本面板可见）：q 先做正则元字符转义，split 片段全是纯文本、经 React 转义渲染后再包 mark 元素——绝不用 innerHTML 拼原文
         // folderName 已随 popovers/folder-menu.js 迁出（经解构接入；树行尾/视图头/面包屑沿用）
         const q = searchText.trim().toLowerCase()
-        const localFiltered = q ? notes.filter(n => { const hay = ((n.title || '') + ' ' + (n.preview || '') + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ') + ' ' + folderName(n.folder)).toLowerCase(); return hay.indexOf(q) >= 0 }) : notes
+        // 0.4.8（notes-048-topic-tag-merge）：搜索 hay 改吃 effTags（tags ∪ topic 读侧虚拟合并一句覆盖，存量 topic 可搜）
+        const localFiltered = q ? notes.filter(n => { const hay = ((n.title || '') + ' ' + (n.preview || '') + ' ' + effTags(n).join(' ') + ' ' + folderName(n.folder)).toLowerCase(); return hay.indexOf(q) >= 0 }) : notes
         // 搜索结果取 host 全文 + 本地即时的并集，RPC 失败/延迟时本地结果保底
         let filtered = searchIds ? notes.filter(n => searchIds.indexOf(n.id) >= 0 || localFiltered.indexOf(n) >= 0) : localFiltered
         // 视图求值（原型 matches）：view 单选（all/topic）∩ 筛选中心（状态组/类型组，组内 OR 跨组 AND）∩ 搜索
-        if (view.type === 'topic') filtered = filtered.filter(n => (n.topic || '') === view.id)
+        // 0.4.8：view.type='topic' 语义 = 标签视图（view.id = 标签名，键名不动防地震）——多值分组，含该 effTag 即命中
+        if (view.type === 'topic') filtered = filtered.filter(n => effTags(n).indexOf(view.id) >= 0)
         // 日志同权（0.4.3⑦）：无隐身渲染守卫——日志与普通笔记同一过滤管线（类型组勾选「日志」= 只看日志，与普通 kind 过滤同语义）
         filtered = filtered.filter(n => matchFilters(n, filters))
         // 0.4.4-D hidden 纯 UI 遮罩：显隐开关关 → hidden 项从求值结果滤除（树/置顶组/未入夹/主题区同管线一并消失）；
@@ -414,13 +416,14 @@
             return true
           }
         })()
-        // 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0，如仅 topic 命中)，同级 updatedAt 降序；
-        // 命中字段优先取 host notes-search 返回的 matches（全文口径），无则按本地字段估算（preview 仅前 200 字，正文命中可能低估）；无搜索词时退化为 host 序
+        // 相关度档位（搜索体验升级）：标题命中(3) > 标签命中(2) > 正文命中(1) > 其他(0)，同级 updatedAt 降序；
+        // 命中字段优先取 host notes-search 返回的 matches（全文口径），无则按本地字段估算（preview 仅前 200 字，正文命中可能低估）；无搜索词时退化为 host 序；
+        // 0.4.8：标签档本地估算吃 effTags（tags ∪ topic——存量 topic 命中现归标签档）
         function relRank(n) {
           const m = searchMatches[n.id]
           if (m && m.length) { if (m.indexOf('title') >= 0) return 3; if (m.indexOf('tags') >= 0) return 2; if (m.indexOf('body') >= 0) return 1; return 0 }
           if ((n.title || '').toLowerCase().indexOf(q) >= 0) return 3
-          if ((n.tags || []).join(' ').toLowerCase().indexOf(q) >= 0) return 2
+          if (effTags(n).join(' ').toLowerCase().indexOf(q) >= 0) return 2
           if ((n.preview || '').toLowerCase().indexOf(q) >= 0) return 1
           return 0
         }

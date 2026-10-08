@@ -33,7 +33,7 @@ function hasWikiLinks(n) { var c = wikiBodies[n.id]; return extractWikiTargets(c
 function jumpToWikiTarget(target) {
   var n = resolveWikiTarget(target);
   if (!n) { toast(t('wiki.targetNotFound', { target: target })); return; }
-  var vis = (view.type === 'all' || (view.type === 'topic' && (n.topic || '') === view.id))
+  var vis = (view.type === 'all' || (view.type === 'topic' && effTags(n).indexOf(view.id) >= 0))   /* 0.4.8：标签视图判定吃 effTags（tags ∪ topic 虚拟合并） */
     && matchFilters(n, filters);
   if (!vis) { view = { type: 'all', id: '' }; clearFilters(); }   /* 0.4.3⑦：文件视图分支 + maybeReloadForLogs 调用随拆除移除 */
   selectNote(n.id);
