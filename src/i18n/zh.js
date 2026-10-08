@@ -21,8 +21,8 @@ var I18N_ZH = {
   'common.loading': '加载中…',
   'common.refreshed': '已刷新',
   'common.saveFailed': '保存失败：{msg}',
-  'settings.language': '语言',
-  'settings.languageTip': '界面语言（本地记忆，切换即生效）',
+  /* 0.4.8（notes-048-lang-topbar）：语言切换上顶栏——settings.language/languageTip 随设置卡语言项下线摘除；
+     顶栏钮 tooltip 走 topbar.langTip（随当前语言），钮文字 = 当前语言名原生写法（中文/English 硬编码不翻译，同原下拉先例） */
   /* ===== 覆盖卡 A（notes-042-i18n-cov-a）：顶栏 + 侧栏树 + hintbar ===== */
   'topbar.subtitle': '你的笔记库 · 写下的约定与资料可注入 Agent 会话',
   'topbar.refreshTip': '重新拉取列表/文件夹（LLM 标签分类为异步回填，刷新可见）',
@@ -301,7 +301,8 @@ var I18N_ZH = {
   'meta.schedFired': '已触发（单次）',
   'meta.schedNext': '下次 {time}',
   /* ===== 覆盖卡 C（notes-042-i18n-cov-c）：设置卡双语化（app modals/settings.js + client modals/settings.js）=====
-     复用既有 key：common.settings/save/restore/loading/saveFailed、topbar.trash/topbar.trashTip、settings.language/languageTip，不重复建 */
+     复用既有 key：common.settings/save/restore/loading/saveFailed、topbar.trash/topbar.trashTip，不重复建
+     （0.4.8 notes-048-lang-topbar：settings.language/languageTip 随设置卡语言项下线摘除，顶栏钮 tooltip = topbar.langTip） */
   'settings.closeTip': '关闭（Esc；有未落盘改动先自动 flush）',
   'settings.onboardTitle': '概念速览',
   'settings.onboardInject': '· 注入：笔记正文进入 Agent 的系统提示，每次对话都可见（编辑器注入三态开关控制）',
@@ -894,6 +895,7 @@ var I18N_ZH = {
   'topbar.suggest': '建议',
   'topbar.suggestTip': '整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）',
   'topbar.suggestTipN': '整理建议：{n} 条待办治理候选（只提名不执行；含约定体检入口）',
+  'topbar.langTip': '切换语言',   /* 0.4.8（notes-048-lang-topbar）：顶栏语言钮 tooltip（点击直切另一语言，两态循环） */
   'sugg.goConflict': '约定体检…',
   'sugg.goConflictTip': '打开注入管理面板的约定体检区：LLM 两两检测注入中约定的冲突/取代（只提名不执行）',
   'mention.empty': '输入标题关键词搜索笔记',

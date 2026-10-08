@@ -45,6 +45,8 @@
       kbd: [e('rect', { key: 'r', x: 2.5, y: 6, width: 19, height: 12, rx: 2 }), e('path', { key: 'p', d: 'M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6' })],
       // 0.4.8 设置分组导航（notes-048-settings-groups）：「关于」组图标（与 app body.html i-info 同形）
       info: [e('circle', { key: 'c', cx: 12, cy: 12, r: 8.5 }), e('path', { key: 'p', d: 'M12 11v5M12 7.5v.01' })],
+      // 0.4.8（notes-048-lang-topbar）：标题栏语言切换钮图标（与 app body.html i-globe / 原型同形）：地球（圆 + 赤道线 + 子午弧）
+      globe: [e('circle', { key: 'c', cx: 12, cy: 12, r: 8.5 }), e('path', { key: 'p1', d: 'M3.5 12h17' }), e('path', { key: 'p2', d: 'M12 3.5c2.6 2.3 4 5.2 4 8.5s-1.4 6.2-4 8.5c-2.6-2.3-4-5.2-4-8.5S9.4 5.8 12 3.5Z' })],
     }
     // I(name, size?, cls?)：图标 helper——返回 e('svg') 结构（stroke=currentColor 由 CSS 统一，尺寸默认 15px）
     function I(name, size, cls) {

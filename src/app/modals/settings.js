@@ -21,7 +21,7 @@ function setLabelHtml(label, tip, extraHtml) {
      空组（rows 空或全部缺渲染）整组隐身——组定义保留为登记槽，有节入驻即自动出现在 rail/chips/组壳。
      红线：节内内容与组内节相对顺序不动（0.4.7-B sticky 标题/描述收折/LLM 区零回归）；组块按本表序渲染。 */
 var SET_GROUPS = [
-  { id: 'general',  icon: 'i-gear',    labelKey: 'settings.group.general',  rows: ['language'] },                                        /* 常规：主题/语言/面板入口类 */
+  { id: 'general',  icon: 'i-gear',    labelKey: 'settings.group.general',  rows: [] },                                                  /* 常规：主题/语言/面板入口类（0.4.8 notes-048-lang-topbar：语言节随切换上顶栏下线——空组登记槽保留） */
   { id: 'editor',   icon: 'i-note',    labelKey: 'settings.group.editor',   rows: [] },                                                  /* 编辑器：自动保存/富文本/双链类（待新节登记） */
   { id: 'inject',   icon: 'i-bolt',    labelKey: 'settings.group.inject',   rows: ['stale', 'budget', 'injprev', 'injmgr'] },            /* 检索与注入：搜索/注入/挂载类 */
   { id: 'dispatch', icon: 'i-clock',   labelKey: 'settings.group.dispatch', rows: [] },                                                  /* 派发与调度（待新节登记） */
@@ -130,8 +130,8 @@ function openSettings() {
     /* 0.4.8：节登记表（键 = 节 id = SET_GROUPS.rows 登记键 = 行壳 data-sec 锚）；节内 HTML 保持 0.4.7-B 原文零改动（仅行壳补 data-sec）。
        渲染顺序不再由本登记顺序决定——组块按 SET_GROUPS 表序输出（组内节相对顺序不动） */
     var setSecs = {};
-    /* i18n 语言项（notes-042-i18n-mech）：localStorage 本地记忆、切换即生效（setLang 全量 render）；不走 settings.json，不参与 dirty 跟踪 */
-    setSecs.language = '<div class="set-row" data-sec="language">' + setLabelHtml(t('settings.language'), t('settings.languageTip')) + '<div class="set-ctrl"><select class="minput" id="setLang"><option value="zh">中文</option><option value="en">English</option></select></div></div>';
+    /* 0.4.8（notes-048-lang-topbar）：语言设置项下线——切换入口上顶栏（#btnLang 两态直切，panels/topbar.js）；
+       setLang 机制本身不动（kernel/helpers.js i18n-mech 块：localStorage 持久化 + 全量 render），语言态仍不走 settings.json、不参与 dirty */
     setSecs.llm = '<div class="set-row" data-sec="llm">' + setLabelHtml(t('settings.llm'), t('settings.llmTip')) + '<div class="set-ctrl">' + llmCtrl + '</div></div>';
     /* 0.4.7-B⑦：整理长度上限行（LLM 区紧随模型行；0 = 按所配模型自动，说明文字带生效值） */
     setSecs.organizemax = '<div class="set-row" data-sec="organizemax">' + setLabelHtml(t('settings.organizeMax'), t('settings.organizeMaxTip', { eff: orgMaxEff })) + '<div class="set-ctrl"><input class="minput" id="setOrgMax" type="number" min="0" step="1000" style="width:110px" value="' + orgMaxRaw + '"></div></div>';
@@ -165,11 +165,8 @@ function openSettings() {
     /* 0.4.7-B①b：说明 ⓘ 展开/收拢接线（长说明初态 .cl 收折两行；点击切换，按钮原生可聚焦） */
     $('setBody').querySelectorAll('.sx').forEach(function (el) { el.onclick = function () { var s = el.parentElement.querySelector('.s'); if (s) s.classList.toggle('cl') } });
     setNavWire();   /* 0.4.8（notes-048-settings-groups）：分组导航接线（rail/chips 点击定位 + 滚动反高亮） */
-    /* i18n 语言项（notes-042-i18n-mech + cov-c）：回显当前语言态；切换 = setLang 持久化 + 全量 render +
-       本卡就地重渲染（render() 不重渲已开 modal：先兜底 flush 未落盘改动，重跑 openSettings 按新语言重建，
-       滚动位置经 modalBackScroll 一次性还原——与二级面板返回同口径） */
-    $('setLang').value = NOTES_LANG;
-    $('setLang').onchange = function () { setLang(this.value); flushSettingsPending(); modalBackScroll = $('modal') ? $('modal').scrollTop : 0; openSettings() };
+    /* 0.4.8（notes-048-lang-topbar）：语言项下线——原 #setLang onchange 就地重渲染链路（setLang+flush+重跑 openSettings+滚动还原）
+       随切换入口上顶栏撤除（顶栏钮点击时设置卡必已关闭——modal 遮罩挡住顶栏，打开态切语言场景消失） */
     var sel = $('setLlmSel');
     if (sel) sel.onchange = function () {
       var v = this.value;

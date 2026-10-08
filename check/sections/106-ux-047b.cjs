@@ -49,7 +49,7 @@ module.exports = {
     // app：setLabelHtml 生成器 + 阈值 + 接线
     assert(appSettings.indexOf('function setLabelHtml(label, tip, extraHtml)') >= 0 && appSettings.indexOf("tip.length > 60") >= 0, 'app setLabelHtml + 60 字阈值')
     assert(appSettings.indexOf("querySelectorAll('.sx')") >= 0 && appSettings.indexOf("s.classList.toggle('cl')") >= 0, 'app ⓘ 展开/收拢接线')
-    assert(appSettings.indexOf('setLabelHtml(t(\'settings.language\'), t(\'settings.languageTip\'))') >= 0, 'app 行全部改走生成器（抽查语言行）')
+    assert(appSettings.indexOf('setLabelHtml(t(\'settings.stale\'), t(\'settings.staleTip\'))') >= 0, 'app 行全部改走生成器（抽查过期提醒行；0.4.8 前抽查语言行——语言节随 notes-048-lang-topbar 下线改锚）')
     // client：SettingsRowLabel 组件同款口径
     assert(cliSettings.indexOf('function SettingsRowLabel(props)') >= 0 && cliSettings.indexOf('props.sub.length > 60') >= 0, 'client SettingsRowLabel + 60 字阈值')
     assert(cliSettings.indexOf('e(SettingsRowLabel, { label: row.label, sub: row.sub })') >= 0, 'client 行渲染改走组件')

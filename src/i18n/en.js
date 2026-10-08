@@ -21,8 +21,8 @@ var I18N_EN = {
   'common.loading': 'Loading…',
   'common.refreshed': 'Refreshed',
   'common.saveFailed': 'Save failed: {msg}',
-  'settings.language': 'Language',
-  'settings.languageTip': 'UI language (remembered locally, applies immediately)',
+  /* 0.4.8 (notes-048-lang-topbar): language switch moved to the topbar — settings.language/languageTip removed with the settings row;
+     topbar button tooltip uses topbar.langTip (follows current language); button label = current language's native name (hardcoded) */
   /* ===== Coverage card A (notes-042-i18n-cov-a): topbar + sidebar tree + hintbar ===== */
   'topbar.subtitle': 'Your note library · conventions and references you write can be injected into Agent sessions',
   'topbar.refreshTip': 'Reload the list and folders (LLM tag classification backfills asynchronously; refresh to see it)',
@@ -301,7 +301,8 @@ var I18N_EN = {
   'meta.schedFired': 'Fired (one-shot)',
   'meta.schedNext': 'Next {time}',
   /* ===== Coverage card C (notes-042-i18n-cov-c): settings card bilingual (app modals/settings.js + client modals/settings.js) =====
-     Reuses existing keys: common.settings/save/restore/loading/saveFailed, topbar.trash/topbar.trashTip, settings.language/languageTip */
+     Reuses existing keys: common.settings/save/restore/loading/saveFailed, topbar.trash/topbar.trashTip
+     (0.4.8 notes-048-lang-topbar: settings.language/languageTip removed with the settings row; topbar tooltip = topbar.langTip) */
   'settings.closeTip': 'Close (Esc; unsaved changes are auto-flushed first)',
   'settings.onboardTitle': 'Concepts at a glance',
   'settings.onboardInject': '· Injection: note bodies go into the Agent system prompt, visible in every conversation (controlled by the editor injection three-state toggle)',
@@ -890,6 +891,7 @@ var I18N_EN = {
   'topbar.suggest': 'Suggest',
   'topbar.suggestTip': 'Organize suggestions + convention checkup: quick-note archiving / stale cleanup / mount governance candidates (nominations only, never auto-run)',
   'topbar.suggestTipN': 'Organize suggestions: {n} pending governance candidates (nominations only; includes convention checkup entry)',
+  'topbar.langTip': 'Switch language',   /* 0.4.8 (notes-048-lang-topbar): topbar language button tooltip (click toggles zh/en directly) */
   'sugg.goConflict': 'Convention checkup…',
   'sugg.goConflictTip': 'Open the convention checkup section in the injection manager: LLM pairwise conflict/supersede detection over injected conventions (nominations only)',
   'mention.empty': 'Type a title keyword to search notes',

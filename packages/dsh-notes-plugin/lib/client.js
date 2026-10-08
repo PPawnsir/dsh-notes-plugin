@@ -194,8 +194,8 @@ window.__ModuleLoader__.load({
       'common.loading': '加载中…',
       'common.refreshed': '已刷新',
       'common.saveFailed': '保存失败：{msg}',
-      'settings.language': '语言',
-      'settings.languageTip': '界面语言（本地记忆，切换即生效）',
+      /* 0.4.8（notes-048-lang-topbar）：语言切换上顶栏——settings.language/languageTip 随设置卡语言项下线摘除；
+         顶栏钮 tooltip 走 topbar.langTip（随当前语言），钮文字 = 当前语言名原生写法（中文/English 硬编码不翻译，同原下拉先例） */
       /* ===== 覆盖卡 A（notes-042-i18n-cov-a）：顶栏 + 侧栏树 + hintbar ===== */
       'topbar.subtitle': '你的笔记库 · 写下的约定与资料可注入 Agent 会话',
       'topbar.refreshTip': '重新拉取列表/文件夹（LLM 标签分类为异步回填，刷新可见）',
@@ -474,7 +474,8 @@ window.__ModuleLoader__.load({
       'meta.schedFired': '已触发（单次）',
       'meta.schedNext': '下次 {time}',
       /* ===== 覆盖卡 C（notes-042-i18n-cov-c）：设置卡双语化（app modals/settings.js + client modals/settings.js）=====
-         复用既有 key：common.settings/save/restore/loading/saveFailed、topbar.trash/topbar.trashTip、settings.language/languageTip，不重复建 */
+         复用既有 key：common.settings/save/restore/loading/saveFailed、topbar.trash/topbar.trashTip，不重复建
+         （0.4.8 notes-048-lang-topbar：settings.language/languageTip 随设置卡语言项下线摘除，顶栏钮 tooltip = topbar.langTip） */
       'settings.closeTip': '关闭（Esc；有未落盘改动先自动 flush）',
       'settings.onboardTitle': '概念速览',
       'settings.onboardInject': '· 注入：笔记正文进入 Agent 的系统提示，每次对话都可见（编辑器注入三态开关控制）',
@@ -1067,6 +1068,7 @@ window.__ModuleLoader__.load({
       'topbar.suggest': '建议',
       'topbar.suggestTip': '整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）',
       'topbar.suggestTipN': '整理建议：{n} 条待办治理候选（只提名不执行；含约定体检入口）',
+      'topbar.langTip': '切换语言',   /* 0.4.8（notes-048-lang-topbar）：顶栏语言钮 tooltip（点击直切另一语言，两态循环） */
       'sugg.goConflict': '约定体检…',
       'sugg.goConflictTip': '打开注入管理面板的约定体检区：LLM 两两检测注入中约定的冲突/取代（只提名不执行）',
       'mention.empty': '输入标题关键词搜索笔记',
@@ -1094,8 +1096,8 @@ window.__ModuleLoader__.load({
       'common.loading': 'Loading…',
       'common.refreshed': 'Refreshed',
       'common.saveFailed': 'Save failed: {msg}',
-      'settings.language': 'Language',
-      'settings.languageTip': 'UI language (remembered locally, applies immediately)',
+      /* 0.4.8 (notes-048-lang-topbar): language switch moved to the topbar — settings.language/languageTip removed with the settings row;
+         topbar button tooltip uses topbar.langTip (follows current language); button label = current language's native name (hardcoded) */
       /* ===== Coverage card A (notes-042-i18n-cov-a): topbar + sidebar tree + hintbar ===== */
       'topbar.subtitle': 'Your note library · conventions and references you write can be injected into Agent sessions',
       'topbar.refreshTip': 'Reload the list and folders (LLM tag classification backfills asynchronously; refresh to see it)',
@@ -1374,7 +1376,8 @@ window.__ModuleLoader__.load({
       'meta.schedFired': 'Fired (one-shot)',
       'meta.schedNext': 'Next {time}',
       /* ===== Coverage card C (notes-042-i18n-cov-c): settings card bilingual (app modals/settings.js + client modals/settings.js) =====
-         Reuses existing keys: common.settings/save/restore/loading/saveFailed, topbar.trash/topbar.trashTip, settings.language/languageTip */
+         Reuses existing keys: common.settings/save/restore/loading/saveFailed, topbar.trash/topbar.trashTip
+         (0.4.8 notes-048-lang-topbar: settings.language/languageTip removed with the settings row; topbar tooltip = topbar.langTip) */
       'settings.closeTip': 'Close (Esc; unsaved changes are auto-flushed first)',
       'settings.onboardTitle': 'Concepts at a glance',
       'settings.onboardInject': '· Injection: note bodies go into the Agent system prompt, visible in every conversation (controlled by the editor injection three-state toggle)',
@@ -1963,6 +1966,7 @@ window.__ModuleLoader__.load({
       'topbar.suggest': 'Suggest',
       'topbar.suggestTip': 'Organize suggestions + convention checkup: quick-note archiving / stale cleanup / mount governance candidates (nominations only, never auto-run)',
       'topbar.suggestTipN': 'Organize suggestions: {n} pending governance candidates (nominations only; includes convention checkup entry)',
+      'topbar.langTip': 'Switch language',   /* 0.4.8 (notes-048-lang-topbar): topbar language button tooltip (click toggles zh/en directly) */
       'sugg.goConflict': 'Convention checkup…',
       'sugg.goConflictTip': 'Open the convention checkup section in the injection manager: LLM pairwise conflict/supersede detection over injected conventions (nominations only)',
       'mention.empty': 'Type a title keyword to search notes',
@@ -2292,6 +2296,8 @@ window.__ModuleLoader__.load({
       kbd: [e('rect', { key: 'r', x: 2.5, y: 6, width: 19, height: 12, rx: 2 }), e('path', { key: 'p', d: 'M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6' })],
       // 0.4.8 设置分组导航（notes-048-settings-groups）：「关于」组图标（与 app body.html i-info 同形）
       info: [e('circle', { key: 'c', cx: 12, cy: 12, r: 8.5 }), e('path', { key: 'p', d: 'M12 11v5M12 7.5v.01' })],
+      // 0.4.8（notes-048-lang-topbar）：标题栏语言切换钮图标（与 app body.html i-globe / 原型同形）：地球（圆 + 赤道线 + 子午弧）
+      globe: [e('circle', { key: 'c', cx: 12, cy: 12, r: 8.5 }), e('path', { key: 'p1', d: 'M3.5 12h17' }), e('path', { key: 'p2', d: 'M12 3.5c2.6 2.3 4 5.2 4 8.5s-1.4 6.2-4 8.5c-2.6-2.3-4-5.2-4-8.5S9.4 5.8 12 3.5Z' })],
     }
     // I(name, size?, cls?)：图标 helper——返回 e('svg') 结构（stroke=currentColor 由 CSS 统一，尺寸默认 15px）
     function I(name, size, cls) {
@@ -5070,7 +5076,7 @@ window.__ModuleLoader__.load({
     //           settingsSetQuiet / setPersistMerge / saveSettings*（Llm/Stale/MaxDepth/Budget/UsageBudget/LlmManual/LogWeek/LogRetention）/
     //           SET_NUM_FIELDS / SET_GROUPS / settingsGroupJump / saveSettingsAll / restoreSettingsAll / flushSettingsPending / closeSettings / SettingsModal
     // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/format.js（fmtTok）、kernel/icons.js（e/I）、kernel/bus.js（showToast）、
-    //        kernel/i18n.js（langStore/useT/setLang——语言项，notes-042-i18n-mech）、
+    //        kernel/i18n.js（useT——本卡文案 tt() 订阅自渲染；0.4.8 notes-048-lang-topbar：语言项下线，setLang 切换入口移 panels/panel/chrome.js 标题栏）、
     //        modals/export.js + export-single.js + import.js + trash.js + prune.js + suggest.js + inject-preview.js + inject-manager.js + memory-guide.js
     //        + cheatsheet.js（设置行入口 open*/do*/memViewNote 与 setMemStatus——序位在前可见，非横向引用）
     // state 托管：open/data/llmProvider/llmModel/stale/budget/usageData/usageBudget/saving/logWeek/logRetention
@@ -5282,7 +5288,7 @@ window.__ModuleLoader__.load({
     // 空组整组隐身（rail/chips/组壳不渲染）——组定义保留为登记槽，有节入驻即自动出现。
     // 红线：节内内容与组内节相对顺序不动（0.4.7-B sticky 标题/描述收折/LLM 区零回归）；组块按本表序渲染。
     const SET_GROUPS = [
-      { id: 'general', icon: 'gear', labelKey: 'settings.group.general', rows: ['language'] },   // 常规：主题/语言/面板入口类
+      { id: 'general', icon: 'gear', labelKey: 'settings.group.general', rows: [] },   // 常规：主题/语言/面板入口类（0.4.8 notes-048-lang-topbar：语言节随切换上标题栏下线——空组登记槽保留）
       { id: 'editor', icon: 'note', labelKey: 'settings.group.editor', rows: [] },   // 编辑器：自动保存/富文本/双链类（待新节登记）
       { id: 'inject', icon: 'bolt', labelKey: 'settings.group.inject', rows: ['stale', 'budget', 'injprev', 'injmgr'] },   // 检索与注入：搜索/注入/挂载类
       { id: 'dispatch', icon: 'clock', labelKey: 'settings.group.dispatch', rows: [] },   // 派发与调度（待新节登记）
@@ -5409,8 +5415,8 @@ window.__ModuleLoader__.load({
       const setLogWeek = store.modal.settings.useSel(s => s.logWeek)
       const setLogRetention = store.modal.settings.useSel(s => s.logRetention)
       const setOrgMax = store.modal.settings.useSel(s => s.orgMax)
-      // i18n 语言态（notes-042-i18n-mech）：订阅 langStore——切换语言本卡即时重渲染为新语言；tt = 本组件 t()
-      const lang = langStore.useSel(s => s.lang)
+      // i18n 语言态（notes-042-i18n-mech）：tt = useT() 订阅 langStore——切换语言本卡即时重渲染为新语言
+      // （0.4.8 notes-048-lang-topbar：语言项下线，切换入口上标题栏；本卡不再直读 lang 值，useT 订阅已够重渲染）
       const tt = useT()
       // maxDepth/snap/inflight 滞留 whole.js（check 锚定 useState 声明原文），经 props 注入
       const setMaxDepth = props.setMaxDepth
@@ -5528,14 +5534,9 @@ window.__ModuleLoader__.load({
             : e('span', { className: 'dsh-notes-settings-label-s' }, usageData && usageData.error ? tt('settings.usageLoadFailed') : tt('common.loading')))
         // 月度预算提醒控件：数值输入（tokens/月），失焦/Enter 即保存；0 = 关闭提醒
         const usageBudgetControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1000, value: setUsageBudget, 'data-tooltip': tt('settings.usageBudgetTipT'), onChange: (ev) => setSetUsageBudget(ev.target.value), onBlur: saveSettingsUsageBudget, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsUsageBudget() } })
-        // i18n 语言项控件（notes-042-i18n-mech）：localStorage 本地记忆、选择即生效（setLang → langStore 广播全量重渲染）；
-        // 不走 settings.json，不参与 dirty 状态机
-        const langControl = e('select', { className: 'dsh-notes-settings-select', value: lang, 'data-tooltip': tt('settings.languageTip'), onChange: (ev) => setLang(ev.target.value) },
-          e('option', { value: 'zh' }, '中文'),
-          e('option', { value: 'en' }, 'English'))
         // 通用设置项行列表：以后加设置项只需往这里加行（0.4.8 起同步登记 SET_GROUPS.rows，check 111 双向一致断言兜底）
+        // （0.4.8 notes-048-lang-topbar：语言行下线——切换入口上标题栏；语言态本地偏好仍不入 settings.json、不参与 dirty）
         const settingsRows = [
-          { key: 'language', label: tt('settings.language'), sub: tt('settings.languageTip'), control: langControl },
           { key: 'llm', label: tt('settings.llm'), sub: tt('settings.llmTip'), control: llmControl },
           // 0.4.7-B⑦：整理长度上限行（LLM 区紧随模型行；sub 带生效值 = settings-get 增带键，零新 RPC）
           { key: 'organizemax', label: tt('settings.organizeMax'), sub: tt('settings.organizeMaxTip', { eff: orgMaxEff }), control: orgMaxControl },
@@ -8062,7 +8063,8 @@ window.__ModuleLoader__.load({
     // provides: usePanelChrome（面板位置/尺寸/侧栏宽 state + 持久化/居中 effect + onTitlebarMouseDown/onResizeMouseDown/onSplitterMouseDown/resetSideW +
     //           titlebarEl/splitterEl/resizeEl JSX）
     // needs: kernel/state.js（setShowHelp 转发别名 + store.modal.suggest 徽标订阅）、kernel/persist.js（loadSideW/saveSideW/SIDE_W_DEFAULT/clampSideW/entryMode/setEntryMode）、
-    //        kernel/drag.js（drag）、kernel/icons.js（e/I）、kernel/bus.js（noteRefreshListeners）、modals/archive.js（openArchive）+
+    //        kernel/drag.js（drag）、kernel/icons.js（e/I）、kernel/bus.js（noteRefreshListeners）、kernel/i18n.js（langStore/setLang——0.4.8 语言切换钮，notes-048-lang-topbar）、
+    //        modals/archive.js（openArchive）+
     //        modals/suggest.js（openSuggest/refreshSuggestBadge——0.4.6-C 顶栏「建议」入口，序位在前）——序位在前；
     //        open/close/showHelp 经 hook 入参注入（装配层回填：open 主面板开合态、close 滞留装配层、showHelp 自 popovers/help.js 解构）
     // state 托管：pos/size/sideW/sideDrag 留 hook 内 useState（与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）
@@ -8070,6 +8072,9 @@ window.__ModuleLoader__.load({
         const open = args.open, close = args.close, showHelp = args.showHelp
         // i18n（notes-042-i18n-cov-a 覆盖卡A）：tt = useT()——订阅 langStore，切语言本 hook（随主面板）自渲染；标题栏/分隔条/resize 文案全走 tt()
         const tt = useT()
+        // 0.4.8（notes-048-lang-topbar）：语言切换上标题栏（建议钮后）——当前语言态读 langStore（切换本 hook 自渲染）；
+        // 点击两态直切复用 setLang 既有链路（localStorage 持久化 + langStore 广播全量重渲染）
+        const lang = langStore.useSel(s => s.lang)
         const [pos, setPos] = React.useState({ x: null, y: null })
         const [size, setSize] = React.useState({ width: 920, height: 640 })
         // 侧栏宽度：分隔条拖拽调整（clamp 200px–60% 面板宽），localStorage 记忆（SIDE_W_KEY），双击分隔条重置缺省
@@ -8129,6 +8134,8 @@ window.__ModuleLoader__.load({
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setEntryMode(entryMode === 'header' ? 'fab' : 'header'), 'data-tooltip': tt('chrome.entryModeTip') }, I('swap', 13)),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: openArchive, 'data-tooltip': tt('topbar.archiveTip') }, tt('topbar.archive')),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => openSuggest(), 'data-tooltip': suggestBadge > 0 ? tt('topbar.suggestTipN', { n: suggestBadge }) : tt('topbar.suggestTip') }, I('sparkle', 13), tt('topbar.suggest'), suggestBadge > 0 ? e('span', { className: 'dsh-notes-tcnt' }, String(suggestBadge)) : null),
+              // 0.4.8（notes-048-lang-topbar）：语言钮——🌐 图标 + 当前语言名（中文/English 原生写法不翻译）；窄宽（<560px 视口）文字经 .dsh-notes-tb-lang 收起只留图标（tooltip 保留）
+              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setLang(lang === 'en' ? 'zh' : 'en'), 'data-tooltip': tt('topbar.langTip'), 'aria-label': tt('topbar.langTip') }, I('globe', 13), e('span', { className: 'dsh-notes-tb-lang' }, lang === 'en' ? 'English' : '中文')),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setShowHelp(!showHelp), 'data-tooltip': tt('chrome.help') }, '?'),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: close, 'data-tooltip': tt('common.close') }, '×')))
         const splitterEl = e('div', { className: 'dsh-notes-splitter dsh-nt' + (sideDrag ? ' on' : ''), onMouseDown: onSplitterMouseDown, onDoubleClick: resetSideW, 'data-tooltip': tt('side.splitterTip') })

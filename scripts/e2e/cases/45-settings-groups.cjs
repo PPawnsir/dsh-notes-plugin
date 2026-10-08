@@ -1,8 +1,9 @@
 'use strict'
 /* 0.4.8 用例㊺（notes-048-settings-groups）app 端设置弹窗分组导航真机矩阵：
- * ① 七组渲染齐：非空 5 组 rail（图标+组名，冻结序）+ 5 组壳 + 17 节 data-sec 全覆盖（空组 editor/dispatch 隐身）；
+ * ① 七组渲染齐：非空 4 组 rail（图标+组名，冻结序）+ 4 组壳 + 16 节 data-sec 全覆盖（空组 general/editor/dispatch 隐身；
+ *   0.4.8 notes-048-lang-topbar：语言节随切换上顶栏下线——16 节 / 常规组转空槽，首可见组=检索与注入）；
  * ② 点击定位：rail「关于」→ 滚动容器（#modal）定位到组壳（吸顶标题 48px 补偿）+ aria-current；
- * ③ 滚动反高亮：滚顶=常规 on / 滚底=关于 on；
+ * ③ 滚动反高亮：滚顶=检索与注入 on / 滚底=关于 on；
  * ④ 窄宽退化：500px 视口 → rail 隐 chips 显，chip 点击同款定位 + on；
  * ⑤ 0.4.7-B 零回归：滚到底 sticky「保存」恒见 + 长说明 .s.cl 收折仍在。
  * 隔离纪律：纯 UI 演习零写盘（仅开关设置卡 + 滚动），finally 关 context。 */
@@ -16,7 +17,7 @@ module.exports = {
         await page.waitForSelector('#setBody .set-row', { timeout: 8000 })
         await H.waitFor(page, '设置卡落定（LLM 区渲染）', async p => p.evaluate(() => !!document.querySelector('#setOrgMax')))
 
-        /* ===== ① 七组渲染齐（非空 5 组；空组登记槽隐身）===== */
+        /* ===== ① 七组渲染齐（非空 4 组；空组登记槽隐身——0.4.8 语言节下线后常规组转入）===== */
         const nav = await page.evaluate(() => {
           var rail = Array.prototype.slice.call(document.querySelectorAll('#setBody .set-rail-item'))
           return {
@@ -33,13 +34,13 @@ module.exports = {
             navAria: document.querySelector('#setBody .set-rail').getAttribute('aria-label'),
           }
         })
-        H.t('① 七组渲染齐：rail 5 项（图标+组名，冻结序 常规/检索与注入/AI/数据与存储/关于）',
-          nav.railTexts.join('|') === '常规|检索与注入|AI|数据与存储|关于' && nav.railIcons.every(Boolean), () => JSON.stringify(nav.railTexts))
-        H.t('① rail/组壳 data-g 同序 [general,inject,ai,data,about]（空组 editor/dispatch 隐身）',
-          nav.railGs.join() === 'general,inject,ai,data,about' && nav.groupGs.join() === 'general,inject,ai,data,about', () => nav.railGs.join() + ' / ' + nav.groupGs.join())
-        H.t('① 组头 5 个与 rail 同文 + 17 节 data-sec 全覆盖', nav.groupTs.join('|') === '常规|检索与注入|AI|数据与存储|关于' && nav.secs === 17, () => nav.groupTs.join('|') + ' · 节数 ' + nav.secs)
+        H.t('① 七组渲染齐：rail 4 项（图标+组名，冻结序 检索与注入/AI/数据与存储/关于）',
+          nav.railTexts.join('|') === '检索与注入|AI|数据与存储|关于' && nav.railIcons.every(Boolean), () => JSON.stringify(nav.railTexts))
+        H.t('① rail/组壳 data-g 同序 [inject,ai,data,about]（空组 general/editor/dispatch 隐身）',
+          nav.railGs.join() === 'inject,ai,data,about' && nav.groupGs.join() === 'inject,ai,data,about', () => nav.railGs.join() + ' / ' + nav.groupGs.join())
+        H.t('① 组头 4 个与 rail 同文 + 16 节 data-sec 全覆盖', nav.groupTs.join('|') === '检索与注入|AI|数据与存储|关于' && nav.secs === 16, () => nav.groupTs.join('|') + ' · 节数 ' + nav.secs)
         H.t('① rail 导航语义（role=navigation + aria-label 设置分组）+ 宽屏 chips 隐身/rail 显',
-          nav.navRole === 'navigation' && nav.navAria === '设置分组' && nav.chips === 5 && nav.chipsShown === 'none' && nav.railShown !== 'none', () => nav.navRole + '/' + nav.navAria + '/chips:' + nav.chipsShown)
+          nav.navRole === 'navigation' && nav.navAria === '设置分组' && nav.chips === 4 && nav.chipsShown === 'none' && nav.railShown !== 'none', () => nav.navRole + '/' + nav.navAria + '/chips:' + nav.chipsShown)
 
         /* ===== ② 点击定位：rail「关于」（末组）→ 触底滚足 + 组壳入视口 + on + aria-current（触底锁末组：末组高度不足上顶 48px 时滚到最大滚动位） ===== */
         await page.click('#setBody .set-rail-item[data-g="about"]')
@@ -67,11 +68,11 @@ module.exports = {
 
         /* ===== ③ 滚动反高亮 ===== */
         await page.evaluate(() => { document.querySelector('#modal').scrollTop = 0 })
-        await H.waitFor(page, '滚顶 → 常规 on', async p => p.evaluate(() => {
-          var it = document.querySelector('.set-rail-item[data-g="general"]')
+        await H.waitFor(page, '滚顶 → 检索与注入 on', async p => p.evaluate(() => {
+          var it = document.querySelector('.set-rail-item[data-g="inject"]')
           return it.classList.contains('on') && !document.querySelector('.set-rail-item[data-g="about"]').classList.contains('on')
         }))
-        H.t('③ 滚动反高亮：滚顶 → 当前组=常规', true)
+        H.t('③ 滚动反高亮：滚顶 → 当前组=检索与注入（首可见组兜底；0.4.8 常规组隐身）', true)
         await page.evaluate(() => { document.querySelector('#modal').scrollTop = document.querySelector('#modal').scrollHeight })
         await H.waitFor(page, '滚底 → 关于 on', async p => p.evaluate(() =>
           document.querySelector('.set-rail-item[data-g="about"]').classList.contains('on')))

@@ -23,6 +23,8 @@
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/></symbol>
   <!-- 顶栏「切换主题」图标（窄宽收图标态用，notes-041-topbar-400）：明暗对半圆 -->
   <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17"/></symbol>
+  <!-- 0.4.8（notes-048-lang-topbar）：顶栏语言切换钮图标（与 client icons.js globe / 原型同形）：地球（圆 + 赤道线 + 子午弧） -->
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.6 2.3 4 5.2 4 8.5s-1.4 6.2-4 8.5c-2.6-2.3-4-5.2-4-8.5S9.4 5.8 12 3.5Z"/></symbol>
   <symbol id="i-code-block" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></symbol>
   <symbol id="i-bold" viewBox="0 0 24 24"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></symbol>
   <symbol id="i-italic" viewBox="0 0 24 24"><path d="M19 4h-9M14 20H5M15 4 9 20"/></symbol>
@@ -49,11 +51,14 @@
   <div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>dsh-notes</b>
   <span class="sub" id="topSub">你的笔记库 · 写下的约定与资料可注入 Agent 会话</span>
   <span class="sp"></span>
-  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（建议/切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新保文字；
+  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（建议/语言/切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新保文字；
        0.4.7-B②a（notes-047-ux）：「速记合并」顶栏按钮撤除——与建议器首段「速记组 → 去归档」入口重复（0 组也占主行动位）；归档预览入口 = 顶栏「建议」→ 速记组段 -->
   <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg><span class="tb-t">刷新</span></button>
   <!-- 0.4.6-C（notes-046-ux-discovery）：治理入口提升到顶栏——整理建议 + 约定体检（建议框底栏）；有待办候选时 #suggestBd 计数徽标点亮（notes-suggest 六段合计） -->
   <button class="tbtn ico-only" id="btnSuggest" title="整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）"><svg class="ic"><use href="#i-sparkle"/></svg><span class="tb-t">建议</span><span class="cnt" id="suggestBd" style="display:none"></span></button>
+  <!-- 0.4.8（notes-048-lang-topbar）：语言切换上顶栏——🌐 图标 + 当前语言名（中文/English 原生写法不翻译），点击两态直切（复用 setLang 既有链路：localStorage 持久化 + 全量 render）；
+       静态缺省中文态文案，renderChrome 按当前语言态重写 title/文字；设置卡语言项同步下线 -->
+  <button class="tbtn ico-only" id="btnLang" title="切换语言"><svg class="ic"><use href="#i-globe"/></svg><span class="tb-t">中文</span></button>
   <button class="tbtn ico-only" id="btnTheme" title="切换主题（暗色/亮色）"><svg class="ic"><use href="#i-theme"/></svg><span class="tb-t">切换主题</span></button>
   <a class="tbtn ico-only" href="/" id="btnHome" title="返回 DSH 主界面"><svg class="ic"><use href="#i-home"/></svg><span class="tb-t">DSH 主界面</span></a>
 </div>

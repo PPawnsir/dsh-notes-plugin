@@ -5,7 +5,7 @@
     //           settingsSetQuiet / setPersistMerge / saveSettings*（Llm/Stale/MaxDepth/Budget/UsageBudget/LlmManual/LogWeek/LogRetention）/
     //           SET_NUM_FIELDS / SET_GROUPS / settingsGroupJump / saveSettingsAll / restoreSettingsAll / flushSettingsPending / closeSettings / SettingsModal
     // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/format.js（fmtTok）、kernel/icons.js（e/I）、kernel/bus.js（showToast）、
-    //        kernel/i18n.js（langStore/useT/setLang——语言项，notes-042-i18n-mech）、
+    //        kernel/i18n.js（useT——本卡文案 tt() 订阅自渲染；0.4.8 notes-048-lang-topbar：语言项下线，setLang 切换入口移 panels/panel/chrome.js 标题栏）、
     //        modals/export.js + export-single.js + import.js + trash.js + prune.js + suggest.js + inject-preview.js + inject-manager.js + memory-guide.js
     //        + cheatsheet.js（设置行入口 open*/do*/memViewNote 与 setMemStatus——序位在前可见，非横向引用）
     // state 托管：open/data/llmProvider/llmModel/stale/budget/usageData/usageBudget/saving/logWeek/logRetention
@@ -217,7 +217,7 @@
     // 空组整组隐身（rail/chips/组壳不渲染）——组定义保留为登记槽，有节入驻即自动出现。
     // 红线：节内内容与组内节相对顺序不动（0.4.7-B sticky 标题/描述收折/LLM 区零回归）；组块按本表序渲染。
     const SET_GROUPS = [
-      { id: 'general', icon: 'gear', labelKey: 'settings.group.general', rows: ['language'] },   // 常规：主题/语言/面板入口类
+      { id: 'general', icon: 'gear', labelKey: 'settings.group.general', rows: [] },   // 常规：主题/语言/面板入口类（0.4.8 notes-048-lang-topbar：语言节随切换上标题栏下线——空组登记槽保留）
       { id: 'editor', icon: 'note', labelKey: 'settings.group.editor', rows: [] },   // 编辑器：自动保存/富文本/双链类（待新节登记）
       { id: 'inject', icon: 'bolt', labelKey: 'settings.group.inject', rows: ['stale', 'budget', 'injprev', 'injmgr'] },   // 检索与注入：搜索/注入/挂载类
       { id: 'dispatch', icon: 'clock', labelKey: 'settings.group.dispatch', rows: [] },   // 派发与调度（待新节登记）
@@ -344,8 +344,8 @@
       const setLogWeek = store.modal.settings.useSel(s => s.logWeek)
       const setLogRetention = store.modal.settings.useSel(s => s.logRetention)
       const setOrgMax = store.modal.settings.useSel(s => s.orgMax)
-      // i18n 语言态（notes-042-i18n-mech）：订阅 langStore——切换语言本卡即时重渲染为新语言；tt = 本组件 t()
-      const lang = langStore.useSel(s => s.lang)
+      // i18n 语言态（notes-042-i18n-mech）：tt = useT() 订阅 langStore——切换语言本卡即时重渲染为新语言
+      // （0.4.8 notes-048-lang-topbar：语言项下线，切换入口上标题栏；本卡不再直读 lang 值，useT 订阅已够重渲染）
       const tt = useT()
       // maxDepth/snap/inflight 滞留 whole.js（check 锚定 useState 声明原文），经 props 注入
       const setMaxDepth = props.setMaxDepth
@@ -463,14 +463,9 @@
             : e('span', { className: 'dsh-notes-settings-label-s' }, usageData && usageData.error ? tt('settings.usageLoadFailed') : tt('common.loading')))
         // 月度预算提醒控件：数值输入（tokens/月），失焦/Enter 即保存；0 = 关闭提醒
         const usageBudgetControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1000, value: setUsageBudget, 'data-tooltip': tt('settings.usageBudgetTipT'), onChange: (ev) => setSetUsageBudget(ev.target.value), onBlur: saveSettingsUsageBudget, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsUsageBudget() } })
-        // i18n 语言项控件（notes-042-i18n-mech）：localStorage 本地记忆、选择即生效（setLang → langStore 广播全量重渲染）；
-        // 不走 settings.json，不参与 dirty 状态机
-        const langControl = e('select', { className: 'dsh-notes-settings-select', value: lang, 'data-tooltip': tt('settings.languageTip'), onChange: (ev) => setLang(ev.target.value) },
-          e('option', { value: 'zh' }, '中文'),
-          e('option', { value: 'en' }, 'English'))
         // 通用设置项行列表：以后加设置项只需往这里加行（0.4.8 起同步登记 SET_GROUPS.rows，check 111 双向一致断言兜底）
+        // （0.4.8 notes-048-lang-topbar：语言行下线——切换入口上标题栏；语言态本地偏好仍不入 settings.json、不参与 dirty）
         const settingsRows = [
-          { key: 'language', label: tt('settings.language'), sub: tt('settings.languageTip'), control: langControl },
           { key: 'llm', label: tt('settings.llm'), sub: tt('settings.llmTip'), control: llmControl },
           // 0.4.7-B⑦：整理长度上限行（LLM 区紧随模型行；sub 带生效值 = settings-get 增带键，零新 RPC）
           { key: 'organizemax', label: tt('settings.organizeMax'), sub: tt('settings.organizeMaxTip', { eff: orgMaxEff }), control: orgMaxControl },

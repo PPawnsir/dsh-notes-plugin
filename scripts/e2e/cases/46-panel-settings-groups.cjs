@@ -1,8 +1,9 @@
 'use strict'
 /* 0.4.8 用例㊻（notes-048-settings-groups）client 面板设置弹窗分组导航真机锁（panel-harness 装载发布版 lib/client.js）：
- * ① 非空 5 组 rail（图标+组名，冻结序）+ 5 组壳 + 17 节全覆盖（空组隐身）；
+ * ① 非空 4 组 rail（图标+组名，冻结序）+ 4 组壳 + 16 节全覆盖（空组隐身；0.4.8 notes-048-lang-topbar：语言节下线，
+ *   常规组转空槽，首可见组=检索与注入）；
  * ② rail 点击定位（滚动容器 = .dsh-notes-settings-modal，48px 吸顶补偿）+ on + aria-current；
- * ③ 滚动反高亮（滚顶=常规 / 滚底=关于）；
+ * ③ 滚动反高亮（滚顶=检索与注入 / 滚底=关于）；
  * ④ 窄宽 500px 退化 chips 横条 + chip 点击定位同款。
  * 隔离纪律：纯 UI 演习零写盘，finally 关 context。 */
 const { mountPanel } = require('../panel-harness.cjs')
@@ -31,11 +32,11 @@ module.exports = {
             navAria: document.querySelector('.dsh-notes-settings-rail').getAttribute('aria-label'),
           }
         })
-        H.t('① 面板 rail 5 项（图标+组名，冻结序）+ 导航语义（role/aria-label）',
-          nav.railTexts.join('|') === '常规|检索与注入|AI|数据与存储|关于' && nav.railIcons.every(Boolean) && nav.navRole === 'navigation' && nav.navAria === '设置分组',
+        H.t('① 面板 rail 4 项（图标+组名，冻结序）+ 导航语义（role/aria-label）',
+          nav.railTexts.join('|') === '检索与注入|AI|数据与存储|关于' && nav.railIcons.every(Boolean) && nav.navRole === 'navigation' && nav.navAria === '设置分组',
           () => JSON.stringify(nav.railTexts) + ' · ' + nav.navRole + '/' + nav.navAria)
-        H.t('① 组壳同序 + 空组隐身 + 17 节全覆盖',
-          nav.railGs.join() === 'general,inject,ai,data,about' && nav.groupGs.join() === 'general,inject,ai,data,about' && nav.rows === 17,
+        H.t('① 组壳同序 + 空组隐身 + 16 节全覆盖',
+          nav.railGs.join() === 'inject,ai,data,about' && nav.groupGs.join() === 'inject,ai,data,about' && nav.rows === 16,
           () => nav.groupGs.join() + ' · 行数 ' + nav.rows)
         H.t('① 宽屏 chips 隐身', nav.chipsShown === 'none')
 
@@ -54,9 +55,9 @@ module.exports = {
 
         /* ===== ③ 滚动反高亮 ===== */
         await h.page.evaluate(() => { document.querySelector('.dsh-notes-settings-modal').scrollTop = 0 })
-        await H.waitFor(h.page, '滚顶 → 常规 on', async () => h.page.evaluate(() =>
-          document.querySelector('.dsh-notes-settings-rail-item[data-g="general"]').classList.contains('on')))
-        H.t('③ 滚动反高亮：滚顶 → 当前组=常规', true)
+        await H.waitFor(h.page, '滚顶 → 检索与注入 on', async () => h.page.evaluate(() =>
+          document.querySelector('.dsh-notes-settings-rail-item[data-g="inject"]').classList.contains('on')))
+        H.t('③ 滚动反高亮：滚顶 → 当前组=检索与注入（首可见组兜底；0.4.8 常规组隐身）', true)
         await h.page.evaluate(() => { var m = document.querySelector('.dsh-notes-settings-modal'); m.scrollTop = m.scrollHeight })
         await H.waitFor(h.page, '滚底 → 关于 on', async () => h.page.evaluate(() =>
           document.querySelector('.dsh-notes-settings-rail-item[data-g="about"]').classList.contains('on')))

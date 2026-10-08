@@ -1,8 +1,8 @@
 // 节 57. 顶栏窄宽防竖排（notes-041-topbar-400：nowrap + flex-shrink:0 + ≤480px 次要按钮收图标，三端同步）
 // 反馈 n-mut6uhcukyjm：400px 宽度顶栏「切换主题」「DSH 主界面」按钮定宽被压、文字逐字换行成竖排。
 // 修复口径：①tbtn/titlebar-btn 文字 white-space:nowrap + flex-shrink:0（任何宽度不被压竖排）；
-//           ②@media (max-width:480px) 断点下 .ico-only 按钮（切换主题/DSH 主界面）收起 .tb-t 文字只留图标（title 提示保留），
-//             刷新/速记保文字，副标题 .sub 隐去（中间宽度带 ellipsis 截断兜底）；
+//           ②@media (max-width:480px) 断点下 .ico-only 按钮（语言[0.4.8]/切换主题/DSH 主界面）收起 .tb-t 文字只留图标（title 提示保留），
+//             刷新保文字，副标题 .sub 隐去（中间宽度带 ellipsis 截断兜底）；
 //           ③app.html（src/app/shell）⇄ 原型 notes-ui-v2.html ⇄ 面板 styles.css 三端同步。
 module.exports = {
   id: "57",
@@ -36,7 +36,7 @@ module.exports = {
     assert(appSrc.indexOf('proto-tag') < 0, 'app.html 不得残留原型 proto-tag')
   })
 
-  await t('顶栏按钮标记（app.html + 原型）：切换主题/DSH 主界面 ico-only（图标+title），刷新保文字；速记合并按钮已撤（0.4.7-B②a）', () => {
+  await t('顶栏按钮标记（app.html + 原型）：切换主题/DSH 主界面/语言钮 ico-only（图标+title），刷新保文字；速记合并按钮已撤（0.4.7-B②a）', () => {
     // app.html：三枚按钮锚定（ico-only 两枚带图标+title+tb-t；刷新保文字无 ico-only）；0.4.7-B②a：速记合并按钮撤除
     assert(/<button class="tbtn ico-only" id="btnTheme" title="切换主题[^"]*"><svg class="ic"><use href="#i-theme"\/><\/svg><span class="tb-t">切换主题<\/span><\/button>/.test(appSrc), 'app.html btnTheme 应为 ico-only + i-theme 图标 + title 提示 + tb-t 文字')
     assert(/<a class="tbtn ico-only" href="\/" id="btnHome" title="返回 DSH 主界面"><svg class="ic"><use href="#i-home"\/><\/svg><span class="tb-t">DSH 主界面<\/span><\/a>/.test(appSrc), 'app.html DSH 主界面链接应为 ico-only + tb-t 文字（id=btnHome 供 i18n 覆盖卡A renderChrome 接线）')
@@ -48,11 +48,11 @@ module.exports = {
     assert(/<button class="tbtn" id="btnRefresh"[^>]*><svg class="ic"><use href="#i-refresh"\/><\/svg><span class="tb-t">刷新<\/span>/.test(protoSrc), '原型 刷新 保文字（tb-t）')
     assert(protoSrc.indexOf('id="btnArchive"') < 0, '原型顶栏速记合并按钮已撤（0.4.7-B②a notes-047-ux）')
     assert(protoSrc.indexOf('id="i-theme"') >= 0, '原型缺 i-theme 图标 symbol')
-    // 计数闸：ico-only 恰好 = app 3（建议[0.4.6-C]+切换主题+DSH 主界面）/ 原型 2（建议+切换主题），防误标扩散
-    assert((appSrc.match(/class="tbtn ico-only"/g) || []).length === 3, 'app.html ico-only 按钮应恰好 3 枚（0.4.6-C 建议入口窄宽收图标态）')
-    assert((protoSrc.match(/class="tbtn ico-only"/g) || []).length === 2, '原型 ico-only 按钮应恰好 2 枚（0.4.6-C 建议入口）')
+    // 计数闸：ico-only 恰好 = app 4（建议[0.4.6-C]+语言[0.4.8]+切换主题+DSH 主界面）/ 原型 3（建议+语言+切换主题），防误标扩散
+    assert((appSrc.match(/class="tbtn ico-only"/g) || []).length === 4, 'app.html ico-only 按钮应恰好 4 枚（0.4.8 语言钮入列，notes-048-lang-topbar）')
+    assert((protoSrc.match(/class="tbtn ico-only"/g) || []).length === 3, '原型 ico-only 按钮应恰好 3 枚（0.4.8 语言钮入列）')
     assert(/<button class="tbtn ico-only" id="btnSuggest" title="整理建议[^"]*"><svg class="ic"><use href="#i-sparkle"\/><\/svg><span class="tb-t">建议<\/span>/.test(appSrc) && /<button class="tbtn ico-only" id="btnSuggest" title="整理建议[^"]*"><svg class="ic"><use href="#i-sparkle"\/><\/svg><span class="tb-t">建议<\/span>/.test(protoSrc), 'btnSuggest 双端 ico-only + i-sparkle 图标 + title + tb-t 文字（0.4.6-C）')
-    assert((appSrc.match(/class="tb-t"/g) || []).length === 4 && (protoSrc.match(/class="tb-t"/g) || []).length === 3, 'tb-t 文字包裹数：app 4 / 原型 3（0.4.7-B②a 速记合并撤除 -1）')
+    assert((appSrc.match(/class="tb-t"/g) || []).length === 5 && (protoSrc.match(/class="tb-t"/g) || []).length === 4, 'tb-t 文字包裹数：app 5 / 原型 4（0.4.8 语言钮 +1）')
   })
 
   await t('行为级 eval：断点判定函数（自 CSS 源提取阈值 eval）+ ico-only 配对完整性（图标/title/文字三齐备，收图标不留空按钮）', () => {

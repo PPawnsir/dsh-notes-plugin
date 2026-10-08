@@ -149,6 +149,8 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 .dsh-notes-titlebar-actions{display:flex;gap:2px;flex-shrink:0}
 .dsh-notes-titlebar-btn{display:inline-flex;align-items:center;justify-content:center;background:none;border:none;color:var(--nt3);font-size:13px;cursor:pointer;padding:5px 9px;border-radius:6px;line-height:1;transition:background .15s,color .15s;font-weight:500;font-family:inherit;white-space:nowrap;flex-shrink:0}
 .dsh-notes-titlebar-btn:hover{background:var(--nbg-hover);color:var(--ntx)}
+/* 0.4.8（notes-048-lang-topbar）：标题栏语言钮文字（当前语言名）——窄宽（<560px 视口，与设置分组 chips 同断点）收起只留 🌐 图标，tooltip 保留 */
+@media (max-width:559px){.dsh-notes-tb-lang{display:none}}
 
 /* ===== 两栏布局（原型 .app：左 342px 侧栏 + 右通栏编辑器，卡片间隙 10px） ===== */
 .dsh-notes-app{flex:1;display:flex;min-height:0;padding:10px;gap:10px;background:var(--nbg)}

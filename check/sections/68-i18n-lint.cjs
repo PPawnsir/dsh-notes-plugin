@@ -134,7 +134,7 @@ module.exports = {
       assert(j >= 0, v + ' 字典区收尾行在位')
       return rest.slice(0, j)
     }
-    const SPOT = ['topbar.refresh', 'common.save', 'settings.language', 'tree.untitled', 'side.loadFailed']   // 跨表面取样：顶栏/通用/设置/树/侧栏
+    const SPOT = ['topbar.refresh', 'topbar.langTip', 'common.save', 'settings.llm', 'tree.untitled', 'side.loadFailed']   // 跨表面取样：顶栏（含 0.4.8 语言钮）/通用/设置/树/侧栏
     for (const k of SPOT) { assert(k in en && en[k].indexOf("'") < 0, '抽查键在 en 字典且值无单引号：' + k); assert(k in zh, '抽查键在 zh 字典：' + k) }
     for (const [src, tag, ind] of [[appSrc, 'app.html', ''], [clientPkgSrc, 'lib/client.js', '    ']]) {
       for (const v of ['I18N_ZH', 'I18N_EN']) {

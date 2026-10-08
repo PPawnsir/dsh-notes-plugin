@@ -42,7 +42,7 @@
   .topbar b{color:var(--ntx);font-size:13px}
   .topbar .sub{color:var(--nt3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .topbar .sp{flex:1}
-  /* 窄宽防竖排（notes-041-topbar-400）：按钮文字 nowrap + flex-shrink:0，不再被压成逐字竖排；≤480px 断点下次要按钮（.ico-only：切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新/速记保文字，副标题隐去 */
+  /* 窄宽防竖排（notes-041-topbar-400）：按钮文字 nowrap + flex-shrink:0，不再被压成逐字竖排；≤480px 断点下次要按钮（.ico-only：建议/语言[0.4.8]/切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新保文字，副标题隐去 */
   .tbtn{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11.5px;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd);border-radius:var(--nr-sm);padding:4px 12px;cursor:pointer;text-decoration:none;white-space:nowrap;flex-shrink:0}
   .tbtn:hover{background:var(--nbg-hover)}
   .tbtn svg.ic{width:12px;height:12px}
@@ -669,6 +669,8 @@
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/></symbol>
   <!-- 顶栏「切换主题」图标（窄宽收图标态用，notes-041-topbar-400）：明暗对半圆 -->
   <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17"/></symbol>
+  <!-- 0.4.8（notes-048-lang-topbar）：顶栏语言切换钮图标（与 client icons.js globe / 原型同形）：地球（圆 + 赤道线 + 子午弧） -->
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.6 2.3 4 5.2 4 8.5s-1.4 6.2-4 8.5c-2.6-2.3-4-5.2-4-8.5S9.4 5.8 12 3.5Z"/></symbol>
   <symbol id="i-code-block" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></symbol>
   <symbol id="i-bold" viewBox="0 0 24 24"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></symbol>
   <symbol id="i-italic" viewBox="0 0 24 24"><path d="M19 4h-9M14 20H5M15 4 9 20"/></symbol>
@@ -695,11 +697,14 @@
   <div class="logo"><svg class="ic"><use href="#i-note"/></svg></div><b>dsh-notes</b>
   <span class="sub" id="topSub">你的笔记库 · 写下的约定与资料可注入 Agent 会话</span>
   <span class="sp"></span>
-  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（建议/切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新保文字；
+  <!-- 顶栏按钮文字统一包 .tb-t：≤480px 断点下 .ico-only 按钮（建议/语言/切换主题/DSH 主界面）收起文字只留图标（title 提示保留），刷新保文字；
        0.4.7-B②a（notes-047-ux）：「速记合并」顶栏按钮撤除——与建议器首段「速记组 → 去归档」入口重复（0 组也占主行动位）；归档预览入口 = 顶栏「建议」→ 速记组段 -->
   <button class="tbtn" id="btnRefresh" title="重新拉取列表/文件夹（LLM 主题分类为异步回填，刷新可见）"><svg class="ic"><use href="#i-refresh"/></svg><span class="tb-t">刷新</span></button>
   <!-- 0.4.6-C（notes-046-ux-discovery）：治理入口提升到顶栏——整理建议 + 约定体检（建议框底栏）；有待办候选时 #suggestBd 计数徽标点亮（notes-suggest 六段合计） -->
   <button class="tbtn ico-only" id="btnSuggest" title="整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）"><svg class="ic"><use href="#i-sparkle"/></svg><span class="tb-t">建议</span><span class="cnt" id="suggestBd" style="display:none"></span></button>
+  <!-- 0.4.8（notes-048-lang-topbar）：语言切换上顶栏——🌐 图标 + 当前语言名（中文/English 原生写法不翻译），点击两态直切（复用 setLang 既有链路：localStorage 持久化 + 全量 render）；
+       静态缺省中文态文案，renderChrome 按当前语言态重写 title/文字；设置卡语言项同步下线 -->
+  <button class="tbtn ico-only" id="btnLang" title="切换语言"><svg class="ic"><use href="#i-globe"/></svg><span class="tb-t">中文</span></button>
   <button class="tbtn ico-only" id="btnTheme" title="切换主题（暗色/亮色）"><svg class="ic"><use href="#i-theme"/></svg><span class="tb-t">切换主题</span></button>
   <a class="tbtn ico-only" href="/" id="btnHome" title="返回 DSH 主界面"><svg class="ic"><use href="#i-home"/></svg><span class="tb-t">DSH 主界面</span></a>
 </div>
@@ -1291,8 +1296,8 @@ var I18N_ZH = {
   'common.loading': '加载中…',
   'common.refreshed': '已刷新',
   'common.saveFailed': '保存失败：{msg}',
-  'settings.language': '语言',
-  'settings.languageTip': '界面语言（本地记忆，切换即生效）',
+  /* 0.4.8（notes-048-lang-topbar）：语言切换上顶栏——settings.language/languageTip 随设置卡语言项下线摘除；
+     顶栏钮 tooltip 走 topbar.langTip（随当前语言），钮文字 = 当前语言名原生写法（中文/English 硬编码不翻译，同原下拉先例） */
   /* ===== 覆盖卡 A（notes-042-i18n-cov-a）：顶栏 + 侧栏树 + hintbar ===== */
   'topbar.subtitle': '你的笔记库 · 写下的约定与资料可注入 Agent 会话',
   'topbar.refreshTip': '重新拉取列表/文件夹（LLM 标签分类为异步回填，刷新可见）',
@@ -1571,7 +1576,8 @@ var I18N_ZH = {
   'meta.schedFired': '已触发（单次）',
   'meta.schedNext': '下次 {time}',
   /* ===== 覆盖卡 C（notes-042-i18n-cov-c）：设置卡双语化（app modals/settings.js + client modals/settings.js）=====
-     复用既有 key：common.settings/save/restore/loading/saveFailed、topbar.trash/topbar.trashTip、settings.language/languageTip，不重复建 */
+     复用既有 key：common.settings/save/restore/loading/saveFailed、topbar.trash/topbar.trashTip，不重复建
+     （0.4.8 notes-048-lang-topbar：settings.language/languageTip 随设置卡语言项下线摘除，顶栏钮 tooltip = topbar.langTip） */
   'settings.closeTip': '关闭（Esc；有未落盘改动先自动 flush）',
   'settings.onboardTitle': '概念速览',
   'settings.onboardInject': '· 注入：笔记正文进入 Agent 的系统提示，每次对话都可见（编辑器注入三态开关控制）',
@@ -2164,6 +2170,7 @@ var I18N_ZH = {
   'topbar.suggest': '建议',
   'topbar.suggestTip': '整理建议 + 约定体检：速记组归档/过期清理/挂载治理候选（只提名不执行）',
   'topbar.suggestTipN': '整理建议：{n} 条待办治理候选（只提名不执行；含约定体检入口）',
+  'topbar.langTip': '切换语言',   /* 0.4.8（notes-048-lang-topbar）：顶栏语言钮 tooltip（点击直切另一语言，两态循环） */
   'sugg.goConflict': '约定体检…',
   'sugg.goConflictTip': '打开注入管理面板的约定体检区：LLM 两两检测注入中约定的冲突/取代（只提名不执行）',
   'mention.empty': '输入标题关键词搜索笔记',
@@ -2191,8 +2198,8 @@ var I18N_EN = {
   'common.loading': 'Loading…',
   'common.refreshed': 'Refreshed',
   'common.saveFailed': 'Save failed: {msg}',
-  'settings.language': 'Language',
-  'settings.languageTip': 'UI language (remembered locally, applies immediately)',
+  /* 0.4.8 (notes-048-lang-topbar): language switch moved to the topbar — settings.language/languageTip removed with the settings row;
+     topbar button tooltip uses topbar.langTip (follows current language); button label = current language's native name (hardcoded) */
   /* ===== Coverage card A (notes-042-i18n-cov-a): topbar + sidebar tree + hintbar ===== */
   'topbar.subtitle': 'Your note library · conventions and references you write can be injected into Agent sessions',
   'topbar.refreshTip': 'Reload the list and folders (LLM tag classification backfills asynchronously; refresh to see it)',
@@ -2471,7 +2478,8 @@ var I18N_EN = {
   'meta.schedFired': 'Fired (one-shot)',
   'meta.schedNext': 'Next {time}',
   /* ===== Coverage card C (notes-042-i18n-cov-c): settings card bilingual (app modals/settings.js + client modals/settings.js) =====
-     Reuses existing keys: common.settings/save/restore/loading/saveFailed, topbar.trash/topbar.trashTip, settings.language/languageTip */
+     Reuses existing keys: common.settings/save/restore/loading/saveFailed, topbar.trash/topbar.trashTip
+     (0.4.8 notes-048-lang-topbar: settings.language/languageTip removed with the settings row; topbar tooltip = topbar.langTip) */
   'settings.closeTip': 'Close (Esc; unsaved changes are auto-flushed first)',
   'settings.onboardTitle': 'Concepts at a glance',
   'settings.onboardInject': '· Injection: note bodies go into the Agent system prompt, visible in every conversation (controlled by the editor injection three-state toggle)',
@@ -3060,6 +3068,7 @@ var I18N_EN = {
   'topbar.suggest': 'Suggest',
   'topbar.suggestTip': 'Organize suggestions + convention checkup: quick-note archiving / stale cleanup / mount governance candidates (nominations only, never auto-run)',
   'topbar.suggestTipN': 'Organize suggestions: {n} pending governance candidates (nominations only; includes convention checkup entry)',
+  'topbar.langTip': 'Switch language',   /* 0.4.8 (notes-048-lang-topbar): topbar language button tooltip (click toggles zh/en directly) */
   'sugg.goConflict': 'Convention checkup…',
   'sugg.goConflictTip': 'Open the convention checkup section in the injection manager: LLM pairwise conflict/supersede detection over injected conventions (nominations only)',
   'mention.empty': 'Type a title keyword to search notes',
@@ -5869,7 +5878,7 @@ function setLabelHtml(label, tip, extraHtml) {
      空组（rows 空或全部缺渲染）整组隐身——组定义保留为登记槽，有节入驻即自动出现在 rail/chips/组壳。
      红线：节内内容与组内节相对顺序不动（0.4.7-B sticky 标题/描述收折/LLM 区零回归）；组块按本表序渲染。 */
 var SET_GROUPS = [
-  { id: 'general',  icon: 'i-gear',    labelKey: 'settings.group.general',  rows: ['language'] },                                        /* 常规：主题/语言/面板入口类 */
+  { id: 'general',  icon: 'i-gear',    labelKey: 'settings.group.general',  rows: [] },                                                  /* 常规：主题/语言/面板入口类（0.4.8 notes-048-lang-topbar：语言节随切换上顶栏下线——空组登记槽保留） */
   { id: 'editor',   icon: 'i-note',    labelKey: 'settings.group.editor',   rows: [] },                                                  /* 编辑器：自动保存/富文本/双链类（待新节登记） */
   { id: 'inject',   icon: 'i-bolt',    labelKey: 'settings.group.inject',   rows: ['stale', 'budget', 'injprev', 'injmgr'] },            /* 检索与注入：搜索/注入/挂载类 */
   { id: 'dispatch', icon: 'i-clock',   labelKey: 'settings.group.dispatch', rows: [] },                                                  /* 派发与调度（待新节登记） */
@@ -5978,8 +5987,8 @@ function openSettings() {
     /* 0.4.8：节登记表（键 = 节 id = SET_GROUPS.rows 登记键 = 行壳 data-sec 锚）；节内 HTML 保持 0.4.7-B 原文零改动（仅行壳补 data-sec）。
        渲染顺序不再由本登记顺序决定——组块按 SET_GROUPS 表序输出（组内节相对顺序不动） */
     var setSecs = {};
-    /* i18n 语言项（notes-042-i18n-mech）：localStorage 本地记忆、切换即生效（setLang 全量 render）；不走 settings.json，不参与 dirty 跟踪 */
-    setSecs.language = '<div class="set-row" data-sec="language">' + setLabelHtml(t('settings.language'), t('settings.languageTip')) + '<div class="set-ctrl"><select class="minput" id="setLang"><option value="zh">中文</option><option value="en">English</option></select></div></div>';
+    /* 0.4.8（notes-048-lang-topbar）：语言设置项下线——切换入口上顶栏（#btnLang 两态直切，panels/topbar.js）；
+       setLang 机制本身不动（kernel/helpers.js i18n-mech 块：localStorage 持久化 + 全量 render），语言态仍不走 settings.json、不参与 dirty */
     setSecs.llm = '<div class="set-row" data-sec="llm">' + setLabelHtml(t('settings.llm'), t('settings.llmTip')) + '<div class="set-ctrl">' + llmCtrl + '</div></div>';
     /* 0.4.7-B⑦：整理长度上限行（LLM 区紧随模型行；0 = 按所配模型自动，说明文字带生效值） */
     setSecs.organizemax = '<div class="set-row" data-sec="organizemax">' + setLabelHtml(t('settings.organizeMax'), t('settings.organizeMaxTip', { eff: orgMaxEff })) + '<div class="set-ctrl"><input class="minput" id="setOrgMax" type="number" min="0" step="1000" style="width:110px" value="' + orgMaxRaw + '"></div></div>';
@@ -6013,11 +6022,8 @@ function openSettings() {
     /* 0.4.7-B①b：说明 ⓘ 展开/收拢接线（长说明初态 .cl 收折两行；点击切换，按钮原生可聚焦） */
     $('setBody').querySelectorAll('.sx').forEach(function (el) { el.onclick = function () { var s = el.parentElement.querySelector('.s'); if (s) s.classList.toggle('cl') } });
     setNavWire();   /* 0.4.8（notes-048-settings-groups）：分组导航接线（rail/chips 点击定位 + 滚动反高亮） */
-    /* i18n 语言项（notes-042-i18n-mech + cov-c）：回显当前语言态；切换 = setLang 持久化 + 全量 render +
-       本卡就地重渲染（render() 不重渲已开 modal：先兜底 flush 未落盘改动，重跑 openSettings 按新语言重建，
-       滚动位置经 modalBackScroll 一次性还原——与二级面板返回同口径） */
-    $('setLang').value = NOTES_LANG;
-    $('setLang').onchange = function () { setLang(this.value); flushSettingsPending(); modalBackScroll = $('modal') ? $('modal').scrollTop : 0; openSettings() };
+    /* 0.4.8（notes-048-lang-topbar）：语言项下线——原 #setLang onchange 就地重渲染链路（setLang+flush+重跑 openSettings+滚动还原）
+       随切换入口上顶栏撤除（顶栏钮点击时设置卡必已关闭——modal 遮罩挡住顶栏，打开态切语言场景消失） */
     var sel = $('setLlmSel');
     if (sel) sel.onchange = function () {
       var v = this.value;
@@ -7692,6 +7698,9 @@ $('btnRefresh').addEventListener('click', function () { searchIds = null; var p 
    启动即拉一次计数（notes-suggest dry-run 零写入），后续随 loadNotes 链尾节流刷新（kernel/data.js） */
 $('btnSuggest').addEventListener('click', function () { openSuggest() });
 refreshSuggestBadge();
+/* 0.4.8（notes-048-lang-topbar）：语言切换上顶栏（建议钮后）——两态直切无下拉，复用 setLang 既有生效链路
+   （localStorage 'dsh-notes-lang' 持久化 + 全量 render；renderTree 首行 renderChrome 收敛重写本钮 title/文字） */
+$('btnLang').addEventListener('click', function () { setLang(NOTES_LANG === 'en' ? 'zh' : 'en') });
 $('btnSelMode').addEventListener('click', function () { selMode = !selMode; selIds = {}; renderTree() });
 /* ===== 壳静态文案 i18n（notes-042-i18n-cov-a 覆盖卡A：顶栏 + 侧栏架 + hintbar + selbar）=====
    body.html 静态串保留中文缺省（原型不双语红线不动；静态锚点断言兼容），本函数按当前语言态以 t() 重写：
@@ -7702,6 +7711,8 @@ function renderChrome() {
   $('btnRefresh').title = t('topbar.refreshTip'); $('btnRefresh').querySelector('.tb-t').textContent = t('topbar.refresh');
   $('btnSuggest').querySelector('.tb-t').textContent = t('topbar.suggest');   /* 0.4.6-C：title 由 renderSuggestBadge 按计数态写（suggestTip/suggestTipN） */
   renderSuggestBadge();
+  /* 0.4.8（notes-048-lang-topbar）：语言钮 title 走字典（随当前语言）；文字 = 当前语言名原生写法（中文/English 硬编码不翻译，同原设置下拉先例） */
+  $('btnLang').title = t('topbar.langTip'); $('btnLang').querySelector('.tb-t').textContent = NOTES_LANG === 'en' ? 'English' : '中文';
   $('btnTheme').title = t('topbar.themeTip'); $('btnTheme').querySelector('.tb-t').textContent = t('topbar.theme');
   $('btnHome').title = t('topbar.homeTip'); $('btnHome').querySelector('.tb-t').textContent = t('topbar.home');
   $('brandName').textContent = t('side.brand');

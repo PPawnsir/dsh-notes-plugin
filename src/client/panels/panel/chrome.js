@@ -2,7 +2,8 @@
     // provides: usePanelChrome（面板位置/尺寸/侧栏宽 state + 持久化/居中 effect + onTitlebarMouseDown/onResizeMouseDown/onSplitterMouseDown/resetSideW +
     //           titlebarEl/splitterEl/resizeEl JSX）
     // needs: kernel/state.js（setShowHelp 转发别名 + store.modal.suggest 徽标订阅）、kernel/persist.js（loadSideW/saveSideW/SIDE_W_DEFAULT/clampSideW/entryMode/setEntryMode）、
-    //        kernel/drag.js（drag）、kernel/icons.js（e/I）、kernel/bus.js（noteRefreshListeners）、modals/archive.js（openArchive）+
+    //        kernel/drag.js（drag）、kernel/icons.js（e/I）、kernel/bus.js（noteRefreshListeners）、kernel/i18n.js（langStore/setLang——0.4.8 语言切换钮，notes-048-lang-topbar）、
+    //        modals/archive.js（openArchive）+
     //        modals/suggest.js（openSuggest/refreshSuggestBadge——0.4.6-C 顶栏「建议」入口，序位在前）——序位在前；
     //        open/close/showHelp 经 hook 入参注入（装配层回填：open 主面板开合态、close 滞留装配层、showHelp 自 popovers/help.js 解构）
     // state 托管：pos/size/sideW/sideDrag 留 hook 内 useState（与主面板同一渲染边界；§6 E 裁决记录见 panel/index.js 头注）
@@ -10,6 +11,9 @@
         const open = args.open, close = args.close, showHelp = args.showHelp
         // i18n（notes-042-i18n-cov-a 覆盖卡A）：tt = useT()——订阅 langStore，切语言本 hook（随主面板）自渲染；标题栏/分隔条/resize 文案全走 tt()
         const tt = useT()
+        // 0.4.8（notes-048-lang-topbar）：语言切换上标题栏（建议钮后）——当前语言态读 langStore（切换本 hook 自渲染）；
+        // 点击两态直切复用 setLang 既有链路（localStorage 持久化 + langStore 广播全量重渲染）
+        const lang = langStore.useSel(s => s.lang)
         const [pos, setPos] = React.useState({ x: null, y: null })
         const [size, setSize] = React.useState({ width: 920, height: 640 })
         // 侧栏宽度：分隔条拖拽调整（clamp 200px–60% 面板宽），localStorage 记忆（SIDE_W_KEY），双击分隔条重置缺省
@@ -69,6 +73,8 @@
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setEntryMode(entryMode === 'header' ? 'fab' : 'header'), 'data-tooltip': tt('chrome.entryModeTip') }, I('swap', 13)),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: openArchive, 'data-tooltip': tt('topbar.archiveTip') }, tt('topbar.archive')),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => openSuggest(), 'data-tooltip': suggestBadge > 0 ? tt('topbar.suggestTipN', { n: suggestBadge }) : tt('topbar.suggestTip') }, I('sparkle', 13), tt('topbar.suggest'), suggestBadge > 0 ? e('span', { className: 'dsh-notes-tcnt' }, String(suggestBadge)) : null),
+              // 0.4.8（notes-048-lang-topbar）：语言钮——🌐 图标 + 当前语言名（中文/English 原生写法不翻译）；窄宽（<560px 视口）文字经 .dsh-notes-tb-lang 收起只留图标（tooltip 保留）
+              e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setLang(lang === 'en' ? 'zh' : 'en'), 'data-tooltip': tt('topbar.langTip'), 'aria-label': tt('topbar.langTip') }, I('globe', 13), e('span', { className: 'dsh-notes-tb-lang' }, lang === 'en' ? 'English' : '中文')),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: () => setShowHelp(!showHelp), 'data-tooltip': tt('chrome.help') }, '?'),
               e('button', { className: 'dsh-notes-titlebar-btn dsh-nt', onClick: close, 'data-tooltip': tt('common.close') }, '×')))
         const splitterEl = e('div', { className: 'dsh-notes-splitter dsh-nt' + (sideDrag ? ' on' : ''), onMouseDown: onSplitterMouseDown, onDoubleClick: resetSideW, 'data-tooltip': tt('side.splitterTip') })

@@ -6,6 +6,9 @@ $('btnRefresh').addEventListener('click', function () { searchIds = null; var p 
    启动即拉一次计数（notes-suggest dry-run 零写入），后续随 loadNotes 链尾节流刷新（kernel/data.js） */
 $('btnSuggest').addEventListener('click', function () { openSuggest() });
 refreshSuggestBadge();
+/* 0.4.8（notes-048-lang-topbar）：语言切换上顶栏（建议钮后）——两态直切无下拉，复用 setLang 既有生效链路
+   （localStorage 'dsh-notes-lang' 持久化 + 全量 render；renderTree 首行 renderChrome 收敛重写本钮 title/文字） */
+$('btnLang').addEventListener('click', function () { setLang(NOTES_LANG === 'en' ? 'zh' : 'en') });
 $('btnSelMode').addEventListener('click', function () { selMode = !selMode; selIds = {}; renderTree() });
 /* ===== 壳静态文案 i18n（notes-042-i18n-cov-a 覆盖卡A：顶栏 + 侧栏架 + hintbar + selbar）=====
    body.html 静态串保留中文缺省（原型不双语红线不动；静态锚点断言兼容），本函数按当前语言态以 t() 重写：
@@ -16,6 +19,8 @@ function renderChrome() {
   $('btnRefresh').title = t('topbar.refreshTip'); $('btnRefresh').querySelector('.tb-t').textContent = t('topbar.refresh');
   $('btnSuggest').querySelector('.tb-t').textContent = t('topbar.suggest');   /* 0.4.6-C：title 由 renderSuggestBadge 按计数态写（suggestTip/suggestTipN） */
   renderSuggestBadge();
+  /* 0.4.8（notes-048-lang-topbar）：语言钮 title 走字典（随当前语言）；文字 = 当前语言名原生写法（中文/English 硬编码不翻译，同原设置下拉先例） */
+  $('btnLang').title = t('topbar.langTip'); $('btnLang').querySelector('.tb-t').textContent = NOTES_LANG === 'en' ? 'English' : '中文';
   $('btnTheme').title = t('topbar.themeTip'); $('btnTheme').querySelector('.tb-t').textContent = t('topbar.theme');
   $('btnHome').title = t('topbar.homeTip'); $('btnHome').querySelector('.tb-t').textContent = t('topbar.home');
   $('brandName').textContent = t('side.brand');

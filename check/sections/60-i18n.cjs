@@ -1,9 +1,10 @@
 // 节 60. i18n 机制（notes-042-i18n-mech：字典 + t() 双端 + 语言设置 + 回退 + 构建并入——机制卡，纯机制不改现有文案）
 // 规格源：反馈条目 n-mut488gske5v 种子卡①——字典 src/i18n/zh.js+en.js（@i18n/ 前缀双端共源）；app t() 挂 kernel/helpers.js；
 //   语言态 localStorage 'dsh-notes-lang'（zh 缺省），setLang 持久化 + 全量 render；client langStore + I18nContext + useT()；
-//   设置卡语言项双端；回退链 = 当前语言 → zh 全量基准 → key 本身（红线：永不裸 key）。
+//   语言切换入口 0.4.8 起上顶栏（notes-048-lang-topbar：app #btnLang / client 标题栏 globe 钮两态直切；设置卡语言项下线）；
+//   回退链 = 当前语言 → zh 全量基准 → key 本身（红线：永不裸 key）。
 // 测试策略：行为级 eval（字典 + app i18n 块 + client i18n 模块，stub localStorage/render/createStore/React）
-//   + 产物静态锚点（三端产物含字典 / 双 manifest 登记 / 设置卡语言项双端）。
+//   + 产物静态锚点（三端产物含字典 / 双 manifest 登记 / 顶栏语言钮双端 + 设置项下线锚）。
 module.exports = {
   id: "60",
   title: "60. i18n 机制（字典 + t() 双端 + 语言设置 + 回退 + 构建并入）",
@@ -42,7 +43,8 @@ module.exports = {
     assert(kz.length >= 20, 'zh 字典 ≥20 条示例（实得 ' + kz.length + '）')
     assert.deepStrictEqual(ke, kz, 'en/zh key 集合一致（守卫卡另有双向 ⊆ 代码引用断言）')
     assert(kz.some(k => k.indexOf('topbar.') === 0) && kz.some(k => k.indexOf('common.') === 0), '含 topbar.*/common.* 示例域')
-    assert(kz.indexOf('settings.language') >= 0 && kz.indexOf('settings.languageTip') >= 0, '含设置卡语言项 key')
+    assert(kz.indexOf('topbar.langTip') >= 0, '含顶栏语言钮 tooltip key（0.4.8 notes-048-lang-topbar；原 settings.language/languageTip 随设置卡语言项下线摘除）')
+    assert(kz.indexOf('settings.language') < 0 && kz.indexOf('settings.languageTip') < 0, '设置卡语言项 key 已摘除（0.4.8 切换入口上顶栏）')
     assert(zh['common.saveFailed'].indexOf('{msg}') >= 0 && en['common.saveFailed'].indexOf('{msg}') >= 0, '插值示例双端同占位符 {msg}')
     for (const k of kz) { assert(typeof zh[k] === 'string' && zh[k] && typeof en[k] === 'string' && en[k], k + ' 双端值非空字符串') }
   })
@@ -117,17 +119,26 @@ module.exports = {
     assert(indexSrc.indexOf("@i18n/") >= 0, 'index.mjs（server.dist.js 拼接产物）notes-src 含 @i18n 解析')
   })
 
-  // ===== ⑤ 设置卡语言项双端（下拉/Select）=====
-  await t('设置卡语言项双端：app select#setLang + client settingsRows language 行（选择即生效，不入 dirty）', () => {
-    // 覆盖卡 C（notes-042-i18n-cov-c）起：onchange 除 setLang 外就地重渲染已开设置卡（flush 兜底 + 重跑 openSettings + 滚动还原）
-    assert(appSrc.indexOf('id="setLang"') >= 0 && appSrc.indexOf("$('setLang').onchange = function () { setLang(this.value); flushSettingsPending();") >= 0 && appSrc.indexOf('openSettings() }') >= 0, 'app 设置卡语言下拉 + 接线（切换即就地重渲染）')
-    assert(appSrc.indexOf("$('setLang').value = NOTES_LANG") >= 0, 'app 语言项回显当前语言态')
-    assert(appSrc.indexOf("t('settings.language')") >= 0 && appSrc.indexOf("t('settings.languageTip')") >= 0, 'app 语言项文案走 t()')
+  // ===== ⑤ 顶栏语言切换钮双端 + 设置卡语言项下线（0.4.8 notes-048-lang-topbar）=====
+  await t('顶栏语言钮双端 + 设置卡语言项下线：app #btnLang 两态直切接线 + client 标题栏 globe 钮 + 设置项三端摘除（不入 dirty）', () => {
+    // app（产物 app.html 口径，防忘跑 concat-app/build-dist）：按钮在「建议」后（序锁）+ ico-only + i-globe + 接线走 setLang 既有链路
+    const bS = appSrc.indexOf('id="btnSuggest"'), bL = appSrc.indexOf('id="btnLang"'), bT = appSrc.indexOf('id="btnTheme"')
+    assert(bS >= 0 && bL > bS && bT > bL, 'app 顶栏按钮序：建议 → 语言 → 切换主题（只插入不动他钮）')
+    assert(/<button class="tbtn ico-only" id="btnLang" title="切换语言"><svg class="ic"><use href="#i-globe"\/><\/svg><span class="tb-t">中文<\/span><\/button>/.test(appSrc), 'app #btnLang 静态锚（ico-only + i-globe + title + tb-t 中文缺省）')
+    assert(appSrc.indexOf("$('btnLang').addEventListener('click', function () { setLang(NOTES_LANG === 'en' ? 'zh' : 'en') })") >= 0, 'app #btnLang 点击接线 = setLang 两态直切（复用既有链路，零新机制）')
+    assert(appSrc.indexOf("$('btnLang').title = t('topbar.langTip')") >= 0 && appSrc.indexOf("$('btnLang').querySelector('.tb-t').textContent = NOTES_LANG === 'en' ? 'English' : '中文'") >= 0, 'app renderChrome 重写语言钮 title/文字（setLang→render 全量刷新路径收敛）')
+    // client（开发版 + 发布包）：标题栏建议钮后 globe 钮（setLang 两态直切 + tt('topbar.langTip') + 语言名原生写法）
     for (const [s, tag] of [[clientSrc, 'client 开发版'], [clientPkgSrc, '发布包 lib/client.js']]) {
-      assert(s.indexOf("{ key: 'language', label: tt('settings.language')") >= 0, tag + ' settingsRows language 行（首行）')
-      assert(s.indexOf('onChange: (ev) => setLang(ev.target.value)') >= 0, tag + ' 语言下拉接线 setLang')
-      assert(s.indexOf("const tt = useT()") >= 0 && s.indexOf('const lang = langStore.useSel') >= 0, tag + ' SettingsModal 订阅语言态（切换即重渲染）')
+      assert(s.indexOf("onClick: () => setLang(lang === 'en' ? 'zh' : 'en')") >= 0, tag + ' 标题栏语言钮接线 = setLang 两态直切')
+      assert(s.indexOf("I('globe', 13)") >= 0 && s.indexOf("tt('topbar.langTip')") >= 0, tag + ' 语言钮 globe 图标 + tooltip 走字典')
+      assert(s.indexOf("lang === 'en' ? 'English' : '中文'") >= 0, tag + ' 语言钮文字 = 当前语言名原生写法（硬编码不翻译）')
+      assert(s.indexOf("const lang = langStore.useSel(s => s.lang)") >= 0, tag + ' 标题栏订阅语言态（切换自渲染）')
     }
+    // 设置卡语言项下线（双端 + 原型）：app 无 #setLang/data-sec="language"；client 无 language 行；原型同步摘除
+    assert(appSrc.indexOf('id="setLang"') < 0 && appSrc.indexOf('data-sec="language"') < 0, 'app 设置卡语言项已下线（产物口径）')
+    assert(clientSrc.indexOf("{ key: 'language'") < 0 && clientPkgSrc.indexOf("{ key: 'language'") < 0, 'client settingsRows 语言行已摘除（开发版 + 发布包）')
+    const protoSrc = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
+    assert(protoSrc.indexOf('data-sec="language"') < 0 && protoSrc.indexOf('id="btnLang"') >= 0, '原型：语言行摘除 + 顶栏钮静态同步')
     // 纯机制红线：语言态不进 settings.json 通道（app 端 SET_NUM_FIELDS/setSnap 零 lang 键）
     assert(appSrc.indexOf("'setLang', 'lang'") < 0, 'app dirty 数值字段表不含语言项（本地偏好非设置 RPC）')
   })
