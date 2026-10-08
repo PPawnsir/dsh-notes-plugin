@@ -828,8 +828,11 @@ var I18N_EN = {
   'sel.deleting': 'Deleting…',
   'ctx.reopen': 'Reopen',
   'ctx.markResolved': 'Mark resolved',
-  'ctx.moveTo': 'Move to folder',
-  'ctx.moveOut': 'Move out of the folder (unfiled)',
+  /* 0.4.8 (notes-048-note-ctxmenu): note row context menu keys (note.menu* domain, both ends aligned) — former ctx.moveTo/ctx.moveOut renamed into note.menuMoveTo/menuMoveOut */
+  'note.menuMoveTo': 'Move to…',
+  'note.menuMoveOut': 'Unfiled (remove from folder)',
+  'note.menuNoFolders': 'No folders yet',
+  'note.menuPinFailed': 'Pin failed: {msg}',
   'ctx.newFolderPlaceholder': 'New folder name…',
   'ctx.newFolder': 'New folder…',
   'ctx.merge': 'Merge into one',

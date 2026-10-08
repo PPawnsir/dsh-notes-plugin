@@ -828,8 +828,11 @@ var I18N_ZH = {
   'sel.deleting': '删除中…',
   'ctx.reopen': '重开',
   'ctx.markResolved': '标记已解决',
-  'ctx.moveTo': '移动到文件夹',
-  'ctx.moveOut': '移出文件夹（未分类）',
+  /* 0.4.8（notes-048-note-ctxmenu）：笔记行右键菜单新键（note.menu* 域，双端同构）——原 ctx.moveTo/ctx.moveOut 由 note.menuMoveTo/menuMoveOut 收编更名 */
+  'note.menuMoveTo': '移动到…',
+  'note.menuMoveOut': '未分类（移出文件夹）',
+  'note.menuNoFolders': '暂无文件夹',
+  'note.menuPinFailed': '置顶失败：{msg}',
   'ctx.newFolderPlaceholder': '新文件夹名…',
   'ctx.newFolder': '新建文件夹…',
   'ctx.merge': '合并为一篇',

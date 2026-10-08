@@ -595,6 +595,13 @@
   .ctxmenu .mi:hover{background:var(--nbg-hover);color:var(--ntx)}
   .ctxmenu .mi.danger:hover{color:var(--ndanger)}
   .ctxmenu .mi svg.ic{width:12px;height:12px}
+  /* 0.4.8 笔记行右键菜单（notes-048-note-ctxmenu）：增量样式全部落在 .ctxmenu-note 限定域/新 class 上——文件夹菜单零改动红线 */
+  .ctxmenu-note{max-height:min(460px,calc(100vh - 16px));overflow-y:auto}
+  .ctxmenu .mi.sub{font-size:11.5px}
+  .ctxmenu .mi.dis{opacity:.45;cursor:default}
+  .ctxmenu .mi.dis:hover{background:transparent;color:var(--nt2)}
+  .ctxmenu .mi .hint{margin-left:auto;font-size:10px;color:var(--nt3)}
+  .ctxmenu .mi .ctx-caret{margin-left:auto;font-size:10px;color:var(--nt3)}
   /* ===== 快速记录卡片（v2） ===== */
   .cap{position:fixed;z-index:99;width:300px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-lg);box-shadow:0 10px 32px rgba(0,0,0,.4);overflow:hidden;animation:capin .14s ease-out}
   @keyframes capin{from{opacity:0;transform:translateY(5px) scale(.98)}to{opacity:1;transform:none}}

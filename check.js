@@ -190,7 +190,7 @@ const CORE = new Set([
   '0.4.8 双链 [[ 补全红线：wikiResolve 契约/900ms 自动保存/富文本零改动',
   '0.4.8 主题并入标签内核行为级：effTags 全矩阵（空/未分类/重复/大小写/空白/null/占位）+ effTagsUi 剔占位',
   '0.4.8 写侧惰性落盘·host note_manage：显式 topic 并入 tags + topic 落盘清空 + topicMerged 回执（create/update）',
-  '0.4.8 app 写侧合并行为级：buildSavePayload——topic→tags 清空 + 在途输入并入 + 去重 + quick 保留 + 占位不触写 + 守卫',
+  '0.4.8 app 写侧合并行为级：edFoldTopic 折叠单元 + buildSavePayload——topic 清空 + 在途输入并入 + 去重 + quick 保留 + 占位不触写 + 守卫 + 移除生效（不回魂）',
   '0.4.8 侧栏标签树四端同构：effTags 多值分组 + 组头去重篇数 + 「未分类」桶消失 + i-tag 图标 + 分类中映射',
   '0.4.8 红线：topic 字段保留（front-matter/schema）+ notes-list/note_search 响应结构零变化 + 存量零批量迁移',
   '0.4.8 降级场景：旧版 .md（topic 行）降级可读 + effTags 合并可见 + 导出标签档 topic-only 命中不成孤儿',

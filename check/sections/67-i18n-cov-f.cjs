@@ -40,9 +40,10 @@ module.exports = {
   const clientPkgSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
   const protoSrc = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
   const srvSrc = fsNative.readFileSync(path.join(DIR, 'src', 'host', 'server.js'), 'utf8')
-  // 覆盖卡 F 抽串清单（99 条 = filter.* 10 + sort.* 6 + meta.status* 3 + fld.* 25（含 E 卡交接调用方传参）+ wiki.* 4
-  //   + cap.* 21 + search.offline 1 + sel.deleting 1 + ctx.* 7 + help.* 20 + side.loadFailed 1；key=表面.语义）
+  // 覆盖卡 F 抽串清单（97 条 = filter.* 10 + sort.* 6 + meta.status* 3 + fld.* 25（含 E 卡交接调用方传参）+ wiki.* 4
+  //   + cap.* 21 + search.offline 1 + sel.deleting 1 + ctx.* 5 + help.* 20 + side.loadFailed 1；key=表面.语义）
   // （0.4.3⑦：fld.menuView「进入文件夹视图」随「文件视图」拆除移出清单）
+  // （0.4.8（notes-048-note-ctxmenu）：ctx.moveTo/ctx.moveOut 收编更名进 note.menu* 新键域（清单 99→97），新键归节 110 断言）
   const KEYS = [
     'filter.statusGroup', 'filter.ruleOr', 'filter.kindGroup', 'filter.ruleOrAnd', 'filter.hitCount',
     'filter.clear', 'filter.done', 'filter.removeAria', 'filter.clearedToast', 'filter.stInjected',
@@ -62,7 +63,7 @@ module.exports = {
     'cap.failed',
     'search.offline',
     'sel.deleting',
-    'ctx.reopen', 'ctx.markResolved', 'ctx.moveTo', 'ctx.moveOut', 'ctx.newFolderPlaceholder',
+    'ctx.reopen', 'ctx.markResolved', 'ctx.newFolderPlaceholder',
     'ctx.newFolder', 'ctx.merge',
     'help.newPre', 'help.newPost', 'help.capture', 'help.mergeWin', 'help.topic',
     'help.drag', 'help.keysLead', 'help.keysSearch', 'help.keysSearchEnd', 'help.keysNew',
@@ -74,8 +75,8 @@ module.exports = {
   const zh = grab(zhSrc, 'I18N_ZH'), en = grab(enSrc, 'I18N_EN')
 
   // ===== ① 字典双向覆盖：99 条 key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
-  await t('覆盖F 字典双向覆盖：99 条 filter/sort/meta.status/fld/wiki/cap/search/sel/ctx/help/side key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
-    assert.strictEqual(KEYS.length, 99, '抽串清单条数（实得 ' + KEYS.length + '）')
+  await t('覆盖F 字典双向覆盖：97 条 filter/sort/meta.status/fld/wiki/cap/search/sel/ctx/help/side key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
+    assert.strictEqual(KEYS.length, 97, '抽串清单条数（实得 ' + KEYS.length + '）')
     for (const k of KEYS) {
       assert(typeof zh[k] === 'string' && zh[k], 'zh 缺 key/空值：' + k)
       assert(typeof en[k] === 'string' && en[k], 'en 缺 key/空值：' + k)
@@ -87,14 +88,16 @@ module.exports = {
     for (const dup of ['filter.pinned', 'filter.stPinned', 'filter.stSensitive', 'filter.stInjectEver', 'filter.sessLoadFailed',
       'fld.delete', 'fld.cancel', 'fld.untitled', 'fld.sessLoadFailed', 'cap.cancel', 'cap.delete', 'cap.untitled', 'cap.roleConvention', 'cap.roleReference',
       'ctx.delete', 'ctx.pin', 'ctx.unpin', 'ctx.movedTo', 'ctx.movedOut', 'help.title', 'meta.statusPinned',
+      'note.menuPin', 'note.menuUnpin', 'note.menuDispatch', 'note.menuDelete',
       'wiki.untitled', 'wiki.backlinks', 'sort.timeLabel', 'side.sessLoadFailed', 'sel.mergeAll']) {
       assert(!(dup in zh) && !(dup in en), '复用 tree.*/meta.*/editor.*/common.*/sel.*/arch.*/inj.*/mem.*/chrome.* 既有 key，禁重复建别名：' + dup)
     }
   })
 
   // ===== ② t()/tt() 改写命中 + 条件映射 helper 双端接线 + 常量表字面量锚保留 =====
-  await t('t()/tt() 改写命中：24 表面文件域内 t(/tt( 合计 ≥99（≥抽串数）+ 逐文件关键锚点 + helper 接线 + 常量表锚保留', () => {
-    const cnt = (s) => (s.match(/[^\w]t{1,2}\('(?:fld|wiki|cap|search|sel|ctx|help|filter|sort|side|meta|tree|common|editor|arch|inj|mem|chrome)\./g) || []).length
+  await t('t()/tt() 改写命中：24 表面文件域内 t(/tt( 合计 ≥97（≥抽串数）+ 逐文件关键锚点 + helper 接线 + 常量表锚保留', () => {
+    /* 0.4.8（notes-048-note-ctxmenu）：域枚举 +note（note.menu* 新键域随本卡建立——ctx.moveTo/moveOut 收编更名，ctx-menu.js 阈值 13 不变仍满足） */
+    const cnt = (s) => (s.match(/[^\w]t{1,2}\('(?:fld|wiki|cap|search|sel|ctx|help|filter|sort|side|meta|tree|common|editor|arch|inj|mem|chrome|note)\./g) || []).length
     const per = [
       ['folders.js(app)', foldersAppSrc, 26], ['wiki.js(app)', wikiAppSrc, 12], ['selection.js(app)', selAppSrc, 12],
       ['search.js(app)', searchAppSrc, 1], ['filterbar.js(app)', filterbarAppSrc, 11], ['organize.js(app)', orgAppSrc, 10],
@@ -107,7 +110,7 @@ module.exports = {
     ]
     let total = 0
     for (const [label, s, min] of per) { const c = cnt(s); total += c; assert(c >= min, label + ' 域内 t(/tt( 命中 ≥' + min + '（实得 ' + c + '）') }
-    assert(total >= 99, '表面文件域内 t(/tt( 命中合计 ≥99 抽串数（实得 ' + total + '）')
+    assert(total >= 97, '表面文件域内 t(/tt( 命中合计 ≥97 抽串数（实得 ' + total + '）')
     // app 端锚点
     assert(foldersAppSrc.indexOf("title: parentId ? t('fld.titleNewSub') : t('fld.titleNew')") >= 0 && foldersAppSrc.indexOf("okText: t('fld.okNew')") >= 0, 'app folders 弹窗传参 t()（E 卡交接项：调用方 title/okText）')
     assert(foldersAppSrc.indexOf("t('fld.delConfirmCascade', { name: f.name, childN: childN, noteN: noteN })") >= 0 && foldersAppSrc.indexOf("toast(t('fld.errSelf'))") >= 0 && foldersAppSrc.indexOf("t('fld.menuView')") < 0, 'app folders 级联 confirm/cycle 拦截走 t()；0.4.3⑦「进入文件夹视图」菜单项（fld.menuView）随文件视图拆除移除')
@@ -126,7 +129,7 @@ module.exports = {
     assert(fpopAppSrc.indexOf("t('filter.clearedToast')") >= 0, 'app filter-pop 清空筛选 toast 走 t()')
     assert(dataAppSrc.indexOf("t('side.loadFailed', { msg:") >= 0, 'app data.js 列表加载失败 toast 走 t()')
     // client 端锚点
-    assert(ctxCliSrc.indexOf("ctxMenu.note.status === 'resolved' ? t('ctx.reopen') : t('ctx.markResolved')") >= 0 && ctxCliSrc.indexOf("t('ctx.merge')") >= 0 && ctxCliSrc.indexOf("t('ctx.moveTo')") >= 0, 'client ctx-menu 三动作/合并/移动走 t()')
+    assert(ctxCliSrc.indexOf("ctxMenu.note.status === 'resolved' ? t('ctx.reopen') : t('ctx.markResolved')") >= 0 && ctxCliSrc.indexOf("t('ctx.merge')") >= 0 && ctxCliSrc.indexOf("t('note.menuMoveTo')") >= 0, 'client ctx-menu 三动作/合并/移动走 t()（0.4.8 移动改走 note.menu* 新键域）')
     assert(ctxCliSrc.indexOf("t('tree.movedTo', { name: fname })") >= 0 && ctxCliSrc.indexOf("t('tree.movedOut')") >= 0, 'client ctx-menu 移动 toast 复用 tree.movedTo/movedOut')
     assert(fpopCliSrc.indexOf('filterStatusLabel(f.id)') >= 0 && fpopCliSrc.indexOf('kindLabel(k)') >= 0 && fpopCliSrc.indexOf("t('filter.hitCount', { n: filteredCount })") >= 0, 'client filter-pop 经条件映射 + 命中计数走 t()')
     assert(fmenuCliSrc.indexOf("t('fld.delConfirmCascade', { name: f.name, childN: childN, noteN: noteN })") >= 0 && fmenuCliSrc.indexOf("showToast(t('fld.errSelf'))") >= 0 && fmenuCliSrc.indexOf("t('fld.menuDeleteFolder')") >= 0, 'client folder-menu confirm/cycle/菜单走 t()（与 app folders.js 同 key 域）')

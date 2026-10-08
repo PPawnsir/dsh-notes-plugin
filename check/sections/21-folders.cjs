@@ -237,10 +237,11 @@ module.exports = {
     }
   })
   await t('client 移动到文件夹 + 文件夹右键管理（v2 纯文字标签，开发版 + 发布包同步）', () => {
-    assert(clientSrc.indexOf('移动到文件夹') >= 0, '笔记行右键含「移动到文件夹」')
+    /* 0.4.8（notes-048-note-ctxmenu）：右键菜单文案收编进 note.menu* 新键域（'移动到…'/'未分类（移出文件夹）'），原 ctx.moveTo/ctx.moveOut 键值退役 */
+    assert(clientSrc.indexOf("'note.menuMoveTo': '移动到…'") >= 0, '笔记行右键含「移动到…」（0.4.8 note.menu* 新键域字典值）')
     assert(/function ctxMoveToFolder\(n, folderId\)/.test(clientSrc), 'ctxMoveToFolder 存在')
     assert(/host\.call\('notes-update', \{ id: n\.id, folder: folderId \}\)/.test(clientSrc), '移动走 notes-update 只改 folder 字段')
-    assert(clientSrc.indexOf('移出文件夹（未分类）') >= 0 && clientSrc.indexOf('新建文件夹…') >= 0, '子菜单含移出/新建')
+    assert(clientSrc.indexOf('未分类（移出文件夹）') >= 0 && clientSrc.indexOf('新建文件夹…') >= 0, '子菜单含移出/新建')
     assert(/function openFolderMenu\(ev, f\)/.test(clientSrc), 'openFolderMenu 存在')
     for (const label of ["'重命名'", "'上移'", "'下移'", "'删除文件夹'"]) {
       assert(clientSrc.indexOf(label) >= 0, '文件夹右键菜单缺「' + label + '」')
@@ -248,7 +249,7 @@ module.exports = {
     for (const op of ["{ op: 'create', name: name, parent: parent }", "{ op: 'rename', id: id, name: name }", "{ op: 'delete', id: f.id, cascade: true }", "{ op: 'reorder', ids: ids }"]) {
       assert(clientSrc.indexOf(op) >= 0, 'client-impl 缺 notes-folders 调用 ' + op)
     }
-    assert(clientPkgSrc.indexOf('移动到文件夹') >= 0 && clientPkgSrc.indexOf('删除文件夹') >= 0, '发布包含移动/删除文件夹交互')
+    assert(clientPkgSrc.indexOf('移动到…') >= 0 && clientPkgSrc.indexOf('删除文件夹') >= 0, '发布包含移动/删除文件夹交互')
   })
   await t('styles.css 树状文件夹样式（v2 token 化，开发版 + 发布包同步）', () => {
     const cssDev = fsNative.readFileSync(SRC_STYLES, 'utf8')
@@ -557,8 +558,8 @@ module.exports = {
     assert((clientSrc.match(/if \(!dragNoteIdRef\.current\) return/g) || []).length >= 3, '笔记拖拽 drop 处理器均先判 ref：非本插件拖拽不接管（非法目标无动作；文件夹拖拽走 dragFolderIdRef 通道）')
     assert(clientSrc.indexOf("classList.remove('dragging')") >= 0, 'dragend 清理 .dragging')
     assert(clientSrc.indexOf("querySelectorAll('.dsh-notes-floating .drop-hint')") >= 0, 'dragend 清理面板内所有残留 .drop-hint')
-    // 右键「移动到文件夹」保留（拖拽与右键菜单共存）
-    assert(clientSrc.indexOf('移动到文件夹') >= 0, '右键「移动到文件夹」保留')
+    // 右键「移动到…」保留（拖拽与右键菜单共存；0.4.8 文案收编 note.menu* 新键域）
+    assert(clientSrc.indexOf('移动到…') >= 0, '右键「移动到…」保留')
   })
   await t('拖拽样式：.dragging 半透明 + .drop-hint 虚线描边（原型 .row.drop）+ 未分类区容器（开发版 + 发布包同步）', () => {
     const cssDev = fsNative.readFileSync(SRC_STYLES, 'utf8')

@@ -595,6 +595,13 @@
   .ctxmenu .mi:hover{background:var(--nbg-hover);color:var(--ntx)}
   .ctxmenu .mi.danger:hover{color:var(--ndanger)}
   .ctxmenu .mi svg.ic{width:12px;height:12px}
+  /* 0.4.8 笔记行右键菜单（notes-048-note-ctxmenu）：增量样式全部落在 .ctxmenu-note 限定域/新 class 上——文件夹菜单零改动红线 */
+  .ctxmenu-note{max-height:min(460px,calc(100vh - 16px));overflow-y:auto}
+  .ctxmenu .mi.sub{font-size:11.5px}
+  .ctxmenu .mi.dis{opacity:.45;cursor:default}
+  .ctxmenu .mi.dis:hover{background:transparent;color:var(--nt2)}
+  .ctxmenu .mi .hint{margin-left:auto;font-size:10px;color:var(--nt3)}
+  .ctxmenu .mi .ctx-caret{margin-left:auto;font-size:10px;color:var(--nt3)}
   /* ===== 快速记录卡片（v2） ===== */
   .cap{position:fixed;z-index:99;width:300px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-lg);box-shadow:0 10px 32px rgba(0,0,0,.4);overflow:hidden;animation:capin .14s ease-out}
   @keyframes capin{from{opacity:0;transform:translateY(5px) scale(.98)}to{opacity:1;transform:none}}
@@ -2077,8 +2084,11 @@ var I18N_ZH = {
   'sel.deleting': '删除中…',
   'ctx.reopen': '重开',
   'ctx.markResolved': '标记已解决',
-  'ctx.moveTo': '移动到文件夹',
-  'ctx.moveOut': '移出文件夹（未分类）',
+  /* 0.4.8（notes-048-note-ctxmenu）：笔记行右键菜单新键（note.menu* 域，双端同构）——原 ctx.moveTo/ctx.moveOut 由 note.menuMoveTo/menuMoveOut 收编更名 */
+  'note.menuMoveTo': '移动到…',
+  'note.menuMoveOut': '未分类（移出文件夹）',
+  'note.menuNoFolders': '暂无文件夹',
+  'note.menuPinFailed': '置顶失败：{msg}',
   'ctx.newFolderPlaceholder': '新文件夹名…',
   'ctx.newFolder': '新建文件夹…',
   'ctx.merge': '合并为一篇',
@@ -2965,8 +2975,11 @@ var I18N_EN = {
   'sel.deleting': 'Deleting…',
   'ctx.reopen': 'Reopen',
   'ctx.markResolved': 'Mark resolved',
-  'ctx.moveTo': 'Move to folder',
-  'ctx.moveOut': 'Move out of the folder (unfiled)',
+  /* 0.4.8 (notes-048-note-ctxmenu): note row context menu keys (note.menu* domain, both ends aligned) — former ctx.moveTo/ctx.moveOut renamed into note.menuMoveTo/menuMoveOut */
+  'note.menuMoveTo': 'Move to…',
+  'note.menuMoveOut': 'Unfiled (remove from folder)',
+  'note.menuNoFolders': 'No folders yet',
+  'note.menuPinFailed': 'Pin failed: {msg}',
   'ctx.newFolderPlaceholder': 'New folder name…',
   'ctx.newFolder': 'New folder…',
   'ctx.merge': 'Merge into one',
@@ -3765,6 +3778,10 @@ $('tree').addEventListener('click', function (ev) {
   }
 });
 $('tree').addEventListener('contextmenu', function (ev) {
+  /* 0.4.8（notes-048-note-ctxmenu）：笔记行右键菜单分流先于文件夹行（行类互斥；closest('[data-note]') 判别先例见 dragstart 委托）；
+     右键另一行直接换目标 = openNoteMenu/openFolderMenu 各自重建 #ctxHost innerHTML（同一宿主互斥覆盖） */
+  var nrow = ev.target.closest('[data-note]');
+  if (nrow) { ev.preventDefault(); openNoteMenu(ev.clientX, ev.clientY, nrow.dataset.note, false); return }
   var frow = ev.target.closest('[data-fold]');
   if (!frow) return;
   ev.preventDefault();
@@ -3840,6 +3857,89 @@ function moveNoteToFolder(id, folderId) {
     toast(folderId ? t('tree.movedTo', { name: fname(folderId) }) : t('tree.movedOut'));
     loadNotes(true);
   }).catch(function (e) { toast(t('tree.moveFailed', { msg: e && e.message || e })) });
+}
+/* ===== 0.4.8 笔记行右键菜单（notes-048-note-ctxmenu；反馈 n-mut4lscwg6tf R1+R2：归类仅拖拽一条路，无菜单/键盘替代）=====
+   冻结四项（顺序即序）：移动到…（子层文件夹树）/ 置顶切换 / 派发 / 删除；
+   交互纪律全抄文件夹菜单（folders.js openFolderMenu 模式）：#ctxHost + .ctxmenu/.mi 同款结构、点外关（folders.js document mousedown 通用闸
+   closeCtx）、Esc 关（keyboard.js $('ctxHost').firstChild 通用闸）、视口夹紧（渲染后实测 offsetWidth/Height 双向 clamp）、右键另一行直接换目标；
+   多选态右键 v1 裁决留注：菜单恒作用本行单行（选中集批量动作仍走底部操作条 selbar；批量菜单化留后续批次）；
+   红线：文件夹菜单零改动（只复用模式不改它）；拖拽路径不动（菜单是增量不是替代）；删除/置顶走既有 RPC 通道不新造 */
+/* 移动到…子层行（纯函数口径，check 110 提取 eval）：depth-first 打平文件夹树（嵌套夹 depth 缩进展示）；
+   当前归属项 cur=true（渲染打勾禁用）；悬空 parent 按根级防御（rootFolders 同口径）+ cycle 守卫（存量脏数据）；
+   目标清单 = 全量 folders——hidden/sys 遮罩夹仍是合法移动目标（遮罩语义仅树隐身，目标选择器不降噪） */
+function noteMenuFolderRows(n) {
+  var rows = [], byId = {}, guard = {};
+  folders.forEach(function (f) { byId[f.id] = f });
+  function walk(pid, depth) {
+    folders.forEach(function (f) {
+      if ((f.parent || '') !== pid || guard[f.id]) return;
+      guard[f.id] = true;
+      rows.push({ id: f.id, name: f.name, depth: depth, cur: (n.folder || '') === f.id });
+      walk(f.id, depth + 1);
+    });
+  }
+  walk('', 0);
+  /* 悬空 parent 防御补挂根级（host checkFolderAttach 写侧已拒，读侧兜底防脏数据隐身） */
+  folders.forEach(function (f) { if ((f.parent || '') && !byId[f.parent || ''] && !guard[f.id]) { guard[f.id] = true; rows.push({ id: f.id, name: f.name, depth: 0, cur: (n.folder || '') === f.id }); walk(f.id, 1) } });
+  return rows;
+}
+function openNoteMenu(x, y, nid, moveOpen) {
+  var n = notes.find(function (z) { return z.id === nid });
+  if (!n) return;
+  /* 右键即选中（client openCtxMenu 同口径）：派发弹窗以选中笔记为对象（openDispatch 读 selId/edNote，selectNote 同步赋值） */
+  selectNote(nid);
+  var rows = noteMenuFolderRows(n);
+  var h = '<div class="ctxmenu ctxmenu-note" id="ctxMenu">';
+  /* ① 移动到…：零文件夹时该项禁用并显示「暂无文件夹」（规格冻结）；否则点击内联展开子层（与 client 同选型——内联子层免二级浮层裁切/定位） */
+  if (!rows.length) h += '<div class="mi dis">' + icon('i-folder') + t('note.menuMoveTo') + '<span class="hint">' + t('note.menuNoFolders') + '</span></div>';
+  else h += '<div class="mi" data-a="move">' + icon('i-folder') + t('note.menuMoveTo') + '<span class="ctx-caret">' + (moveOpen ? '▾' : '▸') + '</span></div>';
+  if (moveOpen && rows.length) {
+    rows.forEach(function (r) {
+      h += '<div class="mi sub' + (r.cur ? ' dis' : '') + '"' + (r.cur ? '' : ' data-mv="' + r.id + '"') + ' style="padding-left:' + (22 + r.depth * 14) + 'px">' + (r.cur ? '✓ ' : '') + esc(r.name) + '</div>';
+    });
+    /* 「未分类（移出文件夹）」恒在子层尾部；笔记本无归属时它即当前项（打勾禁用） */
+    h += '<div class="mi sub' + ((n.folder || '') ? '"' + ' data-mv=""' : ' dis"') + ' style="padding-left:22px">' + ((n.folder || '') ? '' : '✓ ') + t('note.menuMoveOut') + '</div>';
+  }
+  /* ② 置顶切换（复用 meta 区 pin 同款 RPC 通道 notes-update status 字段；label 复用 meta.pin/unpin 既有键——禁重复建别名） */
+  h += '<div class="mi" data-a="pin">' + icon('i-pin') + (isPinned(n) ? t('meta.unpin') : t('meta.pin')) + '</div>'
+    /* ③ 派发（直开派发弹窗，复用既有入口 openDispatch——上行 selectNote 已就位 selId/edNote） */
+    + '<div class="mi" data-a="dispatch">' + icon('i-play') + t('meta.dispatch') + '</div>'
+    /* ④ 删除（复用既有删除流 doDeleteNote 软删+撤销；sys 警示既有逻辑在 doNoteMenuDelete） */
+    + '<div class="mi danger" data-a="del">' + icon('i-trash') + t('common.delete') + '</div></div>';
+  var host = $('ctxHost');
+  host.innerHTML = h;
+  var m = $('ctxMenu');
+  /* 视口夹紧：渲染后实测尺寸双向 clamp（子层展开重渲自动重夹紧；.ctxmenu-note max-height 滚动兜底超长子层） */
+  m.style.left = Math.max(4, Math.min(x, innerWidth - m.offsetWidth - 4)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, innerHeight - m.offsetHeight - 4)) + 'px';
+  m.addEventListener('click', function (ev) {
+    var mi = ev.target.closest('.mi'); if (!mi || mi.classList.contains('dis')) return;
+    /* 子层移动目标：data-mv 属性在（含空串=移出未分类）即移动；cur 项无该属性天然不触发 */
+    if (mi.hasAttribute('data-mv')) { closeCtx(); moveNoteToFolder(n.id, mi.getAttribute('data-mv') || ''); return }
+    var a = mi.dataset.a;
+    if (a === 'move') { openNoteMenu(x, y, nid, !moveOpen); return }   /* 子层开合不关菜单（重渲自带重夹紧） */
+    closeCtx();
+    if (a === 'pin') doNoteMenuPin(n);
+    else if (a === 'dispatch') openDispatch();
+    else if (a === 'del') doNoteMenuDelete(n);
+  });
+}
+/* 置顶切换：meta 区 mPin 同款 RPC 通道（notes-update status 字段）——菜单可作用于非编辑中笔记，故直发 RPC 不走 triggerSave（后者仅服务 edNote）；
+   若恰为编辑中笔记，同步 edNote 内存态 + renderMeta（与 mPin 的编辑器侧刷新同口径） */
+function doNoteMenuPin(n) {
+  var to = isPinned(n) ? 'active' : 'pinned';
+  rpc('notes-update', { id: n.id, status: to }).then(function (res) {
+    if (res && res.error) { toast(res.error); return }
+    if (edNote && edNote.id === n.id) { edNote.status = to; renderMeta() }
+    toast(to === 'pinned' ? t('meta.pinnedToast') : t('meta.unpinnedToast'));
+    loadNotes(true);
+  }).catch(function (e) { toast(t('note.menuPinFailed', { msg: e && e.message || e })) });
+}
+/* 删除：复用既有删除流 doDeleteNote（软删+撤销 toast，回收站可恢复——确认强度=不可恢复性，notes-034-c-confirm）；
+   sys 警示既有逻辑（0.4.3⑥ 同口径）：kind=sys 机器笔记追加 confirm 红线门槛（复用 sys.batchDelWarn 既有键，单篇 n=1 口径），确认后才进软删流 */
+function doNoteMenuDelete(n) {
+  if ((n.kind || 'note') === 'sys' && !confirm(t('sys.batchDelWarn', { n: 1 }))) return;
+  doDeleteNote(n.id);
 }
 
 /* ================= 文件夹管理（notes-folders op 契约；嵌套 parent 语义 = notes-nested-folder-ui） ================= */
