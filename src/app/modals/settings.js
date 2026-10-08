@@ -14,6 +14,74 @@ function setLabelHtml(label, tip, extraHtml) {
     + (long ? '<button class="sx" type="button" title="' + t('settings.descExpandTip') + '" aria-label="' + t('settings.descExpandTip') + '">ⓘ</button>' : '')
     + '<span class="s' + (long ? ' cl' : '') + '">' + tip + '</span>' + (extraHtml || '') + '</div>';
 }
+/* ================= 0.4.8 设置分组导航（notes-048-settings-groups；UX候选D n-mus81ly6hvh2）=================
+   七组分类常量表（冻结）+ 新节登记处：
+     rows = 节 id（app/原型 = setSecs 键 = 行壳 data-sec 锚；client = settingsRows key）。
+     新增节须三端同登记进对应组 rows；登记遗漏由 check 111「常量表 ⇄ 节 id 集双向一致」断言兜底（漏登记即红）。
+     空组（rows 空或全部缺渲染）整组隐身——组定义保留为登记槽，有节入驻即自动出现在 rail/chips/组壳。
+     红线：节内内容与组内节相对顺序不动（0.4.7-B sticky 标题/描述收折/LLM 区零回归）；组块按本表序渲染。 */
+var SET_GROUPS = [
+  { id: 'general',  icon: 'i-gear',    labelKey: 'settings.group.general',  rows: ['language'] },                                        /* 常规：主题/语言/面板入口类 */
+  { id: 'editor',   icon: 'i-note',    labelKey: 'settings.group.editor',   rows: [] },                                                  /* 编辑器：自动保存/富文本/双链类（待新节登记） */
+  { id: 'inject',   icon: 'i-bolt',    labelKey: 'settings.group.inject',   rows: ['stale', 'budget', 'injprev', 'injmgr'] },            /* 检索与注入：搜索/注入/挂载类 */
+  { id: 'dispatch', icon: 'i-clock',   labelKey: 'settings.group.dispatch', rows: [] },                                                  /* 派发与调度（待新节登记） */
+  { id: 'ai',       icon: 'i-sparkle', labelKey: 'settings.group.ai',       rows: ['llm', 'organizemax', 'usage', 'usagebudget', 'suggest'] },  /* AI：LLM 配置/整理上限类 */
+  { id: 'data',     icon: 'i-folder',  labelKey: 'settings.group.data',     rows: ['maxdepth', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },  /* 数据与存储：遥测/备份/存储路径类 */
+  { id: 'about',    icon: 'i-info',    labelKey: 'settings.group.about',    rows: ['cheatsheet'] },                                      /* 关于：版本/计数/文档链接类 */
+];
+/* 可见组 = 至少含一个已渲染节的组（按表序；空组隐身） */
+function setGroupsVisible(secs) {
+  var out = [];
+  for (var i = 0; i < SET_GROUPS.length; i++) {
+    var g = SET_GROUPS[i], ids = [];
+    for (var j = 0; j < g.rows.length; j++) if (secs[g.rows[j]]) ids.push(g.rows[j]);
+    if (ids.length) out.push({ g: g, ids: ids });
+  }
+  return out;
+}
+/* 分组壳 + 导航渲染（纯字符串拼装，check 111 可提取 eval）：rail = 左窄栏（图标+组名，sticky 随滚）；
+   chips = 窄宽（<560px 视口）顶部横条退化（CSS 媒体查询切换显隐）；组头 .set-group-t + 行壳原样入组 */
+function setGroupsHtml(secs) {
+  var vis = setGroupsVisible(secs);
+  var rail = '', chips = '', main = '';
+  for (var i = 0; i < vis.length; i++) {
+    var g = vis[i].g, name = t(g.labelKey);
+    rail += '<button type="button" class="set-rail-item" data-g="' + g.id + '">' + icon(g.icon, 12) + '<span>' + esc(name) + '</span></button>';
+    chips += '<button type="button" class="set-chip" data-g="' + g.id + '">' + esc(name) + '</button>';
+    main += '<div class="set-group" data-g="' + g.id + '"><div class="set-group-t">' + esc(name) + '</div>';
+    for (var j = 0; j < vis[i].ids.length; j++) main += secs[vis[i].ids[j]];
+    main += '</div>';
+  }
+  return '<div class="set-layout">'
+    + '<div class="set-rail" role="navigation" aria-label="' + t('settings.group.nav') + '">' + rail + '</div>'
+    + '<div class="set-main"><div class="set-chips">' + chips + '</div>' + main + '</div></div>';
+}
+/* 分组导航接线（openSettings 渲染后调用）：点击定位（滚动容器 = #modal——与 0.4.7-B sticky 标题同容器，
+   吸顶标题补偿 48px）+ 滚动监听反高亮当前组（视口顶缘 56px 阈值内末命中组 = 当前组，rail/chips 同步 .on + aria-current） */
+function setNavWire() {
+  var modal = $('modal');
+  if (!modal) return;
+  var items = modal.querySelectorAll('.set-rail-item, .set-chip');
+  var jump = function (gid) {
+    var g = modal.querySelector('.set-group[data-g="' + gid + '"]');
+    if (g) modal.scrollTop = modal.scrollTop + (g.getBoundingClientRect().top - modal.getBoundingClientRect().top) - 48;
+  };
+  items.forEach(function (el) { el.onclick = function () { jump(el.getAttribute('data-g')) } });
+  var spy = function () {
+    var top = modal.getBoundingClientRect().top, cur = '';
+    var gs = modal.querySelectorAll('.set-group');
+    for (var i = 0; i < gs.length; i++) if (gs[i].getBoundingClientRect().top - top <= 56) cur = gs[i].getAttribute('data-g');
+    if (!cur && gs.length) cur = gs[0].getAttribute('data-g');   /* 顶部落首组（概念速览块压在首组上方，滚顶时首组未过 56px 阈值——首组兜底=当前组） */
+    if (gs.length && modal.scrollTop + modal.clientHeight >= modal.scrollHeight - 2) cur = gs[gs.length - 1].getAttribute('data-g');   /* 触底锁末组（末组高度不足上顶 56px 阈值时的归宿——scroll-spy 标准兜底） */
+    items.forEach(function (el) {
+      var on = el.getAttribute('data-g') === cur;
+      el.classList.toggle('on', on);
+      if (el.classList.contains('set-rail-item')) { if (on) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current') }
+    });
+  };
+  modal.addEventListener('scroll', spy, { passive: true });
+  spy();
+}
 function openSettings() {
   openModal('<div class="modal-t">' + icon('i-gear', 13) + ' ' + t('common.settings') + '<span class="set-t-acts"><button class="mbtn" id="setRestore" disabled>' + t('common.restore') + '</button><button class="mbtn primary" id="setSave" disabled>' + t('common.save') + '</button><button class="mbtn set-x" id="setClose" title="' + t('settings.closeTip') + '">' + icon('i-x', 11) + '</button></span></div><div class="modal-err" id="mErr" style="display:none"></div><div id="setBody"><div class="modal-hint">' + t('common.loading') + '</div></div>');   /* 0.4.6-H（R2 n-mux9svn0vhkz）：错误区自弹窗底部移到标题栏下——校验失败即刻可见（原渲染在弹窗最底部需滚动，「保存看似没反应」）；modalErr 带 scrollIntoView 兜底 */
   modalCloseHook = flushSettingsPending;   /* ✕/Esc/点遮罩关闭前兜底 flush */
@@ -59,40 +127,44 @@ function openSettings() {
         + '<button class="mbtn" id="setLlmSave">' + t('common.save') + '</button>'
         + (l ? '<button class="mbtn" id="setLlmClear">' + t('settings.followBtn') + '</button>' : '');
     }
-    $('setBody').innerHTML =
-      /* onboarding 轻量（notes-034-batch3）：四概念一行一条前置解释（注入/约定·资料/目录注入/派发）——新用户先懂「为什么要配这些」再看字段；
-         0.4.7-B①c：bullet 逐条 div.onb-li 悬挂缩进（续行对齐文字起点，<br> 连排折行参差消除） */
-      '<div class="modal-hint onb"><b>' + t('settings.onboardTitle') + '</b>'
+    /* 0.4.8：节登记表（键 = 节 id = SET_GROUPS.rows 登记键 = 行壳 data-sec 锚）；节内 HTML 保持 0.4.7-B 原文零改动（仅行壳补 data-sec）。
+       渲染顺序不再由本登记顺序决定——组块按 SET_GROUPS 表序输出（组内节相对顺序不动） */
+    var setSecs = {};
+    /* i18n 语言项（notes-042-i18n-mech）：localStorage 本地记忆、切换即生效（setLang 全量 render）；不走 settings.json，不参与 dirty 跟踪 */
+    setSecs.language = '<div class="set-row" data-sec="language">' + setLabelHtml(t('settings.language'), t('settings.languageTip')) + '<div class="set-ctrl"><select class="minput" id="setLang"><option value="zh">中文</option><option value="en">English</option></select></div></div>';
+    setSecs.llm = '<div class="set-row" data-sec="llm">' + setLabelHtml(t('settings.llm'), t('settings.llmTip')) + '<div class="set-ctrl">' + llmCtrl + '</div></div>';
+    /* 0.4.7-B⑦：整理长度上限行（LLM 区紧随模型行；0 = 按所配模型自动，说明文字带生效值） */
+    setSecs.organizemax = '<div class="set-row" data-sec="organizemax">' + setLabelHtml(t('settings.organizeMax'), t('settings.organizeMaxTip', { eff: orgMaxEff })) + '<div class="set-ctrl"><input class="minput" id="setOrgMax" type="number" min="0" step="1000" style="width:110px" value="' + orgMaxRaw + '"></div></div>';
+    setSecs.usage = '<div class="set-row" data-sec="usage">' + setLabelHtml(t('settings.usage'), t('settings.usageTip')) + '<div class="set-ctrl usage" id="setUsageBody"><span class="s">' + t('common.loading') + '</span></div></div>';
+    setSecs.usagebudget = '<div class="set-row" data-sec="usagebudget">' + setLabelHtml(t('settings.usageBudget'), t('settings.usageBudgetTip')) + '<div class="set-ctrl"><input class="minput" id="setUsageBudget" type="number" min="0" step="1000" style="width:110px" value="' + usageBudget + '"></div></div>';
+    setSecs.stale = '<div class="set-row" data-sec="stale">' + setLabelHtml(t('settings.stale'), t('settings.staleTip')) + '<div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>';
+    setSecs.maxdepth = '<div class="set-row" data-sec="maxdepth">' + setLabelHtml(t('settings.maxDepth'), t('settings.maxDepthTip')) + '<div class="set-ctrl"><input class="minput" id="setMaxDepth" type="number" min="0" step="1" style="width:90px" value="' + maxDepth + '"></div></div>';
+    setSecs.budget = '<div class="set-row" data-sec="budget">' + setLabelHtml(t('settings.budget'), t('settings.budgetTip'),
+        '<span class="s" id="setGaugeT">' + t('settings.gaugeCurrent', { last: lastChars }) + (budgetNum > 0 ? ' / ' + t('settings.gaugeBudget', { budget: budgetNum }) : t('settings.gaugeUnlimited')) + '</span>'
+        + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div>')
+      + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>';
+    setSecs.injprev = '<div class="set-row" data-sec="injprev">' + setLabelHtml(t('settings.injPreview'), t('settings.injPreviewTip')) + '<div class="set-ctrl"><button class="mbtn" id="setInjectPreview">' + t('settings.previewBtn') + '</button></div></div>';
+    setSecs.injmgr = '<div class="set-row" data-sec="injmgr">' + setLabelHtml(t('settings.injManager'), t('settings.injManagerTip')) + '<div class="set-ctrl"><button class="mbtn" id="setInjectManager">' + t('settings.manageBtn') + '</button></div></div>';
+    setSecs.data = '<div class="set-row" data-sec="data">' + setLabelHtml(t('settings.data'), t('settings.dataTip')) + '<div class="set-ctrl"><button class="mbtn" id="setExport">' + t('settings.exportAll') + '</button><button class="mbtn" id="setImport">' + t('settings.importBtn') + '</button><button class="mbtn" id="setTrash">' + t('topbar.trash') + '</button></div></div>';
+    setSecs.assets = '<div class="set-row" data-sec="assets">' + setLabelHtml(t('settings.assets'), t('settings.assetsTip')) + '<div class="set-ctrl"><button class="mbtn" id="setPrune">' + t('settings.pruneBtn') + '</button></div></div>';
+    setSecs.suggest = '<div class="set-row" data-sec="suggest">' + setLabelHtml(t('settings.suggest'), t('settings.suggestTip')) + '<div class="set-ctrl"><button class="mbtn" id="setSuggest">' + t('settings.openBtn') + '</button></div></div>';
+    /* 工作记忆 v0「工作记忆」区：启用沉淀引导（约定笔记方案）+ 日志卫生两级窗口 */
+    setSecs.memory = '<div class="set-row" data-sec="memory">' + setLabelHtml(t('settings.memory'), t('settings.memoryTip')) + '<div class="set-ctrl" id="setMemoryCtrl"><span class="s">' + t('settings.memProbing') + '</span></div></div>';
+    setSecs.logweek = '<div class="set-row" data-sec="logweek">' + setLabelHtml(t('settings.logWeek'), t('settings.logWeekTip')) + '<div class="set-ctrl"><input class="minput" id="setLogWeek" type="number" min="0" step="1" style="width:90px" value="' + logWeekDays + '"></div></div>';
+    setSecs.logmonth = '<div class="set-row" data-sec="logmonth">' + setLabelHtml(t('settings.logMonth'), t('settings.logMonthTip')) + '<div class="set-ctrl"><input class="minput" id="setLogMonth" type="number" min="0" step="1" style="width:90px" value="' + logRetentionDays + '"></div></div>';
+    /* 键盘流速查表入口（notes-034-f-cheatsheet）：内容与 panels/keyboard.js 逐键核对；? 键为直达通道 */
+    setSecs.cheatsheet = '<div class="set-row" data-sec="cheatsheet">' + setLabelHtml(t('settings.cheatsheet'), t('settings.cheatsheetTip')) + '<div class="set-ctrl"><button class="mbtn" id="setCheatsheet">' + t('settings.viewBtn') + '</button></div></div>';
+    /* onboarding 轻量（notes-034-batch3）：四概念一行一条前置解释（注入/约定·资料/目录注入/派发）——新用户先懂「为什么要配这些」再看字段；
+       0.4.7-B①c：bullet 逐条 div.onb-li 悬挂缩进（续行对齐文字起点，<br> 连排折行参差消除）；0.4.8：速览独立于分组导航之上（不归组） */
+    var setOnb = '<div class="modal-hint onb"><b>' + t('settings.onboardTitle') + '</b>'
       + '<div class="onb-li">' + t('settings.onboardInject') + '</div>'
       + '<div class="onb-li">' + t('settings.onboardRoles') + '</div>'
       + '<div class="onb-li">' + t('settings.onboardCatalog') + '</div>'
-      + '<div class="onb-li">' + t('settings.onboardDispatch') + '</div></div>'
-      /* i18n 语言项（notes-042-i18n-mech）：localStorage 本地记忆、切换即生效（setLang 全量 render）；不走 settings.json，不参与 dirty 跟踪 */
-      + '<div class="set-row">' + setLabelHtml(t('settings.language'), t('settings.languageTip')) + '<div class="set-ctrl"><select class="minput" id="setLang"><option value="zh">中文</option><option value="en">English</option></select></div></div>'
-      + '<div class="set-row">' + setLabelHtml(t('settings.llm'), t('settings.llmTip')) + '<div class="set-ctrl">' + llmCtrl + '</div></div>'
-      /* 0.4.7-B⑦：整理长度上限行（LLM 区紧随模型行；0 = 按所配模型自动，说明文字带生效值） */
-      + '<div class="set-row">' + setLabelHtml(t('settings.organizeMax'), t('settings.organizeMaxTip', { eff: orgMaxEff })) + '<div class="set-ctrl"><input class="minput" id="setOrgMax" type="number" min="0" step="1000" style="width:110px" value="' + orgMaxRaw + '"></div></div>'
-      + '<div class="set-row">' + setLabelHtml(t('settings.usage'), t('settings.usageTip')) + '<div class="set-ctrl usage" id="setUsageBody"><span class="s">' + t('common.loading') + '</span></div></div>'
-      + '<div class="set-row">' + setLabelHtml(t('settings.usageBudget'), t('settings.usageBudgetTip')) + '<div class="set-ctrl"><input class="minput" id="setUsageBudget" type="number" min="0" step="1000" style="width:110px" value="' + usageBudget + '"></div></div>'
-      + '<div class="set-row">' + setLabelHtml(t('settings.stale'), t('settings.staleTip')) + '<div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>'
-      + '<div class="set-row">' + setLabelHtml(t('settings.maxDepth'), t('settings.maxDepthTip')) + '<div class="set-ctrl"><input class="minput" id="setMaxDepth" type="number" min="0" step="1" style="width:90px" value="' + maxDepth + '"></div></div>'
-      + '<div class="set-row">' + setLabelHtml(t('settings.budget'), t('settings.budgetTip'),
-          '<span class="s" id="setGaugeT">' + t('settings.gaugeCurrent', { last: lastChars }) + (budgetNum > 0 ? ' / ' + t('settings.gaugeBudget', { budget: budgetNum }) : t('settings.gaugeUnlimited')) + '</span>'
-          + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div>')
-      + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>'
-      + '<div class="set-row">' + setLabelHtml(t('settings.injPreview'), t('settings.injPreviewTip')) + '<div class="set-ctrl"><button class="mbtn" id="setInjectPreview">' + t('settings.previewBtn') + '</button></div></div>'
-      + '<div class="set-row">' + setLabelHtml(t('settings.injManager'), t('settings.injManagerTip')) + '<div class="set-ctrl"><button class="mbtn" id="setInjectManager">' + t('settings.manageBtn') + '</button></div></div>'
-      + '<div class="set-row">' + setLabelHtml(t('settings.data'), t('settings.dataTip')) + '<div class="set-ctrl"><button class="mbtn" id="setExport">' + t('settings.exportAll') + '</button><button class="mbtn" id="setImport">' + t('settings.importBtn') + '</button><button class="mbtn" id="setTrash">' + t('topbar.trash') + '</button></div></div>'
-      + '<div class="set-row">' + setLabelHtml(t('settings.assets'), t('settings.assetsTip')) + '<div class="set-ctrl"><button class="mbtn" id="setPrune">' + t('settings.pruneBtn') + '</button></div></div>'
-      + '<div class="set-row">' + setLabelHtml(t('settings.suggest'), t('settings.suggestTip')) + '<div class="set-ctrl"><button class="mbtn" id="setSuggest">' + t('settings.openBtn') + '</button></div></div>'
-      /* 工作记忆 v0「工作记忆」区：启用沉淀引导（约定笔记方案）+ 日志卫生两级窗口 */
-      + '<div class="set-row">' + setLabelHtml(t('settings.memory'), t('settings.memoryTip')) + '<div class="set-ctrl" id="setMemoryCtrl"><span class="s">' + t('settings.memProbing') + '</span></div></div>'
-      + '<div class="set-row">' + setLabelHtml(t('settings.logWeek'), t('settings.logWeekTip')) + '<div class="set-ctrl"><input class="minput" id="setLogWeek" type="number" min="0" step="1" style="width:90px" value="' + logWeekDays + '"></div></div>'
-      + '<div class="set-row">' + setLabelHtml(t('settings.logMonth'), t('settings.logMonthTip')) + '<div class="set-ctrl"><input class="minput" id="setLogMonth" type="number" min="0" step="1" style="width:90px" value="' + logRetentionDays + '"></div></div>'
-      /* 键盘流速查表入口（notes-034-f-cheatsheet）：内容与 panels/keyboard.js 逐键核对；? 键为直达通道 */
-      + '<div class="set-row">' + setLabelHtml(t('settings.cheatsheet'), t('settings.cheatsheetTip')) + '<div class="set-ctrl"><button class="mbtn" id="setCheatsheet">' + t('settings.viewBtn') + '</button></div></div>';
+      + '<div class="onb-li">' + t('settings.onboardDispatch') + '</div></div>';
+    $('setBody').innerHTML = setOnb + setGroupsHtml(setSecs);
     /* 0.4.7-B①b：说明 ⓘ 展开/收拢接线（长说明初态 .cl 收折两行；点击切换，按钮原生可聚焦） */
     $('setBody').querySelectorAll('.sx').forEach(function (el) { el.onclick = function () { var s = el.parentElement.querySelector('.s'); if (s) s.classList.toggle('cl') } });
+    setNavWire();   /* 0.4.8（notes-048-settings-groups）：分组导航接线（rail/chips 点击定位 + 滚动反高亮） */
     /* i18n 语言项（notes-042-i18n-mech + cov-c）：回显当前语言态；切换 = setLang 持久化 + 全量 render +
        本卡就地重渲染（render() 不重渲已开 modal：先兜底 flush 未落盘改动，重跑 openSettings 按新语言重建，
        滚动位置经 modalBackScroll 一次性还原——与二级面板返回同口径） */

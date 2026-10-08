@@ -344,6 +344,18 @@
   .set-t-acts .mbtn{padding:3px 12px;font-size:11px}
   .set-t-acts .mbtn:disabled{opacity:.45;cursor:default}
   .set-t-acts .set-x{padding:3px 6px;display:inline-flex;align-items:center}
+  /* ===== 0.4.8 设置分组导航（notes-048-settings-groups）：左窄 rail（sticky 随滚，吸顶标题 40px 补偿）+ 组头 + 窄宽（<560px）退化顶部 chips（与 app.html 同款） ===== */
+  .set-layout{display:flex;gap:14px;align-items:flex-start}
+  .set-rail{position:sticky;top:40px;display:flex;flex-direction:column;gap:2px;min-width:92px;flex-shrink:0}
+  .set-rail-item{display:flex;align-items:center;gap:6px;font:inherit;font-size:11.5px;color:var(--nt3);background:none;border:0;border-radius:var(--nr-sm);padding:5px 8px;cursor:pointer;text-align:left}
+  .set-rail-item:hover{color:var(--ntx);background:var(--nbg-hover)}
+  .set-rail-item.on{color:var(--nacc);background:var(--nbg-raise);font-weight:600}
+  .set-main{flex:1;min-width:0}
+  .set-chips{display:none;gap:6px;overflow-x:auto;padding:2px 0 8px;position:sticky;top:36px;background:var(--npanel);z-index:4}
+  .set-chip{flex-shrink:0;font:inherit;font-size:11px;color:var(--nt3);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:999px;padding:3px 10px;cursor:pointer;white-space:nowrap}
+  .set-chip.on{color:var(--nacc);border-color:var(--nacc);font-weight:600}
+  .set-group-t{font-size:11px;font-weight:700;color:var(--nt3);letter-spacing:.4px;padding:6px 0 2px;border-bottom:1px solid var(--nbd-soft)}
+  @media (max-width:559px){.set-rail{display:none}.set-chips{display:flex}}
   /* ===== 键盘流速查表（cheat sheet，notes-034-f-cheatsheet）：复用 modal 框架，键帽行两栏布局（与 app.html 同款） ===== */
   .cs-list{display:flex;flex-direction:column;gap:2px}
   .cs-row{display:flex;align-items:center;gap:10px;padding:5px 6px;border-radius:var(--nr-sm)}
@@ -569,6 +581,8 @@
   <symbol id="i-sort" viewBox="0 0 24 24"><path d="M8 5v14M8 5 4.5 8.5M8 5l3.5 3.5M16 19V5M16 19l3.5-3.5M16 19l-3.5-3.5"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
   <symbol id="i-kbd" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/></symbol>
+  <!-- 0.4.8 设置分组导航（notes-048-settings-groups）：「关于」组图标（与 app body.html i-info 同形） -->
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 7.5v.01"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 3v4h-4"/></symbol>
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/></symbol>
   <!-- 顶栏「切换主题」图标（窄宽收图标态用，notes-041-topbar-400）：明暗对半圆 -->
@@ -3228,6 +3242,70 @@ function setLabelHtml(label, tip, extraHtml) {
     + (long ? '<button class="sx" type="button" title="展开 / 收起完整说明" aria-label="展开 / 收起完整说明">ⓘ</button>' : '')
     + '<span class="s' + (long ? ' cl' : '') + '">' + tip + '</span>' + (extraHtml || '') + '</div>';
 }
+/* ================= 0.4.8 设置分组导航（notes-048-settings-groups；与 app modals/settings.js 同构，静态中文红线）=================
+   七组分类常量表（冻结）+ 新节登记处：rows = 节 id（= setSecs 键 = 行壳 data-sec 锚；与 app/client 三端同 id 同序）。
+   新增节三端同登记；空组整组隐身；check 111「常量表 ⇄ 节 id 集双向一致」兜底漏登记。
+   label = 静态中文（原型红线不双语），取值须与 zh.js settings.group.* 逐字一致（check 111 锁）。 */
+var SET_GROUPS = [
+  { id: 'general',  icon: 'i-gear',    label: '常规',       rows: ['language'] },                                        /* 主题/语言/面板入口类 */
+  { id: 'editor',   icon: 'i-note',    label: '编辑器',     rows: [] },                                                  /* 自动保存/富文本/双链类（待新节登记） */
+  { id: 'inject',   icon: 'i-bolt',    label: '检索与注入', rows: ['stale', 'budget', 'injprev', 'injmgr'] },            /* 搜索/注入/挂载类 */
+  { id: 'dispatch', icon: 'i-clock',   label: '派发与调度', rows: [] },                                                  /* 派发与调度（待新节登记） */
+  { id: 'ai',       icon: 'i-sparkle', label: 'AI',        rows: ['llm', 'organizemax', 'usage', 'usagebudget', 'suggest'] },  /* LLM 配置/整理上限类 */
+  { id: 'data',     icon: 'i-folder',  label: '数据与存储', rows: ['maxdepth', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },  /* 遥测/备份/存储路径类 */
+  { id: 'about',    icon: 'i-info',    label: '关于',       rows: ['cheatsheet'] },                                      /* 版本/计数/文档链接类 */
+];
+/* 可见组 = 至少含一个已渲染节的组（按表序；空组隐身）——与 app setGroupsVisible 同构 */
+function setGroupsVisible(secs) {
+  var out = [];
+  for (var i = 0; i < SET_GROUPS.length; i++) {
+    var g = SET_GROUPS[i], ids = [];
+    for (var j = 0; j < g.rows.length; j++) if (secs[g.rows[j]]) ids.push(g.rows[j]);
+    if (ids.length) out.push({ g: g, ids: ids });
+  }
+  return out;
+}
+/* 分组壳 + rail/chips 渲染（与 app setGroupsHtml 同构；label 取静态中文） */
+function setGroupsHtml(secs) {
+  var vis = setGroupsVisible(secs);
+  var rail = '', chips = '', main = '';
+  for (var i = 0; i < vis.length; i++) {
+    var g = vis[i].g;
+    rail += '<button type="button" class="set-rail-item" data-g="' + g.id + '">' + icon(g.icon, 12) + '<span>' + esc(g.label) + '</span></button>';
+    chips += '<button type="button" class="set-chip" data-g="' + g.id + '">' + esc(g.label) + '</button>';
+    main += '<div class="set-group" data-g="' + g.id + '"><div class="set-group-t">' + esc(g.label) + '</div>';
+    for (var j = 0; j < vis[i].ids.length; j++) main += secs[vis[i].ids[j]];
+    main += '</div>';
+  }
+  return '<div class="set-layout">'
+    + '<div class="set-rail" role="navigation" aria-label="设置分组">' + rail + '</div>'
+    + '<div class="set-main"><div class="set-chips">' + chips + '</div>' + main + '</div></div>';
+}
+/* 分组导航接线（与 app setNavWire 同构）：点击定位（滚动容器 = #modal，吸顶标题补偿 48px）+ 滚动反高亮（56px 阈值末命中组） */
+function setNavWire() {
+  var modal = $('modal');
+  if (!modal) return;
+  var items = modal.querySelectorAll('.set-rail-item, .set-chip');
+  var jump = function (gid) {
+    var g = modal.querySelector('.set-group[data-g="' + gid + '"]');
+    if (g) modal.scrollTop = modal.scrollTop + (g.getBoundingClientRect().top - modal.getBoundingClientRect().top) - 48;
+  };
+  items.forEach(function (el) { el.onclick = function () { jump(el.getAttribute('data-g')) } });
+  var spy = function () {
+    var top = modal.getBoundingClientRect().top, cur = '';
+    var gs = modal.querySelectorAll('.set-group');
+    for (var i = 0; i < gs.length; i++) if (gs[i].getBoundingClientRect().top - top <= 56) cur = gs[i].getAttribute('data-g');
+    if (!cur && gs.length) cur = gs[0].getAttribute('data-g');   /* 顶部落首组（概念速览块压在首组上方，滚顶时首组未过 56px 阈值——首组兜底=当前组） */
+    if (gs.length && modal.scrollTop + modal.clientHeight >= modal.scrollHeight - 2) cur = gs[gs.length - 1].getAttribute('data-g');   /* 触底锁末组（末组高度不足上顶 56px 阈值时的归宿——scroll-spy 标准兜底） */
+    items.forEach(function (el) {
+      var on = el.getAttribute('data-g') === cur;
+      el.classList.toggle('on', on);
+      if (el.classList.contains('set-rail-item')) { if (on) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current') }
+    });
+  };
+  modal.addEventListener('scroll', spy, { passive: true });
+  spy();
+}
 function openSettings() {
   openModal('<div class="modal-t">' + icon('i-gear', 13) + ' 设置<span class="set-t-acts"><button class="mbtn" id="setRestore" disabled>还原</button><button class="mbtn primary" id="setSave" disabled>保存</button><button class="mbtn set-x" id="setClose" title="关闭（Esc；有未落盘改动先自动 flush）">' + icon('i-x', 11) + '</button></span></div><div id="setBody"><div class="modal-hint">加载中…</div></div><div class="modal-err" id="mErr" style="display:none"></div>');
   modalCloseHook = flushSettingsPending;   /* ✕/Esc/点遮罩关闭前兜底 flush */
@@ -3273,38 +3351,44 @@ function openSettings() {
         + '<button class="mbtn" id="setLlmSave">保存</button>'
         + (l ? '<button class="mbtn" id="setLlmClear">跟随会话</button>' : '');
     }
-    $('setBody').innerHTML =
-      /* onboarding 轻量（notes-034-batch3）：四概念一行一条前置解释——新用户先懂「为什么要配这些」再看字段；
-         0.4.7-B①c：bullet 逐条 div.onb-li 悬挂缩进（续行对齐文字起点，<br> 连排折行参差消除） */
-      '<div class="modal-hint onb"><b>概念速览</b>'
+    /* 0.4.8：节登记表（键 = 节 id = SET_GROUPS.rows 登记键 = 行壳 data-sec 锚）；节内 HTML 保持 0.4.7-B 原文零改动（仅行壳补 data-sec）。
+       渲染顺序不再由本登记顺序决定——组块按 SET_GROUPS 表序输出（组内节相对顺序不动） */
+    var setSecs = {};
+    /* 0.4.8 原型补齐：语言行（app i18n 机制行的静态镜像——原型静态中文红线不做真切换，select 仅形态演示；无 id 不接线） */
+    setSecs.language = '<div class="set-row" data-sec="language">' + setLabelHtml('语言', '界面语言（本地记忆，切换即生效）') + '<div class="set-ctrl"><select class="minput"><option>中文</option><option>English</option></select></div></div>';
+    setSecs.llm = '<div class="set-row" data-sec="llm">' + setLabelHtml('LLM 模型', '笔记自动分类 / 指令提取使用的模型') + '<div class="set-ctrl">' + llmCtrl + '</div></div>';
+    /* 0.4.7-B⑦：整理长度上限行（LLM 区紧随模型行；0 = 按所配模型自动，说明文字带生效值） */
+    setSecs.organizemax = '<div class="set-row" data-sec="organizemax">' + setLabelHtml('整理长度上限', 'AI 整理单次正文长度上限（字符），超过需分段整理；0 = 按所配模型自动（当前生效 ' + orgMaxEff + '）') + '<div class="set-ctrl"><input class="minput" id="setOrgMax" type="number" min="0" step="1000" style="width:110px" value="' + orgMaxRaw + '"></div></div>';
+    setSecs.usage = '<div class="set-row" data-sec="usage">' + setLabelHtml('LLM 用量', '笔记功能的 token 消耗统计（真实 usage 优先，未回传时按字符估算）；按日累计，usage.json 落盘') + '<div class="set-ctrl usage" id="setUsageBody"><span class="s">加载中…</span></div></div>';
+    setSecs.usagebudget = '<div class="set-row" data-sec="usagebudget">' + setLabelHtml('用量预算提醒', '本月 token 消耗超过该值时提醒（仅 toast 提示，不阻断调用）；0 = 关闭') + '<div class="set-ctrl"><input class="minput" id="setUsageBudget" type="number" min="0" step="1000" style="width:110px" value="' + usageBudget + '"></div></div>';
+    setSecs.stale = '<div class="set-row" data-sec="stale">' + setLabelHtml('过期内容提醒', '超过 N 天未更新且未被读取的笔记/链接会在整理建议中提名为过期候选（提醒参考资料可能过期）；0 = 关闭') + '<div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>';
+    setSecs.maxdepth = '<div class="set-row" data-sec="maxdepth">' + setLabelHtml('文件夹嵌套深度', '虚拟文件夹最大嵌套层级（根级 = 第 1 层，缺省 3）；新建子文件夹/拖拽换父超限将拒绝并提示；0 = 不限') + '<div class="set-ctrl"><input class="minput" id="setMaxDepth" type="number" min="0" step="1" style="width:90px" value="' + maxDepth + '"></div></div>';
+    setSecs.budget = '<div class="set-row" data-sec="budget">' + setLabelHtml('注入体积预算', '每次注入给 AI 的笔记内容上限（字符数，约）；约定条目永不截断，资料目录从旧到新省略；0 = 不限',
+        '<span class="s" id="setGaugeT">当前注入约 ' + lastChars + ' 字符' + (budgetNum > 0 ? ' / 预算约 ' + budgetNum + ' 字符' : '（不限）') + '</span>'
+        + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div>')
+      + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>';
+    setSecs.injprev = '<div class="set-row" data-sec="injprev">' + setLabelHtml('注入预览', '查看 Agent 实际收到的注入文本（约定 + 目录）：敏感打码 / 预算截断效果即所见；可按会话过滤') + '<div class="set-ctrl"><button class="mbtn" id="setInjectPreview">预览…</button></div></div>';
+    setSecs.injmgr = '<div class="set-row" data-sec="injmgr">' + setLabelHtml('注入管理', '全库注入总览：逐篇三态直改（关闭/约定/资料）+ 多选批量 + 三态过滤/搜索；日志不参与注入（硬关，不提供开关），敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）') + '<div class="set-ctrl"><button class="mbtn" id="setInjectManager">管理…</button></div></div>';
+    setSecs.data = '<div class="set-row" data-sec="data">' + setLabelHtml('数据', '全库目录快照导出 / 从快照目录导入（只增改不删，导入前自动全量备份）/ 回收站兜底（恢复或彻底删除）') + '<div class="set-ctrl"><button class="mbtn" id="setExport">导出全部</button><button class="mbtn" id="setImport">导入…</button><button class="mbtn" id="setTrash">回收站</button></div></div>';
+    setSecs.assets = '<div class="set-row" data-sec="assets">' + setLabelHtml('资产清理', '扫描 assets/ 中未被任何笔记引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删）') + '<div class="set-ctrl"><button class="mbtn" id="setPrune">清理…</button></div></div>';
+    setSecs.suggest = '<div class="set-row" data-sec="suggest">' + setLabelHtml('整理建议', '速记组归档 / 过期未引用清理 / 孤儿笔记候选 / 日志卫生提名（只提名不自动执行）') + '<div class="set-ctrl"><button class="mbtn" id="setSuggest">打开</button></div></div>';
+    /* 工作记忆 v0「工作记忆」区：启用沉淀引导（约定笔记方案）+ 日志卫生两级窗口 */
+    setSecs.memory = '<div class="set-row" data-sec="memory">' + setLabelHtml('工作记忆', '会话工作结论沉淀为工作日志（kind=log，默认隐身：不进系统提示/目录/默认列表与搜索，筛选中心类型「日志」为专入口）；启用 = 创建一条预填约定笔记（可见/可改/可停用）') + '<div class="set-ctrl" id="setMemoryCtrl"><span class="s">探测中…</span></div></div>';
+    setSecs.logweek = '<div class="set-row" data-sec="logweek">' + setLabelHtml('日志周聚合窗口', '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行；缺省 7 天）') + '<div class="set-ctrl"><input class="minput" id="setLogWeek" type="number" min="0" step="1" style="width:90px" value="' + logWeekDays + '"></div></div>';
+    setSecs.logmonth = '<div class="set-row" data-sec="logmonth">' + setLabelHtml('日志月聚合窗口', '超过 N 天提名月聚合（原始日志与周志混合归组；缺省 90 天）；0 = 关闭月聚合') + '<div class="set-ctrl"><input class="minput" id="setLogMonth" type="number" min="0" step="1" style="width:90px" value="' + logRetentionDays + '"></div></div>';
+    /* 键盘流速查表入口（notes-034-f-cheatsheet）：内容与 panels/keyboard.js 逐键核对；? 键为直达通道 */
+    setSecs.cheatsheet = '<div class="set-row" data-sec="cheatsheet">' + setLabelHtml('键盘快捷键', '键盘流全部生效快捷键速查表（与实现逐键核对）；非输入焦点时按 ? 直达，Esc 关闭') + '<div class="set-ctrl"><button class="mbtn" id="setCheatsheet">查看…</button></div></div>';
+    /* onboarding 轻量（notes-034-batch3）：四概念一行一条前置解释——新用户先懂「为什么要配这些」再看字段；
+       0.4.7-B①c：bullet 逐条 div.onb-li 悬挂缩进（续行对齐文字起点，<br> 连排折行参差消除）；0.4.8：速览独立于分组导航之上（不归组） */
+    var setOnb = '<div class="modal-hint onb"><b>概念速览</b>'
       + '<div class="onb-li">· 注入：笔记正文进入 Agent 的系统提示，每次对话都可见（编辑器注入三态开关控制）；</div>'
       + '<div class="onb-li">· 约定 / 资料：注入的两种角色——约定 = 须遵守的规则；资料 = Agent 按需取用的参考；</div>'
       + '<div class="onb-li">· 目录注入：只向 Agent 提供已挂载笔记的索引行（一行一条，含「何时查我」），需要全文时它再 note_get 调取；</div>'
-      + '<div class="onb-li">· 派发：把待办笔记派给指定会话执行，完成后自动回执闭环。</div></div>'
-      + '<div class="set-row">' + setLabelHtml('LLM 模型', '笔记自动分类 / 指令提取使用的模型') + '<div class="set-ctrl">' + llmCtrl + '</div></div>'
-      /* 0.4.7-B⑦：整理长度上限行（LLM 区紧随模型行；0 = 按所配模型自动，说明文字带生效值） */
-      + '<div class="set-row">' + setLabelHtml('整理长度上限', 'AI 整理单次正文长度上限（字符），超过需分段整理；0 = 按所配模型自动（当前生效 ' + orgMaxEff + '）') + '<div class="set-ctrl"><input class="minput" id="setOrgMax" type="number" min="0" step="1000" style="width:110px" value="' + orgMaxRaw + '"></div></div>'
-      + '<div class="set-row">' + setLabelHtml('LLM 用量', '笔记功能的 token 消耗统计（真实 usage 优先，未回传时按字符估算）；按日累计，usage.json 落盘') + '<div class="set-ctrl usage" id="setUsageBody"><span class="s">加载中…</span></div></div>'
-      + '<div class="set-row">' + setLabelHtml('用量预算提醒', '本月 token 消耗超过该值时提醒（仅 toast 提示，不阻断调用）；0 = 关闭') + '<div class="set-ctrl"><input class="minput" id="setUsageBudget" type="number" min="0" step="1000" style="width:110px" value="' + usageBudget + '"></div></div>'
-      + '<div class="set-row">' + setLabelHtml('过期内容提醒', '超过 N 天未更新且未被读取的笔记/链接会在整理建议中提名为过期候选（提醒参考资料可能过期）；0 = 关闭') + '<div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>'
-      + '<div class="set-row">' + setLabelHtml('文件夹嵌套深度', '虚拟文件夹最大嵌套层级（根级 = 第 1 层，缺省 3）；新建子文件夹/拖拽换父超限将拒绝并提示；0 = 不限') + '<div class="set-ctrl"><input class="minput" id="setMaxDepth" type="number" min="0" step="1" style="width:90px" value="' + maxDepth + '"></div></div>'
-      + '<div class="set-row">' + setLabelHtml('注入体积预算', '每次注入给 AI 的笔记内容上限（字符数，约）；约定条目永不截断，资料目录从旧到新省略；0 = 不限',
-          '<span class="s" id="setGaugeT">当前注入约 ' + lastChars + ' 字符' + (budgetNum > 0 ? ' / 预算约 ' + budgetNum + ' 字符' : '（不限）') + '</span>'
-          + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div>')
-      + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>'
-      + '<div class="set-row">' + setLabelHtml('注入预览', '查看 Agent 实际收到的注入文本（约定 + 目录）：敏感打码 / 预算截断效果即所见；可按会话过滤') + '<div class="set-ctrl"><button class="mbtn" id="setInjectPreview">预览…</button></div></div>'
-      + '<div class="set-row">' + setLabelHtml('注入管理', '全库注入总览：逐篇三态直改（关闭/约定/资料）+ 多选批量 + 三态过滤/搜索；日志不参与注入（硬关，不提供开关），敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）') + '<div class="set-ctrl"><button class="mbtn" id="setInjectManager">管理…</button></div></div>'
-      + '<div class="set-row">' + setLabelHtml('数据', '全库目录快照导出 / 从快照目录导入（只增改不删，导入前自动全量备份）/ 回收站兜底（恢复或彻底删除）') + '<div class="set-ctrl"><button class="mbtn" id="setExport">导出全部</button><button class="mbtn" id="setImport">导入…</button><button class="mbtn" id="setTrash">回收站</button></div></div>'
-      + '<div class="set-row">' + setLabelHtml('资产清理', '扫描 assets/ 中未被任何笔记引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删）') + '<div class="set-ctrl"><button class="mbtn" id="setPrune">清理…</button></div></div>'
-      + '<div class="set-row">' + setLabelHtml('整理建议', '速记组归档 / 过期未引用清理 / 孤儿笔记候选 / 日志卫生提名（只提名不自动执行）') + '<div class="set-ctrl"><button class="mbtn" id="setSuggest">打开</button></div></div>'
-      /* 工作记忆 v0「工作记忆」区：启用沉淀引导（约定笔记方案）+ 日志卫生两级窗口 */
-      + '<div class="set-row">' + setLabelHtml('工作记忆', '会话工作结论沉淀为工作日志（kind=log，默认隐身：不进系统提示/目录/默认列表与搜索，筛选中心类型「日志」为专入口）；启用 = 创建一条预填约定笔记（可见/可改/可停用）') + '<div class="set-ctrl" id="setMemoryCtrl"><span class="s">探测中…</span></div></div>'
-      + '<div class="set-row">' + setLabelHtml('日志周聚合窗口', '超过 N 天的工作日志在整理建议中按 工作区×周 提名聚合（只提名不执行；缺省 7 天）') + '<div class="set-ctrl"><input class="minput" id="setLogWeek" type="number" min="0" step="1" style="width:90px" value="' + logWeekDays + '"></div></div>'
-      + '<div class="set-row">' + setLabelHtml('日志月聚合窗口', '超过 N 天提名月聚合（原始日志与周志混合归组；缺省 90 天）；0 = 关闭月聚合') + '<div class="set-ctrl"><input class="minput" id="setLogMonth" type="number" min="0" step="1" style="width:90px" value="' + logRetentionDays + '"></div></div>'
-      /* 键盘流速查表入口（notes-034-f-cheatsheet）：内容与 panels/keyboard.js 逐键核对；? 键为直达通道 */
-      + '<div class="set-row">' + setLabelHtml('键盘快捷键', '键盘流全部生效快捷键速查表（与实现逐键核对）；非输入焦点时按 ? 直达，Esc 关闭') + '<div class="set-ctrl"><button class="mbtn" id="setCheatsheet">查看…</button></div></div>';
+      + '<div class="onb-li">· 派发：把待办笔记派给指定会话执行，完成后自动回执闭环。</div></div>';
+    $('setBody').innerHTML = setOnb + setGroupsHtml(setSecs);
     /* 0.4.7-B①b：说明 ⓘ 展开/收拢接线（长说明初态 .cl 收折两行；点击切换，按钮原生可聚焦） */
     $('setBody').querySelectorAll('.sx').forEach(function (el) { el.onclick = function () { var s = el.parentElement.querySelector('.s'); if (s) s.classList.toggle('cl') } });
+    setNavWire();   /* 0.4.8（notes-048-settings-groups）：分组导航接线（rail/chips 点击定位 + 滚动反高亮） */
     var sel = $('setLlmSel');
     if (sel) sel.onchange = function () {
       var v = this.value;

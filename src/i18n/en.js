@@ -419,6 +419,15 @@ var I18N_EN = {
   'settings.restoreFailed': 'Restore failed: {msg}',
   'settings.flushSaveFailed': 'Failed to save settings: {msg}',
   'settings.loadFailed': 'Failed to load settings: {msg}',
+  /* 0.4.8 (notes-048-settings-groups): settings group navigation — seven frozen group names (1:1 with the SET_GROUPS table labelKey) + nav aria-label */
+  'settings.group.general': 'General',
+  'settings.group.editor': 'Editor',
+  'settings.group.inject': 'Search & Injection',
+  'settings.group.dispatch': 'Dispatch & Schedule',
+  'settings.group.ai': 'AI',
+  'settings.group.data': 'Data & Storage',
+  'settings.group.about': 'About',
+  'settings.group.nav': 'Settings groups',
   /* ===== Coverage card D (notes-042-i18n-cov-d): injection manager + memory guide bilingual =====
      Reuses existing keys (no aliases): settings.injManager (panel title)/memProbing/memEnabled/memView/memDisable/memEnable,
        common.loading/close/cancel/delete, tree.untitled/roleConvention/roleReference, sel.selCount,

@@ -419,6 +419,15 @@ var I18N_ZH = {
   'settings.restoreFailed': '还原失败：{msg}',
   'settings.flushSaveFailed': '设置保存失败：{msg}',
   'settings.loadFailed': '设置加载失败：{msg}',
+  /* 0.4.8（notes-048-settings-groups）：设置分组导航七组组名（冻结，与 SET_GROUPS 常量表 labelKey 一一对应）+ 导航区 aria-label */
+  'settings.group.general': '常规',
+  'settings.group.editor': '编辑器',
+  'settings.group.inject': '检索与注入',
+  'settings.group.dispatch': '派发与调度',
+  'settings.group.ai': 'AI',
+  'settings.group.data': '数据与存储',
+  'settings.group.about': '关于',
+  'settings.group.nav': '设置分组',
   /* ===== 覆盖卡 D（notes-042-i18n-cov-d）：注入管理 + 记忆引导双语化 =====
      复用既有 key（禁重复建别名）：settings.injManager（面板标题）/memProbing/memEnabled/memView/memDisable/memEnable、
        common.loading/close/cancel/delete、tree.untitled/roleConvention/roleReference、sel.selCount、

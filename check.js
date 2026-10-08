@@ -194,6 +194,9 @@ const CORE = new Set([
   '0.4.8 侧栏标签树四端同构：effTags 多值分组 + 组头去重篇数 + 「未分类」桶消失 + i-tag 图标 + 分类中映射',
   '0.4.8 红线：topic 字段保留（front-matter/schema）+ notes-list/note_search 响应结构零变化 + 存量零批量迁移',
   '0.4.8 降级场景：旧版 .md（topic 行）降级可读 + effTags 合并可见 + 导出标签档 topic-only 命中不成孤儿',
+  // 111. 0.4.8 设置弹窗分组导航（七组常量表 + 全覆盖一致闸 + 三端结构）
+  '0.4.8 分组全覆盖一致：节 id 集 ⇄ 常量表 rows 双向相等（app/原型 data-sec + client settingsRows key 三端，漏登记即红）',
+  '0.4.8 分组导航结构三端：rail(nav+aria)+chips+组壳+点击定位 48 补偿+滚动反高亮 56 阈值+aria-current',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

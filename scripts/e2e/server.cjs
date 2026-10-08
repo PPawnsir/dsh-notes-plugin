@@ -214,7 +214,8 @@ function handleRpc(state, method, args) {
       })
       return { ok: true }
     }
-    case 'notes-usage-get': return { usage: {} }
+    /* 0.4.8（用例㊻）：mock 对齐 host 真实形态（原 {usage:{}} 残形会让设置卡用量区渲染崩——today.total 读undefined） */
+    case 'notes-usage-get': return { today: { total: 0 }, week: { total: 0 }, month: { total: 0 }, allTime: { total: 0 }, byFeature: { classify: { allTime: 0 }, organize: { allTime: 0 }, summarize: { allTime: 0 } }, calls: 0, estimatedTokens: 0 }
     case 'notes-active-sessions': return { sessions: state.sessions.slice() }
     case 'notes-sessions': return { sessions: state.sessions.slice() }
     case 'notes-dispatch': {

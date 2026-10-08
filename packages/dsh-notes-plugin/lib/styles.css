@@ -477,7 +477,7 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 
 /* ===== 设置卡片（modal，居中）：通用结构——标题「设置」+ 设置项行列表（加设置项 = 加行） ===== */
 .dsh-notes-settings-mask{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:70;display:flex;align-items:center;justify-content:center}
-.dsh-notes-settings-modal{width:400px;max-width:92%;background:var(--npanel);border:1px solid var(--nbd);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:16px;font-family:var(--nfont);max-height:80vh;overflow-y:auto;color:var(--ntx)}
+.dsh-notes-settings-modal{width:460px;max-width:92%;background:var(--npanel);border:1px solid var(--nbd);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:16px;font-family:var(--nfont);max-height:80vh;overflow-y:auto;color:var(--ntx)}   /* 0.4.8：400→460 分组 rail 腾位（injprev/injmgr/hist/data 等宽度覆盖类不受影响） */
 /* 0.4.7-B①a（notes-047-ux）：弹窗标题栏 sticky——长滚动时标题栏动作区（保存/还原/✕）恒见；短弹窗零视觉差 */
 .dsh-notes-settings-modal-t{display:flex;align-items:center;font-size:14px;font-weight:700;color:var(--ntx);margin:-16px -16px 8px;padding:16px 16px 8px;position:sticky;top:-16px;background:var(--npanel);z-index:5;border-radius:14px 14px 0 0}
 /* 设置卡标题栏动作区（notes-settings-feedback）：✕ 常驻关闭 + dirty 态「保存」（accent 实心主按钮）/「还原」（次按钮）——无改动时禁用灰显 */
@@ -493,6 +493,18 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-settings-list{display:flex;flex-direction:column}
 .dsh-notes-settings-row{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:10px 2px 12px;border-bottom:1px solid var(--nbd-soft)}
 .dsh-notes-settings-row:last-child{border-bottom:none}
+/* ===== 0.4.8 设置分组导航（notes-048-settings-groups）：左窄 rail（sticky 随滚，吸顶标题补偿）+ 组头 + 窄宽（<560px 视口）退化顶部 chips ===== */
+.dsh-notes-settings-layout{display:flex;gap:12px;align-items:flex-start}
+.dsh-notes-settings-rail{position:sticky;top:36px;display:flex;flex-direction:column;gap:2px;min-width:96px;flex-shrink:0}
+.dsh-notes-settings-rail-item{display:flex;align-items:center;gap:6px;font:inherit;font-size:11.5px;color:var(--nt3);background:none;border:0;border-radius:8px;padding:5px 8px;cursor:pointer;text-align:left;font-family:var(--nfont)}
+.dsh-notes-settings-rail-item:hover{color:var(--ntx);background:var(--nbg-hover)}
+.dsh-notes-settings-rail-item.on{color:var(--nacc);background:var(--nbg-raise);font-weight:600}
+.dsh-notes-settings-main{flex:1;min-width:0}
+.dsh-notes-settings-chips{display:none;gap:6px;overflow-x:auto;padding:2px 0 8px;position:sticky;top:32px;background:var(--npanel);z-index:4}
+.dsh-notes-settings-chip{flex-shrink:0;font:inherit;font-size:11px;color:var(--nt3);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:999px;padding:3px 10px;cursor:pointer;white-space:nowrap;font-family:var(--nfont)}
+.dsh-notes-settings-chip.on{color:var(--nacc);border-color:var(--nacc);font-weight:600}
+.dsh-notes-settings-group-t{font-size:11px;font-weight:700;color:var(--nt3);letter-spacing:.4px;padding:6px 0 2px;border-bottom:1px solid var(--nbd-soft)}
+@media (max-width:559px){.dsh-notes-settings-rail{display:none}.dsh-notes-settings-chips{display:flex}}
 .dsh-notes-settings-label{font-size:13px;color:var(--ntx);line-height:1.4}
 .dsh-notes-settings-label-s{display:block;font-size:11px;color:var(--nt3);margin-top:2px;font-weight:400}
 /* 0.4.7-B①b（notes-047-ux）：描述文本瘦身——长说明（>60 字）限 2 行收折，行首 ⓘ 钮展开/收拢（键盘可聚焦） */

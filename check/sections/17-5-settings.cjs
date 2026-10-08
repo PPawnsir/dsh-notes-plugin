@@ -29,7 +29,7 @@ module.exports = {
   })
   await t('设置卡片通用结构（settingsRows 数组 map 渲染：加设置项 = 加行）', () => {
     assert(/const settingsRows = \[/.test(clientSrc), 'settingsRows 行数组存在')
-    assert(/settingsRows\.map\(row =>/.test(clientSrc), 'settingsRows.map 渲染设置项行')
+    assert(/settingsRows\.forEach\(row => \{ settingsRowByKey\[row\.key\] = row \}\)/.test(clientSrc) && /x\.rows\.map\(renderSetRow\)/.test(clientSrc), 'settingsRows 驱动分组渲染（0.4.8 分组壳：行注册表 → SET_GROUPS 组 map；原 settingsRows.map 直渲随分组壳退役，111 节锁全覆盖）')
     assert(clientSrc.indexOf('LLM 模型') >= 0, '第一项为「LLM 模型」')
     assert(clientSrc.indexOf('跟随当前会话（默认）') >= 0, '含「跟随当前会话（默认）」选项/清除钮')
     assert(/function openSettings\(\)/.test(clientSrc) && /function saveSettingsLlm\(/.test(clientSrc), 'openSettings / saveSettingsLlm 函数存在')

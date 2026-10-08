@@ -592,6 +592,15 @@ window.__ModuleLoader__.load({
       'settings.restoreFailed': '还原失败：{msg}',
       'settings.flushSaveFailed': '设置保存失败：{msg}',
       'settings.loadFailed': '设置加载失败：{msg}',
+      /* 0.4.8（notes-048-settings-groups）：设置分组导航七组组名（冻结，与 SET_GROUPS 常量表 labelKey 一一对应）+ 导航区 aria-label */
+      'settings.group.general': '常规',
+      'settings.group.editor': '编辑器',
+      'settings.group.inject': '检索与注入',
+      'settings.group.dispatch': '派发与调度',
+      'settings.group.ai': 'AI',
+      'settings.group.data': '数据与存储',
+      'settings.group.about': '关于',
+      'settings.group.nav': '设置分组',
       /* ===== 覆盖卡 D（notes-042-i18n-cov-d）：注入管理 + 记忆引导双语化 =====
          复用既有 key（禁重复建别名）：settings.injManager（面板标题）/memProbing/memEnabled/memView/memDisable/memEnable、
            common.loading/close/cancel/delete、tree.untitled/roleConvention/roleReference、sel.selCount、
@@ -1483,6 +1492,15 @@ window.__ModuleLoader__.load({
       'settings.restoreFailed': 'Restore failed: {msg}',
       'settings.flushSaveFailed': 'Failed to save settings: {msg}',
       'settings.loadFailed': 'Failed to load settings: {msg}',
+      /* 0.4.8 (notes-048-settings-groups): settings group navigation — seven frozen group names (1:1 with the SET_GROUPS table labelKey) + nav aria-label */
+      'settings.group.general': 'General',
+      'settings.group.editor': 'Editor',
+      'settings.group.inject': 'Search & Injection',
+      'settings.group.dispatch': 'Dispatch & Schedule',
+      'settings.group.ai': 'AI',
+      'settings.group.data': 'Data & Storage',
+      'settings.group.about': 'About',
+      'settings.group.nav': 'Settings groups',
       /* ===== Coverage card D (notes-042-i18n-cov-d): injection manager + memory guide bilingual =====
          Reuses existing keys (no aliases): settings.injManager (panel title)/memProbing/memEnabled/memView/memDisable/memEnable,
            common.loading/close/cancel/delete, tree.untitled/roleConvention/roleReference, sel.selCount,
@@ -2272,6 +2290,8 @@ window.__ModuleLoader__.load({
       x: [e('path', { key: 'p', d: 'M6 6l12 12M18 6 6 18' })],
       // 键盘流速查表（notes-034-f-cheatsheet）标题图标：键盘
       kbd: [e('rect', { key: 'r', x: 2.5, y: 6, width: 19, height: 12, rx: 2 }), e('path', { key: 'p', d: 'M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6' })],
+      // 0.4.8 设置分组导航（notes-048-settings-groups）：「关于」组图标（与 app body.html i-info 同形）
+      info: [e('circle', { key: 'c', cx: 12, cy: 12, r: 8.5 }), e('path', { key: 'p', d: 'M12 11v5M12 7.5v.01' })],
     }
     // I(name, size?, cls?)：图标 helper——返回 e('svg') 结构（stroke=currentColor 由 CSS 统一，尺寸默认 15px）
     function I(name, size, cls) {
@@ -5048,7 +5068,7 @@ window.__ModuleLoader__.load({
     //           setSetLlmProvider / setSetLlmModel / setSetStale / setSetBudget / setUsageData / setSetUsageBudget /
     //           setSetSaving / setSetLogWeek / setSetLogRetention / openSettings / maybeToastUsageBudget /
     //           settingsSetQuiet / setPersistMerge / saveSettings*（Llm/Stale/MaxDepth/Budget/UsageBudget/LlmManual/LogWeek/LogRetention）/
-    //           SET_NUM_FIELDS / saveSettingsAll / restoreSettingsAll / flushSettingsPending / closeSettings / SettingsModal
+    //           SET_NUM_FIELDS / SET_GROUPS / settingsGroupJump / saveSettingsAll / restoreSettingsAll / flushSettingsPending / closeSettings / SettingsModal
     // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/format.js（fmtTok）、kernel/icons.js（e/I）、kernel/bus.js（showToast）、
     //        kernel/i18n.js（langStore/useT/setLang——语言项，notes-042-i18n-mech）、
     //        modals/export.js + export-single.js + import.js + trash.js + prune.js + suggest.js + inject-preview.js + inject-manager.js + memory-guide.js
@@ -5256,6 +5276,26 @@ window.__ModuleLoader__.load({
       ['logRetention', 'logRetentionDays', 'settings.logMonthInvalid'],
       ['orgMax', 'organizeMaxChars', 'settings.organizeMaxInvalid'],
     ]
+    // ===== 0.4.8 设置分组导航（notes-048-settings-groups；UX候选D n-mus81ly6hvh2）=====
+    // 七组分类常量表（冻结）+ 新节登记处：rows = settingsRows key（app/原型 = data-sec 锚，三端同 id 同序）。
+    // 新增节须三端同登记进对应组 rows；登记遗漏由 check 111「常量表 ⇄ 节 id 集双向一致」断言兜底（漏登记即红）。
+    // 空组整组隐身（rail/chips/组壳不渲染）——组定义保留为登记槽，有节入驻即自动出现。
+    // 红线：节内内容与组内节相对顺序不动（0.4.7-B sticky 标题/描述收折/LLM 区零回归）；组块按本表序渲染。
+    const SET_GROUPS = [
+      { id: 'general', icon: 'gear', labelKey: 'settings.group.general', rows: ['language'] },   // 常规：主题/语言/面板入口类
+      { id: 'editor', icon: 'note', labelKey: 'settings.group.editor', rows: [] },   // 编辑器：自动保存/富文本/双链类（待新节登记）
+      { id: 'inject', icon: 'bolt', labelKey: 'settings.group.inject', rows: ['stale', 'budget', 'injprev', 'injmgr'] },   // 检索与注入：搜索/注入/挂载类
+      { id: 'dispatch', icon: 'clock', labelKey: 'settings.group.dispatch', rows: [] },   // 派发与调度（待新节登记）
+      { id: 'ai', icon: 'sparkle', labelKey: 'settings.group.ai', rows: ['llm', 'organizemax', 'usage', 'usagebudget', 'suggest'] },   // AI：LLM 配置/整理上限类
+      { id: 'data', icon: 'folder', labelKey: 'settings.group.data', rows: ['maxdepth', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },   // 数据与存储：遥测/备份/存储路径类
+      { id: 'about', icon: 'info', labelKey: 'settings.group.about', rows: ['cheatsheet'] },   // 关于：版本/计数/文档链接类
+    ]
+    // 分组点击定位：滚动容器 = .dsh-notes-settings-modal（与 0.4.7-B sticky 标题同容器，吸顶标题补偿 48px）
+    function settingsGroupJump(gid) {
+      const modal = document.querySelector('.dsh-notes-settings-modal')
+      const g = modal && modal.querySelector('.dsh-notes-settings-group[data-g="' + gid + '"]')
+      if (g) modal.scrollTop = modal.scrollTop + (g.getBoundingClientRect().top - modal.getBoundingClientRect().top) - 48
+    }
     // 「保存」：显式确认 + 兜底 flush——先校验全部数值字段（任一非法即中止并报错，改动保留继续编辑），
     // 再串行落盘全部「控件值 ≠ 已落盘」的键（串行防写竞态），全部成功后快照跟进 + toast「设置已保存」+ dirty 复位
     function saveSettingsAll() {
@@ -5381,9 +5421,29 @@ window.__ModuleLoader__.load({
       const memStatus = store.modal.memory.useSel(s => s.status)
       const memPending = store.modal.memory.useSel(s => s.pending)
       const error = props.error
+      const [setGroupCur, setSetGroupCur] = React.useState('')   // 0.4.8：当前组（滚动反高亮数据源；值 = SET_GROUPS id）
       React.useEffect(() => { settingsFlushRef.current = flushSettingsPending })   // 关闭兜底 flush 镜像：每渲染刷新（Esc 闭包读最新控件值；函数声明提升可前引）
       /* 0.4.6-H（R2 n-mux9svn0vhkz）：校验错误渲染位移到标题栏下（原在弹窗最底部需滚动可见）+ 出现即滚回顶部，消除「保存看似没反应」 */
       React.useEffect(() => { if (error) { try { const m = document.querySelector('.dsh-notes-settings-modal'); if (m) m.scrollTop = 0 } catch (e) {} } }, [error])
+      /* 0.4.8（notes-048-settings-groups）：滚动监听反高亮当前组——视口顶缘 56px 阈值内末命中组 = 当前组（rail/chips 共享 setGroupCur）；
+         监听挂在滚动容器 .dsh-notes-settings-modal 上（与 0.4.7-B sticky 标题同容器），关卡即卸载（settingsOpen 翻转重建节点） */
+      React.useEffect(() => {
+        if (!settingsOpen) return
+        const modal = document.querySelector('.dsh-notes-settings-modal')
+        if (!modal) return
+        const spy = () => {
+          const top = modal.getBoundingClientRect().top
+          const gs = modal.querySelectorAll('.dsh-notes-settings-group')
+          let cur = ''
+          for (let i = 0; i < gs.length; i++) if (gs[i].getBoundingClientRect().top - top <= 56) cur = gs[i].getAttribute('data-g')
+          if (!cur && gs.length) cur = gs[0].getAttribute('data-g')   // 顶部落首组（概念速览块压在首组上方，滚顶时首组未过 56px 阈值——首组兜底=当前组）
+          if (gs.length && modal.scrollTop + modal.clientHeight >= modal.scrollHeight - 2) cur = gs[gs.length - 1].getAttribute('data-g')   // 触底锁末组（末组高度不足上顶 56px 阈值时的归宿——scroll-spy 标准兜底）
+          setSetGroupCur(cur)
+        }
+        modal.addEventListener('scroll', spy, { passive: true })
+        spy()
+        return () => modal.removeEventListener('scroll', spy)
+      }, [settingsOpen])
       return settingsOpen ? (() => {
         // dirty 判定口径：存在在途未落盘待写（setInflight>0）或 任一控件值 ≠ 打开时快照
         const setDirty = setInflight > 0 || (setSnap ? (
@@ -5473,7 +5533,7 @@ window.__ModuleLoader__.load({
         const langControl = e('select', { className: 'dsh-notes-settings-select', value: lang, 'data-tooltip': tt('settings.languageTip'), onChange: (ev) => setLang(ev.target.value) },
           e('option', { value: 'zh' }, '中文'),
           e('option', { value: 'en' }, 'English'))
-        // 通用设置项行列表：以后加设置项只需往这里加行
+        // 通用设置项行列表：以后加设置项只需往这里加行（0.4.8 起同步登记 SET_GROUPS.rows，check 111 双向一致断言兜底）
         const settingsRows = [
           { key: 'language', label: tt('settings.language'), sub: tt('settings.languageTip'), control: langControl },
           { key: 'llm', label: tt('settings.llm'), sub: tt('settings.llmTip'), control: llmControl },
@@ -5496,6 +5556,14 @@ window.__ModuleLoader__.load({
           // 键盘流速查表入口（notes-034-f-cheatsheet）：内容与 keyboard.js 逐键核对；? 键为直达通道
           { key: 'cheatsheet', label: tt('settings.cheatsheet'), sub: tt('settings.cheatsheetTip'), control: cheatsheetControl },
         ]
+        /* 0.4.8：分组壳渲染——key→行 索引 + 可见组（空组隐身）+ rail（图标+组名，sticky 随滚）/ chips（窄宽 <560px 退化，CSS 媒体查询切换）；
+           节内内容与组内节相对顺序不动，组块按 SET_GROUPS 表序渲染 */
+        const settingsRowByKey = {}
+        settingsRows.forEach(row => { settingsRowByKey[row.key] = row })
+        const settingsGroupVis = SET_GROUPS.map(g => ({ g: g, rows: g.rows.map(k => settingsRowByKey[k]).filter(Boolean) })).filter(x => x.rows.length > 0)
+        const renderSetRow = (row) => e('div', { key: row.key, className: 'dsh-notes-settings-row' },
+          e(SettingsRowLabel, { label: row.label, sub: row.sub }),   /* 0.4.7-B①b：长说明收折 ⓘ 展开（组件态随行 key 存续） */
+          e('div', { className: 'dsh-notes-settings-control' }, row.control))
         return e('div', { className: 'dsh-notes-settings-mask', onMouseDown: (ev) => { if (ev.target === ev.currentTarget) closeSettings() } },
           e('div', { className: 'dsh-notes-settings-modal' },
             // 标题栏动作区（notes-settings-feedback）：还原/保存（dirty 状态机驱动 disabled）+ ✕ 常驻关闭
@@ -5507,17 +5575,32 @@ window.__ModuleLoader__.load({
             /* 0.4.6-H：错误区锚定位 = 标题栏正下方（保存按钮旁视野内；原渲染在列表最底部） */
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
             /* onboarding 轻量（notes-034-batch3）：设置卡顶部四概念一行一条速览（注入/约定·资料/目录注入/派发）——新用户前置解释；
-               0.4.7-B①c：bullet 逐条 .dsh-notes-onb-li 悬挂缩进（续行对齐文字起点，折行参差消除） */
+               0.4.7-B①c：bullet 逐条 .dsh-notes-onb-li 悬挂缩进（续行对齐文字起点，折行参差消除）；0.4.8：速览独立于分组导航之上（不归组） */
             e('div', { className: 'dsh-notes-data-hint' },
               e('b', null, tt('settings.onboardTitle')),
               e('div', { className: 'dsh-notes-onb-li' }, tt('settings.onboardInject')),
               e('div', { className: 'dsh-notes-onb-li' }, tt('settings.onboardRoles')),
               e('div', { className: 'dsh-notes-onb-li' }, tt('settings.onboardCatalog')),
               e('div', { className: 'dsh-notes-onb-li' }, tt('settings.onboardDispatch'))),
-            e('div', { className: 'dsh-notes-settings-list' },
-              settingsRows.map(row => e('div', { key: row.key, className: 'dsh-notes-settings-row' },
-                e(SettingsRowLabel, { label: row.label, sub: row.sub }),   /* 0.4.7-B①b：长说明收折 ⓘ 展开（组件态随行 key 存续） */
-                e('div', { className: 'dsh-notes-settings-control' }, row.control))))))
+            e('div', { className: 'dsh-notes-settings-layout' },
+              e('div', { className: 'dsh-notes-settings-rail', role: 'navigation', 'aria-label': tt('settings.group.nav') },
+                settingsGroupVis.map(x => e('button', {
+                  key: x.g.id, type: 'button', 'data-g': x.g.id,
+                  className: 'dsh-notes-settings-rail-item' + (setGroupCur === x.g.id ? ' on' : ''),
+                  'aria-current': setGroupCur === x.g.id ? 'true' : undefined,
+                  onClick: () => settingsGroupJump(x.g.id),
+                }, I(x.g.icon, 12), e('span', null, tt(x.g.labelKey))))),
+              e('div', { className: 'dsh-notes-settings-main' },
+                e('div', { className: 'dsh-notes-settings-chips' },
+                  settingsGroupVis.map(x => e('button', {
+                    key: x.g.id, type: 'button', 'data-g': x.g.id,
+                    className: 'dsh-notes-settings-chip' + (setGroupCur === x.g.id ? ' on' : ''),
+                    onClick: () => settingsGroupJump(x.g.id),
+                  }, tt(x.g.labelKey)))),
+                e('div', { className: 'dsh-notes-settings-list' },
+                  settingsGroupVis.map(x => e('div', { key: x.g.id, className: 'dsh-notes-settings-group', 'data-g': x.g.id },
+                    e('div', { className: 'dsh-notes-settings-group-t' }, tt(x.g.labelKey)),
+                    x.rows.map(renderSetRow))))))))
       })()
       : null
     }
