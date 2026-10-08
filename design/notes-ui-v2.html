@@ -372,14 +372,14 @@
   /* ===== 注入管理面板 modal（设置卡片「注入管理」入口；notes-inject-manager）：统计 chips（点击=过滤）+ 搜索 + 批量条 + 三态 segmented 行（与原型 notes-ui-v2.html 同款） ===== */
   /* 批量条/勾选复用 trash 系列（.trash-all/.selcnt/.trash-check/.trash-act） */
   .modal.injmgr{width:680px}
-  .injmgr-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-  .injmgr-chips{display:flex;gap:4px;flex-shrink:0}
+  .injmgr-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}   /* 0.4.8（notes-048-injmgr-narrow-overflow）：控件栏窄宽纪律——chips 超宽时搜索框折下一行，栏不越 modal 界 */
+  .injmgr-chips{display:flex;gap:4px;flex-shrink:1;min-width:0;flex-wrap:wrap}   /* 0.4.8（同卡）：chips 允许收缩+内部折行（原 flex-shrink:0 遇 EN 长文案整排越界实证） */
   .injmgr-chip{font:inherit;font-size:11px;padding:3px 11px;border-radius:20px;border:1px solid var(--nbd);background:transparent;color:var(--nt2);cursor:pointer;white-space:nowrap}
   .injmgr-chip:hover{color:var(--ntx);background:var(--nbg-hover)}
   .injmgr-chip.on{background:var(--nbg-sel);border-color:transparent;color:var(--nacc-tx);font-weight:600}
-  .injmgr-search{flex:1;min-width:0;font:inherit;font-size:11.5px;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:4px 9px;outline:0}
+  .injmgr-search{flex:1;min-width:120px;font:inherit;font-size:11.5px;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:4px 9px;outline:0}   /* 0.4.8（notes-048-injmgr-narrow-overflow）：min-width 0→120px 可用地板——chips 占满时折下一行全宽，而非压扁隐形 */
   .injmgr-search:focus{border-color:var(--nacc)}
-  .injmgr-batch{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11.5px;color:var(--nt2)}
+  .injmgr-batch{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11.5px;color:var(--nt2);flex-wrap:wrap}   /* 0.4.8（notes-048-injmgr-narrow-overflow）：批量条折行纪律——EN 三动作钮窄宽折行不越界 */
   .injmgr-list{border:1px solid var(--nbd-soft);border-radius:var(--nr-md);margin-bottom:10px;max-height:46vh;overflow-y:auto}
   .injmgr-row{display:flex;align-items:center;gap:7px;padding:6px 9px;font-size:12px;border-bottom:1px solid var(--nbd-soft)}
   .injmgr-row:last-child{border-bottom:none}
