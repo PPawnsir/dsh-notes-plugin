@@ -170,6 +170,7 @@ function injectScopeLabel(injectTo) {
 }
 function renderEd() {
   var ed = $('ed');
+  wikiAcClose();   /* 0.4.8：重建编辑器 DOM 前收编 [[ 补全下拉（弹层挂 document.body，不随 textarea 重建自动销毁） */
   if (!edNote) {
     ed.className = 'ed empty';
     ed.innerHTML = '<svg class="ic"><use href="#i-note"/></svg><div>' + t('editor.emptyTitle') + '</div><div style="font-size:11px">' + t('editor.emptySub') + '</div>'
@@ -230,6 +231,7 @@ function bindEditorArea() {
     ta.addEventListener('paste', function (ev) { var cd = ev.clipboardData; if (cd && cd.files && cd.files.length && /^image\//.test(cd.files[0].type)) { ev.preventDefault(); pickImageFile(cd.files[0]); } });
     ta.addEventListener('dragover', function (ev) { ev.preventDefault(); });
     ta.addEventListener('drop', function (ev) { var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]; if (!f) return; ev.preventDefault(); if (!/^image\//.test(f.type)) { toast(t('editor.imageOnly')); return } pickImageFile(f); });
+    bindWikiAc(ta);   /* 0.4.8：源码模式 [[ 双链输入补全（panels/wiki-ac.js；input/keydown/blur/scroll 四挂点） */
   }
   var rich = $('edRich'), wrap = $('richScroll');
   if (rich && wrap && edMode === 'rich') bindRich(rich, wrap);
@@ -324,6 +326,7 @@ function refreshDegradeUI() {
 /* 模式切换（原型 setMode）：进富文本前跑降级分析；离开富文本先把在途编辑序列化落回源码 */
 function switchMode(m) {
   if (m === edMode) return;
+  wikiAcClose();   /* 0.4.8：离开源码模式收编 [[ 补全下拉（textarea 隐藏后光标量测无意义） */
   if (m === 'rich') {
     degraded = analyzeMarkdown(edNote ? edNote.body || '' : '');
     refreshDegradeUI();

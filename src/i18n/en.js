@@ -169,6 +169,8 @@ var I18N_EN = {
   'editor.backlinksWarming': ' (indexing…)',
   'editor.backlinkJumpTip': 'Jump to "{name}"',
   'editor.backlinksEmpty': 'No other notes link here with [[…]] yet',
+  /* 0.4.8 (notes-048-wiki-autocomplete): source-mode [[ wiki-link autocomplete — zero-hit empty row (not selectable) */
+  'editor.wikiAcEmpty': 'No matching notes',
   'meta.crumbFolderExpandTip': 'Expand in tree: {name}',
   'meta.crumbTopicTip': 'Filter globally by topic (across folders)',
   'meta.crumbTopicViewTip': 'View all notes with this topic',

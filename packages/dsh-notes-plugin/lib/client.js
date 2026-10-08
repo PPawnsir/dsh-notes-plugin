@@ -342,6 +342,8 @@ window.__ModuleLoader__.load({
       'editor.backlinksWarming': '（索引中…）',
       'editor.backlinkJumpTip': '跳转到「{name}」',
       'editor.backlinksEmpty': '暂无其他笔记用 [[…]] 链接到这里',
+      /* 0.4.8（notes-048-wiki-autocomplete）：源码模式 [[ 双链输入补全——零命中空态行（不可选） */
+      'editor.wikiAcEmpty': '无匹配笔记',
       'meta.crumbFolderExpandTip': '在目录树中展开：{name}',
       'meta.crumbTopicTip': '按主题全局过滤（跨文件夹）',
       'meta.crumbTopicViewTip': '查看同主题全部笔记',
@@ -1231,6 +1233,8 @@ window.__ModuleLoader__.load({
       'editor.backlinksWarming': ' (indexing…)',
       'editor.backlinkJumpTip': 'Jump to "{name}"',
       'editor.backlinksEmpty': 'No other notes link here with [[…]] yet',
+      /* 0.4.8 (notes-048-wiki-autocomplete): source-mode [[ wiki-link autocomplete — zero-hit empty row (not selectable) */
+      'editor.wikiAcEmpty': 'No matching notes',
       'meta.crumbFolderExpandTip': 'Expand in tree: {name}',
       'meta.crumbTopicTip': 'Filter globally by topic (across folders)',
       'meta.crumbTopicViewTip': 'View all notes with this topic',
@@ -2540,6 +2544,38 @@ window.__ModuleLoader__.load({
         })
       }
       var box = document.createElement('div'); walk(frag, box); return box
+    }
+    // ===== 0.4.8 双链 [[ 输入补全（源码模式，notes-048-wiki-autocomplete）：纯函数层（双端同构单一事实源）=====
+    // 触发窗口解析：caret 前最后一个「[[」起至 caret 止为活跃窗口，窗口内已敲字符 = query；
+    // 窗口内含 ] 或换行 → null（闭合/换行即失配关闭，调用侧关下拉）。返回 { start, query } 或 null；纯字符串口径，零 DOM 依赖
+    function wikiAcTrigger(text, caret) {
+      text = String(text == null ? '' : text)
+      caret = Math.max(0, Math.min(text.length, caret == null ? text.length : caret))
+      if (caret < 2) return null
+      var open = text.lastIndexOf('[[', caret - 2)
+      if (open < 0) return null
+      var q = text.slice(open + 2, caret)
+      if (q.indexOf(']') >= 0 || q.indexOf('\n') >= 0 || q.indexOf('\r') >= 0) return null
+      return { start: open, query: q }
+    }
+    // 候选过滤（数据源零 RPC：调用侧传内存 notes 缓存）：标题小写折叠子串 + id 前缀双匹配；
+    // 剔除软删/sys 墓碑（host 缺省口径已排，组件侧兜底双闸——mentionFilter 同纪律）；updatedAt 倒序取前 WIKI_AC_MAX
+    var WIKI_AC_MAX = 8
+    function wikiAcFilter(notes, query) {
+      var q = String(query == null ? '' : query).toLowerCase()
+      var list = notes || [], out = []
+      for (var i = 0; i < list.length; i++) {
+        var n = list[i]
+        if (!n || n.deleted === true || (n.kind || 'note') === 'sys') continue
+        if (q) {
+          var hit = String(n.title || '').toLowerCase().indexOf(q) >= 0
+          if (!hit) hit = String(n.id || '').toLowerCase().indexOf(q) === 0
+          if (!hit) continue
+        }
+        out.push(n)
+      }
+      out.sort(function (a, b) { var x = String(a.updatedAt || ''), y = String(b.updatedAt || ''); return x < y ? 1 : x > y ? -1 : 0 })
+      return out.slice(0, WIKI_AC_MAX)
     }
     // ===== end 双模式编辑器内核 v3 =====
     // 性能自检计数器：浏览器控制台执行 JSON.stringify(window.__dshNotesPerf) 可取数诊断
@@ -7251,6 +7287,134 @@ window.__ModuleLoader__.load({
             later(() => { try { const t2 = edBodyDomRef.current; if (t2) { t2.focus(); t2.setSelectionRange(pos + ins.length, pos + ins.length) } } catch (err) {} }, 60)
           }
         }
+        // ===== 0.4.8 双链 [[ 输入补全（源码模式，notes-048-wiki-autocomplete；app panels/wiki-ac.js 同构一份）=====
+        // 触发：源码 textarea 输入「[[」开下拉，后续字符为 query（到 ]] 或换行为止——内核 wikiAcTrigger 纯函数判定窗口）。
+        // 数据源零 RPC：候选 = notesRef.current（loadNotes 内存缓存镜像）经内核 wikiAcFilter（标题子串+id 前缀双匹配，剔除软删/sys，updatedAt 倒序前 8）。
+        // 插入产物 = [[id]]（id 最稳：渲染层 wikiResolve 把 id 链显示为标题）；选中后光标落闭合括号后。
+        // 弹层定位选型 = mirror-div 光标跟随（弃「textarea 底部固定」：textarea 通栏高、长文滚动后底部固定与光标视线脱节；
+        //   mirror-div 复制排版属性 + 同步 scrollTop 量测光标视口坐标是通用解，双端同一份逻辑两处落地）。
+        // 键盘事件边界：下拉开时 ↑↓/Enter/Tab/Esc 归下拉（preventDefault + stopPropagation——React 根容器冒泡相拦截，
+        //   不抵 document 的 panel/keyboard.js 列表导航/Esc 分层栈）；关时零介入（j/k/↑↓ 归原生光标移动，列表导航由 inField 闸拦截）。
+        // 零命中：渲染空态行（不可选，Enter/Tab 穿透默认行为并关下拉）。IME 组合中（isComposing）方向键/Enter 让位输入法。
+        // 富文本模式 v1 不做（[[标题]] 纯文本敲入渲染照常解析 = 退路存在）；v2 挂点：富文本 effect 内同款 input/keydown 侦测 + DOM Range 量测。
+        const wikiAcRef = React.useRef(null)   // null=关闭；{ el, items, active, start }=开（start = 当前触发窗「[[」首字符下标，随输入逐键刷新）
+        function wikiAcClose() { const st = wikiAcRef.current; if (st) { try { st.el.remove() } catch (err) {} wikiAcRef.current = null } }
+        // 每次 input/光标移动重估：窗口失配（]]/换行/选区）→ 关；命中 → 开/刷候选并重定位
+        function wikiAcRefresh() {
+          const ta = edBodyDomRef.current
+          if (!ta || editorModeRef.current !== 'source') { wikiAcClose(); return }
+          if (ta.selectionStart !== ta.selectionEnd) { wikiAcClose(); return }   // 有选区不弹（插入覆盖选区语义混，交给用户明确操作）
+          const trig = wikiAcTrigger(ta.value, ta.selectionStart)
+          if (!trig) { wikiAcClose(); return }
+          const items = wikiAcFilter(notesRef.current, trig.query)
+          let st = wikiAcRef.current
+          if (!st) {
+            const el = document.createElement('div')
+            el.className = 'dsh-notes-wiki-ac'
+            // mousedown 拦默认：保住 textarea 焦点/光标（点候选不 blur，点击插入后焦点仍在编辑区；点外关闭由 blur 承担）
+            el.addEventListener('mousedown', (ev) => { ev.preventDefault() })
+            document.body.appendChild(el)
+            st = { el: el, items: [], active: 0, start: trig.start }
+            wikiAcRef.current = st
+          }
+          st.start = trig.start; st.items = items
+          if (st.active >= items.length) st.active = 0
+          wikiAcRender(ta)
+        }
+        function wikiAcRender(ta) {
+          const st = wikiAcRef.current
+          if (!st) return
+          const items = st.items
+          if (!items.length) {
+            st.el.innerHTML = '<div class="dsh-notes-wiki-ac-empty">' + esc(tt('editor.wikiAcEmpty')) + '</div>'
+          } else {
+            let h = ''
+            for (let i = 0; i < items.length; i++) {
+              const n = items[i]
+              h += '<div class="dsh-notes-wiki-ac-item' + (i === st.active ? ' on' : '') + '" data-i="' + i + '" role="option" aria-selected="' + (i === st.active) + '">'
+                + '<span class="dot" style="background:var(--nkind-' + (n.kind || 'note') + ')"></span>'
+                + '<span class="ti">' + esc(n.title || tt('tree.untitled')) + '</span>'
+                + '<span class="id">' + esc(n.id) + '</span></div>'
+            }
+            st.el.innerHTML = h
+            st.el.querySelectorAll('.dsh-notes-wiki-ac-item').forEach((row) => {
+              row.addEventListener('click', () => { wikiAcApply(items[+row.getAttribute('data-i')]) })
+            })
+          }
+          wikiAcPosition(ta)
+        }
+        // mirror-div 量测：复制 textarea 排版属性进隐藏 div，文本截到光标 + 零宽 marker 量坐标，换算回 textarea 视口系
+        function wikiAcPosition(ta) {
+          const st = wikiAcRef.current
+          if (!st || !ta) return
+          const caret = ta.selectionStart
+          const cs = getComputedStyle(ta)
+          const div = document.createElement('div')
+          const props = ['boxSizing', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'textIndent', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'tabSize']
+          div.style.position = 'fixed'; div.style.visibility = 'hidden'; div.style.left = '-9999px'; div.style.top = '0'
+          div.style.whiteSpace = 'pre-wrap'; div.style.wordWrap = 'break-word'; div.style.overflowWrap = 'break-word'; div.style.overflow = 'hidden'
+          for (let i = 0; i < props.length; i++) { const p = props[i]; div.style[p] = cs[p] }
+          div.style.width = ta.clientWidth + 'px'; div.style.height = ta.clientHeight + 'px'   // 定高 + overflow:hidden → scrollTop 可编程（与源滚动对齐的前提）
+          div.textContent = ta.value.slice(0, caret)
+          const marker = document.createElement('span'); marker.textContent = '​' /* 零宽占位 */
+          div.appendChild(marker)
+          document.body.appendChild(div)
+          div.scrollTop = ta.scrollTop   // 与源 textarea 同滚动：marker rect 随滚动位移 = 光标可视坐标
+          const taR = ta.getBoundingClientRect(), mk = marker.getBoundingClientRect(), dv = div.getBoundingClientRect()
+          const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.6 || 20
+          let x = taR.left + (mk.left - dv.left), y = taR.top + (mk.top - dv.top) + lh + 2
+          div.remove()
+          const pw = st.el.offsetWidth || 240, ph = st.el.offsetHeight || 200
+          x = Math.max(8, Math.min(x, window.innerWidth - pw - 8))   // 视口夹紧不溢出（面板窄宽同护；selection/capture.js 同纪律）
+          y = Math.max(8, Math.min(y, window.innerHeight - ph - 8))
+          st.el.style.left = x + 'px'; st.el.style.top = y + 'px'
+        }
+        function wikiAcMove(delta) {
+          const st = wikiAcRef.current
+          if (!st || !st.items.length) return
+          const n = st.items.length
+          st.active = (st.active + delta + n) % n
+          const rows = st.el.querySelectorAll('.dsh-notes-wiki-ac-item')
+          rows.forEach((row, i) => { row.classList.toggle('on', i === st.active); row.setAttribute('aria-selected', i === st.active ? 'true' : 'false') })
+          if (rows[st.active] && rows[st.active].scrollIntoView) rows[st.active].scrollIntoView({ block: 'nearest' })
+        }
+        // 选中插入：[[query 窗口整体替换为 [[id]]（闭合），光标落闭合括号后（红线）；走既有 900ms 防抖自动保存（口径不动）
+        function wikiAcApply(n) {
+          const st = wikiAcRef.current
+          if (!st || !n) return
+          const ta = edBodyDomRef.current, start = st.start
+          wikiAcClose()
+          if (!ta) return
+          const caret = ta.selectionStart != null ? ta.selectionStart : edBodyRef.current.length
+          const ins = '[[' + n.id + ']]'
+          const cur = edBodyRef.current
+          const next = cur.slice(0, start) + ins + cur.slice(caret)
+          edBodyRef.current = next; setEdBody(next); triggerAutoSave(); scheduleDegAnalyze()
+          const pos = start + ins.length
+          // 延时复位光标（React 重渲染写 value 后浏览器光标在文末，需二次归位）；
+          // 值不变守卫：60ms 窗口内用户继续打字（值已变）→ 放弃复位，光标留在用户现场（timer 漂移竞态根修，probe 实证 142ms 迟到）
+          later(() => { try { const t2 = edBodyDomRef.current; if (t2 && t2.value === next) { t2.focus(); t2.setSelectionRange(pos, pos) } } catch (err) {} }, 60)
+        }
+        // 下拉键盘流（textarea onKeyDown 挂点；关时首行即 return 零介入）。开时 ↑↓ 导航 / Enter·Tab 选中 / Esc 零副作用关闭
+        function wikiAcKeydown(ev) {
+          if (!wikiAcRef.current) return
+          if (ev.isComposing || (ev.nativeEvent && ev.nativeEvent.isComposing)) return   // IME 组合中：Enter/方向键归输入法候选窗
+          if (ev.key === 'ArrowDown') { ev.preventDefault(); ev.stopPropagation(); wikiAcMove(1); return }
+          if (ev.key === 'ArrowUp') { ev.preventDefault(); ev.stopPropagation(); wikiAcMove(-1); return }
+          if (ev.key === 'Enter' || ev.key === 'Tab') {
+            if (wikiAcRef.current.items.length) { ev.preventDefault(); ev.stopPropagation(); wikiAcApply(wikiAcRef.current.items[wikiAcRef.current.active]) }
+            else wikiAcClose()   // 零命中空态行不可选：不拦默认（Enter 换行/Tab 移焦），仅关下拉
+            return
+          }
+          if (ev.key === 'Escape') {
+            // Esc 零副作用：关下拉即止——stopPropagation 防冒泡到 document Esc 分层栈（误清搜索/误关弹层）
+            ev.preventDefault(); ev.stopPropagation(); wikiAcClose(); return
+          }
+        }
+        // 生命周期收编：面板关闭（open 翻 false）/ 组件卸载 / 切富文本（textarea 卸载）三路关闭弹层
+        React.useEffect(() => { if (!open) wikiAcClose() }, [open])
+        React.useEffect(() => () => wikiAcClose(), [])
+        React.useEffect(() => { if (editorMode !== 'source') wikiAcClose() }, [editorMode])
         // 进入富文本 / 切换笔记 / 面板重开（0.4.4-H：open 翻转时富文本 DOM 随关闭销毁、重建为空，须重新填充+重绑事件）：
         // 渲染内核产物进 contenteditable + 绑定编辑事件（编辑期间不重渲染，防 IME 打断）
         React.useEffect(() => {
@@ -7597,7 +7761,14 @@ window.__ModuleLoader__.load({
             editorMode === 'source'
             ? e('textarea', {
                 ref: edBodyDomRef, className: 'dsh-notes-ed-body', placeholder: edBodyPending ? tt('editor.bodySyncing') : tt('editor.bodyPlaceholder'), value: edBody, readOnly: !!(edLoadErr || edBodyPending),   /* 0.4.7-C ②b：源码模式在途窗同款锁（旧口径只锁失败态——在途窗可编辑 = 落定回填盖掉打字的假同步洞） */
-                onChange: (ev) => { setEdBody(ev.target.value); triggerAutoSave(); scheduleDegAnalyze() },
+                onChange: (ev) => { setEdBody(ev.target.value); triggerAutoSave(); scheduleDegAnalyze(); wikiAcRefresh() },   /* 0.4.8：输入后重估 [[ 补全触发窗（wiki-ac） */
+                /* 0.4.8 双链 [[ 补全（源码模式）：keydown 导航/选中/Esc + blur 点外关闭 + scroll 跟随重定位 */
+                onKeyDown: (ev) => wikiAcKeydown(ev),
+                onBlur: () => wikiAcClose(),
+                onScroll: () => { if (wikiAcRef.current) wikiAcPosition(edBodyDomRef.current) },
+                /* 光标被方向键/鼠标挪动时不发 input：开态下重估触发窗（失配即关/重定位）；关态绝不自开（触发只认输入） */
+                onKeyUp: (ev) => { if (wikiAcRef.current && (ev.key.indexOf('Arrow') === 0 || ev.key === 'Home' || ev.key === 'End' || ev.key === 'PageUp' || ev.key === 'PageDown')) wikiAcRefresh() },
+                onClick: () => { if (wikiAcRef.current) wikiAcRefresh() },
                 // 图片入口①/②（源码模式）：粘贴/拖拽图片文件 → 同一上传弹窗 → 光标处插 Markdown 文本
                 onPaste: (ev) => { const cd = ev.clipboardData; if (cd && cd.files && cd.files.length && cd.files[0].type.indexOf('image/') === 0) { ev.preventDefault(); pickImageFile(cd.files[0]) } },
                 onDragOver: (ev) => { ev.preventDefault() },

@@ -185,6 +185,9 @@ const CORE = new Set([
   '0.4.8-A 遥测 warn 降级：连败首条一条 + 恢复带计数 + 零 unhandled rejection（eval 打桩）',
   'slow-rpc-log 标记块双包逐字节一致 + 行为级 eval（>5s 触发 / ≤5s 静默 / 纯进程日志红线）',
   '0.4.8-A 慢请求诊断钩（行为）：6s 位移 mock → console.warn 一行（方法名+耗时），快请求静默（开发版+静态包）',
+  // 108. 0.4.8 双链 [[ 输入补全（notes-048-wiki-autocomplete：常驻 --core 防触发窗/过滤口径/红线回归——内核纯函数行为级 + 红线主断言）
+  '0.4.8 双链 [[ 补全内核纯函数行为级：wikiAcTrigger 窗口开合 + wikiAcFilter 双匹配/剔除/倒序/上限',
+  '0.4.8 双链 [[ 补全红线：wikiResolve 契约/900ms 自动保存/富文本零改动',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

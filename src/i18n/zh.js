@@ -169,6 +169,8 @@ var I18N_ZH = {
   'editor.backlinksWarming': '（索引中…）',
   'editor.backlinkJumpTip': '跳转到「{name}」',
   'editor.backlinksEmpty': '暂无其他笔记用 [[…]] 链接到这里',
+  /* 0.4.8（notes-048-wiki-autocomplete）：源码模式 [[ 双链输入补全——零命中空态行（不可选） */
+  'editor.wikiAcEmpty': '无匹配笔记',
   'meta.crumbFolderExpandTip': '在目录树中展开：{name}',
   'meta.crumbTopicTip': '按主题全局过滤（跨文件夹）',
   'meta.crumbTopicViewTip': '查看同主题全部笔记',

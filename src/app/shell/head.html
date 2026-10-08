@@ -609,5 +609,13 @@
   .cbtn.primary{background:var(--nacc);border-color:transparent;color:#fff;font-weight:600}
   .cbtn.primary:hover{opacity:.9}
   .cbtn svg.ic{width:12px;height:12px}
+  /* ===== 0.4.8 双链 [[ 输入补全下拉（源码模式，notes-048-wiki-autocomplete）：fixed 光标跟随（mirror-div 量测） ===== */
+  .wiki-ac{position:fixed;z-index:160;min-width:200px;max-width:320px;max-height:216px;overflow-y:auto;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:4px;animation:capin .14s ease-out}
+  .wiki-ac-item{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:var(--nr-sm);cursor:pointer;font-size:12px;color:var(--ntx)}
+  .wiki-ac-item.on{background:var(--nbg-sel);color:var(--nacc-tx)}
+  .wiki-ac-item .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+  .wiki-ac-item .ti{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .wiki-ac-item .id{font-family:var(--nmono);font-size:10px;color:var(--nt3);flex-shrink:0}
+  .wiki-ac-empty{padding:7px 10px;font-size:11.5px;color:var(--nt3);cursor:default;user-select:none}
 </style>
 </head>

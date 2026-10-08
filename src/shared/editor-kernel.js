@@ -266,4 +266,36 @@ function sanitizeFragment(frag) {
   }
   var box = document.createElement('div'); walk(frag, box); return box
 }
+// ===== 0.4.8 双链 [[ 输入补全（源码模式，notes-048-wiki-autocomplete）：纯函数层（双端同构单一事实源）=====
+// 触发窗口解析：caret 前最后一个「[[」起至 caret 止为活跃窗口，窗口内已敲字符 = query；
+// 窗口内含 ] 或换行 → null（闭合/换行即失配关闭，调用侧关下拉）。返回 { start, query } 或 null；纯字符串口径，零 DOM 依赖
+function wikiAcTrigger(text, caret) {
+  text = String(text == null ? '' : text)
+  caret = Math.max(0, Math.min(text.length, caret == null ? text.length : caret))
+  if (caret < 2) return null
+  var open = text.lastIndexOf('[[', caret - 2)
+  if (open < 0) return null
+  var q = text.slice(open + 2, caret)
+  if (q.indexOf(']') >= 0 || q.indexOf('\n') >= 0 || q.indexOf('\r') >= 0) return null
+  return { start: open, query: q }
+}
+// 候选过滤（数据源零 RPC：调用侧传内存 notes 缓存）：标题小写折叠子串 + id 前缀双匹配；
+// 剔除软删/sys 墓碑（host 缺省口径已排，组件侧兜底双闸——mentionFilter 同纪律）；updatedAt 倒序取前 WIKI_AC_MAX
+var WIKI_AC_MAX = 8
+function wikiAcFilter(notes, query) {
+  var q = String(query == null ? '' : query).toLowerCase()
+  var list = notes || [], out = []
+  for (var i = 0; i < list.length; i++) {
+    var n = list[i]
+    if (!n || n.deleted === true || (n.kind || 'note') === 'sys') continue
+    if (q) {
+      var hit = String(n.title || '').toLowerCase().indexOf(q) >= 0
+      if (!hit) hit = String(n.id || '').toLowerCase().indexOf(q) === 0
+      if (!hit) continue
+    }
+    out.push(n)
+  }
+  out.sort(function (a, b) { var x = String(a.updatedAt || ''), y = String(b.updatedAt || ''); return x < y ? 1 : x > y ? -1 : 0 })
+  return out.slice(0, WIKI_AC_MAX)
+}
 // ===== end 双模式编辑器内核 v3 =====
