@@ -104,6 +104,7 @@ var composing = false;                 // IME 组合输入中（期间不序列�
 var savedRange = null;                 // 富文本选区缓存（工具栏/弹窗操作后恢复）
 var degraded = { ok: true, reasons: [] };  // 白名单降级分析（analyzeMarkdown 内核）
 var richSyncTimer = null, degTimer = null;
+var edSavedAt = '';                    // 0.4.9（notes-049-lang-rerender-editor）：最近一次自动保存 HH:MM（语言切换重写「已自动保存」文案用；renderEd 重建清零）
 var imgDraft = null, imgUploading = false; // 图片插入弹窗草稿 + 上传中标记（三入口共用：粘贴/拖拽/工具栏按钮）
 var sessList = [], sessPending = [];   // 注入范围浮层会话源（notes-sessions）
 var foldOpen = loadFoldOpen();         // 文件夹折叠态（localStorage；缺省全展开）

@@ -153,7 +153,7 @@ function doSave() {
   var upd = buildSavePayload(); if (!upd) return;   /* 0.4.7-C：载荷构建单点化（卸载 flush 同口径） */
   rpc('notes-update', upd).then(function (res) {
     if (res && res.error) { toast(res.error); return }
-    $('edSaved').textContent = t('editor.autoSaved', { time: new Date().toTimeString().slice(0, 5) });
+    $('edSaved').textContent = t('editor.autoSaved', { time: (edSavedAt = new Date().toTimeString().slice(0, 5)) });   /* 0.4.9：edSavedAt 记账（语言切换 renderEdLang 按新语言重写本行） */
     /* 0.4.6-D（notes-046-copy-consistency，R2 n-mux8bv3x6lll）：「更新」时间戳随每次自动保存刷新——edNote 是选中时的拷贝，
        不随 loadNotes 换代（底栏 renderEdFoot 读 edNote.updatedAt，不刷即滞留旧值）；迟到响应守卫：已切走（id 不符）不重渲底栏 */
     if (edNote && edNote.id === upd.id) { edNote.updatedAt = new Date().toISOString(); renderEdFoot(); }
@@ -189,6 +189,7 @@ function injectScopeLabel(injectTo) {
 }
 function renderEd() {
   var ed = $('ed');
+  edSavedAt = '';   /* 0.4.9：编辑器重建 = 「已自动保存」行归零（与 edSaved 空 span 初态同口径；换笔记/后台刷新换代不留旧时刻） */
   wikiAcClose();   /* 0.4.8：重建编辑器 DOM 前收编 [[ 补全下拉（弹层挂 document.body，不随 textarea 重建自动销毁） */
   if (!edNote) {
     ed.className = 'ed empty';
@@ -240,6 +241,19 @@ function renderEd() {
   bindEditorArea();
   refreshLoadErrUI();   /* R-1：DOM 重建后重挂安全态（横幅显隐 + 编辑锁定 + 重试绑定） */
   refreshOrganizeUI();   /* 0.4.7-B⑥：DOM 重建后复态整理中遮罩/失败驻留条（同 refreshLoadErrUI 先例） */
+}
+/* 0.4.9（notes-049-lang-rerender-editor）：语言切换编辑器区重渲染覆盖——footer 状态行/「已自动保存」/同步点/反链面板随语言翻转。
+   挂点 = render() 链路（setLang → render()；筛/排/搜的 render() 同走——纯文案原地重写，幂等零副作用）。
+   在途编辑保护（0.4.7-C 假同步洞锁不回退）：永不重建正文 DOM（edSrc/edRich/edTitle 原地不动——dirty 态正文/IME 组合/光标零打扰），
+   只重写 chrome 文案行；空态（无打开笔记）走 renderEd() 空态分支（无正文可损，原地重建零风险）。 */
+function renderEdLang() {
+  if (!edNote) { renderEd(); return }
+  if ($('footMode')) $('footMode').textContent = edMode === 'source' ? t('editor.modeSource') : t('editor.modeRich');
+  renderEdFoot();
+  var sv = $('edSaved'); if (sv && edSavedAt) sv.textContent = t('editor.autoSaved', { time: edSavedAt });
+  setSyncStatus(!!(richDirty || saveTimer));
+  var ta = $('edSrc'); if (ta) ta.placeholder = edBodyPending() ? t('editor.bodySyncing') : t('editor.bodyPlaceholder');
+  renderBacklinks();
 }
 /* 编辑区事件绑定（renderEd 重建 DOM 后重挂；元素级监听随重建不累积，document 级 selectionchange 在启动区挂一次） */
 function bindEditorArea() {

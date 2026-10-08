@@ -926,6 +926,7 @@ var composing = false;                 // IME 组合输入中（期间不序列�
 var savedRange = null;                 // 富文本选区缓存（工具栏/弹窗操作后恢复）
 var degraded = { ok: true, reasons: [] };  // 白名单降级分析（analyzeMarkdown 内核）
 var richSyncTimer = null, degTimer = null;
+var edSavedAt = '';                    // 0.4.9（notes-049-lang-rerender-editor）：最近一次自动保存 HH:MM（语言切换重写「已自动保存」文案用；renderEd 重建清零）
 var imgDraft = null, imgUploading = false; // 图片插入弹窗草稿 + 上传中标记（三入口共用：粘贴/拖拽/工具栏按钮）
 var sessList = [], sessPending = [];   // 注入范围浮层会话源（notes-sessions）
 var foldOpen = loadFoldOpen();         // 文件夹折叠态（localStorage；缺省全展开）
@@ -4281,7 +4282,7 @@ function doSave() {
   var upd = buildSavePayload(); if (!upd) return;   /* 0.4.7-C：载荷构建单点化（卸载 flush 同口径） */
   rpc('notes-update', upd).then(function (res) {
     if (res && res.error) { toast(res.error); return }
-    $('edSaved').textContent = t('editor.autoSaved', { time: new Date().toTimeString().slice(0, 5) });
+    $('edSaved').textContent = t('editor.autoSaved', { time: (edSavedAt = new Date().toTimeString().slice(0, 5)) });   /* 0.4.9：edSavedAt 记账（语言切换 renderEdLang 按新语言重写本行） */
     /* 0.4.6-D（notes-046-copy-consistency，R2 n-mux8bv3x6lll）：「更新」时间戳随每次自动保存刷新——edNote 是选中时的拷贝，
        不随 loadNotes 换代（底栏 renderEdFoot 读 edNote.updatedAt，不刷即滞留旧值）；迟到响应守卫：已切走（id 不符）不重渲底栏 */
     if (edNote && edNote.id === upd.id) { edNote.updatedAt = new Date().toISOString(); renderEdFoot(); }
@@ -4317,6 +4318,7 @@ function injectScopeLabel(injectTo) {
 }
 function renderEd() {
   var ed = $('ed');
+  edSavedAt = '';   /* 0.4.9：编辑器重建 = 「已自动保存」行归零（与 edSaved 空 span 初态同口径；换笔记/后台刷新换代不留旧时刻） */
   wikiAcClose();   /* 0.4.8：重建编辑器 DOM 前收编 [[ 补全下拉（弹层挂 document.body，不随 textarea 重建自动销毁） */
   if (!edNote) {
     ed.className = 'ed empty';
@@ -4368,6 +4370,19 @@ function renderEd() {
   bindEditorArea();
   refreshLoadErrUI();   /* R-1：DOM 重建后重挂安全态（横幅显隐 + 编辑锁定 + 重试绑定） */
   refreshOrganizeUI();   /* 0.4.7-B⑥：DOM 重建后复态整理中遮罩/失败驻留条（同 refreshLoadErrUI 先例） */
+}
+/* 0.4.9（notes-049-lang-rerender-editor）：语言切换编辑器区重渲染覆盖——footer 状态行/「已自动保存」/同步点/反链面板随语言翻转。
+   挂点 = render() 链路（setLang → render()；筛/排/搜的 render() 同走——纯文案原地重写，幂等零副作用）。
+   在途编辑保护（0.4.7-C 假同步洞锁不回退）：永不重建正文 DOM（edSrc/edRich/edTitle 原地不动——dirty 态正文/IME 组合/光标零打扰），
+   只重写 chrome 文案行；空态（无打开笔记）走 renderEd() 空态分支（无正文可损，原地重建零风险）。 */
+function renderEdLang() {
+  if (!edNote) { renderEd(); return }
+  if ($('footMode')) $('footMode').textContent = edMode === 'source' ? t('editor.modeSource') : t('editor.modeRich');
+  renderEdFoot();
+  var sv = $('edSaved'); if (sv && edSavedAt) sv.textContent = t('editor.autoSaved', { time: edSavedAt });
+  setSyncStatus(!!(richDirty || saveTimer));
+  var ta = $('edSrc'); if (ta) ta.placeholder = edBodyPending() ? t('editor.bodySyncing') : t('editor.bodyPlaceholder');
+  renderBacklinks();
 }
 /* 编辑区事件绑定（renderEd 重建 DOM 后重挂；元素级监听随重建不累积，document 级 selectionchange 在启动区挂一次） */
 function bindEditorArea() {
@@ -7874,11 +7889,17 @@ document.addEventListener('selectionchange', function () {
   if (sel && sel.rangeCount && rich.contains(sel.anchorNode)) { keepSel(); updateToolbarState(); }
 });
 /* 0.4.3⑦：日志同权 + 文件视图拆除——render 不再做日志口径翻转检测（maybeReloadForLogs 已随 data.js 一并拆除），纯渲染汇聚 */
-function render() { renderTree(); if (edNote) renderMeta() }
+/* 0.4.9（notes-049-lang-rerender-editor）：renderEdLang 随汇聚——语言切换（setLang→render）时编辑器 footer/反链面板同翻转；
+   纯 chrome 文案原地重写（正文 DOM 不动，在途编辑保护口径见 editor.js 函数头注释），幂等零副作用 */
+function render() { renderTree(); renderEdLang(); if (edNote) renderMeta() }
 /* 0.4.7-C（notes-047-stability ①）：页面卸载兜底——<900ms debounce 窗口内的在途编辑 flush 落盘（keepalive 通道）；
    面板关闭路径在 app 端不存在（全窗口页无浮层关），卸载是唯一关闭点；无在途时 flushPendingSave 零动作 */
 window.addEventListener('beforeunload', function () { try { flushPendingSave() } catch (e) {} });
 loadNotes();
+/* 0.4.9 补（notes-049-lang-rerender-editor 驳回补修）：启动本地化空态编辑器——EN 持久化用户 reload 后静态壳（body.html #ed）
+   中文空态滞留到手动再切语言才翻转（renderChrome 启动本地化不覆盖 #ed 区，renderEd 首跑在选笔记/切语言时）；
+   启动即跑一次 renderEd()：boot 恒空态（state.js selId/edNote 初值 null，无正文 DOM 可损），空态分支按 NOTES_LANG 持久态经 t() 重写，幂等零副作用 */
+renderEd();
 </script>
 </body>
 </html>
