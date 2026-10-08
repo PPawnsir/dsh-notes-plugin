@@ -4,5 +4,8 @@ node_modules/
 check/e2e-artifacts/
 
 .tmp-app-fresh.html
+.tmp-*.txt
 
+# 验证/跑测的临时日志（worker/verifier 遗留，永不入库）
+_*.txt
 $null

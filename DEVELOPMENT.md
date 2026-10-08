@@ -224,8 +224,8 @@ P1+P2 模块化落地后，一切改动都在 `src/**` 模块源上进行，**�
 测试套件为模块化结构：`check.js`（runner：模式解析/CORE 名单/节注册表/总结）+ `check/helpers.cjs`（共享设施）+ `check/discover.cjs`（节注册自动发现，0.4.6-I）+ `check/sections/*.cjs`（节断言体，自动发现注册、零改动 check.js）。断言总数随版本演进（拆分自原单文件时逐字节迁移，语义零变化；最新数以全量运行输出为准）。
 
 ```bash
-node check.js                 # 全量回归（默认，1050 条；verifier/发布前用）
-node check.js --core          # 核心快检：148 条主链路代表性断言，秒级（worker 自测用）；也可用 CHECK_CORE=1
+node check.js                 # 全量回归（默认，1111 条；verifier/发布前用）
+node check.js --core          # 核心快检：158 条主链路代表性断言，秒级（worker 自测用）；也可用 CHECK_CORE=1
 node check.js --only=39,42    # 分节运行：只执行选中节的断言（逗号分隔节号或节名前缀）；也可用 CHECK_ONLY=39,42
 node check.js --core --only=40  # 可组合：选中节内再按 CORE 名单过滤（此时名单命中校验自动跳过）
 ```
