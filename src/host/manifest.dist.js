@@ -21,6 +21,7 @@
 'kernel/persist.dist.js'
 'folders.dist.js'
 'notes.dist.js'
+'kernel/vector-store.dist.js'
 'llm/organize.dist.js'
 'llm/conflict.dist.js'
 'history-trash/trash.dist.js'

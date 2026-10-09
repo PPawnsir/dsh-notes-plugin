@@ -17,6 +17,7 @@ module.exports = [
   '@i18n/en.js',
   'kernel/helpers.js',
   'kernel/data.js',
+  'kernel/wasm-embedder.js',
   'panels/wiki.js',
   'panels/wiki-ac.js',
   'panels/query.js',

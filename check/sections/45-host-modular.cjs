@@ -47,8 +47,8 @@ module.exports = {
     }
   })
 
-  await t('变体片登记：server/dispatch/inject/memory/transfer/index 六域双侧 .dist.js 成对存在且互不相同', () => {
-    for (const stem of ['server', 'dispatch', 'inject', 'memory', 'transfer', 'index']) {
+  await t('变体片登记：server/dispatch/inject/memory/transfer/index 六域 + kernel/vector-store 双侧 .dist.js 成对存在且互不相同', () => {
+    for (const stem of ['server', 'dispatch', 'inject', 'memory', 'transfer', 'index', 'kernel/vector-store']) {
       const dev = read(stem + '.js'), dist = read(stem + '.dist.js')
       assert(devList.indexOf(stem + '.js') >= 0 && distList.indexOf(stem + '.dist.js') >= 0, stem + ' 双清单登记')
       assert(dev.length > 100 && dist.length > 100, stem + ' 变体片非空')
@@ -123,6 +123,9 @@ module.exports = {
       ['llm/conflict.js', 'server.js', '_conflictCheck → notes-conflict-check 注册（0.4.5-G notes-045-conflict-check）'],
       ['inject/sensitive-helpers.js', 'llm/conflict.js', 'maskSensitiveBody → 敏感约定正文打码后入 prompt（0.4.5-G 红线：打码先于 LLM）'],
       ['notes.js', 'llm/conflict.js', '_list → 约定体检数据集（0.4.5-G：六参全开谓词即唯一选择口径）'],
+      ['kernel/persist.js', 'kernel/vector-store.js', 'onNoteChanged 事件注册表 → 向量层增量监听注册（0.5.0① notes-050-vector-layer）'],
+      ['notes.js', 'kernel/vector-store.js', '_list → 向量层全量重建数据集（0.5.0① notes-050-vector-layer）'],
+      ['kernel/vector-store.js', 'server.js', '_vectorsStatus/_vectorsRebuild/_vectorsSearch/_vectorsPut → notes-vectors-* 四条 RPC 注册（0.5.0①/② notes-050-vector-layer/wasm-embedder）'],
       ['memory.js', 'index.js', '_archive → note_manage.archive'],
       ['dispatch.js', 'index.js', '_dispatch/_activeSessions → note_manage.dispatch'],
       ['dispatch.js', 'schedule.js', '_dispatch → 定时派发执行层 _schedFire（notes-034-sched-exec）'],

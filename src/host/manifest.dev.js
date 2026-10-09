@@ -24,6 +24,7 @@
 'kernel/persist.js'
 'folders.js'
 'notes.js'
+'kernel/vector-store.js'
 'llm/organize.js'
 'llm/conflict.js'
 'history-trash/trash.js'

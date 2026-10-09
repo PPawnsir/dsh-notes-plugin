@@ -104,7 +104,7 @@ module.exports = {
     { prefix: 'meta.status', suffixes: ['Active', 'Resolved', 'Superseded'], anchor: "t('meta.status' +" },               // state.js：Cap(status)（pinned 走 tree.pinned 静态引用）
     { prefix: 'sort.', suffixes: ['use', 'rel', 'time', 'useDesc', 'relDesc', 'timeDesc'], anchor: "t('sort.' +" },        // state.js/constants.js：sortLabelOf/sortDescOf
   ]
-  const NON_KEY_LITS = ['conversation.session.header.actions', 'shell.overlay', 'meta.kind', 'meta.status']
+  const NON_KEY_LITS = ['conversation.session.header.actions', 'shell.overlay', 'meta.kind', 'meta.status', 'config.json', 'tokenizer.json']
   await t('i18n 守卫② 字典↔代码双向覆盖：字典 key 全被引用 + 代码 key 形字面量全命中字典（白名单逐条锚定）', () => {
     // 白名单防漂移：动态构造锚点与豁免字面量必须仍在（去注释）源码中出现
     for (const d of DYN) assert(allCode.indexOf(d.anchor) >= 0, '动态构造锚点在位：' + d.anchor + '（消失则同步 DYN 清单）')

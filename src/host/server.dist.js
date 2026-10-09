@@ -221,6 +221,17 @@
     }))
     // ==== conflict-check END ====
 
+    // ==== vectors BEGIN ====（0.5.0① notes-050-vector-layer：语义检索向量层四条 RPC 通道——status/rebuild/search/put，③卡消费 search，④卡按钮调 rebuild，②卡浏览器回写 put）
+    // notes-vectors-status {} → { ok, enabled, backend, indexed, indexable, lastBuiltAt, namespaces:[{backend,dim,minScore,count,lastBuiltAt}] }（N/M 篇·后端·上次构建·各命名空间统计）
+    // notes-vectors-rebuild { backend } → 全量重建指定后端命名空间（换后端不重建、旧集保留）；backend 缺省回落激活后端。
+    // notes-vectors-search { queryVector|query, backend, limit } → 余弦 + minScore 过滤 + per-note max-pooling（③卡消费；query 为内部 embed 便捷形态）
+    // notes-vectors-put { backend, rows:[{noteId, bodyHash, vectors:[...]}], replace? } → 浏览器 wasm 算好的向量经队列回写边车（②卡落通道；replace:true 全量重建清空目标命名空间）
+    disposers.push(handle('notes-vectors-status', async (args) => { try { return await _vectorsStatus() } catch (e) { return { error: String(e.message || e) } } }))
+    disposers.push(handle('notes-vectors-rebuild', async (args) => { try { return await _vectorsRebuild(args && args.backend) } catch (e) { return { error: String(e.message || e) } } }))
+    disposers.push(handle('notes-vectors-search', async (args) => { try { return await _vectorsSearch(args || {}) } catch (e) { return { error: String(e.message || e) } } }))
+    disposers.push(handle('notes-vectors-put', async (args) => { try { return await _vectorsPut(args || {}) } catch (e) { return { error: String(e.message || e) } } }))
+    // ==== vectors END ====
+
     // POC 存活探测（P1 骨架遗留，包内 lib/client.js 的「笔记POC」按钮消费；非 host-impl 迁移 RPC 之一）
     disposers.push(handle('notes-ping', async (args) => ({ ok: true, pong: Date.now(), echo: (args && typeof args === 'object') ? args : null })))
 

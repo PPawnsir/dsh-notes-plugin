@@ -36,6 +36,9 @@ const SETTINGS_PATH = path.join(NOTES_ROOT, 'settings.json')     // 设置持久
 const USAGE_PATH = path.join(NOTES_ROOT, 'usage.json')
 // 召回遥测机器存储层（0.4.3 验收修复⑤ notes-043-metrics-storage）：独立于 settings.json 防写放大；.json 不进笔记列表天然隐身
 const TELEMETRY_PATH = path.join(NOTES_ROOT, 'telemetry.json')
+// 向量边车（0.5.0① notes-050-vector-layer 语义检索向量层）：JSONL 逐行 { noteId, chunk, bodyHash, backend, vector }；
+//   .jsonl 不进笔记列表天然隐身；与 telemetry.json/settings.json 同目录纪律（开发版 VECTORS_PATH 由 kernel/vector-store.js 定义）
+const VECTORS_PATH = path.join(NOTES_ROOT, 'vectors.jsonl')
 // .json 后缀不进笔记列表（_list/listMd 只认 .md），settings.json 落在同目录天然不污染列表。
 // 开发版目录：只用于 (a) 首次启动的一次性数据迁移 (b) 开发资产回退读取。发布环境不存在这些文件时静默跳过。
 const LEGACY_PLUGIN_DIR = 'D:\\deepseek-work\\dsh-notes-plugin'

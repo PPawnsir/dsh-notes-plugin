@@ -141,6 +141,19 @@ function maxFolderDepthLimit(state) {
   return (typeof v === 'number' && isFinite(v) && v >= 0) ? Math.floor(v) : 3
 }
 
+/* 0.5.0①（notes-050-vector-layer）：向量层 mock——与 host vector-store 同契约（响应形状 + 过滤语义 + deterministic 假 embedder 桩）。
+ * 只守契约点：status/rebuild/search 三面形状与 host 一致；bodyHash 不落盘（数据内容豁免）；向量状态存 state._vectors。 */
+const VECTOR_BACKENDS = { 'fake-256': { id: 'fake-256', dim: 256, minScore: 0 }, 'fake-64': { id: 'fake-64', dim: 64, minScore: 0.9 }, 'bge-small-zh-q8': { id: 'bge-small-zh-q8', dim: 512, minScore: 0.5 } }
+function vectorFnv1a(str) { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 0x01000193) >>> 0; return h }
+function vectorMulberry32(seed) { let s = seed >>> 0; return function () { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 } }
+function vectorEmbedOne(text, dim) { const rnd = vectorMulberry32(vectorFnv1a(String(text == null ? '' : text))); const v = new Array(dim); let sq = 0; for (let i = 0; i < dim; i++) { const x = rnd() * 2 - 1; v[i] = x; sq += x * x } const n = Math.sqrt(sq) || 1; for (let i = 0; i < dim; i++) v[i] = v[i] / n; return v }
+function vectorChunks(body) { const s = String(body == null ? '' : body); const MAX = 1800; const out = []; if (!s) return out; if (s.length <= MAX) return [s]; const lines = s.split(/\r?\n/); let cur = ''; const flush = function () { if (cur) out.push(cur); cur = '' }; for (let i = 0; i < lines.length; i++) { let line = lines[i]; if (line.length > MAX) { flush(); while (line.length > MAX) { out.push(line.slice(0, MAX)); line = line.slice(MAX) }; if (line) cur = line; continue } if (cur.length === 0) { cur = line; continue } if (cur.length + 1 + line.length > MAX) { flush(); cur = line; continue } cur = cur + '\n' + line } flush(); return out }
+function vectorIndexable(n) { return !!(n && n.id && n.deleted !== true && n.sensitive !== true && n.kind !== 'sys') }
+function vectorCosine(a, b) { if (!a || !b || !a.length || !b.length) return 0; const n = Math.min(a.length, b.length); let dot = 0, na = 0, nb = 0; for (let i = 0; i < n; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i] } const den = Math.sqrt(na) * Math.sqrt(nb); return den > 0 ? dot / den : 0 }
+function vectorNs(state) { if (!state._vectors) state._vectors = { ns: {} }; return state._vectors }
+function vectorNsCount(ns) { let n = 0; for (const id of Object.keys(ns.rows || {})) { if (ns.rows[id] && ns.rows[id].length) n++ } return n }
+function vectorActiveBackendId(state) { return (state.settings && state.settings.semantic && state.settings.semantic.enabled === true) ? (state.settings.semantic.backend || 'fake-256') : null }
+
 function handleRpc(state, method, args) {
   const notes = state.notes
   switch (method) {
@@ -617,6 +630,122 @@ function handleRpc(state, method, args) {
     /* 0.4.8 契约对账：notes-ping 对齐静态包 server.dist.js 形状 {ok,pong,echo}（dev host 未注册本方法——dist 独有，
        键集由节 113 静态断言锁定，活体对账基准为 dev host 故不入活体矩阵） */
     case 'notes-ping': return { ok: true, pong: Date.now(), echo: (args && typeof args === 'object') ? args : null }
+    /* 0.5.0①（notes-050-vector-layer）：向量层三 RPC 契约（与 host 同形状）——status（N/M 篇·后端·各命名空间）/rebuild（只重建目标后端命名空间）/search（余弦 + minScore + max-pooling） */
+    case 'notes-vectors-status': {
+      const vBackend = vectorActiveBackendId(state)
+      const vs = vectorNs(state)
+      const namespaces = Object.keys(vs.ns).sort().map(function (bid) {
+        const b = VECTOR_BACKENDS[bid] || { id: bid, dim: 0, minScore: 0 }
+        const ns = vs.ns[bid] || {}
+        return { backend: bid, dim: b.dim, minScore: b.minScore, count: vectorNsCount(ns), lastBuiltAt: ns.lastBuiltAt || '' }
+      })
+      return {
+        ok: true,
+        enabled: vBackend !== null,
+        backend: vBackend,
+        indexed: (vBackend && vs.ns[vBackend]) ? vectorNsCount(vs.ns[vBackend]) : 0,
+        indexable: notes.filter(vectorIndexable).length,
+        lastBuiltAt: (vBackend && vs.ns[vBackend]) ? (vs.ns[vBackend].lastBuiltAt || '') : '',
+        namespaces: namespaces,
+      }
+    }
+    case 'notes-vectors-rebuild': {
+      const bid = (args && args.backend) || vectorActiveBackendId(state) || 'fake-256'
+      const b = VECTOR_BACKENDS[bid]
+      if (!b) return { error: 'notes-vectors-rebuild: 未知后端 ' + String(bid) + '（且无激活后端）' }
+      const vs = vectorNs(state)
+      const ns = { hash: {}, rows: {}, lastBuiltAt: nowIso() }
+      let indexed = 0
+      for (const n of notes) {
+        if (!vectorIndexable(n)) continue
+        const chunks = vectorChunks(n.body)
+        if (!chunks.length) continue
+        const rows = []
+        for (let i = 0; i < chunks.length; i++) rows.push({ chunk: i, vector: vectorEmbedOne(chunks[i], b.dim) })
+        ns.rows[n.id] = rows
+        indexed++
+      }
+      vs.ns[bid] = ns
+      return { ok: true, backend: bid, dim: b.dim, minScore: b.minScore, indexed: indexed, indexable: notes.filter(vectorIndexable).length, lastBuiltAt: ns.lastBuiltAt }
+    }
+    case 'notes-vectors-search': {
+      const bid = (args && args.backend) || vectorActiveBackendId(state) || 'fake-256'
+      const b = VECTOR_BACKENDS[bid]
+      if (!b) return { error: 'notes-vectors-search: 未知后端 ' + String(bid) + '（且无激活后端）' }
+      let q = null
+      if (args && Array.isArray(args.queryVector) && args.queryVector.length) q = args.queryVector.map(Number)
+      else if (args && typeof args.query === 'string' && args.query) q = vectorEmbedOne(args.query, b.dim)
+      if (!q || !q.length) return { error: 'notes-vectors-search: 需要 queryVector（数组）或 query（文本）' }
+      const ns = vectorNs(state).ns[bid]
+      if (!ns) return { ok: true, backend: bid, dim: b.dim, minScore: b.minScore, results: [], count: 0 }
+      const results = []
+      for (const nid of Object.keys(ns.rows || {})) {
+        const rows = ns.rows[nid] || []
+        let best = -2, bestChunk = -1
+        for (const r of rows) { const cos = vectorCosine(q, r.vector); if (cos > best) { best = cos; bestChunk = r.chunk } }
+        if (best >= b.minScore) results.push({ noteId: nid, score: best, chunk: bestChunk })
+      }
+      results.sort(function (x, y) { return y.score - x.score })
+      const lim = Math.max(0, Math.floor(Number((args && args.limit) || 0))) || results.length
+      const page = results.slice(0, lim)
+      return { ok: true, backend: bid, dim: b.dim, minScore: b.minScore, results: page, count: page.length }
+    }
+    /* 0.5.0②（notes-050-wasm-embedder）：notes-vectors-put 浏览器回写契约（与 host _vectorsPut 同形状）——
+       rows:[{noteId, bodyHash, vectors:[...]}] 增量 upsert；replace:true 清空目标命名空间再写；dim 写前校验（坏行 skipped）。 */
+    case 'notes-vectors-put': {
+      const bid = (args && args.backend)
+      const b = VECTOR_BACKENDS[bid]
+      if (!b) return { error: 'notes-vectors-put: 未知后端 ' + String(bid || '') }
+      const rowsIn = (args && Array.isArray(args.rows)) ? args.rows : []
+      const vs = vectorNs(state)
+      let ns = vs.ns[bid]
+      if ((args && args.replace === true) || !ns) { ns = { hash: {}, rows: {}, lastBuiltAt: nowIso() }; vs.ns[bid] = ns }
+      let written = 0, skipped = 0
+      for (const r of rowsIn) {
+        if (!r || typeof r.noteId !== 'string' || !r.noteId || !Array.isArray(r.vectors) || !r.vectors.length) { skipped++; continue }
+        const rows = []
+        let bad = false
+        for (let i = 0; i < r.vectors.length; i++) { const v = r.vectors[i]; if (!Array.isArray(v) || v.length !== b.dim) { bad = true; break } rows.push({ chunk: i, vector: v.map(Number) }) }
+        if (bad) { skipped++; continue }
+        ns.rows[r.noteId] = rows
+        ns.hash[r.noteId] = (typeof r.bodyHash === 'string' && r.bodyHash) ? r.bodyHash : ''
+        written++
+      }
+      return { ok: true, backend: bid, dim: b.dim, written: written, skipped: skipped, count: vectorNsCount(ns) }
+    }
+    /* 0.5.0（notes-050-mount-scope）：notes-inject-preview 由缺省 {ok:true} 升格为真实形状（host renderInjected 同形
+       {conventions, directory, stats:{conventionsChars,directoryChars,totalChars,maskedNotes,staleMarked,budgetTruncated}}）——
+       本卡 e2e「scoped 挂载 → 注入预览两会话视角差异」需 mock 侧同款 scope 过滤（挂载行随目标笔记 injectTo 过滤，同 host conventionHit）。
+       简化（节 113 登记）：不模拟预算省略/脱敏/价值信号行/日志计数尾行/note_get 引导——只守 scope 过滤语义与响应键集，数据内容简化。 */
+    case 'notes-inject-preview': {
+      const a = args || {}
+      let scope = a.sessionId ? String(a.sessionId).replace(/^session-/, '').slice(0, 8) : ''
+      if (!scope && a.workspace) scope = state.sessions.filter(s => s.workspace === a.workspace).map(s => s.short)
+      const hit = (injectTo) => {
+        const targets = injectTo || []
+        if (targets.length === 0) return true
+        const sidSet = Array.isArray(scope) ? scope : null
+        for (const t of targets) {
+          if (t === 'global' || t === 'workspace') return true
+          if (sidSet ? sidSet.indexOf(t) >= 0 : t === scope) return true
+        }
+        return false
+      }
+      const convs = notes.filter(n => !n.deleted && n.inject === true && (n.injectRole || 'convention') !== 'reference' && (n.kind || 'note') !== 'sys' && hit(n.injectTo))
+      const mounts = Object.keys(state._mounts || {}).map(function (id) {
+        const n = notes.find(x => x.id === id)
+        return { id: id, when: state._mounts[id], n: n }
+      }).filter(function (m) { return !m.n || hit(m.n.injectTo) })
+      const conventions = convs.length ? '\n\n用户约定（须遵守）：\n\n' + convs.map(function (n) { return '- [' + n.id + '] ' + n.title + '\n  ' + String(n.body || '') }).join('\n\n') : ''
+      let directory = ''
+      if (mounts.length) directory = '\n\n本地笔记库目录（与本任务相关时用 note_get 拉全文，更多用 note_search）：\n\n' + mounts.map(function (m) { return '- [[' + m.id + ']] ' + m.when }).join('\n') + '\n\n（以上为挂载索引行：正文用 note_get <id> 获取）'
+      const full = '以下是注入的上下文笔记（与当前任务无关时忽略）：' + conventions + directory
+      return {
+        conventions: conventions,
+        directory: directory,
+        stats: { conventionsChars: conventions.length, directoryChars: directory.length, totalChars: full.length, maskedNotes: 0, staleMarked: 0, budgetTruncated: false },
+      }
+    }
     default: return { ok: true }
   }
 }
