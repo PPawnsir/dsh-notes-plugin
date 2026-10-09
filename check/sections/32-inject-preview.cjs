@@ -136,6 +136,36 @@ module.exports = {
     const sg = await handlersIP['notes-settings-get']({})
     assert.strictEqual(sg.lastInjectChars, 0, 'notes-inject-preview 不更新 lastInjectChars（仪表只反映真实注入）')
   })
+  await t('挂载行 scope 过滤两态（0.5.0 notes-050-mount-scope）：scoped 挂载目标在命中/不命中会话进出目录段 + injectTo=[] 存量行为不变', async () => {
+    // reference 创建即自动落行（_idxSyncMount）；injectTo 非空 → 挂载行随目标笔记 scope 过滤
+    await handlersIP['notes-create']({ title: '挂载scope命中', body: 'x', inject: true, injectRole: 'reference', injectTo: ['abc12345'], topic: '资料' })
+    await new Promise(r => setTimeout(r, 3))
+    await handlersIP['notes-create']({ title: '挂载scope不命中', body: 'x', inject: true, injectRole: 'reference', injectTo: ['deadbeef'], topic: '资料' })
+    await new Promise(r => setTimeout(r, 3))
+    await handlersIP['notes-create']({ title: '挂载scope全局', body: 'x', inject: true, injectRole: 'reference', topic: '资料' })
+    const g0 = await handlersIP['notes-inject-preview']({})   // 全局视角：sidOverride='' → scoped 两行均不命中
+    assert(g0.directory.indexOf('挂载scope命中') < 0 && g0.directory.indexOf('挂载scope不命中') < 0, '全局视角：scoped 挂载行不进目录段（injectTo 非空且不命中）')
+    assert(g0.directory.indexOf('挂载scope全局') >= 0, '全局视角：injectTo=[] 挂载行仍在（存量兼容红线）')
+    const g1 = await handlersIP['notes-inject-preview']({ sessionId: 'abc12345' })
+    assert(g1.directory.indexOf('挂载scope命中') >= 0 && g1.directory.indexOf('挂载scope不命中') < 0, '命中会话 abc12345：scoped 命中行进段、非命中行出段')
+    const g2 = await handlersIP['notes-inject-preview']({ sessionId: 'deadbeef' })
+    assert(g2.directory.indexOf('挂载scope不命中') >= 0 && g2.directory.indexOf('挂载scope命中') < 0, '非命中会话 deadbeef：反向两态（scoped 不命中行进段、命中行出段）')
+    const g3 = await handlersIP['notes-inject-preview']({ sessionId: 'abc12345' })
+    assert(g3.directory.indexOf('挂载scope全局') >= 0, 'scoped 会话视角：injectTo=[] 全局挂载行仍在')
+  })
+  await t('过滤先于预算（0.5.0 notes-050-mount-scope）：scoped 不命中行不计入预算压力（超预算省略计数不含被 scope 过滤的行）', async () => {
+    const full0 = await handlersIP['notes-inject-preview']({ sessionId: 'abc12345' })
+    const dir0 = full0.directory || ''
+    const alive = (dir0.match(/- \[\[/g) || []).length
+    assert(dir0.indexOf('挂载scope不命中') < 0, '前置：scoped 不命中行不在 abc12345 目录段（scope 过滤先于预算）')
+    assert(alive >= 1, '前置：目录段至少 1 条存活挂载行（实得 ' + alive + '）')
+    await handlersIP['notes-settings-set']({ injectBudgetChars: 30 })   // 极小预算：全部挂载行省略
+    const tight = await handlersIP['notes-inject-preview']({ sessionId: 'abc12345' })
+    const mDrop = (tight.directory || '').match(/…另有 (\d+) 条目录行超出预算未注入（note_search 可检索）/)
+    assert(mDrop && +mDrop[1] === alive, '省略计数 = 存活挂载行数（scoped 不命中行不计入；实得 ' + (mDrop && mDrop[1]) + ' 期望 ' + alive + '）')
+    assert((tight.directory || '').indexOf('挂载scope不命中') < 0, '省略提示不含 scoped 不命中行')
+    await handlersIP['notes-settings-set']({ injectBudgetChars: null })
+  })
 
   // ---- 32.3 静态包行为（独立 ESM 实例；harness 缺席 → webServer 路由链路，与 29.3 同款）----
   await t('静态包：notes-inject-preview 经 webServer 路由返回完整结构 + sessionId 过滤', async () => {

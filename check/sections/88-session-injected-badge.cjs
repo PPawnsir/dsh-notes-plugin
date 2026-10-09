@@ -2,7 +2,7 @@
 // 设计面：同槽位（conversation.session.header.actions）第二组件 id=dsh-notes-injected-badge order=41（排既有笔记按钮 #40 旁，
 //   独立 id 共存不抢槽位）；数据源零新增 RPC（notes-list inject=true 过滤 + notes-mount-list §1 挂载行组合）；
 //   命中规则与 host conventionHit 同口径（injectTo 空/global/workspace 容错 = 全局；含当前会话短 id shortSid 归一 = 命中）；
-//   挂载行 = 目录段载荷 host 不按会话过滤 → 资料区全量列出；sys/软删排除（host 缺省口径 + 组件侧兜底双闸）；
+//   挂载行 = 目录段载荷随目标笔记 injectTo 过滤（0.5.0 notes-050-mount-scope：host 目录段与徽标资料区同款 scope 过滤）；sys/软删排除（host 缺省口径 + 组件侧兜底双闸）；
 //   拿不到 sid / 拉取失败 / 零命中 → 徽标不渲染（静默降级红线）；行点击 = 开面板 + selectNote/notes-get 兜底（openExecLog 同款）；
 //   只读会话状态零写入；原型 notes-ui-v2.html 不同步（会话头部是宿主壳区域，非本插件原型面）。
 // 测试策略：注册锚/降级/链路 = 产物文本静态锚（开发版 clientSrc + 发布包 lib/client.js 双端）；命中规则/排除 = 提取
@@ -54,7 +54,7 @@ module.exports = {
   })
 
   // ===== ③ sys/删除笔记排除 + 资料区求值行为级（convs 过滤 / refs 标题解析 / 死行兜底）=====
-  await t('injBadgeCompute 行为级 eval：sys/软删/未开注入/资料档 排除出约定区 + 非本会话过滤 + 挂载行标题解析与 id 兜底 + 死行/机器行不回显', () => {
+  await t('injBadgeCompute 行为级 eval：sys/软删/未开注入/资料档 排除出约定区 + 非本会话过滤 + 挂载行随目标 injectTo 过滤两态 + 标题解析与 id 兜底 + 死行/机器行不回显', () => {
     const hitSrc = grabFn4(clientSrc, 'injSessionHit', 'clientSrc')
     const cmpSrc = grabFn4(clientSrc, 'injBadgeCompute', 'clientSrc')
     const shortSid = (sid) => sid ? String(sid).replace(/^session-/, '').slice(0, 8) : ''
@@ -69,19 +69,26 @@ module.exports = {
       { id: 'n-del', title: '已删约定', inject: true, injectRole: 'convention', kind: 'note', deleted: true, injectTo: [] },
       { id: 'n-off', title: '未开注入', inject: false, kind: 'note', injectTo: [] },
       { id: 'n-ref', title: '笔记面板架构', inject: true, injectRole: 'reference', kind: 'note', injectTo: [] },
+      { id: 'n-ref-hit', title: '本会话资料', inject: true, injectRole: 'reference', kind: 'note', injectTo: ['cc24eb5c'] },
+      { id: 'n-ref-other', title: '别会话资料', inject: true, injectRole: 'reference', kind: 'note', injectTo: ['99f2b674'] },
     ]
     const lines = [
       { id: 'n-ref', when: '改面板结构时查我', raw: '- [[n-ref]] 笔记面板架构 何时查我：改面板结构时查我' },
+      { id: 'n-ref-hit', when: '本会话资料行', raw: '- [[n-ref-hit]] 本会话资料 何时查我：本会话资料行' },
+      { id: 'n-ref-other', when: '别会话资料行', raw: '- [[n-ref-other]] 别会话资料 何时查我：别会话资料行' },
       { id: 'n-ghost', when: '', raw: '- [[n-ghost]]' },   // 清单外（瞬态/在途）——id 兜底回显（host 目录段仍注入该行）
       { id: 'n-sys', when: 'x', raw: '- [[n-sys]] x' },     // 机器行不回显（组件侧兜底）
       { id: '', when: 'bad', raw: '- [[]] bad' },           // 空 id 坏行不回显
     ]
     const r = injBadgeCompute(notes, lines, sid)
     assert.deepStrictEqual(r.convs.map(n => n.id), ['n-c1', 'n-c2'], '约定区 = inject=true 且非资料档且命中（sys/软删/未开/非本会话全排除）')
-    assert.deepStrictEqual(r.refs.map(x => x.id), ['n-ref', 'n-ghost'], '资料区 = 挂载行全量（目录段不按会话过滤）+ 死行/机器行/坏行不回显')
+    assert.deepStrictEqual(r.refs.map(x => x.id), ['n-ref', 'n-ref-hit', 'n-ghost'], '资料区 = 挂载行随目标笔记 injectTo 过滤（scoped 命中留/不命中滤 + injectTo=[] 全局留）+ 死行/机器行/坏行不回显')
+    assert(r.refs.some(x => x.id === 'n-ref-hit'), 'scoped 挂载命中会话 → 进资料区（两态之一）')
+    assert(!r.refs.some(x => x.id === 'n-ref-other'), 'scoped 挂载非本会话 → 不进资料区（两态之二）')
     assert.strictEqual(r.refs[0].title, '笔记面板架构', '挂载行标题自 notes 清单解析')
     assert.strictEqual(r.refs[0].when, '改面板结构时查我', 'whenToUse 行随行下发')
-    assert.strictEqual(r.refs[1].title, 'n-ghost', '清单外挂载行标题回退 id')
+    assert.strictEqual(r.refs[1].title, '本会话资料', 'scoped 命中挂载行标题解析')
+    assert.strictEqual(r.refs[2].title, 'n-ghost', '清单外挂载行标题回退 id')
     // 资料档笔记不重复进约定区（零双计红线：N = 约定 M + 挂载 K）
     assert(r.convs.every(n => n.injectRole !== 'reference'), '约定区零资料档（挂载行单源，不双计）')
   })

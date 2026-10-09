@@ -53,7 +53,6 @@ module.exports = {
     ['notes-restore-history', '历史版本恢复（含恢复前置快照语义，mock 不模拟）'],
     ['notes-when-suggest', 'LLM whenToUse 草稿（挂载弹层预填数据源；失败静默回退标题，e2e 断言语义外）'],
     ['notes-conventions', '注入渲染聚合面（{text,conventions,directory}），mock 不模拟渲染管线'],
-    ['notes-inject-preview', '注入预览统计面，mock 不模拟渲染管线'],
     ['notes-archive', '归档合并执行（事务/undo 落盘面）'],
     ['notes-archive-preview', '归档预览 dry-run 面'],
     ['notes-archive-undo', '归档撤销事务面（undo 事务文件通道）'],

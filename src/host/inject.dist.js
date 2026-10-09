@@ -97,7 +97,10 @@
         //   与卡面契约/README 单横线形态及前端行解析正则 ^- \[\[? 三重不符，预览挂载行不可点；禁止再加前缀）；
         // 预算省略 pop 只动 refLines 尾部，存活 id = refBlocks.slice(0, refLines.length)；
         // 排序：按挂载目标 updatedAt 降序（延续「从最旧开始省略」预算语义；目标不在库/无时间 → 视为最旧沉底）
+        // scope 过滤（0.5.0 notes-050-mount-scope）：目标笔记 injectTo 非空且当前会话不命中（conventionHit 同口径，剔除 global/workspace 存量值）
+        //   → 该行不进 refBlocks；过滤先于预算省略（scoped 不命中行不占预算压力、不计入省略计数）。目标不在库（幽灵行）→ 保留（存量兼容）。
         const refBlocks = idxLinesSync()
+          .filter(function (l) { const n = cache.get(l.id); return !n || conventionHit(n, ws, curSid) })
           .map(function (l) { const n = cache.get(l.id); return { id: l.id, raw: l.raw, ts: (n && !n.deleted && !n.tombstoned && n.updatedAt) || '' } })
           .sort(function (a, b) { return (b.ts || '').localeCompare(a.ts || '') })
         const refLines = refBlocks.map(function (it) { return it.raw })
@@ -290,6 +293,30 @@
           if (patch.organizeMaxChars === null || patch.organizeMaxChars === undefined || patch.organizeMaxChars === 0) delete settingsCache.organizeMaxChars
           else if (typeof patch.organizeMaxChars === 'number' && isFinite(patch.organizeMaxChars) && patch.organizeMaxChars > 0) settingsCache.organizeMaxChars = Math.floor(patch.organizeMaxChars)
           else return { error: 'notes-settings-set: organizeMaxChars 需要非负数值（0 = 按所配模型自动）' }
+        }
+        // 0.5.0①（notes-050-vector-layer）语义检索激活位：semantic = { enabled?: boolean, backend?: string, model?: {...}|null }（总开关 + 激活后端 id + 模型下载状态）；
+        //   null/undefined 删除 override 恢复关闭（缺省关闭零成本）；仅存白名单键（enabled 布尔 / backend 非空串 / model 白名单子键），其余键忽略不落盘。
+        //   增量合并（0.5.0② notes-050-wasm-embedder）：model 键 = 浏览器 wasm 模型下载状态（设置「已下载大小/可删」数据源，
+        //   app 页下载成功后回写）——只 patch model 不清除存量 enabled/backend（app 页记录下载与设置开关是两个独立动作）。
+        if ('semantic' in patch) {
+          if (patch.semantic === null || patch.semantic === undefined) delete settingsCache.semantic
+          else if (patch.semantic && typeof patch.semantic === 'object' && !Array.isArray(patch.semantic)) {
+            const s = Object.assign({}, settingsCache.semantic && typeof settingsCache.semantic === 'object' ? settingsCache.semantic : {})
+            if (patch.semantic.enabled === true) s.enabled = true
+            else if (patch.semantic.enabled === false) s.enabled = false
+            if (typeof patch.semantic.backend === 'string' && patch.semantic.backend.trim()) s.backend = patch.semantic.backend.trim()
+            if (patch.semantic.model === null) delete s.model
+            else if (patch.semantic.model && typeof patch.semantic.model === 'object' && !Array.isArray(patch.semantic.model)) {
+              const m = {}
+              if (typeof patch.semantic.model.backend === 'string' && patch.semantic.model.backend.trim()) m.backend = patch.semantic.model.backend.trim()
+              if (typeof patch.semantic.model.bytes === 'number' && isFinite(patch.semantic.model.bytes) && patch.semantic.model.bytes >= 0) m.bytes = Math.floor(patch.semantic.model.bytes)
+              if (typeof patch.semantic.model.downloadedAt === 'string' && patch.semantic.model.downloadedAt) m.downloadedAt = patch.semantic.model.downloadedAt
+              if (typeof patch.semantic.model.source === 'string' && patch.semantic.model.source) m.source = patch.semantic.model.source
+              if (Object.keys(m).length) s.model = m
+            }
+            settingsCache.semantic = s
+          }
+          else return { error: 'notes-settings-set: semantic 需要 { enabled?, backend?, model? } 对象（或 null 恢复关闭）' }
         }
         await saveSettings()
         return { ok: true, settings: settingsCache }

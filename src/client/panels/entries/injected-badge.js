@@ -7,7 +7,7 @@
     //   notes-mount-list（注入索引 §1 挂载行）。挂载时 + notifyNotesChanged 失效时拉取。
     // 命中规则与 host conventionHit 同口径（inject.js，单会话形态）：injectTo 空 = 全局命中；含 global/workspace 存量值
     //   容错 = 全局；含当前会话短 id（shortSid 归一比对，notes-034-injectto-norm 同口径）= 命中。
-    //   挂载行 = 目录段载荷，host renderInjected 目录段不按会话过滤，故资料区全量列出（与真实注入面一致）。
+    //   挂载行 = 目录段载荷，均随目标笔记 injectTo 过滤（0.5.0 notes-050-mount-scope：host renderInjected 目录段 + 徽标资料区同款 scope 过滤——与真实注入面一致）。
     // 降级红线：拿不到 sessionId / 拉取失败 / 零命中 → 徽标不渲染（静默）；面板能力桥缺席 → 行点击只开面板不选中。
     // 只读会话状态，零写入。原型 notes-ui-v2.html 无需同步：会话头部是宿主壳区域，非本插件原型面。
     // 与入口双模式（header/fab 互斥）无关：本徽标是注入可观测性而非面板入口，两种模式下都常驻。
@@ -32,6 +32,7 @@
         if (!l || !l.id) continue
         const ln = (notes || []).find(x => x && x.id === l.id)
         if (ln && (ln.deleted === true || (ln.kind || 'note') === 'sys')) continue   // 死挂载行/机器行不回显（与 host 摘行联动同向兜底）
+        if (ln && !injSessionHit(ln.injectTo, sidShort)) continue   // 挂载行随目标笔记 injectTo 过滤（与 host 目录段同口径，0.5.0 notes-050-mount-scope）
         refs.push({ id: l.id, when: l.when || '', title: (ln && ln.title) || l.id })
       }
       return { convs: convs, refs: refs }
