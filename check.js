@@ -200,6 +200,10 @@ const CORE = new Set([
   // 119. 0.5.0③ RRF 融合检索（notes-050-rrf-fusion）：敏感永不进语义通道 + 开关关零回归两条红线常驻 --core
   'sensitive 翻转：任何后端命名空间不再命中（全命名空间出队，残留集不泄漏）',
   '开关关=旧行为逐字节（纯文本零语义徽标 + 旧序）',
+  // 120. 0.5.0④ 语义检索设置区（notes-050-sem-settings）：双键整写 + 激活自动回填 + wasm 运行时镜像链三条红线常驻 --core
+  '红线①：UI 写 settings.semantic 必须 enabled+backend 双键整写（整对象替换口径，单写 backend 丢 enabled）',
+  '红线②：打开总开关自动触发 notes-vectors-rebuild 回填存量（否则存量不入队 indexed<indexable 静默漏历史）',
+  'wasm 运行时镜像链=[jsdelivr 主→unpkg 兜底] 且不含 npmmirror（npmmirror 实证 403/404 不可达）',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

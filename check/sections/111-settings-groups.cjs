@@ -5,7 +5,7 @@
 //   ④ 导航结构三端锚（rail 图标+组名 role=navigation / chips 窄宽退化 / 点击定位 48px 吸顶补偿 / 滚动反高亮 56px 阈值 / aria-current）；
 //   ⑤ 样式三端（sticky rail + chips 横条 + 559px 媒体查询）+ i-info 图标三端 + i18n 双语七组名；
 //   ⑥ 零回归锁（0.4.7-B sticky 标题/描述收折/LLM 区邻接/dirty 链路/22 控件 id）。
-// 0.4.8 联动（notes-048-lang-topbar）：语言节随切换上顶栏下线——16 节 / 非空 4 组（常规转空组登记槽），计数断言同步。
+// 0.4.8 联动（notes-048-lang-topbar）：语言节随切换上顶栏下线——17 节（0.5.0④ 语义检索节入驻）/ 非空 4 组（常规转空组登记槽），计数断言同步。
 // 交互级主战场（真机点击定位/反高亮/窄宽 chips）：e2e ㊺（app）+ ㊻（panel）。
 module.exports = {
   id: "111",
@@ -59,22 +59,22 @@ module.exports = {
     const gA = grabGroups(appSettings, 'app'), gP = grabGroups(protoV2Src, '原型')
     const flat = gA.reduce((a, g) => a.concat(g.rows), [])
     assert.strictEqual(new Set(flat).size, flat.length, '常量表 rows 无重复登记（实得 ' + flat.length + ' 节）')
-    assert.strictEqual(flat.length, 16, '常量表登记 16 节（0.4.8 盘点口径；notes-048-lang-topbar 语言节下线 -1；新增节须登记，此处同步改数）')
+    assert.strictEqual(flat.length, 17, '常量表登记 17 节（0.5.0④ 语义检索节入驻；notes-048-lang-topbar 语言节下线 -1；新增节须登记，此处同步改数）')
     /* app/原型：行壳 data-sec 锚全集 ⇄ 常量表 */
     for (const [label, src] of [['app', appSettings], ['原型', protoV2Src]]) {
       const ids = []; let m
       const re = /data-sec="([a-z]+)"/g
       while ((m = re.exec(src))) ids.push(m[1])
-      assert.strictEqual(ids.length, 16, label + ' 行壳 data-sec 共 16 节（实得 ' + ids.length + '）')
-      assert.strictEqual(new Set(ids).size, 16, label + ' data-sec 无重复')
+      assert.strictEqual(ids.length, 17, label + ' 行壳 data-sec 共 17 节（实得 ' + ids.length + '）')
+      assert.strictEqual(new Set(ids).size, 17, label + ' data-sec 无重复')
       assert.deepStrictEqual(ids.slice().sort(), flat.slice().sort(), label + ' 节 id 集 ⇄ 常量表双向相等（漏登记/幽灵 id 即红）')
     }
     /* client：settingsRows key 全集 ⇄ 常量表 */
     const keys = []; let m2
     const re2 = /key: '([a-z]+)', label: tt\('settings\./g
     while ((m2 = re2.exec(cliSettings))) keys.push(m2[1])
-    assert.strictEqual(keys.length, 16, 'client settingsRows 共 16 行（实得 ' + keys.length + '）')
-    assert.strictEqual(new Set(keys).size, 16, 'client settingsRows key 无重复')
+    assert.strictEqual(keys.length, 17, 'client settingsRows 共 17 行（实得 ' + keys.length + '）')
+    assert.strictEqual(new Set(keys).size, 17, 'client settingsRows key 无重复')
     assert.deepStrictEqual(keys.slice().sort(), flat.slice().sort(), 'client 行 key 集 ⇄ 常量表双向相等')
     assert(cliSettings.indexOf('g.rows.map(k => settingsRowByKey[k]).filter(Boolean)') >= 0, 'client 组壳行渲染走常量表 rows（key→行索引）')
     /* 三端节 id 集互等（app=原型=client） */
@@ -104,11 +104,11 @@ module.exports = {
     const ord = ['inject', 'ai', 'data', 'about']
     const pos = ord.map(id => html.indexOf('<div class="set-group" data-g="' + id + '">'))
     assert(pos.every(p => p >= 0) && pos.every((p, i) => i === 0 || p > pos[i - 1]), '组壳按常量表序输出（' + ord.join('<') + '）')
-    /* rail/chips/组头/导航语义齐全 + 16 节各出现一次 */
+    /* rail/chips/组头/导航语义齐全 + 17 节各出现一次 */
     assert((html.match(/set-rail-item"/g) || []).length === 4 && (html.match(/set-chip"/g) || []).length === 4, 'rail/chips 各 4 项（非空组数；引号收尾口径防 .set-chips 容器误计）')
     assert((html.match(/set-group-t/g) || []).length === 4, '组头 4 个')
     assert(html.indexOf('role="navigation"') >= 0 && html.indexOf('aria-label="设置分组"') >= 0, 'rail 导航语义 + aria-label（zh 态）')
-    assert((html.match(/data-sec="/g) || []).length === 16, '16 节各渲染一次')
+    assert((html.match(/data-sec="/g) || []).length === 17, '17 节各渲染一次')
     /* 组内节相对顺序不动：ai 组 llm<organizemax<usage<usagebudget<suggest（LLM 区邻接保留；组壳锚定带 class 前缀防 rail 项 data-g 误中） */
     const aiBlock = html.slice(html.indexOf('<div class="set-group" data-g="ai"'), html.indexOf('<div class="set-group" data-g="data"'))
     const aiOrd = ['llm', 'organizemax', 'usage', 'usagebudget', 'suggest'].map(id => aiBlock.indexOf('data-sec="' + id + '"'))
@@ -117,7 +117,7 @@ module.exports = {
     const partial = Object.assign({}, full); delete partial.cheatsheet
     const html2 = factory(tStub, () => '', (s) => s).html(partial)
     assert(html2.indexOf('data-g="about"') < 0 && html2.indexOf('data-sec="cheatsheet"') < 0, '组唯一节缺席 → 整组隐身')
-    assert((html2.match(/data-sec="/g) || []).length === 15, '其余 15 节不受影响')
+    assert((html2.match(/data-sec="/g) || []).length === 16, '其余 16 节不受影响')
     /* 原型同构锚：同名函数 + 同表（label 静态中文口径由 111.1 锁） */
     assert(protoV2Src.indexOf('function setGroupsVisible(secs)') >= 0 && protoV2Src.indexOf('function setGroupsHtml(secs)') >= 0, '原型 setGroupsVisible/setGroupsHtml 同构')
   })

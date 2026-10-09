@@ -6,6 +6,7 @@ var setSnap = null;      /* 打开时快照 {llmP,llmM,stale,maxDepth,budget,usa
 var setPersist = null;   /* 已落盘镜像（兜底 flush/还原只写真不同的键） */
 var setInflight = 0;     /* 在途设置写数（>0 = 存在尚未落盘的待写） */
 var setSaving = false;   /* 保存/还原执行中（按钮防重入） */
+var semState = null;     /* 0.5.0④ 语义检索节运行时态 { enabled, backend, model, status, building }（openSettings 加载后初始化） */
 /* 0.4.7-B①b（notes-047-ux）：设置行 label 生成器——说明文字 >60 字时限 2 行收折（.s.cl），行名旁出 ⓘ 钮点击展开/收拢；
    extraHtml = 说明后的追加块（如注入预算仪表），收折只作用说明段 */
 function setLabelHtml(label, tip, extraHtml) {
@@ -23,7 +24,7 @@ function setLabelHtml(label, tip, extraHtml) {
 var SET_GROUPS = [
   { id: 'general',  icon: 'i-gear',    labelKey: 'settings.group.general',  rows: [] },                                                  /* 常规：主题/语言/面板入口类（0.4.8 notes-048-lang-topbar：语言节随切换上顶栏下线——空组登记槽保留） */
   { id: 'editor',   icon: 'i-note',    labelKey: 'settings.group.editor',   rows: [] },                                                  /* 编辑器：自动保存/富文本/双链类（待新节登记） */
-  { id: 'inject',   icon: 'i-bolt',    labelKey: 'settings.group.inject',   rows: ['stale', 'budget', 'injprev', 'injmgr'] },            /* 检索与注入：搜索/注入/挂载类 */
+  { id: 'inject',   icon: 'i-bolt',    labelKey: 'settings.group.inject',   rows: ['stale', 'budget', 'injprev', 'injmgr', 'semantic'] },            /* 检索与注入：搜索/注入/挂载类 */
   { id: 'dispatch', icon: 'i-clock',   labelKey: 'settings.group.dispatch', rows: [] },                                                  /* 派发与调度（待新节登记） */
   { id: 'ai',       icon: 'i-sparkle', labelKey: 'settings.group.ai',       rows: ['llm', 'organizemax', 'usage', 'usagebudget', 'suggest'] },  /* AI：LLM 配置/整理上限类 */
   { id: 'data',     icon: 'i-folder',  labelKey: 'settings.group.data',     rows: ['maxdepth', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },  /* 数据与存储：遥测/备份/存储路径类 */
@@ -145,6 +146,19 @@ function openSettings() {
       + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>';
     setSecs.injprev = '<div class="set-row" data-sec="injprev">' + setLabelHtml(t('settings.injPreview'), t('settings.injPreviewTip')) + '<div class="set-ctrl"><button class="mbtn" id="setInjectPreview">' + t('settings.previewBtn') + '</button></div></div>';
     setSecs.injmgr = '<div class="set-row" data-sec="injmgr">' + setLabelHtml(t('settings.injManager'), t('settings.injManagerTip')) + '<div class="set-ctrl"><button class="mbtn" id="setInjectManager">' + t('settings.manageBtn') + '</button></div></div>';
+    /* 0.5.0④（notes-050-sem-settings）：语义检索节（检索与注入组尾）——总开关 + 后端下拉 + 索引状态行 + 构建按钮 + 模型管理。
+       消费①的 notes-vectors-status/rebuild 通道 + ②的 wasm-embedder（模型下载/删除/状态）；缺省关闭零成本（开关 off 即文本检索逐字节旧行为）。 */
+    setSecs.semantic = '<div class="set-row" data-sec="semantic">' + setLabelHtml(t('settings.semantic'), t('settings.semanticTip'))
+      + '<div class="set-ctrl sem-ctrl">'
+      + '<label class="set-check"><input type="checkbox" id="setSemEnabled"> ' + t('settings.semanticEnabled') + '</label>'
+      + '<div class="sem-row"><select class="minput" id="setSemBackend">'
+      + '<option value="">' + t('settings.semanticBackendOff') + '</option>'
+      + '<option value="bge-small-zh-q8">' + t('settings.semanticBackendLocal') + '</option>'
+      + '<option value="custom-endpoint" disabled>' + t('settings.semanticBackendCustom') + '</option>'
+      + '</select></div>'
+      + '<div class="s" id="setSemStatus">' + t('common.loading') + '</div>'
+      + '<div class="sem-row"><button class="mbtn" id="setSemBuild" disabled>' + t('settings.semanticBuild') + '</button><span class="s" id="setSemModel"></span></div>'
+      + '</div></div>';
     setSecs.data = '<div class="set-row" data-sec="data">' + setLabelHtml(t('settings.data'), t('settings.dataTip')) + '<div class="set-ctrl"><button class="mbtn" id="setExport">' + t('settings.exportAll') + '</button><button class="mbtn" id="setImport">' + t('settings.importBtn') + '</button><button class="mbtn" id="setTrash">' + t('topbar.trash') + '</button></div></div>';
     setSecs.assets = '<div class="set-row" data-sec="assets">' + setLabelHtml(t('settings.assets'), t('settings.assetsTip')) + '<div class="set-ctrl"><button class="mbtn" id="setPrune">' + t('settings.pruneBtn') + '</button></div></div>';
     setSecs.suggest = '<div class="set-row" data-sec="suggest">' + setLabelHtml(t('settings.suggest'), t('settings.suggestTip')) + '<div class="set-ctrl"><button class="mbtn" id="setSuggest">' + t('settings.openBtn') + '</button></div></div>';
@@ -207,6 +221,35 @@ function openSettings() {
     $('setInjectManager').onclick = function () { openInjectManager('settings') };   /* from=settings：单层返回栈（notes-041-settings-back），关闭二级面板自动回本卡 */
     $('setSuggest').onclick = function () { openSuggest() };
     $('setCheatsheet').onclick = function () { openCheatsheet() };
+    /* ===== 0.5.0④ 语义检索节接线（notes-050-sem-settings）：总开关/后端下拉/状态行/构建按钮/模型管理 =====
+       红线：①UI 写 settings.semantic 必须 enabled+backend 双键整写（settings-set 整对象替换口径，单写 backend 丢 enabled）；
+         ②打开总开关后自动触发 notes-vectors-rebuild 回填存量笔记（否则 enabled 打开后存量不入队，indexed<indexable 静默漏历史）；
+         ③模型/后端删除/切换只撤激活后端命名空间、旧后端残留——切换后端后由重建承接（见 semDoBuild）。 */
+    var semantic0 = settings.semantic || {};
+    semState = {
+      enabled: semantic0.enabled === true,
+      backend: (typeof semantic0.backend === 'string' && semantic0.backend) ? semantic0.backend : 'bge-small-zh-q8',
+      model: (semantic0.model && typeof semantic0.model === 'object') ? semantic0.model : null,
+      status: null, building: false
+    };
+    var semChk = $('setSemEnabled'), semSel = $('setSemBackend'), semBuildBtn = $('setSemBuild');
+    if (semChk) semChk.checked = semState.enabled;
+    if (semSel) semSel.value = (semState.backend === 'bge-small-zh-q8') ? 'bge-small-zh-q8' : (semState.backend || '');
+    if (semBuildBtn) semBuildBtn.disabled = !semState.enabled || semState.building;
+    semRenderStatus();
+    semRenderModel();
+    if (semChk) semChk.onchange = function () { semDoToggle(this.checked) };
+    if (semSel) semSel.onchange = function () {
+      var v = this.value;
+      if (v === 'bge-small-zh-q8') {
+        semWrite(semState.enabled, v).then(function () { toast(t('settings.semanticBackendSaved', { name: 'bge-small-zh' })); semRenderStatus(); });
+      } else if (v === '') {
+        semWrite(false, '').then(function () { if (semChk) semChk.checked = false; toast(t('settings.semanticEnabledOff')); semRenderStatus(); });
+      }
+      /* 'custom' 自定义端点占位 = disabled 禁用态（不可选，无分支） */
+      var b = $('setSemBuild'); if (b) b.disabled = !semState.enabled || semState.building;
+    };
+    if (semBuildBtn) semBuildBtn.onclick = function () { semDoBuild() };
     /* 工作记忆 v0：日志卫生窗口失焦即保存（非负整数；月聚合 0=关闭本级；非法输入报错不落盘） */
     $('setLogWeek').onchange = function () {
       var v = String(this.value).trim();
@@ -385,4 +428,132 @@ function flushSettingsPending() {
   var seq = Promise.resolve();
   patches.forEach(function (p) { seq = seq.then(function () { return settingsSetQuiet(p) }) });
   seq.then(function () { toast(t('settings.savedAll')) }, function (e) { toast(t('settings.flushSaveFailed', { msg: e && e.message || e })) });
+}
+/* ================= 0.5.0④ 语义检索节 helper（notes-050-sem-settings）：状态行/开关翻转/构建编排/模型管理 ================= */
+/* 后端显示名：bge-small-zh-q8 → bge-small-zh；其余直显 id */
+function semBackendLabel(id) { return id === 'bge-small-zh-q8' ? 'bge-small-zh' : (id || '—'); }
+/* 字节数人话（B/KB/MB） */
+function semFmtBytes(n) {
+  n = Math.max(0, Number(n) || 0);
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+/* ISO 时间 → YYYY-MM-DD HH:MM（本地态） */
+function semFmtTime(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  var p = function (x) { return (x < 10 ? '0' : '') + x };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+/* 语义设置整写：enabled+backend 双键恒同写（红线①：settings-set 整对象替换口径，单写 backend 丢 enabled）；model 传 null 才清下载状态 */
+function semWrite(enabled, backend, model) {
+  var s = { enabled: !!enabled, backend: backend || 'bge-small-zh-q8' };
+  if (model === null) s.model = null;
+  return rpc('notes-settings-set', { semantic: s }).then(function (res) {
+    if (res && res.error) { modalErr(res.error); throw new Error(res.error); }
+    if (semState) { semState.enabled = s.enabled; semState.backend = s.backend; if (model === null) semState.model = null; }
+    return res;
+  });
+}
+/* 索引状态行渲染（消费① notes-vectors-status）：关=未启用 / 报错=降级态 / bge 无模型=未下载 / 有 lastBuiltAt=N/M 篇 / 否则=尚未构建 */
+function semRenderStatus() {
+  var el = $('setSemStatus');
+  if (!el || !semState) return;
+  rpc('notes-vectors-status', {}).then(function (st) {
+    var el2 = $('setSemStatus');
+    if (!el2 || !semState) return;
+    var html;
+    if (!semState.enabled) html = t('settings.semanticStatusOff');
+    else if (st && st.error) html = t('settings.semanticStatusError', { msg: st.error });
+    else if (!st || st.ok !== true) html = t('settings.semanticStatusError', { msg: 'unknown' });
+    else if (semState.backend === 'bge-small-zh-q8' && !(semState.model && semState.model.bytes > 0) && !st.lastBuiltAt) html = t('settings.semanticStatusNoModel');
+    else if (st.lastBuiltAt) html = t('settings.semanticStatus', { indexed: st.indexed || 0, indexable: st.indexable || 0, backend: semBackendLabel(st.backend), time: semFmtTime(st.lastBuiltAt) });
+    else html = t('settings.semanticStatusNever');
+    el2.innerHTML = esc(html);
+  }).catch(function (e) {
+    var el3 = $('setSemStatus');
+    if (el3) el3.innerHTML = esc(t('settings.semanticStatusError', { msg: (e && e.message) || e }));
+  });
+}
+/* 模型管理行渲染（消费② wasm 模型状态：settings.semantic.model 记录；app 页提供删除/重下，面板只读） */
+function semRenderModel() {
+  var el = $('setSemModel');
+  if (!el || !semState) return;
+  var m = semState.model;
+  var html = esc(t('settings.semanticModel')) + (m && m.bytes > 0 ? esc(t('settings.semanticModelSize', { size: semFmtBytes(m.bytes) })) : esc(t('settings.semanticModelNone')));
+  if (typeof wasmModelDelete === 'function') {
+    html += ' <button class="mbtn" id="setSemModelDel">' + t('settings.semanticModelDelete') + '</button>';
+    html += ' <button class="mbtn" id="setSemModelRe">' + t('settings.semanticModelRedownload') + '</button>';
+  }
+  el.innerHTML = html;
+  var del = $('setSemModelDel'), re = $('setSemModelRe');
+  if (del) del.onclick = function () { semDoModelDelete() };
+  if (re) re.onclick = function () { semDoModelRedownload() };
+}
+/* 模型删除（消费② wasmModelDelete）：清 Cache API → 清 settings.semantic.model → 状态回落（未下载） */
+function semDoModelDelete() {
+  var doDel = (typeof wasmModelDelete === 'function') ? wasmModelDelete() : Promise.resolve(0);
+  doDel.then(function () {
+    return semWrite(semState.enabled, semState.backend, null);
+  }).then(function () { semRenderModel(); semRenderStatus(); })
+    .catch(function () { semRenderModel(); semRenderStatus(); });
+}
+/* 模型重下（消费② wasmModelEnsureDownloaded）：显式带进度下载 → 记录状态 → 状态行/模型行刷新 */
+function semDoModelRedownload() {
+  var p = (typeof wasmModelEnsureDownloaded === 'function')
+    ? wasmModelEnsureDownloaded(function (i, n, loaded, total) { var s = $('setSemStatus'); if (s) s.innerHTML = t('settings.semanticDownloading', { pct: total > 0 ? Math.round(loaded / total * 100) : 0 }); })
+    : Promise.reject(new Error('wasm 不可用'));
+  p.then(function () { return (typeof wasmModelRecordState === 'function') ? wasmModelRecordState() : null; })
+   .then(function () { semRenderModel(); semRenderStatus(); })
+   .catch(function () { semRenderModel(); semRenderStatus(); });
+}
+/* 构建索引（消费① rebuild + ② wasmBuildIndex）：fake 后端走 host rebuild；bge 走浏览器 wasm 编排（模型下载→嵌入→put 全量回写），
+   wasm 失败回落 host rebuild（fake 可行 / bge 报「只在浏览器端运行」→ 状态行降级）。激活自动回填与显式构建按钮共用本函数。 */
+function semDoBuild() {
+  if (!semState || semState.building) return;
+  semState.building = true;
+  var btn = $('setSemBuild');
+  if (btn) { btn.disabled = true; btn.textContent = t('settings.semanticBuilding'); }
+  var backend = semState.backend;
+  var finish = function () {
+    if (!semState) return;
+    semState.building = false;
+    var b2 = $('setSemBuild');
+    if (b2) { b2.disabled = !semState.enabled; b2.textContent = t('settings.semanticBuild'); }
+    semRenderStatus(); semRenderModel();
+  };
+  var build;
+  if (backend === 'bge-small-zh-q8' && typeof wasmBuildIndex === 'function') {
+    build = wasmBuildIndex(function (i, n, loaded, total) { var s = $('setSemStatus'); if (s) s.innerHTML = t('settings.semanticDownloading', { pct: total > 0 ? Math.round(loaded / total * 100) : 0 }); })
+      .catch(function () { return rpc('notes-vectors-rebuild', { backend: backend }); });
+  } else {
+    build = rpc('notes-vectors-rebuild', { backend: backend });
+  }
+  build.then(function () { finish(); }, function () { finish(); });
+}
+/* 总开关翻转：打开 → 写 enabled+backend 双键 + 自动触发 notes-vectors-rebuild 回填存量（红线②：存量不入队则静默漏历史）；
+   关闭 → 仅写双键（关=文本检索逐字节旧行为），零重建 */
+function semDoToggle(on) {
+  if (!semState) return;
+  var el = $('setSemEnabled');
+  if (on) {
+    semWrite(true, semState.backend).then(function () {
+      toast(t('settings.semanticEnabledOn'));
+      var b = $('setSemBuild'); if (b) b.disabled = semState.building;
+      semRenderStatus();
+      semDoBuild();   /* 激活流程自动回填：打开总开关即 rebuild（notes-vectors-rebuild） */
+    }).catch(function () {
+      if (semState) semState.enabled = false;
+      if (el) el.checked = false;
+      semRenderStatus();
+    });
+  } else {
+    semWrite(false, semState.backend).then(function () {
+      toast(t('settings.semanticEnabledOff'));
+      var b = $('setSemBuild'); if (b) b.disabled = true;
+      semRenderStatus();
+    }).catch(function () { if (el) el.checked = true; });
+  }
 }

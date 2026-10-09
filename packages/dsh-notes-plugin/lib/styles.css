@@ -529,6 +529,8 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 /* 布尔设置项（checkbox 行）：笔记目录注入总开关等；label 整行可点 */
 .dsh-notes-settings-checkwrap{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--nt2);cursor:pointer;user-select:none;width:fit-content}
 .dsh-notes-settings-check{accent-color:var(--nacc);width:14px;height:14px;cursor:pointer;margin:0;flex-shrink:0}
+/* 0.5.0④ 语义检索设置节：多部件竖排（开关/后端/状态行/构建+模型行） */
+.dsh-notes-settings-sem{width:100%;display:flex;flex-direction:column;gap:5px;align-items:stretch}
 /* P1 注入体积预算仪表（设置卡片）：最近一次注入体积 vs 预算的条形仪表 + 计数文案（约，字符数） */
 .dsh-notes-inject-gauge{height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:6px}
 .dsh-notes-inject-gauge-bar{height:100%;background:var(--nacc);border-radius:4px;transition:width .3s}

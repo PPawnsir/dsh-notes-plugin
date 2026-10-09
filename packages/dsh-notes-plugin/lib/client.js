@@ -605,6 +605,29 @@ window.__ModuleLoader__.load({
       'settings.group.data': '数据与存储',
       'settings.group.about': '关于',
       'settings.group.nav': '设置分组',
+      /* 0.5.0④（notes-050-sem-settings）：语义检索设置节（检索与注入组）——总开关/后端下拉/索引状态行/构建按钮/模型管理 */
+      'settings.semantic': '语义检索',
+      'settings.semanticTip': '按语义召回相关笔记（本地向量模型 bge-small-zh，约 23MB，完全离线、正文不出机器），与关键词检索 RRF 融合；缺省关闭零成本',
+      'settings.semanticEnabled': '启用语义检索',
+      'settings.semanticBackendOff': '关',
+      'settings.semanticBackendLocal': '本地 bge-small-zh（约 23MB）',
+      'settings.semanticBackendCustom': '自定义端点（即将支持）',
+      'settings.semanticStatus': '语义索引：{indexed}/{indexable} 篇 · {backend} · 上次构建 {time}',
+      'settings.semanticStatusNever': '语义索引：尚未构建',
+      'settings.semanticStatusOff': '语义索引：未启用',
+      'settings.semanticStatusNoModel': '语义索引：模型未下载，点击「构建索引」下载',
+      'settings.semanticStatusError': '语义索引：后端报错 {msg}',
+      'settings.semanticBuild': '构建索引',
+      'settings.semanticBuilding': '构建中…',
+      'settings.semanticModel': '模型：',
+      'settings.semanticModelSize': '已下载 {size}',
+      'settings.semanticModelNone': '未下载',
+      'settings.semanticModelDelete': '删除',
+      'settings.semanticModelRedownload': '重新下载',
+      'settings.semanticEnabledOn': '已启用语义检索',
+      'settings.semanticEnabledOff': '已关闭语义检索',
+      'settings.semanticBackendSaved': '已切换语义后端：{name}',
+      'settings.semanticDownloading': '下载模型中 {pct}%',
       /* ===== 覆盖卡 D（notes-042-i18n-cov-d）：注入管理 + 记忆引导双语化 =====
          复用既有 key（禁重复建别名）：settings.injManager（面板标题）/memProbing/memEnabled/memView/memDisable/memEnable、
            common.loading/close/cancel/delete、tree.untitled/roleConvention/roleReference、sel.selCount、
@@ -1510,6 +1533,29 @@ window.__ModuleLoader__.load({
       'settings.group.data': 'Data & Storage',
       'settings.group.about': 'About',
       'settings.group.nav': 'Settings groups',
+      /* 0.5.0④ (notes-050-sem-settings): semantic search settings section (Search & Injection group) — master switch/backend/status line/build button/model management */
+      'settings.semantic': 'Semantic search',
+      'settings.semanticTip': 'Recall related notes by meaning (local vector model bge-small-zh, ≈23MB, fully offline and body text never leaves the machine), fused with keyword search via RRF; off by default at zero cost',
+      'settings.semanticEnabled': 'Enable semantic search',
+      'settings.semanticBackendOff': 'Off',
+      'settings.semanticBackendLocal': 'Local bge-small-zh (≈23MB)',
+      'settings.semanticBackendCustom': 'Custom endpoint (coming soon)',
+      'settings.semanticStatus': 'Semantic index: {indexed}/{indexable} notes · {backend} · last built {time}',
+      'settings.semanticStatusNever': 'Semantic index: not built yet',
+      'settings.semanticStatusOff': 'Semantic index: disabled',
+      'settings.semanticStatusNoModel': 'Semantic index: model not downloaded — click "Build index" to download',
+      'settings.semanticStatusError': 'Semantic index: backend error {msg}',
+      'settings.semanticBuild': 'Build index',
+      'settings.semanticBuilding': 'Building…',
+      'settings.semanticModel': 'Model: ',
+      'settings.semanticModelSize': 'downloaded {size}',
+      'settings.semanticModelNone': 'not downloaded',
+      'settings.semanticModelDelete': 'Delete',
+      'settings.semanticModelRedownload': 'Re-download',
+      'settings.semanticEnabledOn': 'Semantic search enabled',
+      'settings.semanticEnabledOff': 'Semantic search disabled',
+      'settings.semanticBackendSaved': 'Semantic backend switched: {name}',
+      'settings.semanticDownloading': 'Downloading model {pct}%',
       /* ===== Coverage card D (notes-042-i18n-cov-d): injection manager + memory guide bilingual =====
          Reuses existing keys (no aliases): settings.injManager (panel title)/memProbing/memEnabled/memView/memDisable/memEnable,
            common.loading/close/cancel/delete, tree.untitled/roleConvention/roleReference, sel.selCount,
@@ -5296,7 +5342,7 @@ window.__ModuleLoader__.load({
     const SET_GROUPS = [
       { id: 'general', icon: 'gear', labelKey: 'settings.group.general', rows: [] },   // 常规：主题/语言/面板入口类（0.4.8 notes-048-lang-topbar：语言节随切换上标题栏下线——空组登记槽保留）
       { id: 'editor', icon: 'note', labelKey: 'settings.group.editor', rows: [] },   // 编辑器：自动保存/富文本/双链类（待新节登记）
-      { id: 'inject', icon: 'bolt', labelKey: 'settings.group.inject', rows: ['stale', 'budget', 'injprev', 'injmgr'] },   // 检索与注入：搜索/注入/挂载类
+      { id: 'inject', icon: 'bolt', labelKey: 'settings.group.inject', rows: ['stale', 'budget', 'injprev', 'injmgr', 'semantic'] },   // 检索与注入：搜索/注入/挂载类
       { id: 'dispatch', icon: 'clock', labelKey: 'settings.group.dispatch', rows: [] },   // 派发与调度（待新节登记）
       { id: 'ai', icon: 'sparkle', labelKey: 'settings.group.ai', rows: ['llm', 'organizemax', 'usage', 'usagebudget', 'suggest'] },   // AI：LLM 配置/整理上限类
       { id: 'data', icon: 'folder', labelKey: 'settings.group.data', rows: ['maxdepth', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },   // 数据与存储：遥测/备份/存储路径类
@@ -5403,6 +5449,10 @@ window.__ModuleLoader__.load({
         long ? e('button', { className: 'dsh-notes-settings-sx', type: 'button', title: tt('settings.descExpandTip'), 'aria-label': tt('settings.descExpandTip'), onClick: () => setExp(!exp) }, 'ⓘ') : null,
         props.sub ? e('span', { className: 'dsh-notes-settings-label-s' + (long && !exp ? ' cl' : '') }, props.sub) : null)
     }
+    // 0.5.0④ 语义检索节 helper（notes-050-sem-settings）：后端显示名/字节人话/ISO 时间本地态（与 app modals/settings.js 同口径）
+    function semBackendLabel(id) { return id === 'bge-small-zh-q8' ? 'bge-small-zh' : (id || '—') }
+    function semFmtBytes(n) { n = Math.max(0, Number(n) || 0); if (n < 1024) return n + ' B'; if (n < 1048576) return (n / 1024).toFixed(1) + ' KB'; return (n / 1048576).toFixed(1) + ' MB' }
+    function semFmtTime(iso) { if (!iso) return ''; const d = new Date(iso); if (isNaN(d.getTime())) return ''; const p = (x) => (x < 10 ? '0' : '') + x; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) }
     // 设置卡片宿主（modal，居中，复用派发 modal 的 mask/modal 风格）：通用结构——标题「设置」+ 设置项行列表
     // （每行：左 label + 右控件）。以后加设置项只需往 settingsRows 数组加行，结构不变。
     // 交互（notes-settings-feedback）：自动保存保留（选择即存/失焦/Enter 即存，走 notes-settings-set）；
@@ -5434,6 +5484,53 @@ window.__ModuleLoader__.load({
       const memPending = store.modal.memory.useSel(s => s.pending)
       const error = props.error
       const [setGroupCur, setSetGroupCur] = React.useState('')   // 0.4.8：当前组（滚动反高亮数据源；值 = SET_GROUPS id）
+      /* ===== 0.5.0④ 语义检索节（notes-050-sem-settings）：本地态 + 双键整写 + 激活自动回填 =====
+         红线：①写 settings.semantic 必须 enabled+backend 双键整写（settings-set 整对象替换口径，单写 backend 丢 enabled）；
+           ②打开总开关后自动触发 notes-vectors-rebuild 回填存量（否则 enabled 打开后存量不入队，indexed<indexable 静默漏历史）。
+         面板（client）不加载 wasm（wasm-in-panel 裁决）：构建走 host notes-vectors-rebuild（bge 由 app 页 wasm 承接），模型行只读显示。 */
+      const [semEnabled, setSemEnabled] = React.useState(false)
+      const [semBackend, setSemBackend] = React.useState('bge-small-zh-q8')
+      const [semStatus, setSemStatus] = React.useState(null)
+      const [semBuilding, setSemBuilding] = React.useState(false)
+      React.useEffect(() => {
+        if (!settingsData) return
+        const sm = (settingsData.settings && settingsData.settings.semantic) || {}
+        setSemEnabled(sm.enabled === true)
+        setSemBackend((typeof sm.backend === 'string' && sm.backend) ? sm.backend : 'bge-small-zh-q8')
+      }, [settingsData])
+      const loadSemStatus = React.useCallback(() => {
+        rpc('notes-vectors-status', {}).then(st => {
+          if (st && !st.error) setSemStatus(st); else setSemStatus({ error: (st && st.error) || 'unknown' })
+        }).catch(() => setSemStatus({ error: 'unknown' }))
+      }, [])
+      React.useEffect(() => { if (settingsOpen) loadSemStatus() }, [settingsOpen, loadSemStatus])
+      const semWriteBoth = (enabled, backend) => rpc('notes-settings-set', { semantic: { enabled: !!enabled, backend: backend || 'bge-small-zh-q8' } }).then(res => {
+        if (res && res.error) { setError(String(res.error)); throw new Error(res.error) }
+        return res
+      })
+      const doSemBuild = () => {
+        if (semBuilding) return
+        setSemBuilding(true)
+        rpc('notes-vectors-rebuild', { backend: semBackend || 'bge-small-zh-q8' }).then(() => { setSemBuilding(false); loadSemStatus() }, () => { setSemBuilding(false); loadSemStatus() })
+      }
+      const doSemToggle = (on) => {
+        setSemEnabled(on)
+        semWriteBoth(on, semBackend).then(() => {
+          showToast(on ? tt('settings.semanticEnabledOn') : tt('settings.semanticEnabledOff'))
+          loadSemStatus()
+          if (on) doSemBuild()   // 激活流程自动回填：打开总开关即 rebuild（notes-vectors-rebuild）
+        }).catch(() => setSemEnabled(!on))
+      }
+      const doSemBackend = (v) => {
+        if (v === 'bge-small-zh-q8') {
+          setSemBackend(v)
+          semWriteBoth(semEnabled, v).then(() => { showToast(tt('settings.semanticBackendSaved', { name: 'bge-small-zh' })); loadSemStatus() })
+        } else if (v === '') {
+          setSemBackend(''); setSemEnabled(false)
+          semWriteBoth(false, '').then(() => { showToast(tt('settings.semanticEnabledOff')); loadSemStatus() })
+        }
+        /* 'custom' 自定义端点占位 = disabled 禁用态（不可选，无分支） */
+      }
       React.useEffect(() => { settingsFlushRef.current = flushSettingsPending })   // 关闭兜底 flush 镜像：每渲染刷新（Esc 闭包读最新控件值；函数声明提升可前引）
       /* 0.4.6-H（R2 n-mux9svn0vhkz）：校验错误渲染位移到标题栏下（原在弹窗最底部需滚动可见）+ 出现即滚回顶部，消除「保存看似没反应」 */
       React.useEffect(() => { if (error) { try { const m = document.querySelector('.dsh-notes-settings-modal'); if (m) m.scrollTop = 0 } catch (e) {} } }, [error])
@@ -5515,6 +5612,28 @@ window.__ModuleLoader__.load({
         const injPrevControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': tt('settings.injPreviewTipT'), onClick: openInjectPreview }, tt('settings.previewBtn'))
         // 注入管理控件：打开注入管理面板（点击即关设置卡片、modal 不叠 modal）——全库注入三态总览 + 单行直改 / 多选批量
         const injMgrControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': tt('settings.injManagerTipT'), onClick: () => openInjectManager('settings') }, tt('settings.manageBtn'))   // from=settings：单层返回栈（notes-041-settings-back），关闭二级面板自动回本卡
+        // ===== 0.5.0④ 语义检索控件（检索与注入组尾）：总开关 + 后端下拉 + 索引状态行 + 构建按钮 + 模型管理（面板只读大小）=====
+        const semModel0 = (settingsData && settingsData.settings && settingsData.settings.semantic && settingsData.settings.semantic.model) || null
+        const semStatusText = (semStatus && semStatus.error)
+          ? tt('settings.semanticStatusError', { msg: semStatus.error })
+          : !semEnabled
+            ? tt('settings.semanticStatusOff')
+            : (semStatus && semStatus.lastBuiltAt)
+              ? tt('settings.semanticStatus', { indexed: semStatus.indexed || 0, indexable: semStatus.indexable || 0, backend: semBackendLabel(semStatus.backend), time: semFmtTime(semStatus.lastBuiltAt) })
+              : (semBackend === 'bge-small-zh-q8' && !(semModel0 && semModel0.bytes > 0))
+                ? tt('settings.semanticStatusNoModel')
+                : tt('settings.semanticStatusNever')
+        const semModelText = tt('settings.semanticModel') + (semModel0 && semModel0.bytes > 0 ? tt('settings.semanticModelSize', { size: semFmtBytes(semModel0.bytes) }) : tt('settings.semanticModelNone'))
+        const semanticControl = e('div', { className: 'dsh-notes-settings-sem' },
+          e('label', { className: 'dsh-notes-settings-checkwrap' },
+            e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: semEnabled, onChange: (ev) => doSemToggle(ev.target.checked) }), ' ' + tt('settings.semanticEnabled')),
+          e('select', { className: 'dsh-notes-settings-select', value: (semBackend === 'bge-small-zh-q8') ? 'bge-small-zh-q8' : (semBackend || ''), onChange: (ev) => doSemBackend(ev.target.value) },
+            e('option', { value: '' }, tt('settings.semanticBackendOff')),
+            e('option', { value: 'bge-small-zh-q8' }, tt('settings.semanticBackendLocal')),
+            e('option', { value: 'custom-endpoint', disabled: true }, tt('settings.semanticBackendCustom'))),
+          e('div', { className: 'dsh-notes-settings-label-s' }, semStatusText),
+          e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': tt('settings.semanticTip'), onClick: doSemBuild, disabled: !semEnabled || semBuilding }, semBuilding ? tt('settings.semanticBuilding') : tt('settings.semanticBuild')),
+          e('span', { className: 'dsh-notes-settings-label-s' }, ' ' + semModelText))
         // ===== 工作记忆 v0 控件（设置卡片「工作记忆」区）：状态行（已启用→查看约定/停用）+「启用沉淀引导…」=====
         const memoryControl = memStatus === null
           ? e('span', { className: 'dsh-notes-settings-label-s' }, tt('settings.memProbing'))
@@ -5553,6 +5672,7 @@ window.__ModuleLoader__.load({
           { key: 'budget', label: tt('settings.budget'), sub: tt('settings.budgetTip'), control: budgetControl },
           { key: 'injprev', label: tt('settings.injPreview'), sub: tt('settings.injPreviewTip'), control: injPrevControl },
           { key: 'injmgr', label: tt('settings.injManager'), sub: tt('settings.injManagerTip'), control: injMgrControl },
+          { key: 'semantic', label: tt('settings.semantic'), sub: tt('settings.semanticTip'), control: semanticControl },
           // 工作记忆 v0「工作记忆」区：启用沉淀引导（约定笔记方案，裁决 A）+ 日志卫生两级窗口（裁决 B②）
           { key: 'memory', label: tt('settings.memory'), sub: tt('settings.memoryTip'), control: memoryControl },
           { key: 'logweek', label: tt('settings.logWeek'), sub: tt('settings.logWeekTip'), control: logWeekControl },

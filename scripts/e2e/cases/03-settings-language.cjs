@@ -36,8 +36,8 @@ module.exports = {
         await H.waitFor(page, '设置卡落定（LLM 区渲染）', async p => p.evaluate(() => !!document.querySelector('#setOrgMax')))
         H.t('设置卡语言项下线：无 #setLang / data-sec="language"', await page.evaluate(() =>
           !document.getElementById('setLang') && !document.querySelector('#setBody [data-sec="language"]')))
-        H.t('设置卡 16 节 + 常规组空槽隐身（首可见组=检索与注入）', await page.evaluate(() =>
-          document.querySelectorAll('#setBody .set-row[data-sec]').length === 16 && !document.querySelector('#setBody [data-g="general"]')))
+        H.t('设置卡 17 节 + 常规组空槽隐身（首可见组=检索与注入）', await page.evaluate(() =>
+          document.querySelectorAll('#setBody .set-row[data-sec]').length === 17 && !document.querySelector('#setBody [data-g="general"]')))
         H.t('en 态设置卡文案：LLM model 行在案', await page.evaluate(() => document.getElementById('setBody').textContent.indexOf('LLM model') >= 0))
         await page.keyboard.press('Escape')
         await H.waitFor(page, '设置卡关闭', async p => p.evaluate(() => document.querySelector('#modalHost').textContent === ''))

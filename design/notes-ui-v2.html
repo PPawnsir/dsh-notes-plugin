@@ -3253,7 +3253,7 @@ function setLabelHtml(label, tip, extraHtml) {
 var SET_GROUPS = [
   { id: 'general',  icon: 'i-gear',    label: '常规',       rows: [] },                                                  /* 主题/语言/面板入口类（0.4.8 notes-048-lang-topbar：语言节随切换上顶栏下线——空组登记槽保留） */
   { id: 'editor',   icon: 'i-note',    label: '编辑器',     rows: [] },                                                  /* 自动保存/富文本/双链类（待新节登记） */
-  { id: 'inject',   icon: 'i-bolt',    label: '检索与注入', rows: ['stale', 'budget', 'injprev', 'injmgr'] },            /* 搜索/注入/挂载类 */
+  { id: 'inject',   icon: 'i-bolt',    label: '检索与注入', rows: ['stale', 'budget', 'injprev', 'injmgr', 'semantic'] },            /* 搜索/注入/挂载类 */
   { id: 'dispatch', icon: 'i-clock',   label: '派发与调度', rows: [] },                                                  /* 派发与调度（待新节登记） */
   { id: 'ai',       icon: 'i-sparkle', label: 'AI',        rows: ['llm', 'organizemax', 'usage', 'usagebudget', 'suggest'] },  /* LLM 配置/整理上限类 */
   { id: 'data',     icon: 'i-folder',  label: '数据与存储', rows: ['maxdepth', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },  /* 遥测/备份/存储路径类 */
@@ -3372,6 +3372,7 @@ function openSettings() {
       + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>';
     setSecs.injprev = '<div class="set-row" data-sec="injprev">' + setLabelHtml('注入预览', '查看 Agent 实际收到的注入文本（约定 + 目录）：敏感打码 / 预算截断效果即所见；可按会话过滤') + '<div class="set-ctrl"><button class="mbtn" id="setInjectPreview">预览…</button></div></div>';
     setSecs.injmgr = '<div class="set-row" data-sec="injmgr">' + setLabelHtml('注入管理', '全库注入总览：逐篇三态直改（关闭/约定/资料）+ 多选批量 + 三态过滤/搜索；日志不参与注入（硬关，不提供开关），敏感笔记注入自动脱敏；含调度任务区（定时派发约定总览 / 编辑回填 / 暂停 / 删除）') + '<div class="set-ctrl"><button class="mbtn" id="setInjectManager">管理…</button></div></div>';
+    setSecs.semantic = '<div class="set-row" data-sec="semantic">' + setLabelHtml('语义检索', '按语义召回相关笔记（本地向量模型 bge-small-zh，约 23MB，完全离线、正文不出机器），与关键词检索 RRF 融合；缺省关闭零成本') + '<div class="set-ctrl sem-ctrl"><label class="set-check"><input type="checkbox" id="setSemEnabled"> 启用语义检索</label><div class="sem-row"><select class="minput" id="setSemBackend"><option value="">关</option><option value="bge-small-zh-q8">本地 bge-small-zh（约 23MB）</option><option value="custom-endpoint" disabled>自定义端点（即将支持）</option></select></div><div class="s" id="setSemStatus">语义索引：未启用</div><div class="sem-row"><button class="mbtn" id="setSemBuild" disabled>构建索引</button><span class="s" id="setSemModel">模型：未下载</span></div></div></div>';
     setSecs.data = '<div class="set-row" data-sec="data">' + setLabelHtml('数据', '全库目录快照导出 / 从快照目录导入（只增改不删，导入前自动全量备份）/ 回收站兜底（恢复或彻底删除）') + '<div class="set-ctrl"><button class="mbtn" id="setExport">导出全部</button><button class="mbtn" id="setImport">导入…</button><button class="mbtn" id="setTrash">回收站</button></div></div>';
     setSecs.assets = '<div class="set-row" data-sec="assets">' + setLabelHtml('资产清理', '扫描 assets/ 中未被任何笔记引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删）') + '<div class="set-ctrl"><button class="mbtn" id="setPrune">清理…</button></div></div>';
     setSecs.suggest = '<div class="set-row" data-sec="suggest">' + setLabelHtml('整理建议', '速记组归档 / 过期未引用清理 / 孤儿笔记候选 / 日志卫生提名（只提名不自动执行）') + '<div class="set-ctrl"><button class="mbtn" id="setSuggest">打开</button></div></div>';

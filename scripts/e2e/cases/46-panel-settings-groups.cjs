@@ -35,8 +35,8 @@ module.exports = {
         H.t('① 面板 rail 4 项（图标+组名，冻结序）+ 导航语义（role/aria-label）',
           nav.railTexts.join('|') === '检索与注入|AI|数据与存储|关于' && nav.railIcons.every(Boolean) && nav.navRole === 'navigation' && nav.navAria === '设置分组',
           () => JSON.stringify(nav.railTexts) + ' · ' + nav.navRole + '/' + nav.navAria)
-        H.t('① 组壳同序 + 空组隐身 + 16 节全覆盖',
-          nav.railGs.join() === 'inject,ai,data,about' && nav.groupGs.join() === 'inject,ai,data,about' && nav.rows === 16,
+        H.t('① 组壳同序 + 空组隐身 + 17 节全覆盖',
+          nav.railGs.join() === 'inject,ai,data,about' && nav.groupGs.join() === 'inject,ai,data,about' && nav.rows === 17,
           () => nav.groupGs.join() + ' · 行数 ' + nav.rows)
         H.t('① 宽屏 chips 隐身', nav.chipsShown === 'none')
 

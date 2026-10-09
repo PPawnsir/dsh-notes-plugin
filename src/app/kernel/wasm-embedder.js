@@ -115,8 +115,21 @@ async function wasmDownloadWithFailover(fetchImpl, mirrors, file, opts) {
  * 浏览器 glue（app 页运行时；check 不执行——节 118 只 eval 上方 core 块行为级）。
  * ================================================================================== */
 // 运行时库（transformers.js 浏览器 ESM，运行时动态 import，不进 npm 包）：
-//   经 npmmirror/npm 类 CDN 加载——模型走 hf-mirror（上文镜像链），库与模型两条链独立。
-var WASM_RUNTIME_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/dist/transformers.min.js'
+//   镜像链两环加载——模型走 hf-mirror（上文镜像链），库与模型两条链独立；
+//   0.5.0④（notes-050-sem-settings）主窗口裁决：npmmirror 路线实证不可达（registry files/=403、cdn=404），
+//   运行时改 jsdelivr 主 → unpkg 兜底（与模型链镜像哲学同款；模型链 hf-mirror→HF 官方不动）。
+var WASM_RUNTIME_URLS = [
+  'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/dist/transformers.min.js',
+  'https://unpkg.com/@huggingface/transformers@3.7.2/dist/transformers.min.js',
+]
+// 运行时库 failover import：按序尝试镜像链，成功返回模块；全败抛错（上层降级承接，不刷屏）。
+async function wasmImportRuntime() {
+  let lastErr = null
+  for (const url of WASM_RUNTIME_URLS) {
+    try { return await import(url) } catch (e) { lastErr = e }
+  }
+  throw lastErr || new Error('wasm runtime import failed on all mirrors')
+}
 
 // 模型缓存（Cache API 优先；不可用回退内存 Map——OPFS 兜底不阻塞嵌入主流程）
 var WASM_CACHE_NAME = 'dsh-notes-wasm-model'
@@ -218,6 +231,61 @@ function wasmModelRecordState() {
     } catch (e) { /* 静默降级 */ }
     return st
   })
+}
+
+// 分段嵌入（与 host _vectorChunks 同口径：≤1800 字符块、段落边界切、单段超长硬切；浏览器侧重建索引用）
+function wasmChunkText(body) {
+  const s = String(body == null ? '' : body)
+  const MAX = 1800
+  const out = []
+  if (!s) return out
+  if (s.length <= MAX) return [s]
+  const lines = s.split(/\r?\n/)
+  let cur = ''
+  const flush = function () { if (cur) out.push(cur); cur = '' }
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i]
+    if (line.length > MAX) { flush(); while (line.length > MAX) { out.push(line.slice(0, MAX)); line = line.slice(MAX) }; if (line) cur = line; continue }
+    if (cur.length === 0) { cur = line; continue }
+    if (cur.length + 1 + line.length > MAX) { flush(); cur = line; continue }
+    cur = cur + '\n' + line
+  }
+  flush()
+  return out
+}
+// 正文稳定 hash（与 host _vectorBodyHash 同口径：FNV-1a 32bit + 长度；新鲜度锚，碰撞代价可接受）
+function wasmBodyHash(body) {
+  const s = String(body == null ? '' : body)
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0
+  return s.length.toString(36) + '.' + h.toString(36)
+}
+// app 页「构建索引」编排（0.5.0④ notes-050-sem-settings，承接②遗留「真机首跑冒烟」）：
+//   模型下载（带进度）→ transformers.js 运行时加载（镜像链 jsdelivr→unpkg）→ 全库可索引笔记分段嵌入（bge 512 维）→
+//   notes-vectors-put 全量回写（replace:true 清空目标命名空间）。只跑在 app 页（wasm 运行时不进 host）；
+//   任何一步失败抛错，由调用方（设置区构建按钮）承接回落 host rebuild / 静默降级。
+async function wasmBuildIndex(onProgress) {
+  await wasmModelEnsureDownloaded(onProgress)
+  const mod = await wasmImportRuntime()
+  if (mod && mod.env) { try { mod.env.allowLocalModels = false } catch (e) {}; try { mod.env.remoteHost = 'https://hf-mirror.com' } catch (e) {} }
+  const extractor = await mod.pipeline('feature-extraction', WASM_MODEL_ID)
+  const list = await rpc('notes-list', {})
+  const notes = (list && list.notes) || []
+  const rows = []
+  for (const n of notes) {
+    if (!n || !n.id || n.deleted === true || n.sensitive === true || (n.kind || 'note') === 'sys') continue
+    const g = await rpc('notes-get', { id: n.id })
+    const body = (g && g.note && g.note.body) || ''
+    const chunks = wasmChunkText(body)
+    if (!chunks.length) continue
+    const out = await extractor(chunks, { pooling: 'mean', normalize: true })
+    const tensors = Array.isArray(out) ? out : [out]
+    const vecs = tensors.map(function (t) { return (t && typeof t.tolist === 'function') ? t.tolist() : Array.prototype.slice.call(t || []) })
+    rows.push({ noteId: n.id, bodyHash: wasmBodyHash(body), vectors: vecs })
+  }
+  const put = await rpc('notes-vectors-put', { backend: 'bge-small-zh-q8', replace: true, rows: rows })
+  await wasmModelRecordState()
+  return put
 }
 
 /* ==================================================================================

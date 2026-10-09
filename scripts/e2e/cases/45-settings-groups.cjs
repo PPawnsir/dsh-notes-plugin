@@ -38,7 +38,7 @@ module.exports = {
           nav.railTexts.join('|') === '检索与注入|AI|数据与存储|关于' && nav.railIcons.every(Boolean), () => JSON.stringify(nav.railTexts))
         H.t('① rail/组壳 data-g 同序 [inject,ai,data,about]（空组 general/editor/dispatch 隐身）',
           nav.railGs.join() === 'inject,ai,data,about' && nav.groupGs.join() === 'inject,ai,data,about', () => nav.railGs.join() + ' / ' + nav.groupGs.join())
-        H.t('① 组头 4 个与 rail 同文 + 16 节 data-sec 全覆盖', nav.groupTs.join('|') === '检索与注入|AI|数据与存储|关于' && nav.secs === 16, () => nav.groupTs.join('|') + ' · 节数 ' + nav.secs)
+        H.t('① 组头 4 个与 rail 同文 + 17 节 data-sec 全覆盖', nav.groupTs.join('|') === '检索与注入|AI|数据与存储|关于' && nav.secs === 17, () => nav.groupTs.join('|') + ' · 节数 ' + nav.secs)
         H.t('① rail 导航语义（role=navigation + aria-label 设置分组）+ 宽屏 chips 隐身/rail 显',
           nav.navRole === 'navigation' && nav.navAria === '设置分组' && nav.chips === 4 && nav.chipsShown === 'none' && nav.railShown !== 'none', () => nav.navRole + '/' + nav.navAria + '/chips:' + nav.chipsShown)
 
