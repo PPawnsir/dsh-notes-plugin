@@ -85,6 +85,7 @@ module.exports = {
       edNote: null,   /* 用例内装配 */
       edBodyLoaded: true, edBodyErr: '',
       edMode: 'source', richDirty: false, saveTimer: null, composing: false,
+      degraded: { ok: true, reasons: [] },
       edSavedAt: '',
       wikiBodies: { n1: { body: '目标正文', updatedAt: '2026-10-02T03:04:05.000Z' }, n2: { body: '见 [[n1]] 即可', updatedAt: '2026-10-01T00:00:00.000Z' } },
       KCOLOR: { note: 'var(--kind-note)' },
@@ -217,6 +218,51 @@ module.exports = {
     assert(appEd.indexOf('function flushPendingSave()') >= 0, '0.4.7-C 卸载兜底 flush 在案（不回退）')
     const m = i18nBlock.match(/function setLang\(l\) \{[\s\S]*?\n\}/)
     assert(m && m[0].indexOf('render()') >= 0 && m[0].indexOf('renderEdLang') < 0, 'setLang 机制契约不动（render 入口汇聚，不在机制块内新挂点）')
+  })
+
+  // ===== 116.7 0.5.0 配菜（notes-050-edge-i18n）：边缘态横幅/整理遮罩/rtb title 随语言原地重写 =====
+  await t('0.5.0 边缘态 i18n 静态锚：renderEd 烘焙串 span 锚齐备 + renderEdLang 扩覆重写', () => {
+    assert(appEd.indexOf('id="degBanner1"') >= 0 && appEd.indexOf('id="degBanner2"') >= 0, 'renderEd 降级横幅缺 degBanner1/degBanner2 span 锚')
+    assert(appEd.indexOf('id="edLoadErrNote"') >= 0, 'renderEd 失败横幅缺 edLoadErrNote span 锚')
+    assert(appEd.indexOf('id="orgVeilTxt"') >= 0, 'renderEd 整理遮罩缺 orgVeilTxt span 锚')
+    const fnBody = appEd.slice(appEd.indexOf('function renderEdLang() {'), appEd.indexOf('/* 编辑区事件绑定'))
+    for (const k of ["db1.innerHTML = t('editor.degBanner')", "db2.textContent = t('editor.degBanner2')", "t('editor.degReasonItem'", "t('editor.loadLockNote')", "t('editor.retry')", "t('common.close')", "t('editor.organizingVeil')", "'editor.tbBold'"]) {
+      assert(fnBody.indexOf(k) >= 0, 'renderEdLang 缺边缘态重写：' + k)
+    }
+  })
+  await t('0.5.0 降级态（行为）：切 en 降级横幅 degBanner1/degBanner2/degReasons + rtb title 翻转 + 零正文重建', () => {
+    const env = bootLang()
+    env.target.edNote = env.target.notes[0]
+    env.target.degraded = { ok: false, reasons: [{ label: '任务列表', line: 1, sample: '- [ ] x' }] }
+    const tb = ['bold', 'italic', 'code', 'link', 'ul', 'ol', 'quote', 'image'].map(function (a) { return { title: '', getAttribute: function (k) { return k === 'data-a' ? a : null } } })
+    env.els.rtb = { querySelectorAll: function () { return tb } }
+    env.api.renderEdLang()   /* zh 基线（渲染链同 setLang） */
+    assert(env.els.degBanner1.innerHTML === ZH['editor.degBanner'], 'zh 基线 degBanner1（实得 ' + env.els.degBanner1.innerHTML.slice(0, 50) + '）')
+    assert(env.els.degBanner2.textContent === ZH['editor.degBanner2'], 'zh 基线 degBanner2')
+    assert(env.els.degReasons.textContent.indexOf('任务列表') >= 0 && env.els.degReasons.textContent.indexOf('第 1 行') >= 0, 'zh 基线 degReasons（实得 ' + env.els.degReasons.textContent + '）')
+    assert(tb[0].title === ZH['editor.tbBold'] && tb[7].title === ZH['editor.tbImage'], 'zh 基线 rtb title（实得 bold=' + tb[0].title + ' image=' + tb[7].title + '）')
+    env.api.setLang('en')
+    assert(env.els.degBanner1.innerHTML === EN['editor.degBanner'], 'en degBanner1 翻转')
+    assert(env.els.degBanner2.textContent === EN['editor.degBanner2'], 'en degBanner2 翻转')
+    assert(env.els.degReasons.textContent.indexOf('(line 1:') >= 0, 'en degReasons 包裹翻转（实得 ' + env.els.degReasons.textContent + '）')
+    assert(tb[0].title === EN['editor.tbBold'] && tb[7].title === EN['editor.tbImage'], 'en rtb title 翻转')
+    assert((env.target.__renderEdCalls || 0) === 0, '降级态切语言零正文重建红线')
+  })
+  await t('0.5.0 失败态（行为）：切 en loadErr 锁定文案/重试 + orgErr ✕ title + 整理遮罩翻转 + 零正文重建', () => {
+    const env = bootLang()
+    env.target.edNote = env.target.notes[0]
+    env.target.edBodyErr = '正文加载失败：boom'
+    env.api.renderEdLang()   /* zh 基线 */
+    assert(env.els.edLoadErrNote.textContent === ZH['editor.loadLockNote'], 'zh 基线 loadLockNote（实得 ' + env.els.edLoadErrNote.textContent + '）')
+    assert(env.els.edLoadRetry.textContent === ZH['editor.retry'], 'zh 基线 retry')
+    assert(env.els.orgErrX.title === ZH['common.close'], 'zh 基线 orgErrX title')
+    assert(env.els.orgVeilTxt.textContent === ZH['editor.organizingVeil'], 'zh 基线 orgVeilTxt')
+    env.api.setLang('en')
+    assert(env.els.edLoadErrNote.textContent === EN['editor.loadLockNote'], 'en loadLockNote 翻转')
+    assert(env.els.edLoadRetry.textContent === EN['editor.retry'], 'en retry 翻转')
+    assert(env.els.orgErrX.title === EN['common.close'], 'en orgErrX title 翻转')
+    assert(env.els.orgVeilTxt.textContent === EN['editor.organizingVeil'], 'en orgVeilTxt 翻转')
+    assert((env.target.__renderEdCalls || 0) === 0, '失败态切语言零正文重建红线')
   })
   }
 }

@@ -208,13 +208,13 @@ function renderEd() {
     + '</div>'
     + '<div class="disp" id="dispHost"></div>'
     + '<div class="ed-main">'
-    + '<div class="deg" id="degBanner" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div>' + t('editor.degBanner') + '<span class="rs" id="degReasons"></span><br>' + t('editor.degBanner2') + '</div></div>'
+    + '<div class="deg" id="degBanner" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="degBanner1">' + t('editor.degBanner') + '</span><span class="rs" id="degReasons"></span><br><span id="degBanner2">' + t('editor.degBanner2') + '</span></div></div>'
     /* R-1 安全态横幅（正文加载失败）：复用 .deg 警告样式；edLoadErrMsg=错误详情，edLoadRetry=重试入口（refreshLoadErrUI 驱动显隐与锁定） */
-    + '<div class="deg" id="edLoadErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="edLoadErrMsg"></span>' + t('editor.loadLockNote') + '<span id="edLoadRetry" style="cursor:pointer;color:var(--nacc);font-weight:600">' + t('editor.retry') + '</span></div></div>'
+    + '<div class="deg" id="edLoadErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="edLoadErrMsg"></span><span id="edLoadErrNote">' + t('editor.loadLockNote') + '</span><span id="edLoadRetry" style="cursor:pointer;color:var(--nacc);font-weight:600">' + t('editor.retry') + '</span></div></div>'
     /* 0.4.7-B⑥a（notes-047-ux）：整理失败驻留条（复用 .deg 警告样式，手动 ✕ 才消失——替代一闪而过的 toast；refreshOrganizeUI 驱动） */
     + '<div class="deg" id="orgErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="orgErrMsg"></span></div><span class="org-x" id="orgErrX" role="button" tabindex="0" title="' + t('common.close') + '">' + icon('i-x', 11) + '</span></div>'
     /* 0.4.7-B⑥：整理中正文区遮罩（spinner + 「约需半分钟」文案——LLM 窗口期强反馈，消除「没反应」体感） */
-    + '<div class="org-veil" id="orgVeil" style="display:none"><span class="org-spin"></span><span>' + t('editor.organizingVeil') + '</span></div>'
+    + '<div class="org-veil" id="orgVeil" style="display:none"><span class="org-spin"></span><span id="orgVeilTxt">' + t('editor.organizingVeil') + '</span></div>'
     + '<textarea class="src" id="edSrc" spellcheck="false" placeholder="' + t('editor.bodyPlaceholder') + '"' + (edMode === 'source' ? '' : ' style="display:none"') + '></textarea>'
     + '<div class="rich-scroll rich-wrap" id="richScroll"' + (edMode === 'rich' ? '' : ' style="display:none"') + '>'
     + '<div class="rtb" id="rtb">'
@@ -254,6 +254,18 @@ function renderEdLang() {
   setSyncStatus(!!(richDirty || saveTimer));
   var ta = $('edSrc'); if (ta) ta.placeholder = edBodyPending() ? t('editor.bodySyncing') : t('editor.bodyPlaceholder');
   renderBacklinks();
+  /* 0.5.0（notes-050-edge-i18n）：边缘态横幅/整理遮罩/工具栏 title 随语言原地重写（不重建正文 DOM） */
+  var db1 = $('degBanner1'); if (db1) db1.innerHTML = t('editor.degBanner');
+  var db2 = $('degBanner2'); if (db2) db2.textContent = t('editor.degBanner2');
+  var drs = $('degReasons'); if (drs && degraded && !degraded.ok) drs.textContent = degraded.reasons.map(function (r) { return t('editor.degReasonItem', { label: r.label, line: r.line, sample: r.sample }) }).join(t('common.listSep'));
+  var ln = $('edLoadErrNote'); if (ln) ln.textContent = t('editor.loadLockNote');
+  var lr = $('edLoadRetry'); if (lr) lr.textContent = t('editor.retry');
+  var ox = $('orgErrX'); if (ox) ox.title = t('common.close');
+  var vx = $('orgVeilTxt'); if (vx) vx.textContent = t('editor.organizingVeil');
+  var rtb = $('rtb'); if (rtb) rtb.querySelectorAll('.rtb-btn').forEach(function (b) {
+    var k = { bold: 'editor.tbBold', italic: 'editor.tbItalic', code: 'editor.tbCode', link: 'editor.tbLink', ul: 'editor.tbUl', ol: 'editor.tbOl', quote: 'editor.tbQuote', image: 'editor.tbImage' }[b.getAttribute('data-a')];
+    if (k) b.title = t(k);
+  });
 }
 /* 编辑区事件绑定（renderEd 重建 DOM 后重挂；元素级监听随重建不累积，document 级 selectionchange 在启动区挂一次） */
 function bindEditorArea() {
