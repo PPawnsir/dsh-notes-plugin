@@ -49,12 +49,13 @@ module.exports = {
     assert(cliSettings.indexOf("host.call('notes-vectors-rebuild'") >= 0, 'client 构建编排走 notes-vectors-rebuild')
   })
 
-  // ===== 120.4 构建按钮触发 rebuild + bge wasm 编排 =====
-  await t('构建按钮触发 rebuild：fake 后端走 host rebuild；bge 走浏览器 wasm 编排（模型下载→嵌入→notes-vectors-put 全量回写）', () => {
+  // ===== 120.4 构建按钮触发 rebuild（0.5.0 R2：双端恒走 host rebuild；浏览器 wasm 编排退役不再被调用——R3 才删码，本卡只改路由）=====
+  await t('构建按钮触发 rebuild：0.5.0 R2（notes-051-save-embed）起 app 恒走 host notes-vectors-rebuild（bge 已迁回 host；wasmBuildIndex 编排不再被调用）', () => {
     assert(appSettings.indexOf('function semDoBuild(') >= 0, 'app semDoBuild 定义')
-    assert(appSettings.indexOf('wasmBuildIndex') >= 0, 'app bge 路径走 wasmBuildIndex（浏览器 wasm 编排）')
-    assert(embSrc.indexOf('function wasmBuildIndex(') >= 0, 'wasm-embedder 定义 wasmBuildIndex 编排')
-    assert(embSrc.indexOf('wasmModelEnsureDownloaded(onProgress)') >= 0 && embSrc.indexOf("rpc('notes-vectors-put'") >= 0, 'wasmBuildIndex = 模型下载 + notes-vectors-put 全量回写')
+    assert(appSettings.indexOf("rpc('notes-vectors-rebuild', { backend: backend })") >= 0, 'app semDoBuild 恒调 host rebuild（单一路由）')
+    assert(appSettings.indexOf('wasmBuildIndex(') < 0 && appSettings.indexOf('typeof wasmBuildIndex') < 0, 'app 不再调用 wasmBuildIndex 编排（R2 路由切换；代码 R3 才删）')
+    assert(embSrc.indexOf('function wasmBuildIndex(') >= 0, 'wasm-embedder 仍定义 wasmBuildIndex 编排（R3 才删码——本卡只改路由，代码保留）')
+    assert(embSrc.indexOf('wasmModelEnsureDownloaded(onProgress)') >= 0 && embSrc.indexOf("rpc('notes-vectors-put'") >= 0, 'wasmBuildIndex = 模型下载 + notes-vectors-put 全量回写（编排体未动）')
     assert(embSrc.indexOf('function wasmChunkText(') >= 0 && embSrc.indexOf('function wasmBodyHash(') >= 0, '浏览器分段嵌入 + bodyHash 同口径 helper 在案')
   })
 

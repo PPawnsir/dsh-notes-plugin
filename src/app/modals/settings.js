@@ -509,9 +509,11 @@ function semDoModelRedownload() {
    .then(function () { semRenderModel(); semRenderStatus(); })
    .catch(function () { semRenderModel(); semRenderStatus(); });
 }
-/* 构建索引（消费① rebuild + ② wasmBuildIndex）：fake 后端走 host rebuild；bge 走浏览器 wasm 编排（模型下载→嵌入→put 全量回写）。
-   0.5.0 P0（notes-050-model-proxy）失败驻留报错：「构建索引」是用户显式动作——失败必须 sticky 报错条（含原因：下载失败/网络/代理错误），
-   不准静默跳回按钮态（静默降级只适用于后台预取，不适用显式点击）；bge 失败不再回落 host rebuild（误导性「只在浏览器端运行」）。 */
+/* 构建索引（0.5.0 R2 notes-051-save-embed：恒走 host notes-vectors-rebuild）——R1 起 bge 嵌入已迁回 host 进程
+   （onnxruntime-web 纯 wasm 在宿主跑），浏览器 wasm 编排（模型下载→嵌入→put 全量回写）退役不再被调用（R3 才删码，本卡只改路由）；
+   rebuild 快速失败闸已拆，存量回填真跑（分段嵌入+replace put），进度经轮询 status（计数涨）。
+   0.5.0 P0（notes-050-model-proxy）失败驻留报错：「构建索引」是用户显式动作——失败必须 sticky 报错条（含原因：下载失败/网络/镜像错误），
+   不准静默跳回按钮态（静默降级只适用于后台预取，不适用显式点击）。 */
 function semDoBuild() {
   if (!semState || semState.building) return;
   semState.building = true;
@@ -539,17 +541,11 @@ function semDoBuild() {
     semShowBuildError(msg);
     finish();
   };
-  if (backend === 'bge-small-zh-q8' && typeof wasmBuildIndex === 'function') {
-    wasmBuildIndex(
-      function (i, n, loaded, total) { var s = $('setSemStatus'); if (s) s.innerHTML = t('settings.semanticDownloading', { pct: total > 0 ? Math.round(loaded / total * 100) : 0 }); },
-      function (done, total) { var s = $('setSemStatus'); if (s) s.innerHTML = t('settings.semanticEmbedding', { done: done, total: total }); }
-    ).then(finish, fail);
-  } else {
-    rpc('notes-vectors-rebuild', { backend: backend }).then(function (r) {
-      if (r && r.error) { fail(new Error(r.error)); return; }
-      finish();
-    }, fail);
-  }
+  /* 0.5.0 R2：双端构建按钮同路由——恒调 host rebuild（浏览器 wasm 编排不再被调用，R3 删码） */
+  rpc('notes-vectors-rebuild', { backend: backend }).then(function (r) {
+    if (r && r.error) { fail(new Error(r.error)); return; }
+    finish();
+  }, fail);
 }
 /* 构建失败 sticky 报错条（0.5.0 P0）：原因驻留（复用设置卡 #mErr 错误区），再次构建/成功才清除 */
 function semShowBuildError(msg) { modalErr(t('settings.semanticBuildFailed', { msg: msg })); }

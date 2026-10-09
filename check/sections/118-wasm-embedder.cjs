@@ -25,7 +25,7 @@ module.exports = {
       assert(src.indexOf('_vectorsPut') >= 0, '定义 _vectorsPut 回写函数')
     }
     assert(mockSrc.indexOf("case 'notes-vectors-put':") >= 0, 'e2e mock 落 notes-vectors-put 用例桩')
-    assert(mockSrc.indexOf("'bge-small-zh-q8': { id: 'bge-small-zh-q8', dim: 512, minScore: 0.5, hostEmbed: false }") >= 0, 'e2e mock VECTOR_BACKENDS 落 bge-small-zh-q8（hostEmbed:false 快速失败标记）')
+    assert(mockSrc.indexOf("'bge-small-zh-q8': { id: 'bge-small-zh-q8', dim: 512, minScore: 0.5 }") >= 0, 'e2e mock VECTOR_BACKENDS 落 bge-small-zh-q8（0.5.0 R2：hostEmbed:false 快速失败标记已拆——mock rebuild 真跑同 host）')
   })
 
   await t('wasm-in-panel 裁决实证：app 接线 embedder、client（面板）不接线（面板读现成向量）', () => {

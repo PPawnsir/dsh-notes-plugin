@@ -455,8 +455,6 @@ var I18N_EN = {
   'settings.semanticEnabledOff': 'Semantic search disabled',
   'settings.semanticBackendSaved': 'Semantic backend switched: {name}',
   'settings.semanticDownloading': 'Downloading model {pct}%',
-  'settings.semanticEmbedding': 'Embedding {done}/{total}',
-  'settings.semanticBuildBgeOnly': 'Embedding runs only in the Notes app page (wasm) — build the index there',
   'settings.semanticBuildFailed': 'Index build failed: {msg}',
   /* ===== Coverage card D (notes-042-i18n-cov-d): injection manager + memory guide bilingual =====
      Reuses existing keys (no aliases): settings.injManager (panel title)/memProbing/memEnabled/memView/memDisable/memEnable,

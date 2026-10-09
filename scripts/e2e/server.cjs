@@ -143,7 +143,9 @@ function maxFolderDepthLimit(state) {
 
 /* 0.5.0①（notes-050-vector-layer）：向量层 mock——与 host vector-store 同契约（响应形状 + 过滤语义 + deterministic 假 embedder 桩）。
  * 只守契约点：status/rebuild/search 三面形状与 host 一致；bodyHash 不落盘（数据内容豁免）；向量状态存 state._vectors。 */
-const VECTOR_BACKENDS = { 'fake-256': { id: 'fake-256', dim: 256, minScore: 0 }, 'fake-64': { id: 'fake-64', dim: 64, minScore: 0.9 }, 'bge-small-zh-q8': { id: 'bge-small-zh-q8', dim: 512, minScore: 0.5, hostEmbed: false } }
+/* 0.5.0 R2（notes-051-save-embed）：bge 快速失败闸移除（R1 后 host 能嵌入，rebuild 真跑）——mock 同步拆除 hostEmbed:false 标记，
+ *  bge rebuild 与 fake 同路径 deterministic 回填；失败面由 state._vectorRebuildError 桩承接（用例㊽ sticky 报错数据源）。 */
+const VECTOR_BACKENDS = { 'fake-256': { id: 'fake-256', dim: 256, minScore: 0 }, 'fake-64': { id: 'fake-64', dim: 64, minScore: 0.9 }, 'bge-small-zh-q8': { id: 'bge-small-zh-q8', dim: 512, minScore: 0.5 } }
 function vectorFnv1a(str) { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 0x01000193) >>> 0; return h }
 function vectorMulberry32(seed) { let s = seed >>> 0; return function () { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 } }
 function vectorEmbedOne(text, dim) { const rnd = vectorMulberry32(vectorFnv1a(String(text == null ? '' : text))); const v = new Array(dim); let sq = 0; for (let i = 0; i < dim; i++) { const x = rnd() * 2 - 1; v[i] = x; sq += x * x } const n = Math.sqrt(sq) || 1; for (let i = 0; i < dim; i++) v[i] = v[i] / n; return v }
@@ -684,13 +686,16 @@ function handleRpc(state, method, args) {
         indexable: notes.filter(vectorIndexable).length,
         lastBuiltAt: (vBackend && vs.ns[vBackend]) ? (vs.ns[vBackend].lastBuiltAt || '') : '',
         namespaces: namespaces,
+        pending: 0,          /* 0.5.0 R2：与 host _vectorsStatus 同契约（mock 无 drain 管线——恒 0/''，键集对账口径） */
+        pendingError: '',
       }
     }
     case 'notes-vectors-rebuild': {
       const bid = (args && args.backend) || vectorActiveBackendId(state) || 'fake-256'
       const b = VECTOR_BACKENDS[bid]
       if (!b) return { error: 'notes-vectors-rebuild: 未知后端 ' + String(bid) + '（且无激活后端）' }
-      if (b.hostEmbed === false) return { error: bid + ' 嵌入只在浏览器端运行（wasm）；重建由浏览器驱动（notes-vectors-put 全量回写）' }   // 0.5.0 P0：与 host 快速失败同口径（免 _list 全库扫描后抛错）
+      /* 0.5.0 R2：快速失败闸已拆（host bge 真能跑）——失败面改由 _vectorRebuildError 显式桩（用例㊽ sticky 报错路径保真） */
+      if (state._vectorRebuildError) return { error: String(state._vectorRebuildError) }
       const vs = vectorNs(state)
       const ns = { hash: {}, rows: {}, lastBuiltAt: nowIso() }
       let indexed = 0

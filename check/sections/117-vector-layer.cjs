@@ -41,9 +41,10 @@ module.exports = {
     assert(vsDist.indexOf('await _list(undefined, undefined, undefined, false, false, true)') >= 0, 'dist 变体同改（_list 精确计数）')
   })
 
-  await t('e2e mock bge rebuild 快速失败（hostEmbed:false 桩——e2e UI 流程不变；host 侧 0.5.0 R1 已迁回 host embed）', () => {
-    assert(mockSrc.indexOf("'bge-small-zh-q8': { id: 'bge-small-zh-q8', dim: 512, minScore: 0.5, hostEmbed: false }") >= 0, 'mock bge 后端标记 hostEmbed:false（e2e 桩保浏览器端流程；host 0.5.0 R1 已改 hostEmbed:true，UI 迁移后续卡）')
-    assert(mockSrc.indexOf("if (b.hostEmbed === false) return { error: bid + ' 嵌入只在浏览器端运行（wasm）") >= 0, 'mock rebuild bge 快速失败（e2e UI 流程桩不变）')
+  await t('e2e mock bge rebuild 真跑（0.5.0 R2 notes-051-save-embed：快速失败闸移除——R1 后 host 能嵌入，双端构建按钮=host rebuild）', () => {
+    assert(mockSrc.indexOf("'bge-small-zh-q8': { id: 'bge-small-zh-q8', dim: 512, minScore: 0.5 }") >= 0, 'mock bge 后端无 hostEmbed:false 标记（R2 起 mock rebuild 真跑，与 host 同口径）')
+    assert(mockSrc.indexOf('hostEmbed === false') < 0 && mockSrc.indexOf('嵌入只在浏览器端运行') < 0, 'mock rebuild 快速失败闸已拆（bge 快速失败闸断言移除）')
+    assert(mockSrc.indexOf('state._vectorRebuildError') >= 0, 'mock rebuild 显式失败桩在案（用例㊽ sticky 报错数据源）')
   })
 
   // ===== 行为断言（fresh host 实例：独立 store/handlers，计数确定，零污染共享 S）=====

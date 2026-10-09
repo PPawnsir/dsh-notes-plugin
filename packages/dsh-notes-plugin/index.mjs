@@ -2179,7 +2179,17 @@ export function apply(ctx) {
     let _vectorDirty = false
     let _vectorFlushTimer = null
     let _vectorFlushChain = Promise.resolve()       // 写盘单链串行化（flush/rebuild 合并不交错；单写者进程内串行）
-    let _vectorJobChain = Promise.resolve()         // 索引任务单链串行化（增量重算/重建顺序执行，不交错）
+    let _vectorJobChain = Promise.resolve()         // 索引任务单链串行化（drain/重建/put 顺序执行，不交错）
+    // 0.5.0 R2（notes-051-save-embed）：保存即嵌入 drain 接通——变更入队（bodyHash 机制不变）→ 2s 防抖微批 drain
+    //   （单批 ≤8 块，与 R1 并发闸批上限同口径）→ 落边车（保存→可搜延迟目标 <5s）。防抖合并：同 id 重复变更合并为一次嵌入
+    //   （连改 N 次只 embed 一次）；挂起队列只存 id——drain 时经 cache 取 drain 时刻最新版（快照竞态构造性消除：
+    //   入队后删除/再改/敏感翻转都以内存权威为准，旧快照永不嵌入）。
+    //   失败不丢（红线）：embed 失败（如模型未下载）整批 id 重排回挂起队列 + _vectorPendingErr 显性（status.pending/pendingError
+    //   可见），不自动重试（持续故障防抖 hammer——下次变更/status/search/rebuild 触发重排）；语义关闭期间入队丢弃（重开由 rebuild 回填）。
+    const VECTOR_DRAIN_MS = 2000                    // 保存即嵌入防抖窗口（与 telemetry-store 同款 2s 防抖纪律）
+    let _vectorPending = new Map()                  // 挂起队列：id → true（Set 语义；同 id 重复入队 = 防抖合并）
+    let _vectorDrainTimer = null
+    let _vectorPendingErr = ''                      // 最近一次 drain 失败原因（status 显性面；成功清零）
     // backend 注册表：id → { id, dim, minScore, embed }（窄接口；换后端 = 注册新条目 + 换命名空间，旧集保留）
     const _vectorBackends = new Map()
     function _vectorRegisterBackend(b) {
@@ -2514,32 +2524,69 @@ export function apply(ctx) {
       delete ns.hash[id]
       return hadRows || hadHash
     }
-    // 单笔记增量索引（保存路径挂钩 job）：可索引 → bodyHash 变才重算（分段嵌入）；不可索引（sensitive/sys/deleted）→ 移除。
-    async function _vectorIndexNote(n) {
-      try {
-        if (!n || !n.id) return
-        await _vectorLoad()
-        const backend = _activeBackend()
-        if (!backend) return
-        const c = _vectorCache
-        const ns = c.ns[backend.id] || (c.ns[backend.id] = _vectorNewNs())
-        if (!_vectorIndexable(n)) {
-          // 0.5.0③（notes-050-rrf-fusion）：非可索引 → 全命名空间出队（残留集不泄漏敏感向量；与 _vectorDropNote 同口径；防御直调路径）
-          let changed = false
-          for (const bid of Object.keys(c.ns)) { if (_vectorDropFromNs(c.ns[bid], n.id)) changed = true }
-          if (changed) _vectorScheduleFlush()
-          return
+    // 保存即嵌入入队（0.5.0 R2）：挂起 id 集 + 2s 防抖调度（已挂不重复；unref 不阻塞进程退出——同 _vectorScheduleFlush 纪律）
+    function _vectorQueueIndex(id) {
+      _vectorPending.set(id, true)
+      if (_vectorDrainTimer) return
+      _vectorDrainTimer = setTimeout(function () { _vectorDrainTimer = null; _vectorDrain() }, VECTOR_DRAIN_MS)
+      if (_vectorDrainTimer && typeof _vectorDrainTimer.unref === 'function') _vectorDrainTimer.unref()
+    }
+    // drain（防抖微批，索引任务单链入队）：挂起集快照清空 → 逐 id 经 cache 取 drain 时刻最新版（快照竞态消除——入队后
+    //   删除/再改以内存权威为准）→ 不可索引 → 全命名空间出队（与 _vectorDropNote 同口径）；可索引 → bodyHash 新鲜度检查
+    //   （变才重算，增量）→ 跨笔记压平微批（≤VECTOR_EMBED_BATCH_MAX 块/批）embed → 归位落边车（防抖 flush 纪律不变）。
+    //   失败整批重排回挂起队列（入队不丢）+ _vectorPendingErr 显性，不自动重试。
+    function _vectorDrain() {
+      if (!_vectorPending.size) return Promise.resolve()
+      const ids = Array.from(_vectorPending.keys())
+      _vectorPending = new Map()
+      return _vectorEnqueue(async function () {
+        try {
+          await _vectorLoad()
+          const backend = _activeBackend()
+          if (!backend) return   // 语义已关：本批丢弃（重开由 rebuild 回填，存量口径不变）
+          const c = _vectorCache
+          const ns = c.ns[backend.id] || (c.ns[backend.id] = _vectorNewNs())
+          const jobs = []
+          let dropped = false
+          for (const id of ids) {
+            const cur = cache.get(id)   // 内存权威最新版（store-cache 常驻 cache；取不到 = 已 purge/外部移除 → 出队）
+            if (!cur || !_vectorIndexable(cur)) {
+              for (const bid of Object.keys(c.ns)) { if (_vectorDropFromNs(c.ns[bid], id)) dropped = true }
+              continue
+            }
+            const hash = _vectorBodyHash(cur.body)
+            if (ns.hash[id] === hash && ns.rows[id]) continue   // bodyHash 未变 → 不重算（增量）
+            jobs.push({ id: id, hash: hash, chunks: _vectorChunks(cur.body) })
+          }
+          if (jobs.length) {
+            // 跨笔记压平微批：flat = 全 (job,chunk) 块序列 → ≤VECTOR_EMBED_BATCH_MAX 块/批顺序 embed → 按 job 归位
+            const flat = []
+            for (let j = 0; j < jobs.length; j++) { for (let k = 0; k < jobs[j].chunks.length; k++) flat.push({ j: j, k: k, text: jobs[j].chunks[k] }) }
+            const acc = jobs.map(function (jb) { return new Array(jb.chunks.length) })
+            for (let i = 0; i < flat.length; i += VECTOR_EMBED_BATCH_MAX) {
+              const slice = flat.slice(i, i + VECTOR_EMBED_BATCH_MAX)
+              const vecs = await backend.embed(slice.map(function (s) { return s.text }))
+              for (let m = 0; m < slice.length; m++) acc[slice[m].j][slice[m].k] = vecs[m]
+            }
+            for (let j = 0; j < jobs.length; j++) {
+              ns.rows[jobs[j].id] = acc[j].map(function (v, k) { return { chunk: k, vector: v } })
+              ns.hash[jobs[j].id] = jobs[j].hash
+            }
+          }
+          if (jobs.length || dropped) _vectorScheduleFlush()
+          _vectorPendingErr = ''
+        } catch (e) {
+          // 入队不丢（红线）：整批 id 重排回挂起队列（与在途新变更合并；bodyHash 新鲜度保幂等，已成功笔记自然跳过）；
+          //   报错显性（status.pending/pendingError），不自动重试（模型未下载等持续故障防抖 hammer）
+          for (const id of ids) { if (!_vectorPending.has(id)) _vectorPending.set(id, true) }
+          _vectorPendingErr = String((e && e.message) || e)
         }
-        const hash = _vectorBodyHash(n.body)
-        if (ns.hash[n.id] === hash && ns.rows[n.id]) return   // bodyHash 未变 → 不重算（增量）
-        const chunks = _vectorChunks(n.body)
-        const vecs = await backend.embed(chunks)
-        const rows = []
-        for (let i = 0; i < vecs.length; i++) rows.push({ chunk: i, vector: vecs[i] })
-        ns.rows[n.id] = rows
-        ns.hash[n.id] = hash
-        _vectorScheduleFlush()
-      } catch (e) { /* 静默降级：向量层故障绝不阻塞保存主流程 */ }
+      })
+    }
+    // 立即 drain（读路径读即新鲜 + rebuild 权威全量前置）：取消防抖计时器 → 同步入队 drain（返回 job 链上 promise）
+    function _vectorDrainNow() {
+      if (_vectorDrainTimer) { clearTimeout(_vectorDrainTimer); _vectorDrainTimer = null }
+      return _vectorDrain()
     }
     // 事件总线监听（保存路径挂钩）：purge 只带 id → 全命名空间出队；非可索引（sensitive/sys/deleted/tombstoned）→ 全命名空间出队（0.5.0③ sensitive 翻转红线）；
     //   可索引 → 读激活后端增量索引（无激活 → 零成本不排队）。
@@ -2557,7 +2604,7 @@ export function apply(ctx) {
         return
       }
       if (!_activeBackend()) return
-      _vectorEnqueue(function () { return _vectorIndexNote(n) })
+      _vectorQueueIndex(n.id)   // 0.5.0 R2：保存即嵌入——入队 + 2s 防抖微批 drain（不再逐事件即刻嵌入）
     }
     // purge：全命名空间出队（墓碑——彻底删除后向量不复存在）
     async function _vectorDropNote(id) {
@@ -2584,9 +2631,12 @@ export function apply(ctx) {
         await loadSettings()
         const backend = _vectorBackendById(backendId) || _activeBackend()
         if (!backend) return { error: 'notes-vectors-rebuild: 未知后端 ' + String(backendId || '') + '（且无激活后端）' }
-        if (backend.hostEmbed === false) return { error: backend.id + ' 嵌入只在浏览器端运行（wasm）；重建由浏览器驱动（notes-vectors-put 全量回写）' }   // 0.5.0 P0：快速失败，免 _list 全库扫描后抛错
+        // 0.5.0 R2（notes-051-save-embed）：bge 快速失败闸移除——R1 后 host 能嵌入（hostEmbed:true 真 embed 在册），rebuild 真跑存量回填
         await _vectorLoad()
         await _vectorJobChain   // 等待在飞增量（顺序一致）
+        // 0.5.0 R2：重建是权威全量——挂起队列快照清空 + 防抖计时器取消（本批内容已被全库扫描覆盖；重建期间新变更重新入队不受影响）
+        _vectorPending = new Map()
+        if (_vectorDrainTimer) { clearTimeout(_vectorDrainTimer); _vectorDrainTimer = null }
         const c = _vectorCache
         const ns = _vectorNewNs()
         const all = await _list(undefined, undefined, undefined, false, false, true)   // 含 sys（重建期统一 _vectorIndexable 过滤）
@@ -2614,6 +2664,7 @@ export function apply(ctx) {
       try {
         await loadSettings()
         await _vectorLoad()
+        _vectorDrainNow()   // 0.5.0 R2：status 读路径强制 drain（不等 2s 防抖尾——轮询即新鲜；失败残留经 pending/pendingError 显性）
         await _vectorJobChain
         await _vectorFlush()
         const c = _vectorCache
@@ -2643,7 +2694,9 @@ export function apply(ctx) {
           indexed: backend ? _vectorCountNs(c.ns[backend.id]) : 0,
           indexable: indexable,
           lastBuiltAt: (backend && c.ns[backend.id]) ? c.ns[backend.id].lastBuiltAt : '',
-          namespaces: namespaces
+          namespaces: namespaces,
+          pending: _vectorPending.size,          // 0.5.0 R2：待嵌入计数（embedder 未就绪时入队不丢——本键即可见）
+          pendingError: _vectorPendingErr        // 最近一次 drain 失败原因（无 = ''）
         }
       } catch (e) { return { error: String(e.message || e) } }
     }
@@ -2659,6 +2712,7 @@ export function apply(ctx) {
         else if (typeof a.query === 'string' && a.query) { const vv = await backend.embed([a.query]); q = vv && vv[0] }
         if (!q || !q.length) return { error: 'notes-vectors-search: 需要 queryVector（数组）或 query（文本）' }
         await _vectorLoad()
+        _vectorDrainNow()   // 0.5.0 R2：检索前强制 drain（保存即嵌入读路径新鲜——保存→可搜不等防抖尾）
         await _vectorJobChain
         const c = _vectorCache
         const ns = c.ns[backend.id]
@@ -2681,9 +2735,9 @@ export function apply(ctx) {
     }
     // 浏览器回写（notes-vectors-put 入口，②卡落通道）：浏览器 wasm 算好的向量 → 经索引队列写边车（①的队列消费位）。
     // args = { backend, rows:[{ noteId, bodyHash, vectors:[vec0,vec1,...] }], replace? }
-    //   vectors = 该笔记分段块的 L2 归一化向量数组（实现方保证，dim 由本函数写前校验）；chunk = 数组下标（与 _vectorIndexNote 同口径）。
+    //   vectors = 该笔记分段块的 L2 归一化向量数组（实现方保证，dim 由本函数写前校验）；chunk = 数组下标（与 _vectorDrain 同口径）。
     //   replace:true = 先清空目标命名空间再写（浏览器全量重建路径）；缺省 = 增量 upsert（单笔记重算，bodyHash 新鲜度锚照存）。
-    // 纪律：写入并入 _vectorJobChain 单链（与增量/重建顺序一致不交错）；写失败 = 内存续用（静默降级，同 _vectorIndexNote）。
+    // 纪律：写入并入 _vectorJobChain 单链（与 drain/重建顺序一致不交错）；写失败 = 内存续用（静默降级，同 drain 路径）。
     async function _vectorsPut(args) {
       try {
         await loadSettings()

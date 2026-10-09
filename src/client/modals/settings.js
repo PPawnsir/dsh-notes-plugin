@@ -364,7 +364,8 @@
       /* ===== 0.5.0④ 语义检索节（notes-050-sem-settings）：本地态 + 双键整写 + 激活自动回填 =====
          红线：①写 settings.semantic 必须 enabled+backend 双键整写（settings-set 整对象替换口径，单写 backend 丢 enabled）；
            ②打开总开关后自动触发 notes-vectors-rebuild 回填存量（否则 enabled 打开后存量不入队，indexed<indexable 静默漏历史）。
-         面板（client）不加载 wasm（wasm-in-panel 裁决）：构建走 host notes-vectors-rebuild（bge 由 app 页 wasm 承接），模型行只读显示。 */
+         面板（client）不加载 wasm（wasm-in-panel 裁决）：构建走 host notes-vectors-rebuild——0.5.0 R2 起 bge 嵌入已迁回 host 进程
+           （notes-051-save-embed），P0-2 的 bge 禁用态/tooltip 退役，按钮复活为恒调 host rebuild；模型行只读显示。 */
       const [semEnabled, setSemEnabled] = React.useState(false)
       const [semBackend, setSemBackend] = React.useState('bge-small-zh-q8')
       const [semStatus, setSemStatus] = React.useState(null)
@@ -387,12 +388,8 @@
       })
       const doSemBuild = () => {
         if (semBuilding) return
-        if (semBackend === 'bge-small-zh-q8') {
-          /* 0.5.0 P0-2（notes-050-wasm-shape）：面板不嵌 wasm（wasm-in-panel 裁决）——bge 构建在面板是必死路径，
-             按钮已禁用；此处兜底（如开关自动回填路径）只提示不发起 RPC（灭「只在浏览器端运行」快速失败报错死胡同） */
-          showToast(tt('settings.semanticBuildBgeOnly'))
-          return
-        }
+        /* 0.5.0 R2（notes-051-save-embed）：构建恒走 host notes-vectors-rebuild——bge 嵌入已迁回 host 进程（P0-2 禁用态退役，
+           「请到 app 页构建」提示拆除）；embedder 未就绪时 host 侧入队不丢（status.pending 可见），失败走 sticky 报错 */
         setSemBuilding(true)
         setError('')   /* 0.5.0 P0（notes-050-model-proxy）：再次构建先清上次驻留错误（失败再重写 sticky 报错；成功保持清零） */
         host.call('notes-vectors-rebuild', { backend: semBackend || 'bge-small-zh-q8' }).then((res) => {
@@ -524,7 +521,7 @@
             e('option', { value: 'bge-small-zh-q8' }, tt('settings.semanticBackendLocal')),
             e('option', { value: 'custom-endpoint', disabled: true }, tt('settings.semanticBackendCustom'))),
           e('div', { className: 'dsh-notes-settings-label-s' }, semStatusText),
-          e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': (semBackend === 'bge-small-zh-q8' ? tt('settings.semanticBuildBgeOnly') : tt('settings.semanticTip')), onClick: doSemBuild, disabled: !semEnabled || semBuilding || semBackend === 'bge-small-zh-q8' }, semBuilding ? tt('settings.semanticBuilding') : tt('settings.semanticBuild')),
+          e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': tt('settings.semanticTip'), onClick: doSemBuild, disabled: !semEnabled || semBuilding }, semBuilding ? tt('settings.semanticBuilding') : tt('settings.semanticBuild')),
           e('span', { className: 'dsh-notes-settings-label-s' }, ' ' + semModelText))
         // ===== 工作记忆 v0 控件（设置卡片「工作记忆」区）：状态行（已启用→查看约定/停用）+「启用沉淀引导…」=====
         const memoryControl = memStatus === null

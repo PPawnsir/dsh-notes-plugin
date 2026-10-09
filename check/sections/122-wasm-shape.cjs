@@ -75,20 +75,26 @@ module.exports = {
     assert(ok && ok.ok === true && ok.written === 1 && ok.dropped === 0, '合法 512 维行写入 written=1/dropped=0（显性化不误伤合法行）')
   })
 
-  // ===== 122.3 面板 bge 构建按钮禁用 + tooltip + doSemBuild 兜底 =====
-  await t('面板 bge 构建按钮禁用 + 提示：backend=bge 时按钮 disabled + tooltip 到 app 页构建 + doSemBuild 兜底只提示不发起 RPC', () => {
-    assert(cliSettings.indexOf("semBackend === 'bge-small-zh-q8'") >= 0, 'client doSemBuild bge 兜底守卫在案')
-    assert(cliSettings.indexOf("showToast(tt('settings.semanticBuildBgeOnly'))") >= 0, 'bge 兜底只 showToast 提示（不发起 RPC）')
-    assert(cliSettings.indexOf('disabled: !semEnabled || semBuilding || semBackend === \'bge-small-zh-q8\'') >= 0, 'client 构建按钮 bge 态 disabled')
-    assert(cliSettings.indexOf("'data-tooltip': (semBackend === 'bge-small-zh-q8' ? tt('settings.semanticBuildBgeOnly') : tt('settings.semanticTip'))") >= 0, 'client 构建按钮 bge 态 tooltip 切换为到 app 页提示')
+  // ===== 122.3 面板构建按钮复活（0.5.0 R2 notes-051-save-embed：P0-2 禁用态退役——bge 已迁回 host，恒调 host rebuild）=====
+  await t('面板构建按钮复活（0.5.0 R2）：bge 态不再 disabled + 「请到 app 页构建」tooltip 退役（i18n 键清理）+ doSemBuild 恒调 host rebuild', () => {
+    assert(cliSettings.indexOf("host.call('notes-vectors-rebuild', { backend: semBackend || 'bge-small-zh-q8' })") >= 0, 'client doSemBuild 恒调 host notes-vectors-rebuild（无 bge 守卫——按钮复活为 host rebuild）')
+    assert(cliSettings.indexOf("showToast(tt('settings.semanticBuildBgeOnly'))") < 0, 'bge 兜底只提示不发起 RPC 的守卫已拆')
+    assert(cliSettings.indexOf("if (semBackend === 'bge-small-zh-q8')") < 0, 'client doSemBuild bge 兜底守卫已拆（不再拦截 bge 构建）')
+    assert(cliSettings.indexOf("disabled: !semEnabled || semBuilding || semBackend === 'bge-small-zh-q8'") < 0, 'client 构建按钮 bge 态 disabled 已拆（复活为可点）')
+    assert(cliSettings.indexOf("'data-tooltip': tt('settings.semanticTip')") >= 0, 'client 构建按钮 tooltip 回落通用说明（「请到 app 页构建」提示退役）')
+    assert(cliSettings.indexOf('semanticBuildBgeOnly') < 0, 'client 源码零 semanticBuildBgeOnly 残留')
+    const zhSrc = read('src/i18n/zh.js'), enSrc = read('src/i18n/en.js')
+    assert(zhSrc.indexOf('semanticBuildBgeOnly') < 0 && enSrc.indexOf('semanticBuildBgeOnly') < 0, 'zh/en 双字典 semanticBuildBgeOnly 键清理（tooltip 退役 i18n 键同步拆除）')
   })
 
-  // ===== 122.4 嵌入进度文案 + 完成后刷模型行 =====
-  await t('嵌入进度文案：app semDoBuild 嵌入阶段更新「嵌入中 i/n」+ 完成后刷模型行（消灭卡下载 100% 假象）', () => {
-    assert(appSettings.indexOf("t('settings.semanticEmbedding', { done: done, total: total })") >= 0, 'app 嵌入阶段状态行「嵌入中 {done}/{total}」')
-    assert(appSettings.indexOf('function (done, total)') >= 0, 'app 传第二回调 onEmbedProgress(done,total) 给 wasmBuildIndex')
-    assert(embSrc.indexOf('async function wasmBuildIndex(onProgress, onEmbedProgress)') >= 0, 'wasmBuildIndex 增 onEmbedProgress 第二参数')
-    assert(embSrc.indexOf('if (onEmbedProgress) onEmbedProgress(done, indexable.length)') >= 0, '嵌入循环逐篇上报嵌入进度 i/n')
+  // ===== 122.4 嵌入进度文案（0.5.0 R2：随 wasm 编排退役从 app 设置区撤下；wasm-embedder.js 编排体保留——R3 才删码）+ 完成后刷模型行 =====
+  await t('嵌入进度文案路由切换（0.5.0 R2）：app semDoBuild 不再传 onEmbedProgress（嵌入进度由 status 轮询计数承接）；wasm-embedder 编排体在案待 R3 删码', () => {
+    assert(appSettings.indexOf("t('settings.semanticEmbedding'") < 0, 'app 设置区不再引用 semanticEmbedding（wasm 嵌入进度回调随路由切换撤下；i18n 键同步清理）')
+    assert(appSettings.indexOf('function (done, total)') < 0, 'app 不再传第二回调 onEmbedProgress(done,total) 给 wasmBuildIndex（编排不再被调用）')
+    const zhSrc2 = read('src/i18n/zh.js'), enSrc2 = read('src/i18n/en.js')
+    assert(zhSrc2.indexOf('semanticEmbedding') < 0 && enSrc2.indexOf('semanticEmbedding') < 0, 'zh/en 双字典 semanticEmbedding 键清理（零引用红线——节 68 守卫②）')
+    assert(embSrc.indexOf('async function wasmBuildIndex(onProgress, onEmbedProgress)') >= 0, 'wasmBuildIndex 编排体保留（R3 才删码）')
+    assert(embSrc.indexOf('if (onEmbedProgress) onEmbedProgress(done, indexable.length)') >= 0, '嵌入循环逐篇上报嵌入进度 i/n（编排体内，未动）')
     assert(appSettings.indexOf("backend === 'bge-small-zh-q8' && typeof wasmModelStatus === 'function'") >= 0, '完成后读 wasmModelStatus 刷模型行（模型行「未下载」滞留修复）')
   })
 

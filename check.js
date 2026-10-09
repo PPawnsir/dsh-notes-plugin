@@ -223,8 +223,8 @@ const CORE = new Set([
   // 122. 0.5.0 P0-2（notes-050-wasm-shape）：wasm 嵌入产出零向量修复——Tensor 双层嵌套 + put 静默丢弃显性化 + 进度文案 常驻 --core
   '形状假 Tensor 桩：单 Tensor tolist()=[n][512] → wasmExtractVecs 返回 [n][512]（旧双层嵌套必红）',
   'host put 双层嵌套非法形状 → dropped 计数 + 全丢 error 面（静默吞显性化）',
-  '面板 bge 构建按钮禁用 + 提示：backend=bge 时按钮 disabled + tooltip 到 app 页构建 + doSemBuild 兜底只提示不发起 RPC',
-  '嵌入进度文案：app semDoBuild 嵌入阶段更新「嵌入中 i/n」+ 完成后刷模型行（消灭卡下载 100% 假象）',
+  '面板构建按钮复活（0.5.0 R2）：bge 态不再 disabled + 「请到 app 页构建」tooltip 退役（i18n 键清理）+ doSemBuild 恒调 host rebuild',
+  '嵌入进度文案路由切换（0.5.0 R2）：app semDoBuild 不再传 onEmbedProgress（嵌入进度由 status 轮询计数承接）；wasm-embedder 编排体在案待 R3 删码',
   // 123. 0.5.0 交互层 搜索摘要行+命中高亮（notes-050-search-excerpt：常驻 --core 防摘要口径/XSS 红线回归——行为级主断言 + 先 esc 后 mark）
   'searchExcerpt 关键词命中点居中 + 边界截断 + 省略号（±50 字窗口）',
   'hlMarks 区间高亮双端逐字节一致（app.html ⇄ 原型）+ 源码顺序=先 esc 后 mark',
