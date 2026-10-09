@@ -432,7 +432,8 @@ var I18N_EN = {
   'settings.group.data': 'Data & Storage',
   'settings.group.about': 'About',
   'settings.group.nav': 'Settings groups',
-  /* 0.5.0④ (notes-050-sem-settings): semantic search settings section (Search & Injection group) — master switch/backend/status line/build button/model management */
+  /* 0.5.0④ (notes-050-sem-settings): semantic search settings section (Search & Injection group) — master switch/backend/status line/build button;
+     0.5.0 R3 (notes-051-query-embed): browser-only keys retired (model row quintet + download-progress + not-downloaded status keys removed with the browser embed path) */
   'settings.semantic': 'Semantic search',
   'settings.semanticTip': 'Recall related notes by meaning (local vector model bge-small-zh, ≈23MB, fully offline and body text never leaves the machine), fused with keyword search via RRF; off by default at zero cost',
   'settings.semanticEnabled': 'Enable semantic search',
@@ -442,19 +443,12 @@ var I18N_EN = {
   'settings.semanticStatus': 'Semantic index: {indexed}/{indexable} notes · {backend} · last built {time}',
   'settings.semanticStatusNever': 'Semantic index: not built yet',
   'settings.semanticStatusOff': 'Semantic index: disabled',
-  'settings.semanticStatusNoModel': 'Semantic index: model not downloaded — click "Build index" to download',
   'settings.semanticStatusError': 'Semantic index: backend error {msg}',
   'settings.semanticBuild': 'Build index',
   'settings.semanticBuilding': 'Building…',
-  'settings.semanticModel': 'Model: ',
-  'settings.semanticModelSize': 'downloaded {size}',
-  'settings.semanticModelNone': 'not downloaded',
-  'settings.semanticModelDelete': 'Delete',
-  'settings.semanticModelRedownload': 'Re-download',
   'settings.semanticEnabledOn': 'Semantic search enabled',
   'settings.semanticEnabledOff': 'Semantic search disabled',
   'settings.semanticBackendSaved': 'Semantic backend switched: {name}',
-  'settings.semanticDownloading': 'Downloading model {pct}%',
   'settings.semanticBuildFailed': 'Index build failed: {msg}',
   /* ===== Coverage card D (notes-042-i18n-cov-d): injection manager + memory guide bilingual =====
      Reuses existing keys (no aliases): settings.injManager (panel title)/memProbing/memEnabled/memView/memDisable/memEnable,

@@ -328,7 +328,6 @@
     }
     // 0.5.0④ 语义检索节 helper（notes-050-sem-settings）：后端显示名/字节人话/ISO 时间本地态（与 app modals/settings.js 同口径）
     function semBackendLabel(id) { return id === 'bge-small-zh-q8' ? 'bge-small-zh' : (id || '—') }
-    function semFmtBytes(n) { n = Math.max(0, Number(n) || 0); if (n < 1024) return n + ' B'; if (n < 1048576) return (n / 1024).toFixed(1) + ' KB'; return (n / 1048576).toFixed(1) + ' MB' }
     function semFmtTime(iso) { if (!iso) return ''; const d = new Date(iso); if (isNaN(d.getTime())) return ''; const p = (x) => (x < 10 ? '0' : '') + x; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) }
     // 设置卡片宿主（modal，居中，复用派发 modal 的 mask/modal 风格）：通用结构——标题「设置」+ 设置项行列表
     // （每行：左 label + 右控件）。以后加设置项只需往 settingsRows 数组加行，结构不变。
@@ -364,8 +363,9 @@
       /* ===== 0.5.0④ 语义检索节（notes-050-sem-settings）：本地态 + 双键整写 + 激活自动回填 =====
          红线：①写 settings.semantic 必须 enabled+backend 双键整写（settings-set 整对象替换口径，单写 backend 丢 enabled）；
            ②打开总开关后自动触发 notes-vectors-rebuild 回填存量（否则 enabled 打开后存量不入队，indexed<indexable 静默漏历史）。
-         面板（client）不加载 wasm（wasm-in-panel 裁决）：构建走 host notes-vectors-rebuild——0.5.0 R2 起 bge 嵌入已迁回 host 进程
-           （notes-051-save-embed），P0-2 的 bge 禁用态/tooltip 退役，按钮复活为恒调 host rebuild；模型行只读显示。 */
+         面板（client）从不加载嵌入运行时（wasm-in-panel 裁决）：构建走 host notes-vectors-rebuild——0.5.0 R2 起 bge 嵌入已迁回 host 进程
+           （notes-051-save-embed），P0-2 的 bge 禁用态/tooltip 退役，按钮复活为恒调 host rebuild；
+           0.5.0 R3（notes-051-query-embed）浏览器嵌入路径整体退役，模型管理行（Cache API 大小只读显示）一并拆除——模型由 host 按需下载。 */
       const [semEnabled, setSemEnabled] = React.useState(false)
       const [semBackend, setSemBackend] = React.useState('bge-small-zh-q8')
       const [semStatus, setSemStatus] = React.useState(null)
@@ -501,18 +501,14 @@
         const injPrevControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': tt('settings.injPreviewTipT'), onClick: openInjectPreview }, tt('settings.previewBtn'))
         // 注入管理控件：打开注入管理面板（点击即关设置卡片、modal 不叠 modal）——全库注入三态总览 + 单行直改 / 多选批量
         const injMgrControl = e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': tt('settings.injManagerTipT'), onClick: () => openInjectManager('settings') }, tt('settings.manageBtn'))   // from=settings：单层返回栈（notes-041-settings-back），关闭二级面板自动回本卡
-        // ===== 0.5.0④ 语义检索控件（检索与注入组尾）：总开关 + 后端下拉 + 索引状态行 + 构建按钮 + 模型管理（面板只读大小）=====
-        const semModel0 = (settingsData && settingsData.settings && settingsData.settings.semantic && settingsData.settings.semantic.model) || null
+        // ===== 0.5.0④ 语义检索控件（检索与注入组尾）：总开关 + 后端下拉 + 索引状态行 + 构建按钮（0.5.0 R3：模型管理行退役——host 按需下载，UI 不持模型态）=====
         const semStatusText = (semStatus && semStatus.error)
           ? tt('settings.semanticStatusError', { msg: semStatus.error })
           : !semEnabled
             ? tt('settings.semanticStatusOff')
             : (semStatus && semStatus.lastBuiltAt)
               ? tt('settings.semanticStatus', { indexed: semStatus.indexed || 0, indexable: semStatus.indexable || 0, backend: semBackendLabel(semStatus.backend), time: semFmtTime(semStatus.lastBuiltAt) })
-              : (semBackend === 'bge-small-zh-q8' && !(semModel0 && semModel0.bytes > 0))
-                ? tt('settings.semanticStatusNoModel')
-                : tt('settings.semanticStatusNever')
-        const semModelText = tt('settings.semanticModel') + (semModel0 && semModel0.bytes > 0 ? tt('settings.semanticModelSize', { size: semFmtBytes(semModel0.bytes) }) : tt('settings.semanticModelNone'))
+              : tt('settings.semanticStatusNever')
         const semanticControl = e('div', { className: 'dsh-notes-settings-sem' },
           e('label', { className: 'dsh-notes-settings-checkwrap' },
             e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: semEnabled, onChange: (ev) => doSemToggle(ev.target.checked) }), ' ' + tt('settings.semanticEnabled')),
@@ -521,8 +517,7 @@
             e('option', { value: 'bge-small-zh-q8' }, tt('settings.semanticBackendLocal')),
             e('option', { value: 'custom-endpoint', disabled: true }, tt('settings.semanticBackendCustom'))),
           e('div', { className: 'dsh-notes-settings-label-s' }, semStatusText),
-          e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': tt('settings.semanticTip'), onClick: doSemBuild, disabled: !semEnabled || semBuilding }, semBuilding ? tt('settings.semanticBuilding') : tt('settings.semanticBuild')),
-          e('span', { className: 'dsh-notes-settings-label-s' }, ' ' + semModelText))
+          e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': tt('settings.semanticTip'), onClick: doSemBuild, disabled: !semEnabled || semBuilding }, semBuilding ? tt('settings.semanticBuilding') : tt('settings.semanticBuild')))
         // ===== 工作记忆 v0 控件（设置卡片「工作记忆」区）：状态行（已启用→查看约定/停用）+「启用沉淀引导…」=====
         const memoryControl = memStatus === null
           ? e('span', { className: 'dsh-notes-settings-label-s' }, tt('settings.memProbing'))

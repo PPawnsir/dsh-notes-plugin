@@ -1720,7 +1720,8 @@ var I18N_ZH = {
   'settings.group.data': '数据与存储',
   'settings.group.about': '关于',
   'settings.group.nav': '设置分组',
-  /* 0.5.0④（notes-050-sem-settings）：语义检索设置节（检索与注入组）——总开关/后端下拉/索引状态行/构建按钮/模型管理 */
+  /* 0.5.0④（notes-050-sem-settings）：语义检索设置节（检索与注入组）——总开关/后端下拉/索引状态行/构建按钮；
+     0.5.0 R3（notes-051-query-embed）：浏览器专有键退役（模型管理行五键 + 下载进度键 + 未下载态键随浏览器嵌入路径一并拆除） */
   'settings.semantic': '语义检索',
   'settings.semanticTip': '按语义召回相关笔记（本地向量模型 bge-small-zh，约 23MB，完全离线、正文不出机器），与关键词检索 RRF 融合；缺省关闭零成本',
   'settings.semanticEnabled': '启用语义检索',
@@ -1730,19 +1731,12 @@ var I18N_ZH = {
   'settings.semanticStatus': '语义索引：{indexed}/{indexable} 篇 · {backend} · 上次构建 {time}',
   'settings.semanticStatusNever': '语义索引：尚未构建',
   'settings.semanticStatusOff': '语义索引：未启用',
-  'settings.semanticStatusNoModel': '语义索引：模型未下载，点击「构建索引」下载',
   'settings.semanticStatusError': '语义索引：后端报错 {msg}',
   'settings.semanticBuild': '构建索引',
   'settings.semanticBuilding': '构建中…',
-  'settings.semanticModel': '模型：',
-  'settings.semanticModelSize': '已下载 {size}',
-  'settings.semanticModelNone': '未下载',
-  'settings.semanticModelDelete': '删除',
-  'settings.semanticModelRedownload': '重新下载',
   'settings.semanticEnabledOn': '已启用语义检索',
   'settings.semanticEnabledOff': '已关闭语义检索',
   'settings.semanticBackendSaved': '已切换语义后端：{name}',
-  'settings.semanticDownloading': '下载模型中 {pct}%',
   'settings.semanticBuildFailed': '构建索引失败：{msg}',
   /* ===== 覆盖卡 D（notes-042-i18n-cov-d）：注入管理 + 记忆引导双语化 =====
      复用既有 key（禁重复建别名）：settings.injManager（面板标题）/memProbing/memEnabled/memView/memDisable/memEnable、
@@ -2649,7 +2643,8 @@ var I18N_EN = {
   'settings.group.data': 'Data & Storage',
   'settings.group.about': 'About',
   'settings.group.nav': 'Settings groups',
-  /* 0.5.0④ (notes-050-sem-settings): semantic search settings section (Search & Injection group) — master switch/backend/status line/build button/model management */
+  /* 0.5.0④ (notes-050-sem-settings): semantic search settings section (Search & Injection group) — master switch/backend/status line/build button;
+     0.5.0 R3 (notes-051-query-embed): browser-only keys retired (model row quintet + download-progress + not-downloaded status keys removed with the browser embed path) */
   'settings.semantic': 'Semantic search',
   'settings.semanticTip': 'Recall related notes by meaning (local vector model bge-small-zh, ≈23MB, fully offline and body text never leaves the machine), fused with keyword search via RRF; off by default at zero cost',
   'settings.semanticEnabled': 'Enable semantic search',
@@ -2659,19 +2654,12 @@ var I18N_EN = {
   'settings.semanticStatus': 'Semantic index: {indexed}/{indexable} notes · {backend} · last built {time}',
   'settings.semanticStatusNever': 'Semantic index: not built yet',
   'settings.semanticStatusOff': 'Semantic index: disabled',
-  'settings.semanticStatusNoModel': 'Semantic index: model not downloaded — click "Build index" to download',
   'settings.semanticStatusError': 'Semantic index: backend error {msg}',
   'settings.semanticBuild': 'Build index',
   'settings.semanticBuilding': 'Building…',
-  'settings.semanticModel': 'Model: ',
-  'settings.semanticModelSize': 'downloaded {size}',
-  'settings.semanticModelNone': 'not downloaded',
-  'settings.semanticModelDelete': 'Delete',
-  'settings.semanticModelRedownload': 'Re-download',
   'settings.semanticEnabledOn': 'Semantic search enabled',
   'settings.semanticEnabledOff': 'Semantic search disabled',
   'settings.semanticBackendSaved': 'Semantic backend switched: {name}',
-  'settings.semanticDownloading': 'Downloading model {pct}%',
   'settings.semanticBuildFailed': 'Index build failed: {msg}',
   /* ===== Coverage card D (notes-042-i18n-cov-d): injection manager + memory guide bilingual =====
      Reuses existing keys (no aliases): settings.injManager (panel title)/memProbing/memEnabled/memView/memDisable/memEnable,
@@ -3337,342 +3325,6 @@ function loadNotes(silent) {
   .then(function () { listLoading = false; ensureWikiIndex(); renderTree(); refreshSysKids(); return true })   /* 0.4.4-C：列表刷新后复核 sysKids（剔除陈旧 + 展开中的夹重拉覆盖；refreshSysKids 定义在 panels/tree.js） */
     .catch(function (e) { listLoading = false; if (!silent) { renderTree(); toast(t('side.loadFailed', { msg: e && e.message || e })) } return false });   /* i18n 覆盖卡F：side.loadFailed */
 }
-/* ==================================================================================
- * wasm embedder（0.5.0② notes-050-wasm-embedder）：transformers.js 浏览器端 bge 后端
- * 冻结架构 [[n-muz9b97x35et]] + spike [[n-muz91f19rrqj]]。
- *
- * 只跑在 app 页（全窗口 app.html）——wasm-in-panel 可行性裁决（本卡冻结风险项③）：
- *   面板（client bundle）不加载 transformers.js / ONNX wasm / 模型，面板读现成向量
- *   （经 notes-vectors-search RPC）。证据见本文件尾「wasm-in-panel 裁决」说明块。
- *
- * 数据流：浏览器算向量 → RPC 回写 host 边车（notes-vectors-put，①的队列消费位）；
- *   查询嵌入同理（notes-vectors-search 的 queryVector 形态，③消费）。
- *
- * 红线：
- *   · 正文不出机器（本地 wasm 路线本质保证，模型/向量全在浏览器本地）。
- *   · npm 包体积零增长（模型 23.32MB + wasm 运行时 10.6~20.6MB 一律运行时拉取，不进包）。
- *   · 离线 = 优雅降级（后台预取失败静默；显式「构建索引」失败 sticky 报错——见 0.5.0 P0）。
- *
- * 下载代理（0.5.0 P0 notes-050-model-proxy）：模型下载改 host 代理 GET /dsh-notes-model/<path>——
- *   浏览器侧同源拉取（灭 CORS），host 侧走镜像链 hf-mirror.com（spike 实测 8.7MB/s）→ huggingface.co 兜底
- *   （jsDelivr 已砍：spike 实测三处 404，模型不在 jsDelivr 射程，不准复活）；Range/If-Range 透传保断点续传；
- *   每环超时 ≤15s 快速失败 + 续传重试上限封顶。模型文件进浏览器 Cache API（不进 npm 包）。
- *
- * 静默预取（用户拍板 B+）：浏览器闲置（requestIdleCallback / 空闲探测）时后台拉取，
- *   不打断任何交互；首次「构建索引」若模型未下 → 显式下载带进度（B 方案兜底）。
- * ================================================================================== */
-
-/* ==== wasm-embedder-core BEGIN ====（0.5.0② notes-050-wasm-embedder：下载纪律 + 闲置预取纯函数核——check 节 118 提取 eval 行为级测试）
- * 0.5.0 P0（notes-050-model-proxy）：模型下载改 host 代理——浏览器侧不再持镜像链（CORS 由 host 代理消化），
- *   本核只留：同源 URL 构造 + 单文件下载（超时/断点续传/进度）+ 续传重试上限 + 闲置判定。
- * 纯函数块：零 DOM 依赖，fetchImpl / now 全经入参注入，Node mock 可 eval 测试。
- * 契约：fetchImpl(url, init) → Response-like { ok, status, headers:{get(k)}, body?:{getReader()}, arrayBuffer() }。
- */
-// 同源代理基址（host 代理通道 GET /dsh-notes-model/<path>——host 侧镜像链 hf-mirror→HF 不动）
-var WASM_PROXY_BASE = '/dsh-notes-model'
-// 模型标识（transformers.js 布局：config + tokenizer + tokenizer_config + onnx/model_quantized.onnx）
-var WASM_MODEL_ID = 'Xenova/bge-small-zh-v1.5'
-var WASM_MODEL_FILES = ['config.json', 'tokenizer.json', 'tokenizer_config.json', 'onnx/model_quantized.onnx']
-// 模型总字节（spike 实测 23.32MB：onnx 23.4MB + tokenizer 429KB + config 1KB；仅文档锚，实际以下载后 Cache API 统计为准）
-var WASM_MODEL_BYTES = 24452000
-// 嵌入维度（bge-small-zh-v1.5 输出 512 维 L2 归一化向量；host bge 后端 dim=512 同口径，形状断言锚）
-var WASM_EMBED_DIM = 512
-// 闲置预取阈值：距最后交互 >60s 才允许静默预取（不打断任何交互）
-var WASM_PREFETCH_IDLE_MS = 60000
-// 断点续传最大尝试次数（Range 续传 + ETag 校验；超限抛错，由上层降级承接）
-var WASM_RESUME_MAX_TRIES = 3
-// 下载超时上限（0.5.0 P0：每环 ≤15s 快速失败——现状浏览器默认 21s 连接超时 ×3 无界重试才放弃）
-var WASM_DOWNLOAD_TIMEOUT_MS = 15000
-
-function wasmModelUrl(file) { return WASM_PROXY_BASE + '/' + WASM_MODEL_ID + '/resolve/main/' + file }
-// 闲置判定：距 lastActivity 超过 idleMs → 允许预取（返回 true 才触发后台拉取）
-function wasmShouldPrefetch(now, lastActivity, idleMs) {
-  return now >= lastActivity + (typeof idleMs === 'number' && isFinite(idleMs) && idleMs >= 0 ? idleMs : WASM_PREFETCH_IDLE_MS)
-}
-// 单文件下载（超时 AbortController + 进度回调 + Range 断点续传 + ETag/If-Range 校验）：
-//   opts = { rangeStart?, expectedEtag?, onProgress?(loaded, total), timeoutMs? }；返回 { bytes:Uint8Array, etag:string|null }。
-//   超时：缺省 WASM_DOWNLOAD_TIMEOUT_MS（≤15s），AbortController 快速失败到下一环；fetchImpl 透传 signal。
-async function wasmDownloadFile(fetchImpl, url, opts) {
-  opts = opts || {}
-  const init = { method: 'GET' }
-  const headers = {}
-  if (opts.rangeStart > 0) headers['Range'] = 'bytes=' + opts.rangeStart + '-'
-  if (opts.expectedEtag) headers['If-Range'] = opts.expectedEtag
-  if (Object.keys(headers).length) init.headers = headers
-  const timeoutMs = (typeof opts.timeoutMs === 'number' && isFinite(opts.timeoutMs) && opts.timeoutMs > 0) ? opts.timeoutMs : WASM_DOWNLOAD_TIMEOUT_MS
-  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null
-  if (ctrl) init.signal = ctrl.signal
-  const to = ctrl ? setTimeout(function () { try { ctrl.abort() } catch (e) {} }, timeoutMs) : null
-  try {
-    const res = await fetchImpl(url, init)
-    if (!res || res.ok === false) throw new Error('wasm download failed: ' + url + ' (status ' + (res && res.status) + ')')
-    const getHeader = function (k) { return (res.headers && typeof res.headers.get === 'function') ? res.headers.get(k) : (res.headers && res.headers[k]) }
-    const etag = getHeader('etag') || null
-    const total = parseInt(getHeader('content-length') || '0', 10) || 0
-    let buf
-    if (res.body && typeof res.body.getReader === 'function') {
-      const reader = res.body.getReader()
-      const chunks = []
-      let loaded = 0
-      for (;;) {
-        const r = await reader.read()
-        if (r.done) break
-        chunks.push(r.value)
-        loaded += r.value.length
-        if (opts.onProgress) opts.onProgress(loaded, total)
-      }
-      buf = new Uint8Array(loaded)
-      let off = 0
-      for (const c of chunks) { buf.set(c, off); off += c.length }
-    } else {
-      const ab = await res.arrayBuffer()
-      buf = new Uint8Array(ab)
-      if (opts.onProgress) opts.onProgress(buf.length, total || buf.length)
-    }
-    return { bytes: buf, etag: etag }
-  } finally { if (to) clearTimeout(to) }
-}
-// 断点续传：从 resumeBytes 起，Range 续传 + If-Range 校验（ETag 完整性核对，下载纪律③）；失败重试 WASM_RESUME_MAX_TRIES 次（重试上限封顶）。
-async function wasmDownloadResumable(fetchImpl, url, opts) {
-  opts = opts || {}
-  const resumeBytes = Math.max(0, Math.floor(Number(opts.resumeBytes) || 0))
-  const expectedEtag = opts.expectedEtag || null
-  let lastErr = null
-  for (let attempt = 0; attempt < WASM_RESUME_MAX_TRIES; attempt++) {
-    try {
-      return await wasmDownloadFile(fetchImpl, url, { rangeStart: resumeBytes, expectedEtag: expectedEtag, onProgress: opts.onProgress, timeoutMs: opts.timeoutMs })
-    } catch (e) { lastErr = e }
-  }
-  throw lastErr || new Error('wasm download resumable failed: ' + url)
-}
-// 同源代理下载（0.5.0 P0：镜像链已迁 host——浏览器只走单环 /dsh-notes-model/<file>；断点续传重试上限仍在此封顶）。
-//   mirrors 参数保留兼容（不再本地 failover，恒忽略）。
-async function wasmDownloadWithFailover(fetchImpl, mirrors, file, opts) {
-  return wasmDownloadResumable(fetchImpl, wasmModelUrl(file), opts)
-}
-/* ==== wasm-embedder-core END ==== */
-
-/* ==================================================================================
- * 浏览器 glue（app 页运行时；check 不执行——节 118 只 eval 上方 core 块行为级）。
- * ================================================================================== */
-// 运行时库（transformers.js 浏览器 ESM，运行时动态 import，不进 npm 包）：
-//   镜像链两环加载——模型走 hf-mirror（上文镜像链），库与模型两条链独立；
-//   0.5.0④（notes-050-sem-settings）主窗口裁决：npmmirror 路线实证不可达（registry files/=403、cdn=404），
-//   运行时改 jsdelivr 主 → unpkg 兜底（与模型链镜像哲学同款；模型链 hf-mirror→HF 官方不动）。
-var WASM_RUNTIME_URLS = [
-  'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/dist/transformers.min.js',
-  'https://unpkg.com/@huggingface/transformers@3.7.2/dist/transformers.min.js',
-]
-// 运行时库 failover import：按序尝试镜像链，成功返回模块；全败抛错（上层降级承接，不刷屏）。
-async function wasmImportRuntime() {
-  let lastErr = null
-  for (const url of WASM_RUNTIME_URLS) {
-    try { return await import(url) } catch (e) { lastErr = e }
-  }
-  throw lastErr || new Error('wasm runtime import failed on all mirrors')
-}
-
-// 模型缓存（Cache API 优先；不可用回退内存 Map——OPFS 兜底不阻塞嵌入主流程）
-var WASM_CACHE_NAME = 'dsh-notes-wasm-model'
-var _wasmCachePromise = null
-function _wasmCache() {
-  if (!_wasmCachePromise) {
-    _wasmCachePromise = (function () {
-      try {
-        if (typeof caches !== 'undefined' && typeof caches.open === 'function') return caches.open(WASM_CACHE_NAME)
-      } catch (e) { /* 不可用 → 内存兜底 */ }
-      return Promise.resolve(null)
-    })()
-  }
-  return _wasmCachePromise
-}
-
-// 已下载大小（字节，从 Cache API 统计；无缓存 = 0）
-function wasmModelDownloadedBytes() {
-  return _wasmCache().then(function (cache) {
-    if (!cache || typeof cache.keys !== 'function') return 0
-    return cache.keys().then(function (keys) {
-      if (!keys || !keys.length) return 0
-      return Promise.all(keys.map(function (k) {
-        return cache.match(k).then(function (r) { return r && r.arrayBuffer ? r.arrayBuffer() : new ArrayBuffer(0) })
-      })).then(function (arrs) {
-        let total = 0
-        for (const a of arrs) total += (a && a.byteLength) || 0
-        return total
-      })
-    })
-  }).catch(function () { return 0 })
-}
-
-// 删除模型（Cache API 全清；设置「可删」入口，④卡 UI 消费）
-function wasmModelDelete() {
-  return _wasmCache().then(function (cache) {
-    if (!cache || typeof cache.keys !== 'function') return 0
-    return cache.keys().then(function (keys) {
-      if (!keys || !keys.length) return 0
-      return Promise.all(keys.map(function (k) { return cache.delete(k) })).then(function () { return keys.length })
-    })
-  }).catch(function () { return 0 })
-}
-
-// 显式下载（B 方案兜底：首次「构建索引」模型未下时带进度下载到 Cache API，再回写 host 设置「已下载大小」）
-function wasmModelEnsureDownloaded(onProgress) {
-  return _wasmCache().then(function (cache) {
-    if (!cache) return Promise.reject(new Error('Cache API 不可用（离线/降级：嵌入回退纯文本）'))
-    const files = WASM_MODEL_FILES.slice()
-    const put = function (i) {
-      if (i >= files.length) {
-        return wasmModelDownloadedBytes().then(function (bytes) {
-          return { ok: true, bytes: bytes, files: files.length }
-        })
-      }
-      const file = files[i]
-      return wasmDownloadWithFailover(fetch, null, file, { onProgress: function (loaded, total) {
-        if (onProgress) onProgress(i, files.length, loaded, total)
-      } }).then(function (r) {
-        return cache.put('https://dsh-notes.wasm/' + file, new Response(r.bytes, { headers: { 'Content-Type': 'application/octet-stream', ETag: r.etag || '' } })).then(function () { return put(i + 1) })
-      })
-    }
-    return put(0)
-  })
-}
-
-// 静默预取（B+ 方案）：requestIdleCallback / 空闲探测——只在闲置时后台拉取，不打断任何交互；已有缓存零成本短路。
-function wasmModelPrefetch() {
-  const schedule = function (cb) {
-    try {
-      if (typeof requestIdleCallback === 'function') { requestIdleCallback(function () { cb() }, { timeout: 5000 }); return }
-    } catch (e) {}
-    setTimeout(cb, 0)
-  }
-  const go = function () {
-    wasmModelDownloadedBytes().then(function (bytes) {
-      if (bytes > 0) return   // 已下载零成本短路
-      wasmModelEnsureDownloaded(function () {}).catch(function () { /* 预取失败静默降级，不打断交互不刷屏 */ })
-    }).catch(function () { /* 外层静默：离线降级不刷屏 */ })
-  }
-  schedule(go)
-}
-
-// 状态查询（app 页/设置 UI 数据源）：{ backend, downloadedBytes, deletable }
-function wasmModelStatus() {
-  return wasmModelDownloadedBytes().then(function (bytes) {
-    return { backend: 'bge-small-zh-q8', downloadedBytes: bytes, deletable: bytes > 0 }
-  })
-}
-
-// 下载状态回写 host 设置（semantic.model「已下载大小/可删」数据源——面板设置区④卡读现成状态，不依赖 app 页在线）。
-//   经 rpc('notes-settings-set') 增量合并（inject.js 白名单 model 键），失败静默（状态回写不是嵌入主流程前提）。
-function wasmModelRecordState() {
-  return wasmModelStatus().then(function (st) {
-    try {
-      if (typeof rpc === 'function') {
-        return rpc('notes-settings-set', { semantic: { model: { backend: st.backend, bytes: st.downloadedBytes, downloadedAt: new Date().toISOString(), source: 'cache-api' } } })
-      }
-    } catch (e) { /* 静默降级 */ }
-    return st
-  })
-}
-
-// 分段嵌入（与 host _vectorChunks 同口径：≤1800 字符块、段落边界切、单段超长硬切；浏览器侧重建索引用）
-function wasmChunkText(body) {
-  const s = String(body == null ? '' : body)
-  const MAX = 1800
-  const out = []
-  if (!s) return out
-  if (s.length <= MAX) return [s]
-  const lines = s.split(/\r?\n/)
-  let cur = ''
-  const flush = function () { if (cur) out.push(cur); cur = '' }
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i]
-    if (line.length > MAX) { flush(); while (line.length > MAX) { out.push(line.slice(0, MAX)); line = line.slice(MAX) }; if (line) cur = line; continue }
-    if (cur.length === 0) { cur = line; continue }
-    if (cur.length + 1 + line.length > MAX) { flush(); cur = line; continue }
-    cur = cur + '\n' + line
-  }
-  flush()
-  return out
-}
-// 正文稳定 hash（与 host _vectorBodyHash 同口径：FNV-1a 32bit + 长度；新鲜度锚，碰撞代价可接受）
-function wasmBodyHash(body) {
-  const s = String(body == null ? '' : body)
-  let h = 0x811c9dc5
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0
-  return s.length.toString(36) + '.' + h.toString(36)
-}
-/* ==== wasm-embedder-vecs BEGIN ====（0.5.0 P0-2 notes-050-wasm-shape：嵌入产出形状提取纯函数——check 节 122 eval 行为级）
- * 教训（写进节头注）：假桩不产出真 Tensor 形状——嵌入类代码的断言必须带「形状假 Tensor」层（tolist 行为桩），纯数据桩测不出这层。
- * extractor(chunks) 返回单 Tensor [n,512]；tolist() 本身已是 [n][512]。旧码 Array.isArray(out)?out:[out] 再 map tolist
- *   → [[[v1],[v2],…]] 双层嵌套（tolist 已是 [n][512]），host put 按块展开时每个「向量」是嵌套数组、dim≠512 → 静默全丢。
- * 契约：wasmExtractVecs(out, chunkCount, dim) → [chunkCount][dim] 块向量数组；形状非法抛错（显性化，不静默吞）。
- */
-function wasmExtractVecs(out, chunkCount, dim) {
-  const vecs = (out && typeof out.tolist === 'function') ? out.tolist() : (Array.isArray(out) ? out : [])
-  if (!Array.isArray(vecs) || vecs.length !== chunkCount || !Array.isArray(vecs[0]) || vecs[0].length !== dim) {
-    throw new Error('wasm 嵌入产出形状非法：期望 [' + chunkCount + '][' + dim + ']，实得 ' + (Array.isArray(vecs) ? vecs.length + '×' + (Array.isArray(vecs[0]) ? vecs[0].length : '非数组') : typeof vecs))
-  }
-  return vecs
-}
-/* ==== wasm-embedder-vecs END ==== */
-// app 页「构建索引」编排（0.5.0④ notes-050-sem-settings，承接②遗留「真机首跑冒烟」）：
-//   模型下载（带进度）→ transformers.js 运行时加载（镜像链 jsdelivr→unpkg）→ 全库可索引笔记分段嵌入（bge 512 维）→
-//   notes-vectors-put 全量回写（replace:true 清空目标命名空间）。只跑在 app 页（wasm 运行时不进 host）；
-//   任何一步失败抛错，由调用方（设置区构建按钮）承接回落 host rebuild / 静默降级。
-async function wasmBuildIndex(onProgress, onEmbedProgress) {
-  await wasmModelEnsureDownloaded(onProgress)
-  const mod = await wasmImportRuntime()
-  // 0.5.0 P0（notes-050-model-proxy）：transformers.js 模型加载改走同源代理（灭浏览器 CORS）——
-  //   remoteHost 置空 + remotePathTemplate 指向 /dsh-notes-model/{model}/resolve/{revision}/，pipeline() 拉
-  //   config/tokenizer/onnx 全落 /dsh-notes-model/<model>/resolve/<revision>/<file>（host 代理消化 CORS+网络双断）。
-  //   transformers.js v3.7.2 remoteURL = pathJoin(remoteHost, remotePathTemplate.replace({model},{revision}), filename)
-  //   （utils/hub.js getModelFile），故 remoteHost='' + remotePathTemplate='/dsh-notes-model/{model}/resolve/{revision}/'
-  //   拼出根相对同源 URL（fetch 同源零 CORS）；host 代理 route 已按同一路径剥离前缀转发镜像链 hf-mirror→HF。
-  if (mod && mod.env) {
-    try { mod.env.allowLocalModels = false } catch (e) {}
-    try { mod.env.allowRemoteModels = true } catch (e) {}
-    try { mod.env.remoteHost = '' } catch (e) {}
-    try { mod.env.remotePathTemplate = '/dsh-notes-model/{model}/resolve/{revision}/' } catch (e) {}
-  }
-  const extractor = await mod.pipeline('feature-extraction', WASM_MODEL_ID)
-  const list = await rpc('notes-list', {})
-  const notes = (list && list.notes) || []
-  // 0.5.0 P0-2（notes-050-wasm-shape）：先过滤出可索引笔记（与旧循环同口径）以便嵌入进度 i/n 报总数
-  const indexable = []
-  for (const n of notes) {
-    if (!n || !n.id || n.deleted === true || n.sensitive === true || (n.kind || 'note') === 'sys') continue
-    indexable.push(n)
-  }
-  const rows = []
-  let done = 0
-  for (const n of indexable) {
-    const g = await rpc('notes-get', { id: n.id })
-    const body = (g && g.note && g.note.body) || ''
-    const chunks = wasmChunkText(body)
-    if (chunks.length) {
-      const out = await extractor(chunks, { pooling: 'mean', normalize: true })
-      // 0.5.0 P0-2（notes-050-wasm-shape）：vecs 直接 out.tolist()（[n][512] 即块向量数组；单块也是 [[512]] 一层）——
-      //   旧码 tensors.map(tolist) 造出 [[[v1],[v2],…]] 双层嵌套；wasmExtractVecs 断言 vectors.length===chunks.length 且 [0].length===512。
-      const vecs = wasmExtractVecs(out, chunks.length, WASM_EMBED_DIM)
-      rows.push({ noteId: n.id, bodyHash: wasmBodyHash(body), vectors: vecs })
-    }
-    done++
-    if (onEmbedProgress) onEmbedProgress(done, indexable.length)
-  }
-  const put = await rpc('notes-vectors-put', { backend: 'bge-small-zh-q8', replace: true, rows: rows })
-  // 0.5.0 P0-2：put 全丢时 host 返回 {error}——抛给调用方走 sticky 报错（静默吞是第二个 bug，可观测性）
-  if (put && put.error) throw new Error(put.error)
-  await wasmModelRecordState()
-  return put
-}
-
-/* ==================================================================================
- * wasm-in-panel 裁决（冻结风险项③，实证）：
- *   client 面板 bundle 现状 815KB（src/client/** 拼接，本卡实测）——面板是浮动轻量形态（可拖拽/半透明）。
- *   若在面板加载 wasm 后端需追加：transformers.js 浏览器 min ESM 867KB + ONNX wasm 10.6MB（simd-threaded）
- *   /20.6MB（jsep）+ 模型 23.32MB ≈ 34.8MB 运行时，面板体积放大 ~43×，且 wasm 初始化冷加载 3.3s 会卡面板首屏。
- *   裁决：嵌入只在 app 页（全窗口 app.html）跑；面板读现成向量（notes-vectors-search RPC）。落地锚点见 check 节 118。
- * ================================================================================== */
 /* ===== P2 笔记双链：解析 / 索引 / 跳转 / 反向链接（内核 extractWikiTargets/wikiLinksTo 同一口径；库已在内存，host 不改）===== */
 /* 渲染时解析：[[n-xxx]] 精确 id 优先，其次 [[标题]] 全库标题精确匹配；均不中 → null（渲染为纯文本） */
 function resolveWikiTarget(target) {
@@ -6461,8 +6113,10 @@ function openSettings() {
       + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>';
     setSecs.injprev = '<div class="set-row" data-sec="injprev">' + setLabelHtml(t('settings.injPreview'), t('settings.injPreviewTip')) + '<div class="set-ctrl"><button class="mbtn" id="setInjectPreview">' + t('settings.previewBtn') + '</button></div></div>';
     setSecs.injmgr = '<div class="set-row" data-sec="injmgr">' + setLabelHtml(t('settings.injManager'), t('settings.injManagerTip')) + '<div class="set-ctrl"><button class="mbtn" id="setInjectManager">' + t('settings.manageBtn') + '</button></div></div>';
-    /* 0.5.0④（notes-050-sem-settings）：语义检索节（检索与注入组尾）——总开关 + 后端下拉 + 索引状态行 + 构建按钮 + 模型管理。
-       消费①的 notes-vectors-status/rebuild 通道 + ②的 wasm-embedder（模型下载/删除/状态）；缺省关闭零成本（开关 off 即文本检索逐字节旧行为）。 */
+    /* 0.5.0④（notes-050-sem-settings）：语义检索节（检索与注入组尾）——总开关 + 后端下拉 + 索引状态行 + 构建按钮。
+       消费①的 notes-vectors-status/rebuild 通道；缺省关闭零成本（开关 off 即文本检索逐字节旧行为）。
+       0.5.0 R3（notes-051-query-embed）：浏览器嵌入路径整体退役——模型管理行（Cache API 大小/删除/重下）随浏览器嵌入模块一并拆除，
+       模型由 host embedder 按需下载进 host 缓存（BGE_MODEL_CACHE_DIR），UI 不再持模型态。 */
     setSecs.semantic = '<div class="set-row" data-sec="semantic">' + setLabelHtml(t('settings.semantic'), t('settings.semanticTip'))
       + '<div class="set-ctrl sem-ctrl">'
       + '<label class="set-check"><input type="checkbox" id="setSemEnabled"> ' + t('settings.semanticEnabled') + '</label>'
@@ -6472,7 +6126,7 @@ function openSettings() {
       + '<option value="custom-endpoint" disabled>' + t('settings.semanticBackendCustom') + '</option>'
       + '</select></div>'
       + '<div class="s" id="setSemStatus">' + t('common.loading') + '</div>'
-      + '<div class="sem-row"><button class="mbtn" id="setSemBuild" disabled>' + t('settings.semanticBuild') + '</button><span class="s" id="setSemModel"></span></div>'
+      + '<div class="sem-row"><button class="mbtn" id="setSemBuild" disabled>' + t('settings.semanticBuild') + '</button></div>'
       + '</div></div>';
     setSecs.data = '<div class="set-row" data-sec="data">' + setLabelHtml(t('settings.data'), t('settings.dataTip')) + '<div class="set-ctrl"><button class="mbtn" id="setExport">' + t('settings.exportAll') + '</button><button class="mbtn" id="setImport">' + t('settings.importBtn') + '</button><button class="mbtn" id="setTrash">' + t('topbar.trash') + '</button></div></div>';
     setSecs.assets = '<div class="set-row" data-sec="assets">' + setLabelHtml(t('settings.assets'), t('settings.assetsTip')) + '<div class="set-ctrl"><button class="mbtn" id="setPrune">' + t('settings.pruneBtn') + '</button></div></div>';
@@ -6544,7 +6198,6 @@ function openSettings() {
     semState = {
       enabled: semantic0.enabled === true,
       backend: (typeof semantic0.backend === 'string' && semantic0.backend) ? semantic0.backend : 'bge-small-zh-q8',
-      model: (semantic0.model && typeof semantic0.model === 'object') ? semantic0.model : null,
       status: null, building: false
     };
     var semChk = $('setSemEnabled'), semSel = $('setSemBackend'), semBuildBtn = $('setSemBuild');
@@ -6552,7 +6205,6 @@ function openSettings() {
     if (semSel) semSel.value = (semState.backend === 'bge-small-zh-q8') ? 'bge-small-zh-q8' : (semState.backend || '');
     if (semBuildBtn) semBuildBtn.disabled = !semState.enabled || semState.building;
     semRenderStatus();
-    semRenderModel();
     if (semChk) semChk.onchange = function () { semDoToggle(this.checked) };
     if (semSel) semSel.onchange = function () {
       var v = this.value;
@@ -6747,13 +6399,6 @@ function flushSettingsPending() {
 /* ================= 0.5.0④ 语义检索节 helper（notes-050-sem-settings）：状态行/开关翻转/构建编排/模型管理 ================= */
 /* 后端显示名：bge-small-zh-q8 → bge-small-zh；其余直显 id */
 function semBackendLabel(id) { return id === 'bge-small-zh-q8' ? 'bge-small-zh' : (id || '—'); }
-/* 字节数人话（B/KB/MB） */
-function semFmtBytes(n) {
-  n = Math.max(0, Number(n) || 0);
-  if (n < 1024) return n + ' B';
-  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
-  return (n / 1048576).toFixed(1) + ' MB';
-}
 /* ISO 时间 → YYYY-MM-DD HH:MM（本地态） */
 function semFmtTime(iso) {
   if (!iso) return '';
@@ -6762,17 +6407,17 @@ function semFmtTime(iso) {
   var p = function (x) { return (x < 10 ? '0' : '') + x };
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
-/* 语义设置整写：enabled+backend 双键恒同写（红线①：settings-set 整对象替换口径，单写 backend 丢 enabled）；model 传 null 才清下载状态 */
-function semWrite(enabled, backend, model) {
+/* 语义设置整写：enabled+backend 双键恒同写（红线①：settings-set 整对象替换口径，单写 backend 丢 enabled） */
+function semWrite(enabled, backend) {
   var s = { enabled: !!enabled, backend: backend || 'bge-small-zh-q8' };
-  if (model === null) s.model = null;
   return rpc('notes-settings-set', { semantic: s }).then(function (res) {
     if (res && res.error) { modalErr(res.error); throw new Error(res.error); }
-    if (semState) { semState.enabled = s.enabled; semState.backend = s.backend; if (model === null) semState.model = null; }
+    if (semState) { semState.enabled = s.enabled; semState.backend = s.backend; }
     return res;
   });
 }
-/* 索引状态行渲染（消费① notes-vectors-status）：关=未启用 / 报错=降级态 / bge 无模型=未下载 / 有 lastBuiltAt=N/M 篇 / 否则=尚未构建 */
+/* 索引状态行渲染（消费① notes-vectors-status）：关=未启用 / 报错=降级态 / 有 lastBuiltAt=N/M 篇 / 否则=尚未构建
+   （0.5.0 R3：「模型未下载」分支退役——模型由 host embedder 首次嵌入时按需下载，UI 不持模型态） */
 function semRenderStatus() {
   var el = $('setSemStatus');
   if (!el || !semState) return;
@@ -6783,7 +6428,6 @@ function semRenderStatus() {
     if (!semState.enabled) html = t('settings.semanticStatusOff');
     else if (st && st.error) html = t('settings.semanticStatusError', { msg: st.error });
     else if (!st || st.ok !== true) html = t('settings.semanticStatusError', { msg: 'unknown' });
-    else if (semState.backend === 'bge-small-zh-q8' && !(semState.model && semState.model.bytes > 0) && !st.lastBuiltAt) html = t('settings.semanticStatusNoModel');
     else if (st.lastBuiltAt) html = t('settings.semanticStatus', { indexed: st.indexed || 0, indexable: st.indexable || 0, backend: semBackendLabel(st.backend), time: semFmtTime(st.lastBuiltAt) });
     else html = t('settings.semanticStatusNever');
     el2.innerHTML = esc(html);
@@ -6792,40 +6436,9 @@ function semRenderStatus() {
     if (el3) el3.innerHTML = esc(t('settings.semanticStatusError', { msg: (e && e.message) || e }));
   });
 }
-/* 模型管理行渲染（消费② wasm 模型状态：settings.semantic.model 记录；app 页提供删除/重下，面板只读） */
-function semRenderModel() {
-  var el = $('setSemModel');
-  if (!el || !semState) return;
-  var m = semState.model;
-  var html = esc(t('settings.semanticModel')) + (m && m.bytes > 0 ? esc(t('settings.semanticModelSize', { size: semFmtBytes(m.bytes) })) : esc(t('settings.semanticModelNone')));
-  if (typeof wasmModelDelete === 'function') {
-    html += ' <button class="mbtn" id="setSemModelDel">' + t('settings.semanticModelDelete') + '</button>';
-    html += ' <button class="mbtn" id="setSemModelRe">' + t('settings.semanticModelRedownload') + '</button>';
-  }
-  el.innerHTML = html;
-  var del = $('setSemModelDel'), re = $('setSemModelRe');
-  if (del) del.onclick = function () { semDoModelDelete() };
-  if (re) re.onclick = function () { semDoModelRedownload() };
-}
-/* 模型删除（消费② wasmModelDelete）：清 Cache API → 清 settings.semantic.model → 状态回落（未下载） */
-function semDoModelDelete() {
-  var doDel = (typeof wasmModelDelete === 'function') ? wasmModelDelete() : Promise.resolve(0);
-  doDel.then(function () {
-    return semWrite(semState.enabled, semState.backend, null);
-  }).then(function () { semRenderModel(); semRenderStatus(); })
-    .catch(function () { semRenderModel(); semRenderStatus(); });
-}
-/* 模型重下（消费② wasmModelEnsureDownloaded）：显式带进度下载 → 记录状态 → 状态行/模型行刷新 */
-function semDoModelRedownload() {
-  var p = (typeof wasmModelEnsureDownloaded === 'function')
-    ? wasmModelEnsureDownloaded(function (i, n, loaded, total) { var s = $('setSemStatus'); if (s) s.innerHTML = t('settings.semanticDownloading', { pct: total > 0 ? Math.round(loaded / total * 100) : 0 }); })
-    : Promise.reject(new Error('wasm 不可用'));
-  p.then(function () { return (typeof wasmModelRecordState === 'function') ? wasmModelRecordState() : null; })
-   .then(function () { semRenderModel(); semRenderStatus(); })
-   .catch(function () { semRenderModel(); semRenderStatus(); });
-}
 /* 构建索引（0.5.0 R2 notes-051-save-embed：恒走 host notes-vectors-rebuild）——R1 起 bge 嵌入已迁回 host 进程
-   （onnxruntime-web 纯 wasm 在宿主跑），浏览器 wasm 编排（模型下载→嵌入→put 全量回写）退役不再被调用（R3 才删码，本卡只改路由）；
+   （onnxruntime-web 纯 wasm 在宿主跑）；0.5.0 R3（notes-051-query-embed）浏览器嵌入编排（模型下载→嵌入→put 全量回写）
+   随浏览器嵌入模块整体删码退役，notes-vectors-put 回写通道 host 侧保留；
    rebuild 快速失败闸已拆，存量回填真跑（分段嵌入+replace put），进度经轮询 status（计数涨）。
    0.5.0 P0（notes-050-model-proxy）失败驻留报错：「构建索引」是用户显式动作——失败必须 sticky 报错条（含原因：下载失败/网络/镜像错误），
    不准静默跳回按钮态（静默降级只适用于后台预取，不适用显式点击）。 */
@@ -6841,22 +6454,14 @@ function semDoBuild() {
     semState.building = false;
     var b2 = $('setSemBuild');
     if (b2) { b2.disabled = !semState.enabled; b2.textContent = t('settings.semanticBuild'); }
-    // 0.5.0 P0-2（notes-050-wasm-shape）：构建完成后刷模型行——wasmModelRecordState 已写 settings，但 semState.model 是
-    //   打开时快照，不刷新会滞留「未下载」；bge 构建后读 wasmModelStatus 回填 bytes 再渲染（fake 后端无模型，跳过）。
-    var refresh = (backend === 'bge-small-zh-q8' && typeof wasmModelStatus === 'function') ? wasmModelStatus() : Promise.resolve(null);
-    refresh.then(function (st) {
-      if (st && semState && backend === 'bge-small-zh-q8') semState.model = { backend: st.backend, bytes: st.downloadedBytes, downloadedAt: new Date().toISOString(), source: 'cache-api' };
-      semRenderStatus(); semRenderModel();
-    }, function () {
-      semRenderStatus(); semRenderModel();
-    });
+    semRenderStatus();   /* 0.5.0 R3：完成后刷状态行（notes-vectors-status 现算）；模型行刷新随模型管理行退役拆除 */
   };
   var fail = function (err) {
     var msg = (err && err.message) ? String(err.message) : String(err);
     semShowBuildError(msg);
     finish();
   };
-  /* 0.5.0 R2：双端构建按钮同路由——恒调 host rebuild（浏览器 wasm 编排不再被调用，R3 删码） */
+  /* 0.5.0 R2 起双端构建按钮同路由——恒调 host rebuild（浏览器嵌入编排 R3 已删码退役） */
   rpc('notes-vectors-rebuild', { backend: backend }).then(function (r) {
     if (r && r.error) { fail(new Error(r.error)); return; }
     finish();

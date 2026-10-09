@@ -61,9 +61,8 @@ const APP_PAGE_ROUTE = '/dsh-notes-app'
 const APP_PAGE_FILE = path.join(PKG_DIR, 'app.html')
 // 图片资产渲染路由：GET /dsh-notes/asset?file=assets/<name>（防穿越 + 扩展名白名单 mime + immutable 缓存）
 const ASSET_ROUTE = '/dsh-notes/asset'
-// 模型文件代理路由：GET /dsh-notes-model/<path>（0.5.0 P0 notes-050-model-proxy：模型下载 host 代理——
-//   灭浏览器 CORS + 网络双断；host 侧走镜像链 hf-mirror→HF，Range/If-Range 透传保断点续传，每环超时 ≤15s）
-const MODEL_PROXY_ROUTE = '/dsh-notes-model'
+// （0.5.0 R3 notes-051-query-embed：模型文件代理路由（P0 的 model-proxy prefix 路由）退役——浏览器嵌入路径删码后无消费方；
+//   模型下载由 host embedder 经 BGE_MODEL_MIRRORS 镜像链直连，webServer 路由回到 RPC/页面/资产三条 exact）
 
 // 零外部依赖：link: 安装的包从真实路径解析，裸 import '@deepseek-ai/dsh-tools' 会 ERR_MODULE_NOT_FOUND。
 // defineTool 本体只是 校验+包装 出 {name, description, parameters, output, execute} 普通对象，
@@ -2233,7 +2232,8 @@ export function apply(ctx) {
     _vectorRegisterBackend(_vectorFakeBackend('fake-64', 64, 0.9))
     // 0.5.0 R1（notes-051-host-embedder）：host embedder 内核——bge 嵌入迁回 host 进程（spike② 实证配置落地，嵌入面迁回 host 的第一步）。
     //   路线：onnxruntime-web 纯 wasm 在宿主进程跑 bge（正文不出机器红线不变——本地推理本质保证；npm overrides 桩化 onnxruntime-node/sharp，
-    //   原生 binding/@img 零进安装树——进程退出 0xC0000005 崩溃回归闸）；浏览器端 app 页构建通道（notes-vectors-put 回写）保留并存，UI 迁移是后续卡。
+    //   原生 binding/@img 零进安装树——进程退出 0xC0000005 崩溃回归闸）；0.5.0 R3（notes-051-query-embed）起浏览器嵌入路径整体退役
+    //   （app 侧嵌入模块删码 + 模型文件代理路由拆除），notes-vectors-put 回写通道保留（外部回写入口，生产方暂缺）。
     //   懒加载单例：首次调用才 import 运行时 + 加载模型（缺省关闭零成本——不进 embed 则零 import 零下载）；
     //   并发闸 = 嵌入串行化队列（单飞链，失败不断链）；批上限 ≤8 块/批（防 spike 实测大批次 +4.3GB 内存峰）；
     //   模型 host 缓存 BGE_MODEL_CACHE_DIR（镜像链 hf-mirror→HF failover，Node 无 CORS 直连）。
@@ -2733,7 +2733,7 @@ export function apply(ctx) {
         return { ok: true, backend: backend.id, dim: backend.dim, minScore: backend.minScore, results: page, count: page.length }
       } catch (e) { return { error: String(e.message || e) } }
     }
-    // 浏览器回写（notes-vectors-put 入口，②卡落通道）：浏览器 wasm 算好的向量 → 经索引队列写边车（①的队列消费位）。
+    // 外部回写（notes-vectors-put 入口，②卡落通道）：外部算好的向量 → 经索引队列写边车（①的队列消费位；0.5.0 R3 起浏览器嵌入生产方退役，通道保留）。
     // args = { backend, rows:[{ noteId, bodyHash, vectors:[vec0,vec1,...] }], replace? }
     //   vectors = 该笔记分段块的 L2 归一化向量数组（实现方保证，dim 由本函数写前校验）；chunk = 数组下标（与 _vectorDrain 同口径）。
     //   replace:true = 先清空目标命名空间再写（浏览器全量重建路径）；缺省 = 增量 upsert（单笔记重算，bodyHash 新鲜度锚照存）。
@@ -3260,7 +3260,7 @@ export function apply(ctx) {
     // notes-vectors-status {} → { ok, enabled, backend, indexed, indexable, lastBuiltAt, namespaces:[{backend,dim,minScore,count,lastBuiltAt}] }（N/M 篇·后端·上次构建·各命名空间统计）
     // notes-vectors-rebuild { backend } → 全量重建指定后端命名空间（换后端不重建、旧集保留）；backend 缺省回落激活后端。
     // notes-vectors-search { queryVector|query, backend, limit } → 余弦 + minScore 过滤 + per-note max-pooling（③卡消费；query 为内部 embed 便捷形态）
-    // notes-vectors-put { backend, rows:[{noteId, bodyHash, vectors:[...]}], replace? } → 浏览器 wasm 算好的向量经队列回写边车（②卡落通道；replace:true 全量重建清空目标命名空间）
+    // notes-vectors-put { backend, rows:[{noteId, bodyHash, vectors:[...]}], replace? } → 外部算好的向量经队列回写边车（②卡落通道；replace:true 全量重建清空目标命名空间；0.5.0 R3 起浏览器嵌入生产方退役，通道保留）
     disposers.push(handle('notes-vectors-status', async (args) => { try { return await _vectorsStatus() } catch (e) { return { error: String(e.message || e) } } }))
     disposers.push(handle('notes-vectors-rebuild', async (args) => { try { return await _vectorsRebuild(args && args.backend) } catch (e) { return { error: String(e.message || e) } } }))
     disposers.push(handle('notes-vectors-search', async (args) => { try { return await _vectorsSearch(args || {}) } catch (e) { return { error: String(e.message || e) } } }))
@@ -3378,64 +3378,8 @@ export function apply(ctx) {
       }))
     }
 
-    // ==== model-proxy BEGIN ====（0.5.0 P0 notes-050-model-proxy：模型下载 host 代理——灭浏览器 CORS + 网络双断；Range/If-Range 透传保断点续传）
-    // 镜像链：hf-mirror → huggingface.co（host 无 CORS，spike 实证 8.7MB/s；jsDelivr 已砍，红线不动）。
-    //   0.5.0 R1（notes-051-host-embedder）：镜像链抽公共——单一事实源 = kernel/vector-store.dist.js 的 BGE_MODEL_MIRRORS
-    //   （host embedder 模型下载同源复用；序位：vector-store ≺ server，manifest 锁定）。
-    // app 页 wasmDownloadFile 改走同源 /dsh-notes-model/<path>；host 侧逐环尝试镜像链，每环超时 ≤15s 快速失败到下一环；
-    //   状态码/Content-Type/Content-Length/Content-Range/ETag/Accept-Ranges 透传（断点续传语义不变）。全环失败 → 502（app 侧 sticky 报错承接）。
-    const MODEL_PROXY_MIRRORS = BGE_MODEL_MIRRORS
-    const MODEL_PROXY_TIMEOUT_MS = 15000
-    if (webServer && typeof webServer.register === 'function') {
-      disposers.push(webServer.register({
-        kind: 'prefix',
-        path: MODEL_PROXY_ROUTE,
-        handler: async function (req, res) {
-          res.setHeader('Cache-Control', 'no-store')
-          if (req.method !== 'GET' && req.method !== 'HEAD') {
-            res.setHeader('Content-Type', 'application/json')
-            res.writeHead(405); res.end(JSON.stringify({ ok: false, message: 'method not allowed' })); return
-          }
-          let rel = ''
-          try { rel = new URL(req.url || '/', 'http://x').pathname.slice(MODEL_PROXY_ROUTE.length).replace(/^\/+/, '') } catch (e) {}
-          if (!rel || rel.indexOf('..') >= 0) {
-            res.setHeader('Content-Type', 'application/json')
-            res.writeHead(400); res.end(JSON.stringify({ ok: false, message: 'bad model path' })); return
-          }
-          const rng = (req.headers && (req.headers['range'] || req.headers['Range'])) || null
-          const ifr = (req.headers && (req.headers['if-range'] || req.headers['If-Range'])) || null
-          const upHeaders = {}
-          if (rng) upHeaders['Range'] = rng
-          if (ifr) upHeaders['If-Range'] = ifr
-          let lastErr = null
-          for (const m of MODEL_PROXY_MIRRORS) {
-            const url = m.base + '/' + rel
-            let ctrl = null, to = null
-            try {
-              ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null
-              if (ctrl) to = setTimeout(function () { try { ctrl.abort() } catch (e) {} }, MODEL_PROXY_TIMEOUT_MS)
-              const up = await fetch(url, { method: 'GET', headers: upHeaders, signal: ctrl ? ctrl.signal : undefined, redirect: 'follow' })
-              if (!up) throw new Error('upstream empty: ' + url)
-              if (up.status === 404 || up.status >= 500) { lastErr = new Error('upstream ' + up.status + ': ' + url); continue }
-              const get = function (k) { return (up.headers && typeof up.headers.get === 'function') ? up.headers.get(k) : null }
-              const ct = get('content-type'); if (ct) res.setHeader('Content-Type', ct)
-              const cl = get('content-length'); if (cl) res.setHeader('Content-Length', cl)
-              const cr = get('content-range'); if (cr) res.setHeader('Content-Range', cr)
-              const et = get('etag'); if (et) res.setHeader('ETag', et)
-              const ar = get('accept-ranges'); if (ar) res.setHeader('Accept-Ranges', ar)
-              const buf = Buffer.from(await up.arrayBuffer())
-              res.writeHead(up.status)
-              res.end(req.method === 'HEAD' ? '' : buf)
-              return
-            } catch (e) { lastErr = e } finally { if (to) clearTimeout(to) }
-          }
-          res.setHeader('Content-Type', 'application/json')
-          res.writeHead(502)
-          res.end(JSON.stringify({ ok: false, message: 'model download failed on all mirrors: ' + ((lastErr && lastErr.message) || lastErr) }))
-        },
-      }))
-    }
-    // ==== model-proxy END ====
+    // （0.5.0 R3 notes-051-query-embed：model-proxy 块整体退役——P0 的模型文件代理 prefix 路由随浏览器嵌入路径删码无消费方而拆除；
+    //   模型下载由 host embedder 经宿主镜像链（hf-mirror→HF，单一事实源在 kernel/vector-store.dist.js）直连，webServer 回到 RPC/页面/资产三条 exact 路由）
 
     // ==== notes-graph BEGIN ====（0.4.3 内核①：四类边统一扫描建图 + 增量维护 + 图查询 RPC，notes-043-graph；0.4.3+ notes-043-graph-registry：边类型收敛为 EDGE_REGISTRY 声明式描述符——扩展新边类型 = 追加一个描述符，行为零变化）
     // EDGE_REGISTRY 描述符契约（声明式注册表，非继承——同 RootNoteTpl 先例；差异只在「提取方式 / 死链语义」两个数据维度）：
@@ -5845,8 +5789,9 @@ export function apply(ctx) {
         }
         // 0.5.0①（notes-050-vector-layer）语义检索激活位：semantic = { enabled?: boolean, backend?: string, model?: {...}|null }（总开关 + 激活后端 id + 模型下载状态）；
         //   null/undefined 删除 override 恢复关闭（缺省关闭零成本）；仅存白名单键（enabled 布尔 / backend 非空串 / model 白名单子键），其余键忽略不落盘。
-        //   增量合并（0.5.0② notes-050-wasm-embedder）：model 键 = 浏览器 wasm 模型下载状态（设置「已下载大小/可删」数据源，
-        //   app 页下载成功后回写）——只 patch model 不清除存量 enabled/backend（app 页记录下载与设置开关是两个独立动作）。
+        //   增量合并（0.5.0② notes-050-wasm-embedder）：model 键 = 浏览器嵌入模型下载状态（曾作设置「已下载大小/可删」数据源，
+        //   app 页下载成功后回写）——只 patch model 不清除存量 enabled/backend（app 页记录下载与设置开关是两个独立动作）；
+        //   0.5.0 R3（notes-051-query-embed）起浏览器嵌入路径整体退役、model 键生产方不再存在——白名单保留（存量 settings.json 兼容读回，UI 已不消费）。
         if ('semantic' in patch) {
           if (patch.semantic === null || patch.semantic === undefined) delete settingsCache.semantic
           else if (patch.semantic && typeof patch.semantic === 'object' && !Array.isArray(patch.semantic)) {

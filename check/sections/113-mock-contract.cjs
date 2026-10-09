@@ -305,11 +305,10 @@ module.exports = {
     assert(dev.indexOf('必须一致') >= 0 && dev.indexOf('允许简化') >= 0, '边界文档双清单（必须一致 vs 允许简化）锚')
   })
 
-  await t('0.5.0 P0 模型代理通道同步：host server.dist.js prefix 路由 ⇄ e2e mock GET 通道（113 闸扩展——非 RPC 通道走结构锚）', () => {
-    assert(H.indexSrc.indexOf("path: MODEL_PROXY_ROUTE") >= 0 && H.indexSrc.indexOf("kind: 'prefix'") >= 0, 'host 侧注册 /dsh-notes-model prefix 路由')
-    assert(H.indexSrc.indexOf('MODEL_PROXY_MIRRORS') >= 0 && H.indexSrc.indexOf('MODEL_PROXY_TIMEOUT_MS = 15000') >= 0, 'host 侧镜像链 hf-mirror→HF + 每环超时 15s 常量')
-    assert(mockSrc.indexOf("'/dsh-notes-model/'") >= 0, 'e2e mock 同步 GET /dsh-notes-model/ 通道')
-    assert(mockSrc.indexOf('_modelProxyStatus') >= 0, 'e2e mock 注入 _modelProxyStatus 可演习失败面（sticky 报错）')
+  await t('0.5.0 R3 模型代理退役：host 零 /dsh-notes-model 路由（server.dist.js/index.mjs 零残留）⇄ e2e mock GET 通道拆除（113 闸扩展——非 RPC 通道走结构锚）', () => {
+    assert(H.indexSrc.indexOf('MODEL_PROXY_ROUTE') < 0 && H.indexSrc.indexOf('MODEL_PROXY_MIRRORS') < 0, 'host 侧零 MODEL_PROXY_ROUTE/MODEL_PROXY_MIRRORS 残留（代理路由退役）')
+    assert(H.indexSrc.indexOf('/dsh-notes-model') < 0, 'index.mjs 零 /dsh-notes-model 残留')
+    assert(mockSrc.indexOf("'/dsh-notes-model/'") < 0 && mockSrc.indexOf('_modelProxyStatus') < 0, 'e2e mock GET /dsh-notes-model/ 通道已拆（含 _modelProxyStatus 失败桩）')
   })
   }
 }

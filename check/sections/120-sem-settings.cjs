@@ -1,13 +1,13 @@
-// 节 120. 0.5.0④ 语义检索设置区（notes-050-sem-settings：总开关+后端下拉+索引状态行+构建按钮+模型管理，入驻「检索与注入」组）
-// 冻结架构 [[n-muz9b97x35et]] + spike [[n-muz91f19rrqj]]。本卡接①的 notes-vectors-status/rebuild 通道 + ②的 wasm-embedder（模型下载/删除/状态）。
-// 断言面：①三端语义节渲染 + SET_GROUPS 登记（inject 组尾）；②enabled+backend 双键整写（settings-set 整对象替换口径，单写丢 enabled）；
+// 节 120. 0.5.0④ 语义检索设置区（notes-050-sem-settings：总开关+后端下拉+索引状态行+构建按钮，入驻「检索与注入」组）
+// 冻结架构 [[n-muz9b97x35et]] + spike [[n-muz91f19rrqj]]。本卡接①的 notes-vectors-status/rebuild 通道。
+// 0.5.0 R3（notes-051-query-embed）：浏览器嵌入路径整体退役——模型管理行/浏览器运行时拉取链/浏览器专有 i18n 键一并拆除（120.4~120.6 改写）。
+// 断言面：①三端语义节渲染 + SET_GROUPS 登记（inject 组尾；四控件 + 模型行退役锚）；②enabled+backend 双键整写（settings-set 整对象替换口径，单写丢 enabled）；
 //   ③激活流程自动回填（打开总开关 → notes-vectors-rebuild，否则存量不入队 indexed<indexable 静默漏历史）；
-//   ④构建按钮触发 rebuild（fake 走 host / bge 走浏览器 wasm 编排 wasmModelEnsureDownloaded + notes-vectors-put 全量回写）；
-//   ⑤模型删除 → 状态回落（wasmModelDelete + 清 semantic.model）；⑥wasm 运行时镜像链=[jsdelivr 主→unpkg 兜底] 且不含 npmmirror（0.5.0④ 主窗口裁决）。
+//   ④构建按钮恒走 host rebuild（浏览器嵌入编排删码）；⑤模型管理行退役 + i18n 键清理；⑥运行时拉取链退役（app bundle 零引用）；
 //   ⑦host 行为级：启用开关后存量不入队（indexed=0）→ rebuild 回填（indexed=indexable）。
 module.exports = {
   id: "120",
-  title: "120. 0.5.0④ 语义检索设置区（总开关+后端下拉+状态行+构建按钮+模型管理，notes-050-sem-settings）",
+  title: "120. 0.5.0④ 语义检索设置区（总开关+后端下拉+状态行+构建按钮；R3 模型行/拉取链退役，notes-050-sem-settings → notes-051-query-embed）",
   async run(H, S) {
   const { t, section, assert, fsNative, path, DIR, hostSrc } = H
   section('120. 0.5.0④ 语义检索设置区（notes-050-sem-settings）')
@@ -15,18 +15,18 @@ module.exports = {
   const appSettings = read('src/app/modals/settings.js')
   const cliSettings = read('src/client/modals/settings.js')
   const proto = read('design/notes-ui-v2.html')
-  const embSrc = read('src/app/kernel/wasm-embedder.js')
 
   // ===== 120.1 三端语义节渲染 + SET_GROUPS 登记 =====
-  await t('三端语义节渲染：SET_GROUPS inject 组登记 semantic + data-sec/key 锚 + 五控件（开关/后端/状态/构建/模型）', () => {
+  await t('三端语义节渲染：SET_GROUPS inject 组登记 semantic + data-sec/key 锚 + 四控件（开关/后端/状态/构建；R3 模型行退役）', () => {
     for (const [label, src] of [['app', appSettings], ['原型', proto]]) {
       const m = src.match(/SET_GROUPS = \[([\s\S]*?)\n\s*\];?/)
       const rows = new Function('return [' + m[1] + ']')().find(g => g.id === 'inject').rows
       assert(rows[rows.length - 1] === 'semantic', label + ' inject 组尾登记 semantic（实得 ' + JSON.stringify(rows) + '）')
       assert(src.indexOf('data-sec="semantic"') >= 0, label + ' semantic 行壳 data-sec 锚在案')
-      for (const id of ['setSemEnabled', 'setSemBackend', 'setSemStatus', 'setSemBuild', 'setSemModel']) {
+      for (const id of ['setSemEnabled', 'setSemBackend', 'setSemStatus', 'setSemBuild']) {
         assert(src.indexOf('id="' + id + '"') >= 0, label + ' 控件 #' + id + ' 在案')
       }
+      assert(src.indexOf('id="setSemModel"') < 0, label + ' 模型行 #setSemModel 已拆除（0.5.0 R3：Cache API 模型层退役）')
     }
     const mc = cliSettings.match(/SET_GROUPS = \[([\s\S]*?)\n\s*\];?/)
     const crows = new Function('return [' + mc[1] + ']')().find(g => g.id === 'inject').rows
@@ -49,14 +49,11 @@ module.exports = {
     assert(cliSettings.indexOf("host.call('notes-vectors-rebuild'") >= 0, 'client 构建编排走 notes-vectors-rebuild')
   })
 
-  // ===== 120.4 构建按钮触发 rebuild（0.5.0 R2：双端恒走 host rebuild；浏览器 wasm 编排退役不再被调用——R3 才删码，本卡只改路由）=====
-  await t('构建按钮触发 rebuild：0.5.0 R2（notes-051-save-embed）起 app 恒走 host notes-vectors-rebuild（bge 已迁回 host；wasmBuildIndex 编排不再被调用）', () => {
+  // ===== 120.4 构建按钮触发 rebuild（0.5.0 R3：浏览器嵌入编排删码——双端唯一路由 = host notes-vectors-rebuild）=====
+  await t('构建按钮触发 rebuild：app 恒走 host notes-vectors-rebuild（0.5.0 R3 浏览器嵌入编排删码退役，单一路由）', () => {
     assert(appSettings.indexOf('function semDoBuild(') >= 0, 'app semDoBuild 定义')
     assert(appSettings.indexOf("rpc('notes-vectors-rebuild', { backend: backend })") >= 0, 'app semDoBuild 恒调 host rebuild（单一路由）')
-    assert(appSettings.indexOf('wasmBuildIndex(') < 0 && appSettings.indexOf('typeof wasmBuildIndex') < 0, 'app 不再调用 wasmBuildIndex 编排（R2 路由切换；代码 R3 才删）')
-    assert(embSrc.indexOf('function wasmBuildIndex(') >= 0, 'wasm-embedder 仍定义 wasmBuildIndex 编排（R3 才删码——本卡只改路由，代码保留）')
-    assert(embSrc.indexOf('wasmModelEnsureDownloaded(onProgress)') >= 0 && embSrc.indexOf("rpc('notes-vectors-put'") >= 0, 'wasmBuildIndex = 模型下载 + notes-vectors-put 全量回写（编排体未动）')
-    assert(embSrc.indexOf('function wasmChunkText(') >= 0 && embSrc.indexOf('function wasmBodyHash(') >= 0, '浏览器分段嵌入 + bodyHash 同口径 helper 在案')
+    assert(appSettings.indexOf('wasmBuildIndex') < 0 && appSettings.indexOf('wasmModel') < 0 && appSettings.indexOf('wasmImportRuntime') < 0, 'app 设置区零浏览器嵌入编排引用（R3 删码）')
   })
 
   // ===== 120.4b 失败驻留报错（0.5.0 P0 notes-050-model-proxy：显式构建失败 sticky 报错条含原因）=====
@@ -75,22 +72,28 @@ module.exports = {
     assert(cliSettings.indexOf("setError('')") >= 0 && cliSettings.indexOf('再次构建先清上次驻留错误') >= 0, 'client 构建开始前清上次驻留错误（再次构建/成功才清）')
   })
 
-  // ===== 120.5 模型管理（删除/重下 + 状态回落）=====
-  await t('模型管理：删除走 wasmModelDelete + 清 semantic.model（状态回落未下载）；重下走 wasmModelEnsureDownloaded', () => {
-    assert(appSettings.indexOf('function semDoModelDelete(') >= 0 && appSettings.indexOf('wasmModelDelete') >= 0, 'app 模型删除消费 wasmModelDelete')
-    assert(appSettings.indexOf('semWrite(semState.enabled, semState.backend, null)') >= 0, 'app 删除后清 semantic.model（semWrite model=null）')
-    assert(appSettings.indexOf('function semDoModelRedownload(') >= 0 && appSettings.indexOf('wasmModelEnsureDownloaded') >= 0, 'app 模型重下消费 wasmModelEnsureDownloaded')
-    assert(embSrc.indexOf('function wasmModelDelete(') >= 0 && embSrc.indexOf('function wasmModelEnsureDownloaded(') >= 0, 'wasm-embedder 提供删除/确保下载通道')
+  // ===== 120.5 模型管理行退役（0.5.0 R3：Cache API 模型层 UI 拆除 + 浏览器专有 i18n 键清理）=====
+  await t('模型管理行退役（0.5.0 R3）：双端设置区零模型行/删除/重下控件 + 浏览器专有 i18n 键清理', () => {
+    for (const [label, src] of [['app', appSettings], ['client', cliSettings]]) {
+      assert(src.indexOf('setSemModel') < 0, label + ' 零 setSemModel 模型行')
+      assert(src.indexOf('semDoModelDelete') < 0 && src.indexOf('semDoModelRedownload') < 0 && src.indexOf('semRenderModel') < 0, label + ' 模型管理函数拆除')
+      assert(src.indexOf('wasmModelDelete') < 0 && src.indexOf('wasmModelEnsureDownloaded') < 0 && src.indexOf('wasmModelStatus') < 0 && src.indexOf('wasmModelRecordState') < 0, label + ' 零 Cache API 模型层函数消费')
+      assert(src.indexOf('semantic.model') < 0, label + ' 零 semantic.model 消费（UI 不持模型态——模型由 host embedder 按需下载）')
+    }
+    const zhSrc = read('src/i18n/zh.js'), enSrc = read('src/i18n/en.js')
+    for (const k of ['semanticModel', 'semanticModelSize', 'semanticModelNone', 'semanticModelDelete', 'semanticModelRedownload', 'semanticDownloading', 'semanticStatusNoModel']) {
+      assert(zhSrc.indexOf(k) < 0 && enSrc.indexOf(k) < 0, 'zh/en 双字典清理浏览器专有键：' + k)
+    }
   })
 
-  // ===== 120.6 wasm 运行时镜像链=[jsdelivr 主→unpkg 兜底] 且不含 npmmirror =====
-  await t('wasm 运行时镜像链=[jsdelivr 主→unpkg 兜底] 且不含 npmmirror（npmmirror 实证 403/404 不可达）', () => {
-    const m = embSrc.match(/var WASM_RUNTIME_URLS = \[([\s\S]*?)\]/)
-    assert(m, 'WASM_RUNTIME_URLS 链可提取')
-    assert(m[1].indexOf('jsdelivr') >= 0, '运行时链含 jsdelivr（主）')
-    assert(m[1].indexOf('unpkg') >= 0, '运行时链含 unpkg（兜底）')
-    assert(m[1].indexOf('npmmirror') < 0, '运行时链不含 npmmirror（红线，实证不可达）')
-    assert(embSrc.indexOf('async function wasmImportRuntime()') >= 0 && embSrc.indexOf('return await import(url)') >= 0, '运行时 failover import（按序尝试镜像链）')
+  // ===== 120.6 浏览器运行时拉取链退役（0.5.0 R3：镜像链 jsdelivr/unpkg + Cache API 模型层整体拆除，app bundle 零引用）=====
+  await t('浏览器运行时拉取链退役（0.5.0 R3）：app bundle 零 WASM_RUNTIME_URLS/wasmImportRuntime/jsdelivr/unpkg/transformers/代理路径引用', () => {
+    const { concatApp } = require(path.join(DIR, 'scripts', 'concat-app.cjs'))
+    const appBundle = concatApp()
+    for (const tok of ['WASM_RUNTIME_URLS', 'wasmImportRuntime', 'wasmBuildIndex', 'wasmModel', 'wasmExtractVecs', 'wasmChunkText', 'wasmBodyHash', 'cdn.jsdelivr', 'unpkg.com', 'transformers.min.js', '/dsh-notes-model', 'dsh-notes-wasm-model']) {
+      assert(appBundle.indexOf(tok) < 0, 'app bundle 零引用：' + tok + '（0.5.0 R3 浏览器嵌入路径退役）')
+    }
+    assert(appSettings.indexOf('typeof wasmModel') < 0, 'app 设置区零 typeof 守卫残留（嵌入模块全局函数消费面清零）')
   })
 
   // ===== 120.7 后端下拉三态（关/bge/自定义端点禁用）=====

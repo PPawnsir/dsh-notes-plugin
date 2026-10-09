@@ -75,18 +75,20 @@ module.exports = {
     assert(sch.indexOf("SCHEDULE_CONTRACT_TYPE = 'dispatch-schedule'") >= 0 && sch.indexOf("handle('notes-schedule-eval'") >= 0, 'schedule.js 含调度契约常量 + notes-schedule-eval RPC')
     assert(sch.indexOf('setInterval(') >= 0 && sch.indexOf('.unref()') >= 0 && sch.indexOf('_schedTickGuarded') >= 0, 'schedule.js 含常驻 cron 装配（30s tick + unref + 防重叠闸）')
     const srvD = read('server.dist.js')
-    assert(srvD.indexOf("path: RPC_PATH") >= 0 && srvD.indexOf("path: APP_PAGE_ROUTE") >= 0 && srvD.indexOf("path: ASSET_ROUTE") >= 0 && srvD.indexOf("path: MODEL_PROXY_ROUTE") >= 0, 'server.dist.js 含 webServer 四路由注册（RPC/页面/资产/模型代理）')
+    assert(srvD.indexOf("path: RPC_PATH") >= 0 && srvD.indexOf("path: APP_PAGE_ROUTE") >= 0 && srvD.indexOf("path: ASSET_ROUTE") >= 0, 'server.dist.js 含 webServer 三路由注册（RPC/页面/资产；0.5.0 R3：模型代理路由退役）')
+    assert(srvD.indexOf('MODEL_PROXY_ROUTE') < 0, 'server.dist.js 零 MODEL_PROXY_ROUTE 残留（0.5.0 R3 /dsh-notes-model 退役）')
     assert(srvD.indexOf("handle('notes-ping'") >= 0 && srvD.indexOf('ASSET_EXT_MIME') >= 0, 'server.dist.js 含 notes-ping + ASSET_EXT_MIME（随资产路由同模块）')
     const idxD = read('index.dist.js')
     assert(idxD.indexOf('migrateLegacyNotes') >= 0 && idxD.indexOf('fixLegacyWorkspaces') >= 0, 'index.dist.js 含一次性迁移与存量修补')
   })
 
-  await t('webServer 路由零漂移：4 条路由（3 exact + 1 prefix）全部且仅在 server.dist.js（开发版 server.js 零 webServer）', () => {
+  await t('webServer 路由零漂移：3 条路由（全 exact）全部且仅在 server.dist.js（开发版 server.js 零 webServer）', () => {
     const srvD = read('server.dist.js')
     const regs = srvD.match(/webServer\.register\(/g) || []
-    assert.strictEqual(regs.length, 4, 'server.dist.js 应恰好 4 处 webServer.register（实得 ' + regs.length + '）')
+    assert.strictEqual(regs.length, 3, 'server.dist.js 应恰好 3 处 webServer.register（0.5.0 R3：模型代理 prefix 路由退役，实得 ' + regs.length + '）')
     assert(srvD.indexOf("kind: 'exact'") >= 0, "路由 kind:'exact'")
-    assert(srvD.indexOf("kind: 'prefix'") >= 0, "模型代理路由 kind:'prefix'（0.5.0 P0 /dsh-notes-model/<path> 变量路径）")
+    assert(srvD.indexOf("kind: 'prefix'") < 0, "零 prefix 路由（0.5.0 R3：/dsh-notes-model/<path> 代理随浏览器嵌入路径退役）")
+    assert(srvD.indexOf('dsh-notes-model') < 0, 'server.dist.js 零 dsh-notes-model 残留')
     assert(read('server.js').indexOf('webServer') < 0, '开发版 server.js 不引用 webServer（harness 唯一通道）')
     // 行为级零变化由节 17（路由序/405/404/防穿越/immutable/HEAD）原样看守
   })

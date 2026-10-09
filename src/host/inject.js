@@ -296,8 +296,9 @@
         }
         // 0.5.0①（notes-050-vector-layer）语义检索激活位：semantic = { enabled?: boolean, backend?: string, model?: {...}|null }（总开关 + 激活后端 id + 模型下载状态）；
         //   null/undefined 删除 override 恢复关闭（缺省关闭零成本）；仅存白名单键（enabled 布尔 / backend 非空串 / model 白名单子键），其余键忽略不落盘。
-        //   增量合并（0.5.0② notes-050-wasm-embedder）：model 键 = 浏览器 wasm 模型下载状态（设置「已下载大小/可删」数据源，
-        //   app 页下载成功后回写）——只 patch model 不清除存量 enabled/backend（app 页记录下载与设置开关是两个独立动作）。
+        //   增量合并（0.5.0② notes-050-wasm-embedder）：model 键 = 浏览器嵌入模型下载状态（曾作设置「已下载大小/可删」数据源，
+        //   app 页下载成功后回写）——只 patch model 不清除存量 enabled/backend（app 页记录下载与设置开关是两个独立动作）；
+        //   0.5.0 R3（notes-051-query-embed）起浏览器嵌入路径整体退役、model 键生产方不再存在——白名单保留（存量 settings.json 兼容读回，UI 已不消费）。
         if ('semantic' in patch) {
           if (patch.semantic === null || patch.semantic === undefined) delete settingsCache.semantic
           else if (patch.semantic && typeof patch.semantic === 'object' && !Array.isArray(patch.semantic)) {

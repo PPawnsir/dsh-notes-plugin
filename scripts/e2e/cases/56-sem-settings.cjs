@@ -1,10 +1,11 @@
 'use strict'
 /* 0.5.0④ 用例㊺㊼（notes-050-sem-settings）app 端语义检索设置区真机矩阵：
- * ① 语义节渲染：检索与注入组尾 data-sec="semantic" 五控件（总开关 checkbox/后端下拉/状态行/构建按钮/模型行）齐；
+ * ① 语义节渲染：检索与注入组尾 data-sec="semantic" 四控件（总开关 checkbox/后端下拉/状态行/构建按钮）齐
+ *   （0.5.0 R3 notes-051-query-embed：模型行随浏览器嵌入路径退役——#setSemModel 不存在为退役锚点）；
  * ② 缺省关零成本：开关 off → 状态行「未启用」+ 构建按钮 disabled；
  * ③ 激活流程自动回填：打开总开关 → enabled+backend 双键整写 + 自动触发 notes-vectors-rebuild → 状态行「N/M 篇」；
  * ④ 关闭开关 → 状态行回落「未启用」（关=文本检索逐字节旧行为）。
- * 隔离纪律：mock state 预置 fake-256 后端（构建走 host rebuild，不触 wasm 网络）；finally 关 context。 */
+ * 隔离纪律：mock state 预置 fake-256 后端（构建走 host rebuild，不触嵌入网络）；finally 关 context。 */
 module.exports = {
   name: '㊼ 0.5.0④ 语义检索设置区：渲染/缺省关/激活自动回填/状态行 N/M（app）',
   async run({ base, browser, H, state }) {
@@ -17,7 +18,7 @@ module.exports = {
         await page.waitForSelector('#setBody .set-row', { timeout: 8000 })
         await H.waitFor(page, '设置卡落定（语义节渲染）', async p => p.evaluate(() => !!document.querySelector('#setSemStatus')))
 
-        /* ===== ① 语义节渲染：五控件齐 + 状态行/构建按钮初始态 ===== */
+        /* ===== ① 语义节渲染：四控件齐 + 模型行退役（R3）+ 状态行/构建按钮初始态 ===== */
         const render = await page.evaluate(() => {
           const sec = document.querySelector('#setBody .set-row[data-sec="semantic"]')
           return {
@@ -26,13 +27,13 @@ module.exports = {
             sel: !!document.querySelector('#setSemBackend'),
             status: !!document.querySelector('#setSemStatus'),
             build: !!document.querySelector('#setSemBuild'),
-            model: !!document.querySelector('#setSemModel'),
+            modelGone: !document.querySelector('#setSemModel'),
             statusText: document.querySelector('#setSemStatus').textContent.trim(),
             buildDisabled: document.querySelector('#setSemBuild').disabled,
           }
         })
-        H.t('① 语义节渲染：inject 组尾 + 五控件齐（开关/后端/状态行/构建/模型）',
-          render.inInjectGroup && render.chk && render.sel && render.status && render.build && render.model, () => JSON.stringify(render))
+        H.t('① 语义节渲染：inject 组尾 + 四控件齐（开关/后端/状态行/构建）+ 模型行退役（#setSemModel 不存在）',
+          render.inInjectGroup && render.chk && render.sel && render.status && render.build && render.modelGone, () => JSON.stringify(render))
         H.t('② 缺省关零成本：状态行「未启用」+ 构建按钮 disabled',
           render.statusText.indexOf('未启用') >= 0 && render.buildDisabled === true, () => render.statusText + ' / disabled=' + render.buildDisabled)
 

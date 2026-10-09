@@ -57,7 +57,7 @@ const CORE = new Set([
   '事件回执：agent/status idle → 该会话未闭环派发 dispatchStatus=done（receipt=idle）',
   'notes-quick-instruct LLM 解析失败回退等价 notes-quick',
   'index.mjs 可被 ESM import（语法 + 顶层无副作用）',
-  'harness 缺失时兜底：4 条路由（RPC + 全窗口页面 + 资产 + 模型代理）+ ctx.tools 3 工具 + 约定注入 order130（单一 context：目录段并入）',
+  'harness 缺失时兜底：3 条路由（RPC + 全窗口页面 + 资产）+ ctx.tools 3 工具 + 约定注入 order130（单一 context：目录段并入）',
   'GET /dsh-notes/asset 防穿越/形态/白名单/404',
   'RPC 200 + 首次启动迁移开发版笔记到 ~/.dsh/notes',
   'notes-create 走静态包 RPC',
@@ -200,34 +200,32 @@ const CORE = new Set([
   // 119. 0.5.0③ RRF 融合检索（notes-050-rrf-fusion）：敏感永不进语义通道 + 开关关零回归两条红线常驻 --core
   'sensitive 翻转：任何后端命名空间不再命中（全命名空间出队，残留集不泄漏）',
   '开关关=旧行为逐字节（纯文本零语义徽标 + 旧序）',
-  // 120. 0.5.0④ 语义检索设置区（notes-050-sem-settings）：双键整写 + 激活自动回填 + wasm 运行时镜像链三条红线常驻 --core
+  // 120. 0.5.0④ 语义检索设置区（notes-050-sem-settings）：双键整写 + 激活自动回填红线常驻 --core；0.5.0 R3 起拉取链退役锚替换原 wasm 镜像链条目
   '红线①：UI 写 settings.semantic 必须 enabled+backend 双键整写（整对象替换口径，单写 backend 丢 enabled）',
   '红线②：打开总开关自动触发 notes-vectors-rebuild 回填存量（否则存量不入队 indexed<indexable 静默漏历史）',
-  'wasm 运行时镜像链=[jsdelivr 主→unpkg 兜底] 且不含 npmmirror（npmmirror 实证 403/404 不可达）',
-  // 0.5.0 P0（notes-050-model-proxy）：模型下载 host 代理（CORS 修复）+ 构建失败驻留报错 + 下载超时封顶 六条红线常驻 --core
-  '下载走同源：wasmModelUrl 返回 /dsh-notes-model/ 前缀（非 https:// 镜像直连，镜像链迁 host）',
-  '下载超时上限：WASM_DOWNLOAD_TIMEOUT_MS ≤15s + wasmDownloadFile 透传 AbortController signal',
-  '重试次数封顶：wasmDownloadResumable 恰 WASM_RESUME_MAX_TRIES 次后抛错（消除 21s×3 无界重试）',
-  'host 代理通道：200 透传（状态码/Content-Type/Content-Length/ETag）+ Range 头透传',
-  'host 代理通道：404/500 镜像链 failover（主镜像 500 → 兜底 200）+ 全败 502',
+  '浏览器运行时拉取链退役（0.5.0 R3）：app bundle 零 WASM_RUNTIME_URLS/wasmImportRuntime/jsdelivr/unpkg/transformers/代理路径引用',
+  // 0.5.0 P0（notes-050-model-proxy）：构建失败驻留报错两条红线常驻；P0 代理通道行为断言随 0.5.0 R3 路由退役拆除（113 留退役闸）
   '构建失败 sticky 报错条：semDoBuild 失败走 semShowBuildError（modalErr 含原因）+ bge 失败不回落 host rebuild',
   '面板构建失败 sticky 报错条：client doSemBuild 捕获 {error} 走 setError（settings.semanticBuildFailed 含原因），不静默复位',
-  '0.5.0 P0 模型代理通道同步：host server.dist.js prefix 路由 ⇄ e2e mock GET 通道（113 闸扩展——非 RPC 通道走结构锚）',
-  'transformers.js 模型加载走同源代理（0.5.0 P0）：env.remoteHost 不再指 hf-mirror，remotePathTemplate 指向 /dsh-notes-model/',
+  '0.5.0 R3 模型代理退役：host 零 /dsh-notes-model 路由（server.dist.js/index.mjs 零残留）⇄ e2e mock GET 通道拆除（113 闸扩展——非 RPC 通道走结构锚）',
   'status indexable 精确计数（0.5.0 P0 rev2）：走 _list 全库扫描 + _vectorIndexable 过滤（同 rebuild 口径，灭冷缓存低报）',
   'status indexable 冷缓存精确计数：存量 .md 直读（无 create/list 暖缓存）→ indexable 与 rebuild 同口径（排除 deleted/sensitive/sys）',
   // 121. 0.5.0 P1 定时调度唤醒休眠目标（notes-050-sched-wake：常驻 --core 防定时任务名存实亡回归——唤醒执行 + 手动排队回归锁 + 唤醒失败 lastError）
   '定时触发休眠目标 → agents.resume 唤醒执行（resume 录制 + resumed 直发 + 零 inbox splice + lastRun.status=sent）',
   '手动派发休眠目标仍 queued（回归锁：零 agents.resume + inbox splice 落盘 + queued:true）',
   '唤醒失败（resume 抛错）→ lastError 落盘 + lastRun.status=error（不静默 queued）',
-  // 122. 0.5.0 P0-2（notes-050-wasm-shape）：wasm 嵌入产出零向量修复——Tensor 双层嵌套 + put 静默丢弃显性化 + 进度文案 常驻 --core
-  '形状假 Tensor 桩：单 Tensor tolist()=[n][512] → wasmExtractVecs 返回 [n][512]（旧双层嵌套必红）',
+  // 122. 0.5.0 P0-2（notes-050-wasm-shape）：put 静默丢弃显性化 + 面板构建复活常驻 --core；0.5.0 R3 起形状桩 eval 随模块删码退役、进度文案条目改退役锚
   'host put 双层嵌套非法形状 → dropped 计数 + 全丢 error 面（静默吞显性化）',
   '面板构建按钮复活（0.5.0 R2）：bge 态不再 disabled + 「请到 app 页构建」tooltip 退役（i18n 键清理）+ doSemBuild 恒调 host rebuild',
-  '嵌入进度文案路由切换（0.5.0 R2）：app semDoBuild 不再传 onEmbedProgress（嵌入进度由 status 轮询计数承接）；wasm-embedder 编排体在案待 R3 删码',
+  '嵌入进度文案与编排体退役（0.5.0 R3）：app 零 onEmbedProgress/semanticEmbedding + 嵌入编排体删码（wasm-embedder.js 不存在）',
   // 123. 0.5.0 交互层 搜索摘要行+命中高亮（notes-050-search-excerpt：常驻 --core 防摘要口径/XSS 红线回归——行为级主断言 + 先 esc 后 mark）
   'searchExcerpt 关键词命中点居中 + 边界截断 + 省略号（±50 字窗口）',
   'hlMarks 区间高亮双端逐字节一致（app.html ⇄ 原型）+ 源码顺序=先 esc 后 mark',
+  // 126. 0.5.0 R3 查询嵌入接通 + 浏览器 wasm 路径退役（notes-051-query-embed：退役面静态 + bundle 减重 + 查询嵌入锚点常驻 --core）
+  'R3 退役面：浏览器嵌入模块不存在 + 双 manifest 零登记 + app.html 零 transformers/jsdelivr/unpkg/代理路径引用',
+  'R3 退役面：模型文件代理路由零残留（head.js/server.dist.js/index.mjs/e2e mock）+ host 镜像链 hf-mirror→HF 保留（红线）',
+  'R3 bundle 减重：app.html 字节数 ≤ 672000（退役前基线 686336——嵌入模块 + 运行时链 + 模型行拆除净降）',
+  'R3 查询嵌入锚点：bge hostEmbed:true 在册 + 文本 query 经 host embed 不抛错 + 融合检索语义命中（假推理缝）',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

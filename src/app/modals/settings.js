@@ -146,8 +146,10 @@ function openSettings() {
       + '<div class="set-ctrl"><input class="minput" id="setBudget" type="number" min="0" step="100" style="width:110px" value="' + budgetNum + '"></div></div>';
     setSecs.injprev = '<div class="set-row" data-sec="injprev">' + setLabelHtml(t('settings.injPreview'), t('settings.injPreviewTip')) + '<div class="set-ctrl"><button class="mbtn" id="setInjectPreview">' + t('settings.previewBtn') + '</button></div></div>';
     setSecs.injmgr = '<div class="set-row" data-sec="injmgr">' + setLabelHtml(t('settings.injManager'), t('settings.injManagerTip')) + '<div class="set-ctrl"><button class="mbtn" id="setInjectManager">' + t('settings.manageBtn') + '</button></div></div>';
-    /* 0.5.0④（notes-050-sem-settings）：语义检索节（检索与注入组尾）——总开关 + 后端下拉 + 索引状态行 + 构建按钮 + 模型管理。
-       消费①的 notes-vectors-status/rebuild 通道 + ②的 wasm-embedder（模型下载/删除/状态）；缺省关闭零成本（开关 off 即文本检索逐字节旧行为）。 */
+    /* 0.5.0④（notes-050-sem-settings）：语义检索节（检索与注入组尾）——总开关 + 后端下拉 + 索引状态行 + 构建按钮。
+       消费①的 notes-vectors-status/rebuild 通道；缺省关闭零成本（开关 off 即文本检索逐字节旧行为）。
+       0.5.0 R3（notes-051-query-embed）：浏览器嵌入路径整体退役——模型管理行（Cache API 大小/删除/重下）随浏览器嵌入模块一并拆除，
+       模型由 host embedder 按需下载进 host 缓存（BGE_MODEL_CACHE_DIR），UI 不再持模型态。 */
     setSecs.semantic = '<div class="set-row" data-sec="semantic">' + setLabelHtml(t('settings.semantic'), t('settings.semanticTip'))
       + '<div class="set-ctrl sem-ctrl">'
       + '<label class="set-check"><input type="checkbox" id="setSemEnabled"> ' + t('settings.semanticEnabled') + '</label>'
@@ -157,7 +159,7 @@ function openSettings() {
       + '<option value="custom-endpoint" disabled>' + t('settings.semanticBackendCustom') + '</option>'
       + '</select></div>'
       + '<div class="s" id="setSemStatus">' + t('common.loading') + '</div>'
-      + '<div class="sem-row"><button class="mbtn" id="setSemBuild" disabled>' + t('settings.semanticBuild') + '</button><span class="s" id="setSemModel"></span></div>'
+      + '<div class="sem-row"><button class="mbtn" id="setSemBuild" disabled>' + t('settings.semanticBuild') + '</button></div>'
       + '</div></div>';
     setSecs.data = '<div class="set-row" data-sec="data">' + setLabelHtml(t('settings.data'), t('settings.dataTip')) + '<div class="set-ctrl"><button class="mbtn" id="setExport">' + t('settings.exportAll') + '</button><button class="mbtn" id="setImport">' + t('settings.importBtn') + '</button><button class="mbtn" id="setTrash">' + t('topbar.trash') + '</button></div></div>';
     setSecs.assets = '<div class="set-row" data-sec="assets">' + setLabelHtml(t('settings.assets'), t('settings.assetsTip')) + '<div class="set-ctrl"><button class="mbtn" id="setPrune">' + t('settings.pruneBtn') + '</button></div></div>';
@@ -229,7 +231,6 @@ function openSettings() {
     semState = {
       enabled: semantic0.enabled === true,
       backend: (typeof semantic0.backend === 'string' && semantic0.backend) ? semantic0.backend : 'bge-small-zh-q8',
-      model: (semantic0.model && typeof semantic0.model === 'object') ? semantic0.model : null,
       status: null, building: false
     };
     var semChk = $('setSemEnabled'), semSel = $('setSemBackend'), semBuildBtn = $('setSemBuild');
@@ -237,7 +238,6 @@ function openSettings() {
     if (semSel) semSel.value = (semState.backend === 'bge-small-zh-q8') ? 'bge-small-zh-q8' : (semState.backend || '');
     if (semBuildBtn) semBuildBtn.disabled = !semState.enabled || semState.building;
     semRenderStatus();
-    semRenderModel();
     if (semChk) semChk.onchange = function () { semDoToggle(this.checked) };
     if (semSel) semSel.onchange = function () {
       var v = this.value;
@@ -432,13 +432,6 @@ function flushSettingsPending() {
 /* ================= 0.5.0④ 语义检索节 helper（notes-050-sem-settings）：状态行/开关翻转/构建编排/模型管理 ================= */
 /* 后端显示名：bge-small-zh-q8 → bge-small-zh；其余直显 id */
 function semBackendLabel(id) { return id === 'bge-small-zh-q8' ? 'bge-small-zh' : (id || '—'); }
-/* 字节数人话（B/KB/MB） */
-function semFmtBytes(n) {
-  n = Math.max(0, Number(n) || 0);
-  if (n < 1024) return n + ' B';
-  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
-  return (n / 1048576).toFixed(1) + ' MB';
-}
 /* ISO 时间 → YYYY-MM-DD HH:MM（本地态） */
 function semFmtTime(iso) {
   if (!iso) return '';
@@ -447,17 +440,17 @@ function semFmtTime(iso) {
   var p = function (x) { return (x < 10 ? '0' : '') + x };
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
-/* 语义设置整写：enabled+backend 双键恒同写（红线①：settings-set 整对象替换口径，单写 backend 丢 enabled）；model 传 null 才清下载状态 */
-function semWrite(enabled, backend, model) {
+/* 语义设置整写：enabled+backend 双键恒同写（红线①：settings-set 整对象替换口径，单写 backend 丢 enabled） */
+function semWrite(enabled, backend) {
   var s = { enabled: !!enabled, backend: backend || 'bge-small-zh-q8' };
-  if (model === null) s.model = null;
   return rpc('notes-settings-set', { semantic: s }).then(function (res) {
     if (res && res.error) { modalErr(res.error); throw new Error(res.error); }
-    if (semState) { semState.enabled = s.enabled; semState.backend = s.backend; if (model === null) semState.model = null; }
+    if (semState) { semState.enabled = s.enabled; semState.backend = s.backend; }
     return res;
   });
 }
-/* 索引状态行渲染（消费① notes-vectors-status）：关=未启用 / 报错=降级态 / bge 无模型=未下载 / 有 lastBuiltAt=N/M 篇 / 否则=尚未构建 */
+/* 索引状态行渲染（消费① notes-vectors-status）：关=未启用 / 报错=降级态 / 有 lastBuiltAt=N/M 篇 / 否则=尚未构建
+   （0.5.0 R3：「模型未下载」分支退役——模型由 host embedder 首次嵌入时按需下载，UI 不持模型态） */
 function semRenderStatus() {
   var el = $('setSemStatus');
   if (!el || !semState) return;
@@ -468,7 +461,6 @@ function semRenderStatus() {
     if (!semState.enabled) html = t('settings.semanticStatusOff');
     else if (st && st.error) html = t('settings.semanticStatusError', { msg: st.error });
     else if (!st || st.ok !== true) html = t('settings.semanticStatusError', { msg: 'unknown' });
-    else if (semState.backend === 'bge-small-zh-q8' && !(semState.model && semState.model.bytes > 0) && !st.lastBuiltAt) html = t('settings.semanticStatusNoModel');
     else if (st.lastBuiltAt) html = t('settings.semanticStatus', { indexed: st.indexed || 0, indexable: st.indexable || 0, backend: semBackendLabel(st.backend), time: semFmtTime(st.lastBuiltAt) });
     else html = t('settings.semanticStatusNever');
     el2.innerHTML = esc(html);
@@ -477,40 +469,9 @@ function semRenderStatus() {
     if (el3) el3.innerHTML = esc(t('settings.semanticStatusError', { msg: (e && e.message) || e }));
   });
 }
-/* 模型管理行渲染（消费② wasm 模型状态：settings.semantic.model 记录；app 页提供删除/重下，面板只读） */
-function semRenderModel() {
-  var el = $('setSemModel');
-  if (!el || !semState) return;
-  var m = semState.model;
-  var html = esc(t('settings.semanticModel')) + (m && m.bytes > 0 ? esc(t('settings.semanticModelSize', { size: semFmtBytes(m.bytes) })) : esc(t('settings.semanticModelNone')));
-  if (typeof wasmModelDelete === 'function') {
-    html += ' <button class="mbtn" id="setSemModelDel">' + t('settings.semanticModelDelete') + '</button>';
-    html += ' <button class="mbtn" id="setSemModelRe">' + t('settings.semanticModelRedownload') + '</button>';
-  }
-  el.innerHTML = html;
-  var del = $('setSemModelDel'), re = $('setSemModelRe');
-  if (del) del.onclick = function () { semDoModelDelete() };
-  if (re) re.onclick = function () { semDoModelRedownload() };
-}
-/* 模型删除（消费② wasmModelDelete）：清 Cache API → 清 settings.semantic.model → 状态回落（未下载） */
-function semDoModelDelete() {
-  var doDel = (typeof wasmModelDelete === 'function') ? wasmModelDelete() : Promise.resolve(0);
-  doDel.then(function () {
-    return semWrite(semState.enabled, semState.backend, null);
-  }).then(function () { semRenderModel(); semRenderStatus(); })
-    .catch(function () { semRenderModel(); semRenderStatus(); });
-}
-/* 模型重下（消费② wasmModelEnsureDownloaded）：显式带进度下载 → 记录状态 → 状态行/模型行刷新 */
-function semDoModelRedownload() {
-  var p = (typeof wasmModelEnsureDownloaded === 'function')
-    ? wasmModelEnsureDownloaded(function (i, n, loaded, total) { var s = $('setSemStatus'); if (s) s.innerHTML = t('settings.semanticDownloading', { pct: total > 0 ? Math.round(loaded / total * 100) : 0 }); })
-    : Promise.reject(new Error('wasm 不可用'));
-  p.then(function () { return (typeof wasmModelRecordState === 'function') ? wasmModelRecordState() : null; })
-   .then(function () { semRenderModel(); semRenderStatus(); })
-   .catch(function () { semRenderModel(); semRenderStatus(); });
-}
 /* 构建索引（0.5.0 R2 notes-051-save-embed：恒走 host notes-vectors-rebuild）——R1 起 bge 嵌入已迁回 host 进程
-   （onnxruntime-web 纯 wasm 在宿主跑），浏览器 wasm 编排（模型下载→嵌入→put 全量回写）退役不再被调用（R3 才删码，本卡只改路由）；
+   （onnxruntime-web 纯 wasm 在宿主跑）；0.5.0 R3（notes-051-query-embed）浏览器嵌入编排（模型下载→嵌入→put 全量回写）
+   随浏览器嵌入模块整体删码退役，notes-vectors-put 回写通道 host 侧保留；
    rebuild 快速失败闸已拆，存量回填真跑（分段嵌入+replace put），进度经轮询 status（计数涨）。
    0.5.0 P0（notes-050-model-proxy）失败驻留报错：「构建索引」是用户显式动作——失败必须 sticky 报错条（含原因：下载失败/网络/镜像错误），
    不准静默跳回按钮态（静默降级只适用于后台预取，不适用显式点击）。 */
@@ -526,22 +487,14 @@ function semDoBuild() {
     semState.building = false;
     var b2 = $('setSemBuild');
     if (b2) { b2.disabled = !semState.enabled; b2.textContent = t('settings.semanticBuild'); }
-    // 0.5.0 P0-2（notes-050-wasm-shape）：构建完成后刷模型行——wasmModelRecordState 已写 settings，但 semState.model 是
-    //   打开时快照，不刷新会滞留「未下载」；bge 构建后读 wasmModelStatus 回填 bytes 再渲染（fake 后端无模型，跳过）。
-    var refresh = (backend === 'bge-small-zh-q8' && typeof wasmModelStatus === 'function') ? wasmModelStatus() : Promise.resolve(null);
-    refresh.then(function (st) {
-      if (st && semState && backend === 'bge-small-zh-q8') semState.model = { backend: st.backend, bytes: st.downloadedBytes, downloadedAt: new Date().toISOString(), source: 'cache-api' };
-      semRenderStatus(); semRenderModel();
-    }, function () {
-      semRenderStatus(); semRenderModel();
-    });
+    semRenderStatus();   /* 0.5.0 R3：完成后刷状态行（notes-vectors-status 现算）；模型行刷新随模型管理行退役拆除 */
   };
   var fail = function (err) {
     var msg = (err && err.message) ? String(err.message) : String(err);
     semShowBuildError(msg);
     finish();
   };
-  /* 0.5.0 R2：双端构建按钮同路由——恒调 host rebuild（浏览器 wasm 编排不再被调用，R3 删码） */
+  /* 0.5.0 R2 起双端构建按钮同路由——恒调 host rebuild（浏览器嵌入编排 R3 已删码退役） */
   rpc('notes-vectors-rebuild', { backend: backend }).then(function (r) {
     if (r && r.error) { fail(new Error(r.error)); return; }
     finish();

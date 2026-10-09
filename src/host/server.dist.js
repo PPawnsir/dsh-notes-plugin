@@ -225,7 +225,7 @@
     // notes-vectors-status {} → { ok, enabled, backend, indexed, indexable, lastBuiltAt, namespaces:[{backend,dim,minScore,count,lastBuiltAt}] }（N/M 篇·后端·上次构建·各命名空间统计）
     // notes-vectors-rebuild { backend } → 全量重建指定后端命名空间（换后端不重建、旧集保留）；backend 缺省回落激活后端。
     // notes-vectors-search { queryVector|query, backend, limit } → 余弦 + minScore 过滤 + per-note max-pooling（③卡消费；query 为内部 embed 便捷形态）
-    // notes-vectors-put { backend, rows:[{noteId, bodyHash, vectors:[...]}], replace? } → 浏览器 wasm 算好的向量经队列回写边车（②卡落通道；replace:true 全量重建清空目标命名空间）
+    // notes-vectors-put { backend, rows:[{noteId, bodyHash, vectors:[...]}], replace? } → 外部算好的向量经队列回写边车（②卡落通道；replace:true 全量重建清空目标命名空间；0.5.0 R3 起浏览器嵌入生产方退役，通道保留）
     disposers.push(handle('notes-vectors-status', async (args) => { try { return await _vectorsStatus() } catch (e) { return { error: String(e.message || e) } } }))
     disposers.push(handle('notes-vectors-rebuild', async (args) => { try { return await _vectorsRebuild(args && args.backend) } catch (e) { return { error: String(e.message || e) } } }))
     disposers.push(handle('notes-vectors-search', async (args) => { try { return await _vectorsSearch(args || {}) } catch (e) { return { error: String(e.message || e) } } }))
@@ -343,62 +343,6 @@
       }))
     }
 
-    // ==== model-proxy BEGIN ====（0.5.0 P0 notes-050-model-proxy：模型下载 host 代理——灭浏览器 CORS + 网络双断；Range/If-Range 透传保断点续传）
-    // 镜像链：hf-mirror → huggingface.co（host 无 CORS，spike 实证 8.7MB/s；jsDelivr 已砍，红线不动）。
-    //   0.5.0 R1（notes-051-host-embedder）：镜像链抽公共——单一事实源 = kernel/vector-store.dist.js 的 BGE_MODEL_MIRRORS
-    //   （host embedder 模型下载同源复用；序位：vector-store ≺ server，manifest 锁定）。
-    // app 页 wasmDownloadFile 改走同源 /dsh-notes-model/<path>；host 侧逐环尝试镜像链，每环超时 ≤15s 快速失败到下一环；
-    //   状态码/Content-Type/Content-Length/Content-Range/ETag/Accept-Ranges 透传（断点续传语义不变）。全环失败 → 502（app 侧 sticky 报错承接）。
-    const MODEL_PROXY_MIRRORS = BGE_MODEL_MIRRORS
-    const MODEL_PROXY_TIMEOUT_MS = 15000
-    if (webServer && typeof webServer.register === 'function') {
-      disposers.push(webServer.register({
-        kind: 'prefix',
-        path: MODEL_PROXY_ROUTE,
-        handler: async function (req, res) {
-          res.setHeader('Cache-Control', 'no-store')
-          if (req.method !== 'GET' && req.method !== 'HEAD') {
-            res.setHeader('Content-Type', 'application/json')
-            res.writeHead(405); res.end(JSON.stringify({ ok: false, message: 'method not allowed' })); return
-          }
-          let rel = ''
-          try { rel = new URL(req.url || '/', 'http://x').pathname.slice(MODEL_PROXY_ROUTE.length).replace(/^\/+/, '') } catch (e) {}
-          if (!rel || rel.indexOf('..') >= 0) {
-            res.setHeader('Content-Type', 'application/json')
-            res.writeHead(400); res.end(JSON.stringify({ ok: false, message: 'bad model path' })); return
-          }
-          const rng = (req.headers && (req.headers['range'] || req.headers['Range'])) || null
-          const ifr = (req.headers && (req.headers['if-range'] || req.headers['If-Range'])) || null
-          const upHeaders = {}
-          if (rng) upHeaders['Range'] = rng
-          if (ifr) upHeaders['If-Range'] = ifr
-          let lastErr = null
-          for (const m of MODEL_PROXY_MIRRORS) {
-            const url = m.base + '/' + rel
-            let ctrl = null, to = null
-            try {
-              ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null
-              if (ctrl) to = setTimeout(function () { try { ctrl.abort() } catch (e) {} }, MODEL_PROXY_TIMEOUT_MS)
-              const up = await fetch(url, { method: 'GET', headers: upHeaders, signal: ctrl ? ctrl.signal : undefined, redirect: 'follow' })
-              if (!up) throw new Error('upstream empty: ' + url)
-              if (up.status === 404 || up.status >= 500) { lastErr = new Error('upstream ' + up.status + ': ' + url); continue }
-              const get = function (k) { return (up.headers && typeof up.headers.get === 'function') ? up.headers.get(k) : null }
-              const ct = get('content-type'); if (ct) res.setHeader('Content-Type', ct)
-              const cl = get('content-length'); if (cl) res.setHeader('Content-Length', cl)
-              const cr = get('content-range'); if (cr) res.setHeader('Content-Range', cr)
-              const et = get('etag'); if (et) res.setHeader('ETag', et)
-              const ar = get('accept-ranges'); if (ar) res.setHeader('Accept-Ranges', ar)
-              const buf = Buffer.from(await up.arrayBuffer())
-              res.writeHead(up.status)
-              res.end(req.method === 'HEAD' ? '' : buf)
-              return
-            } catch (e) { lastErr = e } finally { if (to) clearTimeout(to) }
-          }
-          res.setHeader('Content-Type', 'application/json')
-          res.writeHead(502)
-          res.end(JSON.stringify({ ok: false, message: 'model download failed on all mirrors: ' + ((lastErr && lastErr.message) || lastErr) }))
-        },
-      }))
-    }
-    // ==== model-proxy END ====
+    // （0.5.0 R3 notes-051-query-embed：model-proxy 块整体退役——P0 的模型文件代理 prefix 路由随浏览器嵌入路径删码无消费方而拆除；
+    //   模型下载由 host embedder 经宿主镜像链（hf-mirror→HF，单一事实源在 kernel/vector-store.dist.js）直连，webServer 回到 RPC/页面/资产三条 exact 路由）
 

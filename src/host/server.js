@@ -205,7 +205,7 @@
     // notes-vectors-status {} → { ok, enabled, backend, indexed, indexable, lastBuiltAt, namespaces:[{backend,dim,minScore,count,lastBuiltAt}] }（N/M 篇·后端·上次构建·各命名空间统计）
     // notes-vectors-rebuild { backend } → 全量重建指定后端命名空间（换后端不重建、旧集保留）；backend 缺省回落激活后端。
     // notes-vectors-search { queryVector|query, backend, limit } → 余弦 + minScore 过滤 + per-note max-pooling（③卡消费；query 为内部 embed 便捷形态）
-    // notes-vectors-put { backend, rows:[{noteId, bodyHash, vectors:[...]}], replace? } → 浏览器 wasm 算好的向量经队列回写边车（②卡落通道；replace:true 全量重建清空目标命名空间）
+    // notes-vectors-put { backend, rows:[{noteId, bodyHash, vectors:[...]}], replace? } → 外部算好的向量经队列回写边车（②卡落通道；replace:true 全量重建清空目标命名空间；0.5.0 R3 起浏览器嵌入生产方退役，通道保留）
     disposers.push(handle('notes-vectors-status', async (args) => { try { return await _vectorsStatus() } catch (e) { return { error: String(e.message || e) } } }))
     disposers.push(handle('notes-vectors-rebuild', async (args) => { try { return await _vectorsRebuild(args && args.backend) } catch (e) { return { error: String(e.message || e) } } }))
     disposers.push(handle('notes-vectors-search', async (args) => { try { return await _vectorsSearch(args || {}) } catch (e) { return { error: String(e.message || e) } } }))

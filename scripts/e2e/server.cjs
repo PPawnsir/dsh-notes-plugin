@@ -827,20 +827,8 @@ function startServer(port) {
         res.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'))
         return
       }
-      /* 0.5.0 P0（notes-050-model-proxy）：模型代理 mock 通道——GET /dsh-notes-model/<path> → 占位模型文件字节（内容豁免，与 host 代理同路径形态）。
-         让 app 页 wasmModelEnsureDownloaded 走同源代理成功（「下载走同源」断言数据源）；state._modelProxyStatus 注入非 200 可演习构建失败 sticky 报错面。 */
-      if (req.method === 'GET' && (req.url || '').indexOf('/dsh-notes-model/') === 0) {
-        const failStatus = state._modelProxyStatus
-        if (failStatus) {
-          res.writeHead(failStatus, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
-          res.end(JSON.stringify({ ok: false, message: 'mock model proxy failure' }))
-          return
-        }
-        const body = Buffer.from('mock-model-file', 'utf8')
-        res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': body.length, 'ETag': '"mock-model-etag"' })
-        res.end(body)
-        return
-      }
+      /* 0.5.0 R3（notes-051-query-embed）：模型代理 mock 通道（P0 的 model-proxy GET 前缀路由）随浏览器嵌入路径退役一并拆除
+         （host 侧路由已拆，消费方为零；模型下载由 host embedder 直连镜像链，不经 e2e mock）。 */
       if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html' || req.url === '/app.html')) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
         res.end(appHtml)

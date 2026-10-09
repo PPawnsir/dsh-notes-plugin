@@ -82,7 +82,8 @@
     _vectorRegisterBackend(_vectorFakeBackend('fake-64', 64, 0.9))
     // 0.5.0 R1（notes-051-host-embedder）：host embedder 内核——bge 嵌入迁回 host 进程（spike② 实证配置落地，嵌入面迁回 host 的第一步）。
     //   路线：onnxruntime-web 纯 wasm 在宿主进程跑 bge（正文不出机器红线不变——本地推理本质保证；npm overrides 桩化 onnxruntime-node/sharp，
-    //   原生 binding/@img 零进安装树——进程退出 0xC0000005 崩溃回归闸）；浏览器端 app 页构建通道（notes-vectors-put 回写）保留并存，UI 迁移是后续卡。
+    //   原生 binding/@img 零进安装树——进程退出 0xC0000005 崩溃回归闸）；0.5.0 R3（notes-051-query-embed）起浏览器嵌入路径整体退役
+    //   （app 侧嵌入模块删码 + 模型文件代理路由拆除），notes-vectors-put 回写通道保留（外部回写入口，生产方暂缺）。
     //   懒加载单例：首次调用才 import 运行时 + 加载模型（缺省关闭零成本——不进 embed 则零 import 零下载）；
     //   并发闸 = 嵌入串行化队列（单飞链，失败不断链）；批上限 ≤8 块/批（防 spike 实测大批次 +4.3GB 内存峰）；
     //   模型 host 缓存 BGE_MODEL_CACHE_DIR（镜像链 hf-mirror→HF failover，Node 无 CORS 直连）。
@@ -582,7 +583,7 @@
         return { ok: true, backend: backend.id, dim: backend.dim, minScore: backend.minScore, results: page, count: page.length }
       } catch (e) { return { error: String(e.message || e) } }
     }
-    // 浏览器回写（notes-vectors-put 入口，②卡落通道）：浏览器 wasm 算好的向量 → 经索引队列写边车（①的队列消费位）。
+    // 外部回写（notes-vectors-put 入口，②卡落通道）：外部算好的向量 → 经索引队列写边车（①的队列消费位；0.5.0 R3 起浏览器嵌入生产方退役，通道保留）。
     // args = { backend, rows:[{ noteId, bodyHash, vectors:[vec0,vec1,...] }], replace? }
     //   vectors = 该笔记分段块的 L2 归一化向量数组（实现方保证，dim 由本函数写前校验）；chunk = 数组下标（与 _vectorDrain 同口径）。
     //   replace:true = 先清空目标命名空间再写（浏览器全量重建路径）；缺省 = 增量 upsert（单笔记重算，bodyHash 新鲜度锚照存）。

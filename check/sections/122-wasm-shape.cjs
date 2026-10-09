@@ -1,47 +1,23 @@
 // 节 122. 0.5.0 P0-2（notes-050-wasm-shape：wasm 嵌入产出零向量修复——Tensor 双层嵌套 + put 静默丢弃显性化 + 嵌入进度文案）
-// 根因（主窗口真机证据）：extractor(chunks) 返回单 Tensor [n,512]，旧码 tensors=Array.isArray(out)?out:[out] → map tolist
+//   → 0.5.0 R3（notes-051-query-embed）：浏览器嵌入路径整体退役（wasm-embedder.js 删码），本节保留 host 侧显性化断言面。
+// 根因（主窗口真机证据，历史留档）：extractor(chunks) 返回单 Tensor [n,512]，旧码 tensors=Array.isArray(out)?out:[out] → map tolist
 //   造出 [[[v1],[v2],…]] 双层嵌套（tolist 本身已是 [n][512]），host put 按块展开时 dim≠512 → 静默全丢。
-// 断言面：①形状假 Tensor 桩（tolist 行为桩，纯数据桩测不出这层——教训）eval 向量提取段断言行形状正确 + 非法形状抛错；
-//   ②host put 双层嵌套非法形状 → dropped 计数 + 全丢 error 面；③面板 bge 构建按钮禁用 + tooltip（不发起 RPC）；
-//   ④嵌入进度文案「嵌入中 i/n」+ 完成后刷模型行（消灭卡下载 100% 假象）；⑤e2e mock put 镜像 host 显性化。
+//   形状知识由 host _bgeInferBatch 的 tolist 形状归一继承（R1 host embedder，节 124 看守）。
+// 断言面：①host put 双层嵌套非法形状 → dropped 计数 + 全丢 error 面；②面板构建按钮复活（R2，恒调 host rebuild）；
+//   ③嵌入进度文案/编排体退役锚（R3：wasm-embedder.js 不存在 + app 零 onEmbedProgress/semanticEmbedding）；
+//   ④e2e mock put 镜像 host 显性化 + host 双变体同步。（原 122.1 wasmExtractVecs 形状提取 eval 随模块删码退役。）
 module.exports = {
   id: "122",
-  title: "122. 0.5.0 P0-2 wasm 嵌入形状修复（Tensor 双层嵌套 + put 静默丢弃显性化 + 嵌入进度文案，notes-050-wasm-shape）",
+  title: "122. 0.5.0 P0-2 wasm 嵌入形状修复 → R3 退役（put 显性化 + 面板构建复活 + 编排体删码，notes-050-wasm-shape → notes-051-query-embed）",
   async run(H, S) {
   const { t, section, assert, fsNative, path, DIR, hostSrc } = H
-  section('122. 0.5.0 P0-2 wasm 嵌入形状修复（notes-050-wasm-shape）')
+  section('122. 0.5.0 P0-2 wasm 嵌入形状修复 → R3 退役（notes-050-wasm-shape → notes-051-query-embed）')
   const read = (p) => fsNative.readFileSync(path.join(DIR, p), 'utf8').replace(/\r\n/g, '\n')
-  const embSrc = read('src/app/kernel/wasm-embedder.js')
   const vsDev = read('src/host/kernel/vector-store.js')
   const vsDist = read('src/host/kernel/vector-store.dist.js')
   const appSettings = read('src/app/modals/settings.js')
   const cliSettings = read('src/client/modals/settings.js')
   const mockSrc = read('scripts/e2e/server.cjs')
-
-  // ===== 122.1 形状假 Tensor 桩（tolist 行为桩）eval 向量提取段——断言行形状正确 =====
-  const vecsStart = embSrc.indexOf('==== wasm-embedder-vecs BEGIN ====')
-  const vecsEnd = embSrc.indexOf('==== wasm-embedder-vecs END ====')
-  assert(vecsStart >= 0 && vecsEnd > vecsStart, 'wasm-embedder-vecs 标记块存在（向量提取段可提取 eval）')
-  let vecsBlock = embSrc.slice(vecsStart, vecsEnd)
-  vecsBlock = vecsBlock.slice(vecsBlock.indexOf('*/') + 2)
-  vecsBlock = vecsBlock.slice(0, vecsBlock.lastIndexOf('/*'))   // 去 END 标记残留开注释符（同节 118 core 块提取先例）
-  const WV = new Function(vecsBlock + '\n;return { wasmExtractVecs }')()
-
-  await t('形状假 Tensor 桩：单 Tensor tolist()=[n][512] → wasmExtractVecs 返回 [n][512]（旧双层嵌套必红）', () => {
-    const row = new Array(512).fill(0)
-    const vecs = WV.wasmExtractVecs({ tolist: () => [row, row] }, 2, 512)
-    assert(Array.isArray(vecs) && vecs.length === 2, '返回 2 个块向量（实得 ' + (Array.isArray(vecs) ? vecs.length : typeof vecs) + '）')
-    assert(Array.isArray(vecs[0]) && vecs[0].length === 512 && Array.isArray(vecs[1]) && vecs[1].length === 512, '每个向量 512 维一维数组（非嵌套）')
-  })
-
-  await t('形状非法抛错显性化：双层嵌套 tolist（[[[v]…]]）/ 维度不符 → wasmExtractVecs 抛错（不静默吞）', () => {
-    let threw = false
-    try { WV.wasmExtractVecs({ tolist: () => [[[1, 2]], [[3, 4]]] }, 2, 512) } catch (e) { threw = true }
-    assert(threw, '双层嵌套（dim≠512）抛错')
-    let threw2 = false
-    try { WV.wasmExtractVecs({ tolist: () => [new Array(256).fill(0)] }, 1, 512) } catch (e) { threw2 = true }
-    assert(threw2, '维度 256≠512 抛错')
-  })
 
   // ===== 122.2 host put 双层嵌套非法形状 → dropped 计数 + 全丢 error 面（fresh 实例）=====
   const NOTES_DIR_W = DIR + '\\notes'
@@ -87,15 +63,14 @@ module.exports = {
     assert(zhSrc.indexOf('semanticBuildBgeOnly') < 0 && enSrc.indexOf('semanticBuildBgeOnly') < 0, 'zh/en 双字典 semanticBuildBgeOnly 键清理（tooltip 退役 i18n 键同步拆除）')
   })
 
-  // ===== 122.4 嵌入进度文案（0.5.0 R2：随 wasm 编排退役从 app 设置区撤下；wasm-embedder.js 编排体保留——R3 才删码）+ 完成后刷模型行 =====
-  await t('嵌入进度文案路由切换（0.5.0 R2）：app semDoBuild 不再传 onEmbedProgress（嵌入进度由 status 轮询计数承接）；wasm-embedder 编排体在案待 R3 删码', () => {
-    assert(appSettings.indexOf("t('settings.semanticEmbedding'") < 0, 'app 设置区不再引用 semanticEmbedding（wasm 嵌入进度回调随路由切换撤下；i18n 键同步清理）')
-    assert(appSettings.indexOf('function (done, total)') < 0, 'app 不再传第二回调 onEmbedProgress(done,total) 给 wasmBuildIndex（编排不再被调用）')
+  // ===== 122.4 嵌入进度文案与编排体退役（0.5.0 R3：wasm-embedder.js 删码；app semDoBuild 不传 onEmbedProgress，进度由 status 轮询计数承接）=====
+  await t('嵌入进度文案与编排体退役（0.5.0 R3）：app 零 onEmbedProgress/semanticEmbedding + 嵌入编排体删码（wasm-embedder.js 不存在）', () => {
+    assert(appSettings.indexOf("t('settings.semanticEmbedding'") < 0, 'app 设置区零 semanticEmbedding 引用（嵌入进度回调随路由切换撤下；i18n 键 R2 已清）')
+    assert(appSettings.indexOf('function (done, total)') < 0, 'app 零 onEmbedProgress(done,total) 回调形态')
     const zhSrc2 = read('src/i18n/zh.js'), enSrc2 = read('src/i18n/en.js')
     assert(zhSrc2.indexOf('semanticEmbedding') < 0 && enSrc2.indexOf('semanticEmbedding') < 0, 'zh/en 双字典 semanticEmbedding 键清理（零引用红线——节 68 守卫②）')
-    assert(embSrc.indexOf('async function wasmBuildIndex(onProgress, onEmbedProgress)') >= 0, 'wasmBuildIndex 编排体保留（R3 才删码）')
-    assert(embSrc.indexOf('if (onEmbedProgress) onEmbedProgress(done, indexable.length)') >= 0, '嵌入循环逐篇上报嵌入进度 i/n（编排体内，未动）')
-    assert(appSettings.indexOf("backend === 'bge-small-zh-q8' && typeof wasmModelStatus === 'function'") >= 0, '完成后读 wasmModelStatus 刷模型行（模型行「未下载」滞留修复）')
+    assert(!fsNative.existsSync(path.join(DIR, 'src', 'app', 'kernel', 'wasm-embedder.js')), 'wasm-embedder.js 编排体已删码（0.5.0 R3 退役）')
+    assert(appSettings.indexOf('wasmModelStatus') < 0, 'app 零 wasmModelStatus 刷模型行残留（模型行随 R3 退役）')
   })
 
   // ===== 122.5 e2e mock put 镜像 host 显性化 + host 双变体同步 =====

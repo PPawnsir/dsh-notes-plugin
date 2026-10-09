@@ -7,7 +7,7 @@
 //   env.customCache 官方钩子（web 构建 node:fs 被忽略，FileCache 死代码）；overrides 桩化保留（仓库树卫生+纵深防御）。
 //   另灭第二崩溃源：多线程 wasm pthread Worker 池退出拆卸间歇 0xC0000005 → ort.env.wasm.numThreads = 1。
 // 断言面：embedder 配置锚点（Symbol 注入/device:'auto'/wasmPaths file:/// 形态/恒等断言/web 构建导入+裸引禁令/customCache/镜像链/懒加载单飞）/
-//   并发闸行为（假推理缝断言串行）+ 批上限（≤8 块/批）/ 模型 host 缓存锚点 + 镜像链抽公共（server.dist.js 复用 BGE_MODEL_MIRRORS）/
+//   并发闸行为（假推理缝断言串行）+ 批上限（≤8 块/批）/ 模型 host 缓存锚点 + 镜像链单一事实源（BGE_MODEL_MIRRORS；server.dist.js 代理复用随 0.5.0 R3 退役撤除）/
 //   依赖入包 + overrides 桩声明 + 安装树零 @img 零 .node 证据（spike 验收单 13(c)(d) 落地）/ web 构建零原生构造性静态实证 /
 //   懒加载零成本（不进 embed 零 import——globalThis ORT 槽位不动）/ smoke-embed.mjs + smoke-embed-consumer.mjs（消费布局夹具）锚点（手动跑，真模型不进 CI）。
 // 红线：现有 fake 后端测试面全保持绿（117/118/119/122 的 fake 路径零改动消费）；嵌入只在 host 进程内跑；正文不出机器。
@@ -65,15 +65,14 @@ module.exports = {
     assert(headDev.indexOf('const HOST_PKG_DIR = PLUGIN_DIR') >= 0 && headDev.indexOf("const BGE_MODEL_CACHE_DIR = NOTES_DIR + '\\\\models'") >= 0, 'dev kernel/head.js 定义同义常量')
   })
 
-  await t('镜像链抽公共：BGE_MODEL_MIRRORS 单一事实源（hf-mirror→huggingface.co）+ server.dist.js 模型代理复用同表', () => {
+  await t('镜像链单一事实源：BGE_MODEL_MIRRORS（hf-mirror→huggingface.co，host 侧保留红线）+ server.dist.js 代理退役零复用', () => {
     for (const [src, tag] of [[vsDev, 'dev'], [vsDist, 'dist']]) {
       assert(src.indexOf("const BGE_MODEL_MIRRORS = [") >= 0, tag + ' 定义 BGE_MODEL_MIRRORS')
       const mi = src.indexOf('const BGE_MODEL_MIRRORS')
       assert(src.indexOf("base: 'https://hf-mirror.com'", mi) > mi && src.indexOf("base: 'https://huggingface.co'", mi) > src.indexOf("base: 'https://hf-mirror.com'", mi), tag + ' 镜像链序 = hf-mirror → huggingface.co')
       assert(src.indexOf('env.remoteHost = m.base') >= 0, tag + ' 加载走镜像链逐环 failover（env.remoteHost 切换）')
     }
-    assert(srvDist.indexOf('const MODEL_PROXY_MIRRORS = BGE_MODEL_MIRRORS') >= 0, 'server.dist.js 模型代理复用 BGE_MODEL_MIRRORS（抽公共）')
-    assert(srvDist.indexOf("{ id: 'hf-mirror', base: 'https://hf-mirror.com' }") < 0, 'server.dist.js 不再自带镜像表拷贝（单一事实源）')
+    assert(srvDist.indexOf('MODEL_PROXY_MIRRORS') < 0 && srvDist.indexOf('BGE_MODEL_MIRRORS') < 0, 'server.dist.js 零 BGE_MODEL_MIRRORS 复用（0.5.0 R3 notes-051-query-embed：/dsh-notes-model 代理路由退役，镜像链仅剩 host embedder 消费方）')
   })
 
   // ===== 124.2 依赖入包 + overrides 桩声明 + 安装树零原生证据 =====
