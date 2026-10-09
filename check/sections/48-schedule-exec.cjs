@@ -199,30 +199,29 @@ module.exports = {
     await handlers['notes-delete']({ id: r.id })
   })
 
-  // ===== 执行红线改写（0.4.4-B 休眠送达）：目标非 live 但持久化可达 → 休眠排队送达（queued）成功触发 =====
-  await t('休眠目标触发：持久化可达 → 休眠送达排队（dispatches queued:true + lastRun.status=queued + 日志追加 inbox splice）', async () => {
+  // ===== 执行红线改写（0.5.0 P1 唤醒执行，notes-050-sched-wake）：目标非 live 但持久化可达 → agents.resume 唤醒执行（sent），不再是休眠排队 =====
+  await t('休眠目标触发：持久化可达 → agents.resume 唤醒执行（lastRun.status=sent + 零 inbox splice + resumed 直发）', async () => {
     const c = await handlers['notes-create']({ title: '离线目标约定', body: '巡检离线工作项', contractType: 'dispatch-schedule', schedule: { every: '5m', target: OFFLINE_SID } })
     assert(c && c.id && !c.error, '非 live 但存活的目标允许声明（实得 ' + JSON.stringify(c) + '）')
     const clock1 = new Date(Date.now() + 3600000).toISOString()
     const logBefore = (S.persistLogs.get(OFFLINE_SID) || []).length
+    const resumesBefore = S.agentResumeCalls.length
     const before = sentMessages.length
     const ev = await handlers['notes-schedule-eval']({ now: clock1 })
-    assert(ev.fired === 1 && ev.errors === 0, '休眠目标可送达：触发成功 fired=1（实得 ' + JSON.stringify(ev) + '）')
-    assert.strictEqual(sentMessages.length, before, '零唤醒红线：未走 agent.send（无 live 触发）')
+    assert(ev.fired === 1 && ev.errors === 0, '休眠目标可送达：唤醒执行 fired=1（实得 ' + JSON.stringify(ev) + '）')
+    assert.strictEqual(S.agentResumeCalls.length, resumesBefore + 1, 'agents.resume 唤醒恰调用 1 次')
+    assert.strictEqual(S.agentResumeCalls[S.agentResumeCalls.length - 1].resumeSessionId, OFFLINE_SID, 'resume 目标 = 休眠会话 sid')
+    assert.strictEqual(sentMessages.length, before + 1, '唤醒后 agent.send 直发（resumed 通道）')
+    assert(sentMessages[sentMessages.length - 1].via === 'resumed:' + OFFLINE_SID, '消息经 resumed 通道送达（唤醒执行，非 live 直通）')
+    assert.strictEqual((S.persistLogs.get(OFFLINE_SID) || []).length, logBefore, '零 inbox splice（唤醒执行不排队）')
     const g = await handlers['notes-get']({ id: c.id })
     const s = g.note.schedule
-    assert.strictEqual(s.lastFiredAt, clock1, '休眠送达推进 lastFiredAt（触发即消费，不重发）')
-    assert(s.lastRun && s.lastRun.status === 'queued' && /^note-dispatch-/.test(s.lastRun.receiptId || ''), 'lastRun.status=queued（0.4.4-B 新枚举，实得 ' + JSON.stringify(s.lastRun) + '）')
+    assert.strictEqual(s.lastFiredAt, clock1, '唤醒执行推进 lastFiredAt（触发即消费，不重发）')
+    assert(s.lastRun && s.lastRun.status === 'sent' && /^note-dispatch-/.test(s.lastRun.receiptId || ''), 'lastRun.status=sent（唤醒执行，实得 ' + JSON.stringify(s.lastRun) + '）')
     assert(!('lastError' in s), '成功路径摘除 lastError 键')
-    assert(g.note.dispatches.length === 1 && g.note.dispatches[0].queued === true && g.note.dispatches[0].dispatchStatus === 'sent', 'dispatches 记录 queued:true + sent 待回执（实得 ' + JSON.stringify(g.note.dispatches[0]) + '）')
-    // 日志追加实证：OFFLINE_SID 持久化日志尾部 = agent/inbox/spliced（target next-turn，载荷即派发消息）
-    const log = S.persistLogs.get(OFFLINE_SID) || []
-    assert.strictEqual(log.length, logBefore + 1, '持久化日志追加 1 条（实得 ' + log.length + '）')
-    const tail = log[log.length - 1]
-    assert(tail.type === 'agent/inbox/spliced' && tail.seq === logBefore && tail.data && tail.data.target === 'next-turn', '追加事件 = durable inbox splice（与 live send 落盘同形态，实得 ' + JSON.stringify(tail) + '）')
-    assert(tail.data.inserted && tail.data.inserted.length === 1 && tail.data.inserted[0].id === g.note.dispatches[0].msgId, '排队消息 msgId 与 dispatches 记录关联')
-    assert(tail.data.inserted[0].source && tail.data.inserted[0].source.kind === 'plugin:dsh-notes' && tail.data.inserted[0].content[0].text.indexOf('巡检离线工作项') >= 0, '排队消息含 source 标记 + 约定正文')
+    assert(g.note.dispatches.length === 1 && !('queued' in g.note.dispatches[0]) && g.note.dispatches[0].dispatchStatus === 'sent', 'dispatches 记录零 queued 键（sent 语义）')
     await handlers['notes-delete']({ id: c.id })
+    S.createdAgents.delete(OFFLINE_SID)   // 复位：唤醒把休眠目标注册为 live，删除后回归休眠态（防污染后续节）
   })
 
   // ===== 执行红线：目标非 live 且持久化不可达 → 记 lastError（节流）不推进 lastFiredAt =====
@@ -250,18 +249,19 @@ module.exports = {
       g = await handlers['notes-get']({ id: c.id })
       assert.strictEqual(g.note.schedule.lastError.at, clock1, '5min 节流窗内 lastError 不刷写（实得 ' + g.note.schedule.lastError.at + '）')
       assert(ev2.errors === 1, '故障仍计数（evaluated errors 口径不受节流影响）')
-      // 补发语义：持久化恢复可达（模拟会话日志落盘回归）→ 下轮评估休眠送达补发成功
+      // 补发语义：持久化恢复可达（模拟会话日志落盘回归）→ 下轮评估唤醒执行补发成功（0.5.0 P1）
       S.persistLogs.set(GONE_SID, [])
       const clock2 = new Date(Date.now() + 3600000 + 6 * 60000).toISOString()
       const ev3 = await handlers['notes-schedule-eval']({ now: clock2 })
       assert(ev3.fired === 1, '持久化可达后补发成功（实得 ' + JSON.stringify(ev3) + '）')
       g = await handlers['notes-get']({ id: c.id })
-      assert(g.note.schedule.lastFiredAt === clock2 && g.note.schedule.lastRun.status === 'queued' && !('lastError' in g.note.schedule), '补发推进 lastFiredAt + lastRun=queued + lastError 摘除')
-      assert.strictEqual((S.persistLogs.get(GONE_SID) || []).length, 1, '补发落 1 条 inbox splice')
+      assert(g.note.schedule.lastFiredAt === clock2 && g.note.schedule.lastRun.status === 'sent' && !('lastError' in g.note.schedule), '补发推进 lastFiredAt + lastRun=sent（唤醒执行）+ lastError 摘除')
+      assert.strictEqual((S.persistLogs.get(GONE_SID) || []).length, 0, '补发走唤醒执行（零 inbox splice）')
     } finally {
       if (goneId) await handlers['notes-delete']({ id: goneId })
       const i = S.ws1SessionIds.indexOf(GONE_SID); if (i >= 0) S.ws1SessionIds.splice(i, 1)   // 复位账目
       S.persistLogs.delete(GONE_SID)
+      S.createdAgents.delete(GONE_SID)   // 复位：唤醒补发把 GONE_SID 注册为 live，删除回归休眠态
     }
   })
 

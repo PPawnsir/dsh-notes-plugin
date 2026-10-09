@@ -30,6 +30,11 @@
     //     专属会话并随幂等生命线回写 target=新 sid（持久复用，后续轮次同 sid）；执行红线由「目标 live」改写为「目标可送达」——
     //     live 直通 / 持久化可达（stat 命中）走 _dispatch 休眠送达通道（durable inbox 排队，下次活动送达，零唤醒）；
     //     两路皆不可达才记 lastError 不推进 lastFiredAt（补发语义不变）。lastRun.status 新增 queued 枚举（休眠送达标记）。
+    //   ⑫定时调度唤醒（0.5.0 P1，notes-050-sched-wake，用户现场实证 2026-10-09 定时任务名存实亡级）：
+    //     0.4.4-B 休眠排队语义仅服务手动派发（人发起，零唤醒是对的）；定时 cron 触发是「到点执行」语义，排队=失败（用户 22:32
+    //     手动点开会话才执行 = 名存实亡）。故定时触发目标休眠且持久化可达时走 _dispatch wakeDormant=true 唤醒执行（agents.resume
+    //     加载会话 → live send 消息即开跑，lastRun.status=sent）；唤醒失败（会话被删/加载失败）落 lastError + lastRun.status=error，
+    //     不静默 queued。手动 note_manage dispatch 不传 wakeDormant，零唤醒排队语义不变（回归锁节 121）。
     //   ⑩专属会话模型档位（0.4.6-G，notes-046-sched-model）：schedule 声明增可选 model/provider（成对出现、非空字符串；
     //     合法性不联网校验——创建时 agents.create 失败即落 lastError）。declared model/provider 透传 _schedCreateDedicatedSession
     //     的 agentOptions（覆盖宿主默认选择）；缺省 = 现状默认模型（存量零迁移）。声明变更比对键随之扩为九键（重锚口径不变）。
@@ -432,8 +437,10 @@
         }
         effTarget = created.sessionId
       } else {
-        // 执行红线（0.4.4-B 改写：目标 live ⟹ 可送达）：live 直通；非 live 探持久化可达（stat 命中 = 休眠送达可排队）——
-        //   两路皆不可达 → 记 lastError（节流）不推进 lastFiredAt（目标上线/可送达后下个 tick 自动补发）
+        // 执行红线（0.4.4-B 改写：目标 live ⟹ 可送达）：live 直通；非 live 探持久化可达（stat 命中 = 可唤醒执行）——
+        //   两路皆不可达 → 记 lastError（节流）不推进 lastFiredAt（目标上线/可送达后下个 tick 自动补发）。
+        //   0.5.0 P1（notes-050-sched-wake）：可达的休眠目标改走 _dispatch wakeDormant=true 唤醒执行（不再是休眠排队）；
+        //   唤醒本身的失败（stat 通过但 resume 加载失败，如会话被删）由 _dispatch 返回 error，走下方「派发执行失败」记 lastError。
         const target = agents && agents.get ? agents.get(effTarget) : undefined
         if (!target || typeof target.send !== 'function') {
           let reachable = false
@@ -460,13 +467,13 @@
         if (created && created.handle && typeof created.handle.dispose === 'function') { try { await created.handle.dispose() } catch (e2) {} }   // 落盘失败回收新建 agent（防孤儿 live 会话）
         return false
       }
-      const r = await _dispatch(note.id, { sessionId: effTarget, sessionName: created ? created.name : undefined, mode: 'existing', sourceLabel: '定时调度 @' + (marked.title || note.title || note.id) })
+      const r = await _dispatch(note.id, { sessionId: effTarget, sessionName: created ? created.name : undefined, mode: 'existing', sourceLabel: '定时调度 @' + (marked.title || note.title || note.id), wakeDormant: true })
       if (r && r.error) {
         await _schedMarkError(note.id, '派发执行失败：' + r.error, nowMs, false)
         return false
       }
-      // 状态三层①：lastRun{at,status,receiptId}（status：sent=live 直发 / queued=休眠送达·下次活动处理（0.4.4-B 新增枚举值，存量 sent/error 不变）；
-      //   receiptId = 派发消息 msgId，与 dispatches 记录关联；回执闭环走既有 dispatch-loop 链路）
+      // 状态三层①：lastRun{at,status,receiptId}（status：sent=live 直发 / 唤醒执行（0.5.0 P1）/ queued=休眠送达·下次活动处理（0.4.4-B 枚举值，手动派发专用）；
+      //   error=唤醒/派发失败，由 _schedMarkError 落；receiptId = 派发消息 msgId，与 dispatches 记录关联；回执闭环走既有 dispatch-loop 链路）
       const done = await loadNote(note.id)
       const doneSched = Object.assign({}, done.schedule, { lastRun: { at: nowIso, status: r && r.queued ? 'queued' : 'sent', receiptId: (r.dispatch && r.dispatch.msgId) || '' } })
       delete doneSched.lastError   // lastError 仅失败记：派发成功摘除

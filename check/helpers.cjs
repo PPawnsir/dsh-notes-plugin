@@ -124,6 +124,10 @@ function createHostMocks() {
   //   dispose 摘除（插件重载降级路径演练）；创建即播种持久化日志（persistLogs），与真实 create 的持久化语义一致
   const createdAgents = new Map()
   const agentCreateCalls = []
+  // 0.5.0 P1（notes-050-sched-wake）：agents.resume 唤醒录制（定时调度休眠目标唤醒执行断言）——
+  //   resume 注册进 createdAgents（agents.get 命中 = live 语义，与 create 同款）；resumeState.failResume 注入加载失败演练（唤醒失败落 lastError）。
+  const agentResumeCalls = []
+  const resumeState = { failResume: false }
   const agentsMock = {
     currentInitiator: () => ({ sessionId: 'session-abc12345-0000-0000-0000-000000000000', session: { id: 'session-abc12345-0000-0000-0000-000000000000', header: { cwd: WS_DIR } } }),
     roots: () => [liveAgent],
@@ -134,6 +138,15 @@ function createHostMocks() {
       const a = { id: sid, session: { id: sid, header: { cwd: (opts.meta && opts.meta.cwd) || '' } }, send: (msg, target, wakeup) => { sentMessages.push({ msg, target, wakeup, via: 'created:' + sid }) } }
       createdAgents.set(sid, a)
       if (!persistLogs.has(sid)) persistLogs.set(sid, [])
+      return { agent: a, dispose: async () => { createdAgents.delete(sid) } }
+    },
+    // 0.5.0 P1：resume 加载持久化会话（同 create 的 live 注册语义；会话日志已持久化故不再播种）
+    resume: async (opts) => {
+      agentResumeCalls.push(opts)
+      if (resumeState.failResume) { const e = new Error('mock resume failed'); e.name = 'MockResumeError'; throw e }
+      const sid = opts.resumeSessionId
+      const a = { id: sid, session: { id: sid, header: { cwd: WS_DIR } }, send: (msg, target, wakeup) => { sentMessages.push({ msg, target, wakeup, via: 'resumed:' + sid }) } }
+      createdAgents.set(sid, a)
       return { agent: a, dispose: async () => { createdAgents.delete(sid) } }
     }
   }
@@ -224,7 +237,7 @@ function createHostMocks() {
   }
   const plugin = new Function('harness', 'pluginDir', hostSrc)(global.harness, DIR)
   plugin.apply(ctx)
-  Object.assign(S, { NOTES_DIR, admMock, agentPresetsMock, agentsMock, agentCreateCalls, attachCalls, createdAgents, ctx, evtListeners, fsMock, handlers, liveAgent, llmMock, permissionPresetsMock, permissionPresetSetCalls, ppState, persistLogs, persistOpenCalls, plugin, registeredContexts, registeredTools, sentMessages, sessionPersistenceMock, sessionQueryMock, sessionTitleMock, store, systemPromptMock, titleRenameCalls, workspaceRegistryMock, ws1SessionIds })
+  Object.assign(S, { NOTES_DIR, admMock, agentPresetsMock, agentsMock, agentCreateCalls, agentResumeCalls, resumeState, attachCalls, createdAgents, ctx, evtListeners, fsMock, handlers, liveAgent, llmMock, permissionPresetsMock, permissionPresetSetCalls, ppState, persistLogs, persistOpenCalls, plugin, registeredContexts, registeredTools, sentMessages, sessionPersistenceMock, sessionQueryMock, sessionTitleMock, store, systemPromptMock, titleRenameCalls, workspaceRegistryMock, ws1SessionIds })
 }
 
 module.exports = {

@@ -174,7 +174,7 @@ const CORE = new Set([
   '并发首建：索引不存在时启动 ensure + 两个并发 notes-mount 三方竞态 → 恰 1 篇索引 + indexNoteId 唯一 + 挂载行双在',
   // 83. 0.4.4-B 休眠送达 + 专属会话（notes-044-dormant-dispatch：常驻 --core 防双通道/专属会话生命周期回归）
   '休眠目标派发 → queued:true + durable inbox splice 落盘（agent/inbox/spliced 同 live send 形态）+ 执行记录行注（下次活动送达）',
-  '专属会话全生命周期：首轮创建「定时 · 任务名」+ target 回写 → 二轮复用同 sid（零新建）→ 休眠降级 queued 送达',
+  '专属会话全生命周期：首轮创建「定时 · 任务名」+ target 回写 → 二轮复用同 sid（零新建）→ 休眠唤醒执行',
   // 94. 0.4.6-B RPC 韧性层（notes-046-rpc-resilience：常驻 --core 防挂起假死回归——超时结构化/提示条/落地页空态）
   '0.4.6-B rpc 超时 → 结构化 {error} + toast 不静默（AbortController 行为级）',
   '0.4.6-B rpc 挂起提示条：>RPC_SLOW_MS 出现 / 落定消失（并发归并同一条）',
@@ -216,6 +216,10 @@ const CORE = new Set([
   'transformers.js 模型加载走同源代理（0.5.0 P0）：env.remoteHost 不再指 hf-mirror，remotePathTemplate 指向 /dsh-notes-model/',
   'status indexable 精确计数（0.5.0 P0 rev2）：走 _list 全库扫描 + _vectorIndexable 过滤（同 rebuild 口径，灭冷缓存低报）',
   'status indexable 冷缓存精确计数：存量 .md 直读（无 create/list 暖缓存）→ indexable 与 rebuild 同口径（排除 deleted/sensitive/sys）',
+  // 121. 0.5.0 P1 定时调度唤醒休眠目标（notes-050-sched-wake：常驻 --core 防定时任务名存实亡回归——唤醒执行 + 手动排队回归锁 + 唤醒失败 lastError）
+  '定时触发休眠目标 → agents.resume 唤醒执行（resume 录制 + resumed 直发 + 零 inbox splice + lastRun.status=sent）',
+  '手动派发休眠目标仍 queued（回归锁：零 agents.resume + inbox splice 落盘 + queued:true）',
+  '唤醒失败（resume 抛错）→ lastError 落盘 + lastRun.status=error（不静默 queued）',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

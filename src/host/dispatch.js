@@ -131,12 +131,49 @@
       } finally { try { if (handle) await handle.close() } catch (e) {} }
     }
 
+    // 定时调度唤醒送达（0.5.0 P1，notes-050-sched-wake）：目标非 live 但持久化可达时，agents.resume 加载该持久化会话
+    //   （host AgentFactory.resume：persistence.open(write) → sessions.prepare → setupAndPublish 注册为 live agent——
+    //   与 GUI「给休眠会话发消息会唤醒执行」同款启动通道），消息随后经 live send 送达即开跑（到点执行语义）。
+    //   挂载默认 preset（同 _schedCreateDedicatedSession 口径——无 preset 的裸 agent 无工具能力）；软依赖守卫降级：
+    //   agentPresets 缺席时 setup 置 undefined（resume 仍可走通）。失败一律 { error } 上浮调度链记 lastError（不静默 queued——
+    //   唤醒失败≠排队成功；手动派发不经过本通道，保持 0.4.4-B 零唤醒排队语义不变）。
+    async function _wakeDormant(sid, msg) {
+      if (!agents || typeof agents.resume !== 'function') return { error: '宿主不支持 agents.resume（无法唤醒休眠会话执行定时调度）' }
+      let presetId
+      try { const p = await agentPresets.resolve(); presetId = p && p.id } catch (e) { presetId = undefined }
+      let handle = null
+      try {
+        handle = await agents.resume({
+          resumeSessionId: sid,
+          agentOptions: (adm && typeof adm.currentSelection === 'function') ? adm.currentSelection() : undefined,
+          setup: (agentPresets && typeof agentPresets.mount === 'function')
+            ? async function (agentCtx) { await agentPresets.mount(agentCtx, presetId) }
+            : undefined
+        })
+      } catch (e) {
+        return { error: '唤醒目标会话失败（会话可能已被删除或加载失败）：' + String(e && e.message || e) }
+      }
+      try {
+        const target = agents.get ? agents.get(sid) : undefined
+        if (!target || typeof target.send !== 'function') {
+          if (handle && typeof handle.dispose === 'function') { try { await handle.dispose() } catch (e) {} }
+          return { error: '唤醒目标会话后未能取得 live agent（会话未注册，无法触发执行）' }
+        }
+        target.send(msg, 'next-turn', true)
+        return { ok: true }
+      } catch (e) {
+        return { error: '唤醒后消息送达失败：' + String(e && e.message || e) }
+      }
+    }
+
     // 任务派发（共享）：主动注入上下文 + 触发对话——agent.send 一条消息到目标会话，
     // source 标记为 { kind:'plugin', form:'recall' }（todo 作为"召回的上下文"，区别于用户指令/系统提示拼接），
     // wakeup=true 保证触发该会话 agent 去获取并处理这条上下文（可见反应，不污染系统提示）。
     // 双通道（0.4.4-B）：live 命中走现行 send 立即触发；未命中走休眠送达（_queueDormantDispatch 持久化排队，
     // 「下次活动送达」语义——不主动唤醒休眠会话），返回 queued:true + dispatches 记录带 queued 布尔。
-    // opts: { sessionId, sessionName, workspace, mode('existing'|'new'), instruction, sourceLabel（派发来源标注，定时调度传 '定时调度 @约定标题'，进消息尾行与 dispatches 记录） }
+    // 0.5.0 P1（notes-050-sched-wake）：opts.wakeDormant=true（仅定时调度传）→ 非 live 改走 _wakeDormant 唤醒执行（sent 语义）；
+    //   手动派发不传 wakeDormant → 维持零唤醒排队（queued 语义）。
+    // opts: { sessionId, sessionName, workspace, mode('existing'|'new'), instruction, sourceLabel（派发来源标注，定时调度传 '定时调度 @约定标题'，进消息尾行与 dispatches 记录）, wakeDormant（0.5.0 P1 定时调度唤醒开关） }
     async function _dispatch(id, opts) {
       const o = opts || {}
       // 0.4.6-H（notes-046-smallfix，R2 n-mux9s42zajxk）：入口参数校验——缺 id / 笔记不存在统一返回结构化 {error}
@@ -161,10 +198,15 @@
         source: { kind: 'plugin:dsh-notes', form: 'recall' }
       }
       // 双通道分流（0.4.4-B）：live → send 立即触发；非 live → 休眠送达（持久化排队，下次活动送达）
+      // 0.5.0 P1（notes-050-sched-wake）：wakeDormant=true（仅定时调度）→ 非 live 走 _wakeDormant 唤醒执行（sent 语义，排队=失败）；
+      //   手动派发不传 wakeDormant → 维持零唤醒排队（queued 语义，0.4.4-B 红线不动）
       const target = agents && agents.get ? agents.get(o.sessionId) : undefined
       let queued = false
       if (target && typeof target.send === 'function') {
         target.send(msg, 'next-turn', true)
+      } else if (o.wakeDormant) {
+        const w = await _wakeDormant(o.sessionId, msg)
+        if (w.error) return w
       } else {
         const q = await _queueDormantDispatch(o.sessionId, msg)
         if (q.error) return q

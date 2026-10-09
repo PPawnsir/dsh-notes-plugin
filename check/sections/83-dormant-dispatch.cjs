@@ -1,13 +1,15 @@
 // 节 83. 0.4.4-B 休眠会话送达 + 定时派发专属会话复用（notes-044-dormant-dispatch）
-// 设计定稿（主窗口调研笔记 + 用户裁决 2026-10-06）：
+// 设计定稿（主窗口调研笔记 + 用户裁决 2026-10-06；0.5.0 P1 notes-050-sched-wake 修订定时触发分支）：
 //   A. _dispatch 双通道：live 命中走 agent.send（行为不变）；未命中走 sessionPersistence durable inbox 追加
 //      （agent/inbox/spliced——与 live send(msg,'next-turn') 落盘记录同形态，零唤醒零成本「下次活动送达」）；
 //      dispatches 记录带 queued 布尔；执行记录 📤 行注（下次活动送达）。
+//      0.5.0 P1 修订：以上排队语义**仅服务手动派发**（note_manage/notes-dispatch 不传 wakeDormant）；定时 cron 触发
+//      （_schedFire 传 wakeDormant=true）到休眠目标改走 agents.resume 唤醒执行（lastRun.status=sent、零 inbox splice）。
 //   B. 派发弹窗目标列表 = 活跃+休眠双区（数据源 _activeSessions 既有全量能力），休眠行标注「下次活动送达」；
-//      client 去除「先打开激活」强开唤醒路径（零唤醒红线）。
+//      client 去除「先打开激活」强开唤醒路径（手动派发零唤醒红线，不因定时唤醒而变）。
 //   C. schedule.target='new'（仅周期模式）：首轮触发 agents.create 创建「定时 · <任务名> · <id 末 6 位>」专属会话（0.4.7-A⑧ 起命名带 id 尾，防跨笔记同名共享）
 //      （agentPresets.mount 默认 preset = 工具能力 + workspace.attachSession 落账 = GUI 可见 + sessionTitle.rename 命名），
-//      随幂等生命线回写 target=新 sid（持久复用）；后续轮次 live 直发 / 休眠送达复用同 sid。
+//      随幂等生命线回写 target=新 sid（持久复用）；后续轮次 live 直发 / 休眠唤醒执行复用同 sid（0.5.0 P1 起）。
 // 测试策略：共享 mock 集群（节 2 扩展 persistLogs/createdAgents/agentPresetsMock/attachCalls/titleRenameCalls/ws1SessionIds）
 //   + 注入时钟（notes-schedule-eval {now}）驱动确定性到期；测试调度用 every≥3d（真实时钟永不到期），后台 tick 零干扰。
 module.exports = {
@@ -163,9 +165,9 @@ module.exports = {
     await handlers['notes-delete']({ id: dis.id })
   })
 
-  // ===== C② 首轮创建 + target 回写 + 二轮复用同 sid + 休眠降级送达（断言③④核心） =====
+  // ===== C② 首轮创建 + target 回写 + 二轮复用同 sid + 休眠唤醒执行（断言③④核心；0.5.0 P1 起三轮由 queued 改唤醒） =====
   // 口径说明：全局 fired 计数随运行模式（--core 跳过节会留下他节到期调度）漂移，本测试一律用「本篇笔记状态增量」口径断言
-  await t('专属会话全生命周期：首轮创建「定时 · 任务名」+ target 回写 → 二轮复用同 sid（零新建）→ 休眠降级 queued 送达', async () => {
+  await t('专属会话全生命周期：首轮创建「定时 · 任务名」+ target 回写 → 二轮复用同 sid（零新建）→ 休眠唤醒执行', async () => {
     const c = await handlers['notes-create']({ title: '专属巡检约定', body: '巡检专属频道内容', contractType: 'dispatch-schedule', schedule: { every: '3d', target: 'new' } })
     assert(c && c.id && !c.error, '创建专属会话调度约定（实得 ' + JSON.stringify(c) + '）')
     const myDispatches = async () => { const g = await handlers['notes-get']({ id: c.id }); return (g.note.dispatches || []).length }
@@ -204,20 +206,24 @@ module.exports = {
     const g2 = await handlers['notes-get']({ id: c.id })
     assert.strictEqual(g2.note.schedule.target, newSid, 'target 稳定不复位')
     assert.strictEqual(g2.note.schedule.lastFiredAt, clock2, '二轮 lastFiredAt 对齐')
-    // 休眠降级：模拟插件重载/宿主重启后专属会话退化为休眠（dispose 摘除 live 注册）→ 三轮走休眠送达
+    // 休眠唤醒（0.5.0 P1）：模拟插件重载/宿主重启后专属会话退化为休眠（dispose 摘除 live 注册）→ 三轮 agents.resume 唤醒执行
     S.createdAgents.delete(newSid)
     const clock3 = new Date(Date.now() + 12 * 86400000).toISOString()
-    const mySendsBefore3 = sentMessages.length
     const dispBefore3 = await myDispatches()
+    const resumesBefore3 = S.agentResumeCalls.length
+    const resumedSends3 = sentMessages.filter(m => m.via === 'resumed:' + newSid).length
     const ev3 = await handlers['notes-schedule-eval']({ now: clock3 })
     assert(ev3 && ev3.errors === 0, '三轮评估零故障（实得 ' + JSON.stringify(ev3) + '）')
-    assert.strictEqual(await myDispatches(), dispBefore3 + 1, '三轮本篇派发 +1（休眠降级触发实证）')
-    assert.strictEqual(sentMessages.filter(m => m.via === 'created:' + newSid).length, 2, '休眠轮专属会话零 agent.send（零唤醒；全局 send 增量 ' + (sentMessages.length - mySendsBefore3) + ' 为他节到期调度，与本篇无关）')
+    assert.strictEqual(await myDispatches(), dispBefore3 + 1, '三轮本篇派发 +1（休眠唤醒触发实证）')
+    assert.strictEqual(S.agentResumeCalls.length, resumesBefore3 + 1, '休眠轮专属会话 agents.resume 唤醒恰 1 次')
+    assert.strictEqual(S.agentResumeCalls[S.agentResumeCalls.length - 1].resumeSessionId, newSid, '唤醒目标 = 专属会话 sid')
+    assert.strictEqual(sentMessages.filter(m => m.via === 'resumed:' + newSid).length, resumedSends3 + 1, '三轮唤醒后 resumed 直发 +1')
     const g3 = await handlers['notes-get']({ id: c.id })
-    assert(g3.note.schedule.lastRun && g3.note.schedule.lastRun.status === 'queued', '三轮 lastRun.status=queued（休眠送达，实得 ' + JSON.stringify(g3.note.schedule.lastRun) + '）')
-    assert(g3.note.dispatches.length === 3 && g3.note.dispatches[2].queued === true, '三轮 dispatches queued:true')
+    assert(g3.note.schedule.lastRun && g3.note.schedule.lastRun.status === 'sent', '三轮 lastRun.status=sent（唤醒执行，实得 ' + JSON.stringify(g3.note.schedule.lastRun) + '）')
+    assert(g3.note.dispatches.length === 3 && !('queued' in g3.note.dispatches[2]), '三轮 dispatches 零 queued 键（sent 语义）')
     const log3 = S.persistLogs.get(newSid) || []
-    assert(log3.length === 1 && log3[0].type === 'agent/inbox/spliced', '专属会话日志落 1 条排队消息（会话下次活动时处理）')
+    assert(log3.length === 0, '专属会话日志零 inbox splice（唤醒执行不排队）')
+    S.createdAgents.delete(newSid)   // 复位：唤醒把专属会话注册回 live，删除回归休眠态（防污染后续节）
     await handlers['notes-delete']({ id: c.id })
   })
 
@@ -290,7 +296,7 @@ module.exports = {
       // 造 A 的孤儿专属会话：挂账 + rename 录制表供标题探测命中（模拟「create 成功但 target 回写失败」窗口遗留）
       S.ws1SessionIds.push(sidOrphan)
       S.titleRenameCalls.push({ id: sidOrphan, title: nameA })
-      S.persistLogs.set(sidOrphan, [])   // 持久化可达（复用后轮休眠送达可排队）
+      S.persistLogs.set(sidOrphan, [])   // 持久化可达（复用后轮唤醒执行，0.5.0 P1）
       // B 首轮触发：探测目标名 = nameB → 不得命中 A 的孤儿（nameA 尾不同）→ 新建自己的专属会话
       const createsBefore = S.agentCreateCalls.length
       const presetCallsBefore = S.permissionPresetSetCalls.length
@@ -305,21 +311,24 @@ module.exports = {
       // preset 意图不静默丢弃：B 声明 workspace-write → 新建路径 permissionPresets.set 透传（复用路径不补挂 = 旧 bug 的另一半）
       const pp = S.permissionPresetSetCalls.slice(presetCallsBefore)
       assert(pp.some(x => x.id === sidB && x.name === 'workspace-write'), 'B 声明 preset 透传新建会话（实得 ' + JSON.stringify(pp) + '）')
-      // 同笔记孤儿复用不回归：A 解除暂停触发 → 探测命中自己的孤儿 sidOrphan（零新建）→ 休眠送达
+      // 同笔记孤儿复用不回归：A 解除暂停触发 → 探测命中自己的孤儿 sidOrphan（零新建）→ 唤醒执行（0.5.0 P1）
       const u = await handlers['notes-update']({ id: cA.id, schedule: { every: '3d', target: 'new', enabled: true } })
       assert(u && !u.error, 'A 解除暂停（实得 ' + JSON.stringify(u) + '）')
+      const resumesBeforeA = S.agentResumeCalls.length
       const ev2 = await handlers['notes-schedule-eval']({ now: new Date(Date.now() + 8 * 86400000).toISOString() })
       assert(ev2 && ev2.errors === 0, 'A 轮评估零故障（实得 ' + JSON.stringify(ev2) + '）')
       assert.strictEqual(S.agentCreateCalls.length, createsBefore + 1, 'A 探测命中同 id 尾孤儿 → 复用零新建')
+      assert.strictEqual(S.agentResumeCalls.length, resumesBeforeA + 1, '复用会话非 live → agents.resume 唤醒恰 1 次')
       const gA = await handlers['notes-get']({ id: cA.id })
       assert.strictEqual(gA.note.schedule.target, sidOrphan, 'A target 回写 = 孤儿 sid（同笔记复用锚点）')
-      assert(gA.note.schedule.lastRun && gA.note.schedule.lastRun.status === 'queued', '复用会话非 live → 休眠送达 queued（实得 ' + JSON.stringify(gA.note.schedule.lastRun) + '）')
-      assert.strictEqual((S.persistLogs.get(sidOrphan) || []).length, 1, '孤儿会话日志落 1 条排队消息')
+      assert(gA.note.schedule.lastRun && gA.note.schedule.lastRun.status === 'sent', '复用会话非 live → 唤醒执行 sent（实得 ' + JSON.stringify(gA.note.schedule.lastRun) + '）')
+      assert.strictEqual((S.persistLogs.get(sidOrphan) || []).length, 0, '孤儿会话日志零 inbox splice（唤醒执行不排队）')
     } finally {
       await handlers['notes-delete']({ id: cA.id })
       await handlers['notes-delete']({ id: cB.id })
       const i = S.ws1SessionIds.indexOf(sidOrphan); if (i >= 0) S.ws1SessionIds.splice(i, 1)   // 复位账目（防污染后续节会话清单口径）
       S.persistLogs.delete(sidOrphan)
+      S.createdAgents.delete(sidOrphan)   // 复位：唤醒把孤儿会话注册为 live，删除回归休眠态
     }
   })
 
