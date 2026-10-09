@@ -153,6 +153,17 @@ function vectorCosine(a, b) { if (!a || !b || !a.length || !b.length) return 0; 
 function vectorNs(state) { if (!state._vectors) state._vectors = { ns: {} }; return state._vectors }
 function vectorNsCount(ns) { let n = 0; for (const id of Object.keys(ns.rows || {})) { if (ns.rows[id] && ns.rows[id].length) n++ } return n }
 function vectorActiveBackendId(state) { return (state.settings && state.settings.semantic && state.settings.semantic.enabled === true) ? (state.settings.semantic.backend || 'fake-256') : null }
+/* 0.5.0③（notes-050-rrf-fusion）：全命名空间出队通道（与 host _vectorDropNote 同契约）——sensitive 翻转/软删/彻底删除时，
+   从所有后端命名空间移除该笔记向量，残留集不泄漏敏感向量（敏感永不进语义通道在残留面也守）。 */
+function vectorDropNote(state, noteId) {
+  const vs = vectorNs(state)
+  let changed = false
+  for (const bid of Object.keys(vs.ns || {})) {
+    const ns = vs.ns[bid]
+    if (ns && ns.rows && (ns.rows[noteId] || ns.hash && ns.hash[noteId])) { delete ns.rows[noteId]; delete ns.hash[noteId]; changed = true }
+  }
+  return changed
+}
 
 function handleRpc(state, method, args) {
   const notes = state.notes
@@ -256,6 +267,8 @@ function handleRpc(state, method, args) {
       for (const k of ['title', 'body', 'topic', 'tags', 'status', 'kind', 'injectTo', 'sensitive', 'hidden', 'contractType', 'schedule']) {
         if (k in a) n[k] = a[k]
       }
+      /* 0.5.0③（notes-050-rrf-fusion）：sensitive 翻转 → 全命名空间出队（残留集不泄漏敏感向量） */
+      if (n.sensitive === true) vectorDropNote(state, n.id)
       if (a.recall !== undefined) n.recall = a.recall !== false
       if (a.injectRole !== undefined) n.injectRole = a.injectRole === 'reference' ? 'reference' : 'convention'
       /* 保底联动（host _update 同口径）：显式置 resolved → 全部未闭环派发翻 done（dispatchStatus/doneAt/receipt），回执计数随响应 */
@@ -318,6 +331,7 @@ function handleRpc(state, method, args) {
       if (!n) return { error: 'not found' }
       n.deleted = true
       n.updatedAt = nowIso()
+      vectorDropNote(state, n.id)   /* 0.5.0③：软删全命名空间出队 */
       return { id: n.id }
     }
     case 'notes-restore': {
@@ -333,6 +347,7 @@ function handleRpc(state, method, args) {
       if (i < 0) return { error: 'not found' }
       if (!notes[i].deleted) return { error: '笔记未删除：彻底删除请先移入回收站（软删除）' }
       notes.splice(i, 1)
+      vectorDropNote(state, (args && args.id))   /* 0.5.0③：彻底删除全命名空间出队 */
       return { id: (args && args.id), purged: true, mode: 'mem', historyPurged: 0 }
     }
     case 'notes-folders': {
@@ -634,7 +649,10 @@ function handleRpc(state, method, args) {
     case 'notes-vectors-status': {
       const vBackend = vectorActiveBackendId(state)
       const vs = vectorNs(state)
-      const namespaces = Object.keys(vs.ns).sort().map(function (bid) {
+      /* 0.5.0③（notes-050-rrf-fusion）：激活后端命名空间即使零向量也报自报 dim/minScore（与 host _vectorsStatus 同契约） */
+      const nsIds = Object.keys(vs.ns)
+      if (vBackend && nsIds.indexOf(vBackend) < 0) nsIds.push(vBackend)
+      const namespaces = nsIds.sort().map(function (bid) {
         const b = VECTOR_BACKENDS[bid] || { id: bid, dim: 0, minScore: 0 }
         const ns = vs.ns[bid] || {}
         return { backend: bid, dim: b.dim, minScore: b.minScore, count: vectorNsCount(ns), lastBuiltAt: ns.lastBuiltAt || '' }

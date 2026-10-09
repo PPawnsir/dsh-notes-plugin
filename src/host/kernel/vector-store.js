@@ -215,7 +215,13 @@
         if (!backend) return
         const c = _vectorCache
         const ns = c.ns[backend.id] || (c.ns[backend.id] = _vectorNewNs())
-        if (!_vectorIndexable(n)) { if (_vectorDropFromNs(ns, n.id)) _vectorScheduleFlush(); return }
+        if (!_vectorIndexable(n)) {
+          // 0.5.0③（notes-050-rrf-fusion）：非可索引 → 全命名空间出队（残留集不泄漏敏感向量；与 _vectorDropNote 同口径；防御直调路径）
+          let changed = false
+          for (const bid of Object.keys(c.ns)) { if (_vectorDropFromNs(c.ns[bid], n.id)) changed = true }
+          if (changed) _vectorScheduleFlush()
+          return
+        }
         const hash = _vectorBodyHash(n.body)
         if (ns.hash[n.id] === hash && ns.rows[n.id]) return   // bodyHash 未变 → 不重算（增量）
         const chunks = _vectorChunks(n.body)
@@ -227,14 +233,22 @@
         _vectorScheduleFlush()
       } catch (e) { /* 静默降级：向量层故障绝不阻塞保存主流程 */ }
     }
-    // 事件总线监听（保存路径挂钩）：purge 只带 id → 全命名空间出队；其余读激活后端（无激活 → 零成本不排队）。
+    // 事件总线监听（保存路径挂钩）：purge 只带 id → 全命名空间出队；非可索引（sensitive/sys/deleted/tombstoned）→ 全命名空间出队（0.5.0③ sensitive 翻转红线）；
+    //   可索引 → 读激活后端增量索引（无激活 → 零成本不排队）。
     function _vectorOnNoteChanged(ev) {
       if (!ev) return
       const id = (ev && ev.id) || (ev.note && ev.note.id)
       if (!id) return
       if (ev.event === 'purge') { _vectorEnqueue(function () { return _vectorDropNote(id) }); return }
       const n = ev.note
-      if (!n || !_activeBackend()) return
+      if (!n) return
+      // 0.5.0③（notes-050-rrf-fusion）：sensitive 翻转红线——非可索引 → 全命名空间出队（与 purge 同通道；残留集不泄漏敏感向量；
+      //   即使当时语义已关，只要向量缓存曾加载（曾有过索引）就出队，杜绝「关语义 → 翻转 sensitive → 再开语义」残留面泄漏）
+      if (!_vectorIndexable(n)) {
+        if (_vectorCache || _vectorLoadPromise) _vectorEnqueue(function () { return _vectorDropNote(id) })
+        return
+      }
+      if (!_activeBackend()) return
       _vectorEnqueue(function () { return _vectorIndexNote(n) })
     }
     // purge：全命名空间出队（墓碑——彻底删除后向量不复存在）
@@ -298,10 +312,13 @@
         let indexable = 0
         try { indexable = (await _list(undefined, undefined, undefined, false, false, true)).filter(_vectorIndexable).length } catch (e) { indexable = 0 }
         const namespaces = []
-        for (const bid of Object.keys(c.ns).sort()) {
+        // 0.5.0③（notes-050-rrf-fusion）：激活后端命名空间即使零向量也报自报 dim/minScore（status 契约：激活后端恒可见——bge 未建索引也报 512/0.50）
+        const nsIds = new Set(Object.keys(c.ns))
+        if (backend) nsIds.add(backend.id)
+        for (const bid of Array.from(nsIds).sort()) {
           const ns = c.ns[bid]
           const b = _vectorBackends.get(bid)
-          namespaces.push({ backend: bid, dim: b ? b.dim : 0, minScore: b ? b.minScore : 0, count: _vectorCountNs(ns), lastBuiltAt: ns.lastBuiltAt || '' })
+          namespaces.push({ backend: bid, dim: b ? b.dim : 0, minScore: b ? b.minScore : 0, count: _vectorCountNs(ns), lastBuiltAt: (ns && ns.lastBuiltAt) || '' })
         }
         return {
           ok: true,

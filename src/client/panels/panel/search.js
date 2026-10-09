@@ -13,13 +13,15 @@
         const [searchIds, setSearchIds] = React.useState(null)
         // host notes-search 返回的命中字段（noteId → ['title'|'tags'|'body']）：「相关度」排序数据源；本地即时命中/旧 host 无该字段时按本地字段估算
         const [searchMatches, setSearchMatches] = React.useState({})
+        // 0.5.0③（notes-050-rrf-fusion）：语义命中集合（noteId → true），「语义」徽标数据源
+        const [searchSemantic, setSearchSemantic] = React.useState({})
         React.useEffect(() => { filtersRef.current = filters }, [filters])
         // 搜索两段式：输入即本地过滤（标题/主题/标签/预览），250ms 防抖后 host 全文检索（含正文）补充
         // 用一次性注册的 timer.debounce：每击键调 timer.timeout 等于每击键在 fiber 上注册一次 ctx.effect，是持续簿记开销
         React.useEffect(() => {
           const d = timer.debounce(() => {
             const qq = searchRef.current.trim()
-            if (!qq) { setSearchIds(null); setSearchMatches({}); return }
+            if (!qq) { setSearchIds(null); setSearchMatches({}); setSearchSemantic({}); return }
             // 筛选中心组合过滤同步 host：类型组恰选 1 个时可传 kind；状态组仅单条件独活时可传 sensitive/inject
             // （多选 OR / 曾注入 语义 host 无法表达，由本地 matchFilters 兜底全量语义）；matches 命中字段供「相关度」排序
             const sArgs = { query: qq }
@@ -31,13 +33,14 @@
             host.call('notes-search', sArgs).then(res => {
               const ns = (res && res.notes) || []
               setSearchIds(ns.map(n => n.id))
-              const mm = {}
-              ns.forEach(n => { if (Array.isArray(n.matches)) mm[n.id] = n.matches })
+              const mm = {}, ss = {}
+              ns.forEach(n => { if (Array.isArray(n.matches)) mm[n.id] = n.matches; if (n.semantic) ss[n.id] = true })
               setSearchMatches(mm)
+              setSearchSemantic(ss)
             }).catch(() => {})
           }, 250)
           searchDebRef.current = d
           return () => { if (d && d.dispose) d.dispose() }
         }, [])
-        return { searchText: searchText, searchIds: searchIds, searchMatches: searchMatches, setSearchText: setSearchText, setSearchIds: setSearchIds, setSearchMatches: setSearchMatches }
+        return { searchText: searchText, searchIds: searchIds, searchMatches: searchMatches, searchSemantic: searchSemantic, setSearchText: setSearchText, setSearchIds: setSearchIds, setSearchMatches: setSearchMatches }
     }

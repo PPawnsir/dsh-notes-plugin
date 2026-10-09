@@ -358,6 +358,8 @@
   .note-row .wikimark svg.ic{width:9px;height:9px}
   /* 曾注入行徽章（injectEver 粘性标记：淡灰时钟，与已注入 bolt 蓝徽章互斥显示） */
   .note-row .injevr{display:flex;flex-shrink:0;color:var(--nt3);align-items:center}
+  /* 0.5.0③（notes-050-rrf-fusion）：语义命中徽章（评估期 instrumentation——语义通道召回可观察；淡紫 accent 区分文本命中） */
+  .note-row .sem{display:inline-flex;align-items:center;font-size:10px;color:var(--nacc);border:1px solid var(--nacc);border-radius:3px;padding:0 3px;flex-shrink:0;line-height:1.4;opacity:.85}
   .backlinks{border-top:1px solid var(--nbd-soft);padding:6px 24px;flex-shrink:0}
   .backlinks .bl-t{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;letter-spacing:.6px;color:var(--nt3);text-transform:uppercase}
   .backlinks .bl-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
@@ -906,6 +908,7 @@ function clearFilters() { filters = { pinned: false, injected: false, injectEver
 function sortLabel() { return sortLabelOf(sortBy) }   /* i18n 覆盖卡F：排序档标签走 t() 字典（sort.* 条件映射），原 FILTER_SORTS[i].label 字面量仅作锚 */
 var searchText = '', searchIds = null; // searchIds=null=仅本地过滤；数组=host 全文命中 ∪ 本地命中
 var searchMeta = {};         // host notes-search 返回的命中字段（noteId → ['title'|'tags'|'body']），相关度排序数据源
+var searchSem = {};          // 0.5.0③（notes-050-rrf-fusion）：语义命中集合（noteId → true），「语义」徽标数据源
 var searchErrNotified = false;   /* 在线检索失败 toast 去重闸：同一轮故障只提示一次（doSearch 防抖逐键触发，防刷屏），成功即复位 */
 var selId = null, edNote = null;       // edNote = 当前选中笔记完整体（含 body）
 /* 新建草稿态（notes-034-batch3）：点 + 先开本地草稿（draftNote 非 null，selId 保持 null 不占用任何真实 id），
@@ -1326,6 +1329,9 @@ var I18N_ZH = {
   'tree.wikiTip': '含双链 [[…]]（详情富文本中可点击跳转）',
   'tree.toggleTip': '展开/折叠',
   'tree.sysChipTip': '机器托管笔记（sys）：默认列表/搜索降噪不显示，随文件夹展开可见（0.4.4-C 显式入口）',
+  /* 0.5.0③（notes-050-rrf-fusion）：语义命中徽标——评估期 instrumentation（让语义通道命中率可观察） */
+  'tree.semantic': '语义',
+  'tree.semanticTip': '语义命中：由向量检索召回（与关键词检索互补，评估期徽标）',
   /* 0.4.6-D（R2 n-mux7arxj4ocf）：tooltip 按真实行为写——隐身是缺省态而非恒态；tooltip 能被看到本身就意味着某条显式通道已开，写明消除「说隐身却可见」矛盾 */
   'tree.sysFolderTip': '机器托管文件夹（自动沉淀：工作日志/记忆档案/执行记录）——默认从树隐藏降噪；当前可见 = 筛选中心「机器」档或「显示隐藏」已开（0.4.4-G），点行展开/收起查看',
   /* 0.4.6-H（R2 n-mux9r8hfh7xy）：夹展开为空的遮罩提示行（子夹全是 sys/hidden 被整节点滤除时） */
@@ -2228,6 +2234,9 @@ var I18N_EN = {
   'tree.wikiTip': 'Has [[…]] wiki links (clickable in the detail rich text)',
   'tree.toggleTip': 'Expand/collapse',
   'tree.sysChipTip': 'Machine-managed note (sys): hidden from default list/search, shown when its folder is expanded (0.4.4-C explicit entry)',
+  /* 0.5.0③ (notes-050-rrf-fusion): semantic-hit badge — evaluation-phase instrumentation (makes semantic-channel hit rate observable) */
+  'tree.semantic': 'semantic',
+  'tree.semanticTip': 'Semantic hit: recalled by vector search (complements keyword search; evaluation-phase badge)',
   /* 0.4.6-D (R2 n-mux7arxj4ocf): tooltip now describes the real behavior — hidden is the default, not a constant; seeing the tooltip at all means one of the explicit channels is on */
   'tree.sysFolderTip': 'Machine-managed folder (auto-sedimented: work logs / memory archives / execution records) — hidden from the tree by default; visible now because the "Machine" kind filter or "Show hidden items" is on (0.4.4-G); click the row to expand/collapse',
   /* 0.4.6-H (R2 n-mux9r8hfh7xy): empty-expansion mask hint row (all child folders filtered out as sys/hidden) */
@@ -3826,6 +3835,8 @@ function noteRow(n, inFolderCtx) {
     + (hasWikiLinks(n) ? '<span class="wikimark" title="' + t('tree.wikiTip') + '">' + icon('i-link', 9) + '</span>' : '')
     /* 0.4.4-C：sys 行「机器」chip（文件夹显式展开/机器档可见的机器托管笔记可辨识；复用 fbadge 徽章样式 + meta.kindSys 字典键） */
     + ((n.kind || 'note') === 'sys' ? '<span class="fbadge" title="' + esc(t('tree.sysChipTip')) + '">' + esc(t('meta.kindSys')) + '</span>' : '')
+    /* 0.5.0③（notes-050-rrf-fusion）：语义命中徽标（评估期 instrumentation——语义通道召回可观察） */
+    + (searchSem[n.id] ? '<span class="sem" title="' + esc(t('tree.semanticTip')) + '">' + esc(t('tree.semantic')) + '</span>' : '')
     + tail + '</div>';
 }
 /* ===== 0.4.4-C（notes-044-folder-explicit-view）：文件夹显式展开放行 sys（与 client popovers/folder-menu.js 同构）=====
@@ -5608,7 +5619,7 @@ $('btnNew').addEventListener('click', doNewNote);
 /* ================= 搜索：本地即时过滤 + 250ms 防抖 notes-search 并集（kind/sensitive/inject 组合过滤随 sArgs 同步 host；matches 命中字段供相关度排序） ================= */
 function doSearch() {
   var q = searchText.trim();
-  if (!q) { searchIds = null; searchMeta = {}; return }
+  if (!q) { searchIds = null; searchMeta = {}; searchSem = {}; return }
   var sArgs = { query: q };
   /* 筛选中心组合过滤同步 host：类型组恰选 1 个时可传 kind；状态组仅单条件独活时可传 sensitive/inject
      （多选 OR / 曾注入 语义 host 无法表达，由本地 matchFilters 兜底全量语义） */
@@ -5622,7 +5633,8 @@ function doSearch() {
       searchErrNotified = false;   /* 成功即复位，下一轮故障允许再提示一次 */
       searchIds = res.notes.map(function (n) { return n.id });
       searchMeta = {};
-      res.notes.forEach(function (n) { if (n.matches) searchMeta[n.id] = n.matches });
+      searchSem = {};
+      res.notes.forEach(function (n) { if (n.matches) searchMeta[n.id] = n.matches; if (n.semantic) searchSem[n.id] = true });
       render();
     }
   }).catch(function (e) {
@@ -5634,6 +5646,7 @@ $('q').addEventListener('input', function () {
   searchText = this.value;
   render();
   clearTimeout(searchTimer);
+  searchSem = {};   /* 0.5.0③：输入变化即清语义徽标（防抖窗口内旧徽标残留） */
   if (!searchText.trim()) { searchIds = null; searchMeta = {}; return }
   searchTimer = setTimeout(doSearch, 250);
 });
@@ -8095,10 +8108,10 @@ document.addEventListener('keydown', function (ev) {
     if (selMode) { selMode = false; selIds = {}; renderTree(); return }   /* Esc 退出多选态 */
     /* Esc 焦点分层末段：搜索框聚焦时——清空搜索并还焦列表（焦点不得滞留输入框，否则 j/k 字母误入搜索） */
     if (document.activeElement === $('q')) {
-      if ($('q').value) { searchText = ''; searchIds = null; searchMeta = {}; $('q').value = ''; render() }
+      if ($('q').value) { searchText = ''; searchIds = null; searchMeta = {}; searchSem = {}; $('q').value = ''; render() }
       blurSearchToList(); return
     }
-    if (!document.activeElement || !document.activeElement.isContentEditable) { searchText = ''; searchIds = null; searchMeta = {}; $('q').value = ''; render() }
+    if (!document.activeElement || !document.activeElement.isContentEditable) { searchText = ''; searchIds = null; searchMeta = {}; searchSem = {}; $('q').value = ''; render() }
     return
   }
   /* 搜索框 ↓ 桥接列表（保留过滤上下文：搜索→↓→j/k→Enter 纯键盘路径） */

@@ -1,7 +1,7 @@
 /* ================= 搜索：本地即时过滤 + 250ms 防抖 notes-search 并集（kind/sensitive/inject 组合过滤随 sArgs 同步 host；matches 命中字段供相关度排序） ================= */
 function doSearch() {
   var q = searchText.trim();
-  if (!q) { searchIds = null; searchMeta = {}; return }
+  if (!q) { searchIds = null; searchMeta = {}; searchSem = {}; return }
   var sArgs = { query: q };
   /* 筛选中心组合过滤同步 host：类型组恰选 1 个时可传 kind；状态组仅单条件独活时可传 sensitive/inject
      （多选 OR / 曾注入 语义 host 无法表达，由本地 matchFilters 兜底全量语义） */
@@ -15,7 +15,8 @@ function doSearch() {
       searchErrNotified = false;   /* 成功即复位，下一轮故障允许再提示一次 */
       searchIds = res.notes.map(function (n) { return n.id });
       searchMeta = {};
-      res.notes.forEach(function (n) { if (n.matches) searchMeta[n.id] = n.matches });
+      searchSem = {};
+      res.notes.forEach(function (n) { if (n.matches) searchMeta[n.id] = n.matches; if (n.semantic) searchSem[n.id] = true });
       render();
     }
   }).catch(function (e) {
@@ -27,6 +28,7 @@ $('q').addEventListener('input', function () {
   searchText = this.value;
   render();
   clearTimeout(searchTimer);
+  searchSem = {};   /* 0.5.0③：输入变化即清语义徽标（防抖窗口内旧徽标残留） */
   if (!searchText.trim()) { searchIds = null; searchMeta = {}; return }
   searchTimer = setTimeout(doSearch, 250);
 });

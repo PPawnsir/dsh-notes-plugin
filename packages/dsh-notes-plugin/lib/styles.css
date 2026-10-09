@@ -297,6 +297,8 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 /* 使用遥测（P2）：行尾被引用徽章（quote 图标 + 计数；0 次不渲染） */
 .dsh-notes-note-use{display:inline-flex;align-items:center;gap:2px;font-size:10px;color:var(--nt3);flex-shrink:0;line-height:1.6}
 .dsh-notes-note-use .dsh-ic{width:9px;height:9px}
+/* 0.5.0③（notes-050-rrf-fusion）：语义命中徽章（评估期 instrumentation——语义通道召回可观察；淡紫 accent 区分文本命中） */
+.dsh-notes-note-sem{display:inline-flex;align-items:center;gap:2px;font-size:10px;color:var(--nacc);border:1px solid var(--nacc);border-radius:3px;padding:0 3px;flex-shrink:0;line-height:1.4;opacity:.85}
 .dsh-notes-note-tp{font-size:10px;color:var(--nt3);flex-shrink:0;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-notes-note-dt{font-size:10px;color:var(--nt3);flex-shrink:0}
 /* 嵌套子笔记（margin-left 13px + padding-left 9px + 1px 引导线） */

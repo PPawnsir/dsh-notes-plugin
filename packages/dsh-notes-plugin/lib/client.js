@@ -223,6 +223,9 @@ window.__ModuleLoader__.load({
       'tree.wikiTip': '含双链 [[…]]（详情富文本中可点击跳转）',
       'tree.toggleTip': '展开/折叠',
       'tree.sysChipTip': '机器托管笔记（sys）：默认列表/搜索降噪不显示，随文件夹展开可见（0.4.4-C 显式入口）',
+      /* 0.5.0③（notes-050-rrf-fusion）：语义命中徽标——评估期 instrumentation（让语义通道命中率可观察） */
+      'tree.semantic': '语义',
+      'tree.semanticTip': '语义命中：由向量检索召回（与关键词检索互补，评估期徽标）',
       /* 0.4.6-D（R2 n-mux7arxj4ocf）：tooltip 按真实行为写——隐身是缺省态而非恒态；tooltip 能被看到本身就意味着某条显式通道已开，写明消除「说隐身却可见」矛盾 */
       'tree.sysFolderTip': '机器托管文件夹（自动沉淀：工作日志/记忆档案/执行记录）——默认从树隐藏降噪；当前可见 = 筛选中心「机器」档或「显示隐藏」已开（0.4.4-G），点行展开/收起查看',
       /* 0.4.6-H（R2 n-mux9r8hfh7xy）：夹展开为空的遮罩提示行（子夹全是 sys/hidden 被整节点滤除时） */
@@ -1125,6 +1128,9 @@ window.__ModuleLoader__.load({
       'tree.wikiTip': 'Has [[…]] wiki links (clickable in the detail rich text)',
       'tree.toggleTip': 'Expand/collapse',
       'tree.sysChipTip': 'Machine-managed note (sys): hidden from default list/search, shown when its folder is expanded (0.4.4-C explicit entry)',
+      /* 0.5.0③ (notes-050-rrf-fusion): semantic-hit badge — evaluation-phase instrumentation (makes semantic-channel hit rate observable) */
+      'tree.semantic': 'semantic',
+      'tree.semanticTip': 'Semantic hit: recalled by vector search (complements keyword search; evaluation-phase badge)',
       /* 0.4.6-D (R2 n-mux7arxj4ocf): tooltip now describes the real behavior — hidden is the default, not a constant; seeing the tooltip at all means one of the explicit channels is on */
       'tree.sysFolderTip': 'Machine-managed folder (auto-sedimented: work logs / memory archives / execution records) — hidden from the tree by default; visible now because the "Machine" kind filter or "Show hidden items" is on (0.4.4-G); click the row to expand/collapse',
       /* 0.4.6-H (R2 n-mux9r8hfh7xy): empty-expansion mask hint row (all child folders filtered out as sys/hidden) */
@@ -6485,13 +6491,15 @@ window.__ModuleLoader__.load({
         const [searchIds, setSearchIds] = React.useState(null)
         // host notes-search 返回的命中字段（noteId → ['title'|'tags'|'body']）：「相关度」排序数据源；本地即时命中/旧 host 无该字段时按本地字段估算
         const [searchMatches, setSearchMatches] = React.useState({})
+        // 0.5.0③（notes-050-rrf-fusion）：语义命中集合（noteId → true），「语义」徽标数据源
+        const [searchSemantic, setSearchSemantic] = React.useState({})
         React.useEffect(() => { filtersRef.current = filters }, [filters])
         // 搜索两段式：输入即本地过滤（标题/主题/标签/预览），250ms 防抖后 host 全文检索（含正文）补充
         // 用一次性注册的 timer.debounce：每击键调 timer.timeout 等于每击键在 fiber 上注册一次 ctx.effect，是持续簿记开销
         React.useEffect(() => {
           const d = timer.debounce(() => {
             const qq = searchRef.current.trim()
-            if (!qq) { setSearchIds(null); setSearchMatches({}); return }
+            if (!qq) { setSearchIds(null); setSearchMatches({}); setSearchSemantic({}); return }
             // 筛选中心组合过滤同步 host：类型组恰选 1 个时可传 kind；状态组仅单条件独活时可传 sensitive/inject
             // （多选 OR / 曾注入 语义 host 无法表达，由本地 matchFilters 兜底全量语义）；matches 命中字段供「相关度」排序
             const sArgs = { query: qq }
@@ -6503,15 +6511,16 @@ window.__ModuleLoader__.load({
             rpc('notes-search', sArgs).then(res => {
               const ns = (res && res.notes) || []
               setSearchIds(ns.map(n => n.id))
-              const mm = {}
-              ns.forEach(n => { if (Array.isArray(n.matches)) mm[n.id] = n.matches })
+              const mm = {}, ss = {}
+              ns.forEach(n => { if (Array.isArray(n.matches)) mm[n.id] = n.matches; if (n.semantic) ss[n.id] = true })
               setSearchMatches(mm)
+              setSearchSemantic(ss)
             }).catch(() => {})
           }, 250)
           searchDebRef.current = d
           return () => { if (d && d.dispose) d.dispose() }
         }, [])
-        return { searchText: searchText, searchIds: searchIds, searchMatches: searchMatches, setSearchText: setSearchText, setSearchIds: setSearchIds, setSearchMatches: setSearchMatches }
+        return { searchText: searchText, searchIds: searchIds, searchMatches: searchMatches, searchSemantic: searchSemantic, setSearchText: setSearchText, setSearchIds: setSearchIds, setSearchMatches: setSearchMatches }
     }
     // ===== panel/wiki —— 笔记双链：索引/解析/跳转（architecture-modular §6 步骤 E，自 panels/whole.js 拆出）=====
     // provides: usePanelWiki（wikiVer 态 + resolveWikiTarget/wikiResolve/ensureWikiIndex/bumpWikiBody/hasWikiLinks/jumpToWikiTarget）/ wikiBodiesRef/wikiIdxGenRef/jumpWikiRef
@@ -6580,6 +6589,8 @@ window.__ModuleLoader__.load({
     // dragNoteIdRef/dragFolderIdRef 的 React.useRef 声明原文被 check.js 锚定（21/41 节）——留 hook 内（useRef 不可模块顶层调用）
     function usePanelTree(args) {
         const notes = args.notes, view = args.view, filters = args.filters, searchText = args.searchText, searchIds = args.searchIds, folders = args.folders
+        // 0.5.0③（notes-050-rrf-fusion）：语义命中集合（noteId → true）——「语义」徽标数据源（经 usePanelSearch → panel/index.js 注入）
+        const searchSemantic = args.searchSemantic || {}
         // 0.4.4-C（notes-044-folder-explicit-view）：sysKids = 文件夹显式展开按需补拉的 sys 子行缓存（popovers/folder-menu.js 托管，{fid:{stamp,rows}}）
         const sysKids = args.sysKids || {}
         // 0.4.4-D（notes-044-hidden-attr）：showHidden = 显隐开关（panel/index.js 态，localStorage dsh-notes-show-hidden 持久）；
@@ -6726,6 +6737,8 @@ window.__ModuleLoader__.load({
               hasWikiLinks(n) ? e('span', { className: 'dsh-notes-note-wiki dsh-nt', 'data-tooltip': tt('tree.wikiTip') }, I('link', 9)) : null,
               // 0.4.4-C：sys 行「机器」chip（文件夹显式展开/机器档可见的机器托管笔记可辨识；复用 fbadge 徽章样式 + meta.kindSys 字典键）
               (n.kind || 'note') === 'sys' ? e('span', { className: 'dsh-notes-fbadge dsh-nt', 'data-tooltip': tt('tree.sysChipTip') }, tt('meta.kindSys')) : null,
+              // 0.5.0③（notes-050-rrf-fusion）：语义命中徽标（评估期 instrumentation——语义通道召回可观察）
+              searchSemantic[n.id] ? e('span', { className: 'dsh-notes-note-sem dsh-nt', 'data-tooltip': tt('tree.semanticTip') }, tt('tree.semantic')) : null,
               tail)
           }
           // ===== 侧栏树（原型 renderTree 翻译）：视图头 → 置顶组 → 文件夹组（nested 子笔记）→ 未入夹根级平铺（drop 移出落点）→ 主题全局过滤 =====
@@ -8588,12 +8601,12 @@ window.__ModuleLoader__.load({
         // 打开时居中定位 effect 已随 panel/chrome.js 迁入（hook 内同文，open 经入参注入）
         // 搜索两段式已拆出（§6 步骤 E：panel/search.js——searchText/searchIds/searchMatches 态 + 250ms 防抖 host 检索归 usePanelSearch；
         // searchRef/searchDebRef 在 kernel/state.js 跨域镜像群；filtersRef 镜像随该模块；filters 经入参注入）
-        const { searchText, searchIds, searchMatches, setSearchText, setSearchIds, setSearchMatches } = usePanelSearch({ filters: filters })
+        const { searchText, searchIds, searchMatches, searchSemantic, setSearchText, setSearchIds, setSearchMatches } = usePanelSearch({ filters: filters })
         // 注入管理面板搜索防抖（250ms）随 modal 迁入 modals/inject-manager.js（injMgrSearchRef/injMgrSearchDebRef 为模块级单例，防抖 effect 挂 InjMgrModal）
         // 搜索/视图/筛选中心条件变化时重置分组分页 effect 已随 panel/tree.js 迁入（该 hook 内同文，入参注入依赖值）
         // 树渲染/分组分页/拖拽已拆出（§6 步骤 E：panel/tree.js——groupShown/dragActive/topicExpanded/topicSecOpen 态 +
         // renderMoreRow 组尾加载行/双向拖拽族/renderTreeEls（内含 renderNoteRow/renderFolderNode）归 usePanelTree；post-guard 求值经 R 入参注入）
-        const { renderTreeEls } = usePanelTree({ notes: notes, view: view, filters: filters, searchText: searchText, searchIds: searchIds, folders: folders, sysKids: sysKids, showHidden: showHidden })
+        const { renderTreeEls } = usePanelTree({ notes: notes, view: view, filters: filters, searchText: searchText, searchIds: searchIds, folders: folders, sysKids: sysKids, showHidden: showHidden, searchSemantic: searchSemantic })
         // 展开态同步到 ref（keydown 闭包读 ref 避免过期；已拆出 modal 的 open 镜像由各模块 setter 别名同步写入）
         // filtersRef 镜像 + 同步 effect 已随 panel/search.js 迁入（该模块顶层绑定 + hook 内同文）
         // 日志同权（0.4.3 验收修复⑦，用户裁决推翻 R-6 UI 隐身）：kind=log 随默认列表直达（host 已收编），

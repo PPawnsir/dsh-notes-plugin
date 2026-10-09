@@ -50,6 +50,9 @@ var I18N_EN = {
   'tree.wikiTip': 'Has [[…]] wiki links (clickable in the detail rich text)',
   'tree.toggleTip': 'Expand/collapse',
   'tree.sysChipTip': 'Machine-managed note (sys): hidden from default list/search, shown when its folder is expanded (0.4.4-C explicit entry)',
+  /* 0.5.0③ (notes-050-rrf-fusion): semantic-hit badge — evaluation-phase instrumentation (makes semantic-channel hit rate observable) */
+  'tree.semantic': 'semantic',
+  'tree.semanticTip': 'Semantic hit: recalled by vector search (complements keyword search; evaluation-phase badge)',
   /* 0.4.6-D (R2 n-mux7arxj4ocf): tooltip now describes the real behavior — hidden is the default, not a constant; seeing the tooltip at all means one of the explicit channels is on */
   'tree.sysFolderTip': 'Machine-managed folder (auto-sedimented: work logs / memory archives / execution records) — hidden from the tree by default; visible now because the "Machine" kind filter or "Show hidden items" is on (0.4.4-G); click the row to expand/collapse',
   /* 0.4.6-H (R2 n-mux9r8hfh7xy): empty-expansion mask hint row (all child folders filtered out as sys/hidden) */
