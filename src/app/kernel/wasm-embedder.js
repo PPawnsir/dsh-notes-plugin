@@ -36,6 +36,8 @@ var WASM_MODEL_ID = 'Xenova/bge-small-zh-v1.5'
 var WASM_MODEL_FILES = ['config.json', 'tokenizer.json', 'tokenizer_config.json', 'onnx/model_quantized.onnx']
 // 模型总字节（spike 实测 23.32MB：onnx 23.4MB + tokenizer 429KB + config 1KB；仅文档锚，实际以下载后 Cache API 统计为准）
 var WASM_MODEL_BYTES = 24452000
+// 嵌入维度（bge-small-zh-v1.5 输出 512 维 L2 归一化向量；host bge 后端 dim=512 同口径，形状断言锚）
+var WASM_EMBED_DIM = 512
 // 闲置预取阈值：距最后交互 >60s 才允许静默预取（不打断任何交互）
 var WASM_PREFETCH_IDLE_MS = 60000
 // 断点续传最大尝试次数（Range 续传 + ETag 校验；超限抛错，由上层降级承接）
@@ -260,11 +262,25 @@ function wasmBodyHash(body) {
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0
   return s.length.toString(36) + '.' + h.toString(36)
 }
+/* ==== wasm-embedder-vecs BEGIN ====（0.5.0 P0-2 notes-050-wasm-shape：嵌入产出形状提取纯函数——check 节 122 eval 行为级）
+ * 教训（写进节头注）：假桩不产出真 Tensor 形状——嵌入类代码的断言必须带「形状假 Tensor」层（tolist 行为桩），纯数据桩测不出这层。
+ * extractor(chunks) 返回单 Tensor [n,512]；tolist() 本身已是 [n][512]。旧码 Array.isArray(out)?out:[out] 再 map tolist
+ *   → [[[v1],[v2],…]] 双层嵌套（tolist 已是 [n][512]），host put 按块展开时每个「向量」是嵌套数组、dim≠512 → 静默全丢。
+ * 契约：wasmExtractVecs(out, chunkCount, dim) → [chunkCount][dim] 块向量数组；形状非法抛错（显性化，不静默吞）。
+ */
+function wasmExtractVecs(out, chunkCount, dim) {
+  const vecs = (out && typeof out.tolist === 'function') ? out.tolist() : (Array.isArray(out) ? out : [])
+  if (!Array.isArray(vecs) || vecs.length !== chunkCount || !Array.isArray(vecs[0]) || vecs[0].length !== dim) {
+    throw new Error('wasm 嵌入产出形状非法：期望 [' + chunkCount + '][' + dim + ']，实得 ' + (Array.isArray(vecs) ? vecs.length + '×' + (Array.isArray(vecs[0]) ? vecs[0].length : '非数组') : typeof vecs))
+  }
+  return vecs
+}
+/* ==== wasm-embedder-vecs END ==== */
 // app 页「构建索引」编排（0.5.0④ notes-050-sem-settings，承接②遗留「真机首跑冒烟」）：
 //   模型下载（带进度）→ transformers.js 运行时加载（镜像链 jsdelivr→unpkg）→ 全库可索引笔记分段嵌入（bge 512 维）→
 //   notes-vectors-put 全量回写（replace:true 清空目标命名空间）。只跑在 app 页（wasm 运行时不进 host）；
 //   任何一步失败抛错，由调用方（设置区构建按钮）承接回落 host rebuild / 静默降级。
-async function wasmBuildIndex(onProgress) {
+async function wasmBuildIndex(onProgress, onEmbedProgress) {
   await wasmModelEnsureDownloaded(onProgress)
   const mod = await wasmImportRuntime()
   // 0.5.0 P0（notes-050-model-proxy）：transformers.js 模型加载改走同源代理（灭浏览器 CORS）——
@@ -282,19 +298,31 @@ async function wasmBuildIndex(onProgress) {
   const extractor = await mod.pipeline('feature-extraction', WASM_MODEL_ID)
   const list = await rpc('notes-list', {})
   const notes = (list && list.notes) || []
-  const rows = []
+  // 0.5.0 P0-2（notes-050-wasm-shape）：先过滤出可索引笔记（与旧循环同口径）以便嵌入进度 i/n 报总数
+  const indexable = []
   for (const n of notes) {
     if (!n || !n.id || n.deleted === true || n.sensitive === true || (n.kind || 'note') === 'sys') continue
+    indexable.push(n)
+  }
+  const rows = []
+  let done = 0
+  for (const n of indexable) {
     const g = await rpc('notes-get', { id: n.id })
     const body = (g && g.note && g.note.body) || ''
     const chunks = wasmChunkText(body)
-    if (!chunks.length) continue
-    const out = await extractor(chunks, { pooling: 'mean', normalize: true })
-    const tensors = Array.isArray(out) ? out : [out]
-    const vecs = tensors.map(function (t) { return (t && typeof t.tolist === 'function') ? t.tolist() : Array.prototype.slice.call(t || []) })
-    rows.push({ noteId: n.id, bodyHash: wasmBodyHash(body), vectors: vecs })
+    if (chunks.length) {
+      const out = await extractor(chunks, { pooling: 'mean', normalize: true })
+      // 0.5.0 P0-2（notes-050-wasm-shape）：vecs 直接 out.tolist()（[n][512] 即块向量数组；单块也是 [[512]] 一层）——
+      //   旧码 tensors.map(tolist) 造出 [[[v1],[v2],…]] 双层嵌套；wasmExtractVecs 断言 vectors.length===chunks.length 且 [0].length===512。
+      const vecs = wasmExtractVecs(out, chunks.length, WASM_EMBED_DIM)
+      rows.push({ noteId: n.id, bodyHash: wasmBodyHash(body), vectors: vecs })
+    }
+    done++
+    if (onEmbedProgress) onEmbedProgress(done, indexable.length)
   }
   const put = await rpc('notes-vectors-put', { backend: 'bge-small-zh-q8', replace: true, rows: rows })
+  // 0.5.0 P0-2：put 全丢时 host 返回 {error}——抛给调用方走 sticky 报错（静默吞是第二个 bug，可观测性）
+  if (put && put.error) throw new Error(put.error)
   await wasmModelRecordState()
   return put
 }

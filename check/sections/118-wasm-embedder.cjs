@@ -205,7 +205,7 @@ module.exports = {
     // 假 wasm 桩（浏览器 transformers.js 的替身）：deterministic 512 维单位向量
     const vec512 = new Array(512).fill(0); vec512[0] = 1
     const r = await handlers['notes-vectors-put']({ backend: 'bge-small-zh-q8', rows: [{ noteId: 'wasm-n1', bodyHash: 'h1', vectors: [vec512] }] })
-    assert(r && r.ok === true && r.written === 1 && r.skipped === 0 && r.dim === 512, 'put 回写 written=1/skipped=0/dim=512')
+    assert(r && r.ok === true && r.written === 1 && r.dropped === 0 && r.dim === 512, 'put 回写 written=1/dropped=0/dim=512')
     await settle()
     const rows = readVectors().filter(x => x.backend === 'bge-small-zh-q8' && x.noteId === 'wasm-n1')
     assert(rows.length === 1 && rows[0].chunk === 0 && rows[0].vector.length === 512 && rows[0].bodyHash === 'h1', '边车落行（noteId/bodyHash/vector 512 维）')
@@ -215,9 +215,9 @@ module.exports = {
     assert(st.indexed === 1 && st.backend === 'bge-small-zh-q8', 'status indexed=1')
   })
 
-  await t('dim 写前校验 + replace 全量重建：坏行 skipped、replace 清空目标命名空间再写', async () => {
+  await t('dim 写前校验显性化 + replace 全量重建：坏行 dropped+reasons+全丢 error、replace 清空目标命名空间再写', async () => {
     const bad = await handlers['notes-vectors-put']({ backend: 'bge-small-zh-q8', rows: [{ noteId: 'bad-dim', bodyHash: 'x', vectors: [new Array(256).fill(0)] }] })
-    assert(bad && bad.written === 0 && bad.skipped === 1, '256 维向量（≠512）写前校验 skipped（实得 written ' + bad.written + '/skipped ' + bad.skipped + '）')
+    assert(bad && bad.ok === false && bad.error && bad.written === 0 && bad.dropped === 1 && Array.isArray(bad.reasons) && bad.reasons.length === 1, '256 维向量（≠512）全丢 → dropped=1 + error 面（实得 written ' + bad.written + '/dropped ' + bad.dropped + '/error ' + (bad && bad.error) + '）')
     const vec512b = new Array(512).fill(0); vec512b[1] = 1
     const rp = await handlers['notes-vectors-put']({ backend: 'bge-small-zh-q8', replace: true, rows: [{ noteId: 'wasm-n2', bodyHash: 'h2', vectors: [vec512b] }] })
     assert(rp && rp.written === 1, 'replace 写入 wasm-n2')

@@ -710,7 +710,8 @@ function handleRpc(state, method, args) {
       return { ok: true, backend: bid, dim: b.dim, minScore: b.minScore, results: page, count: page.length }
     }
     /* 0.5.0②（notes-050-wasm-embedder）：notes-vectors-put 浏览器回写契约（与 host _vectorsPut 同形状）——
-       rows:[{noteId, bodyHash, vectors:[...]}] 增量 upsert；replace:true 清空目标命名空间再写；dim 写前校验（坏行 skipped）。 */
+       rows:[{noteId, bodyHash, vectors:[...]}] 增量 upsert；replace:true 清空目标命名空间再写；dim 写前校验。
+       0.5.0 P0-2（notes-050-wasm-shape）：静默吞显性化——坏行 dropped 计数 + reasons 原因上报；全丢返回 error（与 host _vectorsPut 同口径）。 */
     case 'notes-vectors-put': {
       const bid = (args && args.backend)
       const b = VECTOR_BACKENDS[bid]
@@ -719,18 +720,23 @@ function handleRpc(state, method, args) {
       const vs = vectorNs(state)
       let ns = vs.ns[bid]
       if ((args && args.replace === true) || !ns) { ns = { hash: {}, rows: {}, lastBuiltAt: nowIso() }; vs.ns[bid] = ns }
-      let written = 0, skipped = 0
+      let written = 0, dropped = 0
+      const reasons = []
       for (const r of rowsIn) {
-        if (!r || typeof r.noteId !== 'string' || !r.noteId || !Array.isArray(r.vectors) || !r.vectors.length) { skipped++; continue }
+        if (!r || typeof r.noteId !== 'string' || !r.noteId) { dropped++; reasons.push({ noteId: (r && r.noteId) || '(missing)', reason: 'missing noteId' }); continue }
+        if (!Array.isArray(r.vectors) || !r.vectors.length) { dropped++; reasons.push({ noteId: r.noteId, reason: 'empty vectors' }); continue }
         const rows = []
         let bad = false
         for (let i = 0; i < r.vectors.length; i++) { const v = r.vectors[i]; if (!Array.isArray(v) || v.length !== b.dim) { bad = true; break } rows.push({ chunk: i, vector: v.map(Number) }) }
-        if (bad) { skipped++; continue }
+        if (bad) { dropped++; reasons.push({ noteId: r.noteId, reason: 'dim mismatch: 期望 ' + b.dim + ' 维，实得 [' + r.vectors.map(v => Array.isArray(v) ? String(v.length) : typeof v).join(',') + ']' }); continue }
         ns.rows[r.noteId] = rows
         ns.hash[r.noteId] = (typeof r.bodyHash === 'string' && r.bodyHash) ? r.bodyHash : ''
         written++
       }
-      return { ok: true, backend: bid, dim: b.dim, written: written, skipped: skipped, count: vectorNsCount(ns) }
+      const allDropped = rowsIn.length > 0 && dropped === rowsIn.length
+      const res = { ok: !allDropped, backend: bid, dim: b.dim, written: written, dropped: dropped, reasons: reasons, count: vectorNsCount(ns) }
+      if (allDropped) res.error = 'notes-vectors-put: 全部 ' + rowsIn.length + ' 行被丢弃（形状/维度非法），零写入'
+      return res
     }
     /* 0.5.0（notes-050-mount-scope）：notes-inject-preview 由缺省 {ok:true} 升格为真实形状（host renderInjected 同形
        {conventions, directory, stats:{conventionsChars,directoryChars,totalChars,maskedNotes,staleMarked,budgetTruncated}}）——

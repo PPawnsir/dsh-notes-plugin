@@ -2536,10 +2536,12 @@ export function apply(ctx) {
           const c = _vectorCache
           let ns = c.ns[backend.id]
           if (a.replace === true || !ns) { ns = _vectorNewNs(); c.ns[backend.id] = ns }
-          let written = 0, skipped = 0
+          // 0.5.0 P0-2（notes-050-wasm-shape）：静默吞显性化——dim 不符/形状非法的行计数 + 原因上报；全丢返回 error（曾静默回 ok 是第二个 bug，可观测性）。
+          let written = 0, dropped = 0
+          const reasons = []
           for (const r of a.rows) {
-            if (!r || typeof r.noteId !== 'string' || !r.noteId) { skipped++; continue }
-            if (!Array.isArray(r.vectors) || !r.vectors.length) { skipped++; continue }
+            if (!r || typeof r.noteId !== 'string' || !r.noteId) { dropped++; reasons.push({ noteId: (r && r.noteId) || '(missing)', reason: 'missing noteId' }); continue }
+            if (!Array.isArray(r.vectors) || !r.vectors.length) { dropped++; reasons.push({ noteId: r.noteId, reason: 'empty vectors' }); continue }
             const rows = []
             let bad = false
             for (let i = 0; i < r.vectors.length; i++) {
@@ -2547,14 +2549,22 @@ export function apply(ctx) {
               if (!Array.isArray(v) || v.length !== dim) { bad = true; break }
               rows.push({ chunk: i, vector: v.map(Number) })
             }
-            if (bad) { skipped++; continue }
+            if (bad) {
+              dropped++
+              const shapes = r.vectors.map(function (v) { return Array.isArray(v) ? String(v.length) : typeof v })
+              reasons.push({ noteId: r.noteId, reason: 'dim mismatch: 期望 ' + dim + ' 维，实得 [' + shapes.join(',') + ']' })
+              continue
+            }
             ns.rows[r.noteId] = rows
             ns.hash[r.noteId] = (typeof r.bodyHash === 'string' && r.bodyHash) ? r.bodyHash : ''
             written++
           }
           if (a.replace === true) ns.lastBuiltAt = new Date().toISOString()
           if (written > 0 || a.replace === true) _vectorScheduleFlush()
-          return { ok: true, backend: backend.id, dim: dim, written: written, skipped: skipped, count: _vectorCountNs(ns) }
+          const allDropped = a.rows.length > 0 && dropped === a.rows.length
+          const res = { ok: !allDropped, backend: backend.id, dim: dim, written: written, dropped: dropped, reasons: reasons, count: _vectorCountNs(ns) }
+          if (allDropped) res.error = 'notes-vectors-put: 全部 ' + a.rows.length + ' 行被丢弃（形状/维度非法），零写入'
+          return res
         })
       } catch (e) { return { error: String(e.message || e) } }
     }

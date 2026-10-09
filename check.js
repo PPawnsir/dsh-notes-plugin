@@ -220,6 +220,11 @@ const CORE = new Set([
   '定时触发休眠目标 → agents.resume 唤醒执行（resume 录制 + resumed 直发 + 零 inbox splice + lastRun.status=sent）',
   '手动派发休眠目标仍 queued（回归锁：零 agents.resume + inbox splice 落盘 + queued:true）',
   '唤醒失败（resume 抛错）→ lastError 落盘 + lastRun.status=error（不静默 queued）',
+  // 122. 0.5.0 P0-2（notes-050-wasm-shape）：wasm 嵌入产出零向量修复——Tensor 双层嵌套 + put 静默丢弃显性化 + 进度文案 常驻 --core
+  '形状假 Tensor 桩：单 Tensor tolist()=[n][512] → wasmExtractVecs 返回 [n][512]（旧双层嵌套必红）',
+  'host put 双层嵌套非法形状 → dropped 计数 + 全丢 error 面（静默吞显性化）',
+  '面板 bge 构建按钮禁用 + 提示：backend=bge 时按钮 disabled + tooltip 到 app 页构建 + doSemBuild 兜底只提示不发起 RPC',
+  '嵌入进度文案：app semDoBuild 嵌入阶段更新「嵌入中 i/n」+ 完成后刷模型行（消灭卡下载 100% 假象）',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

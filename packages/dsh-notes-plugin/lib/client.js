@@ -628,6 +628,8 @@ window.__ModuleLoader__.load({
       'settings.semanticEnabledOff': '已关闭语义检索',
       'settings.semanticBackendSaved': '已切换语义后端：{name}',
       'settings.semanticDownloading': '下载模型中 {pct}%',
+      'settings.semanticEmbedding': '嵌入中 {done}/{total}',
+      'settings.semanticBuildBgeOnly': '嵌入只在笔记 app 页运行（wasm），请到 app 页构建',
       'settings.semanticBuildFailed': '构建索引失败：{msg}',
       /* ===== 覆盖卡 D（notes-042-i18n-cov-d）：注入管理 + 记忆引导双语化 =====
          复用既有 key（禁重复建别名）：settings.injManager（面板标题）/memProbing/memEnabled/memView/memDisable/memEnable、
@@ -1557,6 +1559,8 @@ window.__ModuleLoader__.load({
       'settings.semanticEnabledOff': 'Semantic search disabled',
       'settings.semanticBackendSaved': 'Semantic backend switched: {name}',
       'settings.semanticDownloading': 'Downloading model {pct}%',
+      'settings.semanticEmbedding': 'Embedding {done}/{total}',
+      'settings.semanticBuildBgeOnly': 'Embedding runs only in the Notes app page (wasm) — build the index there',
       'settings.semanticBuildFailed': 'Index build failed: {msg}',
       /* ===== Coverage card D (notes-042-i18n-cov-d): injection manager + memory guide bilingual =====
          Reuses existing keys (no aliases): settings.injManager (panel title)/memProbing/memEnabled/memView/memDisable/memEnable,
@@ -5512,6 +5516,12 @@ window.__ModuleLoader__.load({
       })
       const doSemBuild = () => {
         if (semBuilding) return
+        if (semBackend === 'bge-small-zh-q8') {
+          /* 0.5.0 P0-2（notes-050-wasm-shape）：面板不嵌 wasm（wasm-in-panel 裁决）——bge 构建在面板是必死路径，
+             按钮已禁用；此处兜底（如开关自动回填路径）只提示不发起 RPC（灭「只在浏览器端运行」快速失败报错死胡同） */
+          showToast(tt('settings.semanticBuildBgeOnly'))
+          return
+        }
         setSemBuilding(true)
         setError('')   /* 0.5.0 P0（notes-050-model-proxy）：再次构建先清上次驻留错误（失败再重写 sticky 报错；成功保持清零） */
         rpc('notes-vectors-rebuild', { backend: semBackend || 'bge-small-zh-q8' }).then((res) => {
@@ -5643,7 +5653,7 @@ window.__ModuleLoader__.load({
             e('option', { value: 'bge-small-zh-q8' }, tt('settings.semanticBackendLocal')),
             e('option', { value: 'custom-endpoint', disabled: true }, tt('settings.semanticBackendCustom'))),
           e('div', { className: 'dsh-notes-settings-label-s' }, semStatusText),
-          e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': tt('settings.semanticTip'), onClick: doSemBuild, disabled: !semEnabled || semBuilding }, semBuilding ? tt('settings.semanticBuilding') : tt('settings.semanticBuild')),
+          e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': (semBackend === 'bge-small-zh-q8' ? tt('settings.semanticBuildBgeOnly') : tt('settings.semanticTip')), onClick: doSemBuild, disabled: !semEnabled || semBuilding || semBackend === 'bge-small-zh-q8' }, semBuilding ? tt('settings.semanticBuilding') : tt('settings.semanticBuild')),
           e('span', { className: 'dsh-notes-settings-label-s' }, ' ' + semModelText))
         // ===== 工作记忆 v0 控件（设置卡片「工作记忆」区）：状态行（已启用→查看约定/停用）+「启用沉淀引导…」=====
         const memoryControl = memStatus === null

@@ -524,7 +524,15 @@ function semDoBuild() {
     semState.building = false;
     var b2 = $('setSemBuild');
     if (b2) { b2.disabled = !semState.enabled; b2.textContent = t('settings.semanticBuild'); }
-    semRenderStatus(); semRenderModel();
+    // 0.5.0 P0-2（notes-050-wasm-shape）：构建完成后刷模型行——wasmModelRecordState 已写 settings，但 semState.model 是
+    //   打开时快照，不刷新会滞留「未下载」；bge 构建后读 wasmModelStatus 回填 bytes 再渲染（fake 后端无模型，跳过）。
+    var refresh = (backend === 'bge-small-zh-q8' && typeof wasmModelStatus === 'function') ? wasmModelStatus() : Promise.resolve(null);
+    refresh.then(function (st) {
+      if (st && semState && backend === 'bge-small-zh-q8') semState.model = { backend: st.backend, bytes: st.downloadedBytes, downloadedAt: new Date().toISOString(), source: 'cache-api' };
+      semRenderStatus(); semRenderModel();
+    }, function () {
+      semRenderStatus(); semRenderModel();
+    });
   };
   var fail = function (err) {
     var msg = (err && err.message) ? String(err.message) : String(err);
@@ -532,8 +540,10 @@ function semDoBuild() {
     finish();
   };
   if (backend === 'bge-small-zh-q8' && typeof wasmBuildIndex === 'function') {
-    wasmBuildIndex(function (i, n, loaded, total) { var s = $('setSemStatus'); if (s) s.innerHTML = t('settings.semanticDownloading', { pct: total > 0 ? Math.round(loaded / total * 100) : 0 }); })
-      .then(finish, fail);
+    wasmBuildIndex(
+      function (i, n, loaded, total) { var s = $('setSemStatus'); if (s) s.innerHTML = t('settings.semanticDownloading', { pct: total > 0 ? Math.round(loaded / total * 100) : 0 }); },
+      function (done, total) { var s = $('setSemStatus'); if (s) s.innerHTML = t('settings.semanticEmbedding', { done: done, total: total }); }
+    ).then(finish, fail);
   } else {
     rpc('notes-vectors-rebuild', { backend: backend }).then(function (r) {
       if (r && r.error) { fail(new Error(r.error)); return; }

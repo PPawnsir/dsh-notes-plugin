@@ -455,6 +455,8 @@ var I18N_ZH = {
   'settings.semanticEnabledOff': '已关闭语义检索',
   'settings.semanticBackendSaved': '已切换语义后端：{name}',
   'settings.semanticDownloading': '下载模型中 {pct}%',
+  'settings.semanticEmbedding': '嵌入中 {done}/{total}',
+  'settings.semanticBuildBgeOnly': '嵌入只在笔记 app 页运行（wasm），请到 app 页构建',
   'settings.semanticBuildFailed': '构建索引失败：{msg}',
   /* ===== 覆盖卡 D（notes-042-i18n-cov-d）：注入管理 + 记忆引导双语化 =====
      复用既有 key（禁重复建别名）：settings.injManager（面板标题）/memProbing/memEnabled/memView/memDisable/memEnable、
