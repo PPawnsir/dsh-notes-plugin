@@ -1,0 +1,98 @@
+name: Release (OIDC)
+
+# Publishes `dsh-notes-plugin` (packages/dsh-notes-plugin/) to npm via npm Trusted
+# Publishing (OIDC) — no NPM_TOKEN secret, no OTP; provenance is attached to the tarball.
+#
+# Trigger: a GitHub Release is published (tag vX.Y.Z). The tag MUST match
+# packages/dsh-notes-plugin/package.json `version`; the workflow verifies this before
+# publishing.
+#
+# !! PUSHING A TAG DOES NOT PUBLISH !!  `on: release` fires only when a GitHub
+# Release object is created. `git push --tags` alone leaves the tag sitting there
+# and nothing reaches npm. Cutting a release is:
+#
+#   git commit -am "release: vX.Y.Z——<摘要>"        # bump package.json version
+#   git tag vX.Y.Z && git push origin main --tags   # still not published
+#   gh release create vX.Y.Z --title ... --notes-file ...   # <- this publishes
+#
+# After the run reports "✅ Published", the registry can still serve the old version
+# to `npm view` for 1-5 minutes (Fastly max-age=300). Trust the workflow log, not
+# `npm view`, and do not retry on that basis — retrying hits E409 "version exists".
+#
+# One-time npm-side setup (manual, on npmjs.com):
+#   1. package `dsh-notes-plugin` -> Settings -> Publishing access
+#      -> Trusted Publishers -> "Add Trusted Publisher".
+#   2. Provider: GitHub Actions
+#      Organization or user: PPawnsir
+#      Repository:           dsh-notes-plugin
+#      Workflow filename:    release.yml
+#      Environment:          (blank)
+#   3. Save. Do NOT add an NPM_TOKEN secret — Trusted Publishing replaces it.
+# Canonical reference: https://docs.npmjs.com/trusted-publishers
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Pack and verify everything, but do not publish
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write  # mint the OIDC token npm Trusted Publishing exchanges
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: build · check · publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify release tag matches package.json version
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          expected="v$(node -p "require('./packages/dsh-notes-plugin/package.json').version")"
+          echo "package.json version: ${expected#v}"
+          echo "release tag:          ${RELEASE_TAG}"
+          if [ "${RELEASE_TAG}" != "${expected}" ]; then
+            echo "::error::Release tag ${RELEASE_TAG} does not match package.json version ${expected#v} (expected ${expected})."
+            exit 1
+          fi
+
+      - name: Build dist (lib/client.js + styles.css + app.html + index.mjs)
+        run: node scripts/build-dist.cjs
+
+      - name: Full regression (check.js)
+        run: node check.js
+
+      - name: Dry-run publish (validation only)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
+        working-directory: packages/dsh-notes-plugin
+        run: npm publish --dry-run --access public
+
+      - name: Check whether this version is already on npm
+        id: published
+        run: |
+          if npm view "$(node -p "require('./packages/dsh-notes-plugin/package.json').name")@$(node -p "require('./packages/dsh-notes-plugin/package.json').version")" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm (OIDC trusted publishing)
+        if: (github.event_name == 'release' || github.event.inputs.dry_run != 'true') && steps.published.outputs.exists != 'true'
+        working-directory: packages/dsh-notes-plugin
+        run: npm publish --provenance --access public

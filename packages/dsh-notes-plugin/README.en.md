@@ -231,6 +231,33 @@ npm run e2e                           # Browser e2e (Playwright + built-in mock 
 
 See [DEVELOPMENT.md](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/DEVELOPMENT.md) for details.
 
+## Release
+
+Publishing goes through [npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (OIDC): **no npm token, no OTP, no local npm login required**. `.github/workflows/release.yml` exchanges the GitHub Actions OIDC identity for publish permission and attaches SLSA provenance.
+
+> **The trigger is "publishing a GitHub Release", not pushing a tag.**
+> A bare `git push --tags` publishes nothing — the tag just sits there.
+
+```bash
+# 1. Bump version in packages/dsh-notes-plugin/package.json, then commit
+git commit -am "release: vX.Y.Z——<summary>"
+
+# 2. Tag and push (this step does NOT publish)
+git tag vX.Y.Z && git push origin main --tags
+
+# 3. Create the GitHub Release — this step actually triggers the publish
+gh release create vX.Y.Z --title "vX.Y.Z — <title>" --notes-file <notes.md>
+```
+
+The workflow then runs build → check → `npm publish --provenance`, and verifies the tag matches the `packages/dsh-notes-plugin/package.json` version (a mismatch fails immediately).
+
+Known pitfalls:
+
+- **The registry has propagation delay**: after the workflow reports `✅ Published`, `npm view` may still show the old version for 1–5 minutes (Fastly `max-age=300`). Trust the workflow log — don't judge it as a failure and retry, because retrying only hits E409 "version already exists".
+- **Don't go fiddling with npm tokens**: npm is [systematically retiring bypass-2FA granular tokens](https://github.blog/changelog/2026-07-31-restricting-npm-bypass-2fa-granular-access-tokens/). `release.yml` depends on no token — if publishing fails, read the workflow log first, not the token config.
+- **One-time setup**: before first use, on npmjs.com add a Trusted Publisher under the `dsh-notes-plugin` package's Settings → Publishing access → Trusted Publishers (Provider: GitHub Actions · Owner: PPawnsir · Repository: dsh-notes-plugin · Workflow: release.yml). Until configured, the workflow's publish step fails as expected.
+- **Fallback path**: `.github/workflows/publish.yml` (NPM_TOKEN) is kept as a manual fallback (triggered via Run workflow) for when OIDC is unavailable.
+
 ## License
 
 MIT
