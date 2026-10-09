@@ -314,6 +314,42 @@ const HOST_OUT = path.join(ROOT, 'packages', 'dsh-notes-plugin', 'index.mjs')
 const hostText = concatHostDist()
 fs.writeFileSync(HOST_OUT, hostText, 'utf8')
 
+// ---- 10. host embedder 依赖 external + 桩包同步（0.5.0 R1 notes-051-host-embedder）----
+// 红线：@huggingface/transformers / onnxruntime-web 不打进 index.mjs（本脚本本就零打包纯拼接——本步把
+//   「运行期动态 import + 发布包 dependencies 声明 + overrides 原生桩」口径钉成构建期断言，防未来引入 bundler 时漂移）。
+{
+  const PKG_JSON_PATH = path.join(ROOT, 'packages', 'dsh-notes-plugin', 'package.json')
+  const pkg = JSON.parse(fs.readFileSync(PKG_JSON_PATH, 'utf8'))
+  const problems10 = []
+  for (const d of ['@huggingface/transformers', 'onnxruntime-web']) {
+    if (!pkg.dependencies || !pkg.dependencies[d]) problems10.push('发布包 package.json 缺 dependencies.' + d + '（host embedder 运行期依赖必须入包）')
+    if (hostText.indexOf(d) < 0) problems10.push('index.mjs 缺 ' + d + ' 动态 import 引用（host embedder 缺失？）')
+  }
+  for (const d of ['onnxruntime-node', 'sharp']) {
+    if (!pkg.overrides || !pkg.overrides[d]) problems10.push('发布包 package.json 缺 overrides.' + d + '（原生桩化红线：' + d + ' 整包替换）')
+  }
+  // external 反向闸：wasm 运行时二进制/transformers 产物不得以任何形式内联进 bundle（拼接产物出现 wasm base64 大块即异常）
+  if (hostText.indexOf('ort-wasm-simd-threaded.wasm') >= 0) problems10.push('index.mjs 出现 wasm 工件名残留（external 口径漂移）')
+  if (problems10.length) {
+    console.error('[build-dist] host embedder external 断言失败：\n  - ' + problems10.join('\n  - '))
+    process.exit(1)
+  }
+  // 桩包同步：根 stubs/ → 包内 stubs/（npm overrides file: 目标随包发布；逐字节拷贝，与根单一事实源零漂移）
+  const STUB_SRC = path.join(ROOT, 'stubs')
+  const STUB_OUT = path.join(ROOT, 'packages', 'dsh-notes-plugin', 'stubs')
+  for (const name of ['sharp', 'onnxruntime-node']) {
+    for (const f of ['package.json', 'index.js']) {
+      const s = path.join(STUB_SRC, name, f)
+      const d = path.join(STUB_OUT, name, f)
+      const buf = fs.readFileSync(s)
+      if (fs.existsSync(d) && fs.readFileSync(d).equals(buf)) continue
+      fs.mkdirSync(path.dirname(d), { recursive: true })
+      fs.writeFileSync(d, buf)
+    }
+  }
+  console.log('  embedder：发布包 dependencies/overrides 断言通过；stubs/ → 包内同步（sharp + onnxruntime-node 桩）')
+}
+
 console.log('[build-dist] src/client/**（manifest 拼接） → ' + path.relative(ROOT, OUT_PATH))
 console.log('  转换计数：host.call→rpc ' + counts['host-call'] + ' 处，styles.insert→<style> 段 ' + counts['styles-block'] + ' 处，'
   + 'services-header ' + counts['services-header'] + '，perf-timer ' + counts['perf-timer'] + '，perf-wrap ' + counts['perf-wrap'])

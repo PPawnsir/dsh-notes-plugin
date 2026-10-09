@@ -39,6 +39,11 @@ const TELEMETRY_PATH = path.join(NOTES_ROOT, 'telemetry.json')
 // 向量边车（0.5.0① notes-050-vector-layer 语义检索向量层）：JSONL 逐行 { noteId, chunk, bodyHash, backend, vector }；
 //   .jsonl 不进笔记列表天然隐身；与 telemetry.json/settings.json 同目录纪律（开发版 VECTORS_PATH 由 kernel/vector-store.js 定义）
 const VECTORS_PATH = path.join(NOTES_ROOT, 'vectors.jsonl')
+// host embedder 锚（0.5.0 R1 notes-051-host-embedder）：HOST_PKG_DIR = createRequire 解析基准（插件根兜底裸 import）；
+//   BGE_MODEL_CACHE_DIR = transformers.js env.cacheDir——模型落 NOTES_ROOT/models/Xenova/bge-small-zh-v1.5/（下载一次终身缓存）；
+//   开发版同义常量在 kernel/head.js（NOTES_DIR 拼接）——双包差异点随 VECTORS_PATH 同例登记
+const HOST_PKG_DIR = PKG_DIR
+const BGE_MODEL_CACHE_DIR = path.join(NOTES_ROOT, 'models')
 // .json 后缀不进笔记列表（_list/listMd 只认 .md），settings.json 落在同目录天然不污染列表。
 // 开发版目录：只用于 (a) 首次启动的一次性数据迁移 (b) 开发资产回退读取。发布环境不存在这些文件时静默跳过。
 const LEGACY_PLUGIN_DIR = 'D:\\deepseek-work\\dsh-notes-plugin'
@@ -2216,12 +2221,168 @@ export function apply(ctx) {
     }
     _vectorRegisterBackend(_vectorFakeBackend('fake-256', 256, 0))
     _vectorRegisterBackend(_vectorFakeBackend('fake-64', 64, 0.9))
-    // 0.5.0②（notes-050-wasm-embedder）：真 wasm 后端 bge-small-zh-q8（transformers.js 浏览器端 bge，dim=512/minScore=0.50 校准值）。
-    //   embed 只在浏览器端可运行（wasm 运行时不进 host——红线：正文不出机器，本地 wasm 路线本质保证）；
-    //   host 侧本注册仅承载 status/search 的 dim/minScore 自报 + 命名空间键 + 边车落行校验口径；
-    //   索引/查询嵌入由浏览器驱动：浏览器算向量 → notes-vectors-put 回写边车（_vectorsPut）；查询嵌入经 notes-vectors-search queryVector（③消费）。
-    //   hostEmbed:false（0.5.0 P0 notes-050-model-proxy）：rebuild 快速失败标记——避免 _list 全库扫描后才抛「只在浏览器端」浪费 10s+。
-    _vectorRegisterBackend({ id: 'bge-small-zh-q8', dim: 512, minScore: 0.50, hostEmbed: false, embed: async function () { throw new Error('bge-small-zh-q8 嵌入只在浏览器端运行（wasm）；请经 notes-vectors-put 回写向量 / notes-vectors-search queryVector 查询') } })
+    // 0.5.0 R1（notes-051-host-embedder）：host embedder 内核——bge 嵌入迁回 host 进程（spike② 实证配置落地，嵌入面迁回 host 的第一步）。
+    //   路线：onnxruntime-web 纯 wasm 在宿主进程跑 bge（正文不出机器红线不变——本地推理本质保证；npm overrides 桩化 onnxruntime-node/sharp，
+    //   原生 binding/@img 零进安装树——进程退出 0xC0000005 崩溃回归闸）；浏览器端 app 页构建通道（notes-vectors-put 回写）保留并存，UI 迁移是后续卡。
+    //   懒加载单例：首次调用才 import 运行时 + 加载模型（缺省关闭零成本——不进 embed 则零 import 零下载）；
+    //   并发闸 = 嵌入串行化队列（单飞链，失败不断链）；批上限 ≤8 块/批（防 spike 实测大批次 +4.3GB 内存峰）；
+    //   模型 host 缓存 BGE_MODEL_CACHE_DIR（镜像链 hf-mirror→HF failover，Node 无 CORS 直连）。
+    //   rev2（Verifier 驳回修复 + 深查）：零原生保证从「npm overrides 桩化」（仅安装根生效，部署布局失效）升级为「transformers 恒走
+    //   web 构建显式文件 URL 导入」——node 构建顶层静态 import onnxruntime-node/sharp（与槽位注入无关，部署布局即 0xC0000005），
+    //   web 构建里二者是 webpack ignored 空壳（构造性零原生）；模型缓存改走 env.customCache 官方钩子（web 构建 FileCache 死代码），
+    //   overrides 桩化保留（仓库安装树卫生 + 纵深防御，断言面不撤）。另灭第二个独立崩溃源：多线程 wasm 的 pthread Worker 池在
+    //   进程退出阶段拆卸间歇 0xC0000005（与原生 DLL 无关，repo 布局 8 跑 2 崩实测）——ort.env.wasm.numThreads = 1 单线程闸。
+    // ==== host-embedder BEGIN ====
+    const VECTOR_EMBED_BATCH_MAX = 8                  // 批上限（spike② 实测大批次内存峰 +4.3GB）
+    const BGE_MODEL_ID = 'Xenova/bge-small-zh-v1.5'   // bge-small-zh-v1.5 q8（dim=512）
+    // 镜像链单一事实源（server.dist.js 模型代理复用本表——抽公共）：hf-mirror → huggingface.co（jsDelivr 已砍，红线不动）
+    const BGE_MODEL_MIRRORS = [
+      { id: 'hf-mirror', base: 'https://hf-mirror.com' },
+      { id: 'hf-official', base: 'https://huggingface.co' },
+    ]
+    let _bgeLoadPromise = null                        // 懒加载单例单飞（成功常驻；失败复位，下次调用重试）
+    let _bgeGateChain = Promise.resolve()             // 并发闸：嵌入串行化队列（单飞链；失败不断链，同 _vectorFlushChain 先例）
+    // 依赖动态 import：裸标识符优先（ESM 静态包/常规 cwd 走包 exports 的 import/node 条件——spike② 同路径）；
+    //   失败兜底插件根 createRequire 解到入口文件 URL 再 import（开发版 new Function 沙箱/非常规 cwd 下裸标识符解析不稳）。
+    //   只用于 onnxruntime-web（纯 wasm 包，任意构建形态零原生引用）——transformers 严禁走这里（见 _bgeImportTransformers 注释）。
+    async function _bgeImport(pkgName) {
+      try { return await import(pkgName) } catch (e) {
+        const modM = await import('node:module')
+        const pathM = await import('node:path')
+        const urlM = await import('node:url')
+        const req = modM.createRequire(pathM.join(HOST_PKG_DIR, 'package.json'))
+        return import(urlM.pathToFileURL(req.resolve(pkgName)).href)
+      }
+    }
+    // transformers 恒走 web 构建显式文件 URL（notes-051 驳回修复——部署布局零原生硬性面，与安装布局无关的构造性保证）：
+    //   包 exports 的 node 条件把裸 import('@huggingface/transformers') 导向 dist/transformers.node.mjs——其顶层静态 import
+    //   onnxruntime-node + sharp（无条件加载，与 ORT 槽位注入无关——槽位只控推理后端选择，不控模块加载）；npm 忽略依赖自带的
+    //   overrides（overrides 仅安装根生效），真实部署布局（DSH profile 经 link: 安装发布包）下真 onnxruntime-node@1.21.0 +
+    //   sharp@0.34.5 进安装树 → 原生 DLL 加载 → 嵌入完成后进程退出阶段 0xC0000005 崩溃（Verifier 消费布局探针 4 跑 2 崩实证，
+    //   exit=-1073740940）。web 构建（dist/transformers.web.js）里这两个依赖是 webpack ignored 空壳（构造上零引用），
+    //   唯一静态外部依赖 = onnxruntime-common + onnxruntime-web（纯 JS/wasm），ORT 槽位注入点同源在案
+    //   （web.js: const ORT_SYMBOL = Symbol.for('onnxruntime')）——浏览器/host 共用同一 wasm 构建，任何安装布局构造性零原生。
+    //   解析口径：createRequire 解包入口（node+require 条件 → dist/transformers.node.cjs，仅 resolve 取路径、文件不加载）
+    //   → 同目录 transformers.web.js → file:/// URL 动态 import。exports 未开放子路径，故不裸引子路径（ERR_PACKAGE_PATH_NOT_EXPORTED）。
+    async function _bgeImportTransformers() {
+      const modM = await import('node:module')
+      const pathM = await import('node:path')
+      const urlM = await import('node:url')
+      const req = modM.createRequire(pathM.join(HOST_PKG_DIR, 'package.json'))
+      const entry = req.resolve('@huggingface/transformers')   // 仅取路径定位包目录（node.cjs 不被加载）
+      const webJs = pathM.join(pathM.dirname(entry), 'transformers.web.js')
+      return import(urlM.pathToFileURL(webJs).href)
+    }
+    // 模型缓存键归一（customCache match/put 共用）：剥协议+宿主前缀、剥 /resolve/<rev>/ 段、剥前导斜杠 → 磁盘相对路径
+    //   （形如 Xenova/bge-small-zh-v1.5/onnx/model_quantized.onnx——与 transformers FileCache 键口径一致，旧缓存直接命中；
+    //   localPath 键（/models/Xenova/...）与 remoteURL 键（https://host/.../resolve/main/...）归一到同一磁盘路径，跨镜像命中一致）。
+    //   穿越闸：空/'..'/反斜杠/盘符冒号 → null（match 按 miss 处理、put 落拒不写盘）。
+    function _bgeCacheKeyRel(key) {
+      let k = String(key == null ? '' : key)
+      const hm = k.match(/^https?:\/\/[^/]+\/(.+)$/)
+      if (hm) k = hm[1]
+      k = k.replace(/^\/+/, '').replace(/\/resolve\/[^/]+\//, '/')
+      if (!k || k.indexOf('..') >= 0 || k.indexOf('\\') >= 0 || k.indexOf(':') >= 0) return null
+      return k
+    }
+    // 懒加载（spike② 实证配置照抄）：① ORT 预配置 + 全局槽位注入（必须先于 transformers 导入）→ ② web 构建动态 import
+    //   + 恒等断言 override 生效 → ③ 模型 host 缓存（customCache 钩子）+ 镜像链逐环加载（device:'auto'——Node 缺省 cpu 会被
+    //   deviceToExecutionProviders 拒，spike 反证实证）
+    async function _bgeLoad() {
+      if (!_bgeLoadPromise) {
+        _bgeLoadPromise = (async () => {
+          // ① onnxruntime-web 预配置 + 注入全局 ORT 槽位（transformers.js backends/onnx.js：ORT_SYMBOL in globalThis → 用注入的
+          //   web 版 env，完全不碰 onnxruntime-node 推理路径——原生 binding 零加载）
+          const ortNs = await _bgeImport('onnxruntime-web')
+          const ort = ortNs.default ?? ortNs   // CJS/ESM interop 兼容（spike② 同）
+          // wasmPaths 指向本地 dist（不设则 onnx.js 默认改 jsdelivr CDN）；必须 file:/// URL 形式
+          //   （ort-web 用动态 import() 加载 wasm 的 .mjs 包装器，裸 Windows 路径会被 ESM loader 拒 protocol 'd:'）
+          const modM = await import('node:module')
+          const pathM = await import('node:path')
+          const urlM = await import('node:url')
+          const fsM = await import('node:fs')
+          const req = modM.createRequire(pathM.join(HOST_PKG_DIR, 'package.json'))
+          ort.env.wasm.wasmPaths = urlM.pathToFileURL(pathM.dirname(req.resolve('onnxruntime-web'))).href + '/'
+          // wasm 单线程闸（rev2 深查修复——间歇 0xC0000005 根因）：多线程 wasm = emscripten pthread 借 node Worker 线程，
+          //   进程退出阶段线程池拆卸间歇访问冲突（repo 布局 8 跑 2 崩实测，exit=-1073740940——与原生 DLL 无关的第二个崩溃源，
+          //   spike② 小样本未暴露）；numThreads=1 → 无线程池零拆卸面。必须先于 InferenceSession.create（建会话后改无效）。
+          ort.env.wasm.numThreads = 1
+          globalThis[Symbol.for('onnxruntime')] = ort
+          // ② web 构建显式导入（严禁裸标识符——node 构建顶层静态加载 onnxruntime-node/sharp，部署布局 0xC0000005 驳回面）
+          //   + 恒等断言：内部 ONNX env 必须就是注入的 web 版 env
+          const tf = await _bgeImportTransformers()
+          const env = tf.env
+          if (!env || !env.backends || env.backends.onnx !== ort.env) throw new Error('bge embedder: ORT override 未生效（后端仍是 onnxruntime-node）')
+          // ③ 模型 host 缓存：web 构建 node:fs 被 webpack 忽略（FileCache/FileResponse 死代码，useFSCache 恒 false）→
+          //   env 官方 customCache 钩子（useCustomCache + customCache.match/put，Web Cache API 形态）用 node:fs 自建磁盘缓存：
+          //   match 命中 → Response(字节)（Node ≥18 全局 Response；instanceof Response 成立 → buffer 读路径；return_path=
+          //   IS_NODE_ENV && useFSCache=false → InferenceSession.create(Uint8Array)，ort-web wasm 直吃字节——D:\tmp\sem-spike2
+          //   \probe-web.mjs 实证 dim=512/L2=1.000000/零原生/exit 0）；miss → 镜像链下载 → put 落盘（.tmp-<pid>-<rand> + rename
+          //   原子写，崩溃不留半截模型；万一损坏删 BGE_MODEL_CACHE_DIR 即自愈）。
+          env.useFSCache = false
+          env.useCustomCache = true
+          env.customCache = {
+            match: async function (key) {
+              const rel = _bgeCacheKeyRel(key)
+              if (!rel) return undefined
+              try { return new Response(await fsM.promises.readFile(pathM.join.apply(null, [BGE_MODEL_CACHE_DIR].concat(rel.split('/'))))) } catch (e) { return undefined }
+            },
+            put: async function (key, response) {
+              const rel = _bgeCacheKeyRel(key)
+              if (!rel) return
+              const p = pathM.join.apply(null, [BGE_MODEL_CACHE_DIR].concat(rel.split('/')))
+              const buf = Buffer.from(await response.arrayBuffer())
+              await fsM.promises.mkdir(pathM.dirname(p), { recursive: true })
+              const tmp = p + '.tmp-' + process.pid + '-' + Math.random().toString(36).slice(2, 8)
+              await fsM.promises.writeFile(tmp, buf)
+              await fsM.promises.rename(tmp, p)
+            },
+          }
+          env.allowLocalModels = false
+          let lastErr = null
+          for (const m of BGE_MODEL_MIRRORS) {
+            try {
+              env.remoteHost = m.base
+              return await tf.pipeline('feature-extraction', BGE_MODEL_ID, { dtype: 'q8', device: 'auto' })
+            } catch (e) { lastErr = e }
+          }
+          throw lastErr || new Error('bge embedder: 模型加载失败（镜像链全环失败）')
+        })()
+        _bgeLoadPromise.catch(function () { _bgeLoadPromise = null })   // 失败复位待重试；成功常驻单例
+      }
+      return _bgeLoadPromise
+    }
+    // 单批推理（并发闸内串行调用）。测试缝 globalThis.__DSH_NOTES_BGE_INFER__：check 注假推理器（真模型不进 CI；生产永不设置）。
+    async function _bgeInferBatch(batch) {
+      const fake = (typeof globalThis !== 'undefined') ? globalThis.__DSH_NOTES_BGE_INFER__ : null
+      if (typeof fake === 'function') return fake(batch)
+      const extractor = await _bgeLoad()
+      const out = await extractor(batch, { pooling: 'cls', normalize: true })
+      const dims = out.dims || []
+      const dim = Math.floor(Number(dims[dims.length - 1])) || 512
+      // 形状归一：tolist()=[n][512] 优先（0.5.0 P0-2 教训——Tensor 形状显式校验，不静默吞）；兜底 data 切片
+      const list = typeof out.tolist === 'function' ? out.tolist() : null
+      if (Array.isArray(list) && list.length === batch.length && list.every(function (r) { return Array.isArray(r) && r.length === dim })) return list
+      const rows = []
+      for (let i = 0; i < batch.length; i++) rows.push(Array.from(out.data.slice(i * dim, (i + 1) * dim)))
+      return rows
+    }
+    // bge embed 入口（窄接口契约 embed(texts)→vectors）：并发闸串行化（嵌入单飞）+ 批上限 ≤8 切块顺序推理
+    async function _vectorBgeEmbed(texts) {
+      const list = Array.isArray(texts) ? texts.map(function (t) { return String(t == null ? '' : t) }) : []
+      const run = _bgeGateChain.then(async function () {
+        const out = []
+        for (let i = 0; i < list.length; i += VECTOR_EMBED_BATCH_MAX) {
+          const vecs = await _bgeInferBatch(list.slice(i, i + VECTOR_EMBED_BATCH_MAX))
+          for (let j = 0; j < vecs.length; j++) out.push(vecs[j])
+        }
+        return out
+      })
+      _bgeGateChain = run.then(function () {}, function () {})   // 失败不断链
+      return run
+    }
+    // ==== host-embedder END ====
+    _vectorRegisterBackend({ id: 'bge-small-zh-q8', dim: 512, minScore: 0.50, hostEmbed: true, embed: _vectorBgeEmbed })
     // bodyHash：全文稳定 hash（FNV-1a 32bit + 长度，纯 JS 无 crypto 依赖——vm 沙箱无 node:crypto，同 history engine 先例）。
     //   任何块变 → 全量重算该笔记（简化一致性）；只用于新鲜度锚，碰撞代价 = 漏一次重算或多一次重算（可接受）。
     function _vectorBodyHash(body) {
@@ -3165,12 +3326,11 @@ export function apply(ctx) {
 
     // ==== model-proxy BEGIN ====（0.5.0 P0 notes-050-model-proxy：模型下载 host 代理——灭浏览器 CORS + 网络双断；Range/If-Range 透传保断点续传）
     // 镜像链：hf-mirror → huggingface.co（host 无 CORS，spike 实证 8.7MB/s；jsDelivr 已砍，红线不动）。
+    //   0.5.0 R1（notes-051-host-embedder）：镜像链抽公共——单一事实源 = kernel/vector-store.dist.js 的 BGE_MODEL_MIRRORS
+    //   （host embedder 模型下载同源复用；序位：vector-store ≺ server，manifest 锁定）。
     // app 页 wasmDownloadFile 改走同源 /dsh-notes-model/<path>；host 侧逐环尝试镜像链，每环超时 ≤15s 快速失败到下一环；
     //   状态码/Content-Type/Content-Length/Content-Range/ETag/Accept-Ranges 透传（断点续传语义不变）。全环失败 → 502（app 侧 sticky 报错承接）。
-    const MODEL_PROXY_MIRRORS = [
-      { id: 'hf-mirror', base: 'https://hf-mirror.com' },
-      { id: 'hf-official', base: 'https://huggingface.co' },
-    ]
+    const MODEL_PROXY_MIRRORS = BGE_MODEL_MIRRORS
     const MODEL_PROXY_TIMEOUT_MS = 15000
     if (webServer && typeof webServer.register === 'function') {
       disposers.push(webServer.register({

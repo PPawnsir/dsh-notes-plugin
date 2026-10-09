@@ -92,6 +92,8 @@ dsh plugin --profile web add dsh-notes-plugin
 
 Takes effect after restarting DSH: a "**Smart Notes**" button (✎, with a count badge) appears in the session header — click to open/close the panel; there is also a draggable floating bubble entry in the corner of the desktop.
 
+> Size note: since 0.5.0 the semantic-search embedding runtime ships with the package (onnxruntime-web pure wasm + transformers.js, about **+25MB**). The zero-native guarantee is structural: the host side always imports the transformers **web build** (where sharp/onnxruntime-node are webpack-ignored stubs that are never referenced), independent of install layout; npm overrides whole-package stubbing stays as defense-in-depth — this repo's install tree contains zero `.node` / zero `@img/*` binaries. The vector model itself (bge-small-zh-v1.5, ≈23MB) is **not** in the npm package: it downloads via the mirror chain (hf-mirror → huggingface.co) into `~/.dsh/notes/models/` on first enable. All inference is local; note bodies never leave the machine.
+
 ## Upgrade / Uninstall
 
 ```sh
@@ -169,6 +171,7 @@ Notes are independent Markdown files under `~/.dsh/notes/` (YAML front-matter + 
   folders.json         # virtual folder manifest [{id, name, order}] (missing/corrupt falls back to an empty manifest without affecting the note main flow)
   settings.json        # panel settings (LLM model options, staleDays staleness threshold, injectBudgetChars injection budget, etc.; catalogEnabled is an inert dead key since 0.4.4-E — feature removed, leftovers not migrated)
   perf-report.json     # panel performance telemetry (safe to delete anytime)
+  models/              # host cache of the semantic-search vector model (bge-small-zh-v1.5, ≈23MB; downloaded on first enable, safe to delete — re-downloads on next enable)
 ```
 
 **Version history (snapshot-based)**: before every save lands on disk, the host auto-snapshots the replaced previous version into `.history/<note id>/` (aligned with the editor debounce — one real save = one snapshot; repeated saves without change are deduped by content hash and skipped). Retention policy: every version within 1 hour → hourly for the current day → daily within 7 days → evicted beyond 7 days; at most 20 versions per note; a global 50MB budget for the whole `.history` (oldest snapshots evicted across notes when exceeded). The trash's "Permanently delete" also wipes the note's entire history tree. History is a local safety net: export does **not** include `.history` by default (pass `includeHistory: true` to the `notes-export` RPC to include it), the pre-import auto-backup always includes history, and import merging carries history only for notes that are new to the library (same-id conflicts skip it — the two libraries' histories never mix).

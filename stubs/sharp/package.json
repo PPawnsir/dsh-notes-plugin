@@ -1,0 +1,6 @@
+{
+  "name": "sharp",
+  "version": "0.0.0-stub",
+  "description": "0.5.0 R1 host embedder 原生桩（npm overrides 整包替换 sharp）：bge 嵌入走 onnxruntime-web 纯 wasm，sharp/libvips 原生链不进安装树（@img/* 零磁盘残留红线）；transformers.js 图像通道本插件不用",
+  "main": "index.js"
+}

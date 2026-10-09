@@ -32,9 +32,18 @@
     "cordis.patch.yml",
     "app.html",
     "docs",
+    "stubs",
     "README.md",
     "README.en.md"
   ],
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "onnxruntime-web": "1.22.0-dev.20250409-89f8206ba4"
+  },
+  "overrides": {
+    "onnxruntime-node": "file:stubs/onnxruntime-node",
+    "sharp": "file:stubs/sharp"
+  },
   "keywords": [
     "dsh",
     "dsh-plugin",

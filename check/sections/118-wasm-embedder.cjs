@@ -1,6 +1,6 @@
 // 节 118. 0.5.0② wasm embedder（notes-050-wasm-embedder：transformers.js 浏览器端 bge 后端 + 镜像链 + 静默预取 + wasm-in-panel 裁决）
 // 冻结架构 [[n-muz9b97x35et]] + spike [[n-muz91f19rrqj]]。本卡接①的 backend 注册表 + 三条 RPC（新增第四条 notes-vectors-put 回写通道）。
-// 断言面：bge-small-zh-q8 后端注册（dim=512/minScore=0.50，embed 只在浏览器端）/
+// 断言面：bge-small-zh-q8 后端注册（dim=512/minScore=0.50；0.5.0 R1 起 hostEmbed:true——嵌入迁回 host 进程，假推理缝接入）/
 //   notes-vectors-put 全链路（假 wasm 桩：浏览器算向量 → 回写 → 边车落行 → search queryVector 命中）/
 //   镜像链 failover（主镜像 mock 失败 → 兜底成功）+ 下载纪律（Range/If-Range 头）+ 预取只在闲置触发 /
 //   semantic.model 增量合并（记录下载不清除 enabled/backend）/ wasm-in-panel 裁决实证（面板不加载 wasm，读现成向量）。
@@ -187,18 +187,22 @@ module.exports = {
   }
   const settle = async () => { await handlers['notes-vectors-status']({}) }   // status 内部 await _vectorFlush：强制落盘，读边车前调用
 
-  await t('bge 后端窄接口自报：status dim=512/minScore=0.50 + 激活 bge 后 embed 只在浏览器端（host rebuild/文本 query 抛错）', async () => {
-    await handlers['notes-settings-set']({ semantic: { enabled: true, backend: 'bge-small-zh-q8' } })
-    const st = await handlers['notes-vectors-status']({})
-    assert(st && st.backend === 'bge-small-zh-q8', '激活 bge-small-zh-q8（status.backend）')
-    const bns = (st.namespaces || []).filter(n => n.backend === 'bge-small-zh-q8')[0]
-    assert(bns && bns.dim === 512 && bns.minScore === 0.5, 'bge 自报 dim=512/minScore=0.5')
-    // host 侧 embed 只在浏览器端：文本 query 走 embed → 抛错；rebuild 有笔记时走 embed → 抛错
-    const q = await handlers['notes-vectors-search']({ query: '部署', backend: 'bge-small-zh-q8' })
-    assert(q && q.error && q.error.indexOf('浏览器端运行') >= 0, '文本 query（host embed）抛错：嵌入只在浏览器端')
-    await handlers['notes-create']({ title: 'N', body: 'hello world' })
-    const rb = await handlers['notes-vectors-rebuild']({ backend: 'bge-small-zh-q8' })
-    assert(rb && rb.error && rb.error.indexOf('浏览器端运行') >= 0, 'host rebuild 抛错：bge 重建由浏览器驱动（notes-vectors-put）')
+  await t('bge 后端窄接口自报：status dim=512/minScore=0.50 + 0.5.0 R1 host embedder（文本 query 走 host embed，假推理缝）', async () => {
+    // 0.5.0 R1（notes-051-host-embedder）：bge 嵌入迁回 host 进程（onnxruntime-web 纯 wasm）——host embed 不再抛「只在浏览器端」；
+    //   check 经假推理缝接入（真模型不进 CI）；并发闸/批上限/懒加载行为断言在节 124。本断言只锁窄接口自报 + host embed 通道在案。
+    globalThis.__DSH_NOTES_BGE_INFER__ = async (batch) => (batch || []).map(() => { const v = new Array(512).fill(0); v[0] = 1; return v })
+    try {
+      await handlers['notes-settings-set']({ semantic: { enabled: true, backend: 'bge-small-zh-q8' } })
+      const st = await handlers['notes-vectors-status']({})
+      assert(st && st.backend === 'bge-small-zh-q8', '激活 bge-small-zh-q8（status.backend）')
+      const bns = (st.namespaces || []).filter(n => n.backend === 'bge-small-zh-q8')[0]
+      assert(bns && bns.dim === 512 && bns.minScore === 0.5, 'bge 自报 dim=512/minScore=0.5')
+      // host embed 在案：文本 query 经 host embed（假推理缝）→ ok 返回（0.5.0 R1 前抛「只在浏览器端运行」）
+      const q = await handlers['notes-vectors-search']({ query: '部署', backend: 'bge-small-zh-q8' })
+      assert(q && q.ok === true && !q.error, '文本 query 走 host embed 不再抛错（实得 error=' + (q && q.error) + '）')
+      // host 源注册面：hostEmbed:true + _vectorBgeEmbed（dev/dist 双侧）
+      assert(hostSrc.indexOf("hostEmbed: true, embed: _vectorBgeEmbed") >= 0 && indexSrc.indexOf("hostEmbed: true, embed: _vectorBgeEmbed") >= 0, 'bge 注册 hostEmbed:true + _vectorBgeEmbed（双包）')
+    } finally { delete globalThis.__DSH_NOTES_BGE_INFER__ }
   })
 
   await t('假 wasm 桩全链路：浏览器算向量 → notes-vectors-put 回写 → 边车落行 → search queryVector 命中', async () => {

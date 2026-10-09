@@ -30,6 +30,10 @@ return {
     // 插件目录由 host 引导壳通过 new Function('harness','pluginDir',...) 注入；缺失时回退（单测/直跑场景）
     const PLUGIN_DIR = typeof pluginDir !== 'undefined' && pluginDir ? pluginDir : 'D:\\deepseek-work\\dsh-notes-plugin'
     const NOTES_DIR = PLUGIN_DIR + '\\notes'
+    // host embedder 锚（0.5.0 R1 notes-051-host-embedder）：HOST_PKG_DIR = createRequire 解析基准（裸 import 在
+    //   new Function 沙箱/非常规 cwd 下不稳——插件根兜底）；BGE_MODEL_CACHE_DIR = transformers.js env.cacheDir（模型 host 缓存）
+    const HOST_PKG_DIR = PLUGIN_DIR
+    const BGE_MODEL_CACHE_DIR = NOTES_DIR + '\\models'
     const CSS_PATH = PLUGIN_DIR + '\\src\\styles.css'
     const disposers = []
 

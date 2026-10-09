@@ -345,12 +345,11 @@
 
     // ==== model-proxy BEGIN ====（0.5.0 P0 notes-050-model-proxy：模型下载 host 代理——灭浏览器 CORS + 网络双断；Range/If-Range 透传保断点续传）
     // 镜像链：hf-mirror → huggingface.co（host 无 CORS，spike 实证 8.7MB/s；jsDelivr 已砍，红线不动）。
+    //   0.5.0 R1（notes-051-host-embedder）：镜像链抽公共——单一事实源 = kernel/vector-store.dist.js 的 BGE_MODEL_MIRRORS
+    //   （host embedder 模型下载同源复用；序位：vector-store ≺ server，manifest 锁定）。
     // app 页 wasmDownloadFile 改走同源 /dsh-notes-model/<path>；host 侧逐环尝试镜像链，每环超时 ≤15s 快速失败到下一环；
     //   状态码/Content-Type/Content-Length/Content-Range/ETag/Accept-Ranges 透传（断点续传语义不变）。全环失败 → 502（app 侧 sticky 报错承接）。
-    const MODEL_PROXY_MIRRORS = [
-      { id: 'hf-mirror', base: 'https://hf-mirror.com' },
-      { id: 'hf-official', base: 'https://huggingface.co' },
-    ]
+    const MODEL_PROXY_MIRRORS = BGE_MODEL_MIRRORS
     const MODEL_PROXY_TIMEOUT_MS = 15000
     if (webServer && typeof webServer.register === 'function') {
       disposers.push(webServer.register({

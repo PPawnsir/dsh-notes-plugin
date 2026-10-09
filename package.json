@@ -17,6 +17,14 @@
     "plugin"
   ],
   "license": "MIT",
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "onnxruntime-web": "1.22.0-dev.20250409-89f8206ba4"
+  },
+  "overrides": {
+    "onnxruntime-node": "file:stubs/onnxruntime-node",
+    "sharp": "file:stubs/sharp"
+  },
   "devDependencies": {
     "gifenc": "^1.0.3",
     "playwright": "^1.63.0",

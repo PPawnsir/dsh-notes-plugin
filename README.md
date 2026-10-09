@@ -92,6 +92,8 @@ dsh plugin --profile web add dsh-notes-plugin
 
 重启 DSH 后生效：会话头部出现「**智能笔记**」按钮（✎，带计数徽标），点击打开/关闭面板；桌面角落另有可拖拽的悬浮气泡入口。
 
+> 体积说明：0.5.0 起语义检索的嵌入运行时随包分发（onnxruntime-web 纯 wasm + transformers.js，约 **+25MB**）。零原生保证是构造性的：host 侧恒导入 transformers 的 **web 构建**（其中 sharp/onnxruntime-node 为 webpack ignored 空壳、从不被引用），与安装布局无关；npm overrides 整包桩化保留为纵深防御——本仓库安装树零 `.node`/零 `@img/*` 二进制。向量模型本体（bge-small-zh-v1.5，约 23MB）**不进 npm 包**：首次启用语义检索时经镜像链（hf-mirror → huggingface.co）下载到 `~/.dsh/notes/models/`，全程本地推理、正文不出机器。
+
 ## 升级 / 卸载
 
 ```sh
@@ -169,6 +171,7 @@ dsh plugin --profile web remove dsh-notes-plugin       # 卸载（不删数据�
   folders.json         # 虚拟文件夹清单 [{id, name, order}]（缺失/损坏自动兜底为空清单，不影响笔记主流程）
   settings.json        # 面板设置（LLM 模型选配、staleDays 时效阈值、injectBudgetChars 注入预算等；0.4.4-E 起 catalogEnabled 为惰性死键——功能已拆，存量不迁移）
   perf-report.json     # 面板性能遥测（可随时删除）
+  models/              # 语义检索向量模型 host 缓存（bge-small-zh-v1.5，约 23MB；首次启用时下载，可删——下次启用重新下载）
 ```
 
 **版本历史（快照式）**：每次保存落盘前，host 自动把被替换的上一版快照进 `.history/<笔记 id>/`（与编辑器防抖对齐，一次真实保存 = 一份快照；无变化的重复保存按内容 hash 去重跳过）。保留策略：1 小时内每版全留 → 当天每小时 1 版 → 7 天内每天 1 版 → 超 7 天淘汰；单笔记最多 20 版；全库 `.history` 总预算 50MB（超限时跨笔记淘汰最旧快照）。回收站「彻底删除」会连带清空该笔记的整棵历史。历史是本地安全网：导出默认**不含** `.history`（RPC `notes-export` 加 `includeHistory: true` 才连带），导入前自动备份恒含历史，导入合并仅对库内不存在的新笔记连带其历史（同 id 冲突跳过，两库历史不混杂）。

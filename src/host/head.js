@@ -39,6 +39,11 @@ const TELEMETRY_PATH = path.join(NOTES_ROOT, 'telemetry.json')
 // 向量边车（0.5.0① notes-050-vector-layer 语义检索向量层）：JSONL 逐行 { noteId, chunk, bodyHash, backend, vector }；
 //   .jsonl 不进笔记列表天然隐身；与 telemetry.json/settings.json 同目录纪律（开发版 VECTORS_PATH 由 kernel/vector-store.js 定义）
 const VECTORS_PATH = path.join(NOTES_ROOT, 'vectors.jsonl')
+// host embedder 锚（0.5.0 R1 notes-051-host-embedder）：HOST_PKG_DIR = createRequire 解析基准（插件根兜底裸 import）；
+//   BGE_MODEL_CACHE_DIR = transformers.js env.cacheDir——模型落 NOTES_ROOT/models/Xenova/bge-small-zh-v1.5/（下载一次终身缓存）；
+//   开发版同义常量在 kernel/head.js（NOTES_DIR 拼接）——双包差异点随 VECTORS_PATH 同例登记
+const HOST_PKG_DIR = PKG_DIR
+const BGE_MODEL_CACHE_DIR = path.join(NOTES_ROOT, 'models')
 // .json 后缀不进笔记列表（_list/listMd 只认 .md），settings.json 落在同目录天然不污染列表。
 // 开发版目录：只用于 (a) 首次启动的一次性数据迁移 (b) 开发资产回退读取。发布环境不存在这些文件时静默跳过。
 const LEGACY_PLUGIN_DIR = 'D:\\deepseek-work\\dsh-notes-plugin'

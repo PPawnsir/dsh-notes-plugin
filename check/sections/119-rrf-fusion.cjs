@@ -191,19 +191,24 @@ module.exports = {
 
   await t('降级链：bge 报错 / 无索引 → 静默纯文本（无 error、无语义徽标）', async () => {
     const { handlers, settle } = mk()
-    await handlers['notes-settings-set']({ semantic: { enabled: true, backend: 'bge-small-zh-q8' } })
-    await handlers['notes-create']({ title: '发版', body: '发版纪律正文' })
-    await settle()
-    // bge 嵌入只在浏览器端 → _vectorsSearch 文本 query 抛错 → 融合静默回落纯文本
-    const rb = await handlers['notes-search']({ query: '发版' })
-    assert(rb && !rb.error, 'bge 报错静默回落纯文本（无 error）')
-    assert(Array.isArray(rb.notes) && rb.notes.length >= 1, '纯文本结果照常返回')
-    assert(!rb.notes.some(n => n.semantic), '降级路径无语义徽标')
-    // 无索引：fake-64 启用但查询无精确块命中 → 语义空 → 纯文本
-    await handlers['notes-settings-set']({ semantic: { enabled: true, backend: 'fake-64' } })
-    const r2 = await handlers['notes-search']({ query: '完全不存在的查询词' })
-    assert(r2 && !r2.error && Array.isArray(r2.notes), '无索引静默纯文本（无 error）')
-    assert(!r2.notes.some(n => n.semantic), '无索引无语义徽标')
+    // 0.5.0 R1（notes-051-host-embedder）：bge 嵌入迁回 host——假推理缝注入加载失败（模拟模型未下载/镜像链全环失败），
+    //   演练融合静默回落（真模型不进 CI）；0.5.0③ 前的「只在浏览器端抛错」路径由本条同构承接。
+    globalThis.__DSH_NOTES_BGE_INFER__ = async () => { throw new Error('bge 模型未就绪（模拟加载失败）') }
+    try {
+      await handlers['notes-settings-set']({ semantic: { enabled: true, backend: 'bge-small-zh-q8' } })
+      await handlers['notes-create']({ title: '发版', body: '发版纪律正文' })
+      await settle()
+      // bge embed 报错 → _vectorsSearch 文本 query 抛错 → 融合静默回落纯文本
+      const rb = await handlers['notes-search']({ query: '发版' })
+      assert(rb && !rb.error, 'bge 报错静默回落纯文本（无 error）')
+      assert(Array.isArray(rb.notes) && rb.notes.length >= 1, '纯文本结果照常返回')
+      assert(!rb.notes.some(n => n.semantic), '降级路径无语义徽标')
+      // 无索引：fake-64 启用但查询无精确块命中 → 语义空 → 纯文本
+      await handlers['notes-settings-set']({ semantic: { enabled: true, backend: 'fake-64' } })
+      const r2 = await handlers['notes-search']({ query: '完全不存在的查询词' })
+      assert(r2 && !r2.error && Array.isArray(r2.notes), '无索引静默纯文本（无 error）')
+      assert(!r2.notes.some(n => n.semantic), '无索引无语义徽标')
+    } finally { delete globalThis.__DSH_NOTES_BGE_INFER__ }
   })
   }
 }

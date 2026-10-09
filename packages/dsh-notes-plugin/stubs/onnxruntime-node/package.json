@@ -1,0 +1,6 @@
+{
+  "name": "onnxruntime-node",
+  "version": "0.0.0-stub",
+  "description": "0.5.0 R1 host embedder 原生桩（npm overrides 整包替换 onnxruntime-node）：ORT 全局槽位注入使 transformers.js 走 onnxruntime-web wasm EP，onnxruntime-node 原生 binding 永不加载（进程退出 0xC0000005 崩溃回归闸）",
+  "main": "index.js"
+}
