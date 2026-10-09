@@ -124,6 +124,11 @@
   .pbtn.primary:hover{opacity:.9}
   /* 搜索关键词高亮（先 esc 再包 <mark>，防 XSS——见 hl()） */
   .note-row .ti mark{background:rgba(255,213,79,.35);color:inherit;border-radius:2px;padding:0 1px}
+  /* 0.5.0 交互层（notes-050-search-excerpt）：搜索摘要行——标题下整行（flex-wrap 换行），2 行 clamp 次级色；
+     命中区间 <mark> 复用标题高亮同款底色（hlMarks 先 esc 后 mark，防 XSS）；缩进对齐标题文字起点（caret 槽 11 + gap 7 + 图标槽 16 + gap 7 = 41px） */
+  .note-row.has-ex{flex-wrap:wrap}
+  .note-row .ex{flex-basis:100%;min-width:0;padding:0 8px 1px 41px;font-size:11px;line-height:1.5;color:var(--nt2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
+  .note-row .ex mark{background:rgba(255,213,79,.35);color:inherit;border-radius:2px;padding:0 1px}
   .tree{flex:1;overflow-y:auto;padding:0 6px 8px;border-top:1px solid var(--nbd-soft)}
   .tree:focus{outline:none}   /* 键盘流还焦目标（Esc/搜索↓ 还焦列表）：程序化焦点不画焦点环 */
   .sec-h{display:flex;align-items:center;gap:5px;padding:10px 10px 4px;font-size:10.5px;font-weight:600;letter-spacing:.8px;color:var(--nt3);text-transform:uppercase}
@@ -751,6 +756,26 @@ function _mockSlim(n) {
   return s;
 }
 function _mockGenId() { return 'n-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
+/* 0.5.0 交互层（notes-050-search-excerpt）：mock 摘要计算镜像 host searchExcerpt 形状——
+   正文命中 = 首个命中点 ±50 字窗口（截断端补 …）+ 窗内命中区间 [{start,len}]（相对摘录文本）；否则正文开头 80 字补足（marks 空）；
+   原型 mock 无语义融合通道（语义胜出块路径不演示，语义摘要由真 host 产出） */
+function _mockExcerpt(x, q) {
+  var body = String(x.body || '');
+  var bl = body.toLowerCase();
+  var idx = bl.indexOf(q);
+  if (idx >= 0) {
+    var s = Math.max(0, idx - 50), e = Math.min(body.length, idx + q.length + 50);
+    var pre = s > 0 ? 1 : 0;
+    var text = body.slice(s, e);
+    if (s > 0) text = '…' + text;
+    if (e < body.length) text = text + '…';
+    var marks = [], p = idx;
+    while (p >= 0 && p < e) { marks.push({ start: p - s + pre, len: Math.min(q.length, e - p) }); p = bl.indexOf(q, p + q.length) }
+    return { text: text, marks: marks };
+  }
+  if (body) return { text: body.slice(0, 80) + (body.length > 80 ? '…' : ''), marks: [] };
+  return null;
+}
 function _mockNow() { return new Date().toISOString() }
 function rpc(method, args) {
   return new Promise(function (resolve) { setTimeout(function () { resolve(_mockRpc(method, args || {})) }, 30) })
@@ -1014,6 +1039,8 @@ function _mockRpc(method, a) {
         if ((x.title || '').toLowerCase().indexOf(q) >= 0) s.matches.push('title');
         if ((x.tags || []).join(' ').toLowerCase().indexOf(q) >= 0) s.matches.push('tags');
         if ((x.body || '').toLowerCase().indexOf(q) >= 0) s.matches.push('body');
+        var ex = _mockExcerpt(x, q);   /* 0.5.0 交互层：摘要行随 slim 下发（形状同 host searchExcerpt） */
+        if (ex) s.excerpt = ex;
       }
       return s
     }) };
@@ -1394,6 +1421,7 @@ function clearFilters() { filters = { pinned: false, injected: false, injectEver
 function sortLabel() { for (var i = 0; i < FILTER_SORTS.length; i++) if (FILTER_SORTS[i].id === sortBy) return FILTER_SORTS[i].label; return '时间' }
 var searchText = '', searchIds = null; // searchIds=null=仅本地过滤；数组=host 全文命中 ∪ 本地命中
 var searchMeta = {};         // host notes-search 返回的命中字段（noteId → ['title'|'tags'|'body']），相关度排序数据源
+var searchEx = {};           // 0.5.0 交互层（notes-050-search-excerpt）：搜索摘要行数据源（noteId → {text, marks:[{start,len}]}，host 侧算好随 notes-search 下发）
 var selId = null, edNote = null;       // edNote = 当前选中笔记完整体（含 body）
 /* 新建草稿态（notes-034-batch3）：点 + 先开本地草稿（draftNote 非 null，selId 保持 null），首次有效编辑才 notes-create 落库；
    放弃（切走且零内容）不产生空 Untitled。draftCreating = 落库在途闸（防并发双建） */
@@ -1456,6 +1484,26 @@ function hl(text, q) {
   if (!s || !qs) return s;
   var re = new RegExp('(' + qs.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
   return s.replace(re, '<mark>$1</mark>');
+}
+// 区间高亮（0.5.0 交互层 notes-050-search-excerpt：搜索摘要行命中区间渲染；与原型 notes-ui-v2.html 同源，check.js 断言一致）。
+// marks = [{start,len}]（相对原文 text，host searchExcerpt 产出）。安全红线同 hl()：先 esc 再包 <mark>——
+// 按区间把原文切成「普通段/命中段」，逐段 esc 转义后命中段才套 <mark>，插入的仅 <mark> 标签本身（零 XSS 面，输出可安全进 innerHTML）；
+// 区间越界/重叠防御截断（host 数据可信但 UI 层不赌）。无 marks → 纯 esc 文本（语义命中/标题命中摘要无高亮）。
+function hlMarks(text, marks) {
+  var s = String(text == null ? '' : text);
+  if (!s) return '';
+  if (!marks || !marks.length) return esc(s);
+  var out = '', pos = 0;
+  for (var i = 0; i < marks.length; i++) {
+    var m = marks[i] || {};
+    var st = Math.max(0, Math.min(s.length, m.start || 0));
+    var en = Math.max(st, Math.min(s.length, st + (m.len || 0)));
+    if (st < pos) continue;   // 重叠区间跳过（防御）
+    out += esc(s.slice(pos, st)) + '<mark>' + esc(s.slice(st, en)) + '</mark>';
+    pos = en;
+  }
+  out += esc(s.slice(pos));
+  return out;
 }
 function icon(id, sz) { return '<svg class="ic"' + (sz ? ' style="width:' + sz + 'px;height:' + sz + 'px"' : '') + '><use href="#' + id + '"/></svg>' }
 function fname(id) { var f = folders.find(function (x) { return x.id === id }); return f ? f.name : '' }
@@ -1691,8 +1739,11 @@ function noteRow(n, inFolderCtx) {
   if (view.type === 'topic' && n.folder) tail += '<span class="fbadge">' + icon('i-folder', 9) + esc(fname(n.folder)) + '</span>';
   else if (inFolderCtx && effTagsUi(n).length) tail += '<span class="tp" title="标签：' + esc(effTagsUi(n).join(' · ')) + '">' + esc(effTagsUi(n).join(' · ')) + '</span>';   /* 0.4.8：行尾主题字 → 标签字（effTagsUi） */
   else tail += '<span class="tp">' + fmtD(n.updatedAt) + '</span>';
+  /* 0.5.0 交互层（notes-050-search-excerpt）：搜索态摘要行（标题下一行，CSS 2 行 clamp）——host excerpt {text,marks} 经 hlMarks 区间高亮（先 esc 后 mark）；语义命中 marks 空=纯文本 */
+  var ex = searchText.trim() ? searchEx[n.id] : null;
+  var exHtml = (ex && ex.text) ? '<div class="ex">' + hlMarks(ex.text, ex.marks) + '</div>' : '';
   /* 多选态：行首复选框 + pick 高亮（行点击=勾选，由树事件委托统一处理） */
-  return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + (selMode && selIds[n.id] ? ' pick' : '') + '" data-note="' + n.id + '" draggable="true">'
+  return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + (selMode && selIds[n.id] ? ' pick' : '') + (exHtml ? ' has-ex' : '') + '" data-note="' + n.id + '" draggable="true">'
     + (selMode ? '<input type="checkbox" class="pick-check"' + (selIds[n.id] ? ' checked' : '') + '>' : '')
     /* 行首槽位对齐：caret 槽同宽占位 + 图标槽（kind 色点居中），与文件夹行标题起点一致 */
     + '<span class="caret-spacer"></span><span class="kind-slot"><span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span></span>'
@@ -1702,7 +1753,7 @@ function noteRow(n, inFolderCtx) {
     + (!n.inject && n.injectEver === true ? '<span class="injevr" title="曾注入：历史上开启过上下文注入（现已关闭）">' + icon('i-clock', 9) + '</span>' : '')
     /* 使用遥测（P2）：被引用徽章（0 次不显示） */
     + ((n.useCount || 0) > 0 ? '<span class="use" title="被 AI 查阅过 ' + n.useCount + ' 次">' + icon('i-quote', 9) + n.useCount + '</span>' : '')
-    + tail + '</div>';
+    + tail + exHtml + '</div>';
 }
 /* 嵌套文件夹递归渲染（notes-nested-folder-ui）：depth-first——文件夹行 → 展开时 [子文件夹递归 → 直挂笔记] 包一层 .nested 缩进容器；
    同级同字体/行首槽位对齐沿用排版体系；过滤命中与展开语义按子树（子树含命中 → 自动展开 + 计数=子树命中数，与 host f.count 子树口径一致；
@@ -2744,7 +2795,7 @@ $('btnNew').addEventListener('click', doNewNote);
 /* ================= 搜索：本地即时过滤 + 250ms 防抖 notes-search 并集（kind/sensitive/inject 组合过滤随 sArgs 同步 host；matches 命中字段供相关度排序） ================= */
 function doSearch() {
   var q = searchText.trim();
-  if (!q) { searchIds = null; searchMeta = {}; return }
+  if (!q) { searchIds = null; searchMeta = {}; searchEx = {}; return }
   var sArgs = { query: q };
   /* 筛选中心组合过滤同步 host：类型组恰选 1 个时可传 kind；状态组仅单条件独活时可传 sensitive/inject
      （多选 OR / 曾注入 语义 host 无法表达，由本地 matchFilters 兜底全量语义） */
@@ -2756,13 +2807,15 @@ function doSearch() {
     if (res && res.notes && $('q').value.trim() === q) {
       searchIds = res.notes.map(function (n) { return n.id });
       searchMeta = {};
-      res.notes.forEach(function (n) { if (n.matches) searchMeta[n.id] = n.matches });
+      searchEx = {};   /* 0.5.0 交互层：摘要行随检索结果换代（旧摘录不残留） */
+      res.notes.forEach(function (n) { if (n.matches) searchMeta[n.id] = n.matches; if (n.excerpt) searchEx[n.id] = n.excerpt });
       render();
     }
   }).catch(function () {})
 }
 $('q').addEventListener('input', function () {
   searchText = this.value;
+  searchEx = {};   /* 0.5.0 交互层：输入变化即清摘要行——必须先清再 render（旧摘录区间对应旧查询词，残留=错词高亮） */
   render();
   clearTimeout(searchTimer);
   if (!searchText.trim()) { searchIds = null; searchMeta = {}; return }

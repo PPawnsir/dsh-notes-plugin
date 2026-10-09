@@ -18,6 +18,41 @@
       if (f.inject === false && n.inject === true) return false
       return true
     }
+    // 搜索结果摘要行（0.5.0 交互层首版 notes-050-search-excerpt）：带 query 时 host 侧一次算好摘录 + 命中区间（前端零扫描）。
+    //   返回 { text, marks:[{start,len}] }（marks 相对 excerpt.text，含省略号偏移）或 null（无 query / 无正文可摘录）：
+    //   ① 正文命中 = 首个命中点 ±SEARCH_EXCERPT_CTX 字窗口（截断端补 …）+ 窗内全部命中区间（越界 len 截到窗沿）；
+    //   ② 语义命中（无正文命中时）= 胜出 chunk（per-note max-pooling 冠军块文本由调用方传入）开头 SEARCH_EXCERPT_HEAD 字，marks 空（语义无词位置，诚实呈现）；
+    //   ③ 仅标题/标签/topic 命中 = 正文开头 SEARCH_EXCERPT_HEAD 字（上下文补足），marks 空。
+    const SEARCH_EXCERPT_CTX = 50
+    const SEARCH_EXCERPT_HEAD = 80
+    function searchExcerpt(n, q, semChunkText) {
+      const body = String((n && n.body) || '')
+      if (!q) return null
+      const bl = body.toLowerCase()
+      const idx = bl.indexOf(q)
+      if (idx >= 0) {
+        const s = Math.max(0, idx - SEARCH_EXCERPT_CTX)
+        const e = Math.min(body.length, idx + q.length + SEARCH_EXCERPT_CTX)
+        const pre = s > 0 ? 1 : 0
+        let text = body.slice(s, e)
+        if (s > 0) text = '…' + text
+        if (e < body.length) text = text + '…'
+        const marks = []
+        let p = idx
+        while (p >= 0 && p < e) {
+          marks.push({ start: p - s + pre, len: Math.min(q.length, e - p) })
+          p = bl.indexOf(q, p + q.length)
+        }
+        return { text: text, marks: marks }
+      }
+      if (typeof semChunkText === 'string' && semChunkText) {
+        return { text: semChunkText.slice(0, SEARCH_EXCERPT_HEAD) + (semChunkText.length > SEARCH_EXCERPT_HEAD ? '…' : ''), marks: [] }
+      }
+      if (body) {
+        return { text: body.slice(0, SEARCH_EXCERPT_HEAD) + (body.length > SEARCH_EXCERPT_HEAD ? '…' : ''), marks: [] }
+      }
+      return null
+    }
     // ==== search-helpers END ====
 
     async function _search(query, tag, topic, kind, folder, filters) {
@@ -87,40 +122,54 @@
     // 语义融合检索（0.5.0③ notes-050-rrf-fusion）：文本通道（现有 _search 排序）+ 语义通道（notes-vectors-search，仅激活后端）→ RRF 合并排序。
     //   红线：总开关关 / 无 query / 后端未启用 / 无索引 / 报错 → 静默纯文本（现有行为逐字节不变）；融合层包在 _search 外，不改 _search 内部。
     //   sensitive 翻转红线：检索只打激活后端命名空间（不传 backend → _vectorsSearch 回落 _activeBackend），旧后端残留集不检索。
+    //   0.5.0 交互层（notes-050-search-excerpt）：有 query 时出口统一挂 excerpt 摘要（正文命中=命中点±50 字+区间数组 / 语义命中=胜出 chunk 开头 / 仅标题标签=正文开头补足）——
+    //   只在搜索路径计算，正文走 _list 既有缓存零额外读盘；无 query 不带 excerpt 字段（向后兼容）。
     async function _searchFused(query, tag, topic, kind, folder, filters) {
       const textHits = await _search(query, tag, topic, kind, folder, filters)
       if (!query) return textHits
+      const qLower = String(query).toLowerCase()
+      let out = textHits
+      const semChunks = {}   // 语义命中笔记 → 胜出 chunk 序号（per-note max-pooling 冠军块，语义摘要数据源）
       let sem = null
       try {
         sem = await _vectorsSearch({ query: String(query), limit: RRF_SEMANTIC_LIMIT })
       } catch (e) { sem = null }   // 降级链：报错 → 静默纯文本
-      if (!sem || sem.ok !== true || !Array.isArray(sem.results) || !sem.results.length) return textHits
-      const effMin = rrfSemanticMinScore(query, sem.minScore)   // 短关键词噪声压制：语义通道 minScore 临时上浮
-      const semScore = {}
-      for (const r of sem.results) {
-        if (!r || !r.noteId) continue
-        if (typeof r.score !== 'number' || r.score < effMin) continue
-        if (semScore[r.noteId] === undefined || r.score > semScore[r.noteId]) semScore[r.noteId] = r.score
+      if (sem && sem.ok === true && Array.isArray(sem.results) && sem.results.length) {
+        const effMin = rrfSemanticMinScore(query, sem.minScore)   // 短关键词噪声压制：语义通道 minScore 临时上浮
+        const semScore = {}
+        for (const r of sem.results) {
+          if (!r || !r.noteId) continue
+          if (typeof r.score !== 'number' || r.score < effMin) continue
+          if (semScore[r.noteId] === undefined || r.score > semScore[r.noteId]) { semScore[r.noteId] = r.score; semChunks[r.noteId] = r.chunk }
+        }
+        const semIds = Object.keys(semScore)
+        semIds.sort(function (a, b) { return semScore[b] - semScore[a] })
+        if (semIds.length) {
+          // 候选集 = 过滤后的全量（tag/topic/kind/folder/sensitive/inject 全同口径）：语义召回只在候选集内补缺（已删/sensitive/sys/过滤排除天然不出现）
+          const candidate = await _search('', tag, topic, kind, folder, filters)
+          const byId = {}
+          for (const n of candidate) byId[n.id] = n
+          const textIds = textHits.map(function (n) { return n.id })
+          const fused = rrfFuse(textIds, semIds)
+          const textById = {}
+          for (const n of textHits) textById[n.id] = n
+          const fusedOut = []
+          for (const id of fused.order) {
+            let n = textById[id] || byId[id]
+            if (!n) continue
+            if (!textById[id]) n = Object.assign({}, n, { matches: searchMatchFields(n, qLower) })
+            if (fused.semantic[id]) n.semantic = true   // 语义命中徽标（评估期 instrumentation）
+            fusedOut.push(n)
+          }
+          out = fusedOut
+        }
       }
-      const semIds = Object.keys(semScore)
-      semIds.sort(function (a, b) { return semScore[b] - semScore[a] })
-      if (!semIds.length) return textHits
-      // 候选集 = 过滤后的全量（tag/topic/kind/folder/sensitive/inject 全同口径）：语义召回只在候选集内补缺（已删/sensitive/sys/过滤排除天然不出现）
-      const candidate = await _search('', tag, topic, kind, folder, filters)
-      const byId = {}
-      for (const n of candidate) byId[n.id] = n
-      const textIds = textHits.map(function (n) { return n.id })
-      const fused = rrfFuse(textIds, semIds)
-      const textById = {}
-      for (const n of textHits) textById[n.id] = n
-      const out = []
-      const qLower = String(query).toLowerCase()
-      for (const id of fused.order) {
-        let n = textById[id] || byId[id]
-        if (!n) continue
-        if (!textById[id]) n = Object.assign({}, n, { matches: searchMatchFields(n, qLower) })
-        if (fused.semantic[id]) n.semantic = true   // 语义命中徽标（评估期 instrumentation）
-        out.push(n)
+      // 摘要行挂载（每条结果均为浅拷贝，挂字段不污染 _list 缓存对象）：优先级 正文命中区间 > 语义胜出块 > 正文开头
+      for (const n of out) {
+        const ci = semChunks[n.id]
+        const chunkText = (typeof ci === 'number' && ci >= 0) ? _vectorChunks(n.body)[ci] : undefined
+        const ex = searchExcerpt(n, qLower, typeof chunkText === 'string' ? chunkText : undefined)
+        if (ex) n.excerpt = ex
       }
       return out
     }
@@ -135,6 +184,6 @@
         const found = await _searchFused(a.query, a.tag, a.topic, a.kind, a.folder, { sensitive: a.sensitive, inject: a.inject, includeLogs: !!a.includeLogs })
         // 召回遥测（0.4.3+ 卡⑫ notes-043-inject-receipt）：search 通道交付事件——实际返回的 id 集日聚合（同日同 id 计数累加不爆行；静默降级）
         _recallHit('search', found.map(function (n) { return n.id }))
-        return { notes: found.map(n => { const s = slim(n); if (n.matches) s.matches = n.matches; if (n.semantic) s.semantic = true; return s }) }
+        return { notes: found.map(n => { const s = slim(n); if (n.matches) s.matches = n.matches; if (n.semantic) s.semantic = true; if (n.excerpt) s.excerpt = n.excerpt; return s }) }
       } catch (e) { return { error: String(e.message || e) } }
     }))

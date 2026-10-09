@@ -85,6 +85,7 @@ function sortLabel() { return sortLabelOf(sortBy) }   /* i18n 覆盖卡F：排�
 var searchText = '', searchIds = null; // searchIds=null=仅本地过滤；数组=host 全文命中 ∪ 本地命中
 var searchMeta = {};         // host notes-search 返回的命中字段（noteId → ['title'|'tags'|'body']），相关度排序数据源
 var searchSem = {};          // 0.5.0③（notes-050-rrf-fusion）：语义命中集合（noteId → true），「语义」徽标数据源
+var searchEx = {};           // 0.5.0 交互层（notes-050-search-excerpt）：搜索摘要行数据源（noteId → {text, marks:[{start,len}]}，host 侧算好随 notes-search 下发）
 var searchErrNotified = false;   /* 在线检索失败 toast 去重闸：同一轮故障只提示一次（doSearch 防抖逐键触发，防刷屏），成功即复位 */
 var selId = null, edNote = null;       // edNote = 当前选中笔记完整体（含 body）
 /* 新建草稿态（notes-034-batch3）：点 + 先开本地草稿（draftNote 非 null，selId 保持 null 不占用任何真实 id），

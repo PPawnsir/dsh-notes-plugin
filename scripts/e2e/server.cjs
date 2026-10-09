@@ -320,6 +320,25 @@ function handleRpc(state, method, args) {
             if ((n.tags || []).join(' ').toLowerCase().indexOf(q) >= 0) matches.push('tags')
             if ((n.body || '').toLowerCase().indexOf(q) >= 0) matches.push('body')
             s.matches = matches
+            /* 0.5.0 交互层（notes-050-search-excerpt）：摘要行形状镜像 host searchExcerpt——
+               正文命中 = 首个命中点 ±50 字窗口（截断端补 …）+ 窗内命中区间 [{start,len}]（相对摘录文本）；否则正文开头 80 字补足（marks 空）。
+               mock 无语义融合通道（语义胜出块摘要不进 mock 面——e2e 断言语义外） */
+            const body = String(n.body || '')
+            const bl = body.toLowerCase()
+            const bidx = bl.indexOf(q)
+            if (bidx >= 0) {
+              const ws = Math.max(0, bidx - 50), we = Math.min(body.length, bidx + q.length + 50)
+              const pre = ws > 0 ? 1 : 0
+              let text = body.slice(ws, we)
+              if (ws > 0) text = '…' + text
+              if (we < body.length) text = text + '…'
+              const marks = []
+              let p = bidx
+              while (p >= 0 && p < we) { marks.push({ start: p - ws + pre, len: Math.min(q.length, we - p) }); p = bl.indexOf(q, p + q.length) }
+              s.excerpt = { text: text, marks: marks }
+            } else if (body) {
+              s.excerpt = { text: body.slice(0, 80) + (body.length > 80 ? '…' : ''), marks: [] }
+            }
           }
           return s
         }),

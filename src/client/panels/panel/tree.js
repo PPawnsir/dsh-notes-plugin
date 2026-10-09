@@ -11,6 +11,8 @@
         const notes = args.notes, view = args.view, filters = args.filters, searchText = args.searchText, searchIds = args.searchIds, folders = args.folders
         // 0.5.0③（notes-050-rrf-fusion）：语义命中集合（noteId → true）——「语义」徽标数据源（经 usePanelSearch → panel/index.js 注入）
         const searchSemantic = args.searchSemantic || {}
+        // 0.5.0 交互层（notes-050-search-excerpt）：搜索摘要行数据源（noteId → {text, marks}；经 usePanelSearch → panel/index.js 注入）
+        const searchExcerpts = args.searchExcerpts || {}
         // 0.4.4-C（notes-044-folder-explicit-view）：sysKids = 文件夹显式展开按需补拉的 sys 子行缓存（popovers/folder-menu.js 托管，{fid:{stamp,rows}}）
         const sysKids = args.sysKids || {}
         // 0.4.4-D（notes-044-hidden-attr）：showHidden = 显隐开关（panel/index.js 态，localStorage dsh-notes-show-hidden 持久）；
@@ -140,9 +142,13 @@
             if (view.type === 'topic' && (n.folder || '')) tail = e('span', { className: 'dsh-notes-fbadge' }, I('folder', 9), folderName(n.folder))
             else if (inFolderCtx && uiTags.length) tail = e('span', { className: 'dsh-notes-note-tp', title: tt('tree.topicTip', { topic: uiTags.join(' · ') }) }, uiTags.join(' · '))
             else tail = e('span', { className: 'dsh-notes-note-dt' }, n.updatedAt ? fmtDT(n.updatedAt).slice(5, 10) : '')
+            // 0.5.0 交互层（notes-050-search-excerpt）：搜索态摘要行（标题下整行，CSS 2 行 clamp）——host excerpt 经 excerptKids 区间高亮（React 文本节点自动转义）；语义命中 marks 空=纯文本；
+            // 查询词 keyed 消费：摘录只在「map 所属词 === 当前词」时渲染（防抖窗口内旧摘录结构性不残留，错词高亮防线）
+            const exc = (q && searchExcerpts.q === q) ? ((searchExcerpts.map || {})[n.id] || null) : null
+            const excKids = exc && exc.text ? excerptKids(exc) : null
             // 多选态：行点击=勾选/取消（不再打开笔记），行首渲染复选框；与搜索/过滤共存（勾选按 noteId 记账，过滤不清选）
             // 0.4.8（notes-048-note-ctxmenu）：行补 data-note 属性（与 app noteRow 同构——右键菜单/e2e 精确锚定，防派生标题子串截胡）
-            return e('div', { key: n.id, 'data-note': n.id, className: 'dsh-notes-note-row' + (selected === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (flashId === n.id ? ' flash' : '') + (n.status === 'resolved' ? ' resolved' : '') + (n.status === 'superseded' ? ' superseded' : '') + (n.hidden === true ? ' hid' : '') + (selMode && selIds[n.id] ? ' pick' : ''), onClick: () => { if (selMode) { toggleSelId(n.id); return } selectNote(n) }, onContextMenu: (ev) => openCtxMenu(ev, n), draggable: true, onDragStart: (ev) => onNoteDragStart(ev, n), onDragEnd: (ev) => onNoteDragEnd(ev) },
+            return e('div', { key: n.id, 'data-note': n.id, className: 'dsh-notes-note-row' + (selected === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (flashId === n.id ? ' flash' : '') + (n.status === 'resolved' ? ' resolved' : '') + (n.status === 'superseded' ? ' superseded' : '') + (n.hidden === true ? ' hid' : '') + (selMode && selIds[n.id] ? ' pick' : '') + (excKids ? ' has-ex' : ''), onClick: () => { if (selMode) { toggleSelId(n.id); return } selectNote(n) }, onContextMenu: (ev) => openCtxMenu(ev, n), draggable: true, onDragStart: (ev) => onNoteDragStart(ev, n), onDragEnd: (ev) => onNoteDragEnd(ev) },
               selMode ? e('input', { type: 'checkbox', className: 'dsh-notes-pick-check', checked: !!selIds[n.id], onChange: () => toggleSelId(n.id), onClick: (ev) => ev.stopPropagation() }) : null,
               // 行首槽位对齐（notes-tree-typography）：caret 槽同宽透明占位（笔记行无折叠箭头）+ 图标槽 16px（kind 色点居中），与文件夹行标题文字起点一致
               e('span', { className: 'dsh-notes-caret-spacer' }),
@@ -159,7 +165,9 @@
               (n.kind || 'note') === 'sys' ? e('span', { className: 'dsh-notes-fbadge dsh-nt', 'data-tooltip': tt('tree.sysChipTip') }, tt('meta.kindSys')) : null,
               // 0.5.0③（notes-050-rrf-fusion）：语义命中徽标（评估期 instrumentation——语义通道召回可观察）
               searchSemantic[n.id] ? e('span', { className: 'dsh-notes-note-sem dsh-nt', 'data-tooltip': tt('tree.semanticTip') }, tt('tree.semantic')) : null,
-              tail)
+              tail,
+              // 0.5.0 交互层（notes-050-search-excerpt）：摘要行节点（flex-basis:100% 换行至标题下；与 app noteRow 的 .ex 同构）
+              excKids ? e('div', { className: 'dsh-notes-note-ex' }, excKids) : null)
           }
           // ===== 侧栏树（原型 renderTree 翻译）：视图头 → 置顶组 → 文件夹组（nested 子笔记）→ 未入夹根级平铺（drop 移出落点）→ 主题全局过滤 =====
           const treeIds = []

@@ -299,6 +299,11 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-note-use .dsh-ic{width:9px;height:9px}
 /* 0.5.0③（notes-050-rrf-fusion）：语义命中徽章（评估期 instrumentation——语义通道召回可观察；淡紫 accent 区分文本命中） */
 .dsh-notes-note-sem{display:inline-flex;align-items:center;gap:2px;font-size:10px;color:var(--nacc);border:1px solid var(--nacc);border-radius:3px;padding:0 3px;flex-shrink:0;line-height:1.4;opacity:.85}
+/* 0.5.0 交互层（notes-050-search-excerpt）：搜索摘要行——标题下整行（flex-wrap 换行），2 行 clamp 次级色；
+   命中区间 mark 复用 .dsh-notes-mark 同款底色（excerptKids 文本节点 React 自动转义，零 XSS）；缩进对齐标题文字起点（caret 槽 11 + gap 7 + 图标槽 16 + gap 7 = 41px） */
+.dsh-notes-note-row.has-ex{flex-wrap:wrap}
+.dsh-notes-note-ex{flex-basis:100%;min-width:0;padding:0 8px 1px 41px;font-size:11px;line-height:1.5;color:var(--nt2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
+.dsh-notes-note-ex .dsh-notes-mark{background:rgba(255,213,79,.35);color:inherit;border-radius:2px;padding:0 1px}
 .dsh-notes-note-tp{font-size:10px;color:var(--nt3);flex-shrink:0;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-notes-note-dt{font-size:10px;color:var(--nt3);flex-shrink:0}
 /* 嵌套子笔记（margin-left 13px + padding-left 9px + 1px 引导线） */

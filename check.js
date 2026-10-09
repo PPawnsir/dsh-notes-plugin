@@ -225,6 +225,9 @@ const CORE = new Set([
   'host put 双层嵌套非法形状 → dropped 计数 + 全丢 error 面（静默吞显性化）',
   '面板 bge 构建按钮禁用 + 提示：backend=bge 时按钮 disabled + tooltip 到 app 页构建 + doSemBuild 兜底只提示不发起 RPC',
   '嵌入进度文案：app semDoBuild 嵌入阶段更新「嵌入中 i/n」+ 完成后刷模型行（消灭卡下载 100% 假象）',
+  // 123. 0.5.0 交互层 搜索摘要行+命中高亮（notes-050-search-excerpt：常驻 --core 防摘要口径/XSS 红线回归——行为级主断言 + 先 esc 后 mark）
+  'searchExcerpt 关键词命中点居中 + 边界截断 + 省略号（±50 字窗口）',
+  'hlMarks 区间高亮双端逐字节一致（app.html ⇄ 原型）+ 源码顺序=先 esc 后 mark',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

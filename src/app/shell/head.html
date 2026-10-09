@@ -124,6 +124,11 @@
   .pbtn.primary:hover{opacity:.9}
   /* 搜索关键词高亮（先 esc 再包 <mark>，防 XSS——见 hl()） */
   .note-row .ti mark{background:rgba(255,213,79,.35);color:inherit;border-radius:2px;padding:0 1px}
+  /* 0.5.0 交互层（notes-050-search-excerpt）：搜索摘要行——标题下整行（flex-wrap 换行），2 行 clamp 次级色；
+     命中区间 <mark> 复用标题高亮同款底色（hlMarks 先 esc 后 mark，防 XSS）；缩进对齐标题文字起点（caret 槽 11 + gap 7 + 图标槽 16 + gap 7 = 41px） */
+  .note-row.has-ex{flex-wrap:wrap}
+  .note-row .ex{flex-basis:100%;min-width:0;padding:0 8px 1px 41px;font-size:11px;line-height:1.5;color:var(--nt2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
+  .note-row .ex mark{background:rgba(255,213,79,.35);color:inherit;border-radius:2px;padding:0 1px}
   .tree{flex:1;overflow-y:auto;padding:0 6px 8px;border-top:1px solid var(--nbd-soft)}
   .tree:focus{outline:none}   /* 键盘流还焦目标（Esc/搜索↓ 还焦列表）：程序化焦点不画焦点环 */
   .sec-h{display:flex;align-items:center;gap:5px;padding:10px 10px 4px;font-size:10.5px;font-weight:600;letter-spacing:.8px;color:var(--nt3);text-transform:uppercase}

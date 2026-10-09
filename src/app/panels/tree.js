@@ -10,8 +10,11 @@ function noteRow(n, inFolderCtx) {
   if (view.type === 'topic' && n.folder) tail += '<span class="fbadge">' + icon('i-folder', 9) + esc(fname(n.folder)) + '</span>';
   else if (inFolderCtx && uiTags.length) tail += '<span class="tp" title="' + esc(t('tree.topicTip', { topic: uiTags.join(' · ') })) + '">' + esc(uiTags.join(' · ')) + '</span>';
   else tail += '<span class="tp">' + fmtD(n.updatedAt) + '</span>';
+  /* 0.5.0 交互层（notes-050-search-excerpt）：搜索态摘要行（标题下一行，CSS 2 行 clamp）——host excerpt {text,marks} 经 hlMarks 区间高亮（先 esc 后 mark）；语义命中 marks 空=纯文本 */
+  var ex = searchText.trim() ? searchEx[n.id] : null;
+  var exHtml = (ex && ex.text) ? '<div class="ex">' + hlMarks(ex.text, ex.marks) + '</div>' : '';
   /* 多选态：行首复选框 + pick 高亮（行点击=勾选，由树事件委托统一处理） */
-  return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + (n.hidden === true ? ' hid' : '') + (selMode && selIds[n.id] ? ' pick' : '') + '" data-note="' + n.id + '" draggable="true">'
+  return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + (n.hidden === true ? ' hid' : '') + (selMode && selIds[n.id] ? ' pick' : '') + (exHtml ? ' has-ex' : '') + '" data-note="' + n.id + '" draggable="true">'
     + (selMode ? '<input type="checkbox" class="pick-check"' + (selIds[n.id] ? ' checked' : '') + '>' : '')
     /* 行首槽位对齐：caret 槽同宽占位 + 图标槽（kind 色点居中），与文件夹行标题起点一致 */
     + '<span class="caret-spacer"></span><span class="kind-slot"><span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span></span>'
@@ -27,7 +30,7 @@ function noteRow(n, inFolderCtx) {
     + ((n.kind || 'note') === 'sys' ? '<span class="fbadge" title="' + esc(t('tree.sysChipTip')) + '">' + esc(t('meta.kindSys')) + '</span>' : '')
     /* 0.5.0③（notes-050-rrf-fusion）：语义命中徽标（评估期 instrumentation——语义通道召回可观察） */
     + (searchSem[n.id] ? '<span class="sem" title="' + esc(t('tree.semanticTip')) + '">' + esc(t('tree.semantic')) + '</span>' : '')
-    + tail + '</div>';
+    + tail + exHtml + '</div>';
 }
 /* ===== 0.4.4-C（notes-044-folder-explicit-view）：文件夹显式展开放行 sys（与 client popovers/folder-menu.js 同构）=====
    默认列表/搜索降噪（0.4.3⑨）不含 sys——「文件夹展开」是唯一显式放行入口（OS 文件管理逻辑：降噪不阻拦查看）：

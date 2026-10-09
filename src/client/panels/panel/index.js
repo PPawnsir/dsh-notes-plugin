@@ -188,12 +188,12 @@
         // 打开时居中定位 effect 已随 panel/chrome.js 迁入（hook 内同文，open 经入参注入）
         // 搜索两段式已拆出（§6 步骤 E：panel/search.js——searchText/searchIds/searchMatches 态 + 250ms 防抖 host 检索归 usePanelSearch；
         // searchRef/searchDebRef 在 kernel/state.js 跨域镜像群；filtersRef 镜像随该模块；filters 经入参注入）
-        const { searchText, searchIds, searchMatches, searchSemantic, setSearchText, setSearchIds, setSearchMatches } = usePanelSearch({ filters: filters })
+        const { searchText, searchIds, searchMatches, searchSemantic, searchExcerpts, setSearchText, setSearchIds, setSearchMatches } = usePanelSearch({ filters: filters })
         // 注入管理面板搜索防抖（250ms）随 modal 迁入 modals/inject-manager.js（injMgrSearchRef/injMgrSearchDebRef 为模块级单例，防抖 effect 挂 InjMgrModal）
         // 搜索/视图/筛选中心条件变化时重置分组分页 effect 已随 panel/tree.js 迁入（该 hook 内同文，入参注入依赖值）
         // 树渲染/分组分页/拖拽已拆出（§6 步骤 E：panel/tree.js——groupShown/dragActive/topicExpanded/topicSecOpen 态 +
         // renderMoreRow 组尾加载行/双向拖拽族/renderTreeEls（内含 renderNoteRow/renderFolderNode）归 usePanelTree；post-guard 求值经 R 入参注入）
-        const { renderTreeEls } = usePanelTree({ notes: notes, view: view, filters: filters, searchText: searchText, searchIds: searchIds, folders: folders, sysKids: sysKids, showHidden: showHidden, searchSemantic: searchSemantic })
+        const { renderTreeEls } = usePanelTree({ notes: notes, view: view, filters: filters, searchText: searchText, searchIds: searchIds, folders: folders, sysKids: sysKids, showHidden: showHidden, searchSemantic: searchSemantic, searchExcerpts: searchExcerpts })
         // 展开态同步到 ref（keydown 闭包读 ref 避免过期；已拆出 modal 的 open 镜像由各模块 setter 别名同步写入）
         // filtersRef 镜像 + 同步 effect 已随 panel/search.js 迁入（该模块顶层绑定 + hook 内同文）
         // 日志同权（0.4.3 验收修复⑦，用户裁决推翻 R-6 UI 隐身）：kind=log 随默认列表直达（host 已收编），

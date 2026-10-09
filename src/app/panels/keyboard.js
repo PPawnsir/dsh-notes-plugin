@@ -31,10 +31,10 @@ document.addEventListener('keydown', function (ev) {
     if (selMode) { selMode = false; selIds = {}; renderTree(); return }   /* Esc 退出多选态 */
     /* Esc 焦点分层末段：搜索框聚焦时——清空搜索并还焦列表（焦点不得滞留输入框，否则 j/k 字母误入搜索） */
     if (document.activeElement === $('q')) {
-      if ($('q').value) { searchText = ''; searchIds = null; searchMeta = {}; searchSem = {}; $('q').value = ''; render() }
+      if ($('q').value) { searchText = ''; searchIds = null; searchMeta = {}; searchSem = {}; searchEx = {}; $('q').value = ''; render() }
       blurSearchToList(); return
     }
-    if (!document.activeElement || !document.activeElement.isContentEditable) { searchText = ''; searchIds = null; searchMeta = {}; searchSem = {}; $('q').value = ''; render() }
+    if (!document.activeElement || !document.activeElement.isContentEditable) { searchText = ''; searchIds = null; searchMeta = {}; searchSem = {}; searchEx = {}; $('q').value = ''; render() }
     return
   }
   /* 搜索框 ↓ 桥接列表（保留过滤上下文：搜索→↓→j/k→Enter 纯键盘路径） */

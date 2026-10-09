@@ -124,6 +124,11 @@
   .pbtn.primary:hover{opacity:.9}
   /* 搜索关键词高亮（先 esc 再包 <mark>，防 XSS——见 hl()） */
   .note-row .ti mark{background:rgba(255,213,79,.35);color:inherit;border-radius:2px;padding:0 1px}
+  /* 0.5.0 交互层（notes-050-search-excerpt）：搜索摘要行——标题下整行（flex-wrap 换行），2 行 clamp 次级色；
+     命中区间 <mark> 复用标题高亮同款底色（hlMarks 先 esc 后 mark，防 XSS）；缩进对齐标题文字起点（caret 槽 11 + gap 7 + 图标槽 16 + gap 7 = 41px） */
+  .note-row.has-ex{flex-wrap:wrap}
+  .note-row .ex{flex-basis:100%;min-width:0;padding:0 8px 1px 41px;font-size:11px;line-height:1.5;color:var(--nt2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
+  .note-row .ex mark{background:rgba(255,213,79,.35);color:inherit;border-radius:2px;padding:0 1px}
   .tree{flex:1;overflow-y:auto;padding:0 6px 8px;border-top:1px solid var(--nbd-soft)}
   .tree:focus{outline:none}   /* 键盘流还焦目标（Esc/搜索↓ 还焦列表）：程序化焦点不画焦点环 */
   .sec-h{display:flex;align-items:center;gap:5px;padding:10px 10px 4px;font-size:10.5px;font-weight:600;letter-spacing:.8px;color:var(--nt3);text-transform:uppercase}
@@ -912,6 +917,7 @@ function sortLabel() { return sortLabelOf(sortBy) }   /* i18n 覆盖卡F：排�
 var searchText = '', searchIds = null; // searchIds=null=仅本地过滤；数组=host 全文命中 ∪ 本地命中
 var searchMeta = {};         // host notes-search 返回的命中字段（noteId → ['title'|'tags'|'body']），相关度排序数据源
 var searchSem = {};          // 0.5.0③（notes-050-rrf-fusion）：语义命中集合（noteId → true），「语义」徽标数据源
+var searchEx = {};           // 0.5.0 交互层（notes-050-search-excerpt）：搜索摘要行数据源（noteId → {text, marks:[{start,len}]}，host 侧算好随 notes-search 下发）
 var searchErrNotified = false;   /* 在线检索失败 toast 去重闸：同一轮故障只提示一次（doSearch 防抖逐键触发，防刷屏），成功即复位 */
 var selId = null, edNote = null;       // edNote = 当前选中笔记完整体（含 body）
 /* 新建草稿态（notes-034-batch3）：点 + 先开本地草稿（draftNote 非 null，selId 保持 null 不占用任何真实 id），
@@ -3149,6 +3155,26 @@ function hl(text, q) {
   var re = new RegExp('(' + qs.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
   return s.replace(re, '<mark>$1</mark>');
 }
+// 区间高亮（0.5.0 交互层 notes-050-search-excerpt：搜索摘要行命中区间渲染；与原型 notes-ui-v2.html 同源，check.js 断言一致）。
+// marks = [{start,len}]（相对原文 text，host searchExcerpt 产出）。安全红线同 hl()：先 esc 再包 <mark>——
+// 按区间把原文切成「普通段/命中段」，逐段 esc 转义后命中段才套 <mark>，插入的仅 <mark> 标签本身（零 XSS 面，输出可安全进 innerHTML）；
+// 区间越界/重叠防御截断（host 数据可信但 UI 层不赌）。无 marks → 纯 esc 文本（语义命中/标题命中摘要无高亮）。
+function hlMarks(text, marks) {
+  var s = String(text == null ? '' : text);
+  if (!s) return '';
+  if (!marks || !marks.length) return esc(s);
+  var out = '', pos = 0;
+  for (var i = 0; i < marks.length; i++) {
+    var m = marks[i] || {};
+    var st = Math.max(0, Math.min(s.length, m.start || 0));
+    var en = Math.max(st, Math.min(s.length, st + (m.len || 0)));
+    if (st < pos) continue;   // 重叠区间跳过（防御）
+    out += esc(s.slice(pos, st)) + '<mark>' + esc(s.slice(st, en)) + '</mark>';
+    pos = en;
+  }
+  out += esc(s.slice(pos));
+  return out;
+}
 function icon(id, sz) { return '<svg class="ic"' + (sz ? ' style="width:' + sz + 'px;height:' + sz + 'px"' : '') + '><use href="#' + id + '"/></svg>' }
 function fname(id) { var f = folders.find(function (x) { return x.id === id }); return f ? f.name : '' }
 /* ===== 文件夹嵌套 helper（notes-nested-folder-ui；与 host folder-tree-helpers 同口径的本页版）=====
@@ -3982,8 +4008,11 @@ function noteRow(n, inFolderCtx) {
   if (view.type === 'topic' && n.folder) tail += '<span class="fbadge">' + icon('i-folder', 9) + esc(fname(n.folder)) + '</span>';
   else if (inFolderCtx && uiTags.length) tail += '<span class="tp" title="' + esc(t('tree.topicTip', { topic: uiTags.join(' · ') })) + '">' + esc(uiTags.join(' · ')) + '</span>';
   else tail += '<span class="tp">' + fmtD(n.updatedAt) + '</span>';
+  /* 0.5.0 交互层（notes-050-search-excerpt）：搜索态摘要行（标题下一行，CSS 2 行 clamp）——host excerpt {text,marks} 经 hlMarks 区间高亮（先 esc 后 mark）；语义命中 marks 空=纯文本 */
+  var ex = searchText.trim() ? searchEx[n.id] : null;
+  var exHtml = (ex && ex.text) ? '<div class="ex">' + hlMarks(ex.text, ex.marks) + '</div>' : '';
   /* 多选态：行首复选框 + pick 高亮（行点击=勾选，由树事件委托统一处理） */
-  return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + (n.hidden === true ? ' hid' : '') + (selMode && selIds[n.id] ? ' pick' : '') + '" data-note="' + n.id + '" draggable="true">'
+  return '<div class="note-row' + (selId === n.id ? ' sel' : '') + (focusId === n.id ? ' focused' : '') + (n.status === 'resolved' || n.status === 'superseded' ? ' dim' : '') + (n.hidden === true ? ' hid' : '') + (selMode && selIds[n.id] ? ' pick' : '') + (exHtml ? ' has-ex' : '') + '" data-note="' + n.id + '" draggable="true">'
     + (selMode ? '<input type="checkbox" class="pick-check"' + (selIds[n.id] ? ' checked' : '') + '>' : '')
     /* 行首槽位对齐：caret 槽同宽占位 + 图标槽（kind 色点居中），与文件夹行标题起点一致 */
     + '<span class="caret-spacer"></span><span class="kind-slot"><span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span></span>'
@@ -3999,7 +4028,7 @@ function noteRow(n, inFolderCtx) {
     + ((n.kind || 'note') === 'sys' ? '<span class="fbadge" title="' + esc(t('tree.sysChipTip')) + '">' + esc(t('meta.kindSys')) + '</span>' : '')
     /* 0.5.0③（notes-050-rrf-fusion）：语义命中徽标（评估期 instrumentation——语义通道召回可观察） */
     + (searchSem[n.id] ? '<span class="sem" title="' + esc(t('tree.semanticTip')) + '">' + esc(t('tree.semantic')) + '</span>' : '')
-    + tail + '</div>';
+    + tail + exHtml + '</div>';
 }
 /* ===== 0.4.4-C（notes-044-folder-explicit-view）：文件夹显式展开放行 sys（与 client popovers/folder-menu.js 同构）=====
    默认列表/搜索降噪（0.4.3⑨）不含 sys——「文件夹展开」是唯一显式放行入口（OS 文件管理逻辑：降噪不阻拦查看）：
@@ -5781,7 +5810,7 @@ $('btnNew').addEventListener('click', doNewNote);
 /* ================= 搜索：本地即时过滤 + 250ms 防抖 notes-search 并集（kind/sensitive/inject 组合过滤随 sArgs 同步 host；matches 命中字段供相关度排序） ================= */
 function doSearch() {
   var q = searchText.trim();
-  if (!q) { searchIds = null; searchMeta = {}; searchSem = {}; return }
+  if (!q) { searchIds = null; searchMeta = {}; searchSem = {}; searchEx = {}; return }
   var sArgs = { query: q };
   /* 筛选中心组合过滤同步 host：类型组恰选 1 个时可传 kind；状态组仅单条件独活时可传 sensitive/inject
      （多选 OR / 曾注入 语义 host 无法表达，由本地 matchFilters 兜底全量语义） */
@@ -5796,7 +5825,8 @@ function doSearch() {
       searchIds = res.notes.map(function (n) { return n.id });
       searchMeta = {};
       searchSem = {};
-      res.notes.forEach(function (n) { if (n.matches) searchMeta[n.id] = n.matches; if (n.semantic) searchSem[n.id] = true });
+      searchEx = {};   /* 0.5.0 交互层：摘要行随检索结果换代（旧摘录不残留） */
+      res.notes.forEach(function (n) { if (n.matches) searchMeta[n.id] = n.matches; if (n.semantic) searchSem[n.id] = true; if (n.excerpt) searchEx[n.id] = n.excerpt });
       render();
     }
   }).catch(function (e) {
@@ -5806,6 +5836,7 @@ function doSearch() {
 }
 $('q').addEventListener('input', function () {
   searchText = this.value;
+  searchEx = {};    /* 0.5.0 交互层：输入变化即清摘要行——必须先清再 render（旧摘录区间对应旧查询词，残留=错词高亮） */
   render();
   clearTimeout(searchTimer);
   searchSem = {};   /* 0.5.0③：输入变化即清语义徽标（防抖窗口内旧徽标残留） */
@@ -8462,10 +8493,10 @@ document.addEventListener('keydown', function (ev) {
     if (selMode) { selMode = false; selIds = {}; renderTree(); return }   /* Esc 退出多选态 */
     /* Esc 焦点分层末段：搜索框聚焦时——清空搜索并还焦列表（焦点不得滞留输入框，否则 j/k 字母误入搜索） */
     if (document.activeElement === $('q')) {
-      if ($('q').value) { searchText = ''; searchIds = null; searchMeta = {}; searchSem = {}; $('q').value = ''; render() }
+      if ($('q').value) { searchText = ''; searchIds = null; searchMeta = {}; searchSem = {}; searchEx = {}; $('q').value = ''; render() }
       blurSearchToList(); return
     }
-    if (!document.activeElement || !document.activeElement.isContentEditable) { searchText = ''; searchIds = null; searchMeta = {}; searchSem = {}; $('q').value = ''; render() }
+    if (!document.activeElement || !document.activeElement.isContentEditable) { searchText = ''; searchIds = null; searchMeta = {}; searchSem = {}; searchEx = {}; $('q').value = ''; render() }
     return
   }
   /* 搜索框 ↓ 桥接列表（保留过滤上下文：搜索→↓→j/k→Enter 纯键盘路径） */

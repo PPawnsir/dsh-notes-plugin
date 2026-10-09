@@ -9,6 +9,26 @@ function hl(text, q) {
   var re = new RegExp('(' + qs.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
   return s.replace(re, '<mark>$1</mark>');
 }
+// 区间高亮（0.5.0 交互层 notes-050-search-excerpt：搜索摘要行命中区间渲染；与原型 notes-ui-v2.html 同源，check.js 断言一致）。
+// marks = [{start,len}]（相对原文 text，host searchExcerpt 产出）。安全红线同 hl()：先 esc 再包 <mark>——
+// 按区间把原文切成「普通段/命中段」，逐段 esc 转义后命中段才套 <mark>，插入的仅 <mark> 标签本身（零 XSS 面，输出可安全进 innerHTML）；
+// 区间越界/重叠防御截断（host 数据可信但 UI 层不赌）。无 marks → 纯 esc 文本（语义命中/标题命中摘要无高亮）。
+function hlMarks(text, marks) {
+  var s = String(text == null ? '' : text);
+  if (!s) return '';
+  if (!marks || !marks.length) return esc(s);
+  var out = '', pos = 0;
+  for (var i = 0; i < marks.length; i++) {
+    var m = marks[i] || {};
+    var st = Math.max(0, Math.min(s.length, m.start || 0));
+    var en = Math.max(st, Math.min(s.length, st + (m.len || 0)));
+    if (st < pos) continue;   // 重叠区间跳过（防御）
+    out += esc(s.slice(pos, st)) + '<mark>' + esc(s.slice(st, en)) + '</mark>';
+    pos = en;
+  }
+  out += esc(s.slice(pos));
+  return out;
+}
 function icon(id, sz) { return '<svg class="ic"' + (sz ? ' style="width:' + sz + 'px;height:' + sz + 'px"' : '') + '><use href="#' + id + '"/></svg>' }
 function fname(id) { var f = folders.find(function (x) { return x.id === id }); return f ? f.name : '' }
 /* ===== 文件夹嵌套 helper（notes-nested-folder-ui；与 host folder-tree-helpers 同口径的本页版）=====
