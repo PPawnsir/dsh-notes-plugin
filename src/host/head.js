@@ -56,6 +56,9 @@ const APP_PAGE_ROUTE = '/dsh-notes-app'
 const APP_PAGE_FILE = path.join(PKG_DIR, 'app.html')
 // 图片资产渲染路由：GET /dsh-notes/asset?file=assets/<name>（防穿越 + 扩展名白名单 mime + immutable 缓存）
 const ASSET_ROUTE = '/dsh-notes/asset'
+// 模型文件代理路由：GET /dsh-notes-model/<path>（0.5.0 P0 notes-050-model-proxy：模型下载 host 代理——
+//   灭浏览器 CORS + 网络双断；host 侧走镜像链 hf-mirror→HF，Range/If-Range 透传保断点续传，每环超时 ≤15s）
+const MODEL_PROXY_ROUTE = '/dsh-notes-model'
 
 // 零外部依赖：link: 安装的包从真实路径解析，裸 import '@deepseek-ai/dsh-tools' 会 ERR_MODULE_NOT_FOUND。
 // defineTool 本体只是 校验+包装 出 {name, description, parameters, output, execute} 普通对象，

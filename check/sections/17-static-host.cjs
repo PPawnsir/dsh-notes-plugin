@@ -55,9 +55,9 @@ module.exports = {
     assert(Array.isArray(modIndex.inject) && modIndex.inject.indexOf('fs') >= 0 && modIndex.inject.indexOf('sandboxPolicy') >= 0, 'inject 含 fs/sandboxPolicy')
     assert(typeof modIndex.apply === 'function', 'apply 导出')
   })
-  await t('harness 缺失时兜底：3 条 exact 路由（RPC + 全窗口页面 + 资产）+ ctx.tools 3 工具 + 约定注入 order130（单一 context：目录段并入）', () => {
+  await t('harness 缺失时兜底：4 条路由（RPC + 全窗口页面 + 资产 + 模型代理）+ ctx.tools 3 工具 + 约定注入 order130（单一 context：目录段并入）', () => {
     modIndex.apply(ctx2)
-    assert.strictEqual(routes2.length, 3, '应注册 3 条路由（/dsh-notes RPC + /dsh-notes-app 页面 + /dsh-notes/asset 资产），实得 ' + routes2.length)
+    assert.strictEqual(routes2.length, 4, '应注册 4 条路由（/dsh-notes RPC + /dsh-notes-app 页面 + /dsh-notes/asset 资产 + /dsh-notes-model 模型代理），实得 ' + routes2.length)
     assert.strictEqual(routes2[0].kind, 'exact', "路由 kind='exact'")
     assert.strictEqual(routes2[0].path, '/dsh-notes', "路由 path='/dsh-notes'")
     assert.strictEqual(typeof routes2[0].handler, 'function', 'handler 是函数')
@@ -67,6 +67,9 @@ module.exports = {
     assert.strictEqual(routes2[2].kind, 'exact', "资产路由 kind='exact'")
     assert.strictEqual(routes2[2].path, '/dsh-notes/asset', "资产路由 path='/dsh-notes/asset'")
     assert.strictEqual(typeof routes2[2].handler, 'function', '资产 handler 是函数')
+    assert.strictEqual(routes2[3].kind, 'prefix', "模型代理路由 kind='prefix'（0.5.0 P0 notes-050-model-proxy：/dsh-notes-model/<path> 变量路径）")
+    assert.strictEqual(routes2[3].path, '/dsh-notes-model', "模型代理路由 path='/dsh-notes-model'")
+    assert.strictEqual(typeof routes2[3].handler, 'function', '模型代理 handler 是函数')
     assert.deepStrictEqual(tools2.map(x => x.name).sort(), ['note_get', 'note_manage', 'note_search'], '注册 3 个工具')
     assert.strictEqual(contexts2.length, 1, '注册 1 个 systemPrompt context（0.4.3③：目录段并入约定注入，order 131 撤销）')
     assert.strictEqual(contexts2[0].order, 130, '约定注入 order=130')
@@ -483,7 +486,7 @@ module.exports = {
     try {
       const modBridge = await import(pathToFileURL(INDEX_PATH).href + '?bridge=1')
       modBridge.apply(ctx2)
-      assert.strictEqual(routes2.length, 6, '兜底路由仍在（两次 apply × 3 条路由：RPC + 页面 + 资产），实得 ' + routes2.length)
+      assert.strictEqual(routes2.length, 8, '兜底路由仍在（两次 apply × 4 条路由：RPC + 页面 + 资产 + 模型代理），实得 ' + routes2.length)
       assert.strictEqual(typeof handlers['notes-list'], 'function', 'notes-list 经 harness.handle 注册')
       assert.strictEqual((await handlers['notes-ping']({ t: 2 })).ok, true, 'P1 notes-ping 经 harness.handle 可调用')
     } finally {

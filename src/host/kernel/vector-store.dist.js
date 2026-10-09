@@ -33,7 +33,7 @@
     function _vectorRegisterBackend(b) {
       if (!b || typeof b.id !== 'string' || !b.id || typeof b.dim !== 'number' || !isFinite(b.dim) || b.dim <= 0 || typeof b.embed !== 'function') return false
       const minScore = (typeof b.minScore === 'number' && isFinite(b.minScore)) ? b.minScore : 0
-      _vectorBackends.set(b.id, { id: b.id, dim: Math.floor(b.dim), minScore: minScore, embed: b.embed })
+      _vectorBackends.set(b.id, { id: b.id, dim: Math.floor(b.dim), minScore: minScore, embed: b.embed, hostEmbed: b.hostEmbed !== false })
       return true
     }
     function _vectorBackendById(id) {
@@ -73,7 +73,8 @@
     //   embed 只在浏览器端可运行（wasm 运行时不进 host——红线：正文不出机器，本地 wasm 路线本质保证）；
     //   host 侧本注册仅承载 status/search 的 dim/minScore 自报 + 命名空间键 + 边车落行校验口径；
     //   索引/查询嵌入由浏览器驱动：浏览器算向量 → notes-vectors-put 回写边车（_vectorsPut）；查询嵌入经 notes-vectors-search queryVector（③消费）。
-    _vectorRegisterBackend({ id: 'bge-small-zh-q8', dim: 512, minScore: 0.50, embed: async function () { throw new Error('bge-small-zh-q8 嵌入只在浏览器端运行（wasm）；请经 notes-vectors-put 回写向量 / notes-vectors-search queryVector 查询') } })
+    //   hostEmbed:false（0.5.0 P0 notes-050-model-proxy）：rebuild 快速失败标记——避免 _list 全库扫描后才抛「只在浏览器端」浪费 10s+。
+    _vectorRegisterBackend({ id: 'bge-small-zh-q8', dim: 512, minScore: 0.50, hostEmbed: false, embed: async function () { throw new Error('bge-small-zh-q8 嵌入只在浏览器端运行（wasm）；请经 notes-vectors-put 回写向量 / notes-vectors-search queryVector 查询') } })
     // bodyHash：全文稳定 hash（FNV-1a 32bit + 长度，纯 JS 无 crypto 依赖——vm 沙箱无 node:crypto，同 history engine 先例）。
     //   任何块变 → 全量重算该笔记（简化一致性）；只用于新鲜度锚，碰撞代价 = 漏一次重算或多一次重算（可接受）。
     function _vectorBodyHash(body) {
@@ -275,6 +276,7 @@
         await loadSettings()
         const backend = _vectorBackendById(backendId) || _activeBackend()
         if (!backend) return { error: 'notes-vectors-rebuild: 未知后端 ' + String(backendId || '') + '（且无激活后端）' }
+        if (backend.hostEmbed === false) return { error: backend.id + ' 嵌入只在浏览器端运行（wasm）；重建由浏览器驱动（notes-vectors-put 全量回写）' }   // 0.5.0 P0：快速失败，免 _list 全库扫描后抛错
         await _vectorLoad()
         await _vectorJobChain   // 等待在飞增量（顺序一致）
         const c = _vectorCache
@@ -308,8 +310,15 @@
         await _vectorFlush()
         const c = _vectorCache
         const backend = _activeBackend()
+        // 0.5.0 P0（notes-050-model-proxy）rev2：indexable 计数走 _list 精确扫描（与 _vectorsRebuild 的 indexable 同源同口径）——
+        //   常驻 cache 冷启动未暖（status 先于任何 notes-list/写入）会低报 indexable（实测冷 cache=1 / 暖=154 / 参考=154），
+        //   属「换 cache 计数」引入的指标回归；_list 全库扫描实测 155 篇 280ms（远非「慢 12-20s」根因），恢复精确计数。
+        //   口径：_list(includeSys=true) 全量 + _vectorIndexable 过滤（排除 deleted/tombstoned/sensitive/sys，与 rebuild 一致）。
         let indexable = 0
-        try { indexable = (await _list(undefined, undefined, undefined, false, false, true)).filter(_vectorIndexable).length } catch (e) { indexable = 0 }
+        try {
+          const all = await _list(undefined, undefined, undefined, false, false, true)   // 含 sys（统一 _vectorIndexable 过滤）
+          for (const n of all) { if (_vectorIndexable(n)) indexable++ }
+        } catch (e) { indexable = 0 }
         const namespaces = []
         // 0.5.0③（notes-050-rrf-fusion）：激活后端命名空间即使零向量也报自报 dim/minScore（status 契约：激活后端恒可见——bge 未建索引也报 512/0.50）
         const nsIds = new Set(Object.keys(c.ns))

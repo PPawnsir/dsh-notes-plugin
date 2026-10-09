@@ -12,25 +12,25 @@
  * 红线：
  *   · 正文不出机器（本地 wasm 路线本质保证，模型/向量全在浏览器本地）。
  *   · npm 包体积零增长（模型 23.32MB + wasm 运行时 10.6~20.6MB 一律运行时拉取，不进包）。
- *   · 离线 = 优雅降级（下载失败静默，不报错刷屏；嵌入回退纯文本，见 ③ 降级链）。
+ *   · 离线 = 优雅降级（后台预取失败静默；显式「构建索引」失败 sticky 报错——见 0.5.0 P0）。
  *
- * 镜像链（下载纪律）：hf-mirror.com 主力（spike 实测 8.7MB/s）→ huggingface.co 兜底；
- *   jsDelivr 已砍（spike 实测三处 404，模型不在 jsDelivr 射程，不准复活）。
- *   模型文件进浏览器 Cache API（不进 npm 包）；进度回调 / 断点续传（Range）/ ETag 校验。
+ * 下载代理（0.5.0 P0 notes-050-model-proxy）：模型下载改 host 代理 GET /dsh-notes-model/<path>——
+ *   浏览器侧同源拉取（灭 CORS），host 侧走镜像链 hf-mirror.com（spike 实测 8.7MB/s）→ huggingface.co 兜底
+ *   （jsDelivr 已砍：spike 实测三处 404，模型不在 jsDelivr 射程，不准复活）；Range/If-Range 透传保断点续传；
+ *   每环超时 ≤15s 快速失败 + 续传重试上限封顶。模型文件进浏览器 Cache API（不进 npm 包）。
  *
  * 静默预取（用户拍板 B+）：浏览器闲置（requestIdleCallback / 空闲探测）时后台拉取，
  *   不打断任何交互；首次「构建索引」若模型未下 → 显式下载带进度（B 方案兜底）。
  * ================================================================================== */
 
-/* ==== wasm-embedder-core BEGIN ====（0.5.0② notes-050-wasm-embedder：镜像链 + 下载纪律 + 闲置预取纯函数核——check 节 118 提取 eval 行为级测试）
- * 纯函数块：零 DOM 依赖，fetchImpl / now / mirrors 全经入参注入，Node mock 可 eval 测试。
+/* ==== wasm-embedder-core BEGIN ====（0.5.0② notes-050-wasm-embedder：下载纪律 + 闲置预取纯函数核——check 节 118 提取 eval 行为级测试）
+ * 0.5.0 P0（notes-050-model-proxy）：模型下载改 host 代理——浏览器侧不再持镜像链（CORS 由 host 代理消化），
+ *   本核只留：同源 URL 构造 + 单文件下载（超时/断点续传/进度）+ 续传重试上限 + 闲置判定。
+ * 纯函数块：零 DOM 依赖，fetchImpl / now 全经入参注入，Node mock 可 eval 测试。
  * 契约：fetchImpl(url, init) → Response-like { ok, status, headers:{get(k)}, body?:{getReader()}, arrayBuffer() }。
  */
-// 镜像链：主力 hf-mirror → 兜底 huggingface.co（jsDelivr 已砍，不复）
-var WASM_MIRRORS = [
-  { id: 'hf-mirror', base: 'https://hf-mirror.com' },
-  { id: 'hf-official', base: 'https://huggingface.co' },
-]
+// 同源代理基址（host 代理通道 GET /dsh-notes-model/<path>——host 侧镜像链 hf-mirror→HF 不动）
+var WASM_PROXY_BASE = '/dsh-notes-model'
 // 模型标识（transformers.js 布局：config + tokenizer + tokenizer_config + onnx/model_quantized.onnx）
 var WASM_MODEL_ID = 'Xenova/bge-small-zh-v1.5'
 var WASM_MODEL_FILES = ['config.json', 'tokenizer.json', 'tokenizer_config.json', 'onnx/model_quantized.onnx']
@@ -38,18 +38,19 @@ var WASM_MODEL_FILES = ['config.json', 'tokenizer.json', 'tokenizer_config.json'
 var WASM_MODEL_BYTES = 24452000
 // 闲置预取阈值：距最后交互 >60s 才允许静默预取（不打断任何交互）
 var WASM_PREFETCH_IDLE_MS = 60000
-// 断点续传最大尝试次数（Range 续传 + ETag 校验；超限抛错，由上层 failover/降级承接）
+// 断点续传最大尝试次数（Range 续传 + ETag 校验；超限抛错，由上层降级承接）
 var WASM_RESUME_MAX_TRIES = 3
+// 下载超时上限（0.5.0 P0：每环 ≤15s 快速失败——现状浏览器默认 21s 连接超时 ×3 无界重试才放弃）
+var WASM_DOWNLOAD_TIMEOUT_MS = 15000
 
-function wasmMirrorChain() { return WASM_MIRRORS.slice() }
-function wasmModelUrl(mirror, file) { return mirror.base + '/' + WASM_MODEL_ID + '/resolve/main/' + file }
+function wasmModelUrl(file) { return WASM_PROXY_BASE + '/' + WASM_MODEL_ID + '/resolve/main/' + file }
 // 闲置判定：距 lastActivity 超过 idleMs → 允许预取（返回 true 才触发后台拉取）
 function wasmShouldPrefetch(now, lastActivity, idleMs) {
   return now >= lastActivity + (typeof idleMs === 'number' && isFinite(idleMs) && idleMs >= 0 ? idleMs : WASM_PREFETCH_IDLE_MS)
 }
-// 单文件下载（进度回调 + Range 断点续传 + ETag/If-Range 校验）：
-//   opts = { rangeStart?, expectedEtag?, onProgress?(loaded, total) }；返回 { bytes:Uint8Array, etag:string|null }。
-//   进度：流式 body 分块回调累计字节（mock 侧 arrayBuffer 一次到顶）；Range/If-Range 头按需附加（下载纪律②）。
+// 单文件下载（超时 AbortController + 进度回调 + Range 断点续传 + ETag/If-Range 校验）：
+//   opts = { rangeStart?, expectedEtag?, onProgress?(loaded, total), timeoutMs? }；返回 { bytes:Uint8Array, etag:string|null }。
+//   超时：缺省 WASM_DOWNLOAD_TIMEOUT_MS（≤15s），AbortController 快速失败到下一环；fetchImpl 透传 signal。
 async function wasmDownloadFile(fetchImpl, url, opts) {
   opts = opts || {}
   const init = { method: 'GET' }
@@ -57,34 +58,40 @@ async function wasmDownloadFile(fetchImpl, url, opts) {
   if (opts.rangeStart > 0) headers['Range'] = 'bytes=' + opts.rangeStart + '-'
   if (opts.expectedEtag) headers['If-Range'] = opts.expectedEtag
   if (Object.keys(headers).length) init.headers = headers
-  const res = await fetchImpl(url, init)
-  if (!res || res.ok === false) throw new Error('wasm download failed: ' + url + ' (status ' + (res && res.status) + ')')
-  const getHeader = function (k) { return (res.headers && typeof res.headers.get === 'function') ? res.headers.get(k) : (res.headers && res.headers[k]) }
-  const etag = getHeader('etag') || null
-  const total = parseInt(getHeader('content-length') || '0', 10) || 0
-  let buf
-  if (res.body && typeof res.body.getReader === 'function') {
-    const reader = res.body.getReader()
-    const chunks = []
-    let loaded = 0
-    for (;;) {
-      const r = await reader.read()
-      if (r.done) break
-      chunks.push(r.value)
-      loaded += r.value.length
-      if (opts.onProgress) opts.onProgress(loaded, total)
+  const timeoutMs = (typeof opts.timeoutMs === 'number' && isFinite(opts.timeoutMs) && opts.timeoutMs > 0) ? opts.timeoutMs : WASM_DOWNLOAD_TIMEOUT_MS
+  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null
+  if (ctrl) init.signal = ctrl.signal
+  const to = ctrl ? setTimeout(function () { try { ctrl.abort() } catch (e) {} }, timeoutMs) : null
+  try {
+    const res = await fetchImpl(url, init)
+    if (!res || res.ok === false) throw new Error('wasm download failed: ' + url + ' (status ' + (res && res.status) + ')')
+    const getHeader = function (k) { return (res.headers && typeof res.headers.get === 'function') ? res.headers.get(k) : (res.headers && res.headers[k]) }
+    const etag = getHeader('etag') || null
+    const total = parseInt(getHeader('content-length') || '0', 10) || 0
+    let buf
+    if (res.body && typeof res.body.getReader === 'function') {
+      const reader = res.body.getReader()
+      const chunks = []
+      let loaded = 0
+      for (;;) {
+        const r = await reader.read()
+        if (r.done) break
+        chunks.push(r.value)
+        loaded += r.value.length
+        if (opts.onProgress) opts.onProgress(loaded, total)
+      }
+      buf = new Uint8Array(loaded)
+      let off = 0
+      for (const c of chunks) { buf.set(c, off); off += c.length }
+    } else {
+      const ab = await res.arrayBuffer()
+      buf = new Uint8Array(ab)
+      if (opts.onProgress) opts.onProgress(buf.length, total || buf.length)
     }
-    buf = new Uint8Array(loaded)
-    let off = 0
-    for (const c of chunks) { buf.set(c, off); off += c.length }
-  } else {
-    const ab = await res.arrayBuffer()
-    buf = new Uint8Array(ab)
-    if (opts.onProgress) opts.onProgress(buf.length, total || buf.length)
-  }
-  return { bytes: buf, etag: etag }
+    return { bytes: buf, etag: etag }
+  } finally { if (to) clearTimeout(to) }
 }
-// 断点续传：从 resumeBytes 起，Range 续传 + If-Range 校验（ETag 完整性核对，下载纪律③）；失败重试 WASM_RESUME_MAX_TRIES 次。
+// 断点续传：从 resumeBytes 起，Range 续传 + If-Range 校验（ETag 完整性核对，下载纪律③）；失败重试 WASM_RESUME_MAX_TRIES 次（重试上限封顶）。
 async function wasmDownloadResumable(fetchImpl, url, opts) {
   opts = opts || {}
   const resumeBytes = Math.max(0, Math.floor(Number(opts.resumeBytes) || 0))
@@ -92,22 +99,15 @@ async function wasmDownloadResumable(fetchImpl, url, opts) {
   let lastErr = null
   for (let attempt = 0; attempt < WASM_RESUME_MAX_TRIES; attempt++) {
     try {
-      return await wasmDownloadFile(fetchImpl, url, { rangeStart: resumeBytes, expectedEtag: expectedEtag, onProgress: opts.onProgress })
+      return await wasmDownloadFile(fetchImpl, url, { rangeStart: resumeBytes, expectedEtag: expectedEtag, onProgress: opts.onProgress, timeoutMs: opts.timeoutMs })
     } catch (e) { lastErr = e }
   }
   throw lastErr || new Error('wasm download resumable failed: ' + url)
 }
-// 镜像链 failover：按序尝试 mirrors，成功返回 { bytes, etag, mirror }；全败抛错（上层降级承接，不刷屏）。
+// 同源代理下载（0.5.0 P0：镜像链已迁 host——浏览器只走单环 /dsh-notes-model/<file>；断点续传重试上限仍在此封顶）。
+//   mirrors 参数保留兼容（不再本地 failover，恒忽略）。
 async function wasmDownloadWithFailover(fetchImpl, mirrors, file, opts) {
-  const chain = (Array.isArray(mirrors) && mirrors.length) ? mirrors : wasmMirrorChain()
-  let lastErr = null
-  for (const m of chain) {
-    try {
-      const r = await wasmDownloadResumable(fetchImpl, wasmModelUrl(m, file), opts)
-      return { bytes: r.bytes, etag: r.etag, mirror: m.id }
-    } catch (e) { lastErr = e }
-  }
-  throw lastErr || new Error('wasm model download failed on all mirrors: ' + file)
+  return wasmDownloadResumable(fetchImpl, wasmModelUrl(file), opts)
 }
 /* ==== wasm-embedder-core END ==== */
 
@@ -267,7 +267,18 @@ function wasmBodyHash(body) {
 async function wasmBuildIndex(onProgress) {
   await wasmModelEnsureDownloaded(onProgress)
   const mod = await wasmImportRuntime()
-  if (mod && mod.env) { try { mod.env.allowLocalModels = false } catch (e) {}; try { mod.env.remoteHost = 'https://hf-mirror.com' } catch (e) {} }
+  // 0.5.0 P0（notes-050-model-proxy）：transformers.js 模型加载改走同源代理（灭浏览器 CORS）——
+  //   remoteHost 置空 + remotePathTemplate 指向 /dsh-notes-model/{model}/resolve/{revision}/，pipeline() 拉
+  //   config/tokenizer/onnx 全落 /dsh-notes-model/<model>/resolve/<revision>/<file>（host 代理消化 CORS+网络双断）。
+  //   transformers.js v3.7.2 remoteURL = pathJoin(remoteHost, remotePathTemplate.replace({model},{revision}), filename)
+  //   （utils/hub.js getModelFile），故 remoteHost='' + remotePathTemplate='/dsh-notes-model/{model}/resolve/{revision}/'
+  //   拼出根相对同源 URL（fetch 同源零 CORS）；host 代理 route 已按同一路径剥离前缀转发镜像链 hf-mirror→HF。
+  if (mod && mod.env) {
+    try { mod.env.allowLocalModels = false } catch (e) {}
+    try { mod.env.allowRemoteModels = true } catch (e) {}
+    try { mod.env.remoteHost = '' } catch (e) {}
+    try { mod.env.remotePathTemplate = '/dsh-notes-model/{model}/resolve/{revision}/' } catch (e) {}
+  }
   const extractor = await mod.pipeline('feature-extraction', WASM_MODEL_ID)
   const list = await rpc('notes-list', {})
   const notes = (list && list.notes) || []

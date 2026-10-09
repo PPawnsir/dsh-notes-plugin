@@ -58,6 +58,22 @@ module.exports = {
     assert(embSrc.indexOf('function wasmChunkText(') >= 0 && embSrc.indexOf('function wasmBodyHash(') >= 0, '浏览器分段嵌入 + bodyHash 同口径 helper 在案')
   })
 
+  // ===== 120.4b 失败驻留报错（0.5.0 P0 notes-050-model-proxy：显式构建失败 sticky 报错条含原因）=====
+  await t('构建失败 sticky 报错条：semDoBuild 失败走 semShowBuildError（modalErr 含原因）+ bge 失败不回落 host rebuild', () => {
+    assert(appSettings.indexOf('function semShowBuildError(') >= 0 && appSettings.indexOf("modalErr(t('settings.semanticBuildFailed'") >= 0, 'semShowBuildError → modalErr（settings.semanticBuildFailed 含原因）')
+    assert(appSettings.indexOf('function semClearBuildError(') >= 0, 'semClearBuildError 清除驻留错误（再次构建/成功清零）')
+    assert(appSettings.indexOf('var fail = function (err)') >= 0 && appSettings.indexOf('semShowBuildError(msg)') >= 0, 'semDoBuild 失败路径调 semShowBuildError')
+    assert(appSettings.indexOf('fail(new Error(r.error))') >= 0, 'host rebuild 结构化 error 也走 sticky 报错')
+    assert(appSettings.indexOf(".catch(function () { return rpc('notes-vectors-rebuild'") < 0, 'bge 失败不再回落 host rebuild（误导性「只在浏览器端运行」已拆）')
+  })
+
+  // ===== 120.4c 面板（client bundle）失败驻留报错（0.5.0 P0 rev2：client 显式「构建索引」失败 sticky 报错，不静默跳回按钮态）=====
+  await t('面板构建失败 sticky 报错条：client doSemBuild 捕获 {error} 走 setError（settings.semanticBuildFailed 含原因），不静默复位', () => {
+    assert(cliSettings.indexOf("if (res && res.error) setError(tt('settings.semanticBuildFailed'") >= 0, 'client doSemBuild 结构化 error → setError sticky（含原因）')
+    assert(cliSettings.indexOf("setError(tt('settings.semanticBuildFailed', { msg: String(err && err.message || err) }))") >= 0, 'client doSemBuild 网络 reject → setError sticky（含原因）')
+    assert(cliSettings.indexOf("setError('')") >= 0 && cliSettings.indexOf('再次构建先清上次驻留错误') >= 0, 'client 构建开始前清上次驻留错误（再次构建/成功才清）')
+  })
+
   // ===== 120.5 模型管理（删除/重下 + 状态回落）=====
   await t('模型管理：删除走 wasmModelDelete + 清 semantic.model（状态回落未下载）；重下走 wasmModelEnsureDownloaded', () => {
     assert(appSettings.indexOf('function semDoModelDelete(') >= 0 && appSettings.indexOf('wasmModelDelete') >= 0, 'app 模型删除消费 wasmModelDelete')

@@ -455,6 +455,7 @@ var I18N_ZH = {
   'settings.semanticEnabledOff': '已关闭语义检索',
   'settings.semanticBackendSaved': '已切换语义后端：{name}',
   'settings.semanticDownloading': '下载模型中 {pct}%',
+  'settings.semanticBuildFailed': '构建索引失败：{msg}',
   /* ===== 覆盖卡 D（notes-042-i18n-cov-d）：注入管理 + 记忆引导双语化 =====
      复用既有 key（禁重复建别名）：settings.injManager（面板标题）/memProbing/memEnabled/memView/memDisable/memEnable、
        common.loading/close/cancel/delete、tree.untitled/roleConvention/roleReference、sel.selCount、

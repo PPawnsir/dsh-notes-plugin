@@ -25,7 +25,7 @@ module.exports = {
       assert(src.indexOf('_vectorsPut') >= 0, '定义 _vectorsPut 回写函数')
     }
     assert(mockSrc.indexOf("case 'notes-vectors-put':") >= 0, 'e2e mock 落 notes-vectors-put 用例桩')
-    assert(mockSrc.indexOf("'bge-small-zh-q8': { id: 'bge-small-zh-q8', dim: 512, minScore: 0.5 }") >= 0, 'e2e mock VECTOR_BACKENDS 落 bge-small-zh-q8')
+    assert(mockSrc.indexOf("'bge-small-zh-q8': { id: 'bge-small-zh-q8', dim: 512, minScore: 0.5, hostEmbed: false }") >= 0, 'e2e mock VECTOR_BACKENDS 落 bge-small-zh-q8（hostEmbed:false 快速失败标记）')
   })
 
   await t('wasm-in-panel 裁决实证：app 接线 embedder、client（面板）不接线（面板读现成向量）', () => {
@@ -39,34 +39,44 @@ module.exports = {
     assert(embSrc.indexOf('jsDelivr 已砍') >= 0, 'jsDelivr 已砍不复')
   })
 
-  // ===== core 块行为级 eval（镜像链 failover + 下载纪律 + 闲置预取）=====
+  // ===== core 块行为级 eval（下载走同源 + 超时 + 重试上限 + 下载纪律 + 闲置预取）=====
   const coreStart = embSrc.indexOf('==== wasm-embedder-core BEGIN ====')
   const coreEnd = embSrc.indexOf('==== wasm-embedder-core END ====')
   assert(coreStart >= 0 && coreEnd > coreStart, 'wasm-embedder-core 标记块存在')
   let core = embSrc.slice(coreStart, coreEnd)
   core = core.slice(core.indexOf('*/') + 2)          // 去 BEGIN 注释块
   core = core.slice(0, core.lastIndexOf('/*'))        // 去 END 标记残留开注释符
-  const W = new Function(core + '\n;return { wasmMirrorChain, wasmModelUrl, wasmShouldPrefetch, wasmDownloadFile, wasmDownloadWithFailover, WASM_MIRRORS, WASM_MODEL_FILES }')()
+  const W = new Function(core + '\n;return { wasmModelUrl, wasmShouldPrefetch, wasmDownloadFile, wasmDownloadResumable, wasmDownloadWithFailover, WASM_PROXY_BASE, WASM_MODEL_ID, WASM_MODEL_FILES, WASM_DOWNLOAD_TIMEOUT_MS, WASM_RESUME_MAX_TRIES }')()
 
-  await t('镜像链 failover：主镜像 mock 失败 → 兜底成功（返回 mirror=hf-official + bytes + etag）', async () => {
-    const calls = []
-    const fetchImpl = async (url, init) => {
-      calls.push({ url: url, init: init })
-      if (url.indexOf('hf-mirror.com') >= 0) return { ok: false, status: 500 }
-      return {
-        ok: true, status: 200,
-        headers: { get: (k) => (k === 'etag' ? '"spike-etag-001"' : (k === 'content-length' ? '3' : null)) },
-        arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
-      }
-    }
-    const r = await W.wasmDownloadWithFailover(fetchImpl, W.WASM_MIRRORS, 'config.json', {})
-    assert(r && r.mirror === 'hf-official', '失败主镜像后兜底成功（mirror=hf-official，实得 ' + (r && r.mirror) + '）')
-    assert(r.bytes && r.bytes.length === 3, '下载字节数正确（3 字节）')
-    assert(r.etag === '"spike-etag-001"', 'ETag 完整性核对（etag 透传）')
-    const kind = (u) => u.indexOf('hf-mirror.com') >= 0 ? 'hf-mirror' : (u.indexOf('huggingface.co') >= 0 ? 'hf-official' : 'other')
-    const seq = calls.map(c => kind(c.url))
-    assert(seq.indexOf('hf-mirror') >= 0 && seq.indexOf('hf-official') >= 0, '两镜像都被尝试')
-    assert(seq.indexOf('hf-official') > seq.indexOf('hf-mirror'), '主镜像先试、兜底后试（failover 顺序）')
+  await t('下载走同源：wasmModelUrl 返回 /dsh-notes-model/ 前缀（非 https:// 镜像直连，镜像链迁 host）', () => {
+    const u = W.wasmModelUrl('config.json')
+    assert(u.indexOf(W.WASM_PROXY_BASE + '/') === 0, 'wasmModelUrl 以代理基址开头（实得 ' + u + '）')
+    assert(u.indexOf('https://') < 0 && u.indexOf('hf-mirror') < 0 && u.indexOf('huggingface') < 0, '不再含 https:// 镜像直连（实得 ' + u + '）')
+    assert(u.indexOf(W.WASM_MODEL_ID) >= 0 && u.indexOf('config.json') >= 0, '含模型 id + 文件名')
+  })
+
+  await t('transformers.js 模型加载走同源代理（0.5.0 P0）：env.remoteHost 不再指 hf-mirror，remotePathTemplate 指向 /dsh-notes-model/', () => {
+    assert(embSrc.indexOf("mod.env.remoteHost = 'https://hf-mirror.com'") < 0, 'env.remoteHost 不再直连 hf-mirror.com（浏览器 CORS 根因已灭）')
+    assert(embSrc.indexOf("mod.env.remoteHost = ''") >= 0, 'env.remoteHost 置空（同源相对 URL 基址）')
+    assert(embSrc.indexOf("mod.env.remotePathTemplate = '/dsh-notes-model/{model}/resolve/{revision}/'") >= 0, 'remotePathTemplate 指向 /dsh-notes-model/ 同源代理')
+    assert(embSrc.indexOf('mod.env.allowRemoteModels = true') >= 0, 'allowRemoteModels 保持 true（经代理远程加载）')
+  })
+
+  await t('下载超时上限：WASM_DOWNLOAD_TIMEOUT_MS ≤15s + wasmDownloadFile 透传 AbortController signal', async () => {
+    assert(typeof W.WASM_DOWNLOAD_TIMEOUT_MS === 'number' && W.WASM_DOWNLOAD_TIMEOUT_MS > 0 && W.WASM_DOWNLOAD_TIMEOUT_MS <= 15000, '超时常量 ≤15000（实得 ' + W.WASM_DOWNLOAD_TIMEOUT_MS + '）')
+    const captured = {}
+    const fetchImpl = async (url, init) => { captured.url = url; captured.init = init; return { ok: true, status: 200, headers: { get: () => null }, arrayBuffer: async () => new Uint8Array(3).buffer } }
+    await W.wasmDownloadFile(fetchImpl, 'https://x/file', {})
+    assert(captured.init && captured.init.signal, 'fetch init 透传 signal（AbortController 超时护栏）')
+  })
+
+  await t('重试次数封顶：wasmDownloadResumable 恰 WASM_RESUME_MAX_TRIES 次后抛错（消除 21s×3 无界重试）', async () => {
+    let calls = 0
+    const fetchImpl = async () => { calls++; return { ok: false, status: 500, headers: { get: () => null }, arrayBuffer: async () => new Uint8Array(0).buffer } }
+    let threw = false
+    try { await W.wasmDownloadResumable(fetchImpl, 'https://x/f', {}) } catch (e) { threw = true }
+    assert(threw, '全败抛错')
+    assert.strictEqual(calls, W.WASM_RESUME_MAX_TRIES, '恰 ' + W.WASM_RESUME_MAX_TRIES + ' 次尝试（实得 ' + calls + '）')
   })
 
   await t('下载纪律：Range 断点续传 + If-Range/ETag 校验头按需附加', async () => {
@@ -87,6 +97,57 @@ module.exports = {
     assert(W.wasmShouldPrefetch(70000, 0, 60000) === true, '闲置 70s ≥ 60s 阈值 → 允许预取')
     assert(W.wasmShouldPrefetch(30000, 0, 60000) === false, '闲置 30s < 60s 阈值 → 不预取')
     assert(W.wasmShouldPrefetch(100000, 99999, 60000) === false, '距最后交互 1ms → 不预取（不打断任何交互）')
+  })
+
+  // ===== 0.5.0 P0 host 模型代理通道行为级（mock 上游 200/404/500 三态 + Range 透传 + 镜像链 failover）=====
+  const modProxy = await import(H.pathToFileURL(H.INDEX_PATH).href + '?modelproxy=1')
+  const proxyRoutes = []
+  const proxyStore = new Map()
+  const proxyFs = {
+    resolve: async (p) => p,
+    stat: async (p) => null,
+    listDir: async () => [],
+    readText: async (p) => { if (!proxyStore.has(p)) throw new Error('ENOENT: ' + p); return proxyStore.get(p) },
+    writeText: async (p, c) => { proxyStore.set(p, c) },
+  }
+  modProxy.apply({ fs: proxyFs, sandboxPolicy: { resolve: () => ({}) }, webServer: { register: (r) => { proxyRoutes.push(r); return () => {} } }, tools: { register: () => () => {} }, get: () => undefined, effect: () => {} })
+  const proxyRoute = proxyRoutes.find(r => r.path === '/dsh-notes-model')
+  assert(proxyRoute && proxyRoute.kind === 'prefix' && typeof proxyRoute.handler === 'function', '注册 prefix /dsh-notes-model 代理路由')
+  const proxyInvoke = (req, fetchImpl) => new Promise((resolve) => {
+    const res = { statusCode: 0, headers: {}, setHeader: (k, v) => { res.headers[k.toLowerCase()] = v }, writeHead: (c) => { res.statusCode = c }, end: (s) => { res.body = s } }
+    const realFetch = globalThis.fetch
+    globalThis.fetch = fetchImpl
+    Promise.resolve(proxyRoute.handler(req, res)).then(function () { globalThis.fetch = realFetch; resolve(res) }, function () { globalThis.fetch = realFetch; resolve(res) })
+  })
+  const mkUp = (status, body, headers) => ({ status: status, headers: { get: (k) => (headers && headers[k.toLowerCase()]) || null }, arrayBuffer: async () => Buffer.from(body || '') })
+
+  await t('host 代理通道：200 透传（状态码/Content-Type/Content-Length/ETag）+ Range 头透传', async () => {
+    const calls = []
+    const r = await proxyInvoke({ method: 'GET', url: '/dsh-notes-model/Xenova/bge-small-zh-v1.5/resolve/main/config.json', headers: { range: 'bytes=100-' } }, async (url, init) => {
+      calls.push({ url: url, init: init })
+      return mkUp(200, 'model-bytes', { 'content-type': 'application/octet-stream', 'content-length': '11', etag: '"e1"' })
+    })
+    assert.strictEqual(r.statusCode, 200, '200 透传（实得 ' + r.statusCode + '）')
+    assert.strictEqual(r.headers['content-type'], 'application/octet-stream', 'Content-Type 透传')
+    assert.strictEqual(r.headers['content-length'], '11', 'Content-Length 透传')
+    assert.strictEqual(r.headers['etag'], '"e1"', 'ETag 透传')
+    assert(r.body && r.body.toString() === 'model-bytes', '响应体透传')
+    assert(calls.length === 1 && calls[0].url.indexOf('hf-mirror.com') >= 0, '主镜像先试')
+    assert(calls[0].init && calls[0].init.headers && calls[0].init.headers['Range'] === 'bytes=100-', 'Range 头透传（断点续传）')
+  })
+
+  await t('host 代理通道：404/500 镜像链 failover（主镜像 500 → 兜底 200）+ 全败 502', async () => {
+    const calls = []
+    const r = await proxyInvoke({ method: 'GET', url: '/dsh-notes-model/Xenova/bge-small-zh-v1.5/resolve/main/tokenizer.json', headers: {} }, async (url) => {
+      calls.push(url)
+      if (url.indexOf('hf-mirror.com') >= 0) return mkUp(500, '', {})
+      return mkUp(200, 'tokenizer', { 'content-type': 'application/json', 'content-length': '9' })
+    })
+    assert.strictEqual(r.statusCode, 200, '主镜像 500 → 兜底 200（实得 ' + r.statusCode + '）')
+    assert(calls.length === 2 && calls[0].indexOf('hf-mirror.com') >= 0 && calls[1].indexOf('huggingface.co') >= 0, '镜像链按序 failover（hf-mirror → huggingface）')
+    const rAll = await proxyInvoke({ method: 'GET', url: '/dsh-notes-model/Xenova/bge-small-zh-v1.5/resolve/main/x.json', headers: {} }, async () => mkUp(404, '', {}))
+    assert.strictEqual(rAll.statusCode, 502, '全环 404 → 502（实得 ' + rAll.statusCode + '）')
+    assert(String(rAll.body || '').indexOf('model download failed') >= 0, '502 体含失败原因')
   })
 
   // ===== host 行为断言（fresh 实例：bge 后端 + notes-vectors-put 全链路 + semantic.model 合并）=====

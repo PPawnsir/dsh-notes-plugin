@@ -143,7 +143,7 @@ function maxFolderDepthLimit(state) {
 
 /* 0.5.0①（notes-050-vector-layer）：向量层 mock——与 host vector-store 同契约（响应形状 + 过滤语义 + deterministic 假 embedder 桩）。
  * 只守契约点：status/rebuild/search 三面形状与 host 一致；bodyHash 不落盘（数据内容豁免）；向量状态存 state._vectors。 */
-const VECTOR_BACKENDS = { 'fake-256': { id: 'fake-256', dim: 256, minScore: 0 }, 'fake-64': { id: 'fake-64', dim: 64, minScore: 0.9 }, 'bge-small-zh-q8': { id: 'bge-small-zh-q8', dim: 512, minScore: 0.5 } }
+const VECTOR_BACKENDS = { 'fake-256': { id: 'fake-256', dim: 256, minScore: 0 }, 'fake-64': { id: 'fake-64', dim: 64, minScore: 0.9 }, 'bge-small-zh-q8': { id: 'bge-small-zh-q8', dim: 512, minScore: 0.5, hostEmbed: false } }
 function vectorFnv1a(str) { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 0x01000193) >>> 0; return h }
 function vectorMulberry32(seed) { let s = seed >>> 0; return function () { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 } }
 function vectorEmbedOne(text, dim) { const rnd = vectorMulberry32(vectorFnv1a(String(text == null ? '' : text))); const v = new Array(dim); let sq = 0; for (let i = 0; i < dim; i++) { const x = rnd() * 2 - 1; v[i] = x; sq += x * x } const n = Math.sqrt(sq) || 1; for (let i = 0; i < dim; i++) v[i] = v[i] / n; return v }
@@ -671,6 +671,7 @@ function handleRpc(state, method, args) {
       const bid = (args && args.backend) || vectorActiveBackendId(state) || 'fake-256'
       const b = VECTOR_BACKENDS[bid]
       if (!b) return { error: 'notes-vectors-rebuild: 未知后端 ' + String(bid) + '（且无激活后端）' }
+      if (b.hostEmbed === false) return { error: bid + ' 嵌入只在浏览器端运行（wasm）；重建由浏览器驱动（notes-vectors-put 全量回写）' }   // 0.5.0 P0：与 host 快速失败同口径（免 _list 全库扫描后抛错）
       const vs = vectorNs(state)
       const ns = { hash: {}, rows: {}, lastBuiltAt: nowIso() }
       let indexed = 0
@@ -794,6 +795,20 @@ function startServer(port) {
       if (req.method === 'GET' && (req.url || '').indexOf('/dsh-notes/asset') === 0) {
         res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' })
         res.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'))
+        return
+      }
+      /* 0.5.0 P0（notes-050-model-proxy）：模型代理 mock 通道——GET /dsh-notes-model/<path> → 占位模型文件字节（内容豁免，与 host 代理同路径形态）。
+         让 app 页 wasmModelEnsureDownloaded 走同源代理成功（「下载走同源」断言数据源）；state._modelProxyStatus 注入非 200 可演习构建失败 sticky 报错面。 */
+      if (req.method === 'GET' && (req.url || '').indexOf('/dsh-notes-model/') === 0) {
+        const failStatus = state._modelProxyStatus
+        if (failStatus) {
+          res.writeHead(failStatus, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+          res.end(JSON.stringify({ ok: false, message: 'mock model proxy failure' }))
+          return
+        }
+        const body = Buffer.from('mock-model-file', 'utf8')
+        res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': body.length, 'ETag': '"mock-model-etag"' })
+        res.end(body)
         return
       }
       if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html' || req.url === '/app.html')) {

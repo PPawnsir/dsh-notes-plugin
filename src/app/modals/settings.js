@@ -509,13 +509,15 @@ function semDoModelRedownload() {
    .then(function () { semRenderModel(); semRenderStatus(); })
    .catch(function () { semRenderModel(); semRenderStatus(); });
 }
-/* 构建索引（消费① rebuild + ② wasmBuildIndex）：fake 后端走 host rebuild；bge 走浏览器 wasm 编排（模型下载→嵌入→put 全量回写），
-   wasm 失败回落 host rebuild（fake 可行 / bge 报「只在浏览器端运行」→ 状态行降级）。激活自动回填与显式构建按钮共用本函数。 */
+/* 构建索引（消费① rebuild + ② wasmBuildIndex）：fake 后端走 host rebuild；bge 走浏览器 wasm 编排（模型下载→嵌入→put 全量回写）。
+   0.5.0 P0（notes-050-model-proxy）失败驻留报错：「构建索引」是用户显式动作——失败必须 sticky 报错条（含原因：下载失败/网络/代理错误），
+   不准静默跳回按钮态（静默降级只适用于后台预取，不适用显式点击）；bge 失败不再回落 host rebuild（误导性「只在浏览器端运行」）。 */
 function semDoBuild() {
   if (!semState || semState.building) return;
   semState.building = true;
   var btn = $('setSemBuild');
   if (btn) { btn.disabled = true; btn.textContent = t('settings.semanticBuilding'); }
+  semClearBuildError();
   var backend = semState.backend;
   var finish = function () {
     if (!semState) return;
@@ -524,15 +526,24 @@ function semDoBuild() {
     if (b2) { b2.disabled = !semState.enabled; b2.textContent = t('settings.semanticBuild'); }
     semRenderStatus(); semRenderModel();
   };
-  var build;
+  var fail = function (err) {
+    var msg = (err && err.message) ? String(err.message) : String(err);
+    semShowBuildError(msg);
+    finish();
+  };
   if (backend === 'bge-small-zh-q8' && typeof wasmBuildIndex === 'function') {
-    build = wasmBuildIndex(function (i, n, loaded, total) { var s = $('setSemStatus'); if (s) s.innerHTML = t('settings.semanticDownloading', { pct: total > 0 ? Math.round(loaded / total * 100) : 0 }); })
-      .catch(function () { return rpc('notes-vectors-rebuild', { backend: backend }); });
+    wasmBuildIndex(function (i, n, loaded, total) { var s = $('setSemStatus'); if (s) s.innerHTML = t('settings.semanticDownloading', { pct: total > 0 ? Math.round(loaded / total * 100) : 0 }); })
+      .then(finish, fail);
   } else {
-    build = rpc('notes-vectors-rebuild', { backend: backend });
+    rpc('notes-vectors-rebuild', { backend: backend }).then(function (r) {
+      if (r && r.error) { fail(new Error(r.error)); return; }
+      finish();
+    }, fail);
   }
-  build.then(function () { finish(); }, function () { finish(); });
 }
+/* 构建失败 sticky 报错条（0.5.0 P0）：原因驻留（复用设置卡 #mErr 错误区），再次构建/成功才清除 */
+function semShowBuildError(msg) { modalErr(t('settings.semanticBuildFailed', { msg: msg })); }
+function semClearBuildError() { var e = $('mErr'); if (e) { e.textContent = ''; e.style.display = 'none'; } }
 /* 总开关翻转：打开 → 写 enabled+backend 双键 + 自动触发 notes-vectors-rebuild 回填存量（红线②：存量不入队则静默漏历史）；
    关闭 → 仅写双键（关=文本检索逐字节旧行为），零重建 */
 function semDoToggle(on) {

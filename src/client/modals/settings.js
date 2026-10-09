@@ -388,7 +388,16 @@
       const doSemBuild = () => {
         if (semBuilding) return
         setSemBuilding(true)
-        host.call('notes-vectors-rebuild', { backend: semBackend || 'bge-small-zh-q8' }).then(() => { setSemBuilding(false); loadSemStatus() }, () => { setSemBuilding(false); loadSemStatus() })
+        setError('')   /* 0.5.0 P0（notes-050-model-proxy）：再次构建先清上次驻留错误（失败再重写 sticky 报错；成功保持清零） */
+        host.call('notes-vectors-rebuild', { backend: semBackend || 'bge-small-zh-q8' }).then((res) => {
+          setSemBuilding(false)
+          if (res && res.error) setError(tt('settings.semanticBuildFailed', { msg: String(res.error) }))
+          loadSemStatus()
+        }, (err) => {
+          setSemBuilding(false)
+          setError(tt('settings.semanticBuildFailed', { msg: String(err && err.message || err) }))
+          loadSemStatus()
+        })
       }
       const doSemToggle = (on) => {
         setSemEnabled(on)

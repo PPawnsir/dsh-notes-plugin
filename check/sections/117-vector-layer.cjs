@@ -34,6 +34,18 @@ module.exports = {
     assert.strictEqual(vsDev.slice(vsDev.indexOf('const VECTOR_FLUSH_MS')), vsDist.slice(vsDist.indexOf('const VECTOR_FLUSH_MS')), 'VECTOR_FLUSH_MS 起两变体逐字节一致')
   })
 
+  await t('status indexable 精确计数（0.5.0 P0 rev2）：走 _list 全库扫描 + _vectorIndexable 过滤（同 rebuild 口径，灭冷缓存低报）', () => {
+    assert(vsDev.indexOf('await _list(undefined, undefined, undefined, false, false, true)') >= 0, 'status indexable 走 _list 全库扫描（与 rebuild 同口径，含 sys）')
+    assert(vsDev.indexOf('for (const n of all) { if (_vectorIndexable(n)) indexable++ }') >= 0, 'status indexable 逐条 _vectorIndexable 过滤（排除 deleted/tombstoned/sensitive/sys）')
+    assert(vsDev.indexOf('for (const n of cache.values())') < 0, 'status indexable 不再走 cache.values()（冷缓存低报已拆）')
+    assert(vsDist.indexOf('await _list(undefined, undefined, undefined, false, false, true)') >= 0, 'dist 变体同改（_list 精确计数）')
+  })
+
+  await t('e2e mock bge rebuild 快速失败（hostEmbed:false 同 host 口径，不静默回成功）', () => {
+    assert(mockSrc.indexOf("'bge-small-zh-q8': { id: 'bge-small-zh-q8', dim: 512, minScore: 0.5, hostEmbed: false }") >= 0, 'mock bge 后端标记 hostEmbed:false（与 host _vectorRegisterBackend 同口径）')
+    assert(mockSrc.indexOf("if (b.hostEmbed === false) return { error: bid + ' 嵌入只在浏览器端运行（wasm）") >= 0, 'mock rebuild bge 快速失败（同 host _vectorsRebuild 快速失败）')
+  })
+
   // ===== 行为断言（fresh host 实例：独立 store/handlers，计数确定，零污染共享 S）=====
   const NOTES_DIR_V = DIR + '\\notes'
   const VECTORS_PATH = NOTES_DIR_V + '\\vectors.jsonl'
@@ -170,6 +182,35 @@ module.exports = {
     const r256 = await handlers['notes-vectors-search']({ queryVector: new Array(256).fill(0), backend: 'fake-256' })
     assert(r256 && r256.ok === true && r256.minScore === 0, 'fake-256 minScore 自报 0')
     assert(r256.count >= 2, 'fake-256（minScore 0）不过滤余弦 0 结果（count ' + r256.count + '）')
+  })
+
+  // ===== 0.5.0 P0 rev2：status indexable 冷缓存精确计数（存量 .md 直读，不经任何 create/list 暖缓存）=====
+  await t('status indexable 冷缓存精确计数：存量 .md 直读（无 create/list 暖缓存）→ indexable 与 rebuild 同口径（排除 deleted/sensitive/sys）', async () => {
+    const storeC = new Map()
+    const NOTES_DIR_C = DIR + '\\notes'
+    const seedC = (id, extra, body) => storeC.set(NOTES_DIR_C + '\\' + id + '.md', '---\nid: ' + id + '\ntitle: ' + id + '\ntopic: 测试\n' + (extra || '') + 'createdAt: "2026-01-01T00:00:00.000Z"\nupdatedAt: "2026-01-01T00:00:00.000Z"\n---\n\n' + body + '\n')
+    seedC('n-cold-a', '', '冷甲正文')
+    seedC('n-cold-b', '', '冷乙正文')
+    seedC('n-cold-sens', 'sensitive: true\n', '敏感正文')
+    seedC('n-cold-sys', 'kind: sys\n', '系统正文')
+    seedC('n-cold-del', 'deleted: true\n', '已删正文')
+    const fsMockC = {
+      resolve: async (p) => p,
+      stat: async (p) => { if (p === NOTES_DIR_C) return { dir: true }; if (storeC.has(p)) return { file: true }; const prefix = p + '\\'; for (const k of storeC.keys()) if (k.startsWith(prefix)) return { dir: true }; return null },
+      listDir: async (p) => { const prefix = p + '\\'; const out = []; for (const k of storeC.keys()) if (k.startsWith(prefix) && k.indexOf('\\', prefix.length) < 0) out.push({ name: k.slice(prefix.length) }); return out },
+      readText: async (p) => { if (!storeC.has(p)) throw new Error('ENOENT: ' + p); return storeC.get(p) },
+      writeText: async (p, c) => { storeC.set(p, c) },
+    }
+    const handlersC = {}
+    const harnessMockC = { handle: (name, fn) => { handlersC[name] = fn; return () => { delete handlersC[name] } }, defineTool: (d) => d, registerTool: () => () => {} }
+    const ctxC = {
+      fs: fsMockC, sandboxPolicy: { resolve: () => ({}) },
+      get: (name) => ({ llm: llmMock, agentDefaultModel: admMock, agents: agentsMock, systemPrompt: { context: () => () => {} }, sessionPersistence: sessionPersistenceMock, workspaceRegistry: workspaceRegistryMock, sessionTitle: sessionTitleMock, sessionQuery: sessionQueryMock })[name],
+      effect: () => {},
+    }
+    new Function('harness', 'pluginDir', hostSrc)(harnessMockC, DIR).apply(ctxC)
+    const stC = await handlersC['notes-vectors-status']({})
+    assert(stC && stC.indexable === 2, '冷缓存 indexable=2（普通甲/乙；deleted/sensitive/sys 均排除，实得 ' + (stC && stC.indexable) + '）')
   })
   }
 }

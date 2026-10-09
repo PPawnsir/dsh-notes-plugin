@@ -56,6 +56,9 @@ const APP_PAGE_ROUTE = '/dsh-notes-app'
 const APP_PAGE_FILE = path.join(PKG_DIR, 'app.html')
 // 图片资产渲染路由：GET /dsh-notes/asset?file=assets/<name>（防穿越 + 扩展名白名单 mime + immutable 缓存）
 const ASSET_ROUTE = '/dsh-notes/asset'
+// 模型文件代理路由：GET /dsh-notes-model/<path>（0.5.0 P0 notes-050-model-proxy：模型下载 host 代理——
+//   灭浏览器 CORS + 网络双断；host 侧走镜像链 hf-mirror→HF，Range/If-Range 透传保断点续传，每环超时 ≤15s）
+const MODEL_PROXY_ROUTE = '/dsh-notes-model'
 
 // 零外部依赖：link: 安装的包从真实路径解析，裸 import '@deepseek-ai/dsh-tools' 会 ERR_MODULE_NOT_FOUND。
 // defineTool 本体只是 校验+包装 出 {name, description, parameters, output, execute} 普通对象，
@@ -2177,7 +2180,7 @@ export function apply(ctx) {
     function _vectorRegisterBackend(b) {
       if (!b || typeof b.id !== 'string' || !b.id || typeof b.dim !== 'number' || !isFinite(b.dim) || b.dim <= 0 || typeof b.embed !== 'function') return false
       const minScore = (typeof b.minScore === 'number' && isFinite(b.minScore)) ? b.minScore : 0
-      _vectorBackends.set(b.id, { id: b.id, dim: Math.floor(b.dim), minScore: minScore, embed: b.embed })
+      _vectorBackends.set(b.id, { id: b.id, dim: Math.floor(b.dim), minScore: minScore, embed: b.embed, hostEmbed: b.hostEmbed !== false })
       return true
     }
     function _vectorBackendById(id) {
@@ -2217,7 +2220,8 @@ export function apply(ctx) {
     //   embed 只在浏览器端可运行（wasm 运行时不进 host——红线：正文不出机器，本地 wasm 路线本质保证）；
     //   host 侧本注册仅承载 status/search 的 dim/minScore 自报 + 命名空间键 + 边车落行校验口径；
     //   索引/查询嵌入由浏览器驱动：浏览器算向量 → notes-vectors-put 回写边车（_vectorsPut）；查询嵌入经 notes-vectors-search queryVector（③消费）。
-    _vectorRegisterBackend({ id: 'bge-small-zh-q8', dim: 512, minScore: 0.50, embed: async function () { throw new Error('bge-small-zh-q8 嵌入只在浏览器端运行（wasm）；请经 notes-vectors-put 回写向量 / notes-vectors-search queryVector 查询') } })
+    //   hostEmbed:false（0.5.0 P0 notes-050-model-proxy）：rebuild 快速失败标记——避免 _list 全库扫描后才抛「只在浏览器端」浪费 10s+。
+    _vectorRegisterBackend({ id: 'bge-small-zh-q8', dim: 512, minScore: 0.50, hostEmbed: false, embed: async function () { throw new Error('bge-small-zh-q8 嵌入只在浏览器端运行（wasm）；请经 notes-vectors-put 回写向量 / notes-vectors-search queryVector 查询') } })
     // bodyHash：全文稳定 hash（FNV-1a 32bit + 长度，纯 JS 无 crypto 依赖——vm 沙箱无 node:crypto，同 history engine 先例）。
     //   任何块变 → 全量重算该笔记（简化一致性）；只用于新鲜度锚，碰撞代价 = 漏一次重算或多一次重算（可接受）。
     function _vectorBodyHash(body) {
@@ -2419,6 +2423,7 @@ export function apply(ctx) {
         await loadSettings()
         const backend = _vectorBackendById(backendId) || _activeBackend()
         if (!backend) return { error: 'notes-vectors-rebuild: 未知后端 ' + String(backendId || '') + '（且无激活后端）' }
+        if (backend.hostEmbed === false) return { error: backend.id + ' 嵌入只在浏览器端运行（wasm）；重建由浏览器驱动（notes-vectors-put 全量回写）' }   // 0.5.0 P0：快速失败，免 _list 全库扫描后抛错
         await _vectorLoad()
         await _vectorJobChain   // 等待在飞增量（顺序一致）
         const c = _vectorCache
@@ -2452,8 +2457,15 @@ export function apply(ctx) {
         await _vectorFlush()
         const c = _vectorCache
         const backend = _activeBackend()
+        // 0.5.0 P0（notes-050-model-proxy）rev2：indexable 计数走 _list 精确扫描（与 _vectorsRebuild 的 indexable 同源同口径）——
+        //   常驻 cache 冷启动未暖（status 先于任何 notes-list/写入）会低报 indexable（实测冷 cache=1 / 暖=154 / 参考=154），
+        //   属「换 cache 计数」引入的指标回归；_list 全库扫描实测 155 篇 280ms（远非「慢 12-20s」根因），恢复精确计数。
+        //   口径：_list(includeSys=true) 全量 + _vectorIndexable 过滤（排除 deleted/tombstoned/sensitive/sys，与 rebuild 一致）。
         let indexable = 0
-        try { indexable = (await _list(undefined, undefined, undefined, false, false, true)).filter(_vectorIndexable).length } catch (e) { indexable = 0 }
+        try {
+          const all = await _list(undefined, undefined, undefined, false, false, true)   // 含 sys（统一 _vectorIndexable 过滤）
+          for (const n of all) { if (_vectorIndexable(n)) indexable++ }
+        } catch (e) { indexable = 0 }
         const namespaces = []
         // 0.5.0③（notes-050-rrf-fusion）：激活后端命名空间即使零向量也报自报 dim/minScore（status 契约：激活后端恒可见——bge 未建索引也报 512/0.50）
         const nsIds = new Set(Object.keys(c.ns))
@@ -3140,6 +3152,66 @@ export function apply(ctx) {
         },
       }))
     }
+
+    // ==== model-proxy BEGIN ====（0.5.0 P0 notes-050-model-proxy：模型下载 host 代理——灭浏览器 CORS + 网络双断；Range/If-Range 透传保断点续传）
+    // 镜像链：hf-mirror → huggingface.co（host 无 CORS，spike 实证 8.7MB/s；jsDelivr 已砍，红线不动）。
+    // app 页 wasmDownloadFile 改走同源 /dsh-notes-model/<path>；host 侧逐环尝试镜像链，每环超时 ≤15s 快速失败到下一环；
+    //   状态码/Content-Type/Content-Length/Content-Range/ETag/Accept-Ranges 透传（断点续传语义不变）。全环失败 → 502（app 侧 sticky 报错承接）。
+    const MODEL_PROXY_MIRRORS = [
+      { id: 'hf-mirror', base: 'https://hf-mirror.com' },
+      { id: 'hf-official', base: 'https://huggingface.co' },
+    ]
+    const MODEL_PROXY_TIMEOUT_MS = 15000
+    if (webServer && typeof webServer.register === 'function') {
+      disposers.push(webServer.register({
+        kind: 'prefix',
+        path: MODEL_PROXY_ROUTE,
+        handler: async function (req, res) {
+          res.setHeader('Cache-Control', 'no-store')
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            res.setHeader('Content-Type', 'application/json')
+            res.writeHead(405); res.end(JSON.stringify({ ok: false, message: 'method not allowed' })); return
+          }
+          let rel = ''
+          try { rel = new URL(req.url || '/', 'http://x').pathname.slice(MODEL_PROXY_ROUTE.length).replace(/^\/+/, '') } catch (e) {}
+          if (!rel || rel.indexOf('..') >= 0) {
+            res.setHeader('Content-Type', 'application/json')
+            res.writeHead(400); res.end(JSON.stringify({ ok: false, message: 'bad model path' })); return
+          }
+          const rng = (req.headers && (req.headers['range'] || req.headers['Range'])) || null
+          const ifr = (req.headers && (req.headers['if-range'] || req.headers['If-Range'])) || null
+          const upHeaders = {}
+          if (rng) upHeaders['Range'] = rng
+          if (ifr) upHeaders['If-Range'] = ifr
+          let lastErr = null
+          for (const m of MODEL_PROXY_MIRRORS) {
+            const url = m.base + '/' + rel
+            let ctrl = null, to = null
+            try {
+              ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null
+              if (ctrl) to = setTimeout(function () { try { ctrl.abort() } catch (e) {} }, MODEL_PROXY_TIMEOUT_MS)
+              const up = await fetch(url, { method: 'GET', headers: upHeaders, signal: ctrl ? ctrl.signal : undefined, redirect: 'follow' })
+              if (!up) throw new Error('upstream empty: ' + url)
+              if (up.status === 404 || up.status >= 500) { lastErr = new Error('upstream ' + up.status + ': ' + url); continue }
+              const get = function (k) { return (up.headers && typeof up.headers.get === 'function') ? up.headers.get(k) : null }
+              const ct = get('content-type'); if (ct) res.setHeader('Content-Type', ct)
+              const cl = get('content-length'); if (cl) res.setHeader('Content-Length', cl)
+              const cr = get('content-range'); if (cr) res.setHeader('Content-Range', cr)
+              const et = get('etag'); if (et) res.setHeader('ETag', et)
+              const ar = get('accept-ranges'); if (ar) res.setHeader('Accept-Ranges', ar)
+              const buf = Buffer.from(await up.arrayBuffer())
+              res.writeHead(up.status)
+              res.end(req.method === 'HEAD' ? '' : buf)
+              return
+            } catch (e) { lastErr = e } finally { if (to) clearTimeout(to) }
+          }
+          res.setHeader('Content-Type', 'application/json')
+          res.writeHead(502)
+          res.end(JSON.stringify({ ok: false, message: 'model download failed on all mirrors: ' + ((lastErr && lastErr.message) || lastErr) }))
+        },
+      }))
+    }
+    // ==== model-proxy END ====
 
     // ==== notes-graph BEGIN ====（0.4.3 内核①：四类边统一扫描建图 + 增量维护 + 图查询 RPC，notes-043-graph；0.4.3+ notes-043-graph-registry：边类型收敛为 EDGE_REGISTRY 声明式描述符——扩展新边类型 = 追加一个描述符，行为零变化）
     // EDGE_REGISTRY 描述符契约（声明式注册表，非继承——同 RootNoteTpl 先例；差异只在「提取方式 / 死链语义」两个数据维度）：

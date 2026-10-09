@@ -455,6 +455,7 @@ var I18N_EN = {
   'settings.semanticEnabledOff': 'Semantic search disabled',
   'settings.semanticBackendSaved': 'Semantic backend switched: {name}',
   'settings.semanticDownloading': 'Downloading model {pct}%',
+  'settings.semanticBuildFailed': 'Index build failed: {msg}',
   /* ===== Coverage card D (notes-042-i18n-cov-d): injection manager + memory guide bilingual =====
      Reuses existing keys (no aliases): settings.injManager (panel title)/memProbing/memEnabled/memView/memDisable/memEnable,
        common.loading/close/cancel/delete, tree.untitled/roleConvention/roleReference, sel.selCount,

@@ -628,6 +628,7 @@ window.__ModuleLoader__.load({
       'settings.semanticEnabledOff': '已关闭语义检索',
       'settings.semanticBackendSaved': '已切换语义后端：{name}',
       'settings.semanticDownloading': '下载模型中 {pct}%',
+      'settings.semanticBuildFailed': '构建索引失败：{msg}',
       /* ===== 覆盖卡 D（notes-042-i18n-cov-d）：注入管理 + 记忆引导双语化 =====
          复用既有 key（禁重复建别名）：settings.injManager（面板标题）/memProbing/memEnabled/memView/memDisable/memEnable、
            common.loading/close/cancel/delete、tree.untitled/roleConvention/roleReference、sel.selCount、
@@ -1556,6 +1557,7 @@ window.__ModuleLoader__.load({
       'settings.semanticEnabledOff': 'Semantic search disabled',
       'settings.semanticBackendSaved': 'Semantic backend switched: {name}',
       'settings.semanticDownloading': 'Downloading model {pct}%',
+      'settings.semanticBuildFailed': 'Index build failed: {msg}',
       /* ===== Coverage card D (notes-042-i18n-cov-d): injection manager + memory guide bilingual =====
          Reuses existing keys (no aliases): settings.injManager (panel title)/memProbing/memEnabled/memView/memDisable/memEnable,
            common.loading/close/cancel/delete, tree.untitled/roleConvention/roleReference, sel.selCount,
@@ -5511,7 +5513,16 @@ window.__ModuleLoader__.load({
       const doSemBuild = () => {
         if (semBuilding) return
         setSemBuilding(true)
-        rpc('notes-vectors-rebuild', { backend: semBackend || 'bge-small-zh-q8' }).then(() => { setSemBuilding(false); loadSemStatus() }, () => { setSemBuilding(false); loadSemStatus() })
+        setError('')   /* 0.5.0 P0（notes-050-model-proxy）：再次构建先清上次驻留错误（失败再重写 sticky 报错；成功保持清零） */
+        rpc('notes-vectors-rebuild', { backend: semBackend || 'bge-small-zh-q8' }).then((res) => {
+          setSemBuilding(false)
+          if (res && res.error) setError(tt('settings.semanticBuildFailed', { msg: String(res.error) }))
+          loadSemStatus()
+        }, (err) => {
+          setSemBuilding(false)
+          setError(tt('settings.semanticBuildFailed', { msg: String(err && err.message || err) }))
+          loadSemStatus()
+        })
       }
       const doSemToggle = (on) => {
         setSemEnabled(on)

@@ -57,7 +57,7 @@ const CORE = new Set([
   '事件回执：agent/status idle → 该会话未闭环派发 dispatchStatus=done（receipt=idle）',
   'notes-quick-instruct LLM 解析失败回退等价 notes-quick',
   'index.mjs 可被 ESM import（语法 + 顶层无副作用）',
-  'harness 缺失时兜底：3 条 exact 路由（RPC + 全窗口页面 + 资产）+ ctx.tools 3 工具 + 约定注入 order130（单一 context：目录段并入）',
+  'harness 缺失时兜底：4 条路由（RPC + 全窗口页面 + 资产 + 模型代理）+ ctx.tools 3 工具 + 约定注入 order130（单一 context：目录段并入）',
   'GET /dsh-notes/asset 防穿越/形态/白名单/404',
   'RPC 200 + 首次启动迁移开发版笔记到 ~/.dsh/notes',
   'notes-create 走静态包 RPC',
@@ -204,6 +204,18 @@ const CORE = new Set([
   '红线①：UI 写 settings.semantic 必须 enabled+backend 双键整写（整对象替换口径，单写 backend 丢 enabled）',
   '红线②：打开总开关自动触发 notes-vectors-rebuild 回填存量（否则存量不入队 indexed<indexable 静默漏历史）',
   'wasm 运行时镜像链=[jsdelivr 主→unpkg 兜底] 且不含 npmmirror（npmmirror 实证 403/404 不可达）',
+  // 0.5.0 P0（notes-050-model-proxy）：模型下载 host 代理（CORS 修复）+ 构建失败驻留报错 + 下载超时封顶 六条红线常驻 --core
+  '下载走同源：wasmModelUrl 返回 /dsh-notes-model/ 前缀（非 https:// 镜像直连，镜像链迁 host）',
+  '下载超时上限：WASM_DOWNLOAD_TIMEOUT_MS ≤15s + wasmDownloadFile 透传 AbortController signal',
+  '重试次数封顶：wasmDownloadResumable 恰 WASM_RESUME_MAX_TRIES 次后抛错（消除 21s×3 无界重试）',
+  'host 代理通道：200 透传（状态码/Content-Type/Content-Length/ETag）+ Range 头透传',
+  'host 代理通道：404/500 镜像链 failover（主镜像 500 → 兜底 200）+ 全败 502',
+  '构建失败 sticky 报错条：semDoBuild 失败走 semShowBuildError（modalErr 含原因）+ bge 失败不回落 host rebuild',
+  '面板构建失败 sticky 报错条：client doSemBuild 捕获 {error} 走 setError（settings.semanticBuildFailed 含原因），不静默复位',
+  '0.5.0 P0 模型代理通道同步：host server.dist.js prefix 路由 ⇄ e2e mock GET 通道（113 闸扩展——非 RPC 通道走结构锚）',
+  'transformers.js 模型加载走同源代理（0.5.0 P0）：env.remoteHost 不再指 hf-mirror，remotePathTemplate 指向 /dsh-notes-model/',
+  'status indexable 精确计数（0.5.0 P0 rev2）：走 _list 全库扫描 + _vectorIndexable 过滤（同 rebuild 口径，灭冷缓存低报）',
+  'status indexable 冷缓存精确计数：存量 .md 直读（无 create/list 暖缓存）→ indexable 与 rebuild 同口径（排除 deleted/sensitive/sys）',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====
