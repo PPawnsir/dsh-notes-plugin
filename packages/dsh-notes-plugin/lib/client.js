@@ -5499,18 +5499,28 @@ window.__ModuleLoader__.load({
       React.useEffect(() => { if (settingsOpen) loadSemStatus() }, [settingsOpen, loadSemStatus])
       /* 0.5.0 P1（notes-051-rebuild-async）构建终态轮询承接：rebuild 后台化后 RPC 立即返回 started（首建 >30s 不再超 30s RPC 护栏误报），
          1.5s 节拍轮 notes-vectors-status——pendingError 非空 → sticky 报错（真失败才报，后台重建失败落 pendingError）；
-         building 消旗且 pending=0 → 成功（semStatus 随拍刷新，状态行计数爬升承接）；节拍上限 400（≈10 分钟）防异常死轮；卸载清计时器。 */
+         building 消旗且 pending=0 → 成功（semStatus 随拍刷新，状态行计数爬升承接）；节拍上限 400（≈10 分钟）防异常死轮；卸载清计时器。
+         0.5.0 P2（notes-051-status-race）超时兜底：status 调用护栏 reject（30s 超时）不直接 sticky——先探一次轻量 status：
+         探针成功按正常一拍承接（重建期被 drain 链拖超时 → building=true 继续拍不报 sticky；恰逢完结 → 成功态）；
+         探针也 reject/报错 = 确认非构建态故障 → 才 sticky 报错（报原始错误，真失败才报红线不变） */
       const semPollTimer = React.useRef(null)
       React.useEffect(() => () => { if (semPollTimer.current) { clearTimeout(semPollTimer.current); semPollTimer.current = null } }, [])
       const semPollBuild = (n) => {
-        rpc('notes-vectors-status', {}).then((st) => {
+        const tick = (st) => {   /* 一拍处理（正常响应与 P2 超时探针复用） */
           if (st && st.error) { setSemBuilding(false); setError(tt('settings.semanticBuildFailed', { msg: String(st.error) })); loadSemStatus(); return }
           if (st && st.pendingError) { setSemBuilding(false); setError(tt('settings.semanticBuildFailed', { msg: String(st.pendingError) })); loadSemStatus(); return }
           if (st && st.ok === true) setSemStatus(st)   // 状态行随拍刷新（进度计数承接）
           if (st && st.ok === true && st.building !== true && (st.pending || 0) === 0) { setSemBuilding(false); return }
           if (n >= 400) { setSemBuilding(false); setError(tt('settings.semanticBuildFailed', { msg: tt('settings.semanticBuildTimeout') })); return }
           semPollTimer.current = setTimeout(() => semPollBuild(n + 1), 1500)
-        }, (err) => { setSemBuilding(false); setError(tt('settings.semanticBuildFailed', { msg: String(err && err.message || err) })); loadSemStatus() })
+        }
+        rpc('notes-vectors-status', {}).then(tick, (err) => {
+          /* P2 超时探针：护栏 reject 先查一次 building——仍在构建则按正常一拍承接继续轮询（不报 sticky）；探明非构建态/探针也失败才报错 */
+          rpc('notes-vectors-status', {}).then((st2) => {
+            if (st2 && !st2.error) { tick(st2); return }
+            setSemBuilding(false); setError(tt('settings.semanticBuildFailed', { msg: String(err && err.message || err) })); loadSemStatus()
+          }, () => { setSemBuilding(false); setError(tt('settings.semanticBuildFailed', { msg: String(err && err.message || err) })); loadSemStatus() })
+        })
       }
       const semWriteBoth = (enabled, backend) => rpc('notes-settings-set', { semantic: { enabled: !!enabled, backend: backend || 'bge-small-zh-q8' } }).then(res => {
         if (res && res.error) { setError(String(res.error)); throw new Error(res.error) }

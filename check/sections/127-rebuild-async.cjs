@@ -131,7 +131,9 @@ module.exports = {
   await t('双端轮询承接锚：app poll/client semPollBuild——pendingError→sticky 报错（真失败才报）+ building 消旗且 pending=0→成功 + 节拍上限兜底', () => {
     // app 端
     assert(appSettings.indexOf('var poll = function (n)') >= 0, 'app semDoBuild 内 poll 轮询体在案')
-    assert(appSettings.indexOf("rpc('notes-vectors-status', {}).then(function (st) {\n      if (!semState || !semState.building) return;\n      if (st && st.error) { fail(new Error(String(st.error))); return; }\n      if (st && st.pendingError) { fail(new Error(String(st.pendingError))); return; }") >= 0, 'app 轮询：status 报错/pendingError → sticky 报错（真失败才报）')
+    // 0.5.0 P2（notes-051-status-race）：st.error 不再直接 sticky——先经 pollProbe 探针（超时兜底，节 128 守）；pendingError 真失败才报口径不动
+    assert(appSettings.indexOf("if (st && st.error) { pollProbe(st, n); return; }") >= 0, 'app 轮询：status 报错先经 P2 探针（超时兜底——节 128 守），不直接 sticky')
+    assert(appSettings.indexOf("if (st && st.pendingError) { fail(new Error(String(st.pendingError))); return; }") >= 0, 'app 轮询：pendingError → sticky 报错（真失败才报）')
     assert(appSettings.indexOf("st.building !== true && (st.pending || 0) === 0) { finish(); return; }") >= 0, 'app 成功条件 = building 消旗且 pending=0')
     assert(appSettings.indexOf('setTimeout(function () { poll(n + 1) }, 1500)') >= 0, 'app 1.5s 节拍')
     assert(appSettings.indexOf('poll(0);   /* 0.5.0 P1：started/alreadyRunning 后立即进轮询承接') >= 0, 'app rebuild started 后立即进轮询')

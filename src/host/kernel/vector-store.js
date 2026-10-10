@@ -536,8 +536,14 @@
       try {
         await loadSettings()
         await _vectorLoad()
-        _vectorDrainNow()   // 0.5.0 R2：status 读路径强制 drain（不等 2s 防抖尾——轮询即新鲜；失败残留经 pending/pendingError 显性）
-        await _vectorJobChain
+        // 0.5.0 P2（notes-051-status-race）：重建在跑时跳过强制 drain 与链等待——重建期嵌入闸门（_bgeGateChain 单飞）被 rebuild 批持续占用，
+        //   恰好有保存落库时 drain 的 embed 排在重建当前批之后 → status 被 await _vectorJobChain 整链拖死（rebuild-async 验收实测 5012ms 慢日志）→
+        //   双端轮询 rpc 护栏超时误报「响应超时」。重建期读旧态即可（pending 计数可略陈旧——跳过 drain 不入队），消旗后下一拍自然恢复精确。
+        //   红线：非重建期 status 的强制 drain 语义不动（保存→可搜 <5s 双保险不变）。
+        if (!_vectorRebuilding) {
+          _vectorDrainNow()   // 0.5.0 R2：status 读路径强制 drain（不等 2s 防抖尾——轮询即新鲜；失败残留经 pending/pendingError 显性）
+          await _vectorJobChain
+        }
         await _vectorFlush()
         const c = _vectorCache
         const backend = _activeBackend()

@@ -500,18 +500,30 @@ function semDoBuild() {
     semShowBuildError(msg);
     finish();
   };
-  /* 0.5.0 P1 轮询承接：后台重建期间状态行随拍刷新（计数爬升承接 R3 进度裁决）；节拍上限 400（≈10 分钟）防异常死轮 */
+  /* 0.5.0 P1 轮询承接：后台重建期间状态行随拍刷新（计数爬升承接 R3 进度裁决）；节拍上限 400（≈10 分钟）防异常死轮。
+     0.5.0 P2（notes-051-status-race）超时兜底：rpc 护栏把超时落地为 {error}（与 host 真错误同形难辨）——st.error 不直接 sticky，
+     先探一次轻量 status（pollProbe）：探针成功按正常一拍承接（重建期被 drain 链拖超时 → building=true 继续拍不报 sticky；
+     恰逢完结 → 成功态）；探针也报错/失败 = 确认非构建态故障 → 才 sticky 报错（真失败才报红线不变） */
+  var pollTick = function (st, n) {
+    if (!semState || !semState.building) return;
+    if (st && st.error) { pollProbe(st, n); return; }   /* P2：报错先探 building（超时假象兜底），不直接 sticky */
+    if (st && st.pendingError) { fail(new Error(String(st.pendingError))); return; }   /* 后台重建失败落 pendingError——真失败才报 */
+    if (st && st.ok === true) semRenderStatus(st);
+    if (st && st.ok === true && st.building !== true && (st.pending || 0) === 0) { finish(); return; }
+    if (n >= 400) { fail(new Error(t('settings.semanticBuildTimeout'))); return; }
+    setTimeout(function () { poll(n + 1) }, 1500);
+  };
+  var pollProbe = function (st, n) {
+    if (!semState || !semState.building) return;
+    rpc('notes-vectors-status', {}).then(function (st2) {
+      if (!semState || !semState.building) return;
+      if (st2 && !st2.error) { pollTick(st2, n); return; }   /* 探针成功 = 上次系超时假象：building=true 继续拍 / 消旗完结成功态 */
+      fail(new Error(String(st.error)));                     /* 探针也报错 = 确认非构建态故障——sticky 报错（报原始错误） */
+    }, function () { fail(new Error(String(st.error))); });
+  };
   var poll = function (n) {
     if (!semState || !semState.building) return;
-    rpc('notes-vectors-status', {}).then(function (st) {
-      if (!semState || !semState.building) return;
-      if (st && st.error) { fail(new Error(String(st.error))); return; }
-      if (st && st.pendingError) { fail(new Error(String(st.pendingError))); return; }   /* 后台重建失败落 pendingError——真失败才报 */
-      if (st && st.ok === true) semRenderStatus(st);
-      if (st && st.ok === true && st.building !== true && (st.pending || 0) === 0) { finish(); return; }
-      if (n >= 400) { fail(new Error(t('settings.semanticBuildTimeout'))); return; }
-      setTimeout(function () { poll(n + 1) }, 1500);
-    }, fail);
+    rpc('notes-vectors-status', {}).then(function (st) { pollTick(st, n) }, fail);
   };
   /* 0.5.0 R2 起双端构建按钮同路由——恒调 host rebuild（浏览器嵌入编排 R3 已删码退役） */
   rpc('notes-vectors-rebuild', { backend: backend }).then(function (r) {

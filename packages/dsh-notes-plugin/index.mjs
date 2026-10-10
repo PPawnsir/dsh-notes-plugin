@@ -2686,8 +2686,14 @@ export function apply(ctx) {
       try {
         await loadSettings()
         await _vectorLoad()
-        _vectorDrainNow()   // 0.5.0 R2：status 读路径强制 drain（不等 2s 防抖尾——轮询即新鲜；失败残留经 pending/pendingError 显性）
-        await _vectorJobChain
+        // 0.5.0 P2（notes-051-status-race）：重建在跑时跳过强制 drain 与链等待——重建期嵌入闸门（_bgeGateChain 单飞）被 rebuild 批持续占用，
+        //   恰好有保存落库时 drain 的 embed 排在重建当前批之后 → status 被 await _vectorJobChain 整链拖死（rebuild-async 验收实测 5012ms 慢日志）→
+        //   双端轮询 rpc 护栏超时误报「响应超时」。重建期读旧态即可（pending 计数可略陈旧——跳过 drain 不入队），消旗后下一拍自然恢复精确。
+        //   红线：非重建期 status 的强制 drain 语义不动（保存→可搜 <5s 双保险不变）。
+        if (!_vectorRebuilding) {
+          _vectorDrainNow()   // 0.5.0 R2：status 读路径强制 drain（不等 2s 防抖尾——轮询即新鲜；失败残留经 pending/pendingError 显性）
+          await _vectorJobChain
+        }
         await _vectorFlush()
         const c = _vectorCache
         const backend = _activeBackend()
@@ -3284,6 +3290,9 @@ export function apply(ctx) {
     // notes-vectors-rebuild { backend } → 全量重建指定后端命名空间（换后端不重建、旧集保留）；backend 缺省回落激活后端。
     //   0.5.0 P1（notes-051-rebuild-async）：后台化——立即返回 { ok, started:true }（首建 >30s 不再超前端 30s RPC 护栏误报；在跑去重 { ok, alreadyRunning:true }）；
     //   重建本体独立 async 后台跑，失败落 status.pendingError（lastBuiltAt 不盖章），终态由双端轮询 notes-vectors-status 承接。
+    //   0.5.0 P2（notes-051-status-race）：status 在 building=true 时跳过强制 drain 与 _vectorJobChain 链等待（重建期嵌入闸门被 rebuild 批占用，
+    //   drain embed 排队拖死 status 实测 5012ms → 双端轮询护栏超时误报）——重建期读旧态（pending 可略陈旧），消旗后下一拍恢复精确；
+    //   双端轮询兜底：护栏超时先探一次轻量 status，仍在构建继续拍不报 sticky，确认非构建态才报错。
     // notes-vectors-search { queryVector|query, backend, limit } → 余弦 + minScore 过滤 + per-note max-pooling（③卡消费；query 为内部 embed 便捷形态）
     // notes-vectors-put { backend, rows:[{noteId, bodyHash, vectors:[...]}], replace? } → 外部算好的向量经队列回写边车（②卡落通道；replace:true 全量重建清空目标命名空间；0.5.0 R3 起浏览器嵌入生产方退役，通道保留）
     disposers.push(handle('notes-vectors-status', async (args) => { try { return await _vectorsStatus() } catch (e) { return { error: String(e.message || e) } } }))

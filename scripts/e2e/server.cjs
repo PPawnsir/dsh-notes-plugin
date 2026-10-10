@@ -668,6 +668,11 @@ function handleRpc(state, method, args) {
     case 'notes-ping': return { ok: true, pong: Date.now(), echo: (args && typeof args === 'object') ? args : null }
     /* 0.5.0①（notes-050-vector-layer）：向量层三 RPC 契约（与 host 同形状）——status（N/M 篇·后端·各命名空间）/rebuild（只重建目标后端命名空间）/search（余弦 + minScore + max-pooling） */
     case 'notes-vectors-status': {
+      /* 0.5.0 P2（notes-051-status-race）轮询兜底桩：_vectorStatusError 驻留报错 / _vectorStatusErrorOnce 一次性报错（消费即清）——
+         模拟 rpc 护栏超时落地形态（app 端超时 = 结构化 {error} 同形），用例 61 数据源：
+         一次性 = 重建期偶发超时 → 探针接住（building=true）继续拍不报 sticky；驻留 = 探针也失败 → 确认非构建态故障才 sticky */
+      if (state._vectorStatusError) return { error: String(state._vectorStatusError) }
+      if (state._vectorStatusErrorOnce) { const vErrOnce = state._vectorStatusErrorOnce; state._vectorStatusErrorOnce = null; return { error: String(vErrOnce) } }
       const vBackend = vectorActiveBackendId(state)
       const vs = vectorNs(state)
       /* 0.5.0③（notes-050-rrf-fusion）：激活后端命名空间即使零向量也报自报 dim/minScore（与 host _vectorsStatus 同契约） */
