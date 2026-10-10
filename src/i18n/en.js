@@ -450,6 +450,7 @@ var I18N_EN = {
   'settings.semanticEnabledOff': 'Semantic search disabled',
   'settings.semanticBackendSaved': 'Semantic backend switched: {name}',
   'settings.semanticBuildFailed': 'Index build failed: {msg}',
+  'settings.semanticBuildTimeout': 'Background rebuild timed out (still unfinished; click to retry)',   /* 0.5.0 P1 (notes-051-rebuild-async): poll-iteration cap fallback (≈10 min) */
   /* ===== Coverage card D (notes-042-i18n-cov-d): injection manager + memory guide bilingual =====
      Reuses existing keys (no aliases): settings.injManager (panel title)/memProbing/memEnabled/memView/memDisable/memEnable,
        common.loading/close/cancel/delete, tree.untitled/roleConvention/roleReference, sel.selCount,

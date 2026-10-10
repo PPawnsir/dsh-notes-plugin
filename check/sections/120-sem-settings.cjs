@@ -134,8 +134,14 @@ module.exports = {
     assert(st1 && st1.enabled === true && st1.backend === 'fake-256', '启用 fake-256（status 回显）')
     assert(st1.indexed === 0 && st1.indexable === 2, '启用后存量不入队（indexed=0/indexable=2——回填缺口的实证）')
     const rb = await handlers['notes-vectors-rebuild']({ backend: 'fake-256' })
-    assert(rb && rb.ok === true && rb.indexed === 2, 'rebuild 回填存量（indexed=2）')
-    const st2 = await handlers['notes-vectors-status']({})
+    assert(rb && rb.ok === true && rb.started === true, 'rebuild 立即返回 started（0.5.0 P1 后台化——RPC 不再同步等全量重建）')
+    let st2 = null
+    for (let i = 0; i < 500; i++) {   // 0.5.0 P1 轮询承接：building 消旗即完结（fake embedder 数拍内落定）
+      st2 = await handlers['notes-vectors-status']({})
+      if (st2 && st2.building !== true) break
+      await new Promise(r => setTimeout(r, 10))
+    }
+    assert(st2 && st2.building === false, '后台重建完结（building 消旗）')
     assert(st2 && st2.indexed === 2 && st2.indexable === 2, '回填后 indexed=indexable=2')
   })
   }

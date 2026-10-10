@@ -230,14 +230,17 @@ module.exports = {
       await handlers['notes-settings-set']({ semantic: { enabled: true, backend: 'bge-small-zh-q8' } })
       const n1 = await handlers['notes-create']({ title: 'G1', body: '并发闸压力一' })
       const n2 = await handlers['notes-create']({ title: 'G2', body: '并发闸压力二' })
-      // 并发压闸：rebuild（逐笔记 embed）+ 两条文本 query（embed 直查）同发
+      // 并发压闸：rebuild（0.5.0 P1 后台化——RPC 立即返回 started，本体后台逐笔记 embed）+ 两条文本 query（embed 直查）同发
       const rs = await Promise.all([
         handlers['notes-vectors-rebuild']({ backend: 'bge-small-zh-q8' }),
         handlers['notes-vectors-search']({ query: '并发闸', backend: 'bge-small-zh-q8' }),
         handlers['notes-vectors-search']({ query: '压力', backend: 'bge-small-zh-q8' }),
       ])
-      await settle()
-      assert(rs[0] && rs[0].ok === true && rs[0].indexed >= 2, 'rebuild 走假推理缝成功（indexed=' + (rs[0] && rs[0].indexed) + '）')
+      assert(rs[0] && rs[0].ok === true && rs[0].started === true, 'rebuild 立即返回 started（0.5.0 P1 后台化——并发压闸下也不占同步窗）')
+      // 0.5.0 P1：轮询承接后台重建完结（building 消旗）再断言计数
+      let stV = null
+      for (let i = 0; i < 500; i++) { stV = await handlers['notes-vectors-status']({}); if (stV && stV.building !== true) break; await sleep(10) }
+      assert(stV && stV.building === false && stV.indexed >= 2, '后台重建走假推理缝成功（indexed=' + (stV && stV.indexed) + '）')
       assert(rs[1] && rs[1].ok === true && rs[2] && rs[2].ok === true, '文本 query 走 host embed 成功（0.5.0 R1 不再抛「只在浏览器端」）')
       assert(calls >= 4, '推理调用次数 ≥4（2 笔记 + 2 查询，实得 ' + calls + '）')
       assert.strictEqual(maxInflight, 1, '并发闸串行化：推理水位恒 1（实得 maxInflight=' + maxInflight + '）')

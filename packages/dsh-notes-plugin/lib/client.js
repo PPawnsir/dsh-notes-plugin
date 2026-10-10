@@ -623,6 +623,7 @@ window.__ModuleLoader__.load({
       'settings.semanticEnabledOff': '已关闭语义检索',
       'settings.semanticBackendSaved': '已切换语义后端：{name}',
       'settings.semanticBuildFailed': '构建索引失败：{msg}',
+      'settings.semanticBuildTimeout': '后台重建超时（长时间未完结，可再次点击重试）',   /* 0.5.0 P1（notes-051-rebuild-async）：轮询节拍上限兜底（≈10 分钟） */
       /* ===== 覆盖卡 D（notes-042-i18n-cov-d）：注入管理 + 记忆引导双语化 =====
          复用既有 key（禁重复建别名）：settings.injManager（面板标题）/memProbing/memEnabled/memView/memDisable/memEnable、
            common.loading/close/cancel/delete、tree.untitled/roleConvention/roleReference、sel.selCount、
@@ -1546,6 +1547,7 @@ window.__ModuleLoader__.load({
       'settings.semanticEnabledOff': 'Semantic search disabled',
       'settings.semanticBackendSaved': 'Semantic backend switched: {name}',
       'settings.semanticBuildFailed': 'Index build failed: {msg}',
+      'settings.semanticBuildTimeout': 'Background rebuild timed out (still unfinished; click to retry)',   /* 0.5.0 P1 (notes-051-rebuild-async): poll-iteration cap fallback (≈10 min) */
       /* ===== Coverage card D (notes-042-i18n-cov-d): injection manager + memory guide bilingual =====
          Reuses existing keys (no aliases): settings.injManager (panel title)/memProbing/memEnabled/memView/memDisable/memEnable,
            common.loading/close/cancel/delete, tree.untitled/roleConvention/roleReference, sel.selCount,
@@ -5495,6 +5497,21 @@ window.__ModuleLoader__.load({
         }).catch(() => setSemStatus({ error: 'unknown' }))
       }, [])
       React.useEffect(() => { if (settingsOpen) loadSemStatus() }, [settingsOpen, loadSemStatus])
+      /* 0.5.0 P1（notes-051-rebuild-async）构建终态轮询承接：rebuild 后台化后 RPC 立即返回 started（首建 >30s 不再超 30s RPC 护栏误报），
+         1.5s 节拍轮 notes-vectors-status——pendingError 非空 → sticky 报错（真失败才报，后台重建失败落 pendingError）；
+         building 消旗且 pending=0 → 成功（semStatus 随拍刷新，状态行计数爬升承接）；节拍上限 400（≈10 分钟）防异常死轮；卸载清计时器。 */
+      const semPollTimer = React.useRef(null)
+      React.useEffect(() => () => { if (semPollTimer.current) { clearTimeout(semPollTimer.current); semPollTimer.current = null } }, [])
+      const semPollBuild = (n) => {
+        rpc('notes-vectors-status', {}).then((st) => {
+          if (st && st.error) { setSemBuilding(false); setError(tt('settings.semanticBuildFailed', { msg: String(st.error) })); loadSemStatus(); return }
+          if (st && st.pendingError) { setSemBuilding(false); setError(tt('settings.semanticBuildFailed', { msg: String(st.pendingError) })); loadSemStatus(); return }
+          if (st && st.ok === true) setSemStatus(st)   // 状态行随拍刷新（进度计数承接）
+          if (st && st.ok === true && st.building !== true && (st.pending || 0) === 0) { setSemBuilding(false); return }
+          if (n >= 400) { setSemBuilding(false); setError(tt('settings.semanticBuildFailed', { msg: tt('settings.semanticBuildTimeout') })); return }
+          semPollTimer.current = setTimeout(() => semPollBuild(n + 1), 1500)
+        }, (err) => { setSemBuilding(false); setError(tt('settings.semanticBuildFailed', { msg: String(err && err.message || err) })); loadSemStatus() })
+      }
       const semWriteBoth = (enabled, backend) => rpc('notes-settings-set', { semantic: { enabled: !!enabled, backend: backend || 'bge-small-zh-q8' } }).then(res => {
         if (res && res.error) { setError(String(res.error)); throw new Error(res.error) }
         return res
@@ -5502,13 +5519,14 @@ window.__ModuleLoader__.load({
       const doSemBuild = () => {
         if (semBuilding) return
         /* 0.5.0 R2（notes-051-save-embed）：构建恒走 host notes-vectors-rebuild——bge 嵌入已迁回 host 进程（P0-2 禁用态退役，
-           「请到 app 页构建」提示拆除）；embedder 未就绪时 host 侧入队不丢（status.pending 可见），失败走 sticky 报错 */
+           「请到 app 页构建」提示拆除）；embedder 未就绪时 host 侧入队不丢（status.pending 可见），失败走 sticky 报错；
+           0.5.0 P1（notes-051-rebuild-async）：rebuild 后台化——RPC 立即返回 started/alreadyRunning，终态由 semPollBuild 轮询承接 */
         setSemBuilding(true)
         setError('')   /* 0.5.0 P0（notes-050-model-proxy）：再次构建先清上次驻留错误（失败再重写 sticky 报错；成功保持清零） */
         rpc('notes-vectors-rebuild', { backend: semBackend || 'bge-small-zh-q8' }).then((res) => {
-          setSemBuilding(false)
           if (res && res.error) setError(tt('settings.semanticBuildFailed', { msg: String(res.error) }))
-          loadSemStatus()
+          if (res && res.error) { setSemBuilding(false); loadSemStatus(); return }
+          semPollBuild(0)   /* 0.5.0 P1：started 后立即进轮询承接（不再原地等全量重建完结） */
         }, (err) => {
           setSemBuilding(false)
           setError(tt('settings.semanticBuildFailed', { msg: String(err && err.message || err) }))

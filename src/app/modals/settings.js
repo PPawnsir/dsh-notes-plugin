@@ -450,11 +450,12 @@ function semWrite(enabled, backend) {
   });
 }
 /* 索引状态行渲染（消费① notes-vectors-status）：关=未启用 / 报错=降级态 / 有 lastBuiltAt=N/M 篇 / 否则=尚未构建
-   （0.5.0 R3：「模型未下载」分支退役——模型由 host embedder 首次嵌入时按需下载，UI 不持模型态） */
-function semRenderStatus() {
+   （0.5.0 R3：「模型未下载」分支退役——模型由 host embedder 首次嵌入时按需下载，UI 不持模型态）；
+   0.5.0 P1（notes-051-rebuild-async）：可选预取参 pre——轮询拍已取 status 时直渲，免重复 RPC */
+function semRenderStatus(pre) {
   var el = $('setSemStatus');
   if (!el || !semState) return;
-  rpc('notes-vectors-status', {}).then(function (st) {
+  var render = function (st) {
     var el2 = $('setSemStatus');
     if (!el2 || !semState) return;
     var html;
@@ -464,7 +465,9 @@ function semRenderStatus() {
     else if (st.lastBuiltAt) html = t('settings.semanticStatus', { indexed: st.indexed || 0, indexable: st.indexable || 0, backend: semBackendLabel(st.backend), time: semFmtTime(st.lastBuiltAt) });
     else html = t('settings.semanticStatusNever');
     el2.innerHTML = esc(html);
-  }).catch(function (e) {
+  };
+  if (pre) { render(pre); return; }
+  rpc('notes-vectors-status', {}).then(render).catch(function (e) {
     var el3 = $('setSemStatus');
     if (el3) el3.innerHTML = esc(t('settings.semanticStatusError', { msg: (e && e.message) || e }));
   });
@@ -473,6 +476,9 @@ function semRenderStatus() {
    （onnxruntime-web 纯 wasm 在宿主跑）；0.5.0 R3（notes-051-query-embed）浏览器嵌入编排（模型下载→嵌入→put 全量回写）
    随浏览器嵌入模块整体删码退役，notes-vectors-put 回写通道 host 侧保留；
    rebuild 快速失败闸已拆，存量回填真跑（分段嵌入+replace put），进度经轮询 status（计数涨）。
+   0.5.0 P1（notes-051-rebuild-async）：rebuild 后台化——RPC 立即返回 { ok, started }（首建 >30s 不再超 30s RPC 护栏误报失败），
+   终态由 semState 轮询承接：1.5s 节拍 notes-vectors-status——pendingError 非空 → sticky 报错（真失败才报）；
+   building 消旗且 pending=0 → 成功态（状态行 N/M 篇）。
    0.5.0 P0（notes-050-model-proxy）失败驻留报错：「构建索引」是用户显式动作——失败必须 sticky 报错条（含原因：下载失败/网络/镜像错误），
    不准静默跳回按钮态（静默降级只适用于后台预取，不适用显式点击）。 */
 function semDoBuild() {
@@ -494,10 +500,23 @@ function semDoBuild() {
     semShowBuildError(msg);
     finish();
   };
+  /* 0.5.0 P1 轮询承接：后台重建期间状态行随拍刷新（计数爬升承接 R3 进度裁决）；节拍上限 400（≈10 分钟）防异常死轮 */
+  var poll = function (n) {
+    if (!semState || !semState.building) return;
+    rpc('notes-vectors-status', {}).then(function (st) {
+      if (!semState || !semState.building) return;
+      if (st && st.error) { fail(new Error(String(st.error))); return; }
+      if (st && st.pendingError) { fail(new Error(String(st.pendingError))); return; }   /* 后台重建失败落 pendingError——真失败才报 */
+      if (st && st.ok === true) semRenderStatus(st);
+      if (st && st.ok === true && st.building !== true && (st.pending || 0) === 0) { finish(); return; }
+      if (n >= 400) { fail(new Error(t('settings.semanticBuildTimeout'))); return; }
+      setTimeout(function () { poll(n + 1) }, 1500);
+    }, fail);
+  };
   /* 0.5.0 R2 起双端构建按钮同路由——恒调 host rebuild（浏览器嵌入编排 R3 已删码退役） */
   rpc('notes-vectors-rebuild', { backend: backend }).then(function (r) {
     if (r && r.error) { fail(new Error(r.error)); return; }
-    finish();
+    poll(0);   /* 0.5.0 P1：started/alreadyRunning 后立即进轮询承接（RPC 不再原地等全量重建完结） */
   }, fail);
 }
 /* 构建失败 sticky 报错条（0.5.0 P0）：原因驻留（复用设置卡 #mErr 错误区），再次构建/成功才清除 */

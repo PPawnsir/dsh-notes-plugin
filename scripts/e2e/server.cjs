@@ -686,30 +686,39 @@ function handleRpc(state, method, args) {
         indexable: notes.filter(vectorIndexable).length,
         lastBuiltAt: (vBackend && vs.ns[vBackend]) ? (vs.ns[vBackend].lastBuiltAt || '') : '',
         namespaces: namespaces,
-        pending: 0,          /* 0.5.0 R2：与 host _vectorsStatus 同契约（mock 无 drain 管线——恒 0/''，键集对账口径） */
-        pendingError: '',
+        pending: 0,          /* 0.5.0 R2：与 host _vectorsStatus 同契约（mock 无 drain 管线——恒 0，键集对账口径） */
+        pendingError: state._vectorPendingError || '',   /* 0.5.0 P1：后台 rebuild 失败落本键（与 host _vectorPendingErr 同口径——轮询拾起） */
+        building: !!state._vectorBuilding,               /* 0.5.0 P1：后台重建在跑标记（与 host status.building 同契约——双端轮询承接信号源） */
       }
     }
     case 'notes-vectors-rebuild': {
       const bid = (args && args.backend) || vectorActiveBackendId(state) || 'fake-256'
       const b = VECTOR_BACKENDS[bid]
       if (!b) return { error: 'notes-vectors-rebuild: 未知后端 ' + String(bid) + '（且无激活后端）' }
-      /* 0.5.0 R2：快速失败闸已拆（host bge 真能跑）——失败面改由 _vectorRebuildError 显式桩（用例㊽ sticky 报错路径保真） */
-      if (state._vectorRebuildError) return { error: String(state._vectorRebuildError) }
-      const vs = vectorNs(state)
-      const ns = { hash: {}, rows: {}, lastBuiltAt: nowIso() }
-      let indexed = 0
-      for (const n of notes) {
-        if (!vectorIndexable(n)) continue
-        const chunks = vectorChunks(n.body)
-        if (!chunks.length) continue
-        const rows = []
-        for (let i = 0; i < chunks.length; i++) rows.push({ chunk: i, vector: vectorEmbedOne(chunks[i], b.dim) })
-        ns.rows[n.id] = rows
-        indexed++
-      }
-      vs.ns[bid] = ns
-      return { ok: true, backend: bid, dim: b.dim, minScore: b.minScore, indexed: indexed, indexable: notes.filter(vectorIndexable).length, lastBuiltAt: ns.lastBuiltAt }
+      /* 0.5.0 P1（notes-051-rebuild-async）：mock 同步 rebuild 异步形态——立即返回 { ok, started:true }（在跑去重 alreadyRunning），
+         重建本体 setTimeout 后台跑（_vectorRebuildDelay 桩可调节拍，用例 60 构建中态观测窗）；
+         失败桩 _vectorRebuildError 不再同步返回 error，改落 _vectorPendingError（status.pendingError 轮询拾起，与 host 同口径） */
+      if (state._vectorBuilding) return { ok: true, alreadyRunning: true, backend: state._vectorBuilding }
+      state._vectorBuilding = bid
+      state._vectorPendingError = ''
+      setTimeout(() => {
+        try {
+          /* 0.5.0 R2：快速失败闸已拆（host bge 真能跑）——失败面改由 _vectorRebuildError 显式桩（用例㊽ sticky 报错路径保真） */
+          if (state._vectorRebuildError) { state._vectorPendingError = String(state._vectorRebuildError); return }
+          const vs = vectorNs(state)
+          const ns = { hash: {}, rows: {}, lastBuiltAt: nowIso() }
+          for (const n of notes) {
+            if (!vectorIndexable(n)) continue
+            const chunks = vectorChunks(n.body)
+            if (!chunks.length) continue
+            const rows = []
+            for (let i = 0; i < chunks.length; i++) rows.push({ chunk: i, vector: vectorEmbedOne(chunks[i], b.dim) })
+            ns.rows[n.id] = rows
+          }
+          vs.ns[bid] = ns
+        } finally { state._vectorBuilding = null }
+      }, state._vectorRebuildDelay || 20)
+      return { ok: true, started: true, backend: bid }
     }
     case 'notes-vectors-search': {
       const bid = (args && args.backend) || vectorActiveBackendId(state) || 'fake-256'

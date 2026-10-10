@@ -84,6 +84,15 @@ module.exports = {
   }
   const rowsOf = (noteId, backend) => readVectors().filter(r => r.noteId === noteId && (backend === undefined || r.backend === backend))
   const settle = async () => { await handlers['notes-vectors-status']({}) }
+  // 0.5.0 P1（notes-051-rebuild-async）：后台重建轮询承接（与双端 UI 同口径）——building 消旗即完结；fake embedder 数拍内落定
+  const waitRebuild = async (h) => {
+    for (let i = 0; i < 500; i++) {
+      const st = await h['notes-vectors-status']({})
+      if (st && st.building !== true) return st
+      await new Promise(r => setTimeout(r, 10))
+    }
+    throw new Error('waitRebuild 超时：building 不消旗')
+  }
 
   await t('缺省关闭零成本：未启用语义时 status enabled:false + backend:null + 无任何边车写入', async () => {
     const st = await handlers['notes-vectors-status']({})
@@ -146,11 +155,16 @@ module.exports = {
     assert(rowsOf(c.id, 'fake-256').length === 1, '短笔记单块零开销')
   })
 
-  await t('全量重建统计口径：rebuild 精确 indexed/indexable（排除 deleted/sensitive/sys）+ lastBuiltAt + 窄接口自报 dim/minScore', async () => {
+  await t('全量重建统计口径：rebuild 立即返回 started（0.5.0 P1 后台化）→ 轮询完结 → 精确 indexed/indexable（排除 deleted/sensitive/sys）+ lastBuiltAt + 窄接口自报 dim/minScore', async () => {
     const r = await handlers['notes-vectors-rebuild']({ backend: 'fake-256' })
-    assert(r && r.ok === true && r.backend === 'fake-256' && r.dim === 256 && r.minScore === 0, 'rebuild fake-256 自报 dim=256/minScore=0')
-    assert(r.indexed === 2 && r.indexable === 2, 'indexed=indexable=2（短笔记 C + 长笔记 L；deleted B/sensitive S/sys 索引均排除，实得 ' + r.indexed + '/' + r.indexable + '）')
-    assert(r.lastBuiltAt && Date.parse(r.lastBuiltAt) > 0, 'lastBuiltAt 有效 ISO 时间')
+    assert(r && r.ok === true && r.started === true && r.backend === 'fake-256', 'rebuild 立即返回 {ok,started:true,backend}（0.5.0 P1 后台化契约——不再同步等全量重建）')
+    assert(typeof r.indexed === 'undefined', '同步窗不再带构建结果（indexed/indexable 移交轮询承接）')
+    const st = await waitRebuild(handlers)
+    assert(st && st.ok === true && st.building === false, '轮询完结：building 消旗')
+    assert(st.indexed === 2 && st.indexable === 2, 'indexed=indexable=2（短笔记 C + 长笔记 L；deleted B/sensitive S/sys 索引均排除，实得 ' + st.indexed + '/' + st.indexable + '）')
+    assert(st.lastBuiltAt && Date.parse(st.lastBuiltAt) > 0, 'lastBuiltAt 有效 ISO 时间')
+    const ns256 = (st.namespaces || []).filter(n => n.backend === 'fake-256')[0]
+    assert(ns256 && ns256.dim === 256 && ns256.minScore === 0, '命名空间自报 dim=256/minScore=0（status 契约承接原 rebuild 同步返回键）')
   })
 
   await t('检索 + per-note max-pooling：查询命中长笔记尾块，每 note 只出一条（chunk=胜出块序，score=最高块）', async () => {
@@ -166,12 +180,14 @@ module.exports = {
   await t('命名空间隔离：rebuild fake-64 不清空 fake-256（换后端不重建、旧集保留）+ status 各命名空间统计', async () => {
     const before = readVectors().filter(r => r.backend === 'fake-256').length
     const r64 = await handlers['notes-vectors-rebuild']({ backend: 'fake-64' })
-    assert(r64 && r64.ok === true && r64.backend === 'fake-64' && r64.dim === 64 && r64.minScore === 0.9, 'rebuild fake-64 自报 dim=64/minScore=0.9')
+    assert(r64 && r64.ok === true && r64.started === true && r64.backend === 'fake-64', 'rebuild fake-64 立即返回 started（0.5.0 P1）')
+    const st = await waitRebuild(handlers)
+    const ns64 = (st.namespaces || []).filter(n => n.backend === 'fake-64')[0]
+    assert(ns64 && ns64.dim === 64 && ns64.minScore === 0.9, 'rebuild fake-64 自报 dim=64/minScore=0.9（status 命名空间承接）')
     const after = readVectors().filter(r => r.backend === 'fake-256').length
     assert(after === before && before > 0, 'rebuild fake-64 后 fake-256 命名空间保留（换后端不重建）')
     const both = readVectors()
     assert(both.some(r => r.backend === 'fake-256') && both.some(r => r.backend === 'fake-64'), '边车两后端命名空间并存（各建各的）')
-    const st = await handlers['notes-vectors-status']({})
     const nsIds = (st.namespaces || []).map(n => n.backend).sort()
     assert(nsIds.indexOf('fake-256') >= 0 && nsIds.indexOf('fake-64') >= 0, 'status 各命名空间统计含两后端')
   })

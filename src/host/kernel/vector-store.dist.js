@@ -38,6 +38,7 @@
     let _vectorPending = new Map()                  // 挂起队列：id → true（Set 语义；同 id 重复入队 = 防抖合并）
     let _vectorDrainTimer = null
     let _vectorPendingErr = ''                      // 最近一次 drain 失败原因（status 显性面；成功清零）
+    let _vectorRebuilding = null                    // 0.5.0 P1（notes-051-rebuild-async）：后台重建在跑标记 { backend, startedAt, promise }（status.building 数据源 + 并发去重闸）
     // backend 注册表：id → { id, dim, minScore, embed }（窄接口；换后端 = 注册新条目 + 换命名空间，旧集保留）
     const _vectorBackends = new Map()
     function _vectorRegisterBackend(b) {
@@ -475,38 +476,59 @@
       return den > 0 ? dot / den : 0
     }
     // 全量重建（notes-vectors-rebuild 入口）：只清空重建目标后端命名空间（换后端不重建、旧集保留）；全库扫描 + 分段嵌入。
+    // 0.5.0 P1（notes-051-rebuild-async）：rebuild 后台化——首建含模型下载+全库嵌入总时长 >30s（真机实证 171/171 后台建完，
+    //   但同步 RPC 超前端 30s 护栏 → UI 误报「构建失败：响应超时」）：RPC 改立即返回 { ok, started:true }，
+    //   重建本体 _vectorsRebuildRun 独立 async 后台跑（不挂 _vectorJobChain——status 轮询须快回，入链会被 status 的
+    //   await _vectorJobChain 整链堵死）；并发重复点击去重（在跑返回 { ok, alreadyRunning:true }）；失败落 _vectorPendingErr
+    //   （status.pendingError 轮询拾起）+ lastBuiltAt 不盖章（新命名空间整弃、旧集保留）；双端 UI 轮询 status 承接终态。
     async function _vectorsRebuild(backendId) {
       try {
         await loadSettings()
         const backend = _vectorBackendById(backendId) || _activeBackend()
         if (!backend) return { error: 'notes-vectors-rebuild: 未知后端 ' + String(backendId || '') + '（且无激活后端）' }
-        // 0.5.0 R2（notes-051-save-embed）：bge 快速失败闸移除——R1 后 host 能嵌入（hostEmbed:true 真 embed 在册），rebuild 真跑存量回填
-        await _vectorLoad()
-        await _vectorJobChain   // 等待在飞增量（顺序一致）
-        // 0.5.0 R2：重建是权威全量——挂起队列快照清空 + 防抖计时器取消（本批内容已被全库扫描覆盖；重建期间新变更重新入队不受影响）
-        _vectorPending = new Map()
-        if (_vectorDrainTimer) { clearTimeout(_vectorDrainTimer); _vectorDrainTimer = null }
-        const c = _vectorCache
-        const ns = _vectorNewNs()
-        const all = await _list(undefined, undefined, undefined, false, false, true)   // 含 sys（重建期统一 _vectorIndexable 过滤）
-        let indexed = 0
-        for (const n of all) {
-          if (!_vectorIndexable(n)) continue
-          const chunks = _vectorChunks(n.body)
-          if (!chunks.length) continue
-          const vecs = await backend.embed(chunks)
-          const rows = []
-          for (let i = 0; i < vecs.length; i++) rows.push({ chunk: i, vector: vecs[i] })
-          ns.rows[n.id] = rows
-          ns.hash[n.id] = _vectorBodyHash(n.body)
-          indexed++
-        }
-        ns.lastBuiltAt = new Date().toISOString()
-        c.ns[backend.id] = ns   // 覆盖该命名空间（其余命名空间保留）
-        _vectorDirty = true
-        await _vectorFlush()
-        return { ok: true, backend: backend.id, dim: backend.dim, minScore: backend.minScore, indexed: indexed, indexable: all.filter(_vectorIndexable).length, lastBuiltAt: ns.lastBuiltAt }
+        if (_vectorRebuilding) return { ok: true, alreadyRunning: true, backend: _vectorRebuilding.backend }   // 并发去重：在跑不重复发起
+        const job = { backend: backend.id, startedAt: new Date().toISOString() }
+        _vectorRebuilding = job
+        _vectorPendingErr = ''   // 新一次构建先清上次驻留失败（与 UI「再次构建先清驻留错误」同口径）
+        job.promise = _vectorsRebuildRun(backend).then(function () {
+          if (_vectorRebuilding === job) _vectorRebuilding = null
+        }, function (e) {
+          if (_vectorRebuilding === job) _vectorRebuilding = null
+          _vectorPendingErr = String((e && e.message) || e)   // 失败显性：status.pendingError 轮询拾起；不自动重试（红线不变）
+        })
+        return { ok: true, started: true, backend: backend.id }
       } catch (e) { return { error: String(e.message || e) } }
+    }
+    // 重建本体（0.5.0 P1 起由 _vectorsRebuild 派发的后台独立 async，不挂 _vectorJobChain）：内部口径与 R2 逐字节一致——
+    //   权威全量（清挂起 + 取消防抖）+ 全库扫描分段嵌入 + 成功才盖章 swap（失败抛回 _vectorsRebuild 落 pendingError，
+    //   新命名空间整弃不污染旧集）。
+    async function _vectorsRebuildRun(backend) {
+      // 0.5.0 R2（notes-051-save-embed）：bge 快速失败闸移除——R1 后 host 能嵌入（hostEmbed:true 真 embed 在册），rebuild 真跑存量回填
+      await _vectorLoad()
+      await _vectorJobChain   // 等待在飞增量（顺序一致）
+      // 0.5.0 R2：重建是权威全量——挂起队列快照清空 + 防抖计时器取消（本批内容已被全库扫描覆盖；重建期间新变更重新入队不受影响）
+      _vectorPending = new Map()
+      if (_vectorDrainTimer) { clearTimeout(_vectorDrainTimer); _vectorDrainTimer = null }
+      const c = _vectorCache
+      const ns = _vectorNewNs()
+      const all = await _list(undefined, undefined, undefined, false, false, true)   // 含 sys（重建期统一 _vectorIndexable 过滤）
+      let indexed = 0
+      for (const n of all) {
+        if (!_vectorIndexable(n)) continue
+        const chunks = _vectorChunks(n.body)
+        if (!chunks.length) continue
+        const vecs = await backend.embed(chunks)
+        const rows = []
+        for (let i = 0; i < vecs.length; i++) rows.push({ chunk: i, vector: vecs[i] })
+        ns.rows[n.id] = rows
+        ns.hash[n.id] = _vectorBodyHash(n.body)
+        indexed++
+      }
+      ns.lastBuiltAt = new Date().toISOString()
+      c.ns[backend.id] = ns   // 覆盖该命名空间（其余命名空间保留）
+      _vectorDirty = true
+      await _vectorFlush()
+      return { ok: true, backend: backend.id, dim: backend.dim, minScore: backend.minScore, indexed: indexed, indexable: all.filter(_vectorIndexable).length, lastBuiltAt: ns.lastBuiltAt }
     }
     // 状态（notes-vectors-status 入口）：N/M 篇·后端·上次构建·各命名空间统计
     async function _vectorsStatus() {
@@ -545,7 +567,8 @@
           lastBuiltAt: (backend && c.ns[backend.id]) ? c.ns[backend.id].lastBuiltAt : '',
           namespaces: namespaces,
           pending: _vectorPending.size,          // 0.5.0 R2：待嵌入计数（embedder 未就绪时入队不丢——本键即可见）
-          pendingError: _vectorPendingErr        // 最近一次 drain 失败原因（无 = ''）
+          pendingError: _vectorPendingErr,       // 最近一次 drain / 后台 rebuild 失败原因（无 = ''；0.5.0 P1 起 rebuild 失败也落本键——轮询拾起）
+          building: !!_vectorRebuilding          // 0.5.0 P1：后台重建在跑标记（双端轮询承接终态信号源：消旗 + pending=0 = 完结）
         }
       } catch (e) { return { error: String(e.message || e) } }
     }

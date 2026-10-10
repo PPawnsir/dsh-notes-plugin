@@ -144,13 +144,15 @@ module.exports = {
       await handlers['notes-create']({ title: 'R2', body: '重建挂起乙' })
       assert(inferCalls === 0, '防抖窗口内零嵌入（挂起中）')
       const rb = await handlers['notes-vectors-rebuild']({ backend: 'bge-small-zh-q8' })
-      assert(rb && rb.ok === true && rb.indexed >= 2, 'rebuild 真跑全量回填（bge 快速失败闸已拆——0.5.0 R2 前必死路径，实得 indexed=' + (rb && rb.indexed) + '）')
+      assert(rb && rb.ok === true && rb.started === true, 'rebuild 立即返回 started（0.5.0 P1 后台化；bge 快速失败闸已拆——0.5.0 R2 前必死路径）')
+      // 0.5.0 P1：轮询承接后台重建完结（building 消旗）再断言计数
+      let st = null
+      for (let i = 0; i < 500; i++) { st = await handlers['notes-vectors-status']({}); if (st && st.building !== true) break; await new Promise(r => setTimeout(r, 10)) }
       const callsAfterRebuild = inferCalls
-      assert(callsAfterRebuild >= 2, 'rebuild 经假推理缝嵌入（实得 ' + callsAfterRebuild + '）')
-      const st = await handlers['notes-vectors-status']({})
-      assert(st.pending === 0, 'rebuild 清挂起（pending=0）')
+      assert(callsAfterRebuild >= 2, '后台重建经假推理缝嵌入（实得 ' + callsAfterRebuild + '）')
+      assert(st && st.pending === 0, 'rebuild 清挂起（pending=0）')
       assert(inferCalls === callsAfterRebuild, 'rebuild 后 drain 零重复嵌入（挂起已清——实得增量 ' + (inferCalls - callsAfterRebuild) + '）')
-      assert(st.indexed === st.indexable && st.indexed >= 5, '回填后 indexed=indexable（本节累计 5 篇可索引，实得 ' + st.indexed + '/' + st.indexable + '）')
+      assert(st && st.indexed === st.indexable && st.indexed >= 5, '回填后 indexed=indexable（本节累计 5 篇可索引，实得 ' + (st && st.indexed) + '/' + (st && st.indexable) + '）')
     })
 
     await t('双变体逐字节一致回归（drain 改动双侧同步——VECTOR_FLUSH_MS 起切片口径）', () => {

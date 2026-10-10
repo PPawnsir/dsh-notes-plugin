@@ -103,8 +103,17 @@ module.exports = {
     }
     new Function('harness', 'pluginDir', hostSrc)(harnessMock, DIR).apply(ctx)
     const settle = async () => { await handlers['notes-vectors-status']({}) }
+    // 0.5.0 P1（notes-051-rebuild-async）：后台重建轮询承接——building 消旗即完结（fake embedder 数拍内落定）
+    const waitRebuild = async () => {
+      for (let i = 0; i < 500; i++) {
+        const st = await handlers['notes-vectors-status']({})
+        if (st && st.building !== true) return st
+        await new Promise(r => setTimeout(r, 10))
+      }
+      throw new Error('waitRebuild 超时：building 不消旗')
+    }
     const searchTool = () => registeredTools.find(d => d.name === 'note_search')
-    return { handlers: handlers, registeredTools: registeredTools, settle: settle, searchTool: searchTool }
+    return { handlers: handlers, registeredTools: registeredTools, settle: settle, waitRebuild: waitRebuild, searchTool: searchTool }
   }
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))   // 确保两笔记 updatedAt 不同毫秒（_list 按 updatedAt 降序，文本 rank 可控）
 
@@ -157,12 +166,13 @@ module.exports = {
   })
 
   await t('sensitive 翻转：任何后端命名空间不再命中（全命名空间出队，残留集不泄漏）', async () => {
-    const { handlers, settle } = mk()
+    const { handlers, settle, waitRebuild } = mk()
     await handlers['notes-settings-set']({ semantic: { enabled: true, backend: 'fake-64' } })
     const X = await handlers['notes-create']({ title: '敏感待翻', body: '发版推送纪律' })
     await settle()
     const rb = await handlers['notes-vectors-rebuild']({ backend: 'fake-256' })
-    assert(rb && rb.ok === true, 'rebuild fake-256 建残留命名空间')
+    assert(rb && rb.ok === true && rb.started === true, 'rebuild fake-256 建残留命名空间（0.5.0 P1 后台化：started 立即返回 + 轮询完结）')
+    await waitRebuild()   // 0.5.0 P1：后台重建完结（building 消旗）后再断言残留命名空间检索面
     const s64 = await handlers['notes-vectors-search']({ query: '发版推送纪律', backend: 'fake-64' })
     const s256 = await handlers['notes-vectors-search']({ query: '发版推送纪律', backend: 'fake-256' })
     assert(s64.results.some(x => x.noteId === X.id), '翻转前 fake-64 命中 X')
