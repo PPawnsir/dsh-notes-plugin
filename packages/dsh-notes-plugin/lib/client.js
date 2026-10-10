@@ -3715,11 +3715,12 @@ window.__ModuleLoader__.load({
       : null
     }
     // ===== modal: export-single —— 单文件导出对话框（architecture-modular §6 步骤 D2，自 panels/whole.js 拆出）=====
-    // provides: store.modal.exportSingle / sExportOpenRef / setSExportOpen / setSExportDir / setSExportScope / setSExportFolder / setSExportTag / setSExportToc / setSExportPending / openSExport / SExportModal
+    // provides: store.modal.exportSingle / sExportOpenRef / setSExportOpen / setSExportDir / setSExportScope / setSExportFolder / setSExportTag / setSExportToc / setSExportSecret / setSExportPending / openSExport / SExportModal
     // needs: kernel/state.js（store/createStore/panelBridge/setError 别名）、kernel/icons.js（e/I）、kernel/bus.js（showToast）
-    // state 托管：open/dir/scope/folder/tag/toc/pending 迁入 store.modal.exportSingle 切片；sExportOpenRef 为 Esc 栈同步镜像（模块级单例）；
+    // state 托管：open/dir/scope/folder/tag/toc/secret/pending 迁入 store.modal.exportSingle 切片；sExportOpenRef 为 Esc 栈同步镜像（模块级单例）；
     // 标签/文件夹选项数据源（notes/folders）属面板域，经 props 注入（禁横向引用）；与设置卡片互斥经 panelBridge.setSettingsOpen 中转
-    store.modal.exportSingle = createStore({ open: false, dir: '', scope: 'all', folder: '', tag: '', toc: true, pending: false })
+    // secret = 「包含机密明文」开关（文档安全 S3 notes-052-reveal-gate）：缺省关不反向——单文件导出缺省 span 占位（与全量导出同款纪律，开关语义复用 S2 不新造第二套）
+    store.modal.exportSingle = createStore({ open: false, dir: '', scope: 'all', folder: '', tag: '', toc: true, secret: false, pending: false })
     const sExportOpenRef = { current: false }   // P3 单文件导出对话框镜像（Esc 优先关）
     // setter 别名与昔日 useState setter 同形（值或 updater 函数均可）：open 态同步写 ref 镜像 + store，字段态直写 store
     function setSExportOpen(v) { const nv = typeof v === 'function' ? v(sExportOpenRef.current) : v; sExportOpenRef.current = nv; store.modal.exportSingle.set({ open: nv }) }
@@ -3728,16 +3729,17 @@ window.__ModuleLoader__.load({
     function setSExportFolder(v) { store.modal.exportSingle.set({ folder: typeof v === 'function' ? v(store.modal.exportSingle.get().folder) : v }) }
     function setSExportTag(v) { store.modal.exportSingle.set({ tag: typeof v === 'function' ? v(store.modal.exportSingle.get().tag) : v }) }
     function setSExportToc(v) { store.modal.exportSingle.set({ toc: typeof v === 'function' ? v(store.modal.exportSingle.get().toc) : v }) }
+    function setSExportSecret(v) { store.modal.exportSingle.set({ secret: typeof v === 'function' ? v(store.modal.exportSingle.get().secret) : v }) }
     function setSExportPending(v) { store.modal.exportSingle.set({ pending: typeof v === 'function' ? v(store.modal.exportSingle.get().pending) : v }) }
     // P3 单文件导出（设置卡片「数据」区入口；复用导出 modal 模式）：选 scope（全部/文件夹/标签）+ 目录 → notes-export-single → toast 含文件路径（>20MB 带 warning）
     function openSExport() {
       let last = ''
       try { last = localStorage.getItem('dsh-notes-last-export-single-dir') || '' } catch (err) {}
-      setSExportDir(last); setSExportScope('all'); setSExportFolder(''); setSExportTag(''); setSExportToc(true); setSExportPending(false); setError('')
+      setSExportDir(last); setSExportScope('all'); setSExportFolder(''); setSExportTag(''); setSExportToc(true); setSExportSecret(false); setSExportPending(false); setError('')
       panelBridge.setSettingsOpen(false); setSExportOpen(true)   // 与设置卡片互斥：modal 不叠 modal（导出/导入同款）
     }
     // P3 单文件导出对话框宿主（设置卡片「数据」区「导出单文件…」入口；mask/modal 复用导出对话框风格）：
-    // scope 三选一（全部/文件夹/标签，联动下拉）+ 目录页开关 + 目标目录 → notes-export-single → toast 含文件路径（>20MB 带 warning）
+    // scope 三选一（全部/文件夹/标签，联动下拉）+ 目录页开关 + 机密明文开关（S3）+ 目标目录 → notes-export-single → toast 含文件路径（>20MB 带 warning）
     function SExportModal(props) {
       const sExportOpen = store.modal.exportSingle.useSel(s => s.open)
       const sExportDir = store.modal.exportSingle.useSel(s => s.dir)
@@ -3745,6 +3747,7 @@ window.__ModuleLoader__.load({
       const sExportFolder = store.modal.exportSingle.useSel(s => s.folder)
       const sExportTag = store.modal.exportSingle.useSel(s => s.tag)
       const sExportToc = store.modal.exportSingle.useSel(s => s.toc)
+      const sExportSecret = store.modal.exportSingle.useSel(s => s.secret)
       const sExportPending = store.modal.exportSingle.useSel(s => s.pending)
       const error = props.error
       const notes = props.notes || []
@@ -3757,11 +3760,11 @@ window.__ModuleLoader__.load({
         setSExportPending(true); setError('')
         try {
           const scope = sExportScope === 'folder' ? { folder: sExportFolder } : (sExportScope === 'tag' ? { tag: sExportTag } : { all: true })
-          const res = await rpc('notes-export-single', { dir: dir, scope: scope, format: 'md', toc: sExportToc })   // payload 不传 undefined 字段
+          const res = await rpc('notes-export-single', Object.assign({ dir: dir, scope: scope, format: 'md', toc: sExportToc }, sExportSecret ? { includeSecret: true } : {}))   // payload 不传 undefined 字段
           if (res && res.error) { setError(res.error); return }
           try { localStorage.setItem('dsh-notes-last-export-single-dir', dir) } catch (err) {}
           setSExportOpen(false)
-          showToast('已导出 ' + (res.exported || 0) + ' 篇到 ' + (res.target || dir) + (res.warning ? '；⚠ ' + res.warning : ''))
+          showToast('已导出 ' + (res.exported || 0) + ' 篇到 ' + (res.target || dir) + (res.maskedSpans ? '（机密区已打码 ' + res.maskedSpans + ' 处，明文导出需勾选「包含机密明文」）' : '') + (res.warning ? '；⚠ ' + res.warning : ''))
         } catch (err) { setError(String(err.message || err)) } finally { setSExportPending(false) }
       }
       return sExportOpen ? (() => {
@@ -3786,6 +3789,9 @@ window.__ModuleLoader__.load({
             e('label', { className: 'dsh-notes-settings-checkwrap dsh-nt', 'data-tooltip': '在文档头部生成目录页（篇名 + id 清单）' },
               e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: sExportToc, onChange: (ev) => setSExportToc(!!ev.target.checked) }),
               '生成目录页'),
+            e('label', { className: 'dsh-notes-settings-checkwrap dsh-nt', 'data-tooltip': '缺省导出时正文里的机密区（secret span）替换为占位行；勾选后才导出明文' },
+              e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: sExportSecret, onChange: (ev) => setSExportSecret(!!ev.target.checked) }),
+              '包含机密明文（缺省打码机密区）'),
             e('input', { className: 'dsh-notes-data-input', placeholder: '目标目录，如 D:\\backup 或桌面路径…', value: sExportDir, autoFocus: true, onChange: (ev) => setSExportDir(ev.target.value), onKeyDown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doSExport() } } }),
             error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
             e('div', { className: 'dsh-notes-dispatch-actions' },

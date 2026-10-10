@@ -2142,7 +2142,10 @@ function parseSecretSpans(body) {
           '- kind: 字符串，类型枚举 note/decision/todo/link/quote（如"这是待办" → todo）\n' +
           '- inject: 布尔，是否注入到系统提示上下文（如"记住这个" → true）\n' +
           '- injectRole: 字符串，注入角色枚举 convention/reference（仅 inject=true 时有意义）：convention=须遵守的约定，reference=与当前任务相关时按需取用的资料；按 kind 推断建议 decision/todo → convention、note/link/quote → reference；缺省 convention\n\n' +
-          '选区原文：\n' + text + '\n\n用户备注：\n' + note + '\n\n只输出 JSON：{"tags":[],"titleHint":"","kind":"note","inject":false,"injectRole":"convention"}'
+          // 文档安全 S3（notes-052-reveal-gate）：选区原文送 LLM 前剥 secret span（S2 只打了篇级六面，选区面漏——四面补漏之四；
+          //   选区跨机密块截取的部分本来就可能截一半，剥除语义更干净）+ 省略告知行；零 span 逐字节原样（既有 T3 断言不破）。
+          //   关键约束不变：落盘正文仍是选区原文（机密块原样入库），剥除只发生在送 LLM 的 prompt 视图。同源消费，零私有正则。
+          '选区原文：\n' + stripSecretSpansForLlm(text) + '\n\n用户备注：\n' + note + '\n\n只输出 JSON：{"tags":[],"titleHint":"","kind":"note","inject":false,"injectRole":"convention"}'
         // 计量包装（llm-usage 块）：指令提取属分类家族，feature='classify'
         const metered = await streamMetered('classify', {
           provider: sel.provider,
@@ -3000,8 +3003,11 @@ function parseSecretSpans(body) {
       const sel = resolveLlmSelection()
       if (!sel || !sel.provider || !sel.model) return { error: '未配置笔记 LLM 且无会话模型可跟随（可在设置卡片选配）' }
       // 数据集落 prompt：id + 标题（去换行）+ 正文（敏感打码 / 超长截断）
+      // 文档安全 S3（notes-052-reveal-gate）：送 LLM 前剥 secret span（S2 只打篇级行级码，span 面漏——四面补漏之三）；
+      //   span 剥除先于行级打码（span 优先级高于行级，S2 同纪律）+ 剥除后追加省略告知行；
+      //   零 span 逐字节原样（节 90 既有断言不破）。stripSecretSpansForLlm 同源消费（sensitive-helpers），零私有正则。
       const items = conv.map(n => {
-        const rawBody = String(n.body || '')
+        const rawBody = stripSecretSpansForLlm(String(n.body || ''))
         const safeBody = n.sensitive === true ? maskSensitiveBody(rawBody, n.id) : rawBody
         const clipped = safeBody.length > CONFLICT_BODY_MAX_CHARS ? safeBody.slice(0, CONFLICT_BODY_MAX_CHARS) + '\n…（正文截断）' : safeBody
         return { id: n.id, title: String(n.title || n.id).replace(/[\r\n]+/g, ' '), body: clipped }
@@ -4794,7 +4800,13 @@ function parseSecretSpans(body) {
       // 0.4.5-I（notes-045-periodic-no-resolve，用户裁决 2026-10-06 两轮合并）：派发完成不再指示目标 agent 把笔记标记已解决——
       //   周期/一次性定时/手动三形态全量统一（循环任务 resolved 语义困扰 + 已有执行历史）；闭环交给 idle 空闲回执
       //   （dispatchStatus→done + 执行记录伴生笔记 📥 行照落），resolved 保底联动机制保留为手动兜底（notes.js _update 不动）。
-      const text = '【笔记插件 · 派发的待办上下文】\n\n【待办】' + (note.title || 'Untitled') + '\n' + String(note.body || note.title || '').trim() + (instruction ? '\n\n【派发方补充的要求】\n' + instruction : '') + '\n\n—— 以上是笔记插件派发给你的待办上下文（recall' + (o.sourceLabel ? '，来源：' + o.sourceLabel : '') + '）。请获取此上下文并开始处理。处理完即可，**不要**修改笔记状态（保持原样）；系统会在你会话空闲时自动回执本轮完成（派发记录与执行记录自动闭环）。' + (bodyHasImageRef(note.body) ? '\n\n' + assetsHintLine(NOTES_ROOT) : '')
+      // 文档安全 S3（notes-052-reveal-gate）：派发正文 span 打码（与注入同款占位+计数纪律）——待办正文随派发消息直达目标会话，
+      //   是 agent 侧最重的明文出口，机密永不裸奔；目标 agent 需要原文时走 note_get reveal 门禁（占位/计数文案即引导）。
+      //   maskSecretSpans/stripSecretSpans 同源消费（sensitive-helpers），零私有正则；零 span 逐字节原样（15/48/91 节既有断言不破）。
+      const dispBodyRaw = String(note.body || note.title || '').trim()
+      const dispSpans = stripSecretSpans(dispBodyRaw)
+      const dispBody = dispSpans.count > 0 ? maskSecretSpans(dispBodyRaw) + '\n\n（其中 ' + dispSpans.count + ' 处机密区已脱敏，明文经 note_get reveal 获取）' : dispBodyRaw
+      const text = '【笔记插件 · 派发的待办上下文】\n\n【待办】' + (note.title || 'Untitled') + '\n' + dispBody + (instruction ? '\n\n【派发方补充的要求】\n' + instruction : '') + '\n\n—— 以上是笔记插件派发给你的待办上下文（recall' + (o.sourceLabel ? '，来源：' + o.sourceLabel : '') + '）。请获取此上下文并开始处理。处理完即可，**不要**修改笔记状态（保持原样）；系统会在你会话空闲时自动回执本轮完成（派发记录与执行记录自动闭环）。' + (bodyHasImageRef(note.body) ? '\n\n' + assetsHintLine(NOTES_ROOT) : '')
       const msg = {
         id: 'note-dispatch-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         role: 'user',
@@ -7089,10 +7101,12 @@ function parseSecretSpans(body) {
     }
 
     // notes-export-single（P3 单文件导出，拼接/分享用）：scope 内笔记拼接为一篇自包含 Markdown
-    // → <dir>/dsh-notes-export-single-<ts>.md。args={dir, scope:{all?|folder?|tag?}, format:'md', toc?}：
+    // → <dir>/dsh-notes-export-single-<ts>.md。args={dir, scope:{all?|folder?|tag?}, format:'md', toc?, includeSecret?}：
     //   scope.tag 按标签 / scope.folder 按文件夹（id 或名称，resolveFolderRef 兼容；**递归子树口径**——含全部子孙文件夹内笔记，与 _list 过滤同通道）/ 缺省全部；过滤与 _list 同口径（排除软删除，pinned 优先 + updatedAt 降序）。
     //   正文图片 ![](assets/xxx) 读盘内联为 data URL（资产本就是 base64 文本形态，读回即嵌）；缺失/墓碑/非白名单扩展名保留原引用并计入 missingAssets。
     //   单文件 > SINGLE_EXPORT_WARN_BYTES（20MB）返回 warning 仍照常导出（指引：图片内联体积可能大，告警不阻断）。
+    //   文档安全 S3（notes-052-reveal-gate）：缺省 span 同形态占位 + maskedSpans 计数（响应恒带供 toast 提示）——与 notes-export
+    //   全量导出同款纪律：includeSecret=true 显式开关才明文（缺省关不反向；开关语义复用 S2，不新造第二套）；零 span 逐字节原样（23.6 节既有断言不破）。
     async function _exportSingle(args) {
       const a = args || {}
       if (a.format !== undefined && a.format !== 'md') return { error: 'notes-export-single 仅支持 format: \'md\'' }
@@ -7131,9 +7145,12 @@ function parseSecretSpans(body) {
           if (c) assets[name] = c
         } catch (e) { /* 缺失资产保留原引用 */ }
       }
-      let inlined = 0, missing = 0
+      let inlined = 0, missing = 0, maskedSpans = 0
       const entries = notes.map(n => {
-        const r = inlineAssetsInBody(n.body, assets)
+        // S3：缺省打码先行（占位后良性正文照常走资产内联；span 内图片引用随占位消失不内联——机密不随导出物流转）
+        let body = String(n.body || '')
+        if (a.includeSecret !== true) { const sp = secretSpanList(body); if (sp.length) { maskedSpans += sp.length; body = maskSecretSpans(body) } }
+        const r = inlineAssetsInBody(body, assets)
         inlined += r.inlined; missing += r.missing
         return Object.assign({}, n, { body: r.body })
       })
@@ -7142,7 +7159,7 @@ function parseSecretSpans(body) {
       const target = path.join(d, 'dsh-notes-export-single-' + tsStamp(new Date()) + '.md')
       await fs.writeText(await fs.resolve(target), doc, undefined, undefined, getPolicy())
       const bytes = utf8Bytes(doc)
-      const out = { exported: entries.length, target: target, bytes: bytes, images: inlined, missingAssets: missing, scope: scopeLabel }
+      const out = { exported: entries.length, target: target, bytes: bytes, images: inlined, missingAssets: missing, scope: scopeLabel, maskedSpans: maskedSpans }
       if (bytes > SINGLE_EXPORT_WARN_BYTES) out.warning = '单文件体积约 ' + Math.round(bytes / 1048576) + 'MB，超过 20MB（图片 base64 内联膨胀），已照常导出；部分编辑器打开超大文件较慢'
       return out
     }
@@ -7326,10 +7343,15 @@ function parseSecretSpans(body) {
 
     regTool({
       name: 'note_get',
-      description: 'Read the full body and metadata of a local note by id. Use after note_search to retrieve the body of an interesting result.',
+      // 文档安全 S3（notes-052-reveal-gate）：工具描述带 reveal 契约——agent 才知道怎么走门禁；
+      //   描述里明示「reveal 前必须 ask 用户」+ 诚实标注纪律门禁非密码学边界（具体规则落 reveal 参数描述，agent-experience 纪律）
+      description: 'Read the full body and metadata of a local note by id. Use after note_search to retrieve the body of an interesting result. Secret spans (机密区) are masked by default: each collapses to a single 🔒 placeholder line, and the response carries spanCount plus a revealHint telling you how to unlock them — ask the user for consent with ask_user_question, then re-call with reveal: true. Every reveal: true call is audited (process log: who read which note\'s secrets, when) — a discipline gate, not a cryptographic boundary.',
       parameters: {
         type: 'object',
-        properties: { id: { type: 'string', description: 'Note id' } },
+        properties: {
+          id: { type: 'string', description: 'Note id' },
+          reveal: { type: 'boolean', description: 'Fetch masked secret spans in plaintext. Default false (spans masked as placeholders). MUST obtain the user\'s explicit consent first via ask_user_question (explain why the original is needed, e.g. editing a stored password) — the host cannot verify consent, so never skip the ask step; each call is audited to the process log.' }
+        },
         required: ['id']
       },
       output: { schema: outSchema, render: mkRender() },
@@ -7343,12 +7365,23 @@ function parseSecretSpans(body) {
           //   卡⑧起与 bumpUseCount 共用遥测 2s 防抖单定时器（facets.use 总计 + byDay.get 日明细分记账，同盘同 flush）
           _recallHit('get', [n.id])
           if (uc !== null) n.useCount = uc
-          // 文档安全 S2（notes-052-pipeline-mask）：note_get 工具面缺省打码 secret span——占位同注入形态 + 响应附 spanCount 计数；
-          //   明文经 reveal 参数取回（reveal 是 S3 卡，工具描述随之更新——本卡只落占位+计数）。浅拷贝出体不污染缓存对象；
-          //   notes-get RPC 面不动（面板编辑链路仍是明文，篇级 sensitive 打码语义原样——note_get 仍是敏感篇的明文取回通道）
+          // 文档安全 S2+S3（notes-052-pipeline-mask / notes-052-reveal-gate）：note_get 工具面 secret span 缺省打码（S2：占位同注入形态
+          //   + 响应附 spanCount）；S3 增 reveal 显式参数（缺省 false）——reveal=false → S2 占位行为原样 + 返回体附 revealHint 门禁引导行
+          //   （先用 ask_user_question 向用户说明用途征得同意，再带 reveal:true 重取）；reveal=true → span 明文返回 + 审计一行。
+          //   诚实边界（写进头注）：这是纪律门禁不是硬边界——agent 技术上可以在未 ask 时直接 reveal:true（host 无法验证用户真同意过），
+          //   设计目标是 UX 摩擦+可审计，防「悄悄持有」而非「恶意绕过」；硬边界需宿主 ask 回调通道（挂二期池）。
+          //   reveal 与篇级 sensitive 正交：sensitive=true 整篇原文仍走现状（note_get 直出——敏感篇明文取回通道语义不变，S2 红线），
+          //   reveal 只管 span 面；双标记笔记 reveal=true 时 span 明文 + sensitive 行照现行直出（两层独立正交）。
+          //   审计留痕（S3）：reveal:true 记一行进程日志（时间+笔记 id+会话 sid——谁在何时读了哪篇的机密）；
+          //   不进遥测不进笔记库（纯进程日志，perf 慢请求钩同款形态）。浅拷贝出体不污染缓存对象；
+          //   notes-get RPC 面不动（面板编辑链路仍是明文）。
           const s2Spans = stripSecretSpans(String(n.body || ''))
+          if (args && args.reveal === true) {
+            try { console.warn('[dsh-notes] note_get reveal 审计：' + new Date().toISOString() + ' note=' + n.id + ' session=' + (sessCtx().sessionId || '(无会话上下文)') + ' spans=' + s2Spans.count) } catch (e) {}
+            return { note: n }
+          }
           if (s2Spans.count > 0) {
-            return { note: Object.assign({}, n, { body: maskSecretSpans(String(n.body || '')), spanCount: s2Spans.count }) }
+            return { note: Object.assign({}, n, { body: maskSecretSpans(String(n.body || '')), spanCount: s2Spans.count, revealHint: '本篇含 ' + s2Spans.count + ' 处机密区。若任务确需原文（如改密码），请先用 ask_user_question 工具向用户说明用途并征得同意，然后带 reveal:true 重新调用 note_get' }) }
           }
           return { note: n }
         }

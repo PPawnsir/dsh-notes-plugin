@@ -235,7 +235,7 @@ const CORE = new Set([
   '模式切换 dirty 保护 + 源码行染色镜像静态锚：切换收编揭示计时器/取消机密先收编在途编辑（0.4.9 同款纪律）+ src-mirror 滚动/resize 跟随 + 样式双端',
   // 130. 文档安全 S2（notes-052-pipeline-mask）：六面消费管线 secret span 避让（同源锚 + 六面行为级，常驻 --core）
   'S2 同源锚：@shared 切片双包逐字节一致（host-impl ⇄ index.mjs ⇄ editor-kernel.js 三方同文）+ 双 manifest 登记',
-  'S2 零私有正则锚：六消费方全部经 span 助手族（无 ```secret 字面量、无私有围栏扫描）+ stripSecretSpansForLlm 三处消费',
+  'S2 零私有正则锚：九消费方全部经 span 助手族（无 ```secret 字面量、无私有围栏扫描）+ stripSecretSpansForLlm 五处消费（S3 补 conflict/extract）',
   'S2 助手族行为级：maskSecretSpans 整块占位（N 行计数）+ stripSecretSpans {text,count} + stripForLlm 省略行 + 零 span 恒等',
   'S2 面一：注入打码——span 恒打码（sensitive=false 也生效）+ 占位在正文 + 尾部机密计数行 + 篇级行级打码原样',
   'S2 面二：note_get 工具面缺省打码（占位 + spanCount）+ 无 span 原样 + notes-get RPC 明文红线',
@@ -244,6 +244,15 @@ const CORE = new Set([
   'S2 面四：含 span 笔记良性部分向量照常——块数与剥除派生一致 + 同良性对照同 hash + span-only 零块不进索引',
   'S2 面五：organize 入口剥除（prompt 零 span 明文 + 省略行）+ 零 span prompt 逐字节原样 + classify 两调用面剥除',
   'S2 面六：导出快照缺省 span 同形态占位 + 开关开才明文 + span-free 逐字节 + .history 同打码 + 导入备份恒明文',
+  // 131. 文档安全 S3（notes-052-reveal-gate）：note_get reveal 门禁 + 审计留痕 + 四面补漏（常驻 --core）
+  'S3 工具描述：note_get reveal 参数契约 + 「先 ask」指令 + 纪律门禁非密码学边界诚实标注（双包 + 产物）',
+  'S3 reveal 门禁：note_get 缺省占位 + 引导行（ask_user_question 先征同意）+ reveal:true 明文 + 审计进程日志 + 无 span 原样',
+  'S3 双层正交：sensitive+span 双标记笔记 reveal=true 全明文 / 缺省 span 占位行照直出（篇级 sensitive 的 note_get 行为不变）',
+  'S3 面七：dispatch 派发载荷零机密——占位 + 计数行（桩录制 send 正文）+ 零 span 逐字节原样',
+  'S3 面八：单文件导出缺省 span 占位 + maskedSpans 计数 + includeSecret 开关明文（S2 全量导出同款语义）',
+  'S3 面九：conflict-check 体检 prompt 零 span 明文（剥除 + 省略行 + 篇级行级打码原样并存）',
+  'S3 面十：extractInstruction 选区原文送 LLM 剥 span + 省略行 + 落盘原文不改写（机密块原样入库）',
+  'S3 e2e mock 同步：notes-export-single 契约对账用例在册（maskedSpans 键 + includeSecret 透传）+ 113 豁免摘除',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

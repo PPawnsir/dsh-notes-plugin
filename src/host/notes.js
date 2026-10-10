@@ -370,7 +370,10 @@
           '- kind: 字符串，类型枚举 note/decision/todo/link/quote（如"这是待办" → todo）\n' +
           '- inject: 布尔，是否注入到系统提示上下文（如"记住这个" → true）\n' +
           '- injectRole: 字符串，注入角色枚举 convention/reference（仅 inject=true 时有意义）：convention=须遵守的约定，reference=与当前任务相关时按需取用的资料；按 kind 推断建议 decision/todo → convention、note/link/quote → reference；缺省 convention\n\n' +
-          '选区原文：\n' + text + '\n\n用户备注：\n' + note + '\n\n只输出 JSON：{"tags":[],"titleHint":"","kind":"note","inject":false,"injectRole":"convention"}'
+          // 文档安全 S3（notes-052-reveal-gate）：选区原文送 LLM 前剥 secret span（S2 只打了篇级六面，选区面漏——四面补漏之四；
+          //   选区跨机密块截取的部分本来就可能截一半，剥除语义更干净）+ 省略告知行；零 span 逐字节原样（既有 T3 断言不破）。
+          //   关键约束不变：落盘正文仍是选区原文（机密块原样入库），剥除只发生在送 LLM 的 prompt 视图。同源消费，零私有正则。
+          '选区原文：\n' + stripSecretSpansForLlm(text) + '\n\n用户备注：\n' + note + '\n\n只输出 JSON：{"tags":[],"titleHint":"","kind":"note","inject":false,"injectRole":"convention"}'
         // 计量包装（llm-usage 块）：指令提取属分类家族，feature='classify'
         const metered = await streamMetered('classify', {
           provider: sel.provider,

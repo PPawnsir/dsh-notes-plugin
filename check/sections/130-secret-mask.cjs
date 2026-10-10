@@ -2,7 +2,8 @@
 // 覆盖面（六面各一条行为级 + 同源锚）：
 //   ① 注入打码：inject 约定正文 span 恒打码（不要求篇级 sensitive——span 独立生效）；span 占位优先于行级（span 内不再出 ******）；
 //      尾部计数行「其中 X 条含机密区已脱敏」；红线：sensitive=true 且无 span 的行级打码行为原样（27.5 节既有断言不破）。
-//   ② note_get 工具面缺省打码：占位同注入形态 + 响应附 spanCount；明文通道 reveal 属 S3 卡（描述随 S3 更新）。
+//   ② note_get 工具面缺省打码：占位同注入形态 + 响应附 spanCount；明文通道 reveal 已随 S3（notes-052-reveal-gate，节 131）落地——
+//      本节锁缺省打码面 + reveal:false 行为不变，reveal 门禁/审计/引导行断言在节 131。
 //      红线：notes-get RPC 面不动（面板编辑链路仍明文）。
 //   ③ 检索双面：searchMatchFields 正文命中跳过 span 区间 + searchExcerpt 取窗绕行（span 内词永不命中、机密永不进摘要）
 //      + 语义胜出 chunk 若非剥除派生（旧索引残留）→ 摘要退回正文开头良性段。
@@ -80,25 +81,28 @@ module.exports = {
       assert(m.indexOf("'@shared/editor-kernel.js#secret-span'\n'inject/sensitive-helpers.js'") >= 0, mf + ' 切片紧前于 sensitive-helpers（可见序）')
     }
   })
-  await t('S2 零私有正则锚：六消费方全部经 span 助手族（无 ```secret 字面量、无私有围栏扫描）+ stripSecretSpansForLlm 三处消费', () => {
+  await t('S2 零私有正则锚：九消费方全部经 span 助手族（无 ```secret 字面量、无私有围栏扫描）+ stripSecretSpansForLlm 五处消费（S3 补 conflict/extract）', () => {
     const consumers = [
       ['inject.js（注入打码）', 'src/host/inject.js', ['maskSecretSpans']],
-      ['index.js（note_get 打码）', 'src/host/index.js', ['stripSecretSpans', 'maskSecretSpans']],
+      ['index.js（note_get 打码 + reveal 门禁）', 'src/host/index.js', ['stripSecretSpans', 'maskSecretSpans']],
       ['search.js（检索双面）', 'src/host/search.js', ['maskSecretSpans', 'secretSpanList']],
       ['kernel/vector-store.js（向量切块）', 'src/host/kernel/vector-store.js', ['stripSecretSpans']],
       ['llm/organize.js（整理剥除）', 'src/host/llm/organize.js', ['stripSecretSpansForLlm']],
-      ['notes.js（分类剥除×2）', 'src/host/notes.js', ['stripSecretSpansForLlm']],
-      ['transfer.js（导出打码）', 'src/host/transfer.js', ['maskSecretSpans', 'secretSpanList']],
+      ['notes.js（分类剥除×2 + 选区提取剥除）', 'src/host/notes.js', ['stripSecretSpansForLlm']],
+      ['transfer.js（导出打码：全量 + 单文件）', 'src/host/transfer.js', ['maskSecretSpans', 'secretSpanList']],
+      ['dispatch.js（派发载荷打码——S3）', 'src/host/dispatch.js', ['maskSecretSpans', 'stripSecretSpans']],
+      ['llm/conflict.js（体检 prompt 剥除——S3）', 'src/host/llm/conflict.js', ['stripSecretSpansForLlm']],
     ]
     for (const [label, p, helpers] of consumers) {
       const src = read(p)
       for (const h of helpers) assert(src.indexOf(h) >= 0, label + ' 消费 ' + h)
       assert(src.indexOf('```secret') < 0 && src.indexOf('\\x60\\x60\\x60secret') < 0, label + ' 零私有 span 围栏字面量（单一事实源红线）')
     }
-    // 三处 LLM 剥除消费（classify×2 调用面 + organize 入口）双包计数锁定
+    // 五处 LLM 剥除消费（classify×2 调用面 + organize 入口 + S3：extractInstruction 选区 + conflict 体检）双包计数锁定
     for (const [label, src] of [['host-impl.js', hostSrc], ['index.mjs', indexSrc]]) {
-      assert((src.match(/stripSecretSpansForLlm\(text\)/g) || []).length === 2, label + ' classifyTopic 两处调用面剥除（notes.js 速记 + 指令式速记）')
+      assert((src.match(/stripSecretSpansForLlm\(text\)/g) || []).length === 3, label + ' classifyTopic 两处 + extractInstruction 选区剥除（notes.js 三调用面）')
       assert((src.match(/= stripSecretSpansForLlm\(body\)/g) || []).length === 1, label + ' organize 入口剥除（_aiOrganize；另 1 处命中为 sensitive-helpers 函数定义本体，不计消费）')
+      assert((src.match(/stripSecretSpansForLlm\(String\(n\.body \|\| ''\)\)/g) || []).length === 1, label + ' conflict 体检数据集剥除（llm/conflict.js——S3 四面补漏之三）')
     }
   })
 

@@ -59,7 +59,6 @@ module.exports = {
     ['notes-graph', '图查询（双链关系统计面）'],
     ['notes-ledger-refresh', '效用账本 cron 刷新面'],
     ['notes-schedule-eval', '定时调度评估机（cron 到点评估通道）'],
-    ['notes-export-single', '单文件导出（拼接 Markdown 落盘面）'],
     ['notes-import-preview', '导入预览（目录扫描分类面）'],
     ['notes-import', '导入执行（备份 + 合并落盘面）'],
     ['notes-asset-upload', '图片资产上传落盘面'],

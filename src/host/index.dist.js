@@ -57,10 +57,15 @@
 
     regTool({
       name: 'note_get',
-      description: 'Read the full body and metadata of a local note by id. Use after note_search to retrieve the body of an interesting result.',
+      // 文档安全 S3（notes-052-reveal-gate）：工具描述带 reveal 契约——agent 才知道怎么走门禁；
+      //   描述里明示「reveal 前必须 ask 用户」+ 诚实标注纪律门禁非密码学边界（具体规则落 reveal 参数描述，agent-experience 纪律）
+      description: 'Read the full body and metadata of a local note by id. Use after note_search to retrieve the body of an interesting result. Secret spans (机密区) are masked by default: each collapses to a single 🔒 placeholder line, and the response carries spanCount plus a revealHint telling you how to unlock them — ask the user for consent with ask_user_question, then re-call with reveal: true. Every reveal: true call is audited (process log: who read which note\'s secrets, when) — a discipline gate, not a cryptographic boundary.',
       parameters: {
         type: 'object',
-        properties: { id: { type: 'string', description: 'Note id' } },
+        properties: {
+          id: { type: 'string', description: 'Note id' },
+          reveal: { type: 'boolean', description: 'Fetch masked secret spans in plaintext. Default false (spans masked as placeholders). MUST obtain the user\'s explicit consent first via ask_user_question (explain why the original is needed, e.g. editing a stored password) — the host cannot verify consent, so never skip the ask step; each call is audited to the process log.' }
+        },
         required: ['id']
       },
       output: { schema: outSchema, render: mkRender() },
@@ -74,12 +79,23 @@
           //   卡⑧起与 bumpUseCount 共用遥测 2s 防抖单定时器（facets.use 总计 + byDay.get 日明细分记账，同盘同 flush）
           _recallHit('get', [n.id])
           if (uc !== null) n.useCount = uc
-          // 文档安全 S2（notes-052-pipeline-mask）：note_get 工具面缺省打码 secret span——占位同注入形态 + 响应附 spanCount 计数；
-          //   明文经 reveal 参数取回（reveal 是 S3 卡，工具描述随之更新——本卡只落占位+计数）。浅拷贝出体不污染缓存对象；
-          //   notes-get RPC 面不动（面板编辑链路仍是明文，篇级 sensitive 打码语义原样——note_get 仍是敏感篇的明文取回通道）
+          // 文档安全 S2+S3（notes-052-pipeline-mask / notes-052-reveal-gate）：note_get 工具面 secret span 缺省打码（S2：占位同注入形态
+          //   + 响应附 spanCount）；S3 增 reveal 显式参数（缺省 false）——reveal=false → S2 占位行为原样 + 返回体附 revealHint 门禁引导行
+          //   （先用 ask_user_question 向用户说明用途征得同意，再带 reveal:true 重取）；reveal=true → span 明文返回 + 审计一行。
+          //   诚实边界（写进头注）：这是纪律门禁不是硬边界——agent 技术上可以在未 ask 时直接 reveal:true（host 无法验证用户真同意过），
+          //   设计目标是 UX 摩擦+可审计，防「悄悄持有」而非「恶意绕过」；硬边界需宿主 ask 回调通道（挂二期池）。
+          //   reveal 与篇级 sensitive 正交：sensitive=true 整篇原文仍走现状（note_get 直出——敏感篇明文取回通道语义不变，S2 红线），
+          //   reveal 只管 span 面；双标记笔记 reveal=true 时 span 明文 + sensitive 行照现行直出（两层独立正交）。
+          //   审计留痕（S3）：reveal:true 记一行进程日志（时间+笔记 id+会话 sid——谁在何时读了哪篇的机密）；
+          //   不进遥测不进笔记库（纯进程日志，perf 慢请求钩同款形态）。浅拷贝出体不污染缓存对象；
+          //   notes-get RPC 面不动（面板编辑链路仍是明文）。
           const s2Spans = stripSecretSpans(String(n.body || ''))
+          if (args && args.reveal === true) {
+            try { console.warn('[dsh-notes] note_get reveal 审计：' + new Date().toISOString() + ' note=' + n.id + ' session=' + (sessCtx().sessionId || '(无会话上下文)') + ' spans=' + s2Spans.count) } catch (e) {}
+            return { note: n }
+          }
           if (s2Spans.count > 0) {
-            return { note: Object.assign({}, n, { body: maskSecretSpans(String(n.body || '')), spanCount: s2Spans.count }) }
+            return { note: Object.assign({}, n, { body: maskSecretSpans(String(n.body || '')), spanCount: s2Spans.count, revealHint: '本篇含 ' + s2Spans.count + ' 处机密区。若任务确需原文（如改密码），请先用 ask_user_question 工具向用户说明用途并征得同意，然后带 reveal:true 重新调用 note_get' }) }
           }
           return { note: n }
         }

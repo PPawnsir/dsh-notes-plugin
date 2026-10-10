@@ -344,10 +344,12 @@
     }
 
     // notes-export-single（P3 单文件导出，拼接/分享用）：scope 内笔记拼接为一篇自包含 Markdown
-    // → <dir>/dsh-notes-export-single-<ts>.md。args={dir, scope:{all?|folder?|tag?}, format:'md', toc?}：
+    // → <dir>/dsh-notes-export-single-<ts>.md。args={dir, scope:{all?|folder?|tag?}, format:'md', toc?, includeSecret?}：
     //   scope.tag 按标签 / scope.folder 按文件夹（id 或名称，resolveFolderRef 兼容；**递归子树口径**——含全部子孙文件夹内笔记，与 _list 过滤同通道）/ 缺省全部；过滤与 _list 同口径（排除软删除，pinned 优先 + updatedAt 降序）。
     //   正文图片 ![](assets/xxx) 读盘内联为 data URL（资产本就是 base64 文本形态，读回即嵌）；缺失/墓碑/非白名单扩展名保留原引用并计入 missingAssets。
     //   单文件 > SINGLE_EXPORT_WARN_BYTES（20MB）返回 warning 仍照常导出（指引：图片内联体积可能大，告警不阻断）。
+    //   文档安全 S3（notes-052-reveal-gate）：缺省 span 同形态占位 + maskedSpans 计数（响应恒带供 toast 提示）——与 notes-export
+    //   全量导出同款纪律：includeSecret=true 显式开关才明文（缺省关不反向；开关语义复用 S2，不新造第二套）；零 span 逐字节原样（23.6 节既有断言不破）。
     async function _exportSingle(args) {
       const a = args || {}
       if (a.format !== undefined && a.format !== 'md') return { error: 'notes-export-single 仅支持 format: \'md\'' }
@@ -386,9 +388,12 @@
           if (c) assets[name] = c
         } catch (e) { /* 缺失资产保留原引用 */ }
       }
-      let inlined = 0, missing = 0
+      let inlined = 0, missing = 0, maskedSpans = 0
       const entries = notes.map(n => {
-        const r = inlineAssetsInBody(n.body, assets)
+        // S3：缺省打码先行（占位后良性正文照常走资产内联；span 内图片引用随占位消失不内联——机密不随导出物流转）
+        let body = String(n.body || '')
+        if (a.includeSecret !== true) { const sp = secretSpanList(body); if (sp.length) { maskedSpans += sp.length; body = maskSecretSpans(body) } }
+        const r = inlineAssetsInBody(body, assets)
         inlined += r.inlined; missing += r.missing
         return Object.assign({}, n, { body: r.body })
       })
@@ -397,7 +402,7 @@
       const target = path.join(d, 'dsh-notes-export-single-' + tsStamp(new Date()) + '.md')
       await fs.writeText(await fs.resolve(target), doc, undefined, undefined, getPolicy())
       const bytes = utf8Bytes(doc)
-      const out = { exported: entries.length, target: target, bytes: bytes, images: inlined, missingAssets: missing, scope: scopeLabel }
+      const out = { exported: entries.length, target: target, bytes: bytes, images: inlined, missingAssets: missing, scope: scopeLabel, maskedSpans: maskedSpans }
       if (bytes > SINGLE_EXPORT_WARN_BYTES) out.warning = '单文件体积约 ' + Math.round(bytes / 1048576) + 'MB，超过 20MB（图片 base64 内联膨胀），已照常导出；部分编辑器打开超大文件较慢'
       return out
     }

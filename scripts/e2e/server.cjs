@@ -553,6 +553,15 @@ function handleRpc(state, method, args) {
       if (!dir) return { error: 'notes-export 需要 dir（目标目录）' }
       return { exported: notes.filter(n => !n.deleted).length, foldersFile: true, telemetry: false, assets: 0, target: dir, maskedSpans: 0 }
     }
+    case 'notes-export-single': {
+      /* 文档安全 S3（notes-052-reveal-gate）：键集对齐 host _exportSingle（{exported, target, bytes, images, missingAssets, scope, maskedSpans}
+         ——无 ok 键；maskedSpans = 缺省导出打码的机密区总数，host 恒带、mock 无落盘点恒 0——键集契约面，数据内容面允许简化）
+         + includeSecret 明文开关入参透传（与 notes-export S2 开关同款语义，不新造第二套）；空 dir 错误形态同 host。
+         注册对等：本 case 落地后节 113 注册豁免清单同步摘除（mock 已实现即转入对账面） */
+      const dirS = String((args && args.dir) || '').trim()
+      if (!dirS) return { error: 'notes-export-single 需要 dir（目标目录）' }
+      return { exported: notes.filter(n => !n.deleted).length, target: dirS, bytes: 0, images: 0, missingAssets: 0, scope: '全部', maskedSpans: 0 }
+    }
     case 'notes-history': return { versions: [] }
     case 'notes-ai-organize': {
       /* 0.4.4-F（notes-044-organize-instruct）：整理 mock——回显 instruction 供弹卡链路断言（留空 = '(无)'）；

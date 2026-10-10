@@ -28,8 +28,11 @@
       const sel = resolveLlmSelection()
       if (!sel || !sel.provider || !sel.model) return { error: '未配置笔记 LLM 且无会话模型可跟随（可在设置卡片选配）' }
       // 数据集落 prompt：id + 标题（去换行）+ 正文（敏感打码 / 超长截断）
+      // 文档安全 S3（notes-052-reveal-gate）：送 LLM 前剥 secret span（S2 只打篇级行级码，span 面漏——四面补漏之三）；
+      //   span 剥除先于行级打码（span 优先级高于行级，S2 同纪律）+ 剥除后追加省略告知行；
+      //   零 span 逐字节原样（节 90 既有断言不破）。stripSecretSpansForLlm 同源消费（sensitive-helpers），零私有正则。
       const items = conv.map(n => {
-        const rawBody = String(n.body || '')
+        const rawBody = stripSecretSpansForLlm(String(n.body || ''))
         const safeBody = n.sensitive === true ? maskSensitiveBody(rawBody, n.id) : rawBody
         const clipped = safeBody.length > CONFLICT_BODY_MAX_CHARS ? safeBody.slice(0, CONFLICT_BODY_MAX_CHARS) + '\n…（正文截断）' : safeBody
         return { id: n.id, title: String(n.title || n.id).replace(/[\r\n]+/g, ' '), body: clipped }
