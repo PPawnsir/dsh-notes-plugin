@@ -296,6 +296,65 @@ function parseSecretSpans(body) {
       if (!r.count) return r.text
       return String(r.text).replace(/\s+$/, '') + '\n\n[已省略 ' + r.count + ' 处机密区]'
     }
+    // ==== 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议（suggestSecretSpans）====
+    // 模式库两族（打码/检测同一套判异——单点不漂移，检测与打码永不分叉）：
+    //   ① secret 面复用 suggestSensitive 的既有判异：R1 键值行（SENSITIVE_KV_RE + SENSITIVE_KEY_RE——password=/pwd/token/secret=/密码： 等键名收尾行）+
+    //      R2 空白裸令牌（SENSITIVE_TOKEN_RE + looksLikeSecretToken 散文防御）+ R3 PEM 私钥块（SENSITIVE_PRIVATE_KEY_RE 跨行整块）；
+    //   ② credential 面新增（仅建议用，不打码面）：AKIA[0-9A-Z]{16} AWS 访问键 / sk-[A-Za-z0-9_-]{10,} OpenAI·Anthropic 系 /
+    //      (ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{16,} GitHub PAT 系——裸凭据前缀（无键名先导），R1/R2 天然不覆盖。
+    // 粒度 = 行（凭据行半包无意义——一键标记的包装单位是整行）；相邻命中行合并为连续区间；
+    // 已 ```secret 标记区内的行不再建议（一键标记闭环：标记后保存不重复冒泡）。
+    // 返回 [{sLine,eLine}]（1-based 行号闭区间，升序不重叠）；零命中 = []。只建议不强制——调用方绝不据此改写正文。
+    const CRED_AWS_RE = /AKIA[0-9A-Z]{16}/
+    const CRED_SK_RE = /(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{10,}/
+    const CRED_GH_RE = /(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{16,}/
+    function lineHasCredential(ln) {
+      // R1 键值行（与 maskSensitiveLine 同判定）：键名以敏感词收尾 + 分隔符 + 非空值
+      const m = ln.match(SENSITIVE_KV_RE)
+      if (m && SENSITIVE_KEY_RE.test(String(m[2]).replace(/["']+$/, ''))) return true
+      // R2 空白裸令牌（与 maskSensitiveLine 同判定，含 looksLikeSecretToken 散文防御）
+      let r2 = false
+      ln.replace(SENSITIVE_TOKEN_RE, function (mm, kw, ws, tok) { if (looksLikeSecretToken(tok)) r2 = true; return mm })
+      if (r2) return true
+      // credential 面：裸凭据前缀（行内任一命中即建议整行）
+      return CRED_AWS_RE.test(ln) || CRED_SK_RE.test(ln) || CRED_GH_RE.test(ln)
+    }
+    function suggestSecretSpans(body) {
+      const src = String(body == null ? '' : body)
+      if (!src) return []
+      const lines = src.split('\n')
+      const hit = {}
+      const lineIdxAt = (off) => {   // 偏移 → 0-based 行号（升序扫描计数）
+        let n = 0
+        for (let i = 0; i < off && i < src.length; i++) if (src.charCodeAt(i) === 10) n++
+        return n
+      }
+      // R3 PEM 私钥块先行（跨行整块：BEGIN..END 覆盖行全部命中）
+      src.replace(SENSITIVE_PRIVATE_KEY_RE, function (mm, b, e, off) {
+        const sL = lineIdxAt(off), eL = lineIdxAt(off + mm.length - 1)
+        for (let li = sL; li <= eL && li < lines.length; li++) hit[li] = true
+        return mm
+      })
+      // R1/R2/credential 面逐行扫描（换行结尾的 \r 不入判定）
+      for (let i = 0; i < lines.length; i++) {
+        if (hit[i]) continue
+        if (lineHasCredential(lines[i].replace(/\r$/, ''))) hit[i] = true
+      }
+      // 已 ```secret 标记区内的行不重复建议（一键标记闭环；内核缺位恒等降级 → 零排除）
+      const spans = secretSpanList(src)
+      for (let s = 0; s < spans.length; s++) {
+        const sL = lineIdxAt(spans[s].start), eL = lineIdxAt(spans[s].end - 1)
+        for (let li = sL; li <= eL && li < lines.length; li++) delete hit[li]
+      }
+      // 相邻命中行合并为连续区间 → [{sLine,eLine}]（1-based；eIdx 为 0-based 合并游标——与 sLine/eLine 双轨防基址混用）
+      const out = []
+      let cur = null
+      Object.keys(hit).map(Number).sort(function (a, b) { return a - b }).forEach(function (k) {
+        if (cur && k === cur.eIdx + 1) { cur.eIdx = k; cur.eLine = k + 1 }
+        else { cur = { sLine: k + 1, eLine: k + 1, eIdx: k }; out.push(cur) }
+      })
+      return out
+    }
     // ==== sensitive-helpers END ====
 
     function buildFM(m) {
@@ -472,6 +531,13 @@ function parseSecretSpans(body) {
     function maxFolderDepthLimit() {
       const v = settingsCache && settingsCache.maxFolderDepth
       return (typeof v === 'number' && isFinite(v) && v >= 0) ? Math.floor(v) : MAX_FOLDER_DEPTH_DEFAULT
+    }
+    // ---- 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议开关（settings.json 顶层键 secretDetect = { enabled?: boolean }，null 删除 override 恢复缺省开）----
+    // 缺省 ✓ 开（安全默认——只显式 enabled:false 才关）；**仅管建议不管保护**：关闭后保存响应零建议字段，
+    // 打码/避让/门禁全链路照常（保护管线不设任何开关——虚假安全感红线）；写入闸在 notes-settings-set（白名单 + 增量合并）。
+    function secretDetectEnabled() {
+      const v = settingsCache && settingsCache.secretDetect
+      return !(v && v.enabled === false)
     }
     let lastInjectChars = 0
     // 注入预览统计（notes-inject-preview RPC 数据源）：renderInjected 每次同步渲染后更新（0.4.3③ 合并段）；
@@ -1813,6 +1879,18 @@ function parseSecretSpans(body) {
     }
     // ==== folder-arg-norm END ====
 
+    // 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议载荷——suggestSecretSpans 行区间 → {count,lines}
+    // （count = 合并后区间数「N 处」；lines = 覆盖行号 1-based 平铺，编辑器据此冒泡「第 X、Y 行」并一键包 fence）。
+    // 只建议不强制：本函数只读不改写；调用方（_create/_update）挂响应字段，正文一字不动。
+    // 设置开关（secretDetect.enabled===false）调用方先行跳过——整个检测不跑，响应零建议字段（仅管建议不管保护红线）。
+    function secretSuggestPayload(body) {
+      const sug = suggestSecretSpans(body)
+      if (!sug.length) return null
+      const lines = []
+      for (let i = 0; i < sug.length; i++) for (let li = sug[i].sLine; li <= sug[i].eLine; li++) lines.push(li)
+      return { count: sug.length, lines: lines }
+    }
+
     async function _create(title, body, tags, topic, extra) {
       const id = genId()
       const now = new Date().toISOString()
@@ -1889,6 +1967,8 @@ function parseSecretSpans(body) {
       if (injectForcedOff) r.injectForcedOff = true   // 日志隐身硬闸命中告知（调用方可提示用户/agent）
       // 敏感模式自动识别建议：命中不强制落 sensitive（create 是显式动作，由调用方/用户决策），仅回传建议标记
       if (note.sensitive !== true && suggestSensitive(note.body)) r.sensitiveSuggested = true
+      // 文档安全 S4：保存时机密检测建议（设置开关缺省开；关 = 检测整体跳过零建议字段；已标记 span 内的行不再建议——一键标记闭环）
+      if (secretDetectEnabled()) { const sugP = secretSuggestPayload(note.body); if (sugP) r.secretSuggested = sugP }
       return r
     }
 
@@ -2062,6 +2142,9 @@ function parseSecretSpans(body) {
       if (dispatchClosedDs.length) await _schedRunLogAppend(note, dispatchClosedDs)   // 0.4.4-A 起全笔记生效·三表归一（resolved 回执 📥 行落执行记录伴生笔记；内部全量吞异常；源笔记正文零改动红线不破）
       const r = { id, kind: note.kind, status: note.status, dispatchClosed: dispatchClosed }
       if (injectForcedOff) r.injectForcedOff = true   // 日志隐身硬闸命中告知（kind=log 强制 inject=false）
+      // 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议——只在携带正文的保存（body !== undefined）冒泡；
+      // 元数据-only 保存不重提（忽略后改标题不再打扰）；开关关 = 检测整体跳过零建议字段；建议只读正文，绝不改写
+      if (body !== undefined && secretDetectEnabled()) { const sugP = secretSuggestPayload(note.body); if (sugP) r.secretSuggested = sugP }
       return r
     }
 
@@ -5941,6 +6024,19 @@ function parseSecretSpans(body) {
           if (patch.organizeMaxChars === null || patch.organizeMaxChars === undefined || patch.organizeMaxChars === 0) delete settingsCache.organizeMaxChars
           else if (typeof patch.organizeMaxChars === 'number' && isFinite(patch.organizeMaxChars) && patch.organizeMaxChars > 0) settingsCache.organizeMaxChars = Math.floor(patch.organizeMaxChars)
           else return { error: 'notes-settings-set: organizeMaxChars 需要非负数值（0 = 按所配模型自动）' }
+        }
+        // 文档安全 S4（notes-052-autodetect-i18n）保存时机密检测建议开关：secretDetect = { enabled?: boolean }（semantic 组同款整键增量合并——
+        //   只 patch enabled 不清其他存量子键；null/undefined 删除 override 恢复缺省开）；缺省 ✓ 开（安全默认）；
+        //   仅管「保存时检测建议」冒泡，不管保护——关闭后打码/避让/门禁全链路照常（保护管线不设任何开关红线）。
+        if ('secretDetect' in patch) {
+          if (patch.secretDetect === null || patch.secretDetect === undefined) delete settingsCache.secretDetect
+          else if (patch.secretDetect && typeof patch.secretDetect === 'object' && !Array.isArray(patch.secretDetect)) {
+            const sd = Object.assign({}, settingsCache.secretDetect && typeof settingsCache.secretDetect === 'object' ? settingsCache.secretDetect : {})
+            if (patch.secretDetect.enabled === true) sd.enabled = true
+            else if (patch.secretDetect.enabled === false) sd.enabled = false
+            settingsCache.secretDetect = sd
+          }
+          else return { error: 'notes-settings-set: secretDetect 需要 { enabled? } 对象（或 null 恢复缺省开启）' }
         }
         // 0.5.0①（notes-050-vector-layer）语义检索激活位：semantic = { enabled?: boolean, backend?: string, model?: {...}|null }（总开关 + 激活后端 id + 模型下载状态）；
         //   null/undefined 删除 override 恢复关闭（缺省关闭零成本）；仅存白名单键（enabled 布尔 / backend 非空串 / model 白名单子键），其余键忽略不落盘。

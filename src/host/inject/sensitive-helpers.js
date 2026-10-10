@@ -79,5 +79,64 @@
       if (!r.count) return r.text
       return String(r.text).replace(/\s+$/, '') + '\n\n[已省略 ' + r.count + ' 处机密区]'
     }
+    // ==== 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议（suggestSecretSpans）====
+    // 模式库两族（打码/检测同一套判异——单点不漂移，检测与打码永不分叉）：
+    //   ① secret 面复用 suggestSensitive 的既有判异：R1 键值行（SENSITIVE_KV_RE + SENSITIVE_KEY_RE——password=/pwd/token/secret=/密码： 等键名收尾行）+
+    //      R2 空白裸令牌（SENSITIVE_TOKEN_RE + looksLikeSecretToken 散文防御）+ R3 PEM 私钥块（SENSITIVE_PRIVATE_KEY_RE 跨行整块）；
+    //   ② credential 面新增（仅建议用，不打码面）：AKIA[0-9A-Z]{16} AWS 访问键 / sk-[A-Za-z0-9_-]{10,} OpenAI·Anthropic 系 /
+    //      (ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{16,} GitHub PAT 系——裸凭据前缀（无键名先导），R1/R2 天然不覆盖。
+    // 粒度 = 行（凭据行半包无意义——一键标记的包装单位是整行）；相邻命中行合并为连续区间；
+    // 已 ```secret 标记区内的行不再建议（一键标记闭环：标记后保存不重复冒泡）。
+    // 返回 [{sLine,eLine}]（1-based 行号闭区间，升序不重叠）；零命中 = []。只建议不强制——调用方绝不据此改写正文。
+    const CRED_AWS_RE = /AKIA[0-9A-Z]{16}/
+    const CRED_SK_RE = /(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{10,}/
+    const CRED_GH_RE = /(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{16,}/
+    function lineHasCredential(ln) {
+      // R1 键值行（与 maskSensitiveLine 同判定）：键名以敏感词收尾 + 分隔符 + 非空值
+      const m = ln.match(SENSITIVE_KV_RE)
+      if (m && SENSITIVE_KEY_RE.test(String(m[2]).replace(/["']+$/, ''))) return true
+      // R2 空白裸令牌（与 maskSensitiveLine 同判定，含 looksLikeSecretToken 散文防御）
+      let r2 = false
+      ln.replace(SENSITIVE_TOKEN_RE, function (mm, kw, ws, tok) { if (looksLikeSecretToken(tok)) r2 = true; return mm })
+      if (r2) return true
+      // credential 面：裸凭据前缀（行内任一命中即建议整行）
+      return CRED_AWS_RE.test(ln) || CRED_SK_RE.test(ln) || CRED_GH_RE.test(ln)
+    }
+    function suggestSecretSpans(body) {
+      const src = String(body == null ? '' : body)
+      if (!src) return []
+      const lines = src.split('\n')
+      const hit = {}
+      const lineIdxAt = (off) => {   // 偏移 → 0-based 行号（升序扫描计数）
+        let n = 0
+        for (let i = 0; i < off && i < src.length; i++) if (src.charCodeAt(i) === 10) n++
+        return n
+      }
+      // R3 PEM 私钥块先行（跨行整块：BEGIN..END 覆盖行全部命中）
+      src.replace(SENSITIVE_PRIVATE_KEY_RE, function (mm, b, e, off) {
+        const sL = lineIdxAt(off), eL = lineIdxAt(off + mm.length - 1)
+        for (let li = sL; li <= eL && li < lines.length; li++) hit[li] = true
+        return mm
+      })
+      // R1/R2/credential 面逐行扫描（换行结尾的 \r 不入判定）
+      for (let i = 0; i < lines.length; i++) {
+        if (hit[i]) continue
+        if (lineHasCredential(lines[i].replace(/\r$/, ''))) hit[i] = true
+      }
+      // 已 ```secret 标记区内的行不重复建议（一键标记闭环；内核缺位恒等降级 → 零排除）
+      const spans = secretSpanList(src)
+      for (let s = 0; s < spans.length; s++) {
+        const sL = lineIdxAt(spans[s].start), eL = lineIdxAt(spans[s].end - 1)
+        for (let li = sL; li <= eL && li < lines.length; li++) delete hit[li]
+      }
+      // 相邻命中行合并为连续区间 → [{sLine,eLine}]（1-based；eIdx 为 0-based 合并游标——与 sLine/eLine 双轨防基址混用）
+      const out = []
+      let cur = null
+      Object.keys(hit).map(Number).sort(function (a, b) { return a - b }).forEach(function (k) {
+        if (cur && k === cur.eIdx + 1) { cur.eIdx = k; cur.eLine = k + 1 }
+        else { cur = { sLine: k + 1, eLine: k + 1, eIdx: k }; out.push(cur) }
+      })
+      return out
+    }
     // ==== sensitive-helpers END ====
 

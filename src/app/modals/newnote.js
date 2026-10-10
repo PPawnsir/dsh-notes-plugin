@@ -65,6 +65,7 @@ function createDraftNote(d, payload) {
         renderCrumb(); renderMeta(); renderEdFoot();
         $('edSaved').textContent = t('editor.autoSaved', { time: new Date().toTimeString().slice(0, 5) });
         toast(t('newnote.createdToast'));
+        showSecretSuggest(res);   /* 文档安全 S4：草稿首存响应带 secretSuggested → 编辑器顶部冒泡建议横幅 */
       } else {
         toast(t('newnote.flushedToast', { title: res.title || payload.title || 'Untitled' }));
       }

@@ -48,6 +48,35 @@ function slimNote(n) {
   }
 }
 
+/* 文档安全 S4（notes-052-autodetect-i18n）契约对账：保存时机密检测建议——secretSuggested {count,lines}
+ * （count = 相邻合并后的区间数，lines = 命中行 1-based 平铺；仅携带正文的保存才建议；```secret 区内行不再建议）。
+ * mock 简化面（节 113 口径）：行级键值/裸凭据扫描（host 为 R1/R2/R3 复用 + credential 面 + span 助手族）；
+ * 设置开关门控契约同 host secretDetectEnabled（secretDetect.enabled===false → 检测整体跳过零建议字段）。
+ * 数据内容简化面：检测词表取契约点名子集（password/pwd/token/secret=/AKIA/sk-/ghp_ 系），命中判定允许与 host 有差——
+ * 用例只消费 mock 自己种下的语料（确定性），host 真实模式库由 check 节 132 行为级锁定。 */
+function mockSecretSuggest(state, body) {
+  const sd = state.settings && state.settings.secretDetect
+  if (sd && sd.enabled === false) return null
+  const src = String(body == null ? '' : body)
+  if (!src) return null
+  const lines = src.split('\n')
+  const hit = []
+  let inFence = false
+  for (let i = 0; i < lines.length; i++) {
+    const ln = lines[i].replace(/\r$/, '')
+    if (inFence) { if (/^\x60{3}/.test(ln)) inFence = false; continue }   /* ```secret 区内行不再建议（一键标记闭环） */
+    if (/^\x60{3}secret/.test(ln)) { inFence = true; continue }
+    if (/(?:password|passwd|pwd|token|secret|api[-_]?key|密码|口令|密钥|凭证)\s*[:：=]/i.test(ln)
+      || /AKIA[0-9A-Z]{16}/.test(ln)
+      || /(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{10,}/.test(ln)
+      || /(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{16,}/.test(ln)) hit.push(i + 1)
+  }
+  if (!hit.length) return null
+  let count = 1   /* 相邻行合并 → 区间数（wrapSecretLines 同分组算法） */
+  for (let j = 1; j < hit.length; j++) if (hit[j] !== hit[j - 1] + 1) count++
+  return { count, lines: hit }
+}
+
 function createMockState() {
   /* 0.4.8 契约对账（节 113）：种子字段集对齐 host _create 落库字段（slim 全键集有源）；
      移除 pinned 布尔（host 无此字段，置顶 = status:'pinned'）；log 种子 recall:false（host kind=log 缺省口径） */
@@ -241,6 +270,9 @@ function handleRpc(state, method, args) {
       const r = { id: n.id, topic: n.topic, title: n.title, kind: n.kind, status: n.status }
       if (injectForcedOff) r.injectForcedOff = true
       /* sensitiveSuggested 豁免：mock 不做敏感模式识别（host 命中才带键；fixture 语料不触发） */
+      /* 文档安全 S4 契约对账：创建即检测建议（开关关 = mockSecretSuggest 恒 null 零建议字段） */
+      const sugC = mockSecretSuggest(state, a.body)
+      if (sugC) r.secretSuggested = sugC
       return r
     }
     case 'notes-update': {
@@ -287,6 +319,11 @@ function handleRpc(state, method, args) {
          旧形 {ok, note} 是漂移（host 无 ok 键、不回传 note）——消费方只读 res.error，真实宿主口径 */
       const r = { id: n.id, kind: n.kind, status: n.status, dispatchClosed: dispatchClosed }
       if (injectForcedOff) r.injectForcedOff = true
+      /* 文档安全 S4 契约对账：仅携带正文的保存才建议（host _update 同口径——元数据-only 不重提）；开关关零建议字段 */
+      if (a.body !== undefined) {
+        const sugU = mockSecretSuggest(state, n.body)
+        if (sugU) r.secretSuggested = sugU
+      }
       return r
     }
     case 'notes-search': {

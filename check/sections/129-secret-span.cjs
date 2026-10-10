@@ -197,7 +197,8 @@ module.exports = {
     assert(appHead.indexOf('.src-mirror{position:absolute;inset:0;') >= 0 && appHead.indexOf('.src-mirror .src-secret{') >= 0, 'head.html 源码镜像样式（同字体/行距/换行策略 + 色带）')
     assert(appHead.indexOf('.rich pre.dsh-notes-secret > code{filter:blur(5px)') >= 0 && appHead.indexOf('.rich pre.dsh-notes-secret.revealed > code{filter:none') >= 0, 'head.html 富文本 blur/揭示回糊（纯 CSS）')
     assert(appHead.indexOf('.rich pre.dsh-notes-secret.revealed .secret-unmark{display:inline-block}') >= 0 && appHead.indexOf('.dsh-secret-static') >= 0, 'head.html 取消机密钮揭示态浮现 + 静态占位样式')
-    assert(stylesCss.indexOf('.dsh-notes-rich pre.dsh-notes-secret > code{filter:blur(5px)}') >= 0 && stylesCss.indexOf('.dsh-notes-rich pre.dsh-notes-secret .secret-ph{') >= 0, 'styles.css 面板端机密岛样式（blur + 占位）')
+    assert(stylesCss.indexOf('.dsh-notes-rich pre.dsh-notes-secret > code{filter:blur(5px)') >= 0 && stylesCss.indexOf('.dsh-notes-rich pre.dsh-notes-secret .secret-ph{') >= 0, 'styles.css 面板端机密岛样式（blur + 占位；S4 加 transition 过渡）')
+    assert(stylesCss.indexOf('.dsh-notes-rich pre.dsh-notes-secret.revealed > code{filter:none}') >= 0 && stylesCss.indexOf('.dsh-notes-rich pre.dsh-notes-secret.revealed .secret-unmark{display:inline-block}') >= 0, 'styles.css 面板端 S4 揭示回糊/取消机密钮样式（双端 blur 同构——app head.html 同款无前缀规则）')
   })
 
   // ===== 129.6 预览静态占位四端 + i18n 双语键 =====

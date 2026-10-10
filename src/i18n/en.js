@@ -158,6 +158,11 @@ var I18N_EN = {
   'editor.secretUnmarkFailed': 'Could not locate the secret block; switch to source mode to fix it manually',
   'editor.secretPlaceholder': 'Secret area (view in source mode)',
   'editor.secretMarked': 'Marked as secret',
+  /* 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议——编辑器顶部冒泡横幅（一键标记/忽略，不打扰提示） */
+  'editor.secretSuggest': 'Detected {n} suspected credential(s) (line {lines})',
+  'editor.secretMarkAll': 'Mark all',
+  'editor.secretIgnore': 'Ignore',
+  'editor.secretMarkedAll': 'Marked {n} secret area(s)',
   'editor.selectNoteFirst': 'Select a note first',
   'editor.bodyLoading': 'The body is still loading; organize later',
   'editor.bodyEmpty': 'The body is empty; nothing to organize',
@@ -370,6 +375,11 @@ var I18N_EN = {
   'settings.assetsTip': 'Scan assets/ for orphan files not referenced by any note (references from deleted notes still count as protection — rather keep than delete)',
   'settings.assetsTipT': 'Preview orphan files in assets/ not referenced by any note, then delete the checked ones (dry-run first, zero writes)',
   'settings.pruneBtn': 'Clean up…',
+  /* 文档安全 S4（notes-052-autodetect-i18n）：设置卡「数据与存储」组——保存时机密检测建议开关（缺省开；仅管建议不管保护） */
+  'settings.secretDetect': 'Detect suspected secrets on save (suggest marking)',
+  'settings.secretDetectTip': 'Automatically scan the body for suspected credentials (passwords/keys/tokens and bare AWS/OpenAI/GitHub credentials) on save; when hits are found the editor shows a one-click "mark as secret" suggestion. Turning this off only stops the suggestions — masking/avoidance/reveal gates for marked secret areas are never affected (on by default)',
+  'settings.secretDetectOn': 'Enabled: detect suspected secrets on save and suggest marking',
+  'settings.secretDetectOff': 'Save-time detection suggestions disabled (protection of marked secret areas unchanged)',
   'settings.suggest': 'Organize suggestions',
   'settings.suggestTip': 'Quick-note group archiving / stale unreferenced cleanup / orphan note candidates / log hygiene nominations (nominates only, never auto-executes)',
   'settings.suggestTipClient': 'Quick-note group archiving / stale unreferenced cleanup / orphan note candidates (nominates only, never auto-executes)',

@@ -224,7 +224,7 @@ const CORE = new Set([
   // 126. 0.5.0 R3 查询嵌入接通 + 浏览器 wasm 路径退役（notes-051-query-embed：退役面静态 + bundle 减重 + 查询嵌入锚点常驻 --core）
   'R3 退役面：浏览器嵌入模块不存在 + 双 manifest 零登记 + app.html 零 transformers/jsdelivr/unpkg/代理路径引用',
   'R3 退役面：模型文件代理路由零残留（head.js/server.dist.js/index.mjs/e2e mock）+ host 镜像链 hf-mirror→HF 保留（红线）',
-  'R3 bundle 减重：app.html 字节数 ≤ 695000（R3 退役前基线 686336——退役净降兑现；文档安全 S1（notes-052-span-kernel2）机密块内核+双模渲染+镜像增量后上限上调）',
+  'R3 bundle 减重：app.html 字节数 ≤ 705000（R3 退役前基线 686336——退役净降兑现；文档安全 S1（notes-052-span-kernel2）机密块内核+双模渲染+镜像增量后上限上调；S4（notes-052-autodetect-i18n）保存时检测建议横幅+一键标记+设置行增量后再上调）',
   'R3 查询嵌入锚点：bge hostEmbed:true 在册 + 文本 query 经 host embed 不抛错 + 融合检索语义命中（假推理缝）',
   // 129. 文档安全 S1（notes-052-span-kernel2）：secret span 内核 + 双模渲染（往返恒等 + DEG 降级 + 三入口，常驻 --core）
   'parseSecretSpans 行为级：顶格识别/闭合/EOF 兜底/缩进不算/多块/嵌套退化/普通围栏内不另开（偏移 slice = 完整 fence 源）',
@@ -253,6 +253,15 @@ const CORE = new Set([
   'S3 面九：conflict-check 体检 prompt 零 span 明文（剥除 + 省略行 + 篇级行级打码原样并存）',
   'S3 面十：extractInstruction 选区原文送 LLM 剥 span + 省略行 + 落盘原文不改写（机密块原样入库）',
   'S3 e2e mock 同步：notes-export-single 契约对账用例在册（maskedSpans 键 + includeSecret 透传）+ 113 豁免摘除',
+  // 132. 文档安全 S4（notes-052-autodetect-i18n）：保存时自动检测建议 + 双端 blur 同构 + 开关只管建议（常驻 --core）
+  'S4 模式库行为级：两族判异（R1/R2/R3 复用 + AKIA/sk-/ghp_ credential 面）+ 行粒度合并 + 散文防御 + 空体零命中',
+  'S4 一键标记闭环锚：已 ```secret 标记区内的命中行不再建议（标记后保存不重复冒泡）',
+  'S4 保存建议行为级：含密码笔记保存→响应带 secretSuggested；干净笔记零建议；元数据-only 不重提；fence 内不再建议',
+  'S4 开关锁断言：开关关→含密码笔记也零建议字段，但已标记机密的 note_get 打码/注入占位照常（保护管线不设开关）',
+  'S4 设置持久化：secretDetect {enabled} 整键增量合并白名单（semantic 组同款）+ 非法形态拒绝 + 双包/产物同步',
+  'S4 一键标记契约：wrapSecretLines 包 fence → parseSecretSpans 恰好覆盖命中行 + maskSecretSpans 打码生效（S2 接通）+ 非法行号零改写',
+  'S4 双端同构静态锚：建议横幅 app/client 双端 + 一键标记/忽略 + 忽略静默（本篇本次内存态）+ 面板 blur 块交互同构',
+  'S4 收口同步：原型横幅/设置行/mock 检测在案 + README 双语自动检测键落位 + e2e mock 契约与用例 63 在册',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

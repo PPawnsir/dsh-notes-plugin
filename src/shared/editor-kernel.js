@@ -52,6 +52,37 @@ function parseSecretSpans(body) {
   return out
 }
 // ===== secret-span END =====
+// ===== 文档安全 S4（notes-052-autodetect-i18n）：保存时检测建议的一键标记 =====
+// 把 host 建议的命中行（1-based 行号数组）包成 ```secret fence——「一键标记」双端单源执行体（app/client 编辑器共用；
+// host 切片不含本函数：建议标记是编辑器面能力，host 只回 secretSuggested 行号）。
+// 分组纪律：相邻连续行号合并为一个 fence（PEM 块/多行凭据整块包裹，组间内容零扰动）；行号越界/重复/非法静默忽略；
+// 空行号数组或全部非法 → 原文逐字节返回 count:0（绝不空转改写——只建议不强制红线）。
+// 返回 { body, count }：count = 实际包裹的 fence 数。
+function wrapSecretLines(body, lines) {
+  var src = String(body == null ? '' : body)
+  var ls = src.split('\n')
+  var seen = {}, nums = []
+  for (var i = 0; i < (lines || []).length; i++) {
+    var n1 = parseInt(lines[i], 10)
+    if (!(n1 >= 1) || n1 > ls.length || seen[n1]) continue   // 越界/重复静默忽略（防御：响应行号与本地正文竞态漂移）
+    seen[n1] = true
+    nums.push(n1)
+  }
+  if (!nums.length) return { body: src, count: 0 }
+  nums.sort(function (a, b) { return a - b })
+  var groups = [], g = [nums[0]]
+  for (var j = 1; j < nums.length; j++) {
+    if (nums[j] === nums[j - 1] + 1) g.push(nums[j])
+    else { groups.push(g); g = [nums[j]] }
+  }
+  groups.push(g)
+  var F = '\x60\x60\x60'
+  for (var k = groups.length - 1; k >= 0; k--) {   // 从后往前替换：后段插入不影响前段行号
+    var grp = groups[k]
+    ls.splice(grp[0] - 1, grp.length, F + 'secret\n' + ls.slice(grp[0] - 1, grp[grp.length - 1]).join('\n') + '\n' + F)
+  }
+  return { body: ls.join('\n'), count: groups.length }
+}
 // Markdown → 富文本 HTML（受限 WYSIWYG 渲染方向）。白名单：h1-h3/段落/ul/ol/引用/围栏代码块/分隔线；行内 粗体/斜体/行内码/链接(仅 http/https)/图片(仅 assets/ 前缀)/双链 [[id或标题]]（wikiResolve 解析，不中按纯文本）
 // L1：行内原始 HTML 不解释——esc() 先行转为字面文本（<input type="date"> 原样显示，零注入面），序列化逐字还原
 // L2：GFM 表格（表头行+对齐分隔行）只读渲染为 <table contenteditable="false">，原始源码逐字记 data-md-src，序列化原样回吐

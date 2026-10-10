@@ -67,6 +67,14 @@
         const [orgErr, setOrgErr] = React.useState('')
         // 0.4.7-B②b：meta 行动区溢出菜单开合态
         const [actsMenuOpen, setActsMenuOpen] = React.useState(false)
+        // ===== 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议横幅态 + 忽略记账 + 机密岛揭示计时器 =====
+        // edSecretSug：null = 无横幅；{count,lines} = 冒泡中（host secretSuggested 建议行号）。
+        // secretSugIgnoredRef：忽略记账（noteId:lines → true，会话级内存态——本篇本次静默，不做持久忽略表 v1）。
+        // secretRevealTimerRef：机密岛揭示计时器（React ref 形态的 app 模块级单飞同款——重击重置/跨块切换回糊/卸载收编）。
+        const [edSecretSug, setEdSecretSug] = React.useState(null)
+        const secretSugIgnoredRef = React.useRef({})
+        const secretRevealTimerRef = React.useRef(null)
+        React.useEffect(() => () => { if (secretRevealTimerRef.current) { try { clearTimeout(secretRevealTimerRef.current) } catch (err) {} } }, [])   // 卸载收编揭示计时器
         // ===== 历史版本面板（notes-history-ui）：详情 meta 行「历史」入口（有版本才显示）→ modal：版本列表（时间+大小）→ 点选只读预览 → 恢复 =====
         const [histCount, setHistCount] = React.useState(null)    // 当前笔记历史版本数（null=未探测；0=无版本不显示入口）
         const keepQuickRef = React.useRef(false)
@@ -119,6 +127,7 @@
           setEdHidden(n.hidden === true)   // 0.4.4-D：hidden 状态回填（open-by-id 旁路笔记同口径——跳转打开 hidden 笔记编辑器/meta chip 正常渲染）
           setEdBody('')
           setOrgErr('')   // 0.4.7-B⑥a：换笔记清整理失败驻留条（驻留粒度 = 当前笔记）
+          setEdSecretSug(null)   // 文档安全 S4：换笔记清建议横幅（建议随笔记走，不跨笔记携带）
           setDegraded({ ok: true, reasons: [] })   // 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果）
           histCountRef.current = null; setHistCount(null)   // 换笔记重置「历史」入口可见性，随即探测版本计数
           // 0.4.4-A：open-by-id 旁路登记——缓存外笔记（执行记录跳转 notes-get 直开产物）挂旁路供 curNote 回退；缓存内选中清零
@@ -159,7 +168,7 @@
               setDegraded(a)
               if (editorModeRef.current === 'rich') {
                 if (!a.ok) { setEditorModeState('source'); showToast(tt('editor.richDegradedReasons', { reasons: a.reasons.map(r => r.label).join(tt('common.listSep')) })) }
-                else { richDirtyRef.current = false; try { if (richRef.current) richRef.current.innerHTML = renderMarkdown(body, wikiResolve) } catch (err) {} }
+                else { richDirtyRef.current = false; try { if (richRef.current) { richRef.current.innerHTML = renderMarkdown(body, wikiResolve); bindPanelSecret(richRef.current) } } catch (err) {} }   /* S4：机密岛重渲染后重挂交互（元素级 _secretBound 随重建复位） */
               }
             } else {
               const msg = tt('editor.loadFailed', { msg: res && res.error ? res.error : tt('editor.loadFailedData') })
@@ -204,6 +213,11 @@
           try {
             const res = await host.call('notes-update', upd)
             if (res && res.error) { setError(res.error); return }
+            /* 文档安全 S4（notes-052-autodetect-i18n）：保存响应建议面——带 secretSuggested 冒泡横幅（忽略键静默）；
+               零建议保存自清（一键标记后的下一次保存零建议——span 内行不再建议闭环；开关关时 host 恒零建议字段） */
+            const sugKey = res.secretSuggested ? (id + ':' + (res.secretSuggested.lines || []).join(',')) : ''
+            if (res.secretSuggested && !secretSugIgnoredRef.current[sugKey]) setEdSecretSug({ count: res.secretSuggested.count, lines: (res.secretSuggested.lines || []).slice() })
+            else setEdSecretSug(null)
             if (upd.topic === '') setEdTopic('')   // 0.4.8：topic 落盘清空后同步本地态（后续保存不再重发清空）
             setSavedAt(Date.now())
             bumpWikiBody(id, edBodyRef.current, '')   // 双链索引：自有正文即时新鲜（updatedAt 置空 → loadNotes 后索引复核 reconcile）
@@ -284,7 +298,7 @@
           setDegraded(a)
           if (editorModeRef.current === 'rich') {
             if (!a.ok) setEditorModeState('source')   // 如 todo 模板含任务列表语法 → 自动落源码模式（横幅给出原因）
-            else { richDirtyRef.current = false; try { if (richRef.current) richRef.current.innerHTML = renderMarkdown(text, wikiResolve) } catch (err) {} }
+            else { richDirtyRef.current = false; try { if (richRef.current) { richRef.current.innerHTML = renderMarkdown(text, wikiResolve); bindPanelSecret(richRef.current) } } catch (err) {} }   /* S4：机密岛重渲染后重挂交互 */
           }
           triggerAutoSave()   // 走既有 900ms 防抖自动保存（notes-update）
         }
@@ -339,9 +353,98 @@
           setDegraded(a)
           if (editorModeRef.current === 'rich') {
             if (!a.ok) setEditorModeState('source')
-            else { richDirtyRef.current = false; try { if (richRef.current) richRef.current.innerHTML = renderMarkdown(text, wikiResolve) } catch (err) {} }
+            else { richDirtyRef.current = false; try { if (richRef.current) { richRef.current.innerHTML = renderMarkdown(text, wikiResolve); bindPanelSecret(richRef.current) } } catch (err) {} }   /* S4：机密岛重渲染后重挂交互 */
           }
           bumpWikiBody(id, text, '')
+        }
+        // ===== 文档安全 S4（notes-052-autodetect-i18n）：机密岛交互同构 + 保存时检测建议横幅（React 侧） =====
+        // 双端 blur 同构：S1 内核渲染的机密岛（pre.dsh-notes-secret）在面板富文本补齐揭示/回糊/取消机密交互
+        //（app bindSecretBlocks 同款行为——点击揭示 ~10s 自动回糊、计时器单飞重击重置、跨块切换即回糊、揭示态「取消机密」钮）。
+        // 机密岛是 innerHTML 产物（React 不管辖其内部），交互按元素级 _secretBound 挂接——每次重渲染后随 bindPanelSecret 重挂。
+        // React 文本节点纪律（excerptKids 同款）：建议横幅文案/按钮全走 React 文本节点自动转义，零 innerHTML，零正文外泄面。
+        const SECRET_REVEAL_MS = 10000   // 揭示驻留时长（与 app 编辑器同节拍；e2e 按此等待回糊）
+        function armPanelSecretReveal() {
+          if (secretRevealTimerRef.current) { try { clearTimeout(secretRevealTimerRef.current) } catch (err) {} }
+          secretRevealTimerRef.current = setTimeout(() => {
+            secretRevealTimerRef.current = null
+            const rich = richRef.current
+            if (rich) rich.querySelectorAll('pre.dsh-notes-secret.revealed').forEach((p2) => { p2.classList.remove('revealed') })
+          }, SECRET_REVEAL_MS)
+        }
+        function revealPanelSecret(pre) {
+          const rich = richRef.current
+          if (rich) rich.querySelectorAll('pre.dsh-notes-secret.revealed').forEach((p2) => { if (p2 !== pre) p2.classList.remove('revealed') })
+          pre.classList.add('revealed')
+          armPanelSecretReveal()
+        }
+        function bindPanelSecret(rich) {
+          if (!rich) return
+          rich.querySelectorAll('pre.dsh-notes-secret').forEach((pre) => {
+            if (pre.classList.contains('dsh-secret-static')) return   // 只读预览静态占位岛不挂交互（S1 保守面口径）
+            if (!pre._secretBound) {
+              pre._secretBound = true
+              pre.addEventListener('click', (ev) => {
+                if (ev.target && ev.target.closest && ev.target.closest('.secret-unmark')) return
+                if (pre.classList.contains('revealed')) armPanelSecretReveal()   // 重击重置计时
+                else revealPanelSecret(pre)   // 单飞：先回糊既有揭示块，再揭示本块
+              })
+              const btn = document.createElement('button')
+              btn.className = 'secret-unmark'; btn.type = 'button'
+              btn.addEventListener('click', (ev) => { ev.stopPropagation(); ev.preventDefault(); unmarkPanelSecret(pre) })
+              pre.appendChild(btn)
+            }
+            const lock = pre.querySelector('.secret-lock'); if (lock) lock.title = tt('editor.secretRevealTip')
+            const btn2 = pre.querySelector('.secret-unmark'); if (btn2) btn2.textContent = tt('editor.secretUnmark')
+          })
+        }
+        // 取消机密：块定位 = 机密岛序号 ⇄ parseSecretSpans(body) 序号（渲染器与解析器同扫描纪律，序即一致——app 同构）；
+        // 执行前先收编富文本在途编辑（dirty 保护——揭示态下别处编辑不被重建吃掉）
+        function unmarkPanelSecret(pre) {
+          if (editorModeRef.current === 'rich' && richDirtyRef.current) syncFromRich('取消机密')
+          const body = edBodyRef.current || ''
+          const rich = richRef.current
+          const pres = rich ? Array.prototype.slice.call(rich.querySelectorAll('pre.dsh-notes-secret')) : []
+          const idx = pres.indexOf(pre)
+          const spans = (typeof parseSecretSpans === 'function' ? parseSecretSpans(body) : null) || []   // 内核缺位（check 沙箱桩）零降级不炸
+          if (idx < 0 || idx >= spans.length) { showToast(tt('editor.secretUnmarkFailed')); return }
+          const sp = spans[idx]
+          const raw = body.slice(sp.start, sp.end)
+          const nl = raw.indexOf('\n')
+          let inner = nl < 0 ? '' : raw.slice(nl + 1)
+          const lastNl = inner.lastIndexOf('\n')
+          const lastLine = lastNl < 0 ? inner : inner.slice(lastNl + 1)
+          if (/^\x60{3}/.test(lastLine)) inner = lastNl < 0 ? '' : inner.slice(0, lastNl)   // 有闭栏行剥之；EOF 兜底形态保持至文末
+          const nb = body.slice(0, sp.start) + inner + body.slice(sp.end)
+          edBodyRef.current = nb; setEdBody(nb)
+          if (secretRevealTimerRef.current) { try { clearTimeout(secretRevealTimerRef.current) } catch (err) {} secretRevealTimerRef.current = null }
+          if (rich && editorModeRef.current === 'rich') { richDirtyRef.current = false; try { rich.innerHTML = renderMarkdown(nb, wikiResolve); bindPanelSecret(rich) } catch (err) {} }
+          triggerAutoSave(); scheduleDegAnalyze()
+          bumpWikiBody(selectedRef.current, nb, '')
+        }
+        // ===== S4 保存时检测建议：一键标记（命中行包 ```secret fence——wrapSecretLines 内核双端单源）+ 忽略（本篇本次静默） =====
+        // 只建议不强制：host 只回行号；点击才落 fence，包完走既有自动保存——下一次保存响应零建议（span 内行不再建议）横幅自清闭环。
+        function doSecretMarkAll() {
+          if (!edSecretSug || !edSecretSug.lines.length) { setEdSecretSug(null); return }
+          if (editorModeRef.current === 'rich' && richDirtyRef.current) syncFromRich('一键标记机密')   // 收编富文本在途编辑
+          const r = (typeof wrapSecretLines === 'function')   // 内核缺位（check 沙箱桩）零改写降级——app 同款卫兵
+            ? wrapSecretLines(edBodyRef.current || '', edSecretSug.lines)
+            : { body: edBodyRef.current || '', count: 0 }
+          if (!r.count) { setEdSecretSug(null); return }
+          edBodyRef.current = r.body; setEdBody(r.body)
+          const a = analyzeMarkdown(r.body)
+          setDegraded(a)
+          if (editorModeRef.current === 'rich') {
+            if (!a.ok) setEditorModeState('source')
+            else { richDirtyRef.current = false; try { if (richRef.current) { richRef.current.innerHTML = renderMarkdown(r.body, wikiResolve); bindPanelSecret(richRef.current) } } catch (err) {} }
+          }
+          setEdSecretSug(null)
+          showToast(tt('editor.secretMarkedAll', { n: r.count }))
+          triggerAutoSave(); scheduleDegAnalyze()
+          bumpWikiBody(selectedRef.current, r.body, '')
+        }
+        function doSecretIgnore() {
+          if (selectedRef.current && edSecretSug && edSecretSug.lines) secretSugIgnoredRef.current[selectedRef.current + ':' + edSecretSug.lines.join(',')] = true
+          setEdSecretSug(null)
         }
         function jumpToSession(sessionId) { if (sessions && sessionId) { try { sessions.open(sessionId) } catch (err) {} } }
         // ===== 派发计划块辅助（notes-034-sched-detail；与注入管理调度区同口径同数据源，schedBadgeEl/schedNextLabel 镜像）=====
@@ -689,7 +792,7 @@
           const el = richRef.current, wrap = richWrapRef.current
           if (!el || !wrap) return
           // 0.4.4-H：el 为重建空节点（重开）时 dirty 卡死态（关闭时在途编辑随旧 DOM 销毁）一并按已同步基底回填并复位 dirty
-          if (!richDirtyRef.current || !el.innerHTML) { richDirtyRef.current = false; try { el.innerHTML = renderMarkdown(edBodyRef.current, wikiResolve) } catch (err) {} }
+          if (!richDirtyRef.current || !el.innerHTML) { richDirtyRef.current = false; try { el.innerHTML = renderMarkdown(edBodyRef.current, wikiResolve); bindPanelSecret(el) } catch (err) {} }   /* S4：机密岛重渲染后重挂交互 */
           try { document.execCommand('styleWithCSS', false, false) } catch (err) {}
           const onInput = () => { richDirtyRef.current = true; setRichSyncing(true); scheduleRichSync(); keepSel() }
           const onCompStart = () => { composingRef.current = true; if (richSyncTimerRef.current) { try { richSyncTimerRef.current() } catch (e2) {} richSyncTimerRef.current = null } }
@@ -1029,6 +1132,14 @@
             I('warn', 13),
             e('div', null, orgErr),
             e('span', { className: 'dsh-notes-org-err-x dsh-nt', role: 'button', tabIndex: 0, 'data-tooltip': tt('common.close'), 'aria-label': tt('common.close'), onClick: () => setOrgErr(''), onKeyDown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setOrgErr('') } } }, I('x', 11))) : null,
+          // 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议横幅（.deg 警告形态 + 一键标记/忽略）——
+          // React 文本节点纪律（excerptKids 同款）：文案/按钮全 React 自动转义，零 innerHTML
+          edSecretSug ? e('div', { className: 'dsh-notes-deg dsh-notes-secret-sug' },
+            I('warn', 13),
+            e('div', null, tt('editor.secretSuggest', { n: edSecretSug.count, lines: edSecretSug.lines.join(tt('common.listSep')) })),
+            e('span', { className: 'dsh-notes-sug-acts' },
+              e('button', { className: 'dsh-notes-sug-act', type: 'button', onClick: doSecretMarkAll }, tt('editor.secretMarkAll')),
+              e('button', { className: 'dsh-notes-sug-ignore', type: 'button', onClick: doSecretIgnore }, tt('editor.secretIgnore')))) : null,
           // 正文双模式（原型 .src / .rich-scroll）：源码 textarea ⇄ 富文本 contenteditable（非受控，编辑期间不重渲染）；
           // 0.4.7-B⑥：正文区包壳 .dsh-notes-ed-bodywrap（relative）承载整理中遮罩（org-veil：spinner + 「约需半分钟」文案）
           e('div', { className: 'dsh-notes-ed-bodywrap' },

@@ -27,7 +27,7 @@ var SET_GROUPS = [
   { id: 'inject',   icon: 'i-bolt',    labelKey: 'settings.group.inject',   rows: ['stale', 'budget', 'injprev', 'injmgr', 'semantic'] },            /* 检索与注入：搜索/注入/挂载类 */
   { id: 'dispatch', icon: 'i-clock',   labelKey: 'settings.group.dispatch', rows: [] },                                                  /* 派发与调度（待新节登记） */
   { id: 'ai',       icon: 'i-sparkle', labelKey: 'settings.group.ai',       rows: ['llm', 'organizemax', 'usage', 'usagebudget', 'suggest'] },  /* AI：LLM 配置/整理上限类 */
-  { id: 'data',     icon: 'i-folder',  labelKey: 'settings.group.data',     rows: ['maxdepth', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },  /* 数据与存储：遥测/备份/存储路径类 */
+  { id: 'data',     icon: 'i-folder',  labelKey: 'settings.group.data',     rows: ['maxdepth', 'secretdetect', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },  /* 数据与存储：遥测/备份/存储路径类；文档安全 S4 保存时检测建议开关（缺省开） */
   { id: 'about',    icon: 'i-info',    labelKey: 'settings.group.about',    rows: ['cheatsheet'] },                                      /* 关于：版本/计数/文档链接类 */
 ];
 /* 可见组 = 至少含一个已渲染节的组（按表序；空组隐身） */
@@ -140,6 +140,10 @@ function openSettings() {
     setSecs.usagebudget = '<div class="set-row" data-sec="usagebudget">' + setLabelHtml(t('settings.usageBudget'), t('settings.usageBudgetTip')) + '<div class="set-ctrl"><input class="minput" id="setUsageBudget" type="number" min="0" step="1000" style="width:110px" value="' + usageBudget + '"></div></div>';
     setSecs.stale = '<div class="set-row" data-sec="stale">' + setLabelHtml(t('settings.stale'), t('settings.staleTip')) + '<div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>';
     setSecs.maxdepth = '<div class="set-row" data-sec="maxdepth">' + setLabelHtml(t('settings.maxDepth'), t('settings.maxDepthTip')) + '<div class="set-ctrl"><input class="minput" id="setMaxDepth" type="number" min="0" step="1" style="width:90px" value="' + maxDepth + '"></div></div>';
+    /* 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议开关——「数据与存储」组勾选行（缺省 ✓ 开；选择即存，semantic 总开关同款交互；
+       仅管建议不管保护：关闭只停冒泡，已标记机密区的打码/避让/门禁不受任何影响） */
+    var secretDetectOn = !(settings.secretDetect && settings.secretDetect.enabled === false);
+    setSecs.secretdetect = '<div class="set-row" data-sec="secretdetect">' + setLabelHtml(t('settings.secretDetect'), t('settings.secretDetectTip')) + '<div class="set-ctrl"><label class="set-check"><input type="checkbox" id="setSecretDetect"' + (secretDetectOn ? ' checked' : '') + '></label></div></div>';
     setSecs.budget = '<div class="set-row" data-sec="budget">' + setLabelHtml(t('settings.budget'), t('settings.budgetTip'),
         '<span class="s" id="setGaugeT">' + t('settings.gaugeCurrent', { last: lastChars }) + (budgetNum > 0 ? ' / ' + t('settings.gaugeBudget', { budget: budgetNum }) : t('settings.gaugeUnlimited')) + '</span>'
         + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div>')
@@ -208,6 +212,11 @@ function openSettings() {
       var v = String(this.value).trim();
       if (!/^\d+$/.test(v)) { modalErr(t('settings.maxDepthInvalid')); return }
       saveSettings({ maxFolderDepth: parseInt(v, 10) }, +v === 0 ? t('settings.maxDepthUnlimited') : t('settings.savedMaxDepth', { v: v }));
+    };
+    /* 文档安全 S4：保存时机密检测建议开关——选择即存（缺省开；回执 toast 分开关两态文案） */
+    $('setSecretDetect').onchange = function () {
+      var on = this.checked;
+      saveSettings({ secretDetect: { enabled: on } }, on ? t('settings.secretDetectOn') : t('settings.secretDetectOff'));
     };
     /* P1 注入体积预算（约，字符数）：失焦/Enter 即保存（非负整数；0 = 不限） */
     $('setBudget').onchange = function () {

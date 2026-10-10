@@ -880,6 +880,30 @@ function _mockSchedGate(raw, contractType, existing) {
 /* 定时派发 mock 常驻 tick（原型演示加速 15s；host 实机为 30s + unref 不挂进程）：让「触发」环节在原型真实可见——
    到期触发后 toast 提示并静默刷新列表（badge/调度任务区随后 reload 即见 lastRun 已派发） */
 setInterval(function () { try { var evTick = _mockRpc('notes-schedule-eval', {}); if (evTick && evTick.fired > 0) { toast('定时调度已触发 ' + evTick.fired + ' 条（mock tick）'); loadNotes(true) } } catch (e) {} }, 15000);
+/* 文档安全 S4 mock（契约同 host suggestSecretSpans：secretSuggested {count,lines}——count=合并区间数，lines=命中行 1-based 平铺）：
+   原型简化版 = 行级键值/裸凭据扫描 + \x60\x60\x60secret 区内行排除（一键标记闭环）；host 为 R1/R2/R3 复用 + credential 面（AKIA/sk-/ghp_）+ span 助手族。
+   设置开关门控内聚（契约同 host secretDetectEnabled）：secretDetect.enabled===false → 整个检测跳过返回 null（仅管建议不管保护——
+   关闭后 mock 打码/占位面不变，仅保存响应零建议字段）。 */
+function _mockSecretSuggest(body) {
+  var sd = _mockSettings.secretDetect;
+  if (sd && sd.enabled === false) return null;
+  var src = String(body == null ? '' : body);
+  if (!src) return null;
+  var lines = src.split('\n'), hit = {}, inFence = false;
+  for (var i = 0; i < lines.length; i++) {
+    if (inFence) { if (/^\x60{3}/.test(lines[i].replace(/\r$/, ''))) inFence = false; continue }   /* \x60\x60\x60secret 区内行不重复建议（一键标记闭环） */
+    if (/^\x60{3}secret/.test(lines[i].replace(/\r$/, ''))) { inFence = true; continue }
+    hit[i] = /(?:password|passwd|pwd|token|secret|api[-_]?key|密码|口令|密钥|凭证)\s*[:：=]/i.test(lines[i])
+      || /AKIA[0-9A-Z]{16}/.test(lines[i])
+      || /(?:^|[^A-Za-z0-9_-])sk-[A-Za-z0-9_-]{10,}/.test(lines[i])
+      || /(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{16,}/.test(lines[i]);
+  }
+  var nums = Object.keys(hit).filter(function (k) { return hit[k] }).map(Number).sort(function (a2, b2) { return a2 - b2 });
+  if (!nums.length) return null;
+  var count = 1;   /* 相邻行合并 → 区间数 */
+  for (var j = 1; j < nums.length; j++) if (nums[j] !== nums[j - 1] + 1) count++;
+  return { count: count, lines: nums.map(function (m) { return m + 1 }) };
+}
 function _mockRpc(method, a) {
   var i, n;
   /* P1 回收站：includeDeleted=true 时含软删除（缺省排除），slim 携带 deleted 标记 */
@@ -901,6 +925,8 @@ function _mockRpc(method, a) {
     _mockNotes.unshift(n);
     var rc = { id: id, topic: n.topic, title: n.title, kind: n.kind, status: n.status };
     if (isLog && a.inject === true) rc.injectForcedOff = true;
+    var sugC = _mockSecretSuggest(a.body);   /* 文档安全 S4：创建即检测（契约同 host _create；开关关 = null 零建议字段） */
+    if (sugC) rc.secretSuggested = sugC;
     return rc;
   }
   if (method === 'notes-update') {
@@ -932,6 +958,10 @@ function _mockRpc(method, a) {
     n.updatedAt = _mockNow();
     var ru = { id: n.id, kind: n.kind, status: n.status, dispatchClosed: dispatchClosed };
     if (injForcedOff) ru.injectForcedOff = true;   /* 日志隐身硬闸命中告知（契约同 host _update） */
+    if (a.body !== undefined) {   /* 文档安全 S4：仅携带正文的保存才建议（契约同 host _update——元数据-only 不重提）；开关关 = null 零建议字段 */
+      var sugU = _mockSecretSuggest(n.body);
+      if (sugU) ru.secretSuggested = sugU;
+    }
     return ru;
   }
   if (method === 'notes-delete') { n = _mockNotes.find(function (x) { return x.id === a.id }); if (n) { _mockSnap(n); n.deleted = true; n.updatedAt = _mockNow() } return { id: a.id } }
@@ -2175,6 +2205,7 @@ function selectNote(id) {
   if (n && n.folder) { foldOpen[n.folder] = true; saveFoldOpen() }
   edNote = n ? edFoldTopic(Object.assign({}, n, { body: '' })) : null;   /* 0.4.8：topic 折入 tags（标签控件 chips 数据源） */
   organizeErr = '';   /* 0.4.7-B⑥a：换笔记清整理失败驻留条（驻留粒度 = 当前笔记） */
+  secretSug = null;   /* 文档安全 S4：换笔记清建议横幅（建议随笔记走，不跨笔记携带） */
   renderTree(); renderEd();
   if (n) {
     histCount = null; probeHistCount(id);   /* 换笔记重置「历史」入口可见性，随即探测版本计数 */
@@ -2208,6 +2239,8 @@ function doSave() {
   if (tp0 && tp0 !== '未分类' && tp0 !== '分类中') { upd.topic = ''; edNote.topic = '' }
   rpc('notes-update', upd).then(function (res) {
     if (res && res.error) { toast(res.error); return }
+    /* 文档安全 S4：保存响应建议面——带 secretSuggested 冒泡横幅（忽略键静默）；零建议保存自清 */
+    if (res.secretSuggested) showProtoSecretSuggest(res); else { secretSug = null; refreshSecretSugUI(); }
     $('edSaved').textContent = '✓ 已自动保存 ' + new Date().toTimeString().slice(0, 5);
     /* 0.4.6-D：「更新」时间戳随每次自动保存刷新（edNote 为选中时拷贝，不随 loadNotes 换代）；迟到守卫：已切走不重渲底栏 */
     if (edNote && edNote.id === upd.id) { edNote.updatedAt = new Date().toISOString(); renderEdFoot(); }
@@ -2245,6 +2278,8 @@ function renderEd() {
     + '<div class="disp" id="dispHost"></div>'
     /* 0.4.7-B⑥a（notes-047-ux）：整理失败驻留条（复用 .deg 警告样式，手动 ✕ 才消失）；B⑥：整理中遮罩锚 .ed-bodywrap（app .ed-main 同位） */
     + '<div class="deg" id="orgErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="orgErrMsg"></span></div><span class="org-x" id="orgErrX" role="button" tabindex="0" title="关闭">' + icon('i-x', 11) + '</span></div>'
+    /* 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议横幅（refreshSecretSugUI 驱动；一键标记/忽略两入口） */
+    + '<div class="deg" id="secretSug" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="secretSugMsg"></span></div><span class="sug-acts"><button class="sug-act" id="secretSugMark" type="button">一键标记</button><button class="sug-ignore" id="secretSugIgnore" type="button">忽略</button></span></div>'
     + '<div class="ed-bodywrap"><div class="ed-body" id="edBody" contenteditable="true" spellcheck="false"></div>'
     + '<div class="org-veil" id="orgVeil" style="display:none"><span class="org-spin"></span><span>AI 整理中，约需半分钟…</span></div></div>'
     + '<div class="ed-foot"><span id="edCreated"></span><span id="edUpdated"></span><span id="edSource"></span><span class="saved" id="edSaved"></span></div>';
@@ -2285,6 +2320,49 @@ function refreshOrganizeUI() {
     var x = $('orgErrX');
     if (x && !x._bound) { x._bound = true; x.addEventListener('click', function () { organizeErr = ''; refreshOrganizeUI() }) }
   }
+}
+/* ===== 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议横幅（原型规格面；app/client 同构实现） =====
+   保存响应带 secretSuggested {count,lines} → 编辑器顶部冒泡「⚠ 检测到 N 处疑似凭据（第 X、Y 行）[一键标记] [忽略]」；
+   一键标记 = 命中行包 \x60\x60\x60secret fence（与 app wrapSecretLines 同算法：相邻行合并 + 从后往前替换）；
+   忽略 = 本篇本次静默（同键不再冒泡，不做持久忽略表 v1）；换笔记/零建议保存横幅自清 */
+var secretSug = null;
+var secretSugIgnored = {};
+function refreshSecretSugUI() {
+  var bn = $('secretSug');
+  if (!bn) return;
+  bn.style.display = secretSug ? 'flex' : 'none';
+  if (!secretSug) return;
+  var msg = $('secretSugMsg'); if (msg) msg.textContent = '⚠ 检测到 ' + secretSug.count + ' 处疑似凭据（第 ' + secretSug.lines.join('、') + ' 行）';
+  var mk = $('secretSugMark');
+  if (mk) { if (!mk._bound) { mk._bound = true; mk.addEventListener('click', markSecretSuggested) } }
+  var ig = $('secretSugIgnore');
+  if (ig) { if (!ig._bound) { ig._bound = true; ig.addEventListener('click', function () { if (selId && secretSug) secretSugIgnored[selId + ':' + secretSug.lines.join(',')] = true; secretSug = null; refreshSecretSugUI() }) } }
+}
+function showProtoSecretSuggest(res) {
+  if (!res || !res.secretSuggested) return;
+  if (selId && secretSugIgnored[selId + ':' + (res.secretSuggested.lines || []).join(',')]) return;
+  secretSug = { count: res.secretSuggested.count, lines: (res.secretSuggested.lines || []).slice() };
+  refreshSecretSugUI();
+}
+function markSecretSuggested() {
+  if (!edNote || !secretSug || !secretSug.lines.length) { secretSug = null; refreshSecretSugUI(); return }
+  var ls = String(edNote.body || '').split('\n'), seen = {}, nums = [];
+  secretSug.lines.forEach(function (n) { n = parseInt(n, 10); if (n >= 1 && n <= ls.length && !seen[n]) { seen[n] = true; nums.push(n) } });
+  nums.sort(function (a, b) { return a - b });
+  if (nums.length) {
+    var groups = [], g = [nums[0]];
+    for (var j = 1; j < nums.length; j++) { if (nums[j] === nums[j - 1] + 1) g.push(nums[j]); else { groups.push(g); g = [nums[j]] } }
+    groups.push(g);
+    for (var k = groups.length - 1; k >= 0; k--) {   /* 从后往前替换：后段插入不影响前段行号（wrapSecretLines 同算法） */
+      var grp = groups[k];
+      ls.splice(grp[0] - 1, grp.length, '\x60\x60\x60secret\n' + ls.slice(grp[0] - 1, grp[grp.length - 1]).join('\n') + '\x60\x60\x60');
+    }
+    edNote.body = ls.join('\n');
+    fillEdBody();
+    toast('已标记 ' + groups.length + ' 处机密区');
+    triggerSave();
+  }
+  secretSug = null; refreshSecretSugUI();
 }
 /* 撤销最近一次整理（一次撤销栈，用后即清） */
 function undoAiOrganize() {
@@ -2768,6 +2846,7 @@ function createDraftNote(d, payload) {
         renderCrumb(); renderMeta(); renderEdFoot();
         $('edSaved').textContent = '✓ 已自动保存 ' + new Date().toTimeString().slice(0, 5);
         toast('已创建笔记（首次编辑自动落库）');
+        showProtoSecretSuggest(res);   /* 文档安全 S4：草稿首存响应带 secretSuggested → 编辑器顶部冒泡建议横幅 */
       } else {
         toast('草稿已自动落库：「' + (res.title || payload.title || 'Untitled') + '」');
       }
@@ -3309,7 +3388,7 @@ var SET_GROUPS = [
   { id: 'inject',   icon: 'i-bolt',    label: '检索与注入', rows: ['stale', 'budget', 'injprev', 'injmgr', 'semantic'] },            /* 搜索/注入/挂载类 */
   { id: 'dispatch', icon: 'i-clock',   label: '派发与调度', rows: [] },                                                  /* 派发与调度（待新节登记） */
   { id: 'ai',       icon: 'i-sparkle', label: 'AI',        rows: ['llm', 'organizemax', 'usage', 'usagebudget', 'suggest'] },  /* LLM 配置/整理上限类 */
-  { id: 'data',     icon: 'i-folder',  label: '数据与存储', rows: ['maxdepth', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },  /* 遥测/备份/存储路径类 */
+  { id: 'data',     icon: 'i-folder',  label: '数据与存储', rows: ['maxdepth', 'secretdetect', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },  /* 遥测/备份/存储路径类；文档安全 S4 保存时检测建议开关（缺省开） */
   { id: 'about',    icon: 'i-info',    label: '关于',       rows: ['cheatsheet'] },                                      /* 版本/计数/文档链接类 */
 ];
 /* 可见组 = 至少含一个已渲染节的组（按表序；空组隐身）——与 app setGroupsVisible 同构 */
@@ -3419,6 +3498,9 @@ function openSettings() {
     setSecs.usagebudget = '<div class="set-row" data-sec="usagebudget">' + setLabelHtml('用量预算提醒', '本月 token 消耗超过该值时提醒（仅 toast 提示，不阻断调用）；0 = 关闭') + '<div class="set-ctrl"><input class="minput" id="setUsageBudget" type="number" min="0" step="1000" style="width:110px" value="' + usageBudget + '"></div></div>';
     setSecs.stale = '<div class="set-row" data-sec="stale">' + setLabelHtml('过期内容提醒', '超过 N 天未更新且未被读取的笔记/链接会在整理建议中提名为过期候选（提醒参考资料可能过期）；0 = 关闭') + '<div class="set-ctrl"><input class="minput" id="setStale" type="number" min="0" step="1" style="width:90px" value="' + staleDays + '"></div></div>';
     setSecs.maxdepth = '<div class="set-row" data-sec="maxdepth">' + setLabelHtml('文件夹嵌套深度', '虚拟文件夹最大嵌套层级（根级 = 第 1 层，缺省 3）；新建子文件夹/拖拽换父超限将拒绝并提示；0 = 不限') + '<div class="set-ctrl"><input class="minput" id="setMaxDepth" type="number" min="0" step="1" style="width:90px" value="' + maxDepth + '"></div></div>';
+    /* 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议开关——「数据与存储」组勾选行（缺省 ✓ 开；选择即存；
+       仅管建议不管保护：关闭只停冒泡，已标记机密区的打码/避让/取回门禁不受任何影响） */
+    setSecs.secretdetect = '<div class="set-row" data-sec="secretdetect">' + setLabelHtml('保存时检测疑似机密（建议标记）', '保存笔记时自动检测疑似凭据（密码/密钥/令牌及 AWS·OpenAI·GitHub 等裸凭据），命中后编辑器顶部建议一键标记为机密区；关闭仅停止冒泡建议——已标记机密区的打码/避让/取回门禁不受任何影响（缺省开启）') + '<div class="set-ctrl"><label class="set-check"><input type="checkbox" id="setSecretDetect"' + ((settings.secretDetect && settings.secretDetect.enabled === false) ? '' : ' checked') + '></label></div></div>';
     setSecs.budget = '<div class="set-row" data-sec="budget">' + setLabelHtml('注入体积预算', '每次注入给 AI 的笔记内容上限（字符数，约）；约定条目永不截断，资料目录从旧到新省略；0 = 不限',
         '<span class="s" id="setGaugeT">当前注入约 ' + lastChars + ' 字符' + (budgetNum > 0 ? ' / 预算约 ' + budgetNum + ' 字符' : '（不限）') + '</span>'
         + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div>')
@@ -3471,6 +3553,11 @@ function openSettings() {
       var v = String(this.value).trim();
       if (!/^\d+$/.test(v)) { modalErr('文件夹嵌套深度上限需为非负整数（0 = 不限层数）'); return }
       saveSettings({ maxFolderDepth: parseInt(v, 10) }, +v === 0 ? '已保存：文件夹嵌套不限层数' : '已保存：文件夹最多嵌套 ' + v + ' 层');
+    };
+    /* 文档安全 S4：保存时机密检测建议开关——选择即存（缺省开；回执 toast 分开关两态文案） */
+    $('setSecretDetect').onchange = function () {
+      var on = this.checked;
+      saveSettings({ secretDetect: { enabled: on } }, on ? '已开启：保存时检测疑似机密并建议标记' : '已关闭保存时检测建议（已标记机密区的保护不变）');
     };
     /* P1 注入体积预算（约，字符数）：失焦/Enter 即保存（非负整数；0 = 不限） */
     $('setBudget').onchange = function () {

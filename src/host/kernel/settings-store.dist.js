@@ -57,6 +57,13 @@
       const v = settingsCache && settingsCache.maxFolderDepth
       return (typeof v === 'number' && isFinite(v) && v >= 0) ? Math.floor(v) : MAX_FOLDER_DEPTH_DEFAULT
     }
+    // ---- 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议开关（settings.json 顶层键 secretDetect = { enabled?: boolean }，null 删除 override 恢复缺省开）----
+    // 缺省 ✓ 开（安全默认——只显式 enabled:false 才关）；**仅管建议不管保护**：关闭后保存响应零建议字段，
+    // 打码/避让/门禁全链路照常（保护管线不设任何开关——虚假安全感红线）；写入闸在 notes-settings-set（白名单 + 增量合并）。
+    function secretDetectEnabled() {
+      const v = settingsCache && settingsCache.secretDetect
+      return !(v && v.enabled === false)
+    }
     let lastInjectChars = 0
     // 注入预览统计（notes-inject-preview RPC 数据源）：renderInjected 每次同步渲染后更新（0.4.3③ 合并段）；
     // 两函数均为同步执行，RPC 紧接调用后读取，无竞态。预览渲染（sidOverride 传入）不更新 lastInjectChars——仪表只反映真实注入。

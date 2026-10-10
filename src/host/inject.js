@@ -301,6 +301,19 @@
           else if (typeof patch.organizeMaxChars === 'number' && isFinite(patch.organizeMaxChars) && patch.organizeMaxChars > 0) settingsCache.organizeMaxChars = Math.floor(patch.organizeMaxChars)
           else return { error: 'notes-settings-set: organizeMaxChars 需要非负数值（0 = 按所配模型自动）' }
         }
+        // 文档安全 S4（notes-052-autodetect-i18n）保存时机密检测建议开关：secretDetect = { enabled?: boolean }（semantic 组同款整键增量合并——
+        //   只 patch enabled 不清其他存量子键；null/undefined 删除 override 恢复缺省开）；缺省 ✓ 开（安全默认）；
+        //   仅管「保存时检测建议」冒泡，不管保护——关闭后打码/避让/门禁全链路照常（保护管线不设任何开关红线）。
+        if ('secretDetect' in patch) {
+          if (patch.secretDetect === null || patch.secretDetect === undefined) delete settingsCache.secretDetect
+          else if (patch.secretDetect && typeof patch.secretDetect === 'object' && !Array.isArray(patch.secretDetect)) {
+            const sd = Object.assign({}, settingsCache.secretDetect && typeof settingsCache.secretDetect === 'object' ? settingsCache.secretDetect : {})
+            if (patch.secretDetect.enabled === true) sd.enabled = true
+            else if (patch.secretDetect.enabled === false) sd.enabled = false
+            settingsCache.secretDetect = sd
+          }
+          else return { error: 'notes-settings-set: secretDetect 需要 { enabled? } 对象（或 null 恢复缺省开启）' }
+        }
         // 0.5.0①（notes-050-vector-layer）语义检索激活位：semantic = { enabled?: boolean, backend?: string, model?: {...}|null }（总开关 + 激活后端 id + 模型下载状态）；
         //   null/undefined 删除 override 恢复关闭（缺省关闭零成本）；仅存白名单键（enabled 布尔 / backend 非空串 / model 白名单子键），其余键忽略不落盘。
         //   增量合并（0.5.0② notes-050-wasm-embedder）：model 键 = 浏览器嵌入模型下载状态（曾作设置「已下载大小/可删」数据源，

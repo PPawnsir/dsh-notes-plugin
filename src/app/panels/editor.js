@@ -24,6 +24,7 @@ function selectNote(id) {
   edNote = n ? edFoldTopic(Object.assign({}, n, { body: '' })) : null;   /* 0.4.8：topic 折入 tags（标签控件 chips 数据源） */
   edBodyLoaded = false; edBodyErr = '';   /* R-1 安全态复位：新笔记正文未加载前提交闸关闭、错误横幅清空（renderEd 在其后执行，DOM 初态一致） */
   organizeErr = '';                        /* 0.4.7-B⑥a：换笔记清整理失败驻留条（驻留粒度 = 当前笔记） */
+  secretSuggest = null;                     /* 文档安全 S4：换笔记清建议横幅（建议随笔记走，不跨笔记携带） */
   degraded = { ok: true, reasons: [] };   /* 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果） */
   renderTree(); renderEd();
   if (n) {
@@ -155,6 +156,9 @@ function doSave() {
   var upd = buildSavePayload(); if (!upd) return;   /* 0.4.7-C：载荷构建单点化（卸载 flush 同口径） */
   rpc('notes-update', upd).then(function (res) {
     if (res && res.error) { toast(res.error); return }
+    /* 文档安全 S4（notes-052-autodetect-i18n）：保存响应建议面——带 secretSuggested 冒泡横幅（忽略键静默）；
+       零建议保存自清（一键标记后的下一次保存响应即零建议——span 内行不再建议闭环） */
+    if (res.secretSuggested) showSecretSuggest(res); else clearSecretSuggest();
     $('edSaved').textContent = t('editor.autoSaved', { time: (edSavedAt = new Date().toTimeString().slice(0, 5)) });   /* 0.4.9：edSavedAt 记账（语言切换 renderEdLang 按新语言重写本行） */
     /* 0.4.6-D（notes-046-copy-consistency，R2 n-mux8bv3x6lll）：「更新」时间戳随每次自动保存刷新——edNote 是选中时的拷贝，
        不随 loadNotes 换代（底栏 renderEdFoot 读 edNote.updatedAt，不刷即滞留旧值）；迟到响应守卫：已切走（id 不符）不重渲底栏 */
@@ -215,6 +219,8 @@ function renderEd() {
     + '<div class="deg" id="edLoadErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="edLoadErrMsg"></span><span id="edLoadErrNote">' + t('editor.loadLockNote') + '</span><span id="edLoadRetry" style="cursor:pointer;color:var(--nacc);font-weight:600">' + t('editor.retry') + '</span></div></div>'
     /* 0.4.7-B⑥a（notes-047-ux）：整理失败驻留条（复用 .deg 警告样式，手动 ✕ 才消失——替代一闪而过的 toast；refreshOrganizeUI 驱动） */
     + '<div class="deg" id="orgErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="orgErrMsg"></span></div><span class="org-x" id="orgErrX" role="button" tabindex="0" title="' + t('common.close') + '">' + icon('i-x', 11) + '</span></div>'
+    /* 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议横幅（refreshSecretSuggestUI 驱动显隐/文案/接线；一键标记/忽略两入口） */
+    + '<div class="deg" id="secretSug" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="secretSugMsg"></span></div><span class="sug-acts"><button class="sug-act" id="secretSugMark" type="button"></button><button class="sug-ignore" id="secretSugIgnore" type="button"></button></span></div>'
     /* 0.4.7-B⑥：整理中正文区遮罩（spinner + 「约需半分钟」文案——LLM 窗口期强反馈，消除「没反应」体感） */
     + '<div class="org-veil" id="orgVeil" style="display:none"><span class="org-spin"></span><span id="orgVeilTxt">' + t('editor.organizingVeil') + '</span></div>'
     + '<div class="src-wrap" id="srcWrap"' + (edMode === 'source' ? '' : ' style="display:none"') + '>'   /* 驳回修复：id 必携——renderModeUI $('srcWrap') 显隐开关依赖（v1 漏 id 致富文本态重渲染后切回源码 wrapper 恒 display:none，编辑区空白） */
@@ -250,6 +256,7 @@ function renderEd() {
   bindEditorArea();
   refreshLoadErrUI();   /* R-1：DOM 重建后重挂安全态（横幅显隐 + 编辑锁定 + 重试绑定） */
   refreshOrganizeUI();   /* 0.4.7-B⑥：DOM 重建后复态整理中遮罩/失败驻留条（同 refreshLoadErrUI 先例） */
+  refreshSecretSuggestUI();   /* 文档安全 S4：DOM 重建后复态建议横幅 + 重挂一键标记/忽略钮 */
 }
 /* 0.4.9（notes-049-lang-rerender-editor）：语言切换编辑器区重渲染覆盖——footer 状态行/「已自动保存」/同步点/反链面板随语言翻转。
    挂点 = render() 链路（setLang → render()；筛/排/搜的 render() 同走——纯文案原地重写，幂等零副作用）。
@@ -271,6 +278,7 @@ function renderEdLang() {
   var lr = $('edLoadRetry'); if (lr) lr.textContent = t('editor.retry');
   var ox = $('orgErrX'); if (ox) ox.title = t('common.close');
   var vx = $('orgVeilTxt'); if (vx) vx.textContent = t('editor.organizingVeil');
+  refreshSecretSuggestUI();   /* 文档安全 S4：建议横幅文案随语言原地重写（零正文重建纪律） */
   var rtb = $('rtb'); if (rtb) rtb.querySelectorAll('.rtb-btn').forEach(function (b) {
     var k = { bold: 'editor.tbBold', italic: 'editor.tbItalic', code: 'editor.tbCode', link: 'editor.tbLink', ul: 'editor.tbUl', ol: 'editor.tbOl', quote: 'editor.tbQuote', image: 'editor.tbImage', secret: 'editor.tbSecret' }[b.getAttribute('data-a')];
     if (k) b.title = t(k);
@@ -672,4 +680,55 @@ function refreshSecretMirror() {
   var sb = ta.offsetWidth - ta.clientWidth;
   mi.style.right = sb > 0 ? sb + 'px' : '';
   mi.scrollTop = ta.scrollTop;
+}
+
+/* ===== 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议横幅 =====
+   保存（create/update）响应带 secretSuggested {count,lines} → 编辑器顶部冒泡一条不打扰提示（.deg 警告形态）：
+   「⚠ 检测到 N 处疑似凭据（第 X、Y 行）[一键标记] [忽略]」。
+   红线（只建议不强制）：host 只回行号绝不改写正文；一键标记才落 fence（wrapSecretLines 内核双端单源——
+   调 S1 标记能力，包 fence 即糊 + 染色镜像随动）；忽略 = 本篇本次静默（同键不再冒泡，不做持久忽略表 v1）；
+   换笔记 / 零建议保存横幅自清。设置开关（secretDetect.enabled===false）→ host 响应零建议字段，本横幅永不出现
+   （开关只管建议不管保护——已标记机密区的打码/避让/门禁照常）。 */
+var secretSuggest = null;          /* 当前冒泡建议 {count,lines} | null（null = 无横幅） */
+var secretSuggestIgnored = {};     /* 忽略记账：noteId:lines → true（会话级内存态，非持久忽略表） */
+function secretSuggestKey(id, lines) { return String(id) + ':' + (lines || []).join(',') }
+/* 横幅复态/接线（renderEd DOM 重建与 renderEdLang 语言切换共用）：显隐 + 文案 + 一键标记/忽略钮一次性绑定 */
+function refreshSecretSuggestUI() {
+  var bn = $('secretSug');
+  if (!bn) return;
+  bn.style.display = secretSuggest ? 'flex' : 'none';
+  if (!secretSuggest) return;
+  var msg = $('secretSugMsg');
+  if (msg) msg.textContent = t('editor.secretSuggest', { n: secretSuggest.count, lines: (secretSuggest.lines || []).join(t('common.listSep')) });
+  var mk = $('secretSugMark');
+  if (mk) { if (!mk._bound) { mk._bound = true; mk.addEventListener('click', markSecretSuggested) } mk.textContent = t('editor.secretMarkAll') }
+  var ig = $('secretSugIgnore');
+  if (ig) { if (!ig._bound) { ig._bound = true; ig.addEventListener('click', ignoreSecretSuggested) } ig.textContent = t('editor.secretIgnore') }
+}
+/* 保存响应建议冒泡（doSave/草稿落库两调用面）：忽略键命中静默（本篇本次已忽略不再打扰） */
+function showSecretSuggest(res) {
+  if (!res || !res.secretSuggested) return;
+  if (edNote && edNote.id && secretSuggestIgnored[secretSuggestKey(edNote.id, res.secretSuggested.lines)]) return;
+  secretSuggest = { count: res.secretSuggested.count, lines: (res.secretSuggested.lines || []).slice() };
+  refreshSecretSuggestUI();
+}
+function clearSecretSuggest() { secretSuggest = null; refreshSecretSuggestUI(); }
+/* 一键标记：命中行包 ```secret fence——包完随既有自动保存落库；下一次保存响应零建议（span 内行不再建议）横幅自清闭环 */
+function markSecretSuggested() {
+  if (!edNote || !secretSuggest || !secretSuggest.lines.length) { clearSecretSuggest(); return }
+  if (edMode === 'rich' && richDirty) syncFromRich('一键标记机密');   /* 收编富文本在途编辑（0.4.9 dirty 保护纪律） */
+  var r = (typeof wrapSecretLines === 'function')   /* 内核缺位（check 沙箱桩）零改写降级——同 parseSecretSpans 卫兵先例 */
+    ? wrapSecretLines(edNote.body || '', secretSuggest.lines)
+    : { body: edNote.body || '', count: 0 };
+  if (!r.count) { clearSecretSuggest(); return }
+  edNote.body = r.body;
+  fillEdBody();   /* 双模式回填（textarea + 富文本重渲染 + 机密岛挂接 + 染色镜像随动） */
+  clearSecretSuggest();
+  toast(t('editor.secretMarkedAll', { n: r.count }));
+  triggerSave(); scheduleDegAnalyze();
+}
+/* 忽略：本篇本次静默（同 noteId + 同行号集不再冒泡；新内容 = 新行号集照常再建议） */
+function ignoreSecretSuggested() {
+  if (edNote && edNote.id && secretSuggest) secretSuggestIgnored[secretSuggestKey(edNote.id, secretSuggest.lines)] = true;
+  clearSecretSuggest();
 }

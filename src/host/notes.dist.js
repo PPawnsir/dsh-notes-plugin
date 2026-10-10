@@ -79,6 +79,18 @@
     }
     // ==== folder-arg-norm END ====
 
+    // 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议载荷——suggestSecretSpans 行区间 → {count,lines}
+    // （count = 合并后区间数「N 处」；lines = 覆盖行号 1-based 平铺，编辑器据此冒泡「第 X、Y 行」并一键包 fence）。
+    // 只建议不强制：本函数只读不改写；调用方（_create/_update）挂响应字段，正文一字不动。
+    // 设置开关（secretDetect.enabled===false）调用方先行跳过——整个检测不跑，响应零建议字段（仅管建议不管保护红线）。
+    function secretSuggestPayload(body) {
+      const sug = suggestSecretSpans(body)
+      if (!sug.length) return null
+      const lines = []
+      for (let i = 0; i < sug.length; i++) for (let li = sug[i].sLine; li <= sug[i].eLine; li++) lines.push(li)
+      return { count: sug.length, lines: lines }
+    }
+
     async function _create(title, body, tags, topic, extra) {
       const id = genId()
       const now = new Date().toISOString()
@@ -155,6 +167,8 @@
       if (injectForcedOff) r.injectForcedOff = true   // 日志隐身硬闸命中告知（调用方可提示用户/agent）
       // 敏感模式自动识别建议：命中不强制落 sensitive（create 是显式动作，由调用方/用户决策），仅回传建议标记
       if (note.sensitive !== true && suggestSensitive(note.body)) r.sensitiveSuggested = true
+      // 文档安全 S4：保存时机密检测建议（设置开关缺省开；关 = 检测整体跳过零建议字段；已标记 span 内的行不再建议——一键标记闭环）
+      if (secretDetectEnabled()) { const sugP = secretSuggestPayload(note.body); if (sugP) r.secretSuggested = sugP }
       return r
     }
 
@@ -328,6 +342,9 @@
       if (dispatchClosedDs.length) await _schedRunLogAppend(note, dispatchClosedDs)   // 0.4.4-A 起全笔记生效·三表归一（resolved 回执 📥 行落执行记录伴生笔记；内部全量吞异常；源笔记正文零改动红线不破）
       const r = { id, kind: note.kind, status: note.status, dispatchClosed: dispatchClosed }
       if (injectForcedOff) r.injectForcedOff = true   // 日志隐身硬闸命中告知（kind=log 强制 inject=false）
+      // 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议——只在携带正文的保存（body !== undefined）冒泡；
+      // 元数据-only 保存不重提（忽略后改标题不再打扰）；开关关 = 检测整体跳过零建议字段；建议只读正文，绝不改写
+      if (body !== undefined && secretDetectEnabled()) { const sugP = secretSuggestPayload(note.body); if (sugP) r.secretSuggested = sugP }
       return r
     }
 

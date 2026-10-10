@@ -222,7 +222,7 @@
       { id: 'inject', icon: 'bolt', labelKey: 'settings.group.inject', rows: ['stale', 'budget', 'injprev', 'injmgr', 'semantic'] },   // 检索与注入：搜索/注入/挂载类
       { id: 'dispatch', icon: 'clock', labelKey: 'settings.group.dispatch', rows: [] },   // 派发与调度（待新节登记）
       { id: 'ai', icon: 'sparkle', labelKey: 'settings.group.ai', rows: ['llm', 'organizemax', 'usage', 'usagebudget', 'suggest'] },   // AI：LLM 配置/整理上限类
-      { id: 'data', icon: 'folder', labelKey: 'settings.group.data', rows: ['maxdepth', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },   // 数据与存储：遥测/备份/存储路径类
+      { id: 'data', icon: 'folder', labelKey: 'settings.group.data', rows: ['maxdepth', 'secretdetect', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },   // 数据与存储：遥测/备份/存储路径类；文档安全 S4 保存时检测建议开关（缺省开）
       { id: 'about', icon: 'info', labelKey: 'settings.group.about', rows: ['cheatsheet'] },   // 关于：版本/计数/文档链接类
     ]
     // 分组点击定位：滚动容器 = .dsh-notes-settings-modal（与 0.4.7-B sticky 标题同容器，吸顶标题补偿 48px）
@@ -370,6 +370,22 @@
       const [semBackend, setSemBackend] = React.useState('bge-small-zh-q8')
       const [semStatus, setSemStatus] = React.useState(null)
       const [semBuilding, setSemBuilding] = React.useState(false)
+      /* ===== 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议开关（「数据与存储」组勾选行）——
+         semantic 总开关同款交互：本地态 + settingsData 回显 + 选择即存（缺省 ✓ 开；仅管建议不管保护——
+         关闭只停冒泡建议，已标记机密区的打码/避让/门禁不受任何影响） */
+      const [secretDetectOn, setSecretDetectOn] = React.useState(true)
+      React.useEffect(() => {
+        if (!settingsData) return
+        const sd = (settingsData.settings && settingsData.settings.secretDetect) || {}
+        setSecretDetectOn(!(sd.enabled === false))
+      }, [settingsData])
+      const doSecretDetectToggle = (on) => {
+        setSecretDetectOn(on)
+        host.call('notes-settings-set', { secretDetect: { enabled: !!on } }).then(res => {
+          if (res && res.error) { setError(String(res.error)); setSecretDetectOn(!on); return }
+          showToast(on ? tt('settings.secretDetectOn') : tt('settings.secretDetectOff'))
+        }).catch(() => setSecretDetectOn(!on))
+      }
       React.useEffect(() => {
         if (!settingsData) return
         const sm = (settingsData.settings && settingsData.settings.semantic) || {}
@@ -502,6 +518,9 @@
         const staleControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1, value: setStale, 'data-tooltip': tt('settings.staleTipT'), onChange: (ev) => setSetStale(ev.target.value), onBlur: saveSettingsStale, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsStale() } })
         // 文件夹嵌套深度上限控件（同 staleDays 输入交互）：数值输入（层），失焦/Enter 即保存；0 = 不限层数
         const maxDepthControl = e('input', { className: 'dsh-notes-settings-input', type: 'number', min: 0, step: 1, value: setMaxDepth, 'data-tooltip': tt('settings.maxDepthTipT'), onChange: (ev) => setSetMaxDepth(ev.target.value), onBlur: saveSettingsMaxDepth, onKeyDown: (ev) => { if (ev.key === 'Enter') saveSettingsMaxDepth() } })
+        // 文档安全 S4：保存时机密检测建议开关控件（「数据与存储」组勾选行；选择即存——semantic 总开关同款交互）
+        const secretDetectControl = e('label', { className: 'dsh-notes-settings-checkwrap' },
+          e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: secretDetectOn, 'aria-label': tt('settings.secretDetect'), onChange: (ev) => doSecretDetectToggle(ev.target.checked) }))
         // P1 注入体积预算控件：数值输入（约，字符数）+ 仪表（最近一次注入体积 vs 预算，超预算变红）；约定条目永不截断
         const lastChars = (settingsData && typeof settingsData.lastInjectChars === 'number') ? settingsData.lastInjectChars : 0
         const budgetNum = /^\d+$/.test(setBudget.trim()) ? parseInt(setBudget.trim(), 10) : 0
@@ -579,6 +598,8 @@
           { key: 'usagebudget', label: tt('settings.usageBudget'), sub: tt('settings.usageBudgetTip'), control: usageBudgetControl },
           { key: 'stale', label: tt('settings.stale'), sub: tt('settings.staleTip'), control: staleControl },
           { key: 'maxdepth', label: tt('settings.maxDepth'), sub: tt('settings.maxDepthTip'), control: maxDepthControl },
+          // 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议开关行（数据与存储组，缺省开；仅管建议不管保护）
+          { key: 'secretdetect', label: tt('settings.secretDetect'), sub: tt('settings.secretDetectTip'), control: secretDetectControl },
           { key: 'budget', label: tt('settings.budget'), sub: tt('settings.budgetTip'), control: budgetControl },
           { key: 'injprev', label: tt('settings.injPreview'), sub: tt('settings.injPreviewTip'), control: injPrevControl },
           { key: 'injmgr', label: tt('settings.injManager'), sub: tt('settings.injManagerTip'), control: injMgrControl },

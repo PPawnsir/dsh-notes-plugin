@@ -716,12 +716,27 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-rich blockquote p{margin:0}
 .dsh-notes-rich pre{background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:14px 16px;margin:0 0 14px;overflow-x:auto;font-family:var(--nmono);font-size:12.5px;line-height:1.65;position:relative;white-space:pre-wrap;color:var(--ntx)}
 .dsh-notes-rich pre[data-lang]::before{content:attr(data-lang);position:absolute;top:6px;right:10px;font-size:10px;color:var(--nt3);font-family:var(--nmono)}
-/* 文档安全 S1（notes-052-span-kernel2）：```secret 机密岛——面板富文本只染模糊（S1 无揭示交互面：交互在 app 编辑器；
-   面板内看内容走源码模式）；历史/回收站只读预览 = .dsh-secret-static 静态占位（正文不进 DOM，保守面） */
-.dsh-notes-rich pre.dsh-notes-secret{border:1px dashed var(--ndanger);user-select:none}
-.dsh-notes-rich pre.dsh-notes-secret .secret-lock{position:absolute;top:6px;left:10px;font-size:11px;line-height:1;opacity:.92}
-.dsh-notes-rich pre.dsh-notes-secret > code{filter:blur(5px)}
+/* 文档安全 S1（notes-052-span-kernel2）：```secret 机密岛——面板富文本模糊渲染；
+   S4（notes-052-autodetect-i18n）双端 blur 同构收口：面板补齐揭示/回糊/取消机密交互（bindPanelSecret——
+   app 编辑器同款：.revealed 类切换 filter，无 DOM 重建；揭示态「取消机密」钮浮现）；
+   历史/回收站只读预览 = .dsh-secret-static 静态占位（正文不进 DOM，保守面） */
+.dsh-notes-rich pre.dsh-notes-secret{border:1px dashed var(--ndanger);cursor:pointer;user-select:none}
+.dsh-notes-rich pre.dsh-notes-secret .secret-lock{position:absolute;top:6px;left:10px;font-size:11px;line-height:1;opacity:.92;pointer-events:none}
+.dsh-notes-rich pre.dsh-notes-secret > code{filter:blur(5px);transition:filter .15s ease}
+.dsh-notes-rich pre.dsh-notes-secret.revealed > code{filter:none}
+.dsh-notes-rich pre.dsh-notes-secret.revealed{user-select:text}
+.dsh-notes-rich pre.dsh-notes-secret .secret-unmark{display:none;position:absolute;bottom:6px;right:8px;font:inherit;font-size:10.5px;padding:2px 9px;border:1px solid var(--nbd);border-radius:var(--nr-sm);background:var(--npanel);color:var(--nt2);cursor:pointer}
+.dsh-notes-rich pre.dsh-notes-secret.revealed .secret-unmark{display:inline-block}
+.dsh-notes-rich pre.dsh-notes-secret .secret-unmark:hover{color:var(--ndanger);border-color:var(--ndanger)}
+.dsh-notes-rich pre.dsh-notes-secret.dsh-secret-static{cursor:default}
 .dsh-notes-rich pre.dsh-notes-secret .secret-ph{font-family:var(--nfont);font-size:12px;color:var(--nt3);user-select:none}
+/* 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议横幅——.dsh-notes-deg 警告形态 + 动作钮
+   （一键标记 = accent 实心主钮；忽略 = 淡文字钮；与 app head.html 同款无前缀规则镜像） */
+.dsh-notes-deg .dsh-notes-sug-acts{margin-left:auto;display:flex;gap:6px;align-items:center;flex-shrink:0}
+.dsh-notes-deg .dsh-notes-sug-act{font:inherit;font-size:11px;padding:2px 10px;border:1px solid var(--nacc);background:var(--nacc);color:#fff;border-radius:var(--nr-sm);cursor:pointer}
+.dsh-notes-deg .dsh-notes-sug-act:hover{opacity:.88}
+.dsh-notes-deg .dsh-notes-sug-ignore{font:inherit;font-size:11px;padding:2px 8px;border:0;background:none;color:var(--nt3);cursor:pointer}
+.dsh-notes-deg .dsh-notes-sug-ignore:hover{color:var(--ntx)}
 .dsh-notes-rich pre code{background:none;border:none;padding:0;font-size:inherit}
 .dsh-notes-rich code{font-family:var(--nmono);font-size:12px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;padding:1px 6px;color:var(--ntx)}
 .dsh-notes-rich a{color:var(--nacc);text-decoration:none;border-bottom:1px solid transparent}

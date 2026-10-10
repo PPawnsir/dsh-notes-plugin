@@ -283,6 +283,12 @@
   @keyframes orgSpin{to{transform:rotate(360deg)}}
   #orgErr .org-x{margin-left:auto;cursor:pointer;color:var(--nt3);padding:0 4px;flex-shrink:0}
   #orgErr .org-x:hover{color:var(--ntx)}
+  /* 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议横幅——.deg 警告形态 + 动作钮（一键标记 = accent 实心主钮；忽略 = 淡文字钮） */
+  .deg .sug-acts{margin-left:auto;display:flex;gap:6px;align-items:center;flex-shrink:0}
+  .deg .sug-act{font:inherit;font-size:11px;padding:2px 10px;border:1px solid var(--nacc);background:var(--nacc);color:#fff;border-radius:var(--nr-sm);cursor:pointer}
+  .deg .sug-act:hover{opacity:.88}
+  .deg .sug-ignore{font:inherit;font-size:11px;padding:2px 8px;border:0;background:none;color:var(--nt3);cursor:pointer}
+  .deg .sug-ignore:hover{color:var(--ntx)}
   /* 0.4.7-B⑤（notes-047-ux）：派发弹窗专属会话无界面提示行 */
   .sched-new-hint{font-size:10.5px;color:var(--nwarn);line-height:1.5;margin:4px 0 2px;padding-left:2px}
   /* ===== 双模式编辑器 v3（原型 design/notes-editor-v3.html；与面板 styles.css 同款无前缀；色板走上方 html[data-theme] 块，此处不加主题块以守住 v2 色板同步断言） ===== */

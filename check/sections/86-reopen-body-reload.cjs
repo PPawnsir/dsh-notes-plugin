@@ -30,7 +30,7 @@ module.exports = {
   })
   await t('0.4.4-H client：富文本填充/绑定效应依赖增 open（重开重跑）+ 重建空节点按基底回填并复位 dirty 卡死态', () => {
     assert(cliEd.indexOf('}, [editorMode, selected, open])') >= 0, '富文本效应 deps 未含 open（重开不重跑=bug 根因）')
-    assert(cliEd.indexOf('if (!richDirtyRef.current || !el.innerHTML) { richDirtyRef.current = false; try { el.innerHTML = renderMarkdown(edBodyRef.current, wikiResolve) } catch (err) {} }') >= 0, '富文本空节点回填/脏态复位行缺失（节 31 renderMarkdown(edBodyRef.current, wikiResolve) 锚点须保留）')
+    assert(cliEd.indexOf('if (!richDirtyRef.current || !el.innerHTML) { richDirtyRef.current = false; try { el.innerHTML = renderMarkdown(edBodyRef.current, wikiResolve); bindPanelSecret(el) } catch (err) {} }') >= 0, '富文本空节点回填/脏态复位行缺失（节 31 renderMarkdown(edBodyRef.current, wikiResolve) 锚点须保留；S4 增 bindPanelSecret 机密岛交互重挂随行）')
   })
   await t('0.4.4-H client：重开补拉兜底效应（选中存活+正文未加载+未在途+无错误横幅 → loadEdBody(selected)，幂等）', () => {
     assert(cliEd.indexOf('const prevOpenRef = React.useRef(open)') >= 0, 'prevOpenRef 边沿检测缺失')

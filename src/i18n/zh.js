@@ -158,6 +158,11 @@ var I18N_ZH = {
   'editor.secretUnmarkFailed': '未能定位机密区，请切换源码模式手动处理',
   'editor.secretPlaceholder': '机密区（源码模式查看）',
   'editor.secretMarked': '已标记为机密',
+  /* 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议——编辑器顶部冒泡横幅（一键标记/忽略，不打扰提示） */
+  'editor.secretSuggest': '检测到 {n} 处疑似凭据（第 {lines} 行）',
+  'editor.secretMarkAll': '一键标记',
+  'editor.secretIgnore': '忽略',
+  'editor.secretMarkedAll': '已标记 {n} 处机密区',
   'editor.selectNoteFirst': '先选择一条笔记',
   'editor.bodyLoading': '正文加载中，稍后再整理',
   'editor.bodyEmpty': '正文为空，无可整理内容',
@@ -370,6 +375,11 @@ var I18N_ZH = {
   'settings.assetsTip': '扫描 assets/ 中未被任何笔记引用的孤儿文件（已删除笔记的引用仍计入保护，宁留勿删）',
   'settings.assetsTipT': '预览 assets/ 中未被任何笔记引用的孤儿文件，勾选后删除（dry-run 先行，零写入）',
   'settings.pruneBtn': '清理…',
+  /* 文档安全 S4（notes-052-autodetect-i18n）：设置卡「数据与存储」组——保存时机密检测建议开关（缺省开；仅管建议不管保护） */
+  'settings.secretDetect': '保存时检测疑似机密（建议标记）',
+  'settings.secretDetectTip': '保存笔记时自动检测疑似凭据（密码/密钥/令牌及 AWS·OpenAI·GitHub 等裸凭据），命中后编辑器顶部建议一键标记为机密区；关闭仅停止冒泡建议——已标记机密区的打码/避让/取回门禁不受任何影响（缺省开启）',
+  'settings.secretDetectOn': '已开启：保存时检测疑似机密并建议标记',
+  'settings.secretDetectOff': '已关闭保存时检测建议（已标记机密区的保护不变）',
   'settings.suggest': '整理建议',
   'settings.suggestTip': '速记组归档 / 过期未引用清理 / 孤儿笔记候选 / 日志卫生提名（只提名不自动执行）',
   'settings.suggestTipClient': '速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）',
