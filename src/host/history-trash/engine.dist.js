@@ -177,7 +177,9 @@
     }
     // 复制 <srcDir>/.history 全树（或仅 onlyId 一本笔记）到 <dstDir>/.history：导出 includeHistory / 导入前备份 / 导入合并共用。
     // 快照是纯文本（writeText 随写递归建目录）；0 字节墓碑不进出；skipExisting=同名快照跳过（导入合并只增不改）；返回复制文件数
-    async function copyHistoryDir(srcDir, dstDir, skipExisting, onlyId) {
+    // maskSpans（文档安全 S2 notes-052-pipeline-mask）：true = 文件内容层 secret span → 占位行（导出快照含历史时的同形态打码；
+    //   导入合并/导入前备份恒不 mask——只增不改的本地安全网语义，明文不出 NOTES_DIR）
+    async function copyHistoryDir(srcDir, dstDir, skipExisting, onlyId, maskSpans) {
       let copied = 0
       let noteIds = []
       if (onlyId) {
@@ -194,8 +196,9 @@
           const name = en && en.name
           if (!name || !isFinite(histNameTs(name))) continue
           try {
-            const c = await fs.readText(await fs.resolve(path.join(srcDir, '.history', noteId, name)))
+            let c = await fs.readText(await fs.resolve(path.join(srcDir, '.history', noteId, name)))
             if (!c) continue   // 0 字节墓碑不进出
+            if (maskSpans === true) c = maskSecretSpans(c)   // S2 导出打码：历史快照同形态占位
             const dstFt = await fs.resolve(path.join(dstDir, '.history', noteId, name))
             if (skipExisting && await fs.stat(dstFt)) continue
             await fs.writeText(dstFt, c, undefined, undefined, getPolicy())

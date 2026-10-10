@@ -110,10 +110,15 @@
         for (const n of cache.values()) { if (!n.deleted && (n.kind || 'note') === 'log') logCount++ }
         // 空判：约定零命中 + 无挂载行 + 无日志计数 → 整段为空不注入
         if (conventions.length === 0 && refLines.length === 0 && logCount === 0) { if (sidOverride === undefined) lastInjectChars = 0; return EMPTY }
-        // 敏感脱敏：sensitive=true 的约定正文按行打码（键保留值遮蔽，见 sensitive-helpers 块），计数用于尾部提示行
-        let maskedCount = 0
+        // 敏感脱敏：sensitive=true 的约定正文按行打码（键保留值遮蔽，见 sensitive-helpers 块），计数用于尾部提示行；
+        //   文档安全 S2（notes-052-pipeline-mask）：secret span 恒打码（不要求篇级 sensitive——span 独立生效）；
+        //   span 先整块占位、行级打码只跑良性残余（span 打码优先级高于行级——span 内不再出 ******）
+        let maskedCount = 0, spanMaskedCount = 0
         const block = (n) => {
-          const bodyTrim = String(n.body || '').trim()
+          const rawBody = String(n.body || '').trim()
+          const spanOut = maskSecretSpans(rawBody)
+          if (spanOut !== rawBody) spanMaskedCount++
+          const bodyTrim = spanOut
           const bodyOut = n.sensitive === true ? (maskedCount++, maskSensitiveBody(bodyTrim, n.id)) : bodyTrim
           return '- [' + n.id + '] ' + String(n.title || 'Untitled').replace(/[\r\n]+/g, ' ') + '\n  ' + bodyOut.replace(/\n/g, '\n  ')
         }
@@ -146,6 +151,8 @@
         let tailLines = sigLine ? '\n\n' + sigLine : ''
         if (droppedRefs > 0) tailLines += '\n\n…另有 ' + droppedRefs + ' 条目录行超出预算未注入（note_search 可检索）'
         if (maskedCount > 0) tailLines += '\n\n（其中 ' + maskedCount + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）'
+        // 文档安全 S2：机密区（secret span）打码计数行——与敏感计数行同款尾部提示口径
+        if (spanMaskedCount > 0) tailLines += '\n\n（其中 ' + spanMaskedCount + ' 条含机密区已脱敏，明文经 note_get reveal 获取）'
         // 图片路径消歧（img-path-hint 块）：实际注入的约定正文含 assets/ 图片引用时，尾部追加一次绝对路径提示（全量只出一次）
         if (conventions.some(function (n) { return bodyHasImageRef(n.body) })) tailLines += '\n\n' + assetsHintLine(NOTES_DIR)
         full += tailLines

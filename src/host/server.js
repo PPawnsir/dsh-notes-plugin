@@ -62,10 +62,25 @@
           return { src: src.replace(/\r\n/g, '\n') }
         }
         // host 源下发：src/host/** 按 manifest.dev.js 逐字节拼接（与 host.js 引导壳同一拼接规则；P2·2 起 host-impl.js 已拆为模块树）
+        // @shared/<file>#<marker> 条目 = src/shared/<file> 标记区间切片（文档安全 S2 notes-052-pipeline-mask 物理单源；与 host.js / concat-host.cjs 同一规则）
         const hmtext = await fs.readText(await fs.resolve(PLUGIN_DIR + '\\src\\host\\manifest.dev.js'))
         const hlist = (String(hmtext).match(/'[^'\n]+'/g) || []).map(s => s.slice(1, -1))
         let hsrc = ''
-        for (const rel of hlist) hsrc += await fs.readText(await fs.resolve(PLUGIN_DIR + '\\src\\host\\' + rel.replace(/\//g, '\\')))
+        for (const rel of hlist) {
+          if (rel.indexOf('@shared/') === 0) {
+            const hHash = rel.indexOf('#')
+            const hFile = (hHash >= 0 ? rel.slice('@shared/'.length, hHash) : rel.slice('@shared/'.length)).replace(/\//g, '\\')
+            const hShared = String(await fs.readText(await fs.resolve(PLUGIN_DIR + '\\src\\shared\\' + hFile))).replace(/\r\n/g, '\n')
+            if (hHash < 0) { hsrc += hShared; continue }
+            const hMarker = rel.slice(hHash + 1)
+            const hb = '// ===== ' + hMarker + ' BEGIN', he = '// ===== ' + hMarker + ' END'
+            const hi = hShared.indexOf(hb), hj = hShared.indexOf(he)
+            if (hi < 0 || hj < hi) throw new Error('notes-src: @shared 切片标记缺失：' + rel)
+            hsrc += hShared.slice(hi, hj + he.length) + '\n'
+          } else {
+            hsrc += await fs.readText(await fs.resolve(PLUGIN_DIR + '\\src\\host\\' + rel.replace(/\//g, '\\')))
+          }
+        }
         return { src: hsrc.replace(/\r\n/g, '\n') }
       } catch (e) { return { error: String(e.message || e) } }
     }))

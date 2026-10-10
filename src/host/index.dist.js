@@ -74,6 +74,13 @@
           //   卡⑧起与 bumpUseCount 共用遥测 2s 防抖单定时器（facets.use 总计 + byDay.get 日明细分记账，同盘同 flush）
           _recallHit('get', [n.id])
           if (uc !== null) n.useCount = uc
+          // 文档安全 S2（notes-052-pipeline-mask）：note_get 工具面缺省打码 secret span——占位同注入形态 + 响应附 spanCount 计数；
+          //   明文经 reveal 参数取回（reveal 是 S3 卡，工具描述随之更新——本卡只落占位+计数）。浅拷贝出体不污染缓存对象；
+          //   notes-get RPC 面不动（面板编辑链路仍是明文，篇级 sensitive 打码语义原样——note_get 仍是敏感篇的明文取回通道）
+          const s2Spans = stripSecretSpans(String(n.body || ''))
+          if (s2Spans.count > 0) {
+            return { note: Object.assign({}, n, { body: maskSecretSpans(String(n.body || '')), spanCount: s2Spans.count }) }
+          }
           return { note: n }
         }
         catch (e) { return { error: String(e.message || e) } }

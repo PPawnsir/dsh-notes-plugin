@@ -13,6 +13,7 @@
 // 序位 = 标识符可见序：后位可引用前位顶层标识符（§8.4.2），check/sections/45-host-modular.cjs 锁定序位。
 'kernel/head.js'
 'kernel/format.js'
+'@shared/editor-kernel.js#secret-span'
 'inject/sensitive-helpers.js'
 'kernel/front-matter.js'
 'kernel/session-ctx.js'

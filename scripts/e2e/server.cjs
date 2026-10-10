@@ -545,11 +545,13 @@ function handleRpc(state, method, args) {
       return { ok: true, id: n.id, sessionId: rec.sessionId, sessionName: rec.sessionName, queued: false, dispatch: rec }
     }
     case 'notes-export': {
-      /* 0.4.8 契约对账：键集对齐 host _export（{exported, foldersFile, telemetry, assets, target}——无 ok 键；
-         旧 mock 多 ok 缺 foldersFile/telemetry/assets 是漂移）；空 dir 错误形态同 host（文案顺手对齐） */
+      /* 0.4.8 契约对账：键集对齐 host _export（{exported, foldersFile, telemetry, assets, target, maskedSpans}——无 ok 键；
+         旧 mock 多 ok 缺 foldersFile/telemetry/assets 是漂移）；空 dir 错误形态同 host（文案顺手对齐）。
+         文档安全 S2（notes-052-pipeline-mask）：maskedSpans = 缺省导出打码的机密区总数（host 恒带；mock 无落盘点恒 0——
+         键集契约面，数据内容面允许简化）+ includeSecret 明文开关入参透传（host _export 第三参） */
       const dir = String((args && args.dir) || '').trim()
       if (!dir) return { error: 'notes-export 需要 dir（目标目录）' }
-      return { exported: notes.filter(n => !n.deleted).length, foldersFile: true, telemetry: false, assets: 0, target: dir }
+      return { exported: notes.filter(n => !n.deleted).length, foldersFile: true, telemetry: false, assets: 0, target: dir, maskedSpans: 0 }
     }
     case 'notes-history': return { versions: [] }
     case 'notes-ai-organize': {

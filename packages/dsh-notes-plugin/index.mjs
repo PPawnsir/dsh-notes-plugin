@@ -177,6 +177,44 @@ export function apply(ctx) {
     }
     // ==== topic-tag-merge END ====
 
+// ===== secret-span BEGIN =====（文档安全 S2 notes-052-pipeline-mask：本标记区间 = host 消费管线切片——host manifest 的 @shared 条目
+//   按此标记逐字节纳入 host 作用域（物理单源：host 六面消费与编辑器渲染共用下方唯一 parseSecretSpans，零私有拷贝零私有正则））=====
+// 口径与 renderMarkdown 围栏扫描互为镜像（双函数一致性由 check 节 129 锁定）：
+//   · 仅顶格（列 0）```secret 是机密 span；缩进的 ```secret 不算（按普通正文解析，渲染面无模糊——字面量保守口径）
+//   · 闭合围栏 = 后续首个顶格 ``` 行（语言位任意）；无闭合行 → EOF 兜底（span 延伸至文末）
+//   · 普通 fence 内出现的列 0 ```secret 行只作该 fence 的闭合行（不另开 span）——与渲染器同纪律
+//   · 返回 [{start,end}]：start = 开栏行首字符偏移；end = 闭栏行行尾偏移（不含行终结符；EOF 兜底 = body.length）
+//     body.slice(start,end) = 完整 fence 源（含开闭栏行）——host 侧 S2 注入脱敏的掩蔽区间数据源
+function parseSecretSpans(body) {
+  var src = String(body == null ? '' : body), out = [], n = src.length
+  function fenceLineAt(p) {   // 该行是顶格 ``` 行则返回行内容（去行尾 \r），否则 null
+    if (p + 3 > n || src.charCodeAt(p) !== 0x60 || src.charCodeAt(p + 1) !== 0x60 || src.charCodeAt(p + 2) !== 0x60) return null
+    var q = src.indexOf('\n', p)
+    return src.slice(p, q < 0 ? n : q).replace(/\r$/, '')
+  }
+  var p = 0
+  while (p < n) {
+    var ln = fenceLineAt(p)
+    if (ln === null) { var nl0 = src.indexOf('\n', p); p = nl0 < 0 ? n : nl0 + 1; continue }
+    var lang = ln.replace(/^\x60{3}/, '').trim()
+    // 找闭合围栏行：首个后续顶格 ``` 行；找不到 = EOF 兜底
+    var q2 = src.indexOf('\n', p), k = q2 < 0 ? n : q2 + 1, closeEnd = -1
+    while (k < n) {
+      if (fenceLineAt(k) !== null) { var q3 = src.indexOf('\n', k); closeEnd = q3 < 0 ? n : q3; break }
+      var nl1 = src.indexOf('\n', k); k = nl1 < 0 ? n : nl1 + 1
+    }
+    // span 终点 = 行尾字符偏移（不含行终结符）：CRLF 的 \r 属终结符一并剔除（与渲染器 LF 归一口径对齐——
+    // data-md-src 镜像不变量在 LF 正文逐字节成立）；EOF 兜底同理剥尾随 \r
+    var spanEnd = closeEnd >= 0 ? closeEnd : n
+    if (spanEnd > p && src.charCodeAt(spanEnd - 1) === 13) spanEnd--
+    if (lang === 'secret') out.push({ start: p, end: spanEnd })
+    // 普通 fence 照常跳过闭合行继续扫描；secret span 同口径（闭合行之后是新的扫描起点）
+    // closeEnd = 闭合行行尾终结符偏移（或文末 n）：终结符存在则下一行从 closeEnd+1 起，否则扫描结束
+    p = closeEnd >= 0 ? (closeEnd < n ? closeEnd + 1 : n) : n
+  }
+  return out
+}
+// ===== secret-span END
     // ==== sensitive-helpers BEGIN ====（本块三函数集中放置，check.js 提取本标记区间 eval 单测；host-impl.js 与 packages/dsh-notes-plugin/index.mjs 双包逐字节一致，改动必须双边同步）
     // 背景：sensitive=true 的笔记正文可能含明文密码/密钥；inject=true 会把全文带进所有会话的系统提示（泄露面大）。
     // 策略：注入渲染（renderInjected 合并目录段，0.4.3③）时对 sensitive=true 笔记的正文按行打码——保留键名与结构、只遮值；
@@ -219,6 +257,44 @@ export function apply(ctx) {
     }
     function suggestSensitive(text) {
       return maskSensitiveBody(text, 'n-sens-check') !== String(text == null ? '' : text)
+    }
+    // ==== 文档安全 S2（notes-052-pipeline-mask）：secret span 消费助手族 ====
+    // 六面消费管线（① 注入打码 ② note_get 缺省打码 ③ 检索命中/摘要 ④ 向量切块 ⑤ AI 整理/分类 ⑥ 导出打码）统一接
+    // S1 的 parseSecretSpans（src/shared/editor-kernel.js 物理单源，host 经 manifest @shared 切片纳入本作用域）——
+    // 本块零私有 span 正则；span 独立于篇级 sensitive 生效（sensitive=true 且无 span 的行级打码行为原样，红线不动），
+    // span 打码优先级高于行级：消费方先整块占位/剥除，行级 ****** 只跑良性残余（span 内不再出 ******）。
+    // 占位形态 = 整块替换为单行「🔒 机密区（N 行，note_get reveal 获取）」（N = span 源行数含开闭栏行）——比行级 ****** 更干净（整块本来就该藏）。
+    // 分块 eval 语境（check 节提取本标记区间单测）内核缺位恒等降级：mask/strip 双双 no-op，零 span 语义 = 行为原样（S1 沙箱空降卫同款纪律）。
+    function secretSpanList(body) {
+      return (typeof parseSecretSpans === 'function' ? parseSecretSpans(body) : null) || []
+    }
+    function secretSpanPlaceholder(lineCount) { return '🔒 机密区（' + lineCount + ' 行，note_get reveal 获取）' }
+    // 占位打码（① 注入 ② note_get ⑥ 导出三面同形态占位）：每个 span 整块替换为占位单行
+    function maskSecretSpans(body) {
+      const src = String(body == null ? '' : body)
+      const spans = secretSpanList(src)
+      if (!spans.length) return src
+      let out = '', p = 0
+      for (let i = 0; i < spans.length; i++) {
+        out += src.slice(p, spans[i].start) + secretSpanPlaceholder(src.slice(spans[i].start, spans[i].end).split('\n').length)
+        p = spans[i].end
+      }
+      return out + src.slice(p)
+    }
+    // 剥除（④ 向量切块 ③ 检索摘要绕行数据源）：span 区间整段移除，返回 { text, count }——count = span 数
+    function stripSecretSpans(body) {
+      const src = String(body == null ? '' : body)
+      const spans = secretSpanList(src)
+      if (!spans.length) return { text: src, count: 0 }
+      let out = '', p = 0
+      for (let i = 0; i < spans.length; i++) { out += src.slice(p, spans[i].start); p = spans[i].end }
+      return { text: out + src.slice(p), count: spans.length }
+    }
+    // 送 LLM 前剥除（⑤ classify×2 调用面 + organize 三处消费）：剥除后追加一行「[已省略 N 处机密区]」让 LLM 知道有省略；零 span 逐字节原样
+    function stripSecretSpansForLlm(body) {
+      const r = stripSecretSpans(body)
+      if (!r.count) return r.text
+      return String(r.text).replace(/\s+$/, '') + '\n\n[已省略 ' + r.count + ' 处机密区]'
     }
     // ==== sensitive-helpers END ====
 
@@ -1265,7 +1341,9 @@ export function apply(ctx) {
     }
     // 复制 <srcDir>/.history 全树（或仅 onlyId 一本笔记）到 <dstDir>/.history：导出 includeHistory / 导入前备份 / 导入合并共用。
     // 快照是纯文本（writeText 随写递归建目录）；0 字节墓碑不进出；skipExisting=同名快照跳过（导入合并只增不改）；返回复制文件数
-    async function copyHistoryDir(srcDir, dstDir, skipExisting, onlyId) {
+    // maskSpans（文档安全 S2 notes-052-pipeline-mask）：true = 文件内容层 secret span → 占位行（导出快照含历史时的同形态打码；
+    //   导入合并/导入前备份恒不 mask——只增不改的本地安全网语义，明文不出 NOTES_DIR）
+    async function copyHistoryDir(srcDir, dstDir, skipExisting, onlyId, maskSpans) {
       let copied = 0
       let noteIds = []
       if (onlyId) {
@@ -1282,8 +1360,9 @@ export function apply(ctx) {
           const name = en && en.name
           if (!name || !isFinite(histNameTs(name))) continue
           try {
-            const c = await fs.readText(await fs.resolve(path.join(srcDir, '.history', noteId, name)))
+            let c = await fs.readText(await fs.resolve(path.join(srcDir, '.history', noteId, name)))
             if (!c) continue   // 0 字节墓碑不进出
+            if (maskSpans === true) c = maskSecretSpans(c)   // S2 导出打码：历史快照同形态占位
             const dstFt = await fs.resolve(path.join(dstDir, '.history', noteId, name))
             if (skipExisting && await fs.stat(dstFt)) continue
             await fs.writeText(dstFt, c, undefined, undefined, getPolicy())
@@ -1997,7 +2076,8 @@ export function apply(ctx) {
         if (!r || !r.id) return
         perfStats.classify++
         const ct0 = Date.now()
-        return classifyTopic(text).then(async (topic) => {
+        // 文档安全 S2（notes-052-pipeline-mask）：分类送 LLM 前剥除 secret span（三处消费之一——速记分类调用面）
+        return classifyTopic(stripSecretSpansForLlm(text)).then(async (topic) => {
           perfStats.classifyMs += Date.now() - ct0
           try {
             const newTitle = r.merged ? undefined : buildQuickTitle({ sessionId: r.sid, cwd: r.cwd }, topic)
@@ -2139,7 +2219,8 @@ export function apply(ctx) {
       await persistNote(noteObj)
       // 无 titleHint 时异步分类回填主题/标题（不阻塞交互，复用 classifyTopic 模式）
       if (!meta.titleHint) {
-        classifyTopic(text).then(async function (topic2) {
+        // 文档安全 S2（notes-052-pipeline-mask）：分类送 LLM 前剥除 secret span（三处消费之二——指令式速记分类调用面）
+        classifyTopic(stripSecretSpansForLlm(text)).then(async function (topic2) {
           try {
             const newTitle = buildQuickTitle({ sessionId: sid, cwd: cw }, topic2)
             await _update(id, newTitle, undefined, undefined, topic2)
@@ -2396,15 +2477,18 @@ export function apply(ctx) {
     _vectorRegisterBackend({ id: 'bge-small-zh-q8', dim: 512, minScore: 0.50, hostEmbed: true, embed: _vectorBgeEmbed })
     // bodyHash：全文稳定 hash（FNV-1a 32bit + 长度，纯 JS 无 crypto 依赖——vm 沙箱无 node:crypto，同 history engine 先例）。
     //   任何块变 → 全量重算该笔记（简化一致性）；只用于新鲜度锚，碰撞代价 = 漏一次重算或多一次重算（可接受）。
+    //   文档安全 S2（notes-052-pipeline-mask）：新鲜度锚 = 剥除 secret span 后的可索引文本——① span-only 编辑不触发重算
+    //   （机密本就不进索引，索引内容未变）；② 含 span 的存量索引 hash 突变 → 下次 drain/rebuild 一次性强制重算对齐剥除派生（零 span 笔记 hash 不变零扰动）。
     function _vectorBodyHash(body) {
-      const s = String(body == null ? '' : body)
+      const s = stripSecretSpans(String(body == null ? '' : body)).text
       let h = 0x811c9dc5
       for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0
       return s.length.toString(36) + '.' + h.toString(36)
     }
     // 分段嵌入：正文按段落边界切成 ≤VECTOR_CHUNK_MAX 字符块；短笔记单块零开销；单段超长硬切；空正文零块。
+    //   文档安全 S2：切块前剥 secret span——良性部分照常入索引（这篇笔记的可搜性不陪葬——span 相对篇级 sensitive 的核心体验优势）。
     function _vectorChunks(body) {
-      const s = String(body == null ? '' : body)
+      const s = stripSecretSpans(String(body == null ? '' : body)).text
       const MAX = VECTOR_CHUNK_MAX
       const out = []
       if (!s) return out
@@ -2825,9 +2909,12 @@ export function apply(ctx) {
     //   有才在【当前草稿】前插【用户追加指令】段，空/缺省路径 prompt 与二期现行逐字节等价（节 84 行为级断言锁定）；system 提示词不动。
     // 输出容错：剥离 ```markdown 围栏；空结果/LLM 不可用/未配置模型 → error（client 保留原文不动）。
     async function _aiOrganize(args) {
-      const body = args && typeof args.body === 'string' ? args.body : ''
+      let body = args && typeof args.body === 'string' ? args.body : ''
       if (!body.trim()) return { error: '正文为空，无可整理内容' }
       await loadSettings()
+      // 文档安全 S2（notes-052-pipeline-mask）：送 LLM 前剥除 secret span——剥除后追加一行「[已省略 N 处机密区]」让 LLM 知道有省略；
+      //   零 span 时 body 逐字节不变（既有整理行为原样），长度上限按剥除后正文计算（入 prompt 的就是它）
+      body = stripSecretSpansForLlm(body)
       // 0.4.7-B⑦（notes-047-ux）：长度上限生效值 = 用户 settings.organizeMaxChars(>0) || 模型表 || 12000 回落；超限 error 文案带生效值
       const orgMax = organizeMaxChars()
       if (body.length > orgMax) return { error: '正文过长（' + body.length + ' 字，上限 ' + orgMax + ' 字），请分段整理' }
@@ -3147,7 +3234,22 @@ export function apply(ctx) {
         if (fsNode.existsSync(hostManifest)) {
           const hlist = (String(fsNode.readFileSync(hostManifest, 'utf8')).match(/'[^'\n]+'/g) || []).map(s => s.slice(1, -1))
           let hsrc = ''
-          for (const rel of hlist) hsrc += fsNode.readFileSync(path.join(LEGACY_PLUGIN_DIR, 'src', 'host', rel), 'utf8')
+          // @shared/<file>#<marker> 条目 = src/shared/<file> 标记区间切片（文档安全 S2 notes-052-pipeline-mask 物理单源；与 host.js / concat-host.cjs 同一规则）
+          for (const rel of hlist) {
+            if (rel.indexOf('@shared/') === 0) {
+              const hHash = rel.indexOf('#')
+              const hFile = rel.slice('@shared/'.length, hHash >= 0 ? hHash : undefined)
+              const hShared = String(fsNode.readFileSync(path.join(LEGACY_PLUGIN_DIR, 'src', 'shared', hFile), 'utf8')).replace(/\r\n/g, '\n')
+              if (hHash < 0) { hsrc += hShared; continue }
+              const hMarker = rel.slice(hHash + 1)
+              const hb = '// ===== ' + hMarker + ' BEGIN', he = '// ===== ' + hMarker + ' END'
+              const hi = hShared.indexOf(hb), hj = hShared.indexOf(he)
+              if (hi < 0 || hj < hi) throw new Error('notes-src: @shared 切片标记缺失：' + rel)
+              hsrc += hShared.slice(hi, hj + he.length) + '\n'
+            } else {
+              hsrc += fsNode.readFileSync(path.join(LEGACY_PLUGIN_DIR, 'src', 'host', rel), 'utf8')
+            }
+          }
           return { src: hsrc.replace(/\r\n/g, '\n') }
         }
         return { src: fsNode.readFileSync(path.join(PKG_DIR, 'index.mjs'), 'utf8') }
@@ -5637,10 +5739,15 @@ export function apply(ctx) {
         for (const n of cache.values()) { if (!n.deleted && (n.kind || 'note') === 'log') logCount++ }
         // 空判：约定零命中 + 无挂载行 + 无日志计数 → 整段为空不注入
         if (conventions.length === 0 && refLines.length === 0 && logCount === 0) { if (sidOverride === undefined) lastInjectChars = 0; return EMPTY }
-        // 敏感脱敏：sensitive=true 的约定正文按行打码（键保留值遮蔽，见 sensitive-helpers 块），计数用于尾部提示行
-        let maskedCount = 0
+        // 敏感脱敏：sensitive=true 的约定正文按行打码（键保留值遮蔽，见 sensitive-helpers 块），计数用于尾部提示行；
+        //   文档安全 S2（notes-052-pipeline-mask）：secret span 恒打码（不要求篇级 sensitive——span 独立生效）；
+        //   span 先整块占位、行级打码只跑良性残余（span 打码优先级高于行级——span 内不再出 ******）
+        let maskedCount = 0, spanMaskedCount = 0
         const block = (n) => {
-          const bodyTrim = String(n.body || '').trim()
+          const rawBody = String(n.body || '').trim()
+          const spanOut = maskSecretSpans(rawBody)
+          if (spanOut !== rawBody) spanMaskedCount++
+          const bodyTrim = spanOut
           const bodyOut = n.sensitive === true ? (maskedCount++, maskSensitiveBody(bodyTrim, n.id)) : bodyTrim
           return '- [' + n.id + '] ' + String(n.title || 'Untitled').replace(/[\r\n]+/g, ' ') + '\n  ' + bodyOut.replace(/\n/g, '\n  ')
         }
@@ -5673,6 +5780,8 @@ export function apply(ctx) {
         let tailLines = sigLine ? '\n\n' + sigLine : ''
         if (droppedRefs > 0) tailLines += '\n\n…另有 ' + droppedRefs + ' 条目录行超出预算未注入（note_search 可检索）'
         if (maskedCount > 0) tailLines += '\n\n（其中 ' + maskedCount + ' 条含敏感信息已脱敏，原文用 note_get 按 id 获取）'
+        // 文档安全 S2：机密区（secret span）打码计数行——与敏感计数行同款尾部提示口径
+        if (spanMaskedCount > 0) tailLines += '\n\n（其中 ' + spanMaskedCount + ' 条含机密区已脱敏，明文经 note_get reveal 获取）'
         // 图片路径消歧（img-path-hint 块）：实际注入的约定正文含 assets/ 图片引用时，尾部追加一次绝对路径提示（全量只出一次）
         if (conventions.some(function (n) { return bodyHasImageRef(n.body) })) tailLines += '\n\n' + assetsHintLine(NOTES_ROOT)
         full += tailLines
@@ -6435,12 +6544,23 @@ export function apply(ctx) {
     // ==== search-helpers BEGIN ====（搜索命中字段 + 组合过滤：host-impl.js 与 packages/dsh-notes-plugin/index.mjs 双包逐字节一致，改动必须双边同步；check.js 提取本标记区间 eval 单测）
     // 命中字段（相关度档位数据源，notes-search 随 slim 结果返回 matches 数组）：标题命中 > 标签命中 > 正文命中；
     // topic 命中不计档（返回空数组——相关度排序时排最末；该笔记仍因 hay 含 topic 而被搜到，向后兼容旧行为）
+    // 文档安全 S2（notes-052-pipeline-mask）：检索双面绕行 secret span——命中判定与摘要取窗均走打码体（span 内词永不命中、
+    //   机密永不进摘要；标题/标签/良性正文照常）。助手缺位（check 分块 eval 语境）恒等降级 = 零 span 语义行为原样。
+    function _s2Masked(s) { return typeof maskSecretSpans === 'function' ? maskSecretSpans(s) : String(s == null ? '' : s) }
+    // 语义胜出 chunk 若整块落在 span 区间内（旧索引/外部回写残留）→ 摘要退回正文开头良性段；助手缺位（分块 eval 语境）恒 false = 行为原样
+    function _s2ChunkInSpan(body, chunkText) {
+      if (typeof secretSpanList !== 'function') return false
+      const src = String(body == null ? '' : body)
+      const spans = secretSpanList(src)
+      for (let i = 0; i < spans.length; i++) { if (src.slice(spans[i].start, spans[i].end).indexOf(chunkText) >= 0) return true }
+      return false
+    }
     function searchMatchFields(n, q) {
       const fields = []
       if (!q) return fields
       if ((n.title || '').toLowerCase().indexOf(q) >= 0) fields.push('title')
       if ((n.tags || []).join(' ').toLowerCase().indexOf(q) >= 0) fields.push('tags')
-      if ((n.body || '').toLowerCase().indexOf(q) >= 0) fields.push('body')
+      if (_s2Masked(n.body).toLowerCase().indexOf(q) >= 0) fields.push('body')
       return fields
     }
     // 组合过滤（供筛选面板/工具消费，三态布尔）：true=仅命中 / false=仅排除 / undefined=不过滤；kind 由 _search 既有参数承担
@@ -6460,7 +6580,7 @@ export function apply(ctx) {
     const SEARCH_EXCERPT_CTX = 50
     const SEARCH_EXCERPT_HEAD = 80
     function searchExcerpt(n, q, semChunkText) {
-      const body = String((n && n.body) || '')
+      const body = _s2Masked((n && n.body) || '')   // 文档安全 S2：摘要取窗绕行 secret span——窗口在打码体上取（机密永不进摘要）
       if (!q) return null
       const bl = body.toLowerCase()
       const idx = bl.indexOf(q)
@@ -6479,7 +6599,8 @@ export function apply(ctx) {
         }
         return { text: text, marks: marks }
       }
-      if (typeof semChunkText === 'string' && semChunkText) {
+      // 文档安全 S2：语义胜出 chunk 若整块在 span 区间内（旧索引/外部回写残留）→ 摘要退回正文开头良性段（打码体）
+      if (typeof semChunkText === 'string' && semChunkText && !_s2ChunkInSpan((n && n.body) || '', semChunkText)) {
         return { text: semChunkText.slice(0, SEARCH_EXCERPT_HEAD) + (semChunkText.length > SEARCH_EXCERPT_HEAD ? '…' : ''), marks: [] }
       }
       if (body) {
@@ -6501,7 +6622,8 @@ export function apply(ctx) {
         if (kind && n.kind !== kind) return false
         if (!searchPassFilters(n, filters)) return false
         if (q) {
-          const hay = ((n.title || '') + ' ' + (n.body || '') + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ')).toLowerCase()
+          // 文档安全 S2：hay 正文走打码体——span 内词永不命中该笔记（标题/标签/topic/良性正文照常）
+          const hay = ((n.title || '') + ' ' + _s2Masked(n.body) + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ')).toLowerCase()
           if (hay.indexOf(q) < 0) return false
         }
         return true
@@ -6876,11 +6998,21 @@ export function apply(ctx) {
     // writeText 原子写会递归创建父目录，目标目录不存在时随首个文件写入自动建好；
     // 无 assets/ 的旧库：listAssets 返回 []，assets=0，零回归。
     // opts.includeHistory：连带 .history 快照历史（导出默认不含——历史是本地安全网不随导出物流转；导入前全量备份恒带）
+    // opts.maskSecretSpans（文档安全 S2 notes-052-pipeline-mask）：true = 文件内容层 secret span → 占位行（导出快照缺省打码；
+    //   n-*.md 与 .history 快照同形态打码）。返回 maskedFiles/maskedSpans = 正文文件的打码文件数/机密区总数（历史打码随行不计数）；
+    //   明文导出 includeSecret 开关走 _export 调用面。导入前备份恒不 mask（本地安全网语义，明文不出 NOTES_DIR）。
     async function copyNotesDir(targetDir, opts) {
+      const o = opts || {}
       let copied = 0
+      let maskedFiles = 0
+      let maskedSpans = 0
       for (const name of await listNoteMd(NOTES_DIR)) {
         try {
-          const c = await fs.readText(await fs.resolve(path.join(NOTES_DIR, name)))
+          let c = await fs.readText(await fs.resolve(path.join(NOTES_DIR, name)))
+          if (o.maskSecretSpans === true) {
+            const spans = secretSpanList(c)
+            if (spans.length) { c = maskSecretSpans(c); maskedFiles++; maskedSpans += spans.length }
+          }
           await fs.writeText(await fs.resolve(path.join(targetDir, name)), c, undefined, undefined, getPolicy())
           copied++
         } catch (e) { console.error('notes: copy failed', name, e) }
@@ -6901,8 +7033,8 @@ export function apply(ctx) {
         telemetry = true
       } catch (e) { /* telemetry.json 缺失/不可读 → 跳过（遥测允许重来） */ }
       const assets = await copyAssetsDir(NOTES_DIR, targetDir, false)
-      const history = opts && opts.includeHistory ? await copyHistoryDir(NOTES_DIR, targetDir, false) : 0
-      return { copied, foldersFile, telemetry, assets, history }
+      const history = o.includeHistory ? await copyHistoryDir(NOTES_DIR, targetDir, false, undefined, o.maskSecretSpans === true) : 0
+      return { copied, foldersFile, telemetry, assets, history, maskedFiles, maskedSpans }
     }
 
     // 扫描导入目录（只读不写）：n-*.md 逐条解析 front-matter 取 id（缺 id 按文件名兜底）+ folders.json；
@@ -6942,14 +7074,16 @@ export function apply(ctx) {
     // notes-export：NOTES_DIR 全库快照 → <dir>/dsh-notes-export-<ts>/（不打包不压缩，目录即格式；dir 不存在则随写入自建）
     // 快照含 n-*.md + folders.json + assets/（图片资产连带；无 assets 的旧库 assets=0）+ telemetry.json（遥测 sidecar，卡⑤）；
     // .history 快照历史默认不含（本地安全网不随导出物流转），includeHistory=true 时连带（返回 history 文件计数）
-    async function _export(dir, includeHistory) {
+    // 文档安全 S2（notes-052-pipeline-mask）：导出快照缺省 span 同形态占位（maskedSpans = 打码机密区总数，响应恒带供 toast 提示）；
+    //   includeSecret=true 才明文导出（显式开关，缺省关不反向——明文导出需显式勾选）
+    async function _export(dir, includeHistory, includeSecret) {
       const d = String(dir || '').trim().replace(/[\\/]+$/, '')
       if (!d) return { error: 'notes-export 需要 dir（目标目录）' }
       const info = await fs.stat(await fs.resolve(d))
       if (info && !(info.dir || info.type === 'directory')) return { error: '目标路径不是目录：' + d }
       const target = path.join(d, 'dsh-notes-export-' + tsStamp(new Date()))
-      const r = await copyNotesDir(target, { includeHistory: includeHistory === true })
-      const out = { exported: r.copied, foldersFile: r.foldersFile, telemetry: r.telemetry === true, assets: r.assets, target: target }
+      const r = await copyNotesDir(target, { includeHistory: includeHistory === true, maskSecretSpans: includeSecret !== true })
+      const out = { exported: r.copied, foldersFile: r.foldersFile, telemetry: r.telemetry === true, assets: r.assets, target: target, maskedSpans: r.maskedSpans || 0 }
       if (includeHistory === true) out.history = r.history
       return out
     }
@@ -7105,10 +7239,10 @@ export function apply(ctx) {
     }
 
 
-    // 全库导出（目录快照）：args={dir, includeHistory?} → <dir>/dsh-notes-export-<ts>/，返回 { exported, foldersFile, assets, target, history? }；
-    // .history 快照历史默认不含，includeHistory=true 连带
+    // 全库导出（目录快照）：args={dir, includeHistory?, includeSecret?} → <dir>/dsh-notes-export-<ts>/，返回 { exported, foldersFile, assets, target, maskedSpans, history? }；
+    // .history 快照历史默认不含，includeHistory=true 连带；includeSecret=true 明文导出（缺省 secret span 同形态占位——文档安全 S2）
     disposers.push(handle('notes-export', async (args) => {
-      try { return await _export(args && args.dir, !!(args && args.includeHistory)) } catch (e) { return { error: String(e.message || e) } }
+      try { return await _export(args && args.dir, !!(args && args.includeHistory), args && args.includeSecret === true) } catch (e) { return { error: String(e.message || e) } }
     }))
     // P3 单文件导出（拼接/分享）：args={dir, scope:{all?|folder?|tag?}, format:'md', toc?} → <dir>/dsh-notes-export-single-<ts>.md
     // （每篇 # 标题 + front-matter + 正文 + 篇间分隔线，可选目录；图片 base64 内联，>20MB 告警仍导出）
@@ -7209,6 +7343,13 @@ export function apply(ctx) {
           //   卡⑧起与 bumpUseCount 共用遥测 2s 防抖单定时器（facets.use 总计 + byDay.get 日明细分记账，同盘同 flush）
           _recallHit('get', [n.id])
           if (uc !== null) n.useCount = uc
+          // 文档安全 S2（notes-052-pipeline-mask）：note_get 工具面缺省打码 secret span——占位同注入形态 + 响应附 spanCount 计数；
+          //   明文经 reveal 参数取回（reveal 是 S3 卡，工具描述随之更新——本卡只落占位+计数）。浅拷贝出体不污染缓存对象；
+          //   notes-get RPC 面不动（面板编辑链路仍是明文，篇级 sensitive 打码语义原样——note_get 仍是敏感篇的明文取回通道）
+          const s2Spans = stripSecretSpans(String(n.body || ''))
+          if (s2Spans.count > 0) {
+            return { note: Object.assign({}, n, { body: maskSecretSpans(String(n.body || '')), spanCount: s2Spans.count }) }
+          }
           return { note: n }
         }
         catch (e) { return { error: String(e.message || e) } }

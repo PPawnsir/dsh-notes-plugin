@@ -10,6 +10,7 @@
 'head.js'
 'apply-head.js'
 'kernel/format.js'
+'@shared/editor-kernel.js#secret-span'
 'inject/sensitive-helpers.js'
 'kernel/front-matter.js'
 'kernel/session-ctx.js'

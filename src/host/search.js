@@ -1,12 +1,23 @@
     // ==== search-helpers BEGIN ====（搜索命中字段 + 组合过滤：host-impl.js 与 packages/dsh-notes-plugin/index.mjs 双包逐字节一致，改动必须双边同步；check.js 提取本标记区间 eval 单测）
     // 命中字段（相关度档位数据源，notes-search 随 slim 结果返回 matches 数组）：标题命中 > 标签命中 > 正文命中；
     // topic 命中不计档（返回空数组——相关度排序时排最末；该笔记仍因 hay 含 topic 而被搜到，向后兼容旧行为）
+    // 文档安全 S2（notes-052-pipeline-mask）：检索双面绕行 secret span——命中判定与摘要取窗均走打码体（span 内词永不命中、
+    //   机密永不进摘要；标题/标签/良性正文照常）。助手缺位（check 分块 eval 语境）恒等降级 = 零 span 语义行为原样。
+    function _s2Masked(s) { return typeof maskSecretSpans === 'function' ? maskSecretSpans(s) : String(s == null ? '' : s) }
+    // 语义胜出 chunk 若整块落在 span 区间内（旧索引/外部回写残留）→ 摘要退回正文开头良性段；助手缺位（分块 eval 语境）恒 false = 行为原样
+    function _s2ChunkInSpan(body, chunkText) {
+      if (typeof secretSpanList !== 'function') return false
+      const src = String(body == null ? '' : body)
+      const spans = secretSpanList(src)
+      for (let i = 0; i < spans.length; i++) { if (src.slice(spans[i].start, spans[i].end).indexOf(chunkText) >= 0) return true }
+      return false
+    }
     function searchMatchFields(n, q) {
       const fields = []
       if (!q) return fields
       if ((n.title || '').toLowerCase().indexOf(q) >= 0) fields.push('title')
       if ((n.tags || []).join(' ').toLowerCase().indexOf(q) >= 0) fields.push('tags')
-      if ((n.body || '').toLowerCase().indexOf(q) >= 0) fields.push('body')
+      if (_s2Masked(n.body).toLowerCase().indexOf(q) >= 0) fields.push('body')
       return fields
     }
     // 组合过滤（供筛选面板/工具消费，三态布尔）：true=仅命中 / false=仅排除 / undefined=不过滤；kind 由 _search 既有参数承担
@@ -26,7 +37,7 @@
     const SEARCH_EXCERPT_CTX = 50
     const SEARCH_EXCERPT_HEAD = 80
     function searchExcerpt(n, q, semChunkText) {
-      const body = String((n && n.body) || '')
+      const body = _s2Masked((n && n.body) || '')   // 文档安全 S2：摘要取窗绕行 secret span——窗口在打码体上取（机密永不进摘要）
       if (!q) return null
       const bl = body.toLowerCase()
       const idx = bl.indexOf(q)
@@ -45,7 +56,8 @@
         }
         return { text: text, marks: marks }
       }
-      if (typeof semChunkText === 'string' && semChunkText) {
+      // 文档安全 S2：语义胜出 chunk 若整块在 span 区间内（旧索引/外部回写残留）→ 摘要退回正文开头良性段（打码体）
+      if (typeof semChunkText === 'string' && semChunkText && !_s2ChunkInSpan((n && n.body) || '', semChunkText)) {
         return { text: semChunkText.slice(0, SEARCH_EXCERPT_HEAD) + (semChunkText.length > SEARCH_EXCERPT_HEAD ? '…' : ''), marks: [] }
       }
       if (body) {
@@ -67,7 +79,8 @@
         if (kind && n.kind !== kind) return false
         if (!searchPassFilters(n, filters)) return false
         if (q) {
-          const hay = ((n.title || '') + ' ' + (n.body || '') + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ')).toLowerCase()
+          // 文档安全 S2：hay 正文走打码体——span 内词永不命中该笔记（标题/标签/topic/良性正文照常）
+          const hay = ((n.title || '') + ' ' + _s2Masked(n.body) + ' ' + (n.topic || '') + ' ' + (n.tags || []).join(' ')).toLowerCase()
           if (hay.indexOf(q) < 0) return false
         }
         return true

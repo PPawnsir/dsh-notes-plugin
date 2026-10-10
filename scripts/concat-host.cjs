@@ -15,6 +15,9 @@
 //   manifest 注释中禁止出现单引号字符（同一规则的另一份实现：scripts/concat-client.cjs）。
 // 以 @shared-host/ 开头的条目解析到 src/shared-host/（双包物理共源块，§8.4.3 增强预留）：
 //   host 两态同为 apply 体 4 空格基座，共源文件原样纳入、无缩进提升（§8.4.1）。
+// 以 @shared/<file>#<marker> 开头的条目解析到 src/shared/<file> 的「// ===== <marker> BEGIN/END =====」标记区间切片
+//   （文档安全 S2 notes-052-pipeline-mask：host 消费管线与 client 编辑器共用 src/shared 同一物理源——零拷贝零漂移；
+//   与 host.js 引导壳 / server.js·server.dist.js notes-src 三处运行时读取器同一规则，改动必须四方同步）。
 'use strict'
 
 const fs = require('fs')
@@ -24,6 +27,7 @@ const path = require('path')
 const ROOT = path.resolve(__dirname, '..')
 const HOST_DIR = path.join(ROOT, 'src', 'host')
 const SHARED_HOST_DIR = path.join(ROOT, 'src', 'shared-host')
+const SHARED_DIR = path.join(ROOT, 'src', 'shared')
 const MANIFEST_DEV_PATH = path.join(HOST_DIR, 'manifest.dev.js')
 const MANIFEST_DIST_PATH = path.join(HOST_DIR, 'manifest.dist.js')
 
@@ -31,7 +35,7 @@ const MANIFEST_DIST_PATH = path.join(HOST_DIR, 'manifest.dist.js')
 function parseManifest(text) {
   const list = (String(text).match(/'[^'\n]+'/g) || []).map((s) => s.slice(1, -1))
   for (const rel of list) {
-    if (!/^(@shared-host\/)?[\w.\-/]+\.js$/.test(rel) || rel.indexOf('..') >= 0) {
+    if (!/^(@shared-host\/|@shared\/)?[\w.\-/]+\.js(?:#[\w-]+)?$/.test(rel) || rel.indexOf('..') >= 0) {
       throw new Error('[concat-host] manifest 非法条目：' + JSON.stringify(rel))
     }
   }
@@ -43,9 +47,21 @@ function readManifest(manifestPath) {
 }
 
 // @shared-host/ 条目：从 src/shared-host/ 原样读入（host 两态基座一致，无缩进提升——§8.4.1）
+// @shared/<file>#<marker> 条目：从 src/shared/<file> 提取标记区间切片（含 BEGIN/END 标记行；结尾补 \n 保证片段行边界——零插入零改写）
 function readPart(rel) {
   if (rel.indexOf('@shared-host/') === 0) {
     return fs.readFileSync(path.join(SHARED_HOST_DIR, rel.slice('@shared-host/'.length)), 'utf8')
+  }
+  if (rel.indexOf('@shared/') === 0) {
+    const hash = rel.indexOf('#')
+    const file = hash >= 0 ? rel.slice('@shared/'.length, hash) : rel.slice('@shared/'.length)
+    const text = fs.readFileSync(path.join(SHARED_DIR, file), 'utf8')
+    if (hash < 0) return text
+    const marker = rel.slice(hash + 1)
+    const b = '// ===== ' + marker + ' BEGIN', e = '// ===== ' + marker + ' END'
+    const i = text.indexOf(b), j = text.indexOf(e)
+    if (i < 0 || j < i) throw new Error('[concat-host] @shared 切片标记缺失：' + rel)
+    return text.slice(i, j + e.length) + '\n'
   }
   return fs.readFileSync(path.join(HOST_DIR, rel), 'utf8')
 }

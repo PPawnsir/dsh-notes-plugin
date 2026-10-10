@@ -1004,6 +1004,8 @@ function wikiLinksTo(body, id, title) { var ts = extractWikiTargets(body); retur
 // 反转义（esc 的逆）：行内文本已转义，双链 target 解析前须还原（否则含 & 的标题永不命中）
 function unesc(s) { return String(s).replace(/&(amp|lt|gt|quot|#39);/g, function (m, k) { return k === 'amp' ? '&' : k === 'lt' ? '<' : k === 'gt' ? '>' : k === 'quot' ? '"' : "'" }) }
 // ===== 文档安全 S1（notes-052-span-kernel2）：```secret 机密 fence span 纯函数（host 侧 S2 复用同款可达路径——零 DOM 依赖）=====
+// ===== secret-span BEGIN =====（文档安全 S2 notes-052-pipeline-mask：本标记区间 = host 消费管线切片——host manifest 的 @shared 条目
+//   按此标记逐字节纳入 host 作用域（物理单源：host 六面消费与编辑器渲染共用下方唯一 parseSecretSpans，零私有拷贝零私有正则））=====
 // 口径与 renderMarkdown 围栏扫描互为镜像（双函数一致性由 check 节 129 锁定）：
 //   · 仅顶格（列 0）```secret 是机密 span；缩进的 ```secret 不算（按普通正文解析，渲染面无模糊——字面量保守口径）
 //   · 闭合围栏 = 后续首个顶格 ``` 行（语言位任意）；无闭合行 → EOF 兜底（span 延伸至文末）
@@ -1039,6 +1041,7 @@ function parseSecretSpans(body) {
   }
   return out
 }
+// ===== secret-span END =====
 // Markdown → 富文本 HTML（受限 WYSIWYG 渲染方向）。白名单：h1-h3/段落/ul/ol/引用/围栏代码块/分隔线；行内 粗体/斜体/行内码/链接(仅 http/https)/图片(仅 assets/ 前缀)/双链 [[id或标题]]（wikiResolve 解析，不中按纯文本）
 // L1：行内原始 HTML 不解释——esc() 先行转为字面文本（<input type="date"> 原样显示，零注入面），序列化逐字还原
 // L2：GFM 表格（表头行+对齐分隔行）只读渲染为 <table contenteditable="false">，原始源码逐字记 data-md-src，序列化原样回吐
@@ -7547,6 +7550,7 @@ function openExport() {
   openModal(
     '<div class="modal-t">' + icon('i-up', 13) + ' 导出全部笔记</div>'
     + '<div class="modal-hint">把整个笔记库（含 folders.json）完整快照到目标目录下的 dsh-notes-export-&lt;时间戳&gt; 子目录，不打包不压缩，目录即格式。</div>'
+    + '<label class="set-check" title="缺省导出时正文里的机密区（secret span）替换为占位行；勾选后才导出明文"><input type="checkbox" id="expSecret"> 包含机密明文（缺省打码机密区）</label>'
     + '<input class="minput" id="expDir" placeholder="目标目录，如 D:\\backup 或桌面路径…" value="' + esc(last) + '">'
     + '<div class="modal-err" id="mErr" style="display:none"></div>'
     + '<div class="modal-acts"><button class="mbtn" id="eCancel">取消</button><button class="mbtn primary" id="eOk">导出</button></div>'
@@ -7558,11 +7562,11 @@ function openExport() {
     var dir = $('expDir').value.trim();
     if (!dir) { modalErr('请填写目标目录'); return }
     $('eOk').disabled = true; $('eOk').textContent = '导出中…';
-    rpc('notes-export', { dir: dir }).then(function (res) {
+    rpc('notes-export', { dir: dir, includeSecret: !!$('expSecret').checked }).then(function (res) {
       if (res && res.error) { modalErr(res.error); $('eOk').disabled = false; $('eOk').textContent = '导出'; return }
       try { localStorage.setItem('dsh-notes-last-export-dir', dir) } catch (e) {}
       closeModal();
-      toast('已导出 ' + (res.exported || 0) + ' 条笔记到 ' + (res.target || dir));
+      toast('已导出 ' + (res.exported || 0) + ' 条笔记到 ' + (res.target || dir) + (res.maskedSpans ? '（机密区已打码 ' + res.maskedSpans + ' 处，明文导出需勾选「包含机密明文」）' : ''));
     }).catch(function (e) { modalErr('导出失败：' + (e && e.message || e)); $('eOk').disabled = false; $('eOk').textContent = '导出' });
   };
 }

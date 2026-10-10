@@ -26,8 +26,8 @@ module.exports = {
       assert(s.indexOf('const historyPurged = await histPurgeNote(id)') >= 0, label + ' _purge 连带清 .history')
       assert(s.indexOf('historyMerged += await copyHistoryDir(chk.dir, NOTES_DIR, true, n.id)') >= 0, label + ' _import added 连带历史合并')
       assert(s.indexOf('copyNotesDir(backupDir, { includeHistory: true })') >= 0, label + ' 导入前备份含 .history')
-      assert(s.indexOf('async function _export(dir, includeHistory)') >= 0, label + ' _export includeHistory 参数')
-      assert(s.indexOf("_export(args && args.dir, !!(args && args.includeHistory))") >= 0, label + ' notes-export RPC 透传 includeHistory')
+      assert(s.indexOf('async function _export(dir, includeHistory, includeSecret)') >= 0, label + ' _export includeHistory 参数（文档安全 S2：第三参 includeSecret 明文导出开关——缺省关不反向）')
+      assert(s.indexOf("_export(args && args.dir, !!(args && args.includeHistory), args && args.includeSecret === true)") >= 0, label + ' notes-export RPC 透传 includeHistory/includeSecret')
       assert(s.indexOf('histSizes = null') >= 0, label + ' 导入合并历史后存活清单失效重扫')
     }
     assert(hostSrc.indexOf("const HISTORY_DIR = NOTES_DIR + '\\\\.history'") >= 0, '开发版 HISTORY_DIR 反斜杠拼接')

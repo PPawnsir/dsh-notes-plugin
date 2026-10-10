@@ -15,11 +15,25 @@ return {
       try {
         // 加载时拼接：读 manifest + 逐条目读盘串接 + LF 归一（与 notes-src RPC / scripts/concat-host.cjs 同一规则：
         // manifest 为单引号路径一行一条，文本正则提取——沙箱无 require；manifest 注释中禁止出现单引号）
+        // @shared/<file>#<marker> 条目 = src/shared/<file> 的标记区间切片（文档安全 S2 notes-052-pipeline-mask：
+        //   host 消费管线与编辑器共用 src/shared 物理单源——与 concat-host.cjs readPart 同一规则，四方同步）
         const mtext = await fs.readText(await fs.resolve(PLUGIN_DIR + '\\src\\host\\manifest.dev.js'))
         const list = (String(mtext).match(/'[^'\n]+'/g) || []).map(s => s.slice(1, -1))
         let src = ''
         for (const rel of list) {
-          src += await fs.readText(await fs.resolve(PLUGIN_DIR + '\\src\\host\\' + rel.replace(/\//g, '\\')))
+          if (rel.indexOf('@shared/') === 0) {
+            const hashIdx = rel.indexOf('#')
+            const fileRel = (hashIdx >= 0 ? rel.slice('@shared/'.length, hashIdx) : rel.slice('@shared/'.length)).replace(/\//g, '\\')
+            const shared = String(await fs.readText(await fs.resolve(PLUGIN_DIR + '\\src\\shared\\' + fileRel))).replace(/\r\n/g, '\n')
+            if (hashIdx < 0) { src += shared; continue }
+            const marker = rel.slice(hashIdx + 1)
+            const b = '// ===== ' + marker + ' BEGIN', e = '// ===== ' + marker + ' END'
+            const i = shared.indexOf(b), j = shared.indexOf(e)
+            if (i < 0 || j < i) throw new Error('notes host bootstrap: @shared 切片标记缺失：' + rel)
+            src += shared.slice(i, j + e.length) + '\n'
+          } else {
+            src += await fs.readText(await fs.resolve(PLUGIN_DIR + '\\src\\host\\' + rel.replace(/\//g, '\\')))
+          }
         }
         src = src.replace(/\r\n/g, '\n')
         if (cancelled) return

@@ -83,7 +83,22 @@
         if (fsNode.existsSync(hostManifest)) {
           const hlist = (String(fsNode.readFileSync(hostManifest, 'utf8')).match(/'[^'\n]+'/g) || []).map(s => s.slice(1, -1))
           let hsrc = ''
-          for (const rel of hlist) hsrc += fsNode.readFileSync(path.join(LEGACY_PLUGIN_DIR, 'src', 'host', rel), 'utf8')
+          // @shared/<file>#<marker> 条目 = src/shared/<file> 标记区间切片（文档安全 S2 notes-052-pipeline-mask 物理单源；与 host.js / concat-host.cjs 同一规则）
+          for (const rel of hlist) {
+            if (rel.indexOf('@shared/') === 0) {
+              const hHash = rel.indexOf('#')
+              const hFile = rel.slice('@shared/'.length, hHash >= 0 ? hHash : undefined)
+              const hShared = String(fsNode.readFileSync(path.join(LEGACY_PLUGIN_DIR, 'src', 'shared', hFile), 'utf8')).replace(/\r\n/g, '\n')
+              if (hHash < 0) { hsrc += hShared; continue }
+              const hMarker = rel.slice(hHash + 1)
+              const hb = '// ===== ' + hMarker + ' BEGIN', he = '// ===== ' + hMarker + ' END'
+              const hi = hShared.indexOf(hb), hj = hShared.indexOf(he)
+              if (hi < 0 || hj < hi) throw new Error('notes-src: @shared 切片标记缺失：' + rel)
+              hsrc += hShared.slice(hi, hj + he.length) + '\n'
+            } else {
+              hsrc += fsNode.readFileSync(path.join(LEGACY_PLUGIN_DIR, 'src', 'host', rel), 'utf8')
+            }
+          }
           return { src: hsrc.replace(/\r\n/g, '\n') }
         }
         return { src: fsNode.readFileSync(path.join(PKG_DIR, 'index.mjs'), 'utf8') }

@@ -233,6 +233,17 @@ const CORE = new Set([
   'DEG 红线：secret fence 永不触发降级（fence 内容豁免照旧）+ 围栏外规则照常检出 + DEG_RULES 表无 secret 检出项',
   '三入口静态锚：工具栏🛡（有选区才亮）+ 右键菜单（0.4.8 ctxmenu 基建）+ Ctrl+Shift+S（有选区才亮）；揭示计时器单飞（重击重置）',
   '模式切换 dirty 保护 + 源码行染色镜像静态锚：切换收编揭示计时器/取消机密先收编在途编辑（0.4.9 同款纪律）+ src-mirror 滚动/resize 跟随 + 样式双端',
+  // 130. 文档安全 S2（notes-052-pipeline-mask）：六面消费管线 secret span 避让（同源锚 + 六面行为级，常驻 --core）
+  'S2 同源锚：@shared 切片双包逐字节一致（host-impl ⇄ index.mjs ⇄ editor-kernel.js 三方同文）+ 双 manifest 登记',
+  'S2 零私有正则锚：六消费方全部经 span 助手族（无 ```secret 字面量、无私有围栏扫描）+ stripSecretSpansForLlm 三处消费',
+  'S2 助手族行为级：maskSecretSpans 整块占位（N 行计数）+ stripSecretSpans {text,count} + stripForLlm 省略行 + 零 span 恒等',
+  'S2 面一：注入打码——span 恒打码（sensitive=false 也生效）+ 占位在正文 + 尾部机密计数行 + 篇级行级打码原样',
+  'S2 面二：note_get 工具面缺省打码（占位 + spanCount）+ 无 span 原样 + notes-get RPC 明文红线',
+  'S2 面三·eval：searchMatchFields 正文命中跳 span + searchExcerpt 取窗零机密 + 语义 chunk 整块在 span 内回落良性段',
+  'S2 面三·host：notes-search 良性词命中（matches 含 body + 摘要零机密）+ span 内词零召回',
+  'S2 面四：含 span 笔记良性部分向量照常——块数与剥除派生一致 + 同良性对照同 hash + span-only 零块不进索引',
+  'S2 面五：organize 入口剥除（prompt 零 span 明文 + 省略行）+ 零 span prompt 逐字节原样 + classify 两调用面剥除',
+  'S2 面六：导出快照缺省 span 同形态占位 + 开关开才明文 + span-free 逐字节 + .history 同打码 + 导入备份恒明文',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

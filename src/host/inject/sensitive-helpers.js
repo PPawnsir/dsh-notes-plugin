@@ -41,5 +41,43 @@
     function suggestSensitive(text) {
       return maskSensitiveBody(text, 'n-sens-check') !== String(text == null ? '' : text)
     }
+    // ==== 文档安全 S2（notes-052-pipeline-mask）：secret span 消费助手族 ====
+    // 六面消费管线（① 注入打码 ② note_get 缺省打码 ③ 检索命中/摘要 ④ 向量切块 ⑤ AI 整理/分类 ⑥ 导出打码）统一接
+    // S1 的 parseSecretSpans（src/shared/editor-kernel.js 物理单源，host 经 manifest @shared 切片纳入本作用域）——
+    // 本块零私有 span 正则；span 独立于篇级 sensitive 生效（sensitive=true 且无 span 的行级打码行为原样，红线不动），
+    // span 打码优先级高于行级：消费方先整块占位/剥除，行级 ****** 只跑良性残余（span 内不再出 ******）。
+    // 占位形态 = 整块替换为单行「🔒 机密区（N 行，note_get reveal 获取）」（N = span 源行数含开闭栏行）——比行级 ****** 更干净（整块本来就该藏）。
+    // 分块 eval 语境（check 节提取本标记区间单测）内核缺位恒等降级：mask/strip 双双 no-op，零 span 语义 = 行为原样（S1 沙箱空降卫同款纪律）。
+    function secretSpanList(body) {
+      return (typeof parseSecretSpans === 'function' ? parseSecretSpans(body) : null) || []
+    }
+    function secretSpanPlaceholder(lineCount) { return '🔒 机密区（' + lineCount + ' 行，note_get reveal 获取）' }
+    // 占位打码（① 注入 ② note_get ⑥ 导出三面同形态占位）：每个 span 整块替换为占位单行
+    function maskSecretSpans(body) {
+      const src = String(body == null ? '' : body)
+      const spans = secretSpanList(src)
+      if (!spans.length) return src
+      let out = '', p = 0
+      for (let i = 0; i < spans.length; i++) {
+        out += src.slice(p, spans[i].start) + secretSpanPlaceholder(src.slice(spans[i].start, spans[i].end).split('\n').length)
+        p = spans[i].end
+      }
+      return out + src.slice(p)
+    }
+    // 剥除（④ 向量切块 ③ 检索摘要绕行数据源）：span 区间整段移除，返回 { text, count }——count = span 数
+    function stripSecretSpans(body) {
+      const src = String(body == null ? '' : body)
+      const spans = secretSpanList(src)
+      if (!spans.length) return { text: src, count: 0 }
+      let out = '', p = 0
+      for (let i = 0; i < spans.length; i++) { out += src.slice(p, spans[i].start); p = spans[i].end }
+      return { text: out + src.slice(p), count: spans.length }
+    }
+    // 送 LLM 前剥除（⑤ classify×2 调用面 + organize 三处消费）：剥除后追加一行「[已省略 N 处机密区]」让 LLM 知道有省略；零 span 逐字节原样
+    function stripSecretSpansForLlm(body) {
+      const r = stripSecretSpans(body)
+      if (!r.count) return r.text
+      return String(r.text).replace(/\s+$/, '') + '\n\n[已省略 ' + r.count + ' 处机密区]'
+    }
     // ==== sensitive-helpers END ====
 

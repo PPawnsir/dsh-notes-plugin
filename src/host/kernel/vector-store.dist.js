@@ -245,15 +245,18 @@
     _vectorRegisterBackend({ id: 'bge-small-zh-q8', dim: 512, minScore: 0.50, hostEmbed: true, embed: _vectorBgeEmbed })
     // bodyHash：全文稳定 hash（FNV-1a 32bit + 长度，纯 JS 无 crypto 依赖——vm 沙箱无 node:crypto，同 history engine 先例）。
     //   任何块变 → 全量重算该笔记（简化一致性）；只用于新鲜度锚，碰撞代价 = 漏一次重算或多一次重算（可接受）。
+    //   文档安全 S2（notes-052-pipeline-mask）：新鲜度锚 = 剥除 secret span 后的可索引文本——① span-only 编辑不触发重算
+    //   （机密本就不进索引，索引内容未变）；② 含 span 的存量索引 hash 突变 → 下次 drain/rebuild 一次性强制重算对齐剥除派生（零 span 笔记 hash 不变零扰动）。
     function _vectorBodyHash(body) {
-      const s = String(body == null ? '' : body)
+      const s = stripSecretSpans(String(body == null ? '' : body)).text
       let h = 0x811c9dc5
       for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0
       return s.length.toString(36) + '.' + h.toString(36)
     }
     // 分段嵌入：正文按段落边界切成 ≤VECTOR_CHUNK_MAX 字符块；短笔记单块零开销；单段超长硬切；空正文零块。
+    //   文档安全 S2：切块前剥 secret span——良性部分照常入索引（这篇笔记的可搜性不陪葬——span 相对篇级 sensitive 的核心体验优势）。
     function _vectorChunks(body) {
-      const s = String(body == null ? '' : body)
+      const s = stripSecretSpans(String(body == null ? '' : body)).text
       const MAX = VECTOR_CHUNK_MAX
       const out = []
       if (!s) return out

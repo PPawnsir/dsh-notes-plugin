@@ -245,11 +245,21 @@
     // writeText 原子写会递归创建父目录，目标目录不存在时随首个文件写入自动建好；
     // 无 assets/ 的旧库：listAssets 返回 []，assets=0，零回归。
     // opts.includeHistory：连带 .history 快照历史（导出默认不含——历史是本地安全网不随导出物流转；导入前全量备份恒带）
+    // opts.maskSecretSpans（文档安全 S2 notes-052-pipeline-mask）：true = 文件内容层 secret span → 占位行（导出快照缺省打码；
+    //   n-*.md 与 .history 快照同形态打码）。返回 maskedFiles/maskedSpans = 正文文件的打码文件数/机密区总数（历史打码随行不计数）；
+    //   明文导出 includeSecret 开关走 _export 调用面。导入前备份恒不 mask（本地安全网语义，明文不出 NOTES_DIR）。
     async function copyNotesDir(targetDir, opts) {
+      const o = opts || {}
       let copied = 0
+      let maskedFiles = 0
+      let maskedSpans = 0
       for (const name of await listNoteMd(NOTES_DIR)) {
         try {
-          const c = await fs.readText(await fs.resolve(NOTES_DIR + '\\' + name))
+          let c = await fs.readText(await fs.resolve(NOTES_DIR + '\\' + name))
+          if (o.maskSecretSpans === true) {
+            const spans = secretSpanList(c)
+            if (spans.length) { c = maskSecretSpans(c); maskedFiles++; maskedSpans += spans.length }
+          }
           await fs.writeText(await fs.resolve(targetDir + '\\' + name), c, undefined, undefined, getPolicy())
           copied++
         } catch (e) { console.error('notes: copy failed', name, e) }
@@ -270,8 +280,8 @@
         telemetry = true
       } catch (e) { /* telemetry.json 缺失/不可读 → 跳过（遥测允许重来） */ }
       const assets = await copyAssetsDir(NOTES_DIR, targetDir, false)
-      const history = opts && opts.includeHistory ? await copyHistoryDir(NOTES_DIR, targetDir, false) : 0
-      return { copied, foldersFile, telemetry, assets, history }
+      const history = o.includeHistory ? await copyHistoryDir(NOTES_DIR, targetDir, false, undefined, o.maskSecretSpans === true) : 0
+      return { copied, foldersFile, telemetry, assets, history, maskedFiles, maskedSpans }
     }
 
     // 扫描导入目录（只读不写）：n-*.md 逐条解析 front-matter 取 id（缺 id 按文件名兜底）+ folders.json；
@@ -311,14 +321,16 @@
     // notes-export：NOTES_DIR 全库快照 → <dir>\dsh-notes-export-<ts>\（不打包不压缩，目录即格式；dir 不存在则随写入自建）
     // 快照含 n-*.md + folders.json + assets/（图片资产连带；无 assets 的旧库 assets=0）+ telemetry.json（遥测 sidecar，卡⑤）；
     // .history 快照历史默认不含（本地安全网不随导出物流转），includeHistory=true 时连带（返回 history 文件计数）
-    async function _export(dir, includeHistory) {
+    // 文档安全 S2（notes-052-pipeline-mask）：导出快照缺省 span 同形态占位（maskedSpans = 打码机密区总数，响应恒带供 toast 提示）；
+    //   includeSecret=true 才明文导出（显式开关，缺省关不反向——明文导出需显式勾选）
+    async function _export(dir, includeHistory, includeSecret) {
       const d = String(dir || '').trim().replace(/[\\/]+$/, '')
       if (!d) return { error: 'notes-export 需要 dir（目标目录）' }
       const info = await fs.stat(await fs.resolve(d))
       if (info && !(info.dir || info.type === 'directory')) return { error: '目标路径不是目录：' + d }
       const target = d + '\\dsh-notes-export-' + tsStamp(new Date())
-      const r = await copyNotesDir(target, { includeHistory: includeHistory === true })
-      const out = { exported: r.copied, foldersFile: r.foldersFile, telemetry: r.telemetry === true, assets: r.assets, target: target }
+      const r = await copyNotesDir(target, { includeHistory: includeHistory === true, maskSecretSpans: includeSecret !== true })
+      const out = { exported: r.copied, foldersFile: r.foldersFile, telemetry: r.telemetry === true, assets: r.assets, target: target, maskedSpans: r.maskedSpans || 0 }
       if (includeHistory === true) out.history = r.history
       return out
     }
@@ -474,10 +486,10 @@
     }
 
 
-    // 全库导出（目录快照）：args={dir, includeHistory?} → <dir>\dsh-notes-export-<ts>\，返回 { exported, foldersFile, assets, target, history? }；
-    // .history 快照历史默认不含，includeHistory=true 连带
+    // 全库导出（目录快照）：args={dir, includeHistory?, includeSecret?} → <dir>\dsh-notes-export-<ts>\，返回 { exported, foldersFile, assets, target, maskedSpans, history? }；
+    // .history 快照历史默认不含，includeHistory=true 连带；includeSecret=true 明文导出（缺省 secret span 同形态占位——文档安全 S2）
     disposers.push(handle('notes-export', async (args) => {
-      try { return await _export(args && args.dir, !!(args && args.includeHistory)) } catch (e) { return { error: String(e.message || e) } }
+      try { return await _export(args && args.dir, !!(args && args.includeHistory), args && args.includeSecret === true) } catch (e) { return { error: String(e.message || e) } }
     }))
     // P3 单文件导出（拼接/分享）：args={dir, scope:{all?|folder?|tag?}, format:'md', toc?} → <dir>\dsh-notes-export-single-<ts>.md
     // （每篇 # 标题 + front-matter + 正文 + 篇间分隔线，可选目录；图片 base64 内联，>20MB 告警仍导出）

@@ -8,9 +8,12 @@
     //   有才在【当前草稿】前插【用户追加指令】段，空/缺省路径 prompt 与二期现行逐字节等价（节 84 行为级断言锁定）；system 提示词不动。
     // 输出容错：剥离 ```markdown 围栏；空结果/LLM 不可用/未配置模型 → error（client 保留原文不动）。
     async function _aiOrganize(args) {
-      const body = args && typeof args.body === 'string' ? args.body : ''
+      let body = args && typeof args.body === 'string' ? args.body : ''
       if (!body.trim()) return { error: '正文为空，无可整理内容' }
       await loadSettings()
+      // 文档安全 S2（notes-052-pipeline-mask）：送 LLM 前剥除 secret span——剥除后追加一行「[已省略 N 处机密区]」让 LLM 知道有省略；
+      //   零 span 时 body 逐字节不变（既有整理行为原样），长度上限按剥除后正文计算（入 prompt 的就是它）
+      body = stripSecretSpansForLlm(body)
       // 0.4.7-B⑦（notes-047-ux）：长度上限生效值 = 用户 settings.organizeMaxChars(>0) || 模型表 || 12000 回落；超限 error 文案带生效值
       const orgMax = organizeMaxChars()
       if (body.length > orgMax) return { error: '正文过长（' + body.length + ' 字，上限 ' + orgMax + ' 字），请分段整理' }

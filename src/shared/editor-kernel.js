@@ -14,6 +14,8 @@ function wikiLinksTo(body, id, title) { var ts = extractWikiTargets(body); retur
 // 反转义（esc 的逆）：行内文本已转义，双链 target 解析前须还原（否则含 & 的标题永不命中）
 function unesc(s) { return String(s).replace(/&(amp|lt|gt|quot|#39);/g, function (m, k) { return k === 'amp' ? '&' : k === 'lt' ? '<' : k === 'gt' ? '>' : k === 'quot' ? '"' : "'" }) }
 // ===== 文档安全 S1（notes-052-span-kernel2）：```secret 机密 fence span 纯函数（host 侧 S2 复用同款可达路径——零 DOM 依赖）=====
+// ===== secret-span BEGIN =====（文档安全 S2 notes-052-pipeline-mask：本标记区间 = host 消费管线切片——host manifest 的 @shared 条目
+//   按此标记逐字节纳入 host 作用域（物理单源：host 六面消费与编辑器渲染共用下方唯一 parseSecretSpans，零私有拷贝零私有正则））=====
 // 口径与 renderMarkdown 围栏扫描互为镜像（双函数一致性由 check 节 129 锁定）：
 //   · 仅顶格（列 0）```secret 是机密 span；缩进的 ```secret 不算（按普通正文解析，渲染面无模糊——字面量保守口径）
 //   · 闭合围栏 = 后续首个顶格 ``` 行（语言位任意）；无闭合行 → EOF 兜底（span 延伸至文末）
@@ -49,6 +51,7 @@ function parseSecretSpans(body) {
   }
   return out
 }
+// ===== secret-span END =====
 // Markdown → 富文本 HTML（受限 WYSIWYG 渲染方向）。白名单：h1-h3/段落/ul/ol/引用/围栏代码块/分隔线；行内 粗体/斜体/行内码/链接(仅 http/https)/图片(仅 assets/ 前缀)/双链 [[id或标题]]（wikiResolve 解析，不中按纯文本）
 // L1：行内原始 HTML 不解释——esc() 先行转为字面文本（<input type="date"> 原样显示，零注入面），序列化逐字还原
 // L2：GFM 表格（表头行+对齐分隔行）只读渲染为 <table contenteditable="false">，原始源码逐字记 data-md-src，序列化原样回吐

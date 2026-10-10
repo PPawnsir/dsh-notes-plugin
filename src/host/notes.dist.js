@@ -342,7 +342,8 @@
         if (!r || !r.id) return
         perfStats.classify++
         const ct0 = Date.now()
-        return classifyTopic(text).then(async (topic) => {
+        // 文档安全 S2（notes-052-pipeline-mask）：分类送 LLM 前剥除 secret span（三处消费之一——速记分类调用面）
+        return classifyTopic(stripSecretSpansForLlm(text)).then(async (topic) => {
           perfStats.classifyMs += Date.now() - ct0
           try {
             const newTitle = r.merged ? undefined : buildQuickTitle({ sessionId: r.sid, cwd: r.cwd }, topic)
@@ -484,7 +485,8 @@
       await persistNote(noteObj)
       // 无 titleHint 时异步分类回填主题/标题（不阻塞交互，复用 classifyTopic 模式）
       if (!meta.titleHint) {
-        classifyTopic(text).then(async function (topic2) {
+        // 文档安全 S2（notes-052-pipeline-mask）：分类送 LLM 前剥除 secret span（三处消费之二——指令式速记分类调用面）
+        classifyTopic(stripSecretSpansForLlm(text)).then(async function (topic2) {
           try {
             const newTitle = buildQuickTitle({ sessionId: sid, cwd: cw }, topic2)
             await _update(id, newTitle, undefined, undefined, topic2)
