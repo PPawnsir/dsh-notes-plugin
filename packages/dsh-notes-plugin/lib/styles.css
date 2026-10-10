@@ -716,6 +716,12 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-rich blockquote p{margin:0}
 .dsh-notes-rich pre{background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:14px 16px;margin:0 0 14px;overflow-x:auto;font-family:var(--nmono);font-size:12.5px;line-height:1.65;position:relative;white-space:pre-wrap;color:var(--ntx)}
 .dsh-notes-rich pre[data-lang]::before{content:attr(data-lang);position:absolute;top:6px;right:10px;font-size:10px;color:var(--nt3);font-family:var(--nmono)}
+/* 文档安全 S1（notes-052-span-kernel2）：```secret 机密岛——面板富文本只染模糊（S1 无揭示交互面：交互在 app 编辑器；
+   面板内看内容走源码模式）；历史/回收站只读预览 = .dsh-secret-static 静态占位（正文不进 DOM，保守面） */
+.dsh-notes-rich pre.dsh-notes-secret{border:1px dashed var(--ndanger);user-select:none}
+.dsh-notes-rich pre.dsh-notes-secret .secret-lock{position:absolute;top:6px;left:10px;font-size:11px;line-height:1;opacity:.92}
+.dsh-notes-rich pre.dsh-notes-secret > code{filter:blur(5px)}
+.dsh-notes-rich pre.dsh-notes-secret .secret-ph{font-family:var(--nfont);font-size:12px;color:var(--nt3);user-select:none}
 .dsh-notes-rich pre code{background:none;border:none;padding:0;font-size:inherit}
 .dsh-notes-rich code{font-family:var(--nmono);font-size:12px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;padding:1px 6px;color:var(--ntx)}
 .dsh-notes-rich a{color:var(--nacc);text-decoration:none;border-bottom:1px solid transparent}

@@ -13,12 +13,52 @@ function extractWikiTargets(text) { var out = [], m; WIKI_RE.lastIndex = 0; whil
 function wikiLinksTo(body, id, title) { var ts = extractWikiTargets(body); return ts.indexOf(id) >= 0 || (!!title && ts.indexOf(title) >= 0) }
 // 反转义（esc 的逆）：行内文本已转义，双链 target 解析前须还原（否则含 & 的标题永不命中）
 function unesc(s) { return String(s).replace(/&(amp|lt|gt|quot|#39);/g, function (m, k) { return k === 'amp' ? '&' : k === 'lt' ? '<' : k === 'gt' ? '>' : k === 'quot' ? '"' : "'" }) }
+// ===== 文档安全 S1（notes-052-span-kernel2）：```secret 机密 fence span 纯函数（host 侧 S2 复用同款可达路径——零 DOM 依赖）=====
+// 口径与 renderMarkdown 围栏扫描互为镜像（双函数一致性由 check 节 129 锁定）：
+//   · 仅顶格（列 0）```secret 是机密 span；缩进的 ```secret 不算（按普通正文解析，渲染面无模糊——字面量保守口径）
+//   · 闭合围栏 = 后续首个顶格 ``` 行（语言位任意）；无闭合行 → EOF 兜底（span 延伸至文末）
+//   · 普通 fence 内出现的列 0 ```secret 行只作该 fence 的闭合行（不另开 span）——与渲染器同纪律
+//   · 返回 [{start,end}]：start = 开栏行首字符偏移；end = 闭栏行行尾偏移（不含行终结符；EOF 兜底 = body.length）
+//     body.slice(start,end) = 完整 fence 源（含开闭栏行）——host 侧 S2 注入脱敏的掩蔽区间数据源
+function parseSecretSpans(body) {
+  var src = String(body == null ? '' : body), out = [], n = src.length
+  function fenceLineAt(p) {   // 该行是顶格 ``` 行则返回行内容（去行尾 \r），否则 null
+    if (p + 3 > n || src.charCodeAt(p) !== 0x60 || src.charCodeAt(p + 1) !== 0x60 || src.charCodeAt(p + 2) !== 0x60) return null
+    var q = src.indexOf('\n', p)
+    return src.slice(p, q < 0 ? n : q).replace(/\r$/, '')
+  }
+  var p = 0
+  while (p < n) {
+    var ln = fenceLineAt(p)
+    if (ln === null) { var nl0 = src.indexOf('\n', p); p = nl0 < 0 ? n : nl0 + 1; continue }
+    var lang = ln.replace(/^\x60{3}/, '').trim()
+    // 找闭合围栏行：首个后续顶格 ``` 行；找不到 = EOF 兜底
+    var q2 = src.indexOf('\n', p), k = q2 < 0 ? n : q2 + 1, closeEnd = -1
+    while (k < n) {
+      if (fenceLineAt(k) !== null) { var q3 = src.indexOf('\n', k); closeEnd = q3 < 0 ? n : q3; break }
+      var nl1 = src.indexOf('\n', k); k = nl1 < 0 ? n : nl1 + 1
+    }
+    // span 终点 = 行尾字符偏移（不含行终结符）：CRLF 的 \r 属终结符一并剔除（与渲染器 LF 归一口径对齐——
+    // data-md-src 镜像不变量在 LF 正文逐字节成立）；EOF 兜底同理剥尾随 \r
+    var spanEnd = closeEnd >= 0 ? closeEnd : n
+    if (spanEnd > p && src.charCodeAt(spanEnd - 1) === 13) spanEnd--
+    if (lang === 'secret') out.push({ start: p, end: spanEnd })
+    // 普通 fence 照常跳过闭合行继续扫描；secret span 同口径（闭合行之后是新的扫描起点）
+    // closeEnd = 闭合行行尾终结符偏移（或文末 n）：终结符存在则下一行从 closeEnd+1 起，否则扫描结束
+    p = closeEnd >= 0 ? (closeEnd < n ? closeEnd + 1 : n) : n
+  }
+  return out
+}
 // Markdown → 富文本 HTML（受限 WYSIWYG 渲染方向）。白名单：h1-h3/段落/ul/ol/引用/围栏代码块/分隔线；行内 粗体/斜体/行内码/链接(仅 http/https)/图片(仅 assets/ 前缀)/双链 [[id或标题]]（wikiResolve 解析，不中按纯文本）
 // L1：行内原始 HTML 不解释——esc() 先行转为字面文本（<input type="date"> 原样显示，零注入面），序列化逐字还原
 // L2：GFM 表格（表头行+对齐分隔行）只读渲染为 <table contenteditable="false">，原始源码逐字记 data-md-src，序列化原样回吐
-function renderMarkdown(md, wikiResolve) {
+// 文档安全 S1：顶格 ```secret fence 渲染为机密岛——缺省 = 模糊岛（contenteditable=false + CSS blur + 🔒 角标；序列化经 data-md-src 逐字回吐，往返恒等）；
+//   secretOpts = { secretStatic:true, secretLabel:'…' }（只读预览/无交互面）→ 静态占位（正文不进 DOM，保守面）——标签文案由调用侧注入（i18n t() 键，内核零硬编码文案）
+function renderMarkdown(md, wikiResolve, secretOpts) {
   var src = String(md || '')
   if (!src.trim()) return ''
+  var secretStatic = !!(secretOpts && (secretOpts === true || secretOpts.secretStatic === true))
+  var secretLabel = secretOpts && secretOpts.secretLabel != null ? String(secretOpts.secretLabel) : ''
   var lines = src.replace(/\r\n/g, '\n').split('\n')
   var out = []
   var i = 0
@@ -71,15 +111,34 @@ function renderMarkdown(md, wikiResolve) {
   function isTblStart(idx) { return lines[idx].indexOf('|') >= 0 && idx + 1 < lines.length && !!parseTblDelims(lines[idx + 1]) }
   while (i < lines.length) {
     var line = lines[i]
-    // 围栏代码块
+    // 围栏代码块（文档安全 S1：lang === 'secret' 走机密岛分支——原始 fence 源逐字记 data-md-src，序列化原样回吐）
     if (/^\x60\x60\x60/.test(line)) {
       closeLists()
       var lang = line.replace(/^\x60\x60\x60/, '').trim()
       var codeLines = []
+      var fenceOpen = i   // 开栏行号（data-md-src 原始区间起点）
       i++
       while (i < lines.length && !/^\x60\x60\x60/.test(lines[i])) { codeLines.push(lines[i]); i++ }
+      var fenceClosed = i < lines.length
+      var fenceClose = i   // 闭栏行号（fenceClosed 为真时有效）
       i++
-      out.push('<pre' + (lang ? ' data-lang="' + esc(lang) + '"' : '') + '><code>' + esc(codeLines.join('\n')) + '</code></pre>')
+      if (lang === 'secret') {
+        // 原始 fence 源 = 开栏行 + 内容行 +（有则）闭栏行——LF 归一后的逐字源；serializeRich 原样回吐（fence 字面量原则：
+        // 内含 [[..]]/URL/星号/HTML 形文本不解析不归一化——内容仅经 esc 转义呈现，无任何行内加工）
+        var rawLines = [lines[fenceOpen]].concat(codeLines)
+        if (fenceClosed) rawLines.push(lines[fenceClose])
+        var rawSrc = rawLines.join('\n')
+        if (secretStatic) {
+          // 降级/只读面（历史/回收站预览等无揭示交互面）：静态占位——正文不进 DOM（保守面），机密与否仅剩 🔒 与调用侧注入的标签文案
+          out.push('<pre class="dsh-notes-secret dsh-secret-static" data-lang="secret" contenteditable="false" data-md-src="' + esc(rawSrc) + '"><span class="secret-lock" aria-hidden="true">\uD83D\uDD12</span><span class="secret-ph">' + esc(secretLabel) + '</span></pre>')
+        } else {
+          // 编辑器富文本模式：模糊岛（blur 纯 CSS——DOM 内容已全量 esc 先行转义，零注入面）；contenteditable=false 原子岛屿（同表格先例）；
+          // 揭示/取消机密交互与 🔒 tooltip 由调用侧绑定（app editor.js bindSecretBlocks——内核零 DOM 行为）
+          out.push('<pre class="dsh-notes-secret" data-lang="secret" contenteditable="false" data-md-src="' + esc(rawSrc) + '"><span class="secret-lock" aria-hidden="true">\uD83D\uDD12</span><code>' + esc(codeLines.join('\n')) + '</code></pre>')
+        }
+      } else {
+        out.push('<pre' + (lang ? ' data-lang="' + esc(lang) + '"' : '') + '><code>' + esc(codeLines.join('\n')) + '</code></pre>')
+      }
       continue
     }
     // 分隔线
@@ -205,8 +264,14 @@ function serializeRich(root) {
     }
     else if (tag === 'PRE') {
       var lang = el.getAttribute('data-lang') || ''
-      var code = el.textContent.replace(/\n+$/, '')
-      out.push('```' + lang + '\n' + code + '\n```')
+      // 文档安全 S1：机密 fence 块（renderMarkdown 机密岛产物）经 data-md-src 逐字回吐——往返恒等硬约束
+      //（富文本序列化回源码逐字节一致；fence 字面量原则：内容不解析不归一化）。data-md-src 缺失（外来手写 DOM）按普通 code fence 兜底重建。
+      var secretRaw = lang === 'secret' ? el.getAttribute('data-md-src') : null
+      if (lang === 'secret' && secretRaw) out.push(secretRaw)
+      else {
+        var code = el.textContent.replace(/\n+$/, '')
+        out.push('```' + lang + '\n' + code + '\n```')
+      }
     }
     // L2 只读表格：data-md-src 逐字回吐原始表格源码（含对齐分隔行）；无源码记录的外来表格按文本拆壳兜底
     else if (tag === 'TABLE') { var tsrc = el.getAttribute('data-md-src'); if (tsrc) out.push(tsrc); else { var t6 = serializeInline(el).trim(); if (t6) out.push(t6) } }

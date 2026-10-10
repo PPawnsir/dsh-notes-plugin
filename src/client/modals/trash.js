@@ -143,7 +143,7 @@
                       // 行内只读预览：正文只经 renderMarkdown 内核渲染（全量转义零注入面）；加载/错误态走 React 文本插值（自动转义）
                       trashPreview && trashPreview.id === n.id
                         ? (typeof trashPreview.body === 'string'
-                            ? e('div', { className: 'dsh-notes-trash-preview dsh-notes-rich', dangerouslySetInnerHTML: { __html: renderMarkdown(trashPreview.body, wikiResolve) } })
+                            ? e('div', { className: 'dsh-notes-trash-preview dsh-notes-rich', dangerouslySetInnerHTML: { __html: renderMarkdown(trashPreview.body, wikiResolve, { secretStatic: true, secretLabel: tt('editor.secretPlaceholder') }) } })   /* 文档安全 S1：只读预览机密块走静态占位（保守面） */
                             : e('div', { className: 'dsh-notes-data-hint' }, trashPreview.error || tt('trash.previewLoading')))
                         : null)))),
           error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,

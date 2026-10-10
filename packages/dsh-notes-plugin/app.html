@@ -289,6 +289,14 @@
   .ed-main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
   .src{flex:1;width:100%;resize:none;border:0;outline:0;background:transparent;color:var(--ntx);font-family:var(--nmono);font-size:12.5px;line-height:1.8;padding:14px 24px 24px}
   .src::placeholder{color:var(--nt3)}
+  /* 文档安全 S1（notes-052-span-kernel2）：源码模式机密行染色镜像——src-wrap 承 flex:1（textarea+镜像同容器）；
+     镜像与 .src 同字体/行距/内边距/换行策略（pre-wrap+anywhere ≈ textarea 软换行），透明文字 + .src-secret 色带；
+     滚动条补偿由 JS 设 right；无机密 span 时镜像为空（常规打字零开销） */
+  .src-wrap{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+  .src-mirror{position:absolute;inset:0;padding:14px 24px 24px;font-family:var(--nmono);font-size:12.5px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;overflow:hidden;pointer-events:none;user-select:none;color:transparent;z-index:0}
+  .src-mirror > div{min-height:1.8em}
+  #edSrc{position:relative;z-index:1}
+  .src-mirror .src-secret{background:color-mix(in srgb, var(--ndanger) 10%, transparent);border-left:2px solid var(--ndanger)}
   .deg{margin:10px 24px 0;display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:var(--nwarn);background:var(--nbg-raise);border-left:3px solid var(--nwarn);border-radius:var(--nr-md);padding:8px 12px;line-height:1.6;flex-shrink:0}
   .deg svg.ic{width:13px;height:13px;margin-top:2px;flex-shrink:0}
   .deg .rs{color:var(--nt2);word-break:break-all}
@@ -328,6 +336,18 @@
   .rich blockquote p{margin:0}
   .rich pre{background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:var(--nr-md);padding:14px 16px;margin:0 0 14px;overflow-x:auto;font-family:var(--nmono);font-size:12.5px;line-height:1.65;position:relative;white-space:pre-wrap}
   .rich pre[data-lang]::before{content:attr(data-lang);position:absolute;top:6px;right:10px;font-size:10px;color:var(--nt3);font-family:var(--nmono)}
+  /* 文档安全 S1：```secret 机密岛——blur 纯 CSS（揭示/回糊 = .revealed 类切换 filter，无 DOM 重建）；🔒 角标常显；
+     揭示态「取消机密」钮浮现（app editor.js bindSecretBlocks 注入——内核 markup 零交互件）；只读预览静态占位（.dsh-secret-static）无揭示无内容 */
+  .rich pre.dsh-notes-secret{border:1px dashed var(--ndanger);cursor:pointer;user-select:none}
+  .rich pre.dsh-notes-secret .secret-lock{position:absolute;top:6px;left:10px;font-size:11px;line-height:1;opacity:.92;pointer-events:none}
+  .rich pre.dsh-notes-secret > code{filter:blur(5px);transition:filter .15s ease}
+  .rich pre.dsh-notes-secret.revealed > code{filter:none}
+  .rich pre.dsh-notes-secret.revealed{user-select:text}
+  .rich pre.dsh-notes-secret .secret-unmark{display:none;position:absolute;bottom:6px;right:8px;font:inherit;font-size:10.5px;padding:2px 9px;border:1px solid var(--nbd);border-radius:var(--nr-sm);background:var(--npanel);color:var(--nt2);cursor:pointer}
+  .rich pre.dsh-notes-secret.revealed .secret-unmark{display:inline-block}
+  .rich pre.dsh-notes-secret .secret-unmark:hover{color:var(--ndanger);border-color:var(--ndanger)}
+  .rich pre.dsh-notes-secret.dsh-secret-static{cursor:default;user-select:none}
+  .rich pre.dsh-notes-secret .secret-ph{font-family:var(--nfont);font-size:12px;color:var(--nt3);user-select:none}
   .rich pre code{background:none;border:none;padding:0;font-size:inherit}
   .rich code{font-family:var(--nmono);font-size:12px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;padding:1px 6px}
   .rich a{color:var(--nacc);text-decoration:none;border-bottom:1px solid transparent}
@@ -983,12 +1003,52 @@ function extractWikiTargets(text) { var out = [], m; WIKI_RE.lastIndex = 0; whil
 function wikiLinksTo(body, id, title) { var ts = extractWikiTargets(body); return ts.indexOf(id) >= 0 || (!!title && ts.indexOf(title) >= 0) }
 // 反转义（esc 的逆）：行内文本已转义，双链 target 解析前须还原（否则含 & 的标题永不命中）
 function unesc(s) { return String(s).replace(/&(amp|lt|gt|quot|#39);/g, function (m, k) { return k === 'amp' ? '&' : k === 'lt' ? '<' : k === 'gt' ? '>' : k === 'quot' ? '"' : "'" }) }
+// ===== 文档安全 S1（notes-052-span-kernel2）：```secret 机密 fence span 纯函数（host 侧 S2 复用同款可达路径——零 DOM 依赖）=====
+// 口径与 renderMarkdown 围栏扫描互为镜像（双函数一致性由 check 节 129 锁定）：
+//   · 仅顶格（列 0）```secret 是机密 span；缩进的 ```secret 不算（按普通正文解析，渲染面无模糊——字面量保守口径）
+//   · 闭合围栏 = 后续首个顶格 ``` 行（语言位任意）；无闭合行 → EOF 兜底（span 延伸至文末）
+//   · 普通 fence 内出现的列 0 ```secret 行只作该 fence 的闭合行（不另开 span）——与渲染器同纪律
+//   · 返回 [{start,end}]：start = 开栏行首字符偏移；end = 闭栏行行尾偏移（不含行终结符；EOF 兜底 = body.length）
+//     body.slice(start,end) = 完整 fence 源（含开闭栏行）——host 侧 S2 注入脱敏的掩蔽区间数据源
+function parseSecretSpans(body) {
+  var src = String(body == null ? '' : body), out = [], n = src.length
+  function fenceLineAt(p) {   // 该行是顶格 ``` 行则返回行内容（去行尾 \r），否则 null
+    if (p + 3 > n || src.charCodeAt(p) !== 0x60 || src.charCodeAt(p + 1) !== 0x60 || src.charCodeAt(p + 2) !== 0x60) return null
+    var q = src.indexOf('\n', p)
+    return src.slice(p, q < 0 ? n : q).replace(/\r$/, '')
+  }
+  var p = 0
+  while (p < n) {
+    var ln = fenceLineAt(p)
+    if (ln === null) { var nl0 = src.indexOf('\n', p); p = nl0 < 0 ? n : nl0 + 1; continue }
+    var lang = ln.replace(/^\x60{3}/, '').trim()
+    // 找闭合围栏行：首个后续顶格 ``` 行；找不到 = EOF 兜底
+    var q2 = src.indexOf('\n', p), k = q2 < 0 ? n : q2 + 1, closeEnd = -1
+    while (k < n) {
+      if (fenceLineAt(k) !== null) { var q3 = src.indexOf('\n', k); closeEnd = q3 < 0 ? n : q3; break }
+      var nl1 = src.indexOf('\n', k); k = nl1 < 0 ? n : nl1 + 1
+    }
+    // span 终点 = 行尾字符偏移（不含行终结符）：CRLF 的 \r 属终结符一并剔除（与渲染器 LF 归一口径对齐——
+    // data-md-src 镜像不变量在 LF 正文逐字节成立）；EOF 兜底同理剥尾随 \r
+    var spanEnd = closeEnd >= 0 ? closeEnd : n
+    if (spanEnd > p && src.charCodeAt(spanEnd - 1) === 13) spanEnd--
+    if (lang === 'secret') out.push({ start: p, end: spanEnd })
+    // 普通 fence 照常跳过闭合行继续扫描；secret span 同口径（闭合行之后是新的扫描起点）
+    // closeEnd = 闭合行行尾终结符偏移（或文末 n）：终结符存在则下一行从 closeEnd+1 起，否则扫描结束
+    p = closeEnd >= 0 ? (closeEnd < n ? closeEnd + 1 : n) : n
+  }
+  return out
+}
 // Markdown → 富文本 HTML（受限 WYSIWYG 渲染方向）。白名单：h1-h3/段落/ul/ol/引用/围栏代码块/分隔线；行内 粗体/斜体/行内码/链接(仅 http/https)/图片(仅 assets/ 前缀)/双链 [[id或标题]]（wikiResolve 解析，不中按纯文本）
 // L1：行内原始 HTML 不解释——esc() 先行转为字面文本（<input type="date"> 原样显示，零注入面），序列化逐字还原
 // L2：GFM 表格（表头行+对齐分隔行）只读渲染为 <table contenteditable="false">，原始源码逐字记 data-md-src，序列化原样回吐
-function renderMarkdown(md, wikiResolve) {
+// 文档安全 S1：顶格 ```secret fence 渲染为机密岛——缺省 = 模糊岛（contenteditable=false + CSS blur + 🔒 角标；序列化经 data-md-src 逐字回吐，往返恒等）；
+//   secretOpts = { secretStatic:true, secretLabel:'…' }（只读预览/无交互面）→ 静态占位（正文不进 DOM，保守面）——标签文案由调用侧注入（i18n t() 键，内核零硬编码文案）
+function renderMarkdown(md, wikiResolve, secretOpts) {
   var src = String(md || '')
   if (!src.trim()) return ''
+  var secretStatic = !!(secretOpts && (secretOpts === true || secretOpts.secretStatic === true))
+  var secretLabel = secretOpts && secretOpts.secretLabel != null ? String(secretOpts.secretLabel) : ''
   var lines = src.replace(/\r\n/g, '\n').split('\n')
   var out = []
   var i = 0
@@ -1041,15 +1101,34 @@ function renderMarkdown(md, wikiResolve) {
   function isTblStart(idx) { return lines[idx].indexOf('|') >= 0 && idx + 1 < lines.length && !!parseTblDelims(lines[idx + 1]) }
   while (i < lines.length) {
     var line = lines[i]
-    // 围栏代码块
+    // 围栏代码块（文档安全 S1：lang === 'secret' 走机密岛分支——原始 fence 源逐字记 data-md-src，序列化原样回吐）
     if (/^\x60\x60\x60/.test(line)) {
       closeLists()
       var lang = line.replace(/^\x60\x60\x60/, '').trim()
       var codeLines = []
+      var fenceOpen = i   // 开栏行号（data-md-src 原始区间起点）
       i++
       while (i < lines.length && !/^\x60\x60\x60/.test(lines[i])) { codeLines.push(lines[i]); i++ }
+      var fenceClosed = i < lines.length
+      var fenceClose = i   // 闭栏行号（fenceClosed 为真时有效）
       i++
-      out.push('<pre' + (lang ? ' data-lang="' + esc(lang) + '"' : '') + '><code>' + esc(codeLines.join('\n')) + '</code></pre>')
+      if (lang === 'secret') {
+        // 原始 fence 源 = 开栏行 + 内容行 +（有则）闭栏行——LF 归一后的逐字源；serializeRich 原样回吐（fence 字面量原则：
+        // 内含 [[..]]/URL/星号/HTML 形文本不解析不归一化——内容仅经 esc 转义呈现，无任何行内加工）
+        var rawLines = [lines[fenceOpen]].concat(codeLines)
+        if (fenceClosed) rawLines.push(lines[fenceClose])
+        var rawSrc = rawLines.join('\n')
+        if (secretStatic) {
+          // 降级/只读面（历史/回收站预览等无揭示交互面）：静态占位——正文不进 DOM（保守面），机密与否仅剩 🔒 与调用侧注入的标签文案
+          out.push('<pre class="dsh-notes-secret dsh-secret-static" data-lang="secret" contenteditable="false" data-md-src="' + esc(rawSrc) + '"><span class="secret-lock" aria-hidden="true">\uD83D\uDD12</span><span class="secret-ph">' + esc(secretLabel) + '</span></pre>')
+        } else {
+          // 编辑器富文本模式：模糊岛（blur 纯 CSS——DOM 内容已全量 esc 先行转义，零注入面）；contenteditable=false 原子岛屿（同表格先例）；
+          // 揭示/取消机密交互与 🔒 tooltip 由调用侧绑定（app editor.js bindSecretBlocks——内核零 DOM 行为）
+          out.push('<pre class="dsh-notes-secret" data-lang="secret" contenteditable="false" data-md-src="' + esc(rawSrc) + '"><span class="secret-lock" aria-hidden="true">\uD83D\uDD12</span><code>' + esc(codeLines.join('\n')) + '</code></pre>')
+        }
+      } else {
+        out.push('<pre' + (lang ? ' data-lang="' + esc(lang) + '"' : '') + '><code>' + esc(codeLines.join('\n')) + '</code></pre>')
+      }
       continue
     }
     // 分隔线
@@ -1175,8 +1254,14 @@ function serializeRich(root) {
     }
     else if (tag === 'PRE') {
       var lang = el.getAttribute('data-lang') || ''
-      var code = el.textContent.replace(/\n+$/, '')
-      out.push('```' + lang + '\n' + code + '\n```')
+      // 文档安全 S1：机密 fence 块（renderMarkdown 机密岛产物）经 data-md-src 逐字回吐——往返恒等硬约束
+      //（富文本序列化回源码逐字节一致；fence 字面量原则：内容不解析不归一化）。data-md-src 缺失（外来手写 DOM）按普通 code fence 兜底重建。
+      var secretRaw = lang === 'secret' ? el.getAttribute('data-md-src') : null
+      if (lang === 'secret' && secretRaw) out.push(secretRaw)
+      else {
+        var code = el.textContent.replace(/\n+$/, '')
+        out.push('```' + lang + '\n' + code + '\n```')
+      }
     }
     // L2 只读表格：data-md-src 逐字回吐原始表格源码（含对齐分隔行）；无源码记录的外来表格按文本拆壳兜底
     else if (tag === 'TABLE') { var tsrc = el.getAttribute('data-md-src'); if (tsrc) out.push(tsrc); else { var t6 = serializeInline(el).trim(); if (t6) out.push(t6) } }
@@ -1437,6 +1522,15 @@ var I18N_ZH = {
   'editor.degReasonItem': '{label}（第 {line} 行：{sample}）',
   'editor.selectCodeFirst': '先选中要设为行内码的文字',
   'editor.selectLinkFirst': '先选中要加链接的文字',
+  /* 文档安全 S1（notes-052-span-kernel2）：```secret 机密块表面文案——工具栏/右键/快捷键三入口 + 富文本揭示交互 + 只读预览降级占位 */
+  'editor.tbSecret': '标为机密（选中文字包为机密区）',
+  'editor.ctxSecret': '标记为机密',
+  'editor.secretNeedSelection': '先选中要标记为机密的文字',
+  'editor.secretRevealTip': '机密区：点击揭示，约 10 秒后自动回糊',
+  'editor.secretUnmark': '取消机密',
+  'editor.secretUnmarkFailed': '未能定位机密区，请切换源码模式手动处理',
+  'editor.secretPlaceholder': '机密区（源码模式查看）',
+  'editor.secretMarked': '已标记为机密',
   'editor.selectNoteFirst': '先选择一条笔记',
   'editor.bodyLoading': '正文加载中，稍后再整理',
   'editor.bodyEmpty': '正文为空，无可整理内容',
@@ -2361,6 +2455,15 @@ var I18N_EN = {
   'editor.degReasonItem': '{label} (line {line}: {sample})',
   'editor.selectCodeFirst': 'Select the text to mark as inline code first',
   'editor.selectLinkFirst': 'Select the text to turn into a link first',
+  /* Document security S1 (notes-052-span-kernel2): ```secret fence UI strings — toolbar/ctx-menu/shortcut entries + rich reveal interaction + read-only preview placeholder */
+  'editor.tbSecret': 'Mark as secret (wrap the selection in a secret fence)',
+  'editor.ctxSecret': 'Mark as secret',
+  'editor.secretNeedSelection': 'Select the text to mark as secret first',
+  'editor.secretRevealTip': 'Secret area: click to reveal, auto re-blurs in ~10s',
+  'editor.secretUnmark': 'Unmark secret',
+  'editor.secretUnmarkFailed': 'Could not locate the secret block; switch to source mode to fix it manually',
+  'editor.secretPlaceholder': 'Secret area (view in source mode)',
+  'editor.secretMarked': 'Marked as secret',
   'editor.selectNoteFirst': 'Select a note first',
   'editor.bodyLoading': 'The body is still loading; organize later',
   'editor.bodyEmpty': 'The body is empty; nothing to organize',
@@ -4324,7 +4427,9 @@ function fillEdBody() {
     $('edRich').innerHTML = pend ? '' : renderMarkdown(body, wikiResolve);
     $('edRich').contentEditable = pend ? 'false' : 'true';
     setSyncStatus(false);
+    bindSecretBlocks($('edRich'));   /* 文档安全 S1：机密岛交互挂接（揭示/取消机密；重建后重挂） */
   }
+  refreshSecretMirror();   /* 文档安全 S1：源码模式行染色镜像随回填重建（机密 span 存在时才有实质内容） */
 }
 function triggerSave() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 900) }
 /* 0.4.7-C（notes-047-stability ①）：自动保存载荷构建单点化——doSave 与卸载兜底 flushPendingSave 共用同一构造（防双份漂移）；
@@ -4425,7 +4530,11 @@ function renderEd() {
     + '<div class="deg" id="orgErr" style="display:none"><svg class="ic"><use href="#i-warn"/></svg><div><span id="orgErrMsg"></span></div><span class="org-x" id="orgErrX" role="button" tabindex="0" title="' + t('common.close') + '">' + icon('i-x', 11) + '</span></div>'
     /* 0.4.7-B⑥：整理中正文区遮罩（spinner + 「约需半分钟」文案——LLM 窗口期强反馈，消除「没反应」体感） */
     + '<div class="org-veil" id="orgVeil" style="display:none"><span class="org-spin"></span><span id="orgVeilTxt">' + t('editor.organizingVeil') + '</span></div>'
-    + '<textarea class="src" id="edSrc" spellcheck="false" placeholder="' + t('editor.bodyPlaceholder') + '"' + (edMode === 'source' ? '' : ' style="display:none"') + '></textarea>'
+    + '<div class="src-wrap" id="srcWrap"' + (edMode === 'source' ? '' : ' style="display:none"') + '>'   /* 驳回修复：id 必携——renderModeUI $('srcWrap') 显隐开关依赖（v1 漏 id 致富文本态重渲染后切回源码 wrapper 恒 display:none，编辑区空白） */
+    + '<textarea class="src" id="edSrc" spellcheck="false" placeholder="' + t('editor.bodyPlaceholder') + '"></textarea>'
+    /* 文档安全 S1：源码模式行背景染色镜像（机密 fence 行视觉锚）——与 edSrc 同字体/行距/内边距，透明文字 + 色带；仅机密 span 存在时填充 */
+    + '<div class="src-mirror" id="srcMirror" aria-hidden="true"></div>'
+    + '</div>'
     + '<div class="rich-scroll rich-wrap" id="richScroll"' + (edMode === 'rich' ? '' : ' style="display:none"') + '>'
     + '<div class="rtb" id="rtb">'
     + '<button class="rtb-btn" data-a="bold" title="' + t('editor.tbBold') + '">' + icon('i-bold', 14) + '</button>'
@@ -4438,6 +4547,9 @@ function renderEd() {
     + '<button class="rtb-btn" data-a="quote" title="' + t('editor.tbQuote') + '">' + icon('i-quote', 14) + '</button>'
     + '<span class="rtb-sep"></span>'
     + '<button class="rtb-btn" data-a="image" title="' + t('editor.tbImage') + '">' + icon('i-image', 14) + '</button>'
+    /* 文档安全 S1：🛡 标为机密（有选区才亮——updateToolbarState 点亮；无选区点击 toast 引导） */
+    + '<span class="rtb-sep"></span>'
+    + '<button class="rtb-btn" data-a="secret" title="' + t('editor.tbSecret') + '">\uD83D\uDEE1</button>'
     + '<span class="sync' + (edBodyErr ? ' err' : ((edBodyPending() || richDirty) ? '' : ' ok')) + '" id="syncPill"><span class="sd"></span><span id="syncTxt">' + (edBodyErr ? t('editor.syncFailed') : edBodyPending() ? t('editor.bodySyncing') : (richDirty ? t('editor.syncing') : t('editor.synced'))) + '</span></span>'   /* 0.4.7-C ②a：初态同走失败态分支（与 setSyncStatus 同一口径） */
     + '</div>'
     + '<div class="rich" id="edRich" contenteditable="true" spellcheck="false"></div>'
@@ -4473,23 +4585,41 @@ function renderEdLang() {
   var ox = $('orgErrX'); if (ox) ox.title = t('common.close');
   var vx = $('orgVeilTxt'); if (vx) vx.textContent = t('editor.organizingVeil');
   var rtb = $('rtb'); if (rtb) rtb.querySelectorAll('.rtb-btn').forEach(function (b) {
-    var k = { bold: 'editor.tbBold', italic: 'editor.tbItalic', code: 'editor.tbCode', link: 'editor.tbLink', ul: 'editor.tbUl', ol: 'editor.tbOl', quote: 'editor.tbQuote', image: 'editor.tbImage' }[b.getAttribute('data-a')];
+    var k = { bold: 'editor.tbBold', italic: 'editor.tbItalic', code: 'editor.tbCode', link: 'editor.tbLink', ul: 'editor.tbUl', ol: 'editor.tbOl', quote: 'editor.tbQuote', image: 'editor.tbImage', secret: 'editor.tbSecret' }[b.getAttribute('data-a')];
     if (k) b.title = t(k);
   });
+  /* 文档安全 S1：机密岛 chrome 文案随语言翻转（🔒 tooltip/取消机密钮——纯文案原地重写，不重建正文 DOM，0.4.9 同款纪律） */
+  var richEl = $('edRich'); if (richEl) richEl.querySelectorAll('pre.dsh-notes-secret').forEach(function (sb) { refreshSecretBlockText(sb) });
 }
 /* 编辑区事件绑定（renderEd 重建 DOM 后重挂；元素级监听随重建不累积，document 级 selectionchange 在启动区挂一次） */
 function bindEditorArea() {
   var ta = $('edSrc');
   if (ta) {
-    ta.addEventListener('input', function () { if (!edNote) return; edNote.body = this.value; triggerSave(); scheduleDegAnalyze(); });
+    ta.addEventListener('input', function () { if (!edNote) return; edNote.body = this.value; triggerSave(); scheduleDegAnalyze(); refreshSecretMirror(); });
     /* 图片入口①/②（源码模式）：粘贴/拖拽图片文件 → 同一上传弹窗 → 光标处插 Markdown 文本 */
     ta.addEventListener('paste', function (ev) { var cd = ev.clipboardData; if (cd && cd.files && cd.files.length && /^image\//.test(cd.files[0].type)) { ev.preventDefault(); pickImageFile(cd.files[0]); } });
     ta.addEventListener('dragover', function (ev) { ev.preventDefault(); });
     ta.addEventListener('drop', function (ev) { var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]; if (!f) return; ev.preventDefault(); if (!/^image\//.test(f.type)) { toast(t('editor.imageOnly')); return } pickImageFile(f); });
+    /* 文档安全 S1：源码镜像滚动同步（镜像 overflow:hidden，程序化 scrollTop 跟随） */
+    ta.addEventListener('scroll', function () { var mi = $('srcMirror'); if (mi) mi.scrollTop = this.scrollTop });
+    /* 文档安全 S1 标记入口②：编辑器右键菜单（0.4.8 ctxmenu 基建——#ctxHost + .ctxmenu/.mi + closeCtx/Esc 通用闸）；
+       有选区才拦截原生菜单（有选区才亮口径，与 Ctrl+Shift+S 一致）；选区快照入菜单闭包（菜单点击即用——textarea 选区会被点击吞掉） */
+    ta.addEventListener('contextmenu', function (ev) {
+      if (this.selectionStart === this.selectionEnd) return;
+      ev.preventDefault();
+      openSecretCtxMenu(ev.clientX, ev.clientY, snapshotSecretSel());
+    });
     bindWikiAc(ta);   /* 0.4.8：源码模式 [[ 双链输入补全（panels/wiki-ac.js；input/keydown/blur/scroll 四挂点） */
   }
   var rich = $('edRich'), wrap = $('richScroll');
   if (rich && wrap && edMode === 'rich') bindRich(rich, wrap);
+  /* 文档安全 S1：resize 换行点漂移跟随（窗口尺寸变化时镜像重建——有机密 span 才有实质成本）；
+     renderEd 重建后重入本函数，单次闸防重复绑定（模块顶层零副作用——check 节 46/49/93/103 的
+     with(Proxy) 沙箱 eval 整个 editor.js，顶层 window 访问会炸沙箱，故挂接收敛在此 + try 守卫） */
+  if (!secretResizeBound) {
+    secretResizeBound = true;
+    try { window.addEventListener('resize', function () { refreshSecretMirror() }) } catch (e) {}
+  }
 }
 /* 富文本事件（原型 bindRich）：编辑期间不重渲染（防 IME 打断/光标丢失），失焦/900ms 防抖序列化回源码 */
 function bindRich(rich, wrap) {
@@ -4509,6 +4639,13 @@ function bindRich(rich, wrap) {
       if (a) { ev.preventDefault(); ev.stopPropagation(); jumpToWikiTarget(a.getAttribute('data-wiki') || ''); return; }
       var tb = ev.target && ev.target.closest ? ev.target.closest('table.dsh-notes-table') : null;
       if (tb) toast(t('editor.tableReadonly'));
+    });
+    /* 文档安全 S1 标记入口②（富文本面）：编辑器右键菜单——同源码面口径（有选区才亮 + 选区快照闭包） */
+    rich.addEventListener('contextmenu', function (ev) {
+      var snap = snapshotSecretSel();
+      if (!snap) return;
+      ev.preventDefault();
+      openSecretCtxMenu(ev.clientX, ev.clientY, snap);
     });
   }
   /* 图片入口①：Ctrl+V 粘贴（clipboardData.files）；其余粘贴：HTML → 白名单清洗，纯文本 → 纯文本插入 */
@@ -4582,6 +4719,7 @@ function refreshDegradeUI() {
 function switchMode(m) {
   if (m === edMode) return;
   wikiAcClose();   /* 0.4.8：离开源码模式收编 [[ 补全下拉（textarea 隐藏后光标量测无意义） */
+  clearTimeout(secretRevealTimer); secretRevealTimer = null;   /* 文档安全 S1：揭示计时器随切换收编（重渲染后自然回糊，不留跨模式悬挂揭示） */
   if (m === 'rich') {
     degraded = analyzeMarkdown(edNote ? edNote.body || '' : '');
     refreshDegradeUI();
@@ -4595,17 +4733,19 @@ function switchMode(m) {
     rich.innerHTML = pend ? '' : renderMarkdown(edNote ? edNote.body || '' : '', wikiResolve);
     rich.contentEditable = pend ? 'false' : 'true';
     bindRich(rich, $('richScroll'));
+    bindSecretBlocks(rich);   /* 文档安全 S1：机密岛交互挂接（每次重渲染后重挂——元素级 _secretBound 随重建复位） */
     setSyncStatus(false);
   } else {
     if (richDirty) syncFromRich('切换模式');
     edMode = 'source';
     renderModeUI();
+    refreshSecretMirror();   /* 文档安全 S1：源码镜像随切回重建（富文本在途经 syncFromRich 已落 body） */
   }
 }
 function renderModeUI() {
   var ms = $('modeSeg');
   if (ms) ms.querySelectorAll('.seg').forEach(function (s) { s.classList.toggle('on', s.getAttribute('data-m') === edMode); });
-  if ($('edSrc')) $('edSrc').style.display = edMode === 'source' ? 'block' : 'none';
+  if ($('srcWrap')) $('srcWrap').style.display = edMode === 'source' ? 'flex' : 'none';   /* 文档安全 S1：src-wrap 包裹 textarea+镜像，整体随模式显隐 */
   if ($('richScroll')) $('richScroll').style.display = edMode === 'rich' ? 'flex' : 'none';
   if ($('footMode')) $('footMode').textContent = edMode === 'source' ? t('editor.modeSource') : t('editor.modeRich');
 }
@@ -4638,6 +4778,8 @@ function toolbarAction(a) {
     keepSel(); openLinkModal(String(sel2)); return;
   }
   else if (a === 'image') { keepSel(); openImgModal(null); return; }
+  /* 文档安全 S1 标记入口①：工具栏 🛡——选区快照包 ```secret fence（选区包 fence 即糊）；无选区 toast 引导 */
+  else if (a === 'secret') { markSelectionSecret(); return; }
   keepSel(); richDirty = true; setSyncStatus(true); scheduleRichSync(); updateToolbarState();
 }
 function updateToolbarState() {
@@ -4650,6 +4792,12 @@ function updateToolbarState() {
       var sel = window.getSelection(), n = sel && sel.rangeCount ? sel.anchorNode : null;
       if (n && n.nodeType === 3) n = n.parentNode;
       on = !!(n && n.closest && n.closest(a === 'quote' ? 'blockquote' : 'code'));
+    }
+    /* 文档安全 S1：🛡 有选区才亮（选区落 #edRich 内且非折叠） */
+    if (a === 'secret') {
+      var ssel = window.getSelection(), sn = ssel && ssel.rangeCount ? ssel.anchorNode : null;
+      if (sn && sn.nodeType === 3) sn = sn.parentNode;
+      on = !!(ssel && !ssel.isCollapsed && sn && sn.closest && sn.closest('#edRich'));
     }
     b.classList.toggle('on', !!on);
   });
@@ -4667,6 +4815,176 @@ function insertSanitizedHtml(html) {
     r.insertNode(frag);
   }
   richDirty = true; setSyncStatus(true); scheduleRichSync();
+}
+
+/* ===== 文档安全 S1（notes-052-span-kernel2）：```secret 机密块 · 富文本揭示/取消机密 + 源码行染色镜像 + 标记三入口 =====
+   分层纪律：内核（editor-kernel.js）只产出机密岛 markup（esc 先行 + CSS blur + data-md-src 逐字源）；本块只做交互：
+   揭示（~10s 自动回糊，计时器单飞——重击重置、跨块切换即回糊）+ 揭示态「取消机密」（剥 fence 行回明文）+ 三入口
+   （工具栏🛡/右键菜单/Ctrl+Shift+S——同一 applySecretSel 执行体，选区快照口径）。取消机密前先收编富文本在途编辑
+   （0.4.7-C/0.4.9 dirty 保护纪律：揭示态下别处编辑不被重建吃掉）。 */
+var secretRevealTimer = null;
+var SECRET_REVEAL_MS = 10000;   /* 揭示驻留时长（约 10s；e2e 用例 62 按此节拍等回糊） */
+var secretResizeBound = false;   /* resize 跟随绑定单次闸（renderEd 内挂接——模块顶层零副作用，check 沙箱 eval 纪律） */
+
+/* 选区快照：标记动作与实际执行间可能隔一次菜单点击（textarea/富文本选区会被点击吞掉）——contextmenu 时刻快照，点选菜单项时用 */
+function snapshotSecretSel() {
+  if (!edNote) return null;
+  if (edMode === 'source') {
+    var ta = $('edSrc'); if (!ta) return null;
+    var s = ta.selectionStart, e = ta.selectionEnd;
+    return s < e ? { mode: 'source', s: s, e: e } : null;
+  }
+  var rich = $('edRich'); if (!rich) return null;
+  var sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+  var n = sel.anchorNode;
+  if (n && n.nodeType === 3) n = n.parentNode;
+  if (!n || !n.closest || !n.closest('#edRich')) return null;
+  var txt = String(sel);
+  if (!txt) return null;
+  return { mode: 'rich', range: sel.getRangeAt(0).cloneRange(), text: txt };
+}
+
+/* 标记执行体（三入口共用）：选区包 ```secret fence 即糊——源码模式字节级拼接；富文本模式 insertHTML 内核机密岛 markup */
+function applySecretSel(snap) {
+  if (!edNote) return false;
+  if (!snap) { toast(t('editor.secretNeedSelection')); return false }
+  if (snap.mode === 'source') {
+    var ta = $('edSrc'); if (!ta) return false;
+    var body = edNote.body || '';
+    if (snap.s > body.length || snap.e > body.length || snap.s >= snap.e) { toast(t('editor.secretNeedSelection')); return false }
+    var wrapped = '\x60\x60\x60secret\n' + body.slice(snap.s, snap.e) + '\n\x60\x60\x60';
+    var nb = body.slice(0, snap.s) + wrapped + body.slice(snap.e);
+    edNote.body = nb;
+    ta.value = nb;
+    var caret = snap.s + wrapped.length;
+    try { ta.focus(); ta.setSelectionRange(caret, caret) } catch (e2) {}
+    triggerSave(); scheduleDegAnalyze(); refreshSecretMirror();
+  } else {
+    var rich = $('edRich'); if (!rich) return false;
+    rich.focus();
+    var sel = window.getSelection();
+    if (sel && snap.range) { sel.removeAllRanges(); try { sel.addRange(snap.range) } catch (e3) {} }
+    var html = renderMarkdown('\x60\x60\x60secret\n' + snap.text + '\n\x60\x60\x60', wikiResolve);
+    document.execCommand('insertHTML', false, html);
+    richDirty = true; setSyncStatus(true); scheduleRichSync(); keepSel(); updateToolbarState();
+  }
+  toast(t('editor.secretMarked'));
+  return true;
+}
+function markSelectionSecret() { applySecretSel(snapshotSecretSel()) }
+
+/* 标记入口②：编辑器右键菜单（0.4.8 笔记右键菜单基建——#ctxHost 宿主 + .ctxmenu/.mi 结构 + 点外关/Esc 关通用闸 + 视口夹紧） */
+function openSecretCtxMenu(x, y, snap) {
+  var host = $('ctxHost');
+  host.innerHTML = '<div class="ctxmenu" id="ctxMenu"><div class="mi" data-a="secret">\uD83D\uDEE1 ' + t('editor.ctxSecret') + '</div></div>';
+  var m = $('ctxMenu');
+  m.style.left = Math.max(4, Math.min(x, innerWidth - m.offsetWidth - 4)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, innerHeight - m.offsetHeight - 4)) + 'px';
+  m.addEventListener('click', function (ev) {
+    var mi = ev.target.closest('.mi'); if (!mi || mi.classList.contains('dis')) return;
+    closeCtx();
+    applySecretSel(snap);
+  });
+}
+
+/* 机密岛交互挂接：填/重渲染后调用（fillEdBody/switchMode/unmarkSecretBlock）；静态占位岛（.dsh-secret-static，只读预览）不挂交互 */
+function bindSecretBlocks(rich) {
+  if (!rich) return;
+  rich.querySelectorAll('pre.dsh-notes-secret').forEach(function (pre) {
+    if (pre.classList.contains('dsh-secret-static')) return;
+    if (!pre._secretBound) {
+      pre._secretBound = true;
+      pre.addEventListener('click', function (ev) {
+        if (ev.target && ev.target.closest && ev.target.closest('.secret-unmark')) return;   /* 取消机密钮自己接管 */
+        if (pre.classList.contains('revealed')) armSecretReveal();   /* 重击重置计时 */
+        else revealSecretBlock(pre);   /* 单飞：先回糊既有揭示块，再揭示本块 */
+      });
+      var btn = document.createElement('button');
+      btn.className = 'secret-unmark'; btn.type = 'button';
+      btn.addEventListener('click', function (ev) { ev.stopPropagation(); ev.preventDefault(); unmarkSecretBlock(pre) });
+      pre.appendChild(btn);
+    }
+    refreshSecretBlockText(pre);
+  });
+}
+/* 机密岛 chrome 文案（🔒 tooltip + 取消机密钮）——renderEdLang 语言切换时原地重写（零正文重建） */
+function refreshSecretBlockText(pre) {
+  var lock = pre.querySelector('.secret-lock'); if (lock) lock.title = t('editor.secretRevealTip');
+  var btn = pre.querySelector('.secret-unmark'); if (btn) btn.textContent = t('editor.secretUnmark');
+}
+/* 揭示计时器单飞：模块级唯一计时器；重击重置；目标块被重建/移除时 classList 移除对离体节点无害 */
+function armSecretReveal() {
+  clearTimeout(secretRevealTimer);
+  secretRevealTimer = setTimeout(function () {
+    secretRevealTimer = null;
+    var rich = $('edRich');
+    if (rich) rich.querySelectorAll('pre.dsh-notes-secret.revealed').forEach(function (p2) { p2.classList.remove('revealed') });
+  }, SECRET_REVEAL_MS);
+}
+function revealSecretBlock(pre) {
+  var rich = $('edRich');
+  if (rich) rich.querySelectorAll('pre.dsh-notes-secret.revealed').forEach(function (p2) { if (p2 !== pre) p2.classList.remove('revealed') });
+  pre.classList.add('revealed');
+  armSecretReveal();
+}
+
+/* 取消机密：剥 fence 行回明文。块定位 = 编辑器内机密岛序号 ⇄ parseSecretSpans(body) 序号（渲染器与解析器同扫描纪律，序即一致）；
+   执行前先收编富文本在途编辑（dirty 保护——揭示态下别处编辑不被重建吃掉，0.4.9 同款纪律） */
+function unmarkSecretBlock(pre) {
+  if (!edNote) return;
+  if (edMode === 'rich' && richDirty) syncFromRich('取消机密');
+  var body = edNote.body || '';
+  var rich = $('edRich');
+  var pres = rich ? Array.prototype.slice.call(rich.querySelectorAll('pre.dsh-notes-secret')) : [];
+  var idx = pres.indexOf(pre);
+  var spans = parseSecretSpans(body) || [];   /* 同 refreshSecretMirror 口径：沙箱内核缺位零降级不炸 */
+  if (idx < 0 || idx >= spans.length) { toast(t('editor.secretUnmarkFailed')); return }
+  var sp = spans[idx];
+  var inner = secretSpanInner(body, sp);
+  var nb = body.slice(0, sp.start) + inner + body.slice(sp.end);
+  edNote.body = nb;
+  if ($('edSrc')) $('edSrc').value = nb;
+  clearTimeout(secretRevealTimer); secretRevealTimer = null;
+  if (rich && edMode === 'rich') { richDirty = false; rich.innerHTML = renderMarkdown(nb, wikiResolve); bindSecretBlocks(rich) }
+  setSyncStatus(false);
+  triggerSave(); scheduleDegAnalyze(); refreshSecretMirror();
+}
+/* fence 原始源 → 内容行（剥开栏行 + 有则剥闭栏行）；EOF 兜底形态无闭栏行，内容保持至文末 */
+function secretSpanInner(body, sp) {
+  var raw = body.slice(sp.start, sp.end);
+  var nl = raw.indexOf('\n');
+  var inner = nl < 0 ? '' : raw.slice(nl + 1);
+  var lastNl = inner.lastIndexOf('\n');
+  var lastLine = lastNl < 0 ? inner : inner.slice(lastNl + 1);
+  if (/^\x60{3}/.test(lastLine)) inner = lastNl < 0 ? '' : inner.slice(0, lastNl);
+  return inner;
+}
+
+/* 源码模式行背景染色镜像：与 #edSrc 同字体/行距/内边距/换行策略（.src-mirror 透明文字 + .src-secret 色带）；
+   仅机密 span 存在时填充（无 span 清空——常规打字零开销）；行号口径 = body.split 换行序列；滚动/resize 跟随 */
+function refreshSecretMirror() {
+  var ta = $('edSrc'), mi = $('srcMirror');
+  if (!ta || !mi) return;
+  var body = edNote ? (edNote.body || '') : ta.value;
+  var spans = parseSecretSpans(body) || [];   /* 内核函数缺位（check with(Proxy) 沙箱桩返回 undefined）时零色带降级，不炸编辑链 */
+  if (!spans.length) { if (mi._secretOn) { mi._secretOn = false; mi.innerHTML = ''; mi.scrollTop = 0 } return }
+  mi._secretOn = true;
+  var lines = body.split('\n');
+  var secretLines = {};
+  spans.forEach(function (sp) {
+    var sLine = 0, eLine = 0, j;
+    for (j = 0; j < sp.start; j++) if (body.charCodeAt(j) === 10) sLine++;
+    for (j = 0; j < sp.end; j++) if (body.charCodeAt(j) === 10) eLine++;
+    for (var li = sLine; li <= eLine && li < lines.length; li++) secretLines[li] = true;
+  });
+  mi.innerHTML = lines.map(function (ln2, i) {
+    return '<div' + (secretLines[i] ? ' class="src-secret"' : '') + '>' + (ln2 ? esc(ln2) : '') + '</div>';
+  }).join('');
+  /* 滚动条补偿：edSrc 出现竖向滚动条时内容宽收窄——镜像右缘同步让行（换行点）对齐 */
+  var sb = ta.offsetWidth - ta.clientWidth;
+  mi.style.right = sb > 0 ? sb + 'px' : '';
+  mi.scrollTop = ta.scrollTop;
 }
 /* ===== 图片插入流（三入口共用：粘贴/拖拽/工具栏按钮 → 弹窗预览+alt → notes-asset-upload → 光标处插入） ===== */
 /* ---- 二期 图片压缩：>1MB 的 PNG/JPEG 上传前前端 canvas 降质转 JPEG（GIF/WebP 不动，保动画/透明语义）----
@@ -5935,7 +6253,7 @@ function renderHistView() {
   var rb = $('histRestore'); if (rb) rb.disabled = !histState.sel || histState.pending;
   if (!histState.sel) { el.innerHTML = '<div class="modal-hint">选择左侧版本查看预览（只读）</div>'; return }
   if (!histState.preview) { el.innerHTML = '<div class="modal-hint">预览加载中…</div>'; return }
-  el.innerHTML = '<div class="hist-preview rich">' + renderMarkdown(histState.preview.body || '', wikiResolve) + '</div>';
+  el.innerHTML = '<div class="hist-preview rich">' + renderMarkdown(histState.preview.body || '', wikiResolve, { secretStatic: true, secretLabel: t('editor.secretPlaceholder') }) + '</div>';   /* 文档安全 S1：只读预览机密块走静态占位（无揭示交互，保守面） */
 }
 function selectHistVersion(ts) {
   if (!histState) return;
@@ -7417,7 +7735,7 @@ function renderTrashList() {
           + '<button class="mbtn trash-act" data-id="' + esc(n.id) + '" data-act="restore"' + (trashState.pending ? ' disabled' : '') + '>' + t('trash.restore') + '</button>'
           + '<button class="mbtn danger trash-act" data-id="' + esc(n.id) + '" data-act="purge"' + (trashState.pending ? ' disabled' : '') + '>' + t('trash.purge') + '</button></div>';
         /* 行内只读预览：正文只经 renderMarkdown 内核渲染（全量转义，esc 先行零注入面）；加载/错误态经 esc() 文本插入 */
-        if (pv) html += '<div class="trash-preview rich">' + (typeof pv.body === 'string' ? renderMarkdown(pv.body, wikiResolve) : '<span class="modal-hint">' + esc(pv.error || t('trash.previewLoading')) + '</span>') + '</div>';
+        if (pv) html += '<div class="trash-preview rich">' + (typeof pv.body === 'string' ? renderMarkdown(pv.body, wikiResolve, { secretStatic: true, secretLabel: t('editor.secretPlaceholder') }) : '<span class="modal-hint">' + esc(pv.error || t('trash.previewLoading')) + '</span>') + '</div>';   /* 文档安全 S1：只读预览机密块走静态占位（保守面） */
         return html
       }).join('') + '</div>';
   $('trashAll').onchange = toggleTrashAll;
@@ -8113,6 +8431,9 @@ document.addEventListener('keydown', function (ev) {
   if (ev.altKey && !ev.ctrlKey && !ev.metaKey && (ev.key === 'n' || ev.key === 'N')) { ev.preventDefault(); if (!$('modalHost').firstChild) doNewNote(); return }
   /* v3：Ctrl+/ 双模式切换（源码⇄富文本）；降级时 switchMode 内部拦截并 toast（弹窗打开时不切） */
   if ((ev.ctrlKey || ev.metaKey) && ev.key === '/') { ev.preventDefault(); if (edNote && !$('modalHost').firstChild) switchMode(edMode === 'source' ? 'rich' : 'source'); return }
+  /* 文档安全 S1 标记入口③：Ctrl+Shift+S 选区包 ```secret fence（有选区才亮——无选区 toast 引导；编辑器内/弹窗外均可触发；
+     输入域内直达（本分支在 inField 早退之前），Ctrl+S 浏览器保留键不拦、Shift 形态无冲突） */
+  if ((ev.ctrlKey || ev.metaKey) && ev.shiftKey && !ev.altKey && (ev.key === 'S' || ev.key === 's')) { ev.preventDefault(); if (edNote && !$('modalHost').firstChild) markSelectionSecret(); return }
   if (ev.key === 'Escape') {
     if ($('modalHost').firstChild) { closeModalFlushed(); archState = null; trashState = null; injMgrState = null; suggestState = null; histState = null; memEnableState = null; dState = null; return }   /* 归档预览/合并/回收站/注入管理/整理建议/历史版本/工作记忆启用/派发（含定时排定）对话框走 modalHost，Esc 统一关（设置卡先兜底 flush 再关，同 ✕） */
     if (sortOpen) { sortOpen = false; renderFilterBar(); return }   /* 排序菜单 Esc（优先于筛选 popover） */

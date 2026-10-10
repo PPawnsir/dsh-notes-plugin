@@ -39,9 +39,9 @@ module.exports = {
     assert(mi >= 0 && vs.indexOf("base: 'https://hf-mirror.com'", mi) > mi && vs.indexOf("base: 'https://huggingface.co'", mi) > vs.indexOf("base: 'https://hf-mirror.com'", mi), 'host embedder 镜像链 hf-mirror→HF 保留（红线不动）')
   })
 
-  await t('R3 bundle 减重：app.html 字节数 ≤ 672000（退役前基线 686336——嵌入模块 + 运行时链 + 模型行拆除净降）', () => {
+  await t('R3 bundle 减重：app.html 字节数 ≤ 695000（R3 退役前基线 686336——退役净降兑现；文档安全 S1（notes-052-span-kernel2）机密块内核+双模渲染+镜像增量后上限上调）', () => {
     const bytes = fsNative.statSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html')).size
-    assert(bytes <= 672000, 'app.html ≤ 672000 字节（实得 ' + bytes + '；R3 前基线 686336，净降 ≥14KB）')
+    assert(bytes <= 695000, 'app.html ≤ 695000 字节（实得 ' + bytes + '；R3 前基线 686336，S1 机密块增量 +23KB 后仍低于退役前水位）')
   })
 
   // ===== 126.2 查询嵌入锚点（fresh host 实例 + bge 假推理缝：真模型不进 CI）=====

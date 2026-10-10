@@ -252,13 +252,13 @@ module.exports = {
       const s = pair[1], label = pair[0]
       assert(s.indexOf('function toggleTrashPreview(id)') >= 0, label + ' 行预览开关函数存在')
       assert(s.indexOf("'notes-get', { id: id, includeDeleted: true }") >= 0, label + ' 预览走 notes-get includeDeleted（已删正文可达）')
-      assert(s.indexOf("className: 'dsh-notes-trash-preview dsh-notes-rich', dangerouslySetInnerHTML: { __html: renderMarkdown(trashPreview.body, wikiResolve) }") >= 0, label + ' 预览只读 renderMarkdown 内核渲染（全量转义零注入面）')
+      assert(s.indexOf("className: 'dsh-notes-trash-preview dsh-notes-rich', dangerouslySetInnerHTML: { __html: renderMarkdown(trashPreview.body, wikiResolve, { secretStatic: true, secretLabel: tt('editor.secretPlaceholder') }) }") >= 0, label + ' 预览只读 renderMarkdown 内核渲染（全量转义零注入面；文档安全 S1 起机密块走静态占位）')
       assert(s.indexOf("trashPreview && trashPreview.id === n.id ? tt('trash.collapse') : tt('trash.preview')") >= 0, label + ' 行尾「预览/收起」按钮走 tt()（i18n 覆盖卡E）')
     }
     // app.html：同款 renderMarkdown 只读渲染；标题/错误态均经 esc()
     assert(appSrc.indexOf('function toggleTrashPreview(id)') >= 0, 'app.html 行预览开关函数存在')
     assert(appSrc.indexOf("rpc('notes-get', { id: id, includeDeleted: true })") >= 0, 'app.html 预览走 notes-get includeDeleted')
-    assert(appSrc.indexOf('\'<div class="trash-preview rich">\' + (typeof pv.body === \'string\' ? renderMarkdown(pv.body, wikiResolve)') >= 0, 'app.html 预览只读 renderMarkdown 内核渲染（esc 先行）')
+    assert(appSrc.indexOf('\'<div class="trash-preview rich">\' + (typeof pv.body === \'string\' ? renderMarkdown(pv.body, wikiResolve, { secretStatic: true, secretLabel: t(\'editor.secretPlaceholder\') })') >= 0, 'app.html 预览只读 renderMarkdown 内核渲染（esc 先行；文档安全 S1 起机密块走静态占位）')
     assert(appSrc.indexOf('data-act="preview"') >= 0 && appSrc.indexOf('class="ti trash-ti"') >= 0, 'app.html 行尾「预览/收起」按钮 + 标题点击预览')
     // 原型：无 Markdown 内核——esc() 纯文本只读预览（hist-preview 同款先例，esc 全量转义零注入面）+ mock notes-get 支持 includeDeleted
     assert(protoV2Src.indexOf('function toggleTrashPreview(id)') >= 0, '原型行预览开关函数存在')

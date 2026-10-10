@@ -51,7 +51,7 @@ function renderTrashList() {
           + '<button class="mbtn trash-act" data-id="' + esc(n.id) + '" data-act="restore"' + (trashState.pending ? ' disabled' : '') + '>' + t('trash.restore') + '</button>'
           + '<button class="mbtn danger trash-act" data-id="' + esc(n.id) + '" data-act="purge"' + (trashState.pending ? ' disabled' : '') + '>' + t('trash.purge') + '</button></div>';
         /* 行内只读预览：正文只经 renderMarkdown 内核渲染（全量转义，esc 先行零注入面）；加载/错误态经 esc() 文本插入 */
-        if (pv) html += '<div class="trash-preview rich">' + (typeof pv.body === 'string' ? renderMarkdown(pv.body, wikiResolve) : '<span class="modal-hint">' + esc(pv.error || t('trash.previewLoading')) + '</span>') + '</div>';
+        if (pv) html += '<div class="trash-preview rich">' + (typeof pv.body === 'string' ? renderMarkdown(pv.body, wikiResolve, { secretStatic: true, secretLabel: t('editor.secretPlaceholder') }) : '<span class="modal-hint">' + esc(pv.error || t('trash.previewLoading')) + '</span>') + '</div>';   /* 文档安全 S1：只读预览机密块走静态占位（保守面） */
         return html
       }).join('') + '</div>';
   $('trashAll').onchange = toggleTrashAll;

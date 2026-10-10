@@ -79,7 +79,7 @@
               !histSel
                 ? e('div', { className: 'dsh-notes-data-hint' }, '选择左侧版本查看预览（只读）')
                 : histPreview
-                  ? e('div', { className: 'dsh-notes-hist-preview dsh-notes-rich', dangerouslySetInnerHTML: { __html: renderMarkdown(histPreview.body, wikiResolve) } })
+                  ? e('div', { className: 'dsh-notes-hist-preview dsh-notes-rich', dangerouslySetInnerHTML: { __html: renderMarkdown(histPreview.body, wikiResolve, { secretStatic: true, secretLabel: tt('editor.secretPlaceholder') }) } })   /* 文档安全 S1：只读预览机密块走静态占位（保守面） */
                   : e('div', { className: 'dsh-notes-data-hint' }, '预览加载中…'))),
           error ? e('div', { className: 'dsh-notes-dispatch-err' }, error) : null,
           e('div', { className: 'dsh-notes-dispatch-actions' },

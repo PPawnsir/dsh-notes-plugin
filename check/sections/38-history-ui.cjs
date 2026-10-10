@@ -86,7 +86,7 @@ module.exports = {
     assert(clientSrc.indexOf('(histCount || 0) > 0') >= 0 && clientSrc.indexOf("I('clock', 12), tt('meta.history')") >= 0, 'meta 行「历史」入口（有版本才显示，clock 图标；i18n 覆盖卡B 起走 tt() 字典）')
     assert(clientSrc.indexOf('probeHistCount') >= 0 && clientSrc.indexOf('histCountRef.current = null; setHistCount(null)') >= 0, '选中笔记切换时重置并探测版本计数')
     assert(clientSrc.indexOf('dsh-notes-hist-modal') >= 0 && clientSrc.indexOf('dsh-notes-hist-list') >= 0 && clientSrc.indexOf('dsh-notes-hist-item') >= 0, '历史 modal 结构类（列表）')
-    assert(clientSrc.indexOf("'dsh-notes-hist-preview dsh-notes-rich'") >= 0 && clientSrc.indexOf('renderMarkdown(histPreview.body, wikiResolve)') >= 0, '预览只读渲染走 renderMarkdown 内核（全量转义零注入面）')
+    assert(clientSrc.indexOf("'dsh-notes-hist-preview dsh-notes-rich'") >= 0 && clientSrc.indexOf("renderMarkdown(histPreview.body, wikiResolve, { secretStatic: true, secretLabel: tt('editor.secretPlaceholder') })") >= 0, '预览只读渲染走 renderMarkdown 内核（全量转义零注入面；文档安全 S1 起机密块走静态占位）')
     assert(clientSrc.indexOf('fmtHistTs') >= 0 && clientSrc.indexOf('fmtBytes(v.bytes)') >= 0, '版本列表时间+大小展示')
     assert(clientSrc.indexOf('恢复此版本') >= 0 && clientSrc.indexOf('当前版本会先自动快照进历史版本，可再撤销') >= 0, '恢复按钮 + confirm 前置快照提示文案')
     assert(clientSrc.indexOf('histOpenRef.current) { setHistOpen(false)') >= 0, 'Esc 优先关历史面板')

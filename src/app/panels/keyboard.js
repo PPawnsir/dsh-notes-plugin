@@ -21,6 +21,9 @@ document.addEventListener('keydown', function (ev) {
   if (ev.altKey && !ev.ctrlKey && !ev.metaKey && (ev.key === 'n' || ev.key === 'N')) { ev.preventDefault(); if (!$('modalHost').firstChild) doNewNote(); return }
   /* v3：Ctrl+/ 双模式切换（源码⇄富文本）；降级时 switchMode 内部拦截并 toast（弹窗打开时不切） */
   if ((ev.ctrlKey || ev.metaKey) && ev.key === '/') { ev.preventDefault(); if (edNote && !$('modalHost').firstChild) switchMode(edMode === 'source' ? 'rich' : 'source'); return }
+  /* 文档安全 S1 标记入口③：Ctrl+Shift+S 选区包 ```secret fence（有选区才亮——无选区 toast 引导；编辑器内/弹窗外均可触发；
+     输入域内直达（本分支在 inField 早退之前），Ctrl+S 浏览器保留键不拦、Shift 形态无冲突） */
+  if ((ev.ctrlKey || ev.metaKey) && ev.shiftKey && !ev.altKey && (ev.key === 'S' || ev.key === 's')) { ev.preventDefault(); if (edNote && !$('modalHost').firstChild) markSelectionSecret(); return }
   if (ev.key === 'Escape') {
     if ($('modalHost').firstChild) { closeModalFlushed(); archState = null; trashState = null; injMgrState = null; suggestState = null; histState = null; memEnableState = null; dState = null; return }   /* 归档预览/合并/回收站/注入管理/整理建议/历史版本/工作记忆启用/派发（含定时排定）对话框走 modalHost，Esc 统一关（设置卡先兜底 flush 再关，同 ✕） */
     if (sortOpen) { sortOpen = false; renderFilterBar(); return }   /* 排序菜单 Esc（优先于筛选 popover） */

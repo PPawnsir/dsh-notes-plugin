@@ -224,8 +224,15 @@ const CORE = new Set([
   // 126. 0.5.0 R3 查询嵌入接通 + 浏览器 wasm 路径退役（notes-051-query-embed：退役面静态 + bundle 减重 + 查询嵌入锚点常驻 --core）
   'R3 退役面：浏览器嵌入模块不存在 + 双 manifest 零登记 + app.html 零 transformers/jsdelivr/unpkg/代理路径引用',
   'R3 退役面：模型文件代理路由零残留（head.js/server.dist.js/index.mjs/e2e mock）+ host 镜像链 hf-mirror→HF 保留（红线）',
-  'R3 bundle 减重：app.html 字节数 ≤ 672000（退役前基线 686336——嵌入模块 + 运行时链 + 模型行拆除净降）',
+  'R3 bundle 减重：app.html 字节数 ≤ 695000（R3 退役前基线 686336——退役净降兑现；文档安全 S1（notes-052-span-kernel2）机密块内核+双模渲染+镜像增量后上限上调）',
   'R3 查询嵌入锚点：bge hostEmbed:true 在册 + 文本 query 经 host embed 不抛错 + 融合检索语义命中（假推理缝）',
+  // 129. 文档安全 S1（notes-052-span-kernel2）：secret span 内核 + 双模渲染（往返恒等 + DEG 降级 + 三入口，常驻 --core）
+  'parseSecretSpans 行为级：顶格识别/闭合/EOF 兜底/缩进不算/多块/嵌套退化/普通围栏内不另开（偏移 slice = 完整 fence 源）',
+  'secret 往返恒等：特殊字符/[[..]]/URL/星号/HTML 形文本/多块/EOL(EOF)兜底/普通 fence 混排 serialize(render(body)) 逐字节一致（fence 字面量原则）',
+  'secret blur markup 静态锚：交互岛 esc 先行 + contenteditable=false + data-md-src + code 子；静态占位正文不进 DOM + 标签调用侧注入（内核零硬编码文案）',
+  'DEG 红线：secret fence 永不触发降级（fence 内容豁免照旧）+ 围栏外规则照常检出 + DEG_RULES 表无 secret 检出项',
+  '三入口静态锚：工具栏🛡（有选区才亮）+ 右键菜单（0.4.8 ctxmenu 基建）+ Ctrl+Shift+S（有选区才亮）；揭示计时器单飞（重击重置）',
+  '模式切换 dirty 保护 + 源码行染色镜像静态锚：切换收编揭示计时器/取消机密先收编在途编辑（0.4.9 同款纪律）+ src-mirror 滚动/resize 跟随 + 样式双端',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

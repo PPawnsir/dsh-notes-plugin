@@ -39,7 +39,7 @@ function renderHistView() {
   var rb = $('histRestore'); if (rb) rb.disabled = !histState.sel || histState.pending;
   if (!histState.sel) { el.innerHTML = '<div class="modal-hint">选择左侧版本查看预览（只读）</div>'; return }
   if (!histState.preview) { el.innerHTML = '<div class="modal-hint">预览加载中…</div>'; return }
-  el.innerHTML = '<div class="hist-preview rich">' + renderMarkdown(histState.preview.body || '', wikiResolve) + '</div>';
+  el.innerHTML = '<div class="hist-preview rich">' + renderMarkdown(histState.preview.body || '', wikiResolve, { secretStatic: true, secretLabel: t('editor.secretPlaceholder') }) + '</div>';   /* 文档安全 S1：只读预览机密块走静态占位（无揭示交互，保守面） */
 }
 function selectHistVersion(ts) {
   if (!histState) return;
