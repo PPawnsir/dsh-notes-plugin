@@ -310,6 +310,9 @@
   .src-mirror .src-secret-veil{display:flex;align-items:flex-start;pointer-events:auto;cursor:pointer;color:var(--nt2);background:var(--npanel);border-left:2px solid var(--ndanger);box-shadow:inset 0 0 0 1px var(--nbd-soft);overflow:hidden;padding-left:8px;font-family:var(--nfont);font-size:12px;line-height:1.8}
   .src-mirror .src-secret-veil:hover{color:var(--ntx);background:color-mix(in srgb, var(--ndanger) 6%, var(--npanel))}
   .src-mirror .src-secret-veil.revealed{visibility:hidden;pointer-events:none}
+  /* 文档安全 S6（notes-052-manual-mark-entries）：源码模式浮动 🛡 钮——srcWrap 顶部右侧（rtb 随 richScroll 隐藏时唯一可见标记入口）；
+     复用 .rtb-btn 尺寸/hover/.on 基座，本规则只补浮岛定位 + 实底（盖住下层文本/遮蔽块）；z3 = 镜像层（z2）之上 */
+  .src-secret-btn{position:absolute;top:6px;right:10px;z-index:3;background:var(--npanel);border:1px solid var(--nbd-soft);box-shadow:0 1px 4px rgba(0,0,0,.10);border-radius:var(--nr-sm)}
   .deg{margin:10px 24px 0;display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:var(--nwarn);background:var(--nbg-raise);border-left:3px solid var(--nwarn);border-radius:var(--nr-md);padding:8px 12px;line-height:1.6;flex-shrink:0}
   .deg svg.ic{width:13px;height:13px;margin-top:2px;flex-shrink:0}
   .deg .rs{color:var(--nt2);word-break:break-all}

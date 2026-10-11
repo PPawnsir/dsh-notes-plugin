@@ -80,6 +80,10 @@
         //（null = 全遮蔽；span 内打字 start 不变即持续揭示；换笔记/切模式/取消机密/一键标记即收编回蔽——揭示是临时动作）。
         const srcVeilRef = React.useRef(null)
         const srcRevealStartRef = React.useRef(null)
+        // ===== 文档安全 S6（notes-052-manual-mark-entries）：选区手动标记三入口——编辑器右键「标记为机密」菜单态 =====
+        // edSecretCtx：null = 无菜单；{ x, y, snap } = 开（面板内坐标 + contextmenu 时刻选区快照——菜单点击会吞选区）。
+        // Esc 栈关闭经 kernel setEdSecretCtx 别名（panelBridge 回填）；markSecretRef/edSecretFocusRef 见下方镜像块（Ctrl+Shift+S 面）。
+        const [edSecretCtx, setEdSecretCtx] = React.useState(null)
         // ===== 历史版本面板（notes-history-ui）：详情 meta 行「历史」入口（有版本才显示）→ modal：版本列表（时间+大小）→ 点选只读预览 → 恢复 =====
         const [histCount, setHistCount] = React.useState(null)    // 当前笔记历史版本数（null=未探测；0=无版本不显示入口）
         const keepQuickRef = React.useRef(false)
@@ -472,7 +476,12 @@
           layer.innerHTML = out.join('')   // ②终态：span 连续行段 → 遮蔽块
           layer.scrollTop = ta.scrollTop
         }
-        // 遮蔽块点击揭示：委托挂层节点（innerHTML 频繁重建不脱钩）；揭示态 = visibility:hidden（保留占位高度 + 点击穿透编辑）
+        // 遮蔽块点击揭示：委托挂层节点本体（innerHTML 频繁重建不脱钩）；揭示态 = visibility:hidden（保留占位高度 + 点击穿透编辑）
+        // 文档安全 S6 修复（notes-052-manual-mark-entries，用户真机报障：面板遮蔽块点击纹丝不动——e2e 用例 65 复现锁定）：
+        //   v1 用 []-deps effect + layer.addEventListener——但面板是 shell.overlay 单例同组件关态 return null（状态存活），
+        //   首挂提交必在面板关闭时（veil DOM 不存在）→ srcVeilRef.current=null 空跑后 [] 依赖永不重跑 → 监听从未绑上（遮蔽照常渲染、点击死）。
+        //   修复 = 委托改挂层节点 React onClick prop：React 事件委托随面板开合/重挂载恒同步，imperative 遮蔽块子节点点击经冒泡命中；
+        //   零 effect 生命周期（无挂/卸监听两段式），revealPanelSrcSecret 执行体原样复用。
         function revealPanelSrcSecret(veil) {
           const si = Number(veil.getAttribute('data-sec'))
           const body = edBodyRef.current || ''
@@ -483,19 +492,13 @@
           veil.classList.add('revealed')
           armPanelSecretReveal()
         }
+        function onVeilLayerClick(ev) {   // 委托：层节点 React onClick（遮蔽块为 imperative innerHTML 产物，冒泡命中）
+          const veil = ev.target && ev.target.closest ? ev.target.closest('.src-secret-veil') : null
+          if (veil) revealPanelSrcSecret(veil)
+        }
         // 重建接线：每渲染后重建（受控 textarea 每键入 setState 随行；切语言 tt 订阅触发重渲染也随行——遮蔽块标签随语言翻新）；
         // 无 span / 非源码态清空空层零开销；揭示态由 srcRevealStartRef 保义——span 内打字 start 不变持续揭示
         React.useEffect(() => { rebuildPanelSrcVeil() })
-        React.useEffect(() => {
-          const layer = srcVeilRef.current
-          if (!layer) return undefined
-          const onClick = (ev) => {
-            const veil = ev.target && ev.target.closest ? ev.target.closest('.src-secret-veil') : null
-            if (veil) revealPanelSrcSecret(veil)
-          }
-          layer.addEventListener('click', onClick)
-          return () => { try { layer.removeEventListener('click', onClick) } catch (err) {} }
-        }, [])
         React.useEffect(() => {
           const onRz = () => rebuildPanelSrcVeil()
           try { window.addEventListener('resize', onRz) } catch (err) {}
@@ -527,6 +530,91 @@
           if (selectedRef.current && edSecretSug && edSecretSug.lines) secretSugIgnoredRef.current[selectedRef.current + ':' + edSecretSug.lines.join(',')] = true
           setEdSecretSug(null)
         }
+        // ===== 文档安全 S6（notes-052-manual-mark-entries，反馈 n-mv3emwhuy2k6）：选区手动标记三入口（meta 🛡 钮 / 编辑器右键 / Ctrl+Shift+S）=====
+        // 三入口共用同一执行体（app 三入口共用 applySecretSel 同构纪律）；源码面 = 选区触及行经内核 wrapSecretLines 包 fence
+        //（既有面板标记路径——与 S4 一键标记同源；行粒度恒落顶格 fence，遮蔽块必然在案），富文本面 = 选区包 ```secret 渲染岛
+        // insertHTML（app applySecretSel 富文本分支同构——serializeRich 顶格回吐，data-md-src 往返恒等）。
+        // 有选区才亮口径：无选区 toast 引导（editor.secretNeedSelection 既有键）；既有机密 span 内行剔除（双标 = fence 嵌套）。
+        function snapshotPanelSecretSel() {   // 选区快照（app snapshotSecretSel 同构）：菜单点击会吞选区——contextmenu 时刻入闭包
+          if (!selectedRef.current) return null
+          if (editorModeRef.current === 'source') {
+            const ta = edBodyDomRef.current
+            if (!ta) return null
+            const s = ta.selectionStart, e = ta.selectionEnd
+            return s < e ? { mode: 'source', s: s, e: e } : null
+          }
+          const rich = richRef.current
+          if (!rich) return null
+          const sel = window.getSelection()
+          if (!sel || sel.isCollapsed || !sel.rangeCount) return null
+          let n = sel.anchorNode
+          if (n && n.nodeType === 3) n = n.parentNode
+          if (!n || !rich.contains(n)) return null   // 选区须落面板富文本内
+          const txt = String(sel)
+          if (!txt) return null
+          return { mode: 'rich', range: sel.getRangeAt(0).cloneRange(), text: txt }
+        }
+        function applyPanelSecretSel(snap) {   // 标记执行体（三入口共用）
+          if (!selectedRef.current) return false
+          if (!snap) { showToast(tt('editor.secretNeedSelection')); return false }
+          if (snap.mode === 'source') {
+            const body = edBodyRef.current || ''
+            if (snap.s > body.length || snap.e > body.length || snap.s >= snap.e) { showToast(tt('editor.secretNeedSelection')); return false }
+            const cntNl = (str) => { let c = 0; for (let i = 0; i < str.length; i++) if (str.charCodeAt(i) === 10) c++; return c }
+            const eAdj = body.charCodeAt(snap.e - 1) === 10 ? snap.e - 1 : snap.e   // 选区末字符恰为换行 → 尾行不计（空行不标）
+            const sLine = 1 + cntNl(body.slice(0, snap.s)), eLine = 1 + cntNl(body.slice(0, eAdj))
+            // 既有机密 span 内行剔除（双标 = fence 嵌套；span 外照常）
+            const spans = (typeof parseSecretSpans === 'function' ? parseSecretSpans(body) : null) || []
+            const inSpan = {}
+            for (const sp of spans) { const a = 1 + cntNl(body.slice(0, sp.start)), b = 1 + cntNl(body.slice(0, sp.end)); for (let li = a; li <= b; li++) inSpan[li] = true }
+            const lines = []
+            for (let li = sLine; li <= eLine; li++) if (!inSpan[li]) lines.push(li)
+            if (!lines.length) { showToast(tt('editor.secretAlreadyMarked')); return false }
+            const r = (typeof wrapSecretLines === 'function')   // 内核缺位（check 沙箱桩）零改写降级——doSecretMarkAll 同款卫兵
+              ? wrapSecretLines(body, lines)
+              : { body: body, count: 0 }
+            if (!r.count) { showToast(tt('editor.secretNeedSelection')); return false }
+            srcRevealStartRef.current = null   // 文档安全 S5：标记后 span 序全变，揭示偏移收编（保守回蔽）
+            edBodyRef.current = r.body; setEdBody(r.body)
+            const a = analyzeMarkdown(r.body)
+            setDegraded(a)
+            triggerAutoSave(); scheduleDegAnalyze()
+            bumpWikiBody(selectedRef.current, r.body, '')
+            showToast(tt('editor.secretMarked'))
+            return true
+          }
+          // 富文本面：选区包 ```secret 渲染岛 insertHTML（app applySecretSel 富文本分支同构）；新机密岛即挂交互（bindPanelSecret）
+          const rich = richRef.current
+          if (!rich) return false
+          rich.focus()
+          const sel = window.getSelection()
+          if (sel && snap.range) { sel.removeAllRanges(); try { sel.addRange(snap.range) } catch (err) {} }
+          const html = renderMarkdown('\x60\x60\x60secret\n' + snap.text + '\n\x60\x60\x60', wikiResolve)
+          document.execCommand('insertHTML', false, html)
+          try { bindPanelSecret(rich) } catch (err) {}   // 插入岛即时可揭示（面板富文本无 S1 首挂绑定缺口）
+          richDirtyRef.current = true; setRichSyncing(true); scheduleRichSync(); keepSel()
+          showToast(tt('editor.secretMarked'))
+          return true
+        }
+        function markPanelSelectionSecret() { applyPanelSecretSel(snapshotPanelSecretSel()) }
+        // 编辑器右键菜单（入口②）：有选区才拦原生菜单（与 app openSecretCtxMenu 同口径）；面板内坐标（.dsh-notes-floating 基准）
+        function openPanelSecretCtx(ev, snap) {
+          if (!snap) return
+          setCtxMenu(null)   // 互斥：笔记行右键菜单（外点关闭之外的双保险）
+          const el = document.querySelector('.dsh-notes-floating')
+          const rect = el ? el.getBoundingClientRect() : { left: 0, top: 0, width: 600, height: 500 }
+          const mw = 150, mh = 44   // 单项菜单尺寸估值（视口夹紧同 ctx-menu 口径）
+          let x = ev.clientX - rect.left, y = ev.clientY - rect.top
+          x = Math.max(4, Math.min(x, rect.width - mw - 4))
+          y = Math.max(4, Math.min(y, rect.height - mh - 4))
+          setEdSecretCtx({ x: x, y: y, snap: snap })
+        }
+        React.useEffect(() => {   // 菜单外点关闭（Esc 在全局 keydown Esc 栈——kernel setEdSecretCtx 别名转发）
+          if (!edSecretCtx) return
+          const onDown = (ev) => { if (!(ev.target && ev.target.closest && ev.target.closest('.dsh-notes-ctxmenu'))) setEdSecretCtx(null) }
+          document.addEventListener('mousedown', onDown)
+          return () => { try { document.removeEventListener('mousedown', onDown) } catch (err) {} }
+        }, [edSecretCtx])
         function jumpToSession(sessionId) { if (sessions && sessionId) { try { sessions.open(sessionId) } catch (err) {} } }
         // ===== 派发计划块辅助（notes-034-sched-detail；与注入管理调度区同口径同数据源，schedBadgeEl/schedNextLabel 镜像）=====
         // 上次结果徽章：lastError 红 / lastRun sent 绿 / 未触发灰
@@ -918,6 +1006,13 @@
             if (!f.type || f.type.indexOf('image/') !== 0) { showToast(tt('editor.imageOnly')); return }
             keepSel(); pickImageFile(f)
           }
+          // 文档安全 S6 标记入口②（富文本面）：编辑器右键「标记为机密」——同源码面口径（有选区才拦 + 选区快照入菜单态闭包）
+          const onCtxMenu = (ev) => {
+            const snap = snapshotPanelSecretSel()
+            if (!snap) return
+            ev.preventDefault()
+            openPanelSecretCtx(ev, snap)
+          }
           el.addEventListener('input', onInput)
           el.addEventListener('compositionstart', onCompStart)
           el.addEventListener('compositionend', onCompEnd)
@@ -926,6 +1021,7 @@
           el.addEventListener('mouseup', onMouseUp)
           el.addEventListener('paste', onPaste)
           el.addEventListener('click', onWikiClick)
+          el.addEventListener('contextmenu', onCtxMenu)
           wrap.addEventListener('dragover', onDragOver)
           wrap.addEventListener('dragleave', onDragLeave)
           wrap.addEventListener('drop', onDrop)
@@ -939,6 +1035,7 @@
             el.removeEventListener('mouseup', onMouseUp)
             el.removeEventListener('paste', onPaste)
             el.removeEventListener('click', onWikiClick)
+            el.removeEventListener('contextmenu', onCtxMenu)
             wrap.removeEventListener('dragover', onDragOver)
             wrap.removeEventListener('dragleave', onDragLeave)
             wrap.removeEventListener('drop', onDrop)
@@ -983,6 +1080,12 @@
         degradedRef.current = degraded
         switchModeRef.current = switchMode
         jumpWikiRef.current = jumpToWikiTarget   // P2 双链跳转（富文本 click 委托读最新闭包；jumpWikiRef 为 panel/wiki.js 顶层绑定）
+        // 文档安全 S6 三入口镜像（panel/keyboard.js 顶层 keydown 读最新值——kernel/state.js 跨域 ref 群）：
+        // markSecretRef = Ctrl+Shift+S 执行体；edSecretCtxRef = 右键菜单 Esc 栈镜像；edSecretFocusRef = 焦点面快照 {src, rich}
+        //（hotkey 焦点闸——事件目标在面板编辑面内才动作，宿主会话区等面板外焦点不拦不抢）
+        markSecretRef.current = markPanelSelectionSecret
+        edSecretCtxRef.current = edSecretCtx
+        edSecretFocusRef.current = { src: edBodyDomRef.current, rich: richRef.current }
         // 自动保存：debounce 只注册一次（null 时赋值），回调读 ref 避免闭包过期
         // 0.4.7-C：回调先消费在途脏标记——flushPendingEdits 已直发的窗口期，到期回调空转（不双保存）
         if (!autoSaveRef.current) autoSaveRef.current = timer.debounce(() => { if (!autoSavePendingRef.current) return; autoSavePendingRef.current = false; if (selectedRef.current) doSave() }, 900)
@@ -1087,6 +1190,11 @@
                 onClick: (ev) => { ev.stopPropagation(); setActsMenuOpen(false); actEls[k].props.onClick(ev) },
               }))) : null))
           }
+          // 文档安全 S6（notes-052-manual-mark-entries）：编辑器右键「标记为机密」菜单（单项）——挂面板根层
+          //（index.js ctxMenuEl 同位——.dsh-notes-floating 坐标基准），复用笔记行右键菜单样式族（.dsh-notes-ctxmenu）；
+          // 点选 = 关菜单 + 执行快照闭包里的选区（contextmenu 时刻已吞选区——app openSecretCtxMenu 同口径）
+          const edSecretCtxEl = edSecretCtx ? e('div', { className: 'dsh-notes-ctxmenu', style: { left: edSecretCtx.x + 'px', top: edSecretCtx.y + 'px' } },
+            e('button', { className: 'dsh-notes-ctxmenu-item', onClick: () => { const sn = edSecretCtx.snap; setEdSecretCtx(null); applyPanelSecretSel(sn) } }, '\uD83D\uDEE1 ', tt('editor.ctxSecret'))) : null
           const editorEl = curNote ? e('section', { className: 'dsh-notes-ed' },
           e('div', { className: 'dsh-notes-ed-h' },
             e('div', { className: 'dsh-notes-ed-crumb' },
@@ -1156,6 +1264,15 @@
               e('span', { className: 'dsh-notes-kbd dsh-notes-modeseg-kbd' }, 'Ctrl+/'),
               // meta 行动区（0.4.7-B②b 封板）：有序动作组 actRowEls（构建见 editorEl 上方；超阈值中段收「…」溢出菜单，相对顺序不动）
               actRowEls,
+              // 文档安全 S6（notes-052-manual-mark-entries）：选区手动标记 🛡 钮——meta 行动区（双模式恒可见：面板富文本工具栏无此钮，
+              // 本钮是面板唯一恒可见手动标记入口；窄栏纪律 = 图标钮复用 .dsh-notes-meta-act 基座）。有选区才亮口径：无选区点击 toast 引导；
+              // mousedown 阻止默认保住 textarea/富文本选区（app rtb 钮同款纪律）；键盘可达（role/tabIndex/Enter/Space）。
+              // 落位纪律（e2e 39 驳回修复）：必须在 actRowEls 之后（行尾）——插在 acts 之前会重排折行，把「…」溢出钮挤到折行行首，
+              // 其右对齐下拉菜单左伸越出 .dsh-notes-ed（overflow:hidden）左缘被裁 → 菜单项命中落在侧栏树行上（actionability 超时）
+              e('span', { className: 'dsh-notes-meta-act dsh-notes-secret-mark dsh-nt', role: 'button', tabIndex: 0, 'data-tooltip': tt('editor.tbSecret'), 'aria-label': tt('editor.tbSecret'),
+                onMouseDown: (ev) => { ev.preventDefault() },
+                onClick: (ev) => { ev.stopPropagation(); markPanelSelectionSecret() },
+                onKeyDown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); markPanelSelectionSecret() } } }, '\uD83D\uDEE1'),
               // 派发计划块 + 关联调度清单（notes-034-sched-detail）：meta 尾部全宽行；无调度笔记零渲染（null = 零 DOM 痕迹红线）
               (curIsSched || schedPeers.length) ? e('div', { className: 'dsh-notes-sched-plan' },
                 curIsSched ? e('div', { className: 'dsh-notes-sched-plan-row' + (curNote.schedule.enabled === false ? ' paused' : '') },
@@ -1237,6 +1354,14 @@
                 /* 光标被方向键/鼠标挪动时不发 input：开态下重估触发窗（失配即关/重定位）；关态绝不自开（触发只认输入） */
                 onKeyUp: (ev) => { if (wikiAcRef.current && (ev.key.indexOf('Arrow') === 0 || ev.key === 'Home' || ev.key === 'End' || ev.key === 'PageUp' || ev.key === 'PageDown')) wikiAcRefresh() },
                 onClick: () => { if (wikiAcRef.current) wikiAcRefresh() },
+                // 文档安全 S6 标记入口②：编辑器右键「标记为机密」——有选区才拦原生菜单（app ta.contextmenu 同口径；
+                // 选区快照入菜单态——菜单点击会吞选区，openPanelSecretCtx 闭包保义）
+                onContextMenu: (ev) => {
+                  const ta2 = edBodyDomRef.current
+                  if (!ta2 || ta2.selectionStart === ta2.selectionEnd) return
+                  ev.preventDefault()
+                  openPanelSecretCtx(ev, snapshotPanelSecretSel())
+                },
                 // 图片入口①/②（源码模式）：粘贴/拖拽图片文件 → 同一上传弹窗 → 光标处插 Markdown 文本
                 onPaste: (ev) => { const cd = ev.clipboardData; if (cd && cd.files && cd.files.length && cd.files[0].type.indexOf('image/') === 0) { ev.preventDefault(); pickImageFile(cd.files[0]) } },
                 onDragOver: (ev) => { ev.preventDefault() },
@@ -1258,7 +1383,8 @@
                 e('div', { ref: richRef, className: 'dsh-notes-rich', contentEditable: (edLoadErr || edBodyPending) ? false : true, spellCheck: false, suppressContentEditableWarning: true })),
             // 文档安全 S5（notes-052-source-mask）：源码模式机密遮蔽镜像层（app src-mirror v2 同构）——常驻挂载
             //（非源码态/无 span 时空层零开销，pointer-events:none 不拦编辑）；机密行渲染为不透明遮蔽块 + 点击揭示
-            e('div', { ref: srcVeilRef, className: 'dsh-notes-src-veil', 'aria-hidden': 'true' }),
+            //（S6：点击委托 = 本层 React onClick——imperative innerHTML 子节点冒泡命中，随面板开合恒同步，修复 v1 []-effect 首挂空绑定）
+            e('div', { ref: srcVeilRef, className: 'dsh-notes-src-veil', 'aria-hidden': 'true', onClick: onVeilLayerClick }),
             // 0.4.7-B⑥：整理中遮罩（正文区全覆；organizing 翻转即现/即隐，与 meta 钮 busy 同数据源）
             organizing ? e('div', { className: 'dsh-notes-org-veil' }, e('span', { className: 'dsh-notes-org-spin' }), e('span', null, tt('editor.organizingVeil'))) : null),
           // P2 反向链接面板：全库正文含 [[当前id]]/[[当前标题]] 的其他笔记（点击跳转；索引未热提示「索引中…」）
@@ -1280,7 +1406,7 @@
               e('div', { className: 'dsh-notes-ed-empty-ic' }, I('note', 26)),
               e('div', { className: 'dsh-notes-ed-empty-t' }, tt('editor.emptyTitleShort')),
               e('div', { className: 'dsh-notes-ed-empty-s' }, tt('editor.emptySubShort'))))
-          return { editorEl: editorEl, curNote: curNote }
+          return { editorEl: editorEl, curNote: curNote, edSecretCtxEl: edSecretCtxEl }
         }
         return {
           edScope: edScope, selectNote: selectNote, doSave: doSave, doDelete: doDelete, applyRestoredBody: applyRestoredBody,
@@ -1289,6 +1415,7 @@
           scheduleRichSync: scheduleRichSync, setEditorModeState: setEditorModeState, edBodyDomRef: edBodyDomRef,
           richRef: richRef, richDirtyRef: richDirtyRef, setEdBody: setEdBody, renderEditorEl: renderEditorEl,
           flushPendingEdits: flushPendingEdits,   // 0.4.7-C：面板关闭兜底 flush（装配层 close()/头部按钮 toggle-off 同调）
-          doAiOrganize: doAiOrganize   // 0.4.4-F：整理引导卡确认回跳（modals/organize-instruct.js 经 panelBridge 中转，禁横向引用）
+          doAiOrganize: doAiOrganize,   // 0.4.4-F：整理引导卡确认回跳（modals/organize-instruct.js 经 panelBridge 中转，禁横向引用）
+          setEdSecretCtx: setEdSecretCtx   // 文档安全 S6：Esc 栈关闭右键菜单（panel/keyboard.js 经 kernel setEdSecretCtx 别名中转）
         }
     }

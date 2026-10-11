@@ -310,6 +310,9 @@
   .src-mirror .src-secret-veil{display:flex;align-items:flex-start;pointer-events:auto;cursor:pointer;color:var(--nt2);background:var(--npanel);border-left:2px solid var(--ndanger);box-shadow:inset 0 0 0 1px var(--nbd-soft);overflow:hidden;padding-left:8px;font-family:var(--nfont);font-size:12px;line-height:1.8}
   .src-mirror .src-secret-veil:hover{color:var(--ntx);background:color-mix(in srgb, var(--ndanger) 6%, var(--npanel))}
   .src-mirror .src-secret-veil.revealed{visibility:hidden;pointer-events:none}
+  /* 文档安全 S6（notes-052-manual-mark-entries）：源码模式浮动 🛡 钮——srcWrap 顶部右侧（rtb 随 richScroll 隐藏时唯一可见标记入口）；
+     复用 .rtb-btn 尺寸/hover/.on 基座，本规则只补浮岛定位 + 实底（盖住下层文本/遮蔽块）；z3 = 镜像层（z2）之上 */
+  .src-secret-btn{position:absolute;top:6px;right:10px;z-index:3;background:var(--npanel);border:1px solid var(--nbd-soft);box-shadow:0 1px 4px rgba(0,0,0,.10);border-radius:var(--nr-sm)}
   .deg{margin:10px 24px 0;display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:var(--nwarn);background:var(--nbg-raise);border-left:3px solid var(--nwarn);border-radius:var(--nr-md);padding:8px 12px;line-height:1.6;flex-shrink:0}
   .deg svg.ic{width:13px;height:13px;margin-top:2px;flex-shrink:0}
   .deg .rs{color:var(--nt2);word-break:break-all}
@@ -1592,6 +1595,7 @@ var I18N_ZH = {
   'editor.secretUnmarkFailed': '未能定位机密区，请切换源码模式手动处理',
   'editor.secretPlaceholder': '机密区（内容已遮蔽）',   /* S5 语义翻转：源码模式已遮蔽——S1 旧文案「源码模式查看」作废（遮蔽卡 notes-052-source-mask） */
   'editor.secretMarked': '已标记为机密',
+  'editor.secretAlreadyMarked': '所选内容已在机密区内',   /* 文档安全 S6（notes-052-manual-mark-entries）：面板源码面选区行全落既有机密 span——防 fence 双标嵌套 */
   /* 文档安全 S5（notes-052-source-mask）：源码模式遮蔽块标签 + 派发弹窗预览打码占位 */
   'editor.secretVeil': '🔒 机密区 · 点击揭示',
   'disp.secretMasked': '🔒 机密区（已打码）',
@@ -2205,6 +2209,7 @@ var I18N_ZH = {
   'cheat.kSearch': '聚焦搜索框',
   'cheat.kNew': '新建笔记（Ctrl+N 是浏览器保留键「新建窗口」，页面拿不到，故改用 Alt+N）',
   'cheat.kMode': '编辑器 源码 ⇄ 富文本 切换（编辑中生效；弹窗打开时不切）',
+  'cheat.kSecret': '编辑器：把选中文本标记为机密（有选区才生效；工具栏 🛡 / 右键菜单同入口）',   /* 文档安全 S6（notes-052-manual-mark-entries）：S1 遗留项收口——Ctrl+Shift+S 进速查表 */
   'cheat.kDown': '列表焦点下移一行',
   'cheat.kUp': '列表焦点上移一行',
   'cheat.kOpen': '打开焦点笔记',
@@ -2538,6 +2543,7 @@ var I18N_EN = {
   'editor.secretUnmarkFailed': 'Could not locate the secret block; switch to source mode to fix it manually',
   'editor.secretPlaceholder': 'Secret area (content masked)',   /* S5 flip: source mode now masks too (notes-052-source-mask) */
   'editor.secretMarked': 'Marked as secret',
+  'editor.secretAlreadyMarked': 'The selection is already inside a secret area',   /* Document security S6 (notes-052-manual-mark-entries): all selected lines already in a secret span — no double fencing */
   /* Document security S5 (notes-052-source-mask): source-mode veil label + dispatch modal masked-preview placeholder */
   'editor.secretVeil': '🔒 Secret area · click to reveal',
   'disp.secretMasked': '🔒 Secret area (masked)',
@@ -3149,6 +3155,7 @@ var I18N_EN = {
   'cheat.kSearch': 'Focus the search box',
   'cheat.kNew': 'New note (Ctrl+N is the browser-reserved "new window" key, unavailable to pages, hence Alt+N)',
   'cheat.kMode': 'Editor: source ⇄ rich text toggle (effective while editing; not while a modal is open)',
+  'cheat.kSecret': 'Editor: mark the selected text as secret (requires a selection; the 🛡 toolbar button / context menu do the same)',   /* Document security S6 (notes-052-manual-mark-entries): close the S1 leftover — Ctrl+Shift+S in the cheat sheet */
   'cheat.kDown': 'Move list focus one row down',
   'cheat.kUp': 'Move list focus one row up',
   'cheat.kOpen': 'Open the focused note',
@@ -4628,6 +4635,10 @@ function renderEd() {
     + '<textarea class="src" id="edSrc" spellcheck="false" placeholder="' + t('editor.bodyPlaceholder') + '"></textarea>'
     /* 文档安全 S1：源码模式行背景染色镜像（机密 fence 行视觉锚）——与 edSrc 同字体/行距/内边距，透明文字 + 色带；仅机密 span 存在时填充 */
     + '<div class="src-mirror" id="srcMirror" aria-hidden="true"></div>'
+    /* 文档安全 S6（notes-052-manual-mark-entries，反馈 n-mv3emwhuy2k6）：源码模式可见手动标记入口——srcWrap 顶部右侧浮动 🛡 钮
+       （rtb 在 richScroll 内，源码模式容器隐藏 → 旧唯一可见入口消失；本钮随 srcWrap 恒随源码模式在场，富文本态不出现——rtb 既有钮覆盖）。
+       点击复用 markSelectionSecret（applySecretSel/snapshotSecretSel 零新逻辑，无选区 toast 引导）；有选区才点亮（updateSrcSecretBtn） */
+    + '<button class="rtb-btn src-secret-btn" id="srcSecretBtn" type="button" title="' + t('editor.tbSecret') + '">\uD83D\uDEE1</button>'
     + '</div>'
     + '<div class="rich-scroll rich-wrap" id="richScroll"' + (edMode === 'rich' ? '' : ' style="display:none"') + '>'
     + '<div class="rtb" id="rtb">'
@@ -4680,6 +4691,7 @@ function renderEdLang() {
   var ox = $('orgErrX'); if (ox) ox.title = t('common.close');
   var vx = $('orgVeilTxt'); if (vx) vx.textContent = t('editor.organizingVeil');
   refreshSecretSuggestUI();   /* 文档安全 S4：建议横幅文案随语言原地重写（零正文重建纪律） */
+  var ssb6 = $('srcSecretBtn'); if (ssb6) ssb6.title = t('editor.tbSecret');   /* 文档安全 S6：源码模式 🛡 钮 title 随语言翻转（rtb 循环外——不在 #rtb 内） */
   var rtb = $('rtb'); if (rtb) rtb.querySelectorAll('.rtb-btn').forEach(function (b) {
     var k = { bold: 'editor.tbBold', italic: 'editor.tbItalic', code: 'editor.tbCode', link: 'editor.tbLink', ul: 'editor.tbUl', ol: 'editor.tbOl', quote: 'editor.tbQuote', image: 'editor.tbImage', secret: 'editor.tbSecret' }[b.getAttribute('data-a')];
     if (k) b.title = t(k);
@@ -4705,6 +4717,16 @@ function bindEditorArea() {
       var veil = ev.target && ev.target.closest ? ev.target.closest('.src-secret-veil') : null;
       if (veil) revealSrcSecret(veil);
     });
+    /* 文档安全 S6：源码模式浮动 🛡 钮（#srcSecretBtn）——点击走 markSelectionSecret（三入口共用执行体，零新逻辑）；
+       select/keyup/mouseup 点亮跟随（有选区才亮口径，与 rtb 🛡 同纪律） */
+    var sb6 = $('srcSecretBtn');
+    if (sb6) {
+      sb6.addEventListener('mousedown', function (ev) { ev.preventDefault() });   /* 保住 textarea 选区/焦点（rtb 钮同款纪律） */
+      sb6.addEventListener('click', function () { markSelectionSecret(); updateSrcSecretBtn(); });
+    }
+    ta.addEventListener('select', updateSrcSecretBtn);
+    ta.addEventListener('keyup', updateSrcSecretBtn);
+    ta.addEventListener('mouseup', updateSrcSecretBtn);
     /* 文档安全 S1 标记入口②：编辑器右键菜单（0.4.8 ctxmenu 基建——#ctxHost + .ctxmenu/.mi + closeCtx/Esc 通用闸）；
        有选区才拦截原生菜单（有选区才亮口径，与 Ctrl+Shift+S 一致）；选区快照入菜单闭包（菜单点击即用——textarea 选区会被点击吞掉） */
     ta.addEventListener('contextmenu', function (ev) {
@@ -4852,6 +4874,7 @@ function renderModeUI() {
   if ($('srcWrap')) $('srcWrap').style.display = edMode === 'source' ? 'flex' : 'none';   /* 文档安全 S1：src-wrap 包裹 textarea+镜像，整体随模式显隐 */
   if ($('richScroll')) $('richScroll').style.display = edMode === 'rich' ? 'flex' : 'none';
   if ($('footMode')) $('footMode').textContent = edMode === 'source' ? t('editor.modeSource') : t('editor.modeRich');
+  updateSrcSecretBtn();   /* 文档安全 S6：模式切换重估源码 🛡 点亮态（源码态无选区即灭；富文本态随 srcWrap 整体隐藏） */
 }
 /* 富文本选区缓存/恢复（工具栏 mousedown 阻止默认保住选区；弹窗关闭后恢复） */
 function keepSel() { var sel = window.getSelection(); if (sel && sel.rangeCount > 0) { try { savedRange = sel.getRangeAt(0).cloneRange(); } catch (e) {} } }
@@ -4980,6 +5003,13 @@ function applySecretSel(snap) {
   return true;
 }
 function markSelectionSecret() { applySecretSel(snapshotSecretSel()) }
+
+/* 文档安全 S6：源码模式浮动 🛡 点亮态（有选区才亮——textarea 非折叠选区；模式/焦点/选区变化时随行，与 rtb 🛡 同口径） */
+function updateSrcSecretBtn() {
+  var b = $('srcSecretBtn'); if (!b) return;
+  var ta = $('edSrc');
+  b.classList.toggle('on', !!(edMode === 'source' && ta && ta.selectionStart !== ta.selectionEnd));
+}
 
 /* 标记入口②：编辑器右键菜单（0.4.8 笔记右键菜单基建——#ctxHost 宿主 + .ctxmenu/.mi 结构 + 点外关/Esc 关通用闸 + 视口夹紧） */
 function openSecretCtxMenu(x, y, snap) {
@@ -6071,6 +6101,7 @@ var CHEATSHEET_ROWS = [
   ['Ctrl+K', 'cheat.kSearch'],
   ['Alt+N', 'cheat.kNew'],
   ['Ctrl+/', 'cheat.kMode'],
+  ['Ctrl+Shift+S', 'cheat.kSecret'],   /* 文档安全 S6（notes-052-manual-mark-entries）：选区标为机密（S1 遗留项收口——实现锚在 panels/keyboard.js，双端同键） */
   ['j / ↓', 'cheat.kDown'],
   ['k / ↑', 'cheat.kUp'],
   ['Enter', 'cheat.kOpen'],

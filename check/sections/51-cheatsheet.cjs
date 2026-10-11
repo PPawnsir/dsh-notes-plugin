@@ -51,19 +51,21 @@ module.exports = {
   })
 
   // ===== 51.2 键位逐键核对（速查表内容 ⇄ keyboard.js 实现双向口径）=====
-  await t('速查表键位与 R-4 实现逐键核对（client）：9 行全生效键位 + Ctrl+N→Alt+N 标注 + 无虚构键位', () => {
-    // ① 表内九行（与 keyboard.js 分支一一对应；i18n 覆盖卡E：说明列 = 字典 key（cheat.*），zh 原串随字典内嵌）
-    const rows = [['Ctrl+K', 'cheat.kSearch'], ['Alt+N', 'cheat.kNew'], ['Ctrl+/', 'cheat.kMode'], ['j / ↓', 'cheat.kDown'], ['k / ↑', 'cheat.kUp'], ['Enter', 'cheat.kOpen'], ['↓', 'cheat.kSearchDown'], ['?', 'cheat.kSelf'], ['Esc', 'cheat.kEscClient']]
+  await t('速查表键位与 R-4 实现逐键核对（client）：10 行全生效键位 + Ctrl+N→Alt+N 标注 + 无虚构键位', () => {
+    // ① 表内十行（与 keyboard.js 分支一一对应；i18n 覆盖卡E：说明列 = 字典 key（cheat.*），zh 原串随字典内嵌）
+    //   文档安全 S6（notes-052-manual-mark-entries）：+Ctrl+Shift+S 行（选区标为机密——S1 遗留项收口，双端同键）
+    const rows = [['Ctrl+K', 'cheat.kSearch'], ['Alt+N', 'cheat.kNew'], ['Ctrl+/', 'cheat.kMode'], ['Ctrl+Shift+S', 'cheat.kSecret'], ['j / ↓', 'cheat.kDown'], ['k / ↑', 'cheat.kUp'], ['Enter', 'cheat.kOpen'], ['↓', 'cheat.kSearchDown'], ['?', 'cheat.kSelf'], ['Esc', 'cheat.kEscClient']]
     for (const r of rows) {
       assert(clientSrc.indexOf("['" + r[0] + "', '" + r[1] + "']") >= 0, '速查表缺行：' + r[0] + '（' + r[1] + '）')
     }
-    for (const zh of ['聚焦搜索框', '列表焦点下移一行', '列表焦点上移一行', '打开焦点笔记', '唤起 / 关闭本速查表', '分层关闭']) {
+    for (const zh of ['聚焦搜索框', '列表焦点下移一行', '列表焦点上移一行', '打开焦点笔记', '唤起 / 关闭本速查表', '分层关闭', '把选中文本标记为机密']) {
       assert(clientSrc.indexOf(zh) >= 0, '速查表说明 zh 原串字典内嵌：' + zh)
     }
     // ② 每行键位在实现里真实存在（逐键核对锚点，防文档与实现漂移）
     assert(/mod && \(ev\.key === 'k' \|\| ev\.key === 'K'\)\) \{ ev\.preventDefault\(\); if \(searchInputRef\.current\) searchInputRef\.current\.focus\(\); return \}/.test(clientSrc), '实现锚点：Ctrl+K 聚焦搜索')
     assert(/ev\.altKey && !mod && \(ev\.key === 'n' \|\| ev\.key === 'N'\)\) \{ ev\.preventDefault\(\); openNewNoteRef\.current\(\); return \}/.test(clientSrc), '实现锚点：Alt+N 新建')
     assert(/mod && ev\.key === '\/'/.test(clientSrc) && clientSrc.indexOf("switchModeRef.current(editorModeRef.current === 'source' ? 'rich' : 'source')") >= 0, '实现锚点：Ctrl+/ 双模式切换')
+    assert(/mod && ev\.shiftKey && !ev\.altKey && \(ev\.key === 'S' \|\| ev\.key === 's'\)\)/.test(clientSrc) && clientSrc.indexOf('markSecretRef.current()') >= 0 && clientSrc.indexOf('edSecretFocusRef.current') >= 0, '实现锚点：Ctrl+Shift+S 选区标为机密（焦点闸 edSecretFocusRef——仅面板编辑器内生效，宿主区不拦不抢）')
     assert(/ev\.key === 'j' \|\| ev\.key === 'ArrowDown'/.test(clientSrc) && /ev\.key === 'k' \|\| ev\.key === 'ArrowUp'/.test(clientSrc), '实现锚点：j/k/↑↓ 移动')
     assert(/ev\.key === 'Enter'/.test(clientSrc) && clientSrc.indexOf('selectNoteRef.current(n)') >= 0, '实现锚点：Enter 打开焦点行')
     assert(clientSrc.indexOf("t === searchInputRef.current && ev.key === 'ArrowDown'") >= 0, '实现锚点：搜索框 ↓ 桥接列表')
@@ -72,7 +74,7 @@ module.exports = {
     assert(clientSrc.indexOf('Ctrl+N 是浏览器保留键「新建窗口」，页面拿不到，故改用 Alt+N') >= 0, '速查表含 Ctrl+N→Alt+N 改键标注')
     const csTable = clientSrc.match(/const CHEATSHEET_ROWS = \[([\s\S]*?)\n    \]/)
     assert(csTable, 'CHEATSHEET_ROWS 表存在')
-    assert.strictEqual((csTable[1].match(/\n\s+\['/g) || []).length, 9, '速查表恰 9 行（实得 ' + ((csTable[1].match(/\n\s+\['/g) || []).length) + '）——增改键位须与实现同步')
+    assert.strictEqual((csTable[1].match(/\n\s+\['/g) || []).length, 10, '速查表恰 10 行（实得 ' + ((csTable[1].match(/\n\s+\['/g) || []).length) + '）——增改键位须与实现同步（S6 +Ctrl+Shift+S）')
     assert(csTable[1].indexOf("['Ctrl+N'") < 0, '速查表不得把 Ctrl+N 列为生效键位（浏览器保留键）')
   })
 
@@ -94,16 +96,17 @@ module.exports = {
       assert(s.indexOf('Esc 关闭浮层 · ? 快捷键') >= 0, label + ' hintbar ? 快捷键指引')
       // ⑤ 样式
       for (const cls of ['.cs-list{', '.cs-row{', '.cs-keys{', '.cs-desc{']) assert(s.indexOf(cls) >= 0, label + ' 缺速查表样式 ' + cls)
-      // ⑥ 键位行（与 client 同一核对口径：九行 + Ctrl+N 标注；Esc 末段为页面口径——无关面板层）
+      // ⑥ 键位行（与 client 同一核对口径：十行 + Ctrl+N 标注；Esc 末段为页面口径——无关面板层）
       // i18n 覆盖卡E：app 端说明列 = 字典 key（cheat.*，zh 原串随字典内嵌），原型不双语红线保留中文原文（分侧断言）
+      // 文档安全 S6：+Ctrl+Shift+S 行（S1 遗留项收口——双端同键；原型静态中文 = zh 字典值逐字一致，⑦ 渲染等价断言联动）
       if (label === 'app.html') {
-        for (const k of ["['Ctrl+K', 'cheat.kSearch']", "['Alt+N', 'cheat.kNew']", "['Enter', 'cheat.kOpen']", "['?', 'cheat.kSelf']", "['Esc', 'cheat.kEsc']"]) {
+        for (const k of ["['Ctrl+K', 'cheat.kSearch']", "['Alt+N', 'cheat.kNew']", "['Ctrl+Shift+S', 'cheat.kSecret']", "['Enter', 'cheat.kOpen']", "['?', 'cheat.kSelf']", "['Esc', 'cheat.kEsc']"]) {
           assert(s.indexOf(k) >= 0, label + ' 速查表缺行（字典 key 形态）：' + k)
         }
         assert(s.indexOf("'cheat.kNew': '新建笔记（Ctrl+N 是浏览器保留键「新建窗口」，页面拿不到，故改用 Alt+N）'") >= 0, label + ' Ctrl+N→Alt+N 标注 zh 原串字典内嵌')
         assert(s.indexOf("'cheat.kEsc': '分层关闭：弹层 → 排序/筛选/范围浮层 → 选区卡/右键菜单 → 退出多选 → 清搜索并还焦列表'") >= 0, label + ' Esc 行 zh 原串字典内嵌')
       } else {
-        for (const k of ["['Ctrl+K', '聚焦搜索框']", "['Alt+N', '新建笔记（Ctrl+N 是浏览器保留键「新建窗口」，页面拿不到，故改用 Alt+N）']", "['Enter', '打开焦点笔记']", "['?', '唤起 / 关闭本速查表']", "['Esc', '分层关闭：弹层 → 排序/筛选/范围浮层 → 选区卡/右键菜单 → 退出多选 → 清搜索并还焦列表']"]) {
+        for (const k of ["['Ctrl+K', '聚焦搜索框']", "['Alt+N', '新建笔记（Ctrl+N 是浏览器保留键「新建窗口」，页面拿不到，故改用 Alt+N）']", "['Ctrl+Shift+S', '编辑器：把选中文本标记为机密（有选区才生效；工具栏 🛡 / 右键菜单同入口）']", "['Enter', '打开焦点笔记']", "['?', '唤起 / 关闭本速查表']", "['Esc', '分层关闭：弹层 → 排序/筛选/范围浮层 → 选区卡/右键菜单 → 退出多选 → 清搜索并还焦列表']"]) {
           assert(s.indexOf(k) >= 0, label + ' 速查表缺行：' + k)
         }
       }
@@ -124,12 +127,12 @@ module.exports = {
       }
       const htmlApp = renderCs(appSrc, 'app.html'), htmlProto = renderCs(protoV2Src, '原型')
       assert.strictEqual(htmlApp, htmlProto, 'app.html ⇄ 原型 openCheatsheet zh 态渲染产物逐字节一致（覆盖卡E 行为级等价）')
-      assert(htmlApp.indexOf('键盘快捷键') >= 0 && htmlApp.indexOf('聚焦搜索框') >= 0 && (htmlApp.match(/class="cs-row"/g) || []).length === 9, 'app zh 态渲染：标题 + 说明行 + 恰 9 行键帽行')
+      assert(htmlApp.indexOf('键盘快捷键') >= 0 && htmlApp.indexOf('聚焦搜索框') >= 0 && (htmlApp.match(/class="cs-row"/g) || []).length === 10, 'app zh 态渲染：标题 + 说明行 + 恰 10 行键帽行（S6 +Ctrl+Shift+S）')
     }
   })
 
   // ===== 51.4 行为级：原型 openCheatsheet 可 eval（渲染冒烟）=====
-  await t('速查表行为冒烟：openCheatsheet 渲染九行键帽行（原型函数体提取 eval + DOM mock）', () => {
+  await t('速查表行为冒烟：openCheatsheet 渲染十行键帽行（原型函数体提取 eval + DOM mock）', () => {
     // openCheatsheet 体提取 eval：mock openModal/icon/esc/$ 捕获渲染产物与 ✕ 接线
     const fnSrc = grabFn(protoV2Src, 'openCheatsheet', '原型')
     const rowsDecl = protoV2Src.match(/var CHEATSHEET_ROWS = \[[\s\S]*?\n\];/)
@@ -142,7 +145,7 @@ module.exports = {
     const rows = new Function('return (' + rowsDecl[0].replace(/^var CHEATSHEET_ROWS = /, '').replace(/;\s*$/, '') + ')')()
     new Function('openModal', 'icon', 'esc', '$', 'CHEATSHEET_ROWS', 'closeModalFlushed', fnSrc + '\nopenCheatsheet()')(mockOpenModal, mockIcon, mockEsc, mock$, rows, () => {})
     assert(cap.html.indexOf('id="cheatsheetRoot"') >= 0 && cap.html.indexOf('键盘快捷键') >= 0, 'openCheatsheet 经 openModal 渲染速查表')
-    assert.strictEqual((cap.html.match(/class="cs-row"/g) || []).length, 9, '渲染恰 9 行键帽行（实得 ' + ((cap.html.match(/class="cs-row"/g) || []).length) + '）')
+    assert.strictEqual((cap.html.match(/class="cs-row"/g) || []).length, 10, '渲染恰 10 行键帽行（实得 ' + ((cap.html.match(/class="cs-row"/g) || []).length) + '；S6 +Ctrl+Shift+S）')
     assert(cap.html.indexOf('Ctrl+K') >= 0 && cap.html.indexOf('Alt+N') >= 0 && cap.html.indexOf('Esc') >= 0, '键帽文案齐全')
     assert(cap.closeWired === true, '✕ 关闭接线存在')
   })

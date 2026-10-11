@@ -40,7 +40,7 @@ module.exports = {
   })
   await t('0.4.7-C client flush 三钩：close() 收口 + 头部按钮 toggle-off + beforeunload 页面卸载', () => {
     assert(cliIdx.indexOf("function close() { flushPendingEdits('关闭面板'); panelOpen = false; notify() }") >= 0, 'close()（×/Esc 收口）缺 flush 前置')
-    assert(cliIdx.indexOf('flushPendingEdits } = usePanelEditor(') >= 0, '装配层未解构 flushPendingEdits')
+    assert(cliIdx.indexOf('setEdSecretCtx } = usePanelEditor(') >= 0, '装配层未解构 flushPendingEdits（S6 起解构尾位 = setEdSecretCtx）')
     assert(cliIdx.indexOf('panelBridge.flushPendingEdits = flushPendingEdits') >= 0, 'panelBridge 未回填 flushPendingEdits（头部按钮经桥中转）')
     assert(cliHdrBtn.indexOf("if (panelOpen && panelBridge.flushPendingEdits) panelBridge.flushPendingEdits('关闭面板')") >= 0, '头部按钮 toggle-off 缺 flush（不经 close() 的第二关闭点）')
     assert(cliEd.indexOf("window.addEventListener('beforeunload', onPageUnload)") >= 0, 'beforeunload 页面卸载钩缺失')

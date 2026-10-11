@@ -158,6 +158,7 @@ var I18N_EN = {
   'editor.secretUnmarkFailed': 'Could not locate the secret block; switch to source mode to fix it manually',
   'editor.secretPlaceholder': 'Secret area (content masked)',   /* S5 flip: source mode now masks too (notes-052-source-mask) */
   'editor.secretMarked': 'Marked as secret',
+  'editor.secretAlreadyMarked': 'The selection is already inside a secret area',   /* Document security S6 (notes-052-manual-mark-entries): all selected lines already in a secret span — no double fencing */
   /* Document security S5 (notes-052-source-mask): source-mode veil label + dispatch modal masked-preview placeholder */
   'editor.secretVeil': '🔒 Secret area · click to reveal',
   'disp.secretMasked': '🔒 Secret area (masked)',
@@ -769,6 +770,7 @@ var I18N_EN = {
   'cheat.kSearch': 'Focus the search box',
   'cheat.kNew': 'New note (Ctrl+N is the browser-reserved "new window" key, unavailable to pages, hence Alt+N)',
   'cheat.kMode': 'Editor: source ⇄ rich text toggle (effective while editing; not while a modal is open)',
+  'cheat.kSecret': 'Editor: mark the selected text as secret (requires a selection; the 🛡 toolbar button / context menu do the same)',   /* Document security S6 (notes-052-manual-mark-entries): close the S1 leftover — Ctrl+Shift+S in the cheat sheet */
   'cheat.kDown': 'Move list focus one row down',
   'cheat.kUp': 'Move list focus one row up',
   'cheat.kOpen': 'Open the focused note',

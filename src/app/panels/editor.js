@@ -228,6 +228,10 @@ function renderEd() {
     + '<textarea class="src" id="edSrc" spellcheck="false" placeholder="' + t('editor.bodyPlaceholder') + '"></textarea>'
     /* 文档安全 S1：源码模式行背景染色镜像（机密 fence 行视觉锚）——与 edSrc 同字体/行距/内边距，透明文字 + 色带；仅机密 span 存在时填充 */
     + '<div class="src-mirror" id="srcMirror" aria-hidden="true"></div>'
+    /* 文档安全 S6（notes-052-manual-mark-entries，反馈 n-mv3emwhuy2k6）：源码模式可见手动标记入口——srcWrap 顶部右侧浮动 🛡 钮
+       （rtb 在 richScroll 内，源码模式容器隐藏 → 旧唯一可见入口消失；本钮随 srcWrap 恒随源码模式在场，富文本态不出现——rtb 既有钮覆盖）。
+       点击复用 markSelectionSecret（applySecretSel/snapshotSecretSel 零新逻辑，无选区 toast 引导）；有选区才点亮（updateSrcSecretBtn） */
+    + '<button class="rtb-btn src-secret-btn" id="srcSecretBtn" type="button" title="' + t('editor.tbSecret') + '">\uD83D\uDEE1</button>'
     + '</div>'
     + '<div class="rich-scroll rich-wrap" id="richScroll"' + (edMode === 'rich' ? '' : ' style="display:none"') + '>'
     + '<div class="rtb" id="rtb">'
@@ -280,6 +284,7 @@ function renderEdLang() {
   var ox = $('orgErrX'); if (ox) ox.title = t('common.close');
   var vx = $('orgVeilTxt'); if (vx) vx.textContent = t('editor.organizingVeil');
   refreshSecretSuggestUI();   /* 文档安全 S4：建议横幅文案随语言原地重写（零正文重建纪律） */
+  var ssb6 = $('srcSecretBtn'); if (ssb6) ssb6.title = t('editor.tbSecret');   /* 文档安全 S6：源码模式 🛡 钮 title 随语言翻转（rtb 循环外——不在 #rtb 内） */
   var rtb = $('rtb'); if (rtb) rtb.querySelectorAll('.rtb-btn').forEach(function (b) {
     var k = { bold: 'editor.tbBold', italic: 'editor.tbItalic', code: 'editor.tbCode', link: 'editor.tbLink', ul: 'editor.tbUl', ol: 'editor.tbOl', quote: 'editor.tbQuote', image: 'editor.tbImage', secret: 'editor.tbSecret' }[b.getAttribute('data-a')];
     if (k) b.title = t(k);
@@ -305,6 +310,16 @@ function bindEditorArea() {
       var veil = ev.target && ev.target.closest ? ev.target.closest('.src-secret-veil') : null;
       if (veil) revealSrcSecret(veil);
     });
+    /* 文档安全 S6：源码模式浮动 🛡 钮（#srcSecretBtn）——点击走 markSelectionSecret（三入口共用执行体，零新逻辑）；
+       select/keyup/mouseup 点亮跟随（有选区才亮口径，与 rtb 🛡 同纪律） */
+    var sb6 = $('srcSecretBtn');
+    if (sb6) {
+      sb6.addEventListener('mousedown', function (ev) { ev.preventDefault() });   /* 保住 textarea 选区/焦点（rtb 钮同款纪律） */
+      sb6.addEventListener('click', function () { markSelectionSecret(); updateSrcSecretBtn(); });
+    }
+    ta.addEventListener('select', updateSrcSecretBtn);
+    ta.addEventListener('keyup', updateSrcSecretBtn);
+    ta.addEventListener('mouseup', updateSrcSecretBtn);
     /* 文档安全 S1 标记入口②：编辑器右键菜单（0.4.8 ctxmenu 基建——#ctxHost + .ctxmenu/.mi + closeCtx/Esc 通用闸）；
        有选区才拦截原生菜单（有选区才亮口径，与 Ctrl+Shift+S 一致）；选区快照入菜单闭包（菜单点击即用——textarea 选区会被点击吞掉） */
     ta.addEventListener('contextmenu', function (ev) {
@@ -452,6 +467,7 @@ function renderModeUI() {
   if ($('srcWrap')) $('srcWrap').style.display = edMode === 'source' ? 'flex' : 'none';   /* 文档安全 S1：src-wrap 包裹 textarea+镜像，整体随模式显隐 */
   if ($('richScroll')) $('richScroll').style.display = edMode === 'rich' ? 'flex' : 'none';
   if ($('footMode')) $('footMode').textContent = edMode === 'source' ? t('editor.modeSource') : t('editor.modeRich');
+  updateSrcSecretBtn();   /* 文档安全 S6：模式切换重估源码 🛡 点亮态（源码态无选区即灭；富文本态随 srcWrap 整体隐藏） */
 }
 /* 富文本选区缓存/恢复（工具栏 mousedown 阻止默认保住选区；弹窗关闭后恢复） */
 function keepSel() { var sel = window.getSelection(); if (sel && sel.rangeCount > 0) { try { savedRange = sel.getRangeAt(0).cloneRange(); } catch (e) {} } }
@@ -580,6 +596,13 @@ function applySecretSel(snap) {
   return true;
 }
 function markSelectionSecret() { applySecretSel(snapshotSecretSel()) }
+
+/* 文档安全 S6：源码模式浮动 🛡 点亮态（有选区才亮——textarea 非折叠选区；模式/焦点/选区变化时随行，与 rtb 🛡 同口径） */
+function updateSrcSecretBtn() {
+  var b = $('srcSecretBtn'); if (!b) return;
+  var ta = $('edSrc');
+  b.classList.toggle('on', !!(edMode === 'source' && ta && ta.selectionStart !== ta.selectionEnd));
+}
 
 /* 标记入口②：编辑器右键菜单（0.4.8 笔记右键菜单基建——#ctxHost 宿主 + .ctxmenu/.mi 结构 + 点外关/Esc 关通用闸 + 视口夹紧） */
 function openSecretCtxMenu(x, y, snap) {

@@ -16,6 +16,7 @@
       ['Ctrl+K', 'cheat.kSearch'],
       ['Alt+N', 'cheat.kNew'],
       ['Ctrl+/', 'cheat.kMode'],
+      ['Ctrl+Shift+S', 'cheat.kSecret'],   // 文档安全 S6（notes-052-manual-mark-entries）：选区标为机密——面板实现锚在 panel/keyboard.js（编辑器焦点内生效），双端同键
       ['j / ↓', 'cheat.kDown'],
       ['k / ↑', 'cheat.kUp'],
       ['Enter', 'cheat.kOpen'],

@@ -268,6 +268,13 @@ const CORE = new Set([
   'S5 app 源码遮蔽静态锚：镜像层 z-index 2 盖住 textarea + 遮蔽块/揭示/回蔽链 + 量高铺行 break-word 对齐 + 遮蔽永不写回红线（refreshSecretMirror 零 .value/.body 写入）',
   'S5 面板源码遮蔽静态锚：rebuildPanelSrcVeil 同构（零 .value/.body 写入）+ 常驻层/点击委托/resize 跟随 + 样式双端',
   'S5 e2e 在案锚：用例 64 全链（遮蔽→揭示→编辑→自动回蔽→保存往返零写回）+ 用例 62 源码面断言翻转（渲染文本层零机密）',
+  // 134. 文档安全 S6（notes-052-manual-mark-entries）：手动标记入口可达性（常驻 --core——steer 报障修复面 + 三入口红线看守）
+  'S6 app 源码浮钮静态锚：#srcSecretBtn 在 srcWrap 内（富文本态随容器不出现）+ 点击走 markSelectionSecret（零新逻辑）+ 点亮态三监听 + 样式 + rtb 红线',
+  'S6 面板执行体：snapshot/apply/mark 三件（快照口径 app 同构）+ 源码面行粒度 wrapSecretLines（尾换行不计 + span 内行剔除防双标）+ 富文本面 insertHTML 岛同构',
+  'S6 面板三入口接线：meta 🛡 钮（双模式恒可见 + mousedown 保选区）+ 右键菜单（有选区才拦 + 根层挂载 + Esc 栈收编）+ Ctrl+Shift+S（ref 中转 + 焦点闸不抢宿主区）',
+  'S6 遮蔽块点击修复锁：委托 = 层节点 React onClick（onVeilLayerClick）+ 旧 []-effect 空绑定形态出清（回归守卫）',
+  'S6 速查表收录断言：Ctrl+Shift+S 行三端在案（app/client 字典 key + 原型静态中文 = zh 字典值逐字一致）+ cheat.kSecret/editor.secretAlreadyMarked 双字典齐备',
+  'S6 e2e 在案锚：用例 65（遮蔽块点击修复全链）+ 用例 66（app 浮钮可见性/引导/包 fence/rtb 红线）+ 用例 67（面板三入口 + 防双标 + Esc 栈）',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

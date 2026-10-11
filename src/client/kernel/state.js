@@ -108,6 +108,7 @@
     function setSearchIds(v) { return panelBridge.setSearchIds(v) }
     function setSearchMatches(v) { return panelBridge.setSearchMatches(v) }
     function toggleScope(key) { return panelBridge.toggleScope(key) }
+    function setEdSecretCtx(v) { return panelBridge.setEdSecretCtx(v) }   // 文档安全 S6：编辑器右键「标记为机密」菜单 Esc 栈关闭（panel/keyboard.js 中转，panelBridge 回填实 setter）
 
     // ===== panel 跨域镜像 ref 群（architecture-modular §6 步骤 E）=====
     // keydown 长链（panel/keyboard.js）/双链解析/搜索防抖等「监听挂一次、读最新值」的共享镜像：
@@ -121,3 +122,7 @@
     const pagedIdsRef = { current: [] }       // 当前树渲染 id 序（0.4.6-J 起 = 各分组分页当前页并集，不含加载行；树渲染写入，keyboard j/k/Enter 导航读）
     const switchModeRef = { current: null }   // 双模式切换最新闭包（Ctrl+/ 经 ref 调最新 switchMode）
     const editorModeRef = { current: 'source' }   // 编辑器模式镜像（Ctrl+/ 守卫 / selectNote / 富文本序列化判读最新值）
+    // ===== 文档安全 S6（notes-052-manual-mark-entries）跨域镜像 ref 群（panel/editor.js 渲染期写入，panel/keyboard.js 直读）=====
+    const markSecretRef = { current: null }     // 选区手动标记执行体最新闭包（Ctrl+Shift+S 经 ref 调最新 markPanelSelectionSecret）
+    const edSecretCtxRef = { current: null }    // 编辑器右键「标记为机密」菜单镜像（keydown Esc 栈直读——{x,y,snap}|null）
+    const edSecretFocusRef = { current: null }  // 编辑器焦点面 DOM 快照 {src, rich}（Ctrl+Shift+S 焦点闸——事件目标在面板编辑面内才动作，宿主区不拦不抢）

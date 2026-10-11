@@ -6,6 +6,7 @@ var CHEATSHEET_ROWS = [
   ['Ctrl+K', 'cheat.kSearch'],
   ['Alt+N', 'cheat.kNew'],
   ['Ctrl+/', 'cheat.kMode'],
+  ['Ctrl+Shift+S', 'cheat.kSecret'],   /* 文档安全 S6（notes-052-manual-mark-entries）：选区标为机密（S1 遗留项收口——实现锚在 panels/keyboard.js，双端同键） */
   ['j / ↓', 'cheat.kDown'],
   ['k / ↑', 'cheat.kUp'],
   ['Enter', 'cheat.kOpen'],

@@ -158,6 +158,7 @@ var I18N_ZH = {
   'editor.secretUnmarkFailed': '未能定位机密区，请切换源码模式手动处理',
   'editor.secretPlaceholder': '机密区（内容已遮蔽）',   /* S5 语义翻转：源码模式已遮蔽——S1 旧文案「源码模式查看」作废（遮蔽卡 notes-052-source-mask） */
   'editor.secretMarked': '已标记为机密',
+  'editor.secretAlreadyMarked': '所选内容已在机密区内',   /* 文档安全 S6（notes-052-manual-mark-entries）：面板源码面选区行全落既有机密 span——防 fence 双标嵌套 */
   /* 文档安全 S5（notes-052-source-mask）：源码模式遮蔽块标签 + 派发弹窗预览打码占位 */
   'editor.secretVeil': '🔒 机密区 · 点击揭示',
   'disp.secretMasked': '🔒 机密区（已打码）',
@@ -771,6 +772,7 @@ var I18N_ZH = {
   'cheat.kSearch': '聚焦搜索框',
   'cheat.kNew': '新建笔记（Ctrl+N 是浏览器保留键「新建窗口」，页面拿不到，故改用 Alt+N）',
   'cheat.kMode': '编辑器 源码 ⇄ 富文本 切换（编辑中生效；弹窗打开时不切）',
+  'cheat.kSecret': '编辑器：把选中文本标记为机密（有选区才生效；工具栏 🛡 / 右键菜单同入口）',   /* 文档安全 S6（notes-052-manual-mark-entries）：S1 遗留项收口——Ctrl+Shift+S 进速查表 */
   'cheat.kDown': '列表焦点下移一行',
   'cheat.kUp': '列表焦点上移一行',
   'cheat.kOpen': '打开焦点笔记',
