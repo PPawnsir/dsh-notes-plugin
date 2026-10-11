@@ -209,8 +209,10 @@ module.exports = {
     assert(cliTrash.indexOf("renderMarkdown(trashPreview.body, wikiResolve, { secretStatic: true, secretLabel: tt('editor.secretPlaceholder') })") >= 0, 'client 回收站预览静态占位')
     const KEYS = ['editor.tbSecret', 'editor.ctxSecret', 'editor.secretNeedSelection', 'editor.secretRevealTip', 'editor.secretUnmark', 'editor.secretUnmarkFailed', 'editor.secretPlaceholder', 'editor.secretMarked']
     for (const k of KEYS) assert(typeof zhDict[k] === 'string' && zhDict[k] && typeof enDict[k] === 'string' && enDict[k], k + ' 双字典齐备且非空')
-    assert(zhDict['editor.secretPlaceholder'] === '机密区（源码模式查看）', '降级占位文案口径（zh）')
-    assert(enDict['editor.secretPlaceholder'] === 'Secret area (view in source mode)', '降级占位文案口径（en）')
+    // S5（notes-052-source-mask）断言翻转：源码模式已遮蔽——S1 旧占位文案「源码模式查看」作废（用户实测推翻「源码见真相」
+    //   裁决：屏幕泄露威胁在源码面同样成立），新口径 = 机密块在任何默认视图都不裸露；等价守卫 = 键仍在双字典（只翻文案值）
+    assert(zhDict['editor.secretPlaceholder'] === '机密区（内容已遮蔽）', '降级占位文案口径（zh，S5 翻转：内容已遮蔽）')
+    assert(enDict['editor.secretPlaceholder'] === 'Secret area (content masked)', '降级占位文案口径（en，S5 翻转）')
   })
 
   // ===== 129.7 e2e 用例在案锚 =====

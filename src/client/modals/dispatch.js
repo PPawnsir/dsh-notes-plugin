@@ -216,6 +216,13 @@
         showToast(t('disp.markedDone')); await panelBridge.loadNotes(true); notifyNotesChanged()
       } catch (err) { setError(String(err.message || err)) }
     }
+    // 文档安全 S5（notes-052-source-mask）：派发弹窗待办预览打码——显示面同形兜底（host persist 源头已打码 S5，此处对已打码
+    // preview 幂等——零 span 恒等；零私有围栏正则：maskSecretPreview 内核单源）；标签走 tt() i18n 键（app 端 dispPreviewText 同构）
+    function dispPreviewText(n, label) {
+      const raw = String((n && n.preview) || '')
+      const masked = (typeof maskSecretPreview === 'function' ? maskSecretPreview(raw, label) : raw) || raw   // || raw：check 沙箱 Proxy 桩空降卫（S1 同款纪律）
+      return masked.trim() || t('disp.noBody')
+    }
     // 派发对话框宿主（modal）：todo 上下文预览 + 补充具体要求 + 调度区（立即派发/定时执行）+ 已有/新建会话（级联下拉）
     function DispatchModal(props) {
       const tt = useT()   // i18n 覆盖卡E：订阅 langStore，切语言本卡自渲染（模块级 handler 走 t() 直读当下语言态）
@@ -258,7 +265,7 @@
           e('div', { className: 'dsh-notes-dispatch-modal-t' }, I(dispatchEditId ? 'clock' : 'play', 13), ' ' + (dispatchEditId ? tt('disp.editTitle') : tt('disp.title')), e('span', { style: { fontSize: '10px', color: 'var(--nt3)', fontWeight: 400, marginLeft: '8px' } }, dispatchEditId ? tt('disp.editSub') : tt('disp.subCounts', { ws: wsList.length, n: activeSessions.length, pending: dispatchPending.length ? tt('disp.sessPending', { n: dispatchPending.length }) : '' }))),
           e('div', { className: 'dsh-notes-dispatch-todo' },
             e('div', { className: 'dsh-notes-dispatch-todo-t' }, showNote.title || 'Untitled'),
-            e('div', { className: 'dsh-notes-dispatch-todo-b' }, String(showNote.preview || '').trim() || tt('disp.noBody'))),
+            e('div', { className: 'dsh-notes-dispatch-todo-b' }, dispPreviewText(showNote, tt('disp.secretMasked')))),
           dispatchEditId ? null : e('textarea', { className: 'dsh-notes-dispatch-instr', placeholder: tt('disp.instrPlaceholder'), value: dispatchInstr, onChange: (ev) => setDispatchInstr(ev.target.value), rows: 3 }),
           // 调度区（notes-034-sched-ui）：默认收起 = 立即派发；「定时执行」展开频率设置；编辑模式固定定时形态（不再给「立即派发」岔路）
           e('div', { className: 'dsh-notes-sched-box' },

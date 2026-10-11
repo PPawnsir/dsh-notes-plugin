@@ -156,8 +156,11 @@ var I18N_ZH = {
   'editor.secretRevealTip': '机密区：点击揭示，约 10 秒后自动回糊',
   'editor.secretUnmark': '取消机密',
   'editor.secretUnmarkFailed': '未能定位机密区，请切换源码模式手动处理',
-  'editor.secretPlaceholder': '机密区（源码模式查看）',
+  'editor.secretPlaceholder': '机密区（内容已遮蔽）',   /* S5 语义翻转：源码模式已遮蔽——S1 旧文案「源码模式查看」作废（遮蔽卡 notes-052-source-mask） */
   'editor.secretMarked': '已标记为机密',
+  /* 文档安全 S5（notes-052-source-mask）：源码模式遮蔽块标签 + 派发弹窗预览打码占位 */
+  'editor.secretVeil': '🔒 机密区 · 点击揭示',
+  'disp.secretMasked': '🔒 机密区（已打码）',
   /* 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议——编辑器顶部冒泡横幅（一键标记/忽略，不打扰提示） */
   'editor.secretSuggest': '检测到 {n} 处疑似凭据（第 {lines} 行）',
   'editor.secretMarkAll': '一键标记',

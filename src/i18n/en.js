@@ -156,8 +156,11 @@ var I18N_EN = {
   'editor.secretRevealTip': 'Secret area: click to reveal, auto re-blurs in ~10s',
   'editor.secretUnmark': 'Unmark secret',
   'editor.secretUnmarkFailed': 'Could not locate the secret block; switch to source mode to fix it manually',
-  'editor.secretPlaceholder': 'Secret area (view in source mode)',
+  'editor.secretPlaceholder': 'Secret area (content masked)',   /* S5 flip: source mode now masks too (notes-052-source-mask) */
   'editor.secretMarked': 'Marked as secret',
+  /* Document security S5 (notes-052-source-mask): source-mode veil label + dispatch modal masked-preview placeholder */
+  'editor.secretVeil': '🔒 Secret area · click to reveal',
+  'disp.secretMasked': '🔒 Secret area (masked)',
   /* 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议——编辑器顶部冒泡横幅（一键标记/忽略，不打扰提示） */
   'editor.secretSuggest': 'Detected {n} suspected credential(s) (line {lines})',
   'editor.secretMarkAll': 'Mark all',

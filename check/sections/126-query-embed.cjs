@@ -39,9 +39,9 @@ module.exports = {
     assert(mi >= 0 && vs.indexOf("base: 'https://hf-mirror.com'", mi) > mi && vs.indexOf("base: 'https://huggingface.co'", mi) > vs.indexOf("base: 'https://hf-mirror.com'", mi), 'host embedder 镜像链 hf-mirror→HF 保留（红线不动）')
   })
 
-  await t('R3 bundle 减重：app.html 字节数 ≤ 705000（R3 退役前基线 686336——退役净降兑现；文档安全 S1（notes-052-span-kernel2）机密块内核+双模渲染+镜像增量后上限上调；S4（notes-052-autodetect-i18n）保存时检测建议横幅+一键标记+设置行增量后再上调）', () => {
+  await t('R3 bundle 减重：app.html 字节数 ≤ 720000（R3 退役前基线 686336——退役净降兑现；文档安全 S1（notes-052-span-kernel2）机密块内核+双模渲染+镜像增量后上限上调；S4（notes-052-autodetect-i18n）保存时检测建议横幅+一键标记+设置行增量后再上调；S5（notes-052-source-mask）源码遮蔽镜像 v2+遮蔽块样式+弹窗预览打码增量后再上调）', () => {
     const bytes = fsNative.statSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html')).size
-    assert(bytes <= 705000, 'app.html ≤ 705000 字节（实得 ' + bytes + '；R3 前基线 686336，S1 机密块增量 +23KB、S4 检测建议横幅 +11KB 后仍低于退役前水位 +19KB）')
+    assert(bytes <= 720000, 'app.html ≤ 720000 字节（实得 ' + bytes + '；R3 前基线 686336，S1 机密块 +23KB、S4 检测建议横幅 +11KB、S5 源码遮蔽/预览打码 +8KB 后仍低于退役前水位 +34KB）')
   })
 
   // ===== 126.2 查询嵌入锚点（fresh host 实例 + bge 假推理缝：真模型不进 CI）=====

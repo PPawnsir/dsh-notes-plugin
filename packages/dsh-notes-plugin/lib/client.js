@@ -329,8 +329,11 @@ window.__ModuleLoader__.load({
       'editor.secretRevealTip': '机密区：点击揭示，约 10 秒后自动回糊',
       'editor.secretUnmark': '取消机密',
       'editor.secretUnmarkFailed': '未能定位机密区，请切换源码模式手动处理',
-      'editor.secretPlaceholder': '机密区（源码模式查看）',
+      'editor.secretPlaceholder': '机密区（内容已遮蔽）',   /* S5 语义翻转：源码模式已遮蔽——S1 旧文案「源码模式查看」作废（遮蔽卡 notes-052-source-mask） */
       'editor.secretMarked': '已标记为机密',
+      /* 文档安全 S5（notes-052-source-mask）：源码模式遮蔽块标签 + 派发弹窗预览打码占位 */
+      'editor.secretVeil': '🔒 机密区 · 点击揭示',
+      'disp.secretMasked': '🔒 机密区（已打码）',
       /* 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议——编辑器顶部冒泡横幅（一键标记/忽略，不打扰提示） */
       'editor.secretSuggest': '检测到 {n} 处疑似凭据（第 {lines} 行）',
       'editor.secretMarkAll': '一键标记',
@@ -1272,8 +1275,11 @@ window.__ModuleLoader__.load({
       'editor.secretRevealTip': 'Secret area: click to reveal, auto re-blurs in ~10s',
       'editor.secretUnmark': 'Unmark secret',
       'editor.secretUnmarkFailed': 'Could not locate the secret block; switch to source mode to fix it manually',
-      'editor.secretPlaceholder': 'Secret area (view in source mode)',
+      'editor.secretPlaceholder': 'Secret area (content masked)',   /* S5 flip: source mode now masks too (notes-052-source-mask) */
       'editor.secretMarked': 'Marked as secret',
+      /* Document security S5 (notes-052-source-mask): source-mode veil label + dispatch modal masked-preview placeholder */
+      'editor.secretVeil': '🔒 Secret area · click to reveal',
+      'disp.secretMasked': '🔒 Secret area (masked)',
       /* 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议——编辑器顶部冒泡横幅（一键标记/忽略，不打扰提示） */
       'editor.secretSuggest': 'Detected {n} suspected credential(s) (line {lines})',
       'editor.secretMarkAll': 'Mark all',
@@ -2439,6 +2445,20 @@ window.__ModuleLoader__.load({
       return out
     }
     // ===== secret-span END =====
+    // ===== 文档安全 S5（notes-052-source-mask）：显示面 span 打码（app/client 消费面）=====
+    // host 侧同形实现在 sensitive-helpers.maskSecretSpans（占位带「note_get reveal 获取」引导——agent 面口径）；
+    // 本函数服务 UI 显示面（派发弹窗待办预览等）：span → 调用侧注入的占位文案（i18n t() 键——内核零硬编码文案纪律），
+    // 物理单源 parseSecretSpans（零私有围栏正则，S2 红线）；零 span 逐字节恒等（无打码面零扰动）。
+    // host 切片（secret-span BEGIN..END）不含本函数——host 显示面走 sensitive-helpers，本函数只进 app/client bundle。
+    function maskSecretPreview(body, label) {
+      var src = String(body == null ? '' : body)
+      var spans = (typeof parseSecretSpans === 'function' ? parseSecretSpans(src) : null) || []
+      if (!spans.length) return src
+      var ph = typeof label === 'string' ? label : ''
+      var out = '', p = 0
+      for (var i = 0; i < spans.length; i++) { out += src.slice(p, spans[i].start) + ph; p = spans[i].end }
+      return out + src.slice(p)
+    }
     // ===== 文档安全 S4（notes-052-autodetect-i18n）：保存时检测建议的一键标记 =====
     // 把 host 建议的命中行（1-based 行号数组）包成 ```secret fence——「一键标记」双端单源执行体（app/client 编辑器共用；
     // host 切片不含本函数：建议标记是编辑器面能力，host 只回 secretSuggested 行号）。
@@ -5124,6 +5144,13 @@ window.__ModuleLoader__.load({
         showToast(t('disp.markedDone')); await panelBridge.loadNotes(true); notifyNotesChanged()
       } catch (err) { setError(String(err.message || err)) }
     }
+    // 文档安全 S5（notes-052-source-mask）：派发弹窗待办预览打码——显示面同形兜底（host persist 源头已打码 S5，此处对已打码
+    // preview 幂等——零 span 恒等；零私有围栏正则：maskSecretPreview 内核单源）；标签走 tt() i18n 键（app 端 dispPreviewText 同构）
+    function dispPreviewText(n, label) {
+      const raw = String((n && n.preview) || '')
+      const masked = (typeof maskSecretPreview === 'function' ? maskSecretPreview(raw, label) : raw) || raw   // || raw：check 沙箱 Proxy 桩空降卫（S1 同款纪律）
+      return masked.trim() || t('disp.noBody')
+    }
     // 派发对话框宿主（modal）：todo 上下文预览 + 补充具体要求 + 调度区（立即派发/定时执行）+ 已有/新建会话（级联下拉）
     function DispatchModal(props) {
       const tt = useT()   // i18n 覆盖卡E：订阅 langStore，切语言本卡自渲染（模块级 handler 走 t() 直读当下语言态）
@@ -5166,7 +5193,7 @@ window.__ModuleLoader__.load({
           e('div', { className: 'dsh-notes-dispatch-modal-t' }, I(dispatchEditId ? 'clock' : 'play', 13), ' ' + (dispatchEditId ? tt('disp.editTitle') : tt('disp.title')), e('span', { style: { fontSize: '10px', color: 'var(--nt3)', fontWeight: 400, marginLeft: '8px' } }, dispatchEditId ? tt('disp.editSub') : tt('disp.subCounts', { ws: wsList.length, n: activeSessions.length, pending: dispatchPending.length ? tt('disp.sessPending', { n: dispatchPending.length }) : '' }))),
           e('div', { className: 'dsh-notes-dispatch-todo' },
             e('div', { className: 'dsh-notes-dispatch-todo-t' }, showNote.title || 'Untitled'),
-            e('div', { className: 'dsh-notes-dispatch-todo-b' }, String(showNote.preview || '').trim() || tt('disp.noBody'))),
+            e('div', { className: 'dsh-notes-dispatch-todo-b' }, dispPreviewText(showNote, tt('disp.secretMasked')))),
           dispatchEditId ? null : e('textarea', { className: 'dsh-notes-dispatch-instr', placeholder: tt('disp.instrPlaceholder'), value: dispatchInstr, onChange: (ev) => setDispatchInstr(ev.target.value), rows: 3 }),
           // 调度区（notes-034-sched-ui）：默认收起 = 立即派发；「定时执行」展开频率设置；编辑模式固定定时形态（不再给「立即派发」岔路）
           e('div', { className: 'dsh-notes-sched-box' },
@@ -7355,6 +7382,11 @@ window.__ModuleLoader__.load({
         const secretSugIgnoredRef = React.useRef({})
         const secretRevealTimerRef = React.useRef(null)
         React.useEffect(() => () => { if (secretRevealTimerRef.current) { try { clearTimeout(secretRevealTimerRef.current) } catch (err) {} } }, [])   // 卸载收编揭示计时器
+        // ===== 文档安全 S5（notes-052-source-mask）：面板源码模式机密遮蔽（app refreshSecretMirror v2 同构）=====
+        // srcVeilRef = 遮蔽镜像层 DOM（imperative 重建——React 不管辖行级布局）；srcRevealStartRef = 已揭示 span 起偏移
+        //（null = 全遮蔽；span 内打字 start 不变即持续揭示；换笔记/切模式/取消机密/一键标记即收编回蔽——揭示是临时动作）。
+        const srcVeilRef = React.useRef(null)
+        const srcRevealStartRef = React.useRef(null)
         // ===== 历史版本面板（notes-history-ui）：详情 meta 行「历史」入口（有版本才显示）→ modal：版本列表（时间+大小）→ 点选只读预览 → 恢复 =====
         const [histCount, setHistCount] = React.useState(null)    // 当前笔记历史版本数（null=未探测；0=无版本不显示入口）
         const keepQuickRef = React.useRef(false)
@@ -7408,6 +7440,7 @@ window.__ModuleLoader__.load({
           setEdBody('')
           setOrgErr('')   // 0.4.7-B⑥a：换笔记清整理失败驻留条（驻留粒度 = 当前笔记）
           setEdSecretSug(null)   // 文档安全 S4：换笔记清建议横幅（建议随笔记走，不跨笔记携带）
+          srcRevealStartRef.current = null   // 文档安全 S5：换笔记收编源码揭示态（揭示是临时动作，不跨笔记携带）
           setDegraded({ ok: true, reasons: [] })   // 正文未加载前降级态复位（横幅不残留上一条笔记的分析结果）
           histCountRef.current = null; setHistCount(null)   // 换笔记重置「历史」入口可见性，随即探测版本计数
           // 0.4.4-A：open-by-id 旁路登记——缓存外笔记（执行记录跳转 notes-get 直开产物）挂旁路供 curNote 回退；缓存内选中清零
@@ -7649,6 +7682,8 @@ window.__ModuleLoader__.load({
             secretRevealTimerRef.current = null
             const rich = richRef.current
             if (rich) rich.querySelectorAll('pre.dsh-notes-secret.revealed').forEach((p2) => { p2.classList.remove('revealed') })
+            srcRevealStartRef.current = null   // 文档安全 S5：源码遮蔽同步回蔽（与富文本岛共用同一计时器单飞）
+            rebuildPanelSrcVeil()
           }, SECRET_REVEAL_MS)
         }
         function revealPanelSecret(pre) {
@@ -7697,10 +7732,82 @@ window.__ModuleLoader__.load({
           const nb = body.slice(0, sp.start) + inner + body.slice(sp.end)
           edBodyRef.current = nb; setEdBody(nb)
           if (secretRevealTimerRef.current) { try { clearTimeout(secretRevealTimerRef.current) } catch (err) {} secretRevealTimerRef.current = null }
+          srcRevealStartRef.current = null   // 文档安全 S5：取消机密后 span 序全变，揭示偏移收编（保守回蔽）
           if (rich && editorModeRef.current === 'rich') { richDirtyRef.current = false; try { rich.innerHTML = renderMarkdown(nb, wikiResolve); bindPanelSecret(rich) } catch (err) {} }
           triggerAutoSave(); scheduleDegAnalyze()
           bumpWikiBody(selectedRef.current, nb, '')
         }
+        // ===== 文档安全 S5（notes-052-source-mask）：面板源码模式机密遮蔽块（app refreshSecretMirror v2 同构）=====
+        // 红线（本卡命门）：遮蔽纯渲染层——本函数零 textarea.value 写入（.dsh-notes-ed-body 受控态仍由 React 持真原文）；
+        // 两遍法：①量高铺行（真实文本 + 机密行内联 overflow-wrap:break-word 对齐 textarea 换行策略——anywhere 填满行
+        // 会致行数偏少，遮蔽块短一截就露机密尾巴），同步步内无重绘窗口；②量毕替换为不透明遮蔽块（高度 = 首行 top 至
+        // 末行 bottom + 2px 亚像素防漏）——终态镜像零机密文本；无 span / 非源码态（textarea 卸载）清空零开销。
+        function rebuildPanelSrcVeil() {
+          const layer = srcVeilRef.current
+          if (!layer) return
+          const ta = edBodyDomRef.current
+          const body = edBodyRef.current || ''
+          const spans = (typeof parseSecretSpans === 'function' ? parseSecretSpans(body) : null) || []   // 内核缺位（check 沙箱桩）零遮蔽降级不炸
+          if (!ta || !spans.length) { layer.innerHTML = ''; return }
+          const sb = ta.offsetWidth - ta.clientWidth   // 滚动条补偿先行（影响内容宽 = 影响换行量高）
+          layer.style.right = sb > 0 ? sb + 'px' : ''
+          const lines = body.split('\n')
+          const lineSpan = {}
+          spans.forEach((sp, si) => {
+            let sLine = 0, eLine = 0
+            for (let j = 0; j < sp.start; j++) if (body.charCodeAt(j) === 10) sLine++
+            for (let j = 0; j < sp.end; j++) if (body.charCodeAt(j) === 10) eLine++
+            for (let li = sLine; li <= eLine && li < lines.length; li++) lineSpan[li] = si
+          })
+          const lineHtml = lines.map((ln2, i) =>
+            '<div' + (lineSpan[i] != null ? ' class="src-secret" style="overflow-wrap:break-word"' : '') + '>' + (ln2 ? esc(ln2) : '') + '</div>')
+          layer.innerHTML = lineHtml.join('')   // ①量高铺行（真实文本——同任务内被②整体替换，绝不落屏）
+          const kids = layer.children
+          const out = []
+          let i2 = 0
+          while (i2 < lines.length) {
+            const si = lineSpan[i2]
+            if (si == null) { out.push(lineHtml[i2]); i2++; continue }
+            let n2 = 0
+            while (i2 + n2 < lines.length && lineSpan[i2 + n2] === si) n2++
+            const r0 = kids[i2].getBoundingClientRect(), r1 = kids[i2 + n2 - 1].getBoundingClientRect()
+            const h = Math.max(0, r1.bottom - r0.top) + 2
+            const revealed = srcRevealStartRef.current != null && spans[si].start === srcRevealStartRef.current
+            out.push('<div class="src-secret-veil' + (revealed ? ' revealed' : '') + '" data-sec="' + si + '" style="height:' + h + 'px">' + esc(tt('editor.secretVeil')) + '</div>')
+            i2 += n2
+          }
+          layer.innerHTML = out.join('')   // ②终态：span 连续行段 → 遮蔽块
+          layer.scrollTop = ta.scrollTop
+        }
+        // 遮蔽块点击揭示：委托挂层节点（innerHTML 频繁重建不脱钩）；揭示态 = visibility:hidden（保留占位高度 + 点击穿透编辑）
+        function revealPanelSrcSecret(veil) {
+          const si = Number(veil.getAttribute('data-sec'))
+          const body = edBodyRef.current || ''
+          const spans = (typeof parseSecretSpans === 'function' ? parseSecretSpans(body) : null) || []
+          const sp = spans[si]
+          if (!sp) return
+          srcRevealStartRef.current = sp.start
+          veil.classList.add('revealed')
+          armPanelSecretReveal()
+        }
+        // 重建接线：每渲染后重建（受控 textarea 每键入 setState 随行；切语言 tt 订阅触发重渲染也随行——遮蔽块标签随语言翻新）；
+        // 无 span / 非源码态清空空层零开销；揭示态由 srcRevealStartRef 保义——span 内打字 start 不变持续揭示
+        React.useEffect(() => { rebuildPanelSrcVeil() })
+        React.useEffect(() => {
+          const layer = srcVeilRef.current
+          if (!layer) return undefined
+          const onClick = (ev) => {
+            const veil = ev.target && ev.target.closest ? ev.target.closest('.src-secret-veil') : null
+            if (veil) revealPanelSrcSecret(veil)
+          }
+          layer.addEventListener('click', onClick)
+          return () => { try { layer.removeEventListener('click', onClick) } catch (err) {} }
+        }, [])
+        React.useEffect(() => {
+          const onRz = () => rebuildPanelSrcVeil()
+          try { window.addEventListener('resize', onRz) } catch (err) {}
+          return () => { try { window.removeEventListener('resize', onRz) } catch (err) {} }
+        }, [])
         // ===== S4 保存时检测建议：一键标记（命中行包 ```secret fence——wrapSecretLines 内核双端单源）+ 忽略（本篇本次静默） =====
         // 只建议不强制：host 只回行号；点击才落 fence，包完走既有自动保存——下一次保存响应零建议（span 内行不再建议）横幅自清闭环。
         function doSecretMarkAll() {
@@ -7710,6 +7817,7 @@ window.__ModuleLoader__.load({
             ? wrapSecretLines(edBodyRef.current || '', edSecretSug.lines)
             : { body: edBodyRef.current || '', count: 0 }
           if (!r.count) { setEdSecretSug(null); return }
+          srcRevealStartRef.current = null   // 文档安全 S5：一键标记后 span 序全变，揭示偏移收编（保守回蔽）
           edBodyRef.current = r.body; setEdBody(r.body)
           const a = analyzeMarkdown(r.body)
           setDegraded(a)
@@ -7808,6 +7916,8 @@ window.__ModuleLoader__.load({
         // 模式切换（原型 setMode）：进富文本前跑降级分析；离开富文本先把在途编辑序列化落回源码
         function switchMode(m) {
           if (m === editorModeRef.current) return
+          if (secretRevealTimerRef.current) { try { clearTimeout(secretRevealTimerRef.current) } catch (err) {} secretRevealTimerRef.current = null }   // 文档安全：揭示计时器随切换收编（不留跨模式悬挂揭示）
+          srcRevealStartRef.current = null   // 文档安全 S5：源码揭示态随切换收编（遮蔽块重建后回蔽）
           if (m === 'rich') {
             const a = analyzeMarkdown(edBodyRef.current)
             setDegraded(a)
@@ -8430,7 +8540,7 @@ window.__ModuleLoader__.load({
                 /* 0.4.8 双链 [[ 补全（源码模式）：keydown 导航/选中/Esc + blur 点外关闭 + scroll 跟随重定位 */
                 onKeyDown: (ev) => wikiAcKeydown(ev),
                 onBlur: () => wikiAcClose(),
-                onScroll: () => { if (wikiAcRef.current) wikiAcPosition(edBodyDomRef.current) },
+                onScroll: () => { if (wikiAcRef.current) wikiAcPosition(edBodyDomRef.current); const vl = srcVeilRef.current; if (vl) vl.scrollTop = edBodyDomRef.current ? edBodyDomRef.current.scrollTop : 0 },   /* 文档安全 S5：遮蔽镜像层滚动跟随 */
                 /* 光标被方向键/鼠标挪动时不发 input：开态下重估触发窗（失配即关/重定位）；关态绝不自开（触发只认输入） */
                 onKeyUp: (ev) => { if (wikiAcRef.current && (ev.key.indexOf('Arrow') === 0 || ev.key === 'Home' || ev.key === 'End' || ev.key === 'PageUp' || ev.key === 'PageDown')) wikiAcRefresh() },
                 onClick: () => { if (wikiAcRef.current) wikiAcRefresh() },
@@ -8453,6 +8563,9 @@ window.__ModuleLoader__.load({
                   e('button', { className: 'dsh-notes-rtb-btn dsh-nt', 'data-a': 'image', 'data-tooltip': tt('editor.tbImage'), onMouseDown: (ev) => { ev.preventDefault(); toolbarAction('image') } }, I('image', 14)),
                   e('span', { className: 'dsh-notes-rtb-sync' + (edLoadErr ? ' err' : ((edBodyPending || richSyncing) ? '' : ' ok')) }, e('span', { className: 'dsh-notes-rtb-sync-sd' }), edLoadErr ? tt('editor.syncFailed') : edBodyPending ? tt('editor.bodySyncing') : richSyncing ? tt('editor.syncing') : tt('editor.synced'))),   /* 0.4.7-C ②a：失败态同步点统一红点「加载失败」（旧口径 edLoadErr 在窗时冒绿「已同步」= 与横幅矛盾的双口径） */
                 e('div', { ref: richRef, className: 'dsh-notes-rich', contentEditable: (edLoadErr || edBodyPending) ? false : true, spellCheck: false, suppressContentEditableWarning: true })),
+            // 文档安全 S5（notes-052-source-mask）：源码模式机密遮蔽镜像层（app src-mirror v2 同构）——常驻挂载
+            //（非源码态/无 span 时空层零开销，pointer-events:none 不拦编辑）；机密行渲染为不透明遮蔽块 + 点击揭示
+            e('div', { ref: srcVeilRef, className: 'dsh-notes-src-veil', 'aria-hidden': 'true' }),
             // 0.4.7-B⑥：整理中遮罩（正文区全覆；organizing 翻转即现/即隐，与 meta 钮 busy 同数据源）
             organizing ? e('div', { className: 'dsh-notes-org-veil' }, e('span', { className: 'dsh-notes-org-spin' }), e('span', null, tt('editor.organizingVeil'))) : null),
           // P2 反向链接面板：全库正文含 [[当前id]]/[[当前标题]] 的其他笔记（点击跳转；索引未热提示「索引中…」）

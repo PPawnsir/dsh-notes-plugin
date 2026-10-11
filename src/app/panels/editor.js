@@ -107,6 +107,7 @@ function edBodyPending() { return !!(edNote && !edBodyLoaded && !edBodyErr) }
 function fillEdBody() {
   if (!edNote) return;
   var body = edNote.body || '';
+  srcRevealedStart = null;   /* 文档安全 S5：新内容到达回填——揭示态收编（揭示是临时动作，不跨回填携带） */
   if ($('edSrc')) $('edSrc').value = body;
   if (edMode === 'rich' && $('edRich')) {
     /* 0.4.6-A：在途窗富文本不填内核产物（空态 + 锁编辑 + 加载中同步点）；落定由 loadEdBody 链重调本函数回填 */
@@ -285,6 +286,7 @@ function renderEdLang() {
   });
   /* 文档安全 S1：机密岛 chrome 文案随语言翻转（🔒 tooltip/取消机密钮——纯文案原地重写，不重建正文 DOM，0.4.9 同款纪律） */
   var richEl = $('edRich'); if (richEl) richEl.querySelectorAll('pre.dsh-notes-secret').forEach(function (sb) { refreshSecretBlockText(sb) });
+  refreshSecretMirror();   /* 文档安全 S5：遮蔽块标签随语言重建（纯渲染层重建——textarea/富文本正文 DOM 零打扰；无 span 时空重建零开销） */
 }
 /* 编辑区事件绑定（renderEd 重建 DOM 后重挂；元素级监听随重建不累积，document 级 selectionchange 在启动区挂一次） */
 function bindEditorArea() {
@@ -297,6 +299,12 @@ function bindEditorArea() {
     ta.addEventListener('drop', function (ev) { var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]; if (!f) return; ev.preventDefault(); if (!/^image\//.test(f.type)) { toast(t('editor.imageOnly')); return } pickImageFile(f); });
     /* 文档安全 S1：源码镜像滚动同步（镜像 overflow:hidden，程序化 scrollTop 跟随） */
     ta.addEventListener('scroll', function () { var mi = $('srcMirror'); if (mi) mi.scrollTop = this.scrollTop });
+    /* 文档安全 S5：源码遮蔽块点击揭示（委托挂镜像节点本体——innerHTML 频繁重建不影响） */
+    var mi5 = $('srcMirror');
+    if (mi5) mi5.addEventListener('click', function (ev) {
+      var veil = ev.target && ev.target.closest ? ev.target.closest('.src-secret-veil') : null;
+      if (veil) revealSrcSecret(veil);
+    });
     /* 文档安全 S1 标记入口②：编辑器右键菜单（0.4.8 ctxmenu 基建——#ctxHost + .ctxmenu/.mi + closeCtx/Esc 通用闸）；
        有选区才拦截原生菜单（有选区才亮口径，与 Ctrl+Shift+S 一致）；选区快照入菜单闭包（菜单点击即用——textarea 选区会被点击吞掉） */
     ta.addEventListener('contextmenu', function (ev) {
@@ -415,6 +423,7 @@ function switchMode(m) {
   if (m === edMode) return;
   wikiAcClose();   /* 0.4.8：离开源码模式收编 [[ 补全下拉（textarea 隐藏后光标量测无意义） */
   clearTimeout(secretRevealTimer); secretRevealTimer = null;   /* 文档安全 S1：揭示计时器随切换收编（重渲染后自然回糊，不留跨模式悬挂揭示） */
+  srcRevealedStart = null;   /* 文档安全 S5：源码揭示态随切换收编（遮蔽块重建后回蔽——揭示是临时动作） */
   if (m === 'rich') {
     degraded = analyzeMarkdown(edNote ? edNote.body || '' : '');
     refreshDegradeUI();
@@ -518,8 +527,10 @@ function insertSanitizedHtml(html) {
    （工具栏🛡/右键菜单/Ctrl+Shift+S——同一 applySecretSel 执行体，选区快照口径）。取消机密前先收编富文本在途编辑
    （0.4.7-C/0.4.9 dirty 保护纪律：揭示态下别处编辑不被重建吃掉）。 */
 var secretRevealTimer = null;
-var SECRET_REVEAL_MS = 10000;   /* 揭示驻留时长（约 10s；e2e 用例 62 按此节拍等回糊） */
+var SECRET_REVEAL_MS = 10000;   /* 揭示驻留时长（约 10s；e2e 用例 62/64 按此节拍等回糊） */
 var secretResizeBound = false;   /* resize 跟随绑定单次闸（renderEd 内挂接——模块顶层零副作用，check 沙箱 eval 纪律） */
+var srcRevealedStart = null;     /* 文档安全 S5：源码模式已揭示机密 span 的起始偏移（null = 全遮蔽——揭示是临时动作；
+                                    编辑保持口径：span 内打字 start 不变即持续揭示，编辑 span 之前/换笔记/切模式/取消机密即回蔽） */
 
 /* 选区快照：标记动作与实际执行间可能隔一次菜单点击（textarea/富文本选区会被点击吞掉）——contextmenu 时刻快照，点选菜单项时用 */
 function snapshotSecretSel() {
@@ -552,6 +563,7 @@ function applySecretSel(snap) {
     var nb = body.slice(0, snap.s) + wrapped + body.slice(snap.e);
     edNote.body = nb;
     ta.value = nb;
+    srcRevealedStart = null;   /* 文档安全 S5：新 span 序落位，旧揭示偏移收编（保守回蔽） */
     var caret = snap.s + wrapped.length;
     try { ta.focus(); ta.setSelectionRange(caret, caret) } catch (e2) {}
     triggerSave(); scheduleDegAnalyze(); refreshSecretMirror();
@@ -615,6 +627,8 @@ function armSecretReveal() {
     secretRevealTimer = null;
     var rich = $('edRich');
     if (rich) rich.querySelectorAll('pre.dsh-notes-secret.revealed').forEach(function (p2) { p2.classList.remove('revealed') });
+    /* 文档安全 S5：源码遮蔽同步回蔽（与富文本岛共用同一计时器单飞——重击重置/跨面切换先收编同款纪律） */
+    if (srcRevealedStart != null) { srcRevealedStart = null; refreshSecretMirror(); }
   }, SECRET_REVEAL_MS);
 }
 function revealSecretBlock(pre) {
@@ -641,6 +655,7 @@ function unmarkSecretBlock(pre) {
   edNote.body = nb;
   if ($('edSrc')) $('edSrc').value = nb;
   clearTimeout(secretRevealTimer); secretRevealTimer = null;
+  srcRevealedStart = null;   /* 文档安全 S5：取消机密后 span 序全变，揭示偏移收编（保守回蔽） */
   if (rich && edMode === 'rich') { richDirty = false; rich.innerHTML = renderMarkdown(nb, wikiResolve); bindSecretBlocks(rich) }
   setSyncStatus(false);
   triggerSave(); scheduleDegAnalyze(); refreshSecretMirror();
@@ -656,30 +671,63 @@ function secretSpanInner(body, sp) {
   return inner;
 }
 
-/* 源码模式行背景染色镜像：与 #edSrc 同字体/行距/内边距/换行策略（.src-mirror 透明文字 + .src-secret 色带）；
-   仅机密 span 存在时填充（无 span 清空——常规打字零开销）；行号口径 = body.split 换行序列；滚动/resize 跟随 */
+/* 源码模式机密遮蔽镜像（S5 升级 S1 染色色带）：与 #edSrc 同字体/行距/内边距/换行策略；
+   红线（本卡命门）——遮蔽纯渲染层，textarea.value 永存真原文（本函数零 .value/零 edNote.body 写入，e2e 64 断言往返逐字节）；
+   两遍法：①量高铺行——全部行按真实文本入镜像（机密行内联 overflow-wrap:break-word 对齐 textarea 换行策略——
+   anywhere 会填满行致行数偏少，遮蔽块短一截就露机密尾巴），同步步内无重绘窗口；②量毕替换——机密 span 连续行段
+   换成不透明遮蔽块（高度 = 首行 top 至末行 bottom + 2px 亚像素防漏），良性行保留透明文本垫片（行对齐）。
+   遮蔽块终态零机密文本（镜像 textContent 零凭据——e2e 断言口径）；仅机密 span 存在时填充（无 span 零开销）；
+   行号口径 = body.split 换行序列；滚动/滚动条补偿/resize 跟随（S1 纪律原样复用）。 */
 function refreshSecretMirror() {
   var ta = $('edSrc'), mi = $('srcMirror');
   if (!ta || !mi) return;
   var body = edNote ? (edNote.body || '') : ta.value;
-  var spans = parseSecretSpans(body) || [];   /* 内核函数缺位（check with(Proxy) 沙箱桩返回 undefined）时零色带降级，不炸编辑链 */
+  var spans = parseSecretSpans(body) || [];   /* 内核函数缺位（check with(Proxy) 沙箱桩返回 undefined）时零遮蔽降级，不炸编辑链 */
   if (!spans.length) { if (mi._secretOn) { mi._secretOn = false; mi.innerHTML = ''; mi.scrollTop = 0 } return }
   mi._secretOn = true;
+  /* 滚动条补偿先行（影响内容宽 = 影响换行量高，必须在铺行前定宽） */
+  var sb = ta.offsetWidth - ta.clientWidth;
+  mi.style.right = sb > 0 ? sb + 'px' : '';
   var lines = body.split('\n');
-  var secretLines = {};
-  spans.forEach(function (sp) {
+  var lineSpan = {};
+  spans.forEach(function (sp, si) {
     var sLine = 0, eLine = 0, j;
     for (j = 0; j < sp.start; j++) if (body.charCodeAt(j) === 10) sLine++;
     for (j = 0; j < sp.end; j++) if (body.charCodeAt(j) === 10) eLine++;
-    for (var li = sLine; li <= eLine && li < lines.length; li++) secretLines[li] = true;
+    for (var li = sLine; li <= eLine && li < lines.length; li++) lineSpan[li] = si;
   });
-  mi.innerHTML = lines.map(function (ln2, i) {
-    return '<div' + (secretLines[i] ? ' class="src-secret"' : '') + '>' + (ln2 ? esc(ln2) : '') + '</div>';
-  }).join('');
-  /* 滚动条补偿：edSrc 出现竖向滚动条时内容宽收窄——镜像右缘同步让行（换行点）对齐 */
-  var sb = ta.offsetWidth - ta.clientWidth;
-  mi.style.right = sb > 0 ? sb + 'px' : '';
+  /* ①量高铺行（真实文本——同任务内被②整体替换，绝不落屏） */
+  var lineHtml = lines.map(function (ln2, i) {
+    return '<div' + (lineSpan[i] != null ? ' class="src-secret" style="overflow-wrap:break-word"' : '') + '>' + (ln2 ? esc(ln2) : '') + '</div>';
+  });
+  mi.innerHTML = lineHtml.join('');
+  /* ②终态组装：span 连续行段 → 遮蔽块（高度实测 + 2px 防亚像素截尾） */
+  var out = [], i2 = 0, kids = mi.children;
+  while (i2 < lines.length) {
+    var si = lineSpan[i2];
+    if (si == null) { out.push(lineHtml[i2]); i2++; continue }
+    var n2 = 0;
+    while (i2 + n2 < lines.length && lineSpan[i2 + n2] === si) n2++;
+    var r0 = kids[i2].getBoundingClientRect(), r1 = kids[i2 + n2 - 1].getBoundingClientRect();
+    var h = Math.max(0, r1.bottom - r0.top) + 2;
+    var revealed = srcRevealedStart != null && spans[si].start === srcRevealedStart;
+    out.push('<div class="src-secret src-secret-veil' + (revealed ? ' revealed' : '') + '" data-sec="' + si + '" style="height:' + h + 'px">' + esc(t('editor.secretVeil')) + '</div>');
+    i2 += n2;
+  }
+  mi.innerHTML = out.join('');
   mi.scrollTop = ta.scrollTop;
+}
+/* 文档安全 S5：源码遮蔽块点击揭示（委托挂 #srcMirror——innerHTML 频繁重建，镜像节点本身随 renderEd 重建后 bindEditorArea 重挂）；
+   揭示态 = visibility:hidden（保留占位高度、点击穿透到 textarea 正常编辑/选区）；揭示驻留 ~10s 自动回蔽（与富文本岛共用计时器单飞） */
+function revealSrcSecret(veil) {
+  var si = Number(veil.getAttribute('data-sec'));
+  var body = edNote ? (edNote.body || '') : (($('edSrc') || {}).value || '');
+  var spans = parseSecretSpans(body) || [];
+  var sp = spans[si];
+  if (!sp) return;
+  srcRevealedStart = sp.start;
+  veil.classList.add('revealed');
+  armSecretReveal();
 }
 
 /* ===== 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议横幅 =====

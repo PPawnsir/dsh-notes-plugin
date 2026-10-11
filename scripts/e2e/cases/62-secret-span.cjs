@@ -1,9 +1,9 @@
 'use strict';
-/* 文档安全 S1 用例（notes-052-span-kernel2）app 编辑器机密块全链：
- * ① 源码模式敲 ```secret fence → 富文本模式 = 模糊岛（blur 纯 CSS + contenteditable=false + data-md-src 逐字源）；
+/* 文档安全 S1 用例（notes-052-span-kernel2）app 编辑器机密块全链（S5 notes-052-source-mask 源码面断言翻转为遮蔽语义）：
+ * ① 源码模式敲 ```secret fence → textarea 值存真原文 + 机密遮蔽块在案（.src-secret-veil 不透明遮挡 + 渲染文本层零机密）；
  * ② 点击揭示（.revealed + 取消机密钮浮现）→ ~10s 自动回糊（计时器单飞）；
  * ③ 再揭示 → 取消机密（剥 fence 行回明文：机密岛消失 + 源码正文含明文无围栏）；
- * ④ Ctrl+Shift+S 标记入口：源码模式选区 → 选区包 fence 即糊（值断言 + 染色镜像色带断言）；
+ * ④ Ctrl+Shift+S 标记入口：源码模式选区 → 选区包 fence 即糊（值断言 + 遮蔽块复活断言）；
  * ⑦ 模式切换可见性回归锁（驳回修复面）：富文本态换笔记重渲染 → 切回源码 → #edSrc 真可见（Playwright-visible + click）。
  * 隔离纪律：新建草稿承载（finally 关 context，mock 数据随进程弃）。 */
 module.exports = {
@@ -19,16 +19,18 @@ module.exports = {
         await page.keyboard.type('62 机密块全链')
         await page.click('#edSrc')
         await page.keyboard.type('公开开头\n\n```secret\nTOPSECRET-4242\n机密内容第二行\n```\n\n公开结尾')
-        await H.waitFor(page, '源码落定（正文含机密围栏 + 染色镜像色带在案）', async p => p.evaluate(() => {
+        await H.waitFor(page, '源码落定（textarea 值存真围栏原文 + 机密遮蔽块在案——S5 遮蔽语义）', async p => p.evaluate(() => {
           var ta = document.querySelector('#edSrc')
           var mi = document.querySelector('#srcMirror')
           return !!(ta && ta.value.indexOf('TOPSECRET-4242') >= 0 && ta.value.indexOf('\x60\x60\x60secret') >= 0
-            && mi && mi.querySelectorAll('.src-secret').length >= 3)
+            && mi && mi.querySelectorAll('.src-secret-veil').length === 1)
         }))
-        H.t('① 源码模式：fence 明文在 textarea + 行背景染色镜像（.src-secret 色带覆盖围栏行）', await page.evaluate(() => {
+        H.t('① 源码模式：fence 存真 textarea.value + 遮蔽块在案 + 渲染文本层零机密（S5 断言翻转：S1 旧断言 mirror.textContent 含机密——源码见真相裁决作废，凭据不在任何默认视图裸露）', await page.evaluate(() => {
           var mi = document.querySelector('#srcMirror')
-          return !!(mi && mi.querySelectorAll('.src-secret').length >= 3 && mi.textContent.indexOf('TOPSECRET-4242') >= 0)
-        }), 'mirror bands/text 断言失败')
+          return !!(mi && mi.querySelectorAll('.src-secret-veil').length === 1
+            && mi.textContent.indexOf('TOPSECRET-4242') < 0 && mi.textContent.indexOf('机密内容第二行') < 0
+            && mi.textContent.indexOf('点击揭示') >= 0)
+        }), 'mirror veil/text 断言失败')
 
         /* ② 切富文本：模糊块（未揭示态） */
         await page.click('#segRich')
@@ -79,16 +81,16 @@ module.exports = {
         H.t('⑤ 取消机密：剥 fence 行回明文（富文本零机密岛 + 源码无围栏 + 内容字节保留）', true)
         await H.screenshot(page, '62-secret-span-unmarked')
 
-        /* ⑥ Ctrl+Shift+S 标记入口：源码模式选区包 fence 即糊 */
+        /* ⑥ Ctrl+Shift+S 标记入口：源码模式选区包 fence 即糊（S5：标记后即遮蔽——遮蔽块复活双断言） */
         await page.evaluate(() => { const t = document.querySelector('#edSrc'); t.focus(); t.setSelectionRange(0, 4) })
         await page.keyboard.press('Control+Shift+s')
-        await H.waitFor(page, '选区包 fence（值前缀 = ```secret + 选区 + 闭合栏 + 染色镜像色带复活）', async p => p.evaluate(() => {
+        await H.waitFor(page, '选区包 fence（值前缀 = ```secret + 选区 + 闭合栏 + 机密遮蔽块复活）', async p => p.evaluate(() => {
           var ta = document.querySelector('#edSrc')
           var mi = document.querySelector('#srcMirror')
           return !!(ta && ta.value.indexOf('\x60\x60\x60secret\n') === 0 && ta.value.indexOf('\x60\x60\x60\n') > 0
-            && mi && mi.querySelectorAll('.src-secret').length >= 3)
+            && mi && mi.querySelectorAll('.src-secret-veil').length === 1)
         }))
-        H.t('⑥ Ctrl+Shift+S：选区包 ```secret fence 即糊（源码值 + 染色镜像双断言）', true)
+        H.t('⑥ Ctrl+Shift+S：选区包 ```secret fence 即糊（源码值 + 机密遮蔽块复活双断言——S5 语义：标记后即遮蔽）', true)
         await H.screenshot(page, '62-secret-span-marked')
 
         /* ⑦ 模式切换回归锁（Verifier 驳回修复面）：富文本态换笔记（renderEd 以 edMode='rich' 重建 → srcWrap 内联 display:none）

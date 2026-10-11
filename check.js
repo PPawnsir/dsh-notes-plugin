@@ -224,7 +224,7 @@ const CORE = new Set([
   // 126. 0.5.0 R3 查询嵌入接通 + 浏览器 wasm 路径退役（notes-051-query-embed：退役面静态 + bundle 减重 + 查询嵌入锚点常驻 --core）
   'R3 退役面：浏览器嵌入模块不存在 + 双 manifest 零登记 + app.html 零 transformers/jsdelivr/unpkg/代理路径引用',
   'R3 退役面：模型文件代理路由零残留（head.js/server.dist.js/index.mjs/e2e mock）+ host 镜像链 hf-mirror→HF 保留（红线）',
-  'R3 bundle 减重：app.html 字节数 ≤ 705000（R3 退役前基线 686336——退役净降兑现；文档安全 S1（notes-052-span-kernel2）机密块内核+双模渲染+镜像增量后上限上调；S4（notes-052-autodetect-i18n）保存时检测建议横幅+一键标记+设置行增量后再上调）',
+  'R3 bundle 减重：app.html 字节数 ≤ 720000（R3 退役前基线 686336——退役净降兑现；文档安全 S1（notes-052-span-kernel2）机密块内核+双模渲染+镜像增量后上限上调；S4（notes-052-autodetect-i18n）保存时检测建议横幅+一键标记+设置行增量后再上调；S5（notes-052-source-mask）源码遮蔽镜像 v2+遮蔽块样式+弹窗预览打码增量后再上调）',
   'R3 查询嵌入锚点：bge hostEmbed:true 在册 + 文本 query 经 host embed 不抛错 + 融合检索语义命中（假推理缝）',
   // 129. 文档安全 S1（notes-052-span-kernel2）：secret span 内核 + 双模渲染（往返恒等 + DEG 降级 + 三入口，常驻 --core）
   'parseSecretSpans 行为级：顶格识别/闭合/EOF 兜底/缩进不算/多块/嵌套退化/普通围栏内不另开（偏移 slice = 完整 fence 源）',
@@ -262,6 +262,12 @@ const CORE = new Set([
   'S4 一键标记契约：wrapSecretLines 包 fence → parseSecretSpans 恰好覆盖命中行 + maskSecretSpans 打码生效（S2 接通）+ 非法行号零改写',
   'S4 双端同构静态锚：建议横幅 app/client 双端 + 一键标记/忽略 + 忽略静默（本篇本次内存态）+ 面板 blur 块交互同构',
   'S4 收口同步：原型横幅/设置行/mock 检测在案 + README 双语自动检测键落位 + e2e mock 契约与用例 63 在册',
+  // 133. 文档安全 S5（notes-052-source-mask）：源码模式遮蔽 + 预览面补漏（常驻 --core——遮蔽永不写回红线看守）
+  'S5 内核显示面打码：maskSecretPreview 行为级（span→占位/零 span 恒等）+ 派发弹窗预览打码静态锚双端（app n.body 兜底 + client 显示面）',
+  'S5 persist preview 源头打码：span 开头笔记 preview 零机密（占位行）+ 零 span 逐字节恒等 + 落盘 .md 原文零触碰 + persist 双包静态锚',
+  'S5 app 源码遮蔽静态锚：镜像层 z-index 2 盖住 textarea + 遮蔽块/揭示/回蔽链 + 量高铺行 break-word 对齐 + 遮蔽永不写回红线（refreshSecretMirror 零 .value/.body 写入）',
+  'S5 面板源码遮蔽静态锚：rebuildPanelSrcVeil 同构（零 .value/.body 写入）+ 常驻层/点击委托/resize 跟随 + 样式双端',
+  'S5 e2e 在案锚：用例 64 全链（遮蔽→揭示→编辑→自动回蔽→保存往返零写回）+ 用例 62 源码面断言翻转（渲染文本层零机密）',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

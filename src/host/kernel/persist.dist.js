@@ -59,7 +59,12 @@
         refNote: n.refNote || '',
         runLog: n.runLog || '',   // 0.4.4-A：执行记录伴生笔记软链（顶层 runLog）随 slim 下发——UI 派发历史行/计划块跳转数据源
         useCount: n.useCount || 0,
-        archivedAt: n.archivedAt, deleted: n.deleted === true, preview: String(n.body || '').slice(0, 200)
+        // 文档安全 S5（notes-052-source-mask）：preview 源头打码——maskSecretSpans 后再 slice（一处修，列表预览/面板本地
+        // 过滤/派发弹窗预览全消费方受益）；span 开头场景 preview 变占位行（本地过滤口径与 host 全文检索对齐——span 内词
+        // 两面都搜不到）。正文 body 字段不在此打码（notes-get 明文编辑链路红线不动）；sensitive-helpers 序位在前（manifest），
+        // typeof 卫兵 = check 分块 eval 缺位恒等降级（search.js 同款先例）。
+        archivedAt: n.archivedAt, deleted: n.deleted === true,
+        preview: (typeof maskSecretSpans === 'function' ? maskSecretSpans(String(n.body || '')) : String(n.body || '')).slice(0, 200)
       }
     }
 

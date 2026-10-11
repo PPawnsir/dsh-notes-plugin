@@ -52,6 +52,20 @@ function parseSecretSpans(body) {
   return out
 }
 // ===== secret-span END =====
+// ===== 文档安全 S5（notes-052-source-mask）：显示面 span 打码（app/client 消费面）=====
+// host 侧同形实现在 sensitive-helpers.maskSecretSpans（占位带「note_get reveal 获取」引导——agent 面口径）；
+// 本函数服务 UI 显示面（派发弹窗待办预览等）：span → 调用侧注入的占位文案（i18n t() 键——内核零硬编码文案纪律），
+// 物理单源 parseSecretSpans（零私有围栏正则，S2 红线）；零 span 逐字节恒等（无打码面零扰动）。
+// host 切片（secret-span BEGIN..END）不含本函数——host 显示面走 sensitive-helpers，本函数只进 app/client bundle。
+function maskSecretPreview(body, label) {
+  var src = String(body == null ? '' : body)
+  var spans = (typeof parseSecretSpans === 'function' ? parseSecretSpans(src) : null) || []
+  if (!spans.length) return src
+  var ph = typeof label === 'string' ? label : ''
+  var out = '', p = 0
+  for (var i = 0; i < spans.length; i++) { out += src.slice(p, spans[i].start) + ph; p = spans[i].end }
+  return out + src.slice(p)
+}
 // ===== 文档安全 S4（notes-052-autodetect-i18n）：保存时检测建议的一键标记 =====
 // 把 host 建议的命中行（1-based 行号数组）包成 ```secret fence——「一键标记」双端单源执行体（app/client 编辑器共用；
 // host 切片不含本函数：建议标记是编辑器面能力，host 只回 secretSuggested 行号）。

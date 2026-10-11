@@ -30,7 +30,8 @@ module.exports = {
   const appSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'app.html'), 'utf8')
   const clientPkgSrc = fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'lib', 'client.js'), 'utf8')
   const protoSrc = fsNative.readFileSync(path.join(DIR, 'design', 'notes-ui-v2.html'), 'utf8')
-  // 覆盖卡 E 抽串清单（162 条 = disp.* 52 + arch.* 26 + common.restoredBatch 1 + trash.* 18 + sugg.* 35 + newnote.* 12 + cheat.* 12 + fld.* 6；key=表面.语义）
+  // 覆盖卡 E 抽串清单（163 条 = disp.* 53 + arch.* 26 + common.restoredBatch 1 + trash.* 18 + sugg.* 35 + newnote.* 12 + cheat.* 12 + fld.* 6；key=表面.语义）
+  //   0.5.x 文档安全 S5（notes-052-source-mask）：新增 disp.secretMasked（派发弹窗待办预览打码占位——app/client 双端显示面）
   //   0.4.5-C（notes-045-governance-suggester）：sugg.* 26→35——遥测两段（零引用挂载/高频取用未挂载）标题 + 摘除/改文案/挂载动作 + confirm/toast/失败/取用计数行
   //   0.4.4-B（notes-044-dormant-dispatch）：disp.dispatchedOpened 退役（休眠不再强开唤醒）→ disp.dispatchedQueued 接班；新增 disp.schedNew（专属会话复选框）
   //   0.4.5-B（notes-045-ux-polish）：新增 disp.schedNewTarget（target='new' 调度目标位人话文案「首轮自动创建专属会话」，四展示点）
@@ -46,6 +47,7 @@ module.exports = {
     'disp.schedNew', 'disp.schedNewTarget',
     'disp.newSessDone', 'disp.failed', 'disp.markedDone', 'disp.pickWs', 'disp.pickSess',
     'disp.noSessInWs', 'disp.pickWsFirst', 'disp.pickWsNew', 'disp.modeExisting', 'disp.modeNew',
+    'disp.secretMasked',
     'arch.title', 'arch.sub', 'arch.hint', 'arch.hintClient', 'arch.manualHint',
     'arch.empty', 'arch.ok', 'arch.okCount', 'arch.archiving', 'arch.groupMeta',
     'arch.groupUseCount', 'arch.merged', 'arch.failed', 'arch.previewFailed', 'arch.undone',
@@ -77,9 +79,9 @@ module.exports = {
   const grab = (s, v) => new Function(s + '\nreturn ' + v)()
   const zh = grab(zhSrc, 'I18N_ZH'), en = grab(enSrc, 'I18N_EN')
 
-  // ===== ① 字典双向覆盖：162 条 key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
-  await t('覆盖E 字典双向覆盖：162 条 disp/arch/trash/sugg/newnote/cheat/fld/common key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
-    assert.strictEqual(KEYS.length, 162, '抽串清单条数（实得 ' + KEYS.length + '）')
+  // ===== ① 字典双向覆盖：163 条 key 双端齐备且非空；两字典全域 key 集合一致；占位符双端同形 =====
+  await t('覆盖E 字典双向覆盖：163 条 disp/arch/trash/sugg/newnote/cheat/fld/common key 双端齐备且非空 + 全域 key 集合一致 + 占位符同形', () => {
+    assert.strictEqual(KEYS.length, 163, '抽串清单条数（实得 ' + KEYS.length + '）')
     for (const k of KEYS) {
       assert(typeof zh[k] === 'string' && zh[k], 'zh 缺 key/空值：' + k)
       assert(typeof en[k] === 'string' && en[k], 'en 缺 key/空值：' + k)
@@ -140,7 +142,7 @@ module.exports = {
   })
 
   // ===== ③ 行为级：eval 字典 + app i18n 块——取值/插值/en 态逐条非裸 key =====
-  await t('行为级：覆盖E key 双语取值 + {name} 插值 + en 态 162 条逐条非裸 key', () => {
+  await t('行为级：覆盖E key 双语取值 + {name} 插值 + en 态 163 条逐条非裸 key', () => {
     const helpersSrc = fsNative.readFileSync(path.join(DIR, 'src', 'app', 'kernel', 'helpers.js'), 'utf8')
     const i18nBlock = helpersSrc.match(/\/\* ==== i18n-mech BEGIN ====[\s\S]*?\/\* ==== i18n-mech END ==== \*\//)[0]
     const mk = (stored) => new Function('localStorage', 'render', zhSrc + '\n' + enSrc + '\n' + i18nBlock + '\nreturn { t: t }')({ getItem: () => stored, setItem: () => {} }, () => {})

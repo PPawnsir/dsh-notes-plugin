@@ -37,14 +37,15 @@ module.exports = {
 
         /* ===== ② 一键标记：命中行包 fence → 保存响应零建议 → 横幅自清 + 机密岛模糊 ===== */
         await page.click('#secretSugMark')
-        await H.waitFor(page, '一键标记落定（源码含两段 ```secret fence + 染色镜像色带）', async p => p.evaluate(() => {
+        await H.waitFor(page, '一键标记落定（源码含两段 ```secret fence + 机密遮蔽块 ×2——S5 语义：标记即遮蔽）', async p => p.evaluate(() => {
           var ta = document.querySelector('#edSrc')
           var mi = document.querySelector('#srcMirror')
           return !!(ta && ta.value.split('\x60\x60\x60secret').length === 3
             && ta.value.indexOf('\x60\x60\x60secret\n密码: e2e-suggest-pw-77\n\x60\x60\x60') >= 0
-            && mi && mi.querySelectorAll('.src-secret').length >= 4)
+            && mi && mi.querySelectorAll('.src-secret-veil').length === 2
+            && mi.textContent.indexOf('e2e-suggest-pw-77') < 0)
         }))
-        H.t('② 一键标记：两独立命中区间各包一段 ```secret fence（wrapSecretLines 相邻合并/从后往前）+ 内容字节保留', true)
+        H.t('② 一键标记：两独立命中区间各包一段 ```secret fence（wrapSecretLines 相邻合并/从后往前）+ 内容字节保留 + 源码面即遮蔽（S5 断言翻转：S4 旧染色色带断言 → 遮蔽块在案 + 渲染文本层零机密）', true)
         /* 闭环实证：标记触发自动保存（900ms 防抖 + RPC 回程）→ update 响应零建议（fence 区内行不再建议）→ 横幅不再冒泡 */
         await page.waitForTimeout(2600)
         const closed = await page.evaluate(() => {

@@ -119,12 +119,20 @@ function pullActiveSessions() {
     if (res.titlesPending && dState) setTimeout(function () { if (dState && $('dispSessHost')) pullActiveSessions() }, 1500);
   }).catch(function (e) { modalErr(t('mem.sessLoadFailed', { msg: e && e.message || e })) })   /* 弹窗内反馈（modalErr 自带 mErr 缺位守卫，关窗后静默） */
 }
+/* 文档安全 S5（notes-052-source-mask）：派发弹窗待办预览打码——预览文本经 maskSecretPreview（占位行内联形态）再 slice；
+   preview 缺席时的 body 兜底是编辑器当前笔记原文（直派发路径），打码必须落显示面（派发载荷打码 S3 已做——本函数只管弹窗显示）；
+   host persist 源头已打码（S5），此处对已打码 preview 幂等（零 span 恒等）；内核缺位恒等降级（S1 沙箱空降卫同款） */
+function dispPreviewText(n) {
+  var raw = String((n && (n.preview || n.body)) || '');
+  var masked = (typeof maskSecretPreview === 'function' ? maskSecretPreview(raw, t('disp.secretMasked')) : raw) || raw;   /* || raw：check 沙箱 Proxy 桩返回 undefined 空降卫（S1 同款纪律） */
+  return masked.trim().slice(0, 200) || t('disp.noBody');
+}
 function renderDispatchModal() {
   var n = dState.editNote || edNote;
   var editing = !!dState.editId;
   openModal(
     '<div class="modal-t">' + icon(editing ? 'i-clock' : 'i-play', 13) + ' ' + (editing ? t('disp.editTitle') : t('disp.title')) + '<span class="sub">' + (editing ? t('disp.editSub') : t('disp.sub')) + '</span></div>'
-    + '<div class="disp-todo"><div class="disp-todo-t">' + esc(n.title || 'Untitled') + '</div><div class="disp-todo-b">' + esc(String(n.preview || n.body || '').trim().slice(0, 200) || t('disp.noBody')) + '</div></div>'
+    + '<div class="disp-todo"><div class="disp-todo-t">' + esc(n.title || 'Untitled') + '</div><div class="disp-todo-b">' + esc(dispPreviewText(n)) + '</div></div>'
     + (editing ? '' : '<textarea class="minput" id="dInstr" rows="3" placeholder="' + t('disp.instrPlaceholder') + '"></textarea>')
     /* 调度区（默认收起 = 立即派发，手动派发零干扰；编辑模式固定定时形态，不再给「立即派发」岔路） */
     + '<div class="sched-box" id="dSchedBox">'
