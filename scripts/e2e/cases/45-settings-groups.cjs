@@ -38,7 +38,7 @@ module.exports = {
           nav.railTexts.join('|') === '检索与注入|AI|数据与存储|关于' && nav.railIcons.every(Boolean), () => JSON.stringify(nav.railTexts))
         H.t('① rail/组壳 data-g 同序 [inject,ai,data,about]（空组 general/editor/dispatch 隐身）',
           nav.railGs.join() === 'inject,ai,data,about' && nav.groupGs.join() === 'inject,ai,data,about', () => nav.railGs.join() + ' / ' + nav.groupGs.join())
-        H.t('① 组头 4 个与 rail 同文 + 18 节 data-sec 全覆盖', nav.groupTs.join('|') === '检索与注入|AI|数据与存储|关于' && nav.secs === 18, () => nav.groupTs.join('|') + ' · 节数 ' + nav.secs)
+        H.t('① 组头 4 个与 rail 同文 + 19 节 data-sec 全覆盖', nav.groupTs.join('|') === '检索与注入|AI|数据与存储|关于' && nav.secs === 19, () => nav.groupTs.join('|') + ' · 节数 ' + nav.secs)
         H.t('① rail 导航语义（role=navigation + aria-label 设置分组）+ 宽屏 chips 隐身/rail 显',
           nav.navRole === 'navigation' && nav.navAria === '设置分组' && nav.chips === 4 && nav.chipsShown === 'none' && nav.railShown !== 'none', () => nav.navRole + '/' + nav.navAria + '/chips:' + nav.chipsShown)
 
@@ -100,8 +100,10 @@ module.exports = {
         /* ===== ④ 窄宽退化：500px 视口 → rail 隐 chips 显，chip 点击定位 + on =====
            （S4 夹具校准 notes-052-autodetect-i18n：secretdetect 行入驻 data 组（组高 6 行→7 行）后，
              800px 高视口的 ④b「尾部组余量不足→触底」几何前提失效——data+about+48px 补偿超出可视高；
-             视口高度校准到 900px 恢复「余量不足」前提，④ 宽度退化断言（<560px chips 显）不受高度影响） */
-        await page.setViewportSize({ width: 500, height: 900 })
+             视口高度校准到 900px 恢复「余量不足」前提，④ 宽度退化断言（<560px chips 显）不受高度影响；
+             二期池#17 夹具再校准 notes-061-docsec-hygiene：secretaudit 行入驻 data 组（组高 7 行→8 行）后，
+             900px 视口的触底前提再次失效（scrollHeight +71px → 点 data 不再触底）——校准到 1000px 恢复） */
+        await page.setViewportSize({ width: 500, height: 1000 })
         await H.waitFor(page, '窄宽退化：rail 隐 + chips 显', async p => p.evaluate(() => {
           var rail = document.querySelector('#setBody .set-rail'), chips = document.querySelector('#setBody .set-chips')
           return getComputedStyle(rail).display === 'none' && getComputedStyle(chips).display === 'flex'

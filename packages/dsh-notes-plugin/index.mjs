@@ -457,6 +457,23 @@ function parseSecretSpans(body) {
       return sc
     }
 
+    // ==== secret-audit BEGIN ====（0.6.x 文档安全二期 notes-061-docsec-hygiene 池#17：reveal 审计环形缓冲——本块双包同一物理文件，check 节 136 看守）
+    // 背景：S3（notes-052-reveal-gate）的 reveal 审计行只写进程日志，用户不可见。本块给审计行加第二读面：
+    //   内存环形缓冲（最近 100 条：at 时间/note 笔记 id/title 标题快照/session 会话 sid/spans 机密区计数）。
+    // 红线：缓冲只读不写库不进遥测（纯内存态）；进程日志行照旧写（双通道：日志 + 缓冲，index.js note_get 面同一处入账）；
+    //   重启清空（内存缓冲——持久化属二期加密批配套，本卡不盘外落盘）。title 随条目快照入账（笔记后续改名/删除不影响历史行显示）。
+    // 消费面：server.js/server.dist.js 的 notes-secret-audit 只读 RPC（倒序：最新在前）→ 双端设置卡「数据与存储」组「机密读取记录」行展开列表。
+    const SECRET_AUDIT_MAX = 100
+    const _secretAuditBuf = []
+    function pushSecretAudit(entry) {
+      try {
+        _secretAuditBuf.unshift({ at: String(entry && entry.at || ''), note: String(entry && entry.note || ''), title: String(entry && entry.title || ''), session: String(entry && entry.session || ''), spans: (entry && typeof entry.spans === 'number') ? entry.spans : 0 })
+        if (_secretAuditBuf.length > SECRET_AUDIT_MAX) _secretAuditBuf.length = SECRET_AUDIT_MAX   // 环形截断：超出容量挤掉最旧
+      } catch (e) {}
+    }
+    function listSecretAudit() { return _secretAuditBuf.slice() }   // 倒序出体（unshift 入账，首部即最新）；拷贝防调用方改缓冲
+    // ==== secret-audit END ====
+
     function getPolicy() {
       try {
         if (sp && sp.resolve) {
@@ -486,6 +503,9 @@ function parseSecretSpans(body) {
             const c = await fs.readText(p)
             const obj = JSON.parse(c)
             settingsCache = (obj && typeof obj === 'object' && !Array.isArray(obj)) ? obj : {}
+            // 0.6.x（notes-061-search-refine 池#4）semantic.model 存量键清理：读侧不再认识——加载即剥（0.5.0 R3 浏览器嵌入
+            //   生产方退役后零消费方；磁盘 settings.json 原样不改写，下次真实保存自然脱落——同 catalogEnabled 惰性死键先例）
+            if (settingsCache.semantic && typeof settingsCache.semantic === 'object' && !Array.isArray(settingsCache.semantic)) delete settingsCache.semantic.model
           } catch (e) { /* 文件不存在/损坏 → 空设置：默认行为（跟随会话 + 目录关）不变 */ }
           return settingsCache
         })()
@@ -2326,6 +2346,8 @@ function parseSecretSpans(body) {
     //   本卡纯 host 地基（不动 UI）：真 wasm 后端是②卡、检索融合是③卡、设置区是④卡。
     // 文件：NOTES_DIR/vectors.jsonl（.jsonl 不进笔记列表天然隐身——_list 只认 .md；与 telemetry.json/settings.json 同目录纪律）。
     //   行格式（每行一条 JSON，墓碑删除 = 内存权威重写时整行缺席）：{ noteId, chunk, bodyHash, backend, vector }
+    //   0.6.x（notes-061-vector-hygiene 池#11）：命名空间元信息行 { meta:true, backend, lastBuiltAt }——rebuild 盖章随边车落盘、_vectorLoad 恢复
+    //   （重启后设置区「上次构建」不再空白）；旧边车无本行 → lastBuiltAt 缺省 '' 不报错（向后兼容）；旧版解析器遇本行缺 noteId/vector 静默跳过（前向兼容）。
     //   chunk = 块序（分段嵌入的块序号，0 起）；bodyHash = 全文稳定 hash（任何块变 → 全量重算该笔记，简化一致性）；
     //   vector = L2 归一化向量数组（实现方保证，查询侧只做点积）；backend = 后端 id（命名空间键）。
     // 命名空间：按 backend.id 分命名空间（换后端不重建、旧集保留秒切）——rebuild 只清空重建目标后端命名空间，其余保留。
@@ -2355,12 +2377,16 @@ function parseSecretSpans(body) {
     //   （单批 ≤8 块，与 R1 并发闸批上限同口径）→ 落边车（保存→可搜延迟目标 <5s）。防抖合并：同 id 重复变更合并为一次嵌入
     //   （连改 N 次只 embed 一次）；挂起队列只存 id——drain 时经 cache 取 drain 时刻最新版（快照竞态构造性消除：
     //   入队后删除/再改/敏感翻转都以内存权威为准，旧快照永不嵌入）。
-    //   失败不丢（红线）：embed 失败（如模型未下载）整批 id 重排回挂起队列 + _vectorPendingErr 显性（status.pending/pendingError
+    //   失败不丢（红线）：embed 失败（如模型未下载）整批 id 重排回挂起队列 + _vectorPendingErr.drain 显性（status.pending/pendingError
     //   可见），不自动重试（持续故障防抖 hammer——下次变更/status/search/rebuild 触发重排）；语义关闭期间入队丢弃（重开由 rebuild 回填）。
     const VECTOR_DRAIN_MS = 2000                    // 保存即嵌入防抖窗口（与 telemetry-store 同款 2s 防抖纪律）
     let _vectorPending = new Map()                  // 挂起队列：id → true（Set 语义；同 id 重复入队 = 防抖合并）
     let _vectorDrainTimer = null
-    let _vectorPendingErr = ''                      // 最近一次 drain 失败原因（status 显性面；成功清零）
+    // 0.6.x（notes-061-vector-hygiene 池#9）：失败台账按来源分键——drain 失败与 rebuild 失败各自记账，
+    //   drain 成功只清 drain 键（rebuild 失败不再被后续 drain 成功抹掉——旧单键双向清零竞态，节 128 驳回遗留 b 本卡治）；
+    //   rebuild 成功则两键并清（权威全量已覆盖 drain 挂起积压对应的全部笔记，旧 drain 失败随之失效——不对称清零裁决在案）；
+    //   status.pendingError 合并呈现为字符串（响应面零改动，双端 UI 读面不动）。
+    let _vectorPendingErr = { drain: '', rebuild: '' }   // 分键失败台账（status.pendingError 合并呈现的数据源；无 = 两键皆 ''）
     let _vectorRebuilding = null                    // 0.5.0 P1（notes-051-rebuild-async）：后台重建在跑标记 { backend, startedAt, promise }（status.building 数据源 + 并发去重闸）
     // backend 注册表：id → { id, dim, minScore, embed }（窄接口；换后端 = 注册新条目 + 换命名空间，旧集保留）
     const _vectorBackends = new Map()
@@ -2406,7 +2432,8 @@ function parseSecretSpans(body) {
     // 0.5.0 R1（notes-051-host-embedder）：host embedder 内核——bge 嵌入迁回 host 进程（spike② 实证配置落地，嵌入面迁回 host 的第一步）。
     //   路线：onnxruntime-web 纯 wasm 在宿主进程跑 bge（正文不出机器红线不变——本地推理本质保证；npm overrides 桩化 onnxruntime-node/sharp，
     //   原生 binding/@img 零进安装树——进程退出 0xC0000005 崩溃回归闸）；0.5.0 R3（notes-051-query-embed）起浏览器嵌入路径整体退役
-    //   （app 侧嵌入模块删码 + 模型文件代理路由拆除），notes-vectors-put 回写通道保留（外部回写入口，生产方暂缺）。
+    //   （app 侧嵌入模块删码 + 模型文件代理路由拆除），notes-vectors-put 回写通道保留（0.6.x 池#2 裁决：外部嵌入后端回写入口——
+    //   预留给未来自定义后端；当前无生产方但不删——删=未来接外部后端时要加回）。
     //   懒加载单例：首次调用才 import 运行时 + 加载模型（缺省关闭零成本——不进 embed 则零 import 零下载）；
     //   并发闸 = 嵌入串行化队列（单飞链，失败不断链）；批上限 ≤8 块/批（防 spike 实测大批次 +4.3GB 内存峰）；
     //   模型 host 缓存 BGE_MODEL_CACHE_DIR（镜像链 hf-mirror→HF failover，Node 无 CORS 直连）。
@@ -2601,6 +2628,14 @@ function parseSecretSpans(body) {
     function _vectorIndexable(n) {
       return !!(n && n.id && n.deleted !== true && n.tombstoned !== true && n.sensitive !== true && n.kind !== 'sys')
     }
+    // 非空可索引判定（0.6.x notes-061-vector-hygiene 池#8 口径精修）：_vectorIndexable ∧ 切块 ≥1。
+    //   空正文（或剥 secret span 后为空）零块笔记没有可嵌入内容——status 的 N/M 里 M 不再含零块笔记
+    //   （rebuild 本就以 chunks.length>0 跳过它们，旧口径 M 恒把空篇算进分母：含空正文笔记的库里 N/M 永差一截）；
+    //   断言口径：rebuild 后 indexable≡indexed。_vectorIndexable 语义不动（它管「该不该索引」——出队/排除/sensitive 红线照走），
+    //   精修的只是 status/rebuild 返回面的「计数口径」；drain/rebuild 的实际嵌入行为本就与本判定等价（零块零嵌入）。
+    function _vectorEmbeddable(n) {
+      return _vectorIndexable(n) && _vectorChunks(n.body).length > 0
+    }
     // 激活后端（同步读 settingsCache；缺省关闭零成本）：semantic.enabled===true 且 semantic.backend 在册 → 该后端；backend 缺省回落 VECTOR_DEFAULT_BACKEND。
     function _activeBackend() {
       const s = settingsCache && settingsCache.semantic
@@ -2638,6 +2673,13 @@ function parseSecretSpans(body) {
         if (!line) continue
         let row
         try { row = JSON.parse(line) } catch (e) { continue }
+        // 0.6.x 池#11：命名空间元信息行 { meta:true, backend, lastBuiltAt }——恢复 lastBuiltAt（重启后「上次构建」不空白）；
+        //   旧边车无本行 → 缺省 '' 不报错（向后兼容）；本行必须先于数据行校验拦截（缺 noteId/vector，按行格式校验会被当坏行跳过——虽无害但语义不明）
+        if (row && row.meta === true && typeof row.backend === 'string') {
+          const mns = c.ns[row.backend] || (c.ns[row.backend] = _vectorNewNs())
+          if (typeof row.lastBuiltAt === 'string') mns.lastBuiltAt = row.lastBuiltAt
+          continue
+        }
         if (!row || typeof row !== 'object' || !row.noteId || typeof row.backend !== 'string' || !Array.isArray(row.vector) || !row.vector.length) continue
         const ns = c.ns[row.backend] || (c.ns[row.backend] = _vectorNewNs())
         const rows = ns.rows[row.noteId] || (ns.rows[row.noteId] = [])
@@ -2651,11 +2693,13 @@ function parseSecretSpans(body) {
       }
       return c
     }
-    // JSONL 序列化：每向量一行 { noteId, chunk, bodyHash, backend, vector }（compact，与落盘字节同口径）。
+    // JSONL 序列化：每向量一行 { noteId, chunk, bodyHash, backend, vector }（compact，与落盘字节同口径）；
+    //   命名空间首行 = 元信息行 { meta:true, backend, lastBuiltAt }（0.6.x 池#11：lastBuiltAt 持久化——仅盖章过（非空）才写，零行命名空间也保留戳记）。
     function _vectorSerialize(c) {
       const lines = []
       for (const bid of Object.keys(c.ns)) {
         const ns = c.ns[bid]
+        if (ns.lastBuiltAt) lines.push(JSON.stringify({ meta: true, backend: bid, lastBuiltAt: ns.lastBuiltAt }))
         for (const nid of Object.keys(ns.rows)) {
           const hash = ns.hash[nid] || ''
           const rows = ns.rows[nid] || []
@@ -2710,7 +2754,7 @@ function parseSecretSpans(body) {
     // drain（防抖微批，索引任务单链入队）：挂起集快照清空 → 逐 id 经 cache 取 drain 时刻最新版（快照竞态消除——入队后
     //   删除/再改以内存权威为准）→ 不可索引 → 全命名空间出队（与 _vectorDropNote 同口径）；可索引 → bodyHash 新鲜度检查
     //   （变才重算，增量）→ 跨笔记压平微批（≤VECTOR_EMBED_BATCH_MAX 块/批）embed → 归位落边车（防抖 flush 纪律不变）。
-    //   失败整批重排回挂起队列（入队不丢）+ _vectorPendingErr 显性，不自动重试。
+    //   失败整批重排回挂起队列（入队不丢）+ _vectorPendingErr.drain 显性（池#9 分键：只动 drain 账），不自动重试。
     function _vectorDrain() {
       if (!_vectorPending.size) return Promise.resolve()
       const ids = Array.from(_vectorPending.keys())
@@ -2750,12 +2794,12 @@ function parseSecretSpans(body) {
             }
           }
           if (jobs.length || dropped) _vectorScheduleFlush()
-          _vectorPendingErr = ''
+          _vectorPendingErr.drain = ''   // 池#9 分键：drain 成功只清 drain 账（rebuild 账不动——rebuild 失败不被 drain 成功抹掉）
         } catch (e) {
           // 入队不丢（红线）：整批 id 重排回挂起队列（与在途新变更合并；bodyHash 新鲜度保幂等，已成功笔记自然跳过）；
-          //   报错显性（status.pending/pendingError），不自动重试（模型未下载等持续故障防抖 hammer）
+          //   报错显性（status.pending/pendingError，池#9 起记 drain 分键），不自动重试（模型未下载等持续故障防抖 hammer）
           for (const id of ids) { if (!_vectorPending.has(id)) _vectorPending.set(id, true) }
-          _vectorPendingErr = String((e && e.message) || e)
+          _vectorPendingErr.drain = String((e && e.message) || e)
         }
       })
     }
@@ -2803,10 +2847,11 @@ function parseSecretSpans(body) {
     }
     // 全量重建（notes-vectors-rebuild 入口）：只清空重建目标后端命名空间（换后端不重建、旧集保留）；全库扫描 + 分段嵌入。
     // 0.5.0 P1（notes-051-rebuild-async）：rebuild 后台化——首建含模型下载+全库嵌入总时长 >30s（真机实证 171/171 后台建完，
-    //   但同步 RPC 超前端 30s 护栏 → UI 误报「构建失败：响应超时」）：RPC 改立即返回 { ok, started:true }，
+    //   但同步 RPC 撞前端 RPC 护栏 → UI 误报「构建失败：响应超时」——双端护栏口径不一致是现状裁决：app 20s（app/kernel/rpc.js RPC_TIMEOUT_MS）/
+    //   client 面板 30s（client/kernel/perf.js HOSTCALL_TIMEOUT_MS），0.6.x 池#12 注释口径修正）：RPC 改立即返回 { ok, started:true }，
     //   重建本体 _vectorsRebuildRun 独立 async 后台跑（不挂 _vectorJobChain——status 轮询须快回，入链会被 status 的
-    //   await _vectorJobChain 整链堵死）；并发重复点击去重（在跑返回 { ok, alreadyRunning:true }）；失败落 _vectorPendingErr
-    //   （status.pendingError 轮询拾起）+ lastBuiltAt 不盖章（新命名空间整弃、旧集保留）；双端 UI 轮询 status 承接终态。
+    //   await _vectorJobChain 整链堵死）；并发重复点击去重（在跑返回 { ok, alreadyRunning:true }）；失败落 _vectorPendingErr.rebuild
+    //   （status.pendingError 轮询拾起——0.6.x 池#9 分键记账）+ lastBuiltAt 不盖章（新命名空间整弃、旧集保留）；双端 UI 轮询 status 承接终态。
     async function _vectorsRebuild(backendId) {
       try {
         await loadSettings()
@@ -2815,12 +2860,16 @@ function parseSecretSpans(body) {
         if (_vectorRebuilding) return { ok: true, alreadyRunning: true, backend: _vectorRebuilding.backend }   // 并发去重：在跑不重复发起
         const job = { backend: backend.id, startedAt: new Date().toISOString() }
         _vectorRebuilding = job
-        _vectorPendingErr = ''   // 新一次构建先清上次驻留失败（与 UI「再次构建先清驻留错误」同口径）
+        _vectorPendingErr.rebuild = ''   // 新一次构建先清本键驻留失败（与 UI「再次构建先清驻留错误」同口径；池#9 分键——drain 账不动）
         job.promise = _vectorsRebuildRun(backend).then(function () {
           if (_vectorRebuilding === job) _vectorRebuilding = null
+          // 池#9 不对称清零裁决：rebuild 成功两键并清——权威全量已覆盖 drain 挂起积压对应的全部笔记，旧 drain 失败随之失效；
+          //   反向不成立（drain 成功不清 rebuild 账——增量成功不代表命名空间级重建失败已修复）
+          _vectorPendingErr.drain = ''
+          _vectorPendingErr.rebuild = ''
         }, function (e) {
           if (_vectorRebuilding === job) _vectorRebuilding = null
-          _vectorPendingErr = String((e && e.message) || e)   // 失败显性：status.pendingError 轮询拾起；不自动重试（红线不变）
+          _vectorPendingErr.rebuild = String((e && e.message) || e)   // 失败显性：status.pendingError 轮询拾起（池#9 分键——drain 成功不抹本账）；不自动重试（红线不变）
         })
         return { ok: true, started: true, backend: backend.id }
       } catch (e) { return { error: String(e.message || e) } }
@@ -2854,7 +2903,7 @@ function parseSecretSpans(body) {
       c.ns[backend.id] = ns   // 覆盖该命名空间（其余命名空间保留）
       _vectorDirty = true
       await _vectorFlush()
-      return { ok: true, backend: backend.id, dim: backend.dim, minScore: backend.minScore, indexed: indexed, indexable: all.filter(_vectorIndexable).length, lastBuiltAt: ns.lastBuiltAt }
+      return { ok: true, backend: backend.id, dim: backend.dim, minScore: backend.minScore, indexed: indexed, indexable: all.filter(_vectorEmbeddable).length, lastBuiltAt: ns.lastBuiltAt }   // 池#8：indexable 同 _vectorEmbeddable 口径（零块不计入——成功路径 indexed≡indexable）
     }
     // 状态（notes-vectors-status 入口）：N/M 篇·后端·上次构建·各命名空间统计
     async function _vectorsStatus() {
@@ -2875,11 +2924,12 @@ function parseSecretSpans(body) {
         // 0.5.0 P0（notes-050-model-proxy）rev2：indexable 计数走 _list 精确扫描（与 _vectorsRebuild 的 indexable 同源同口径）——
         //   常驻 cache 冷启动未暖（status 先于任何 notes-list/写入）会低报 indexable（实测冷 cache=1 / 暖=154 / 参考=154），
         //   属「换 cache 计数」引入的指标回归；_list 全库扫描实测 155 篇 280ms（远非「慢 12-20s」根因），恢复精确计数。
-        //   口径：_list(includeSys=true) 全量 + _vectorIndexable 过滤（排除 deleted/tombstoned/sensitive/sys，与 rebuild 一致）。
+        //   口径：_list(includeSys=true) 全量 + _vectorEmbeddable 过滤（排除 deleted/tombstoned/sensitive/sys + 零块笔记——
+        //   0.6.x 池#8：M 不再含零块笔记，与 rebuild 实际嵌入口径恒等）。
         let indexable = 0
         try {
-          const all = await _list(undefined, undefined, undefined, false, false, true)   // 含 sys（统一 _vectorIndexable 过滤）
-          for (const n of all) { if (_vectorIndexable(n)) indexable++ }
+          const all = await _list(undefined, undefined, undefined, false, false, true)   // 含 sys（统一过滤）
+          for (const n of all) { if (_vectorEmbeddable(n)) indexable++ }
         } catch (e) { indexable = 0 }
         const namespaces = []
         // 0.5.0③（notes-050-rrf-fusion）：激活后端命名空间即使零向量也报自报 dim/minScore（status 契约：激活后端恒可见——bge 未建索引也报 512/0.50）
@@ -2899,7 +2949,8 @@ function parseSecretSpans(body) {
           lastBuiltAt: (backend && c.ns[backend.id]) ? c.ns[backend.id].lastBuiltAt : '',
           namespaces: namespaces,
           pending: _vectorPending.size,          // 0.5.0 R2：待嵌入计数（embedder 未就绪时入队不丢——本键即可见）
-          pendingError: _vectorPendingErr,       // 最近一次 drain / 后台 rebuild 失败原因（无 = ''；0.5.0 P1 起 rebuild 失败也落本键——轮询拾起）
+          // 0.6.x 池#9：drain/rebuild 分键台账合并呈现（响应面零改动——双端 UI 读 pendingError 字符串不动；两键同时非空 = 双故障并列展示）
+          pendingError: [_vectorPendingErr.drain, _vectorPendingErr.rebuild].filter(Boolean).join('；'),
           building: !!_vectorRebuilding          // 0.5.0 P1：后台重建在跑标记（双端轮询承接终态信号源：消旗 + pending=0 = 完结）
         }
       } catch (e) { return { error: String(e.message || e) } }
@@ -2937,7 +2988,9 @@ function parseSecretSpans(body) {
         return { ok: true, backend: backend.id, dim: backend.dim, minScore: backend.minScore, results: page, count: page.length }
       } catch (e) { return { error: String(e.message || e) } }
     }
-    // 外部回写（notes-vectors-put 入口，②卡落通道）：外部算好的向量 → 经索引队列写边车（①的队列消费位；0.5.0 R3 起浏览器嵌入生产方退役，通道保留）。
+    // 外部回写（notes-vectors-put 入口，②卡落通道）：外部算好的向量 → 经索引队列写边车（①的队列消费位）。
+    //   0.6.x（notes-061-vector-hygiene 池#2 裁决）：本通道 = 外部嵌入后端回写入口（预留给未来自定义后端）——0.5.0 R3 起浏览器嵌入
+    //   生产方退役，当前无生产方但裁决保留不删（删=未来接外部后端时要加回；通道有 dim 校验/坏行上报/队列纪律，维护成本为零）。
     // args = { backend, rows:[{ noteId, bodyHash, vectors:[vec0,vec1,...] }], replace? }
     //   vectors = 该笔记分段块的 L2 归一化向量数组（实现方保证，dim 由本函数写前校验）；chunk = 数组下标（与 _vectorDrain 同口径）。
     //   replace:true = 先清空目标命名空间再写（浏览器全量重建路径）；缺省 = 增量 upsert（单笔记重算，bodyHash 新鲜度锚照存）。
@@ -2987,8 +3040,44 @@ function parseSecretSpans(body) {
         })
       } catch (e) { return { error: String(e.message || e) } }
     }
+    // 启动对账（0.6.x notes-061-vector-hygiene 池#10）：模块 init 即异步扫一遍（fire-and-forget，不阻塞宿主启动）——
+    //   边车已载激活命名空间 bodyHash vs 当前库正文比对，不一致/缺失的笔记补入 pending 走正常 drain
+    //   （覆盖「重启瞬间恰有未 drain 编辑」缺口：边车 2s 防抖窗口内进程退出 → 内存增量丢失，旧版重启后陈旧向量一直服役到下次变更）。
+    //   反向顺带清账：命名空间里已不可索引/已不存在（停机期删除/敏感翻转/sys 化）的 id 补入队（drain 出队分支全命名空间清除，
+    //   与运行期 delete/purge 同通道）；零块笔记只在边车有残留（旧非空时期行/hash）时补队清除——从未入索引的空篇零成本跳过（不背每启空转）。
+    //   闸口（零成本红线）：语义未启用 → 零扫描零入队；激活后端命名空间未建立（从未构建）→ 跳过——存量回填归 rebuild/激活流程，
+    //   启动对账只补「已建索引的漂移」，不替用户发起首次全库嵌入。全程静默降级（读盘/扫描异常不扩散）。
+    async function _vectorReconcileOnBoot() {
+      try {
+        await loadSettings()
+        const backend = _activeBackend()
+        if (!backend) return                    // 缺省关闭零成本（语义关闭不入队——重开由 rebuild 回填口径不变）
+        await _vectorLoad()
+        const c = _vectorCache
+        const ns = c.ns[backend.id]
+        if (!ns || (!Object.keys(ns.rows).length && !Object.keys(ns.hash).length)) return   // 命名空间未建立 → 不对账
+        const all = await _list(undefined, undefined, undefined, false, false, true)        // 含 sys（统一 _vectorIndexable 过滤；顺带暖 cache——drain 经 cache 取最新版）
+        const indexableIds = new Set()
+        let queued = 0
+        for (const n of all) {
+          if (!_vectorIndexable(n)) continue
+          indexableIds.add(n.id)
+          const hasRows = !!(ns.rows[n.id] && ns.rows[n.id].length)
+          if (_vectorEmbeddable(n)) {
+            if (ns.hash[n.id] !== _vectorBodyHash(n.body)) { _vectorQueueIndex(n.id); queued++ }   // hash 缺失/不一致 → 补入 pending（未 drain 编辑缺口）
+          } else if (hasRows || ns.hash[n.id]) { _vectorQueueIndex(n.id); queued++ }                 // 零块笔记：边车有残留才补队清除
+        }
+        // 反向清账：边车有、当前库不可索引/不存在（停机期删除/翻转）→ 补队（drain 出队分支全命名空间清除）
+        const staleIds = new Set()
+        for (const id of Object.keys(ns.rows)) staleIds.add(id)
+        for (const id of Object.keys(ns.hash)) staleIds.add(id)
+        for (const id of staleIds) { if (!indexableIds.has(id)) { _vectorQueueIndex(id); queued++ } }
+        if (queued > 0 && typeof console !== 'undefined' && console.info) console.info('notes: 启动对账补入 ' + queued + ' 条待嵌入（边车与正文漂移，走正常 drain）')
+      } catch (e) { /* 静默降级：对账失败不阻塞启动（下次变更/status/search 触发路径不变） */ }
+    }
     // 事件总线注册（保存路径挂钩）：persist.js 的 onNoteChanged 在 manifest 序中先于本模块（kernel/persist.js 序位）。
     onNoteChanged(_vectorOnNoteChanged)
+    _vectorReconcileOnBoot()   // 池#10：启动对账（fire-and-forget——内部自含 try/catch 全静默，不阻塞模块装配）
     // ==== vector-store END ====
     // ---- 二期 ✨整理（notes-ai-organize）：当前草稿经 LLM 按 kind 模板结构化重写，返回替换正文 ----
     // （与开发版 host-impl.js 双边同步，逻辑逐行一致）
@@ -3484,18 +3573,27 @@ function parseSecretSpans(body) {
     // ==== vectors BEGIN ====（0.5.0① notes-050-vector-layer：语义检索向量层四条 RPC 通道——status/rebuild/search/put，③卡消费 search，④卡按钮调 rebuild，②卡浏览器回写 put）
     // notes-vectors-status {} → { ok, enabled, backend, indexed, indexable, lastBuiltAt, namespaces:[{backend,dim,minScore,count,lastBuiltAt}], pending, pendingError, building }（N/M 篇·后端·上次构建·各命名空间统计 + 挂起/失败显性 + 0.5.0 P1 后台重建在跑标记）
     // notes-vectors-rebuild { backend } → 全量重建指定后端命名空间（换后端不重建、旧集保留）；backend 缺省回落激活后端。
-    //   0.5.0 P1（notes-051-rebuild-async）：后台化——立即返回 { ok, started:true }（首建 >30s 不再超前端 30s RPC 护栏误报；在跑去重 { ok, alreadyRunning:true }）；
+    //   0.5.0 P1（notes-051-rebuild-async）：后台化——立即返回 { ok, started:true }（首建 >30s 不再撞前端 RPC 护栏误报——双端护栏口径不一致是现状裁决：
+    //   app 20s（app/kernel/rpc.js RPC_TIMEOUT_MS）/ client 面板 30s（client/kernel/perf.js HOSTCALL_TIMEOUT_MS），0.6.x 池#12 注释口径修正；在跑去重 { ok, alreadyRunning:true }）；
     //   重建本体独立 async 后台跑，失败落 status.pendingError（lastBuiltAt 不盖章），终态由双端轮询 notes-vectors-status 承接。
     //   0.5.0 P2（notes-051-status-race）：status 在 building=true 时跳过强制 drain 与 _vectorJobChain 链等待（重建期嵌入闸门被 rebuild 批占用，
     //   drain embed 排队拖死 status 实测 5012ms → 双端轮询护栏超时误报）——重建期读旧态（pending 可略陈旧），消旗后下一拍恢复精确；
     //   双端轮询兜底：护栏超时先探一次轻量 status，仍在构建继续拍不报 sticky，确认非构建态才报错。
     // notes-vectors-search { queryVector|query, backend, limit } → 余弦 + minScore 过滤 + per-note max-pooling（③卡消费；query 为内部 embed 便捷形态）
-    // notes-vectors-put { backend, rows:[{noteId, bodyHash, vectors:[...]}], replace? } → 外部算好的向量经队列回写边车（②卡落通道；replace:true 全量重建清空目标命名空间；0.5.0 R3 起浏览器嵌入生产方退役，通道保留）
+    // notes-vectors-put { backend, rows:[{noteId, bodyHash, vectors:[...]}], replace? } → 外部算好的向量经队列回写边车（②卡落通道；replace:true 全量重建清空目标命名空间；
+    //   0.6.x 池#2 裁决：外部嵌入后端回写入口——预留给未来自定义后端，0.5.0 R3 起浏览器嵌入生产方退役、当前无生产方，但保留不删：删=未来接外部后端时要加回）
     disposers.push(handle('notes-vectors-status', async (args) => { try { return await _vectorsStatus() } catch (e) { return { error: String(e.message || e) } } }))
     disposers.push(handle('notes-vectors-rebuild', async (args) => { try { return await _vectorsRebuild(args && args.backend) } catch (e) { return { error: String(e.message || e) } } }))
     disposers.push(handle('notes-vectors-search', async (args) => { try { return await _vectorsSearch(args || {}) } catch (e) { return { error: String(e.message || e) } } }))
     disposers.push(handle('notes-vectors-put', async (args) => { try { return await _vectorsPut(args || {}) } catch (e) { return { error: String(e.message || e) } } }))
     // ==== vectors END ====
+
+    // ==== secret-audit BEGIN ====（0.6.x 文档安全二期 notes-061-docsec-hygiene 池#17：server.js 与 server.dist.js 本块逐字节一致，check 节 136 提取比对；改动必须双边同步）
+    // notes-secret-audit {} → { entries: [{ at, note, title, session, spans }] } —— reveal 审计环形缓冲只读面（倒序：最新在前，容量 100）。
+    //   只读红线：本通道零写入（缓冲由 index.js note_get reveal 面入账）；内存态重启清空（持久化属二期加密批配套）；不进遥测不写库。
+    //   消费方：双端设置卡「数据与存储」组「机密读取记录」行（点击展开只读列表；空态「暂无读取记录」）。
+    disposers.push(handle('notes-secret-audit', async () => ({ entries: listSecretAudit() })))
+    // ==== secret-audit END ====
 
     // POC 存活探测（P1 骨架遗留，包内 lib/client.js 的「笔记POC」按钮消费；非 host-impl 迁移 RPC 之一）
     disposers.push(handle('notes-ping', async (args) => ({ ok: true, pong: Date.now(), echo: (args && typeof args === 'object') ? args : null })))
@@ -6043,11 +6141,12 @@ function parseSecretSpans(body) {
           }
           else return { error: 'notes-settings-set: secretDetect 需要 { enabled? } 对象（或 null 恢复缺省开启）' }
         }
-        // 0.5.0①（notes-050-vector-layer）语义检索激活位：semantic = { enabled?: boolean, backend?: string, model?: {...}|null }（总开关 + 激活后端 id + 模型下载状态）；
-        //   null/undefined 删除 override 恢复关闭（缺省关闭零成本）；仅存白名单键（enabled 布尔 / backend 非空串 / model 白名单子键），其余键忽略不落盘。
-        //   增量合并（0.5.0② notes-050-wasm-embedder）：model 键 = 浏览器嵌入模型下载状态（曾作设置「已下载大小/可删」数据源，
-        //   app 页下载成功后回写）——只 patch model 不清除存量 enabled/backend（app 页记录下载与设置开关是两个独立动作）；
-        //   0.5.0 R3（notes-051-query-embed）起浏览器嵌入路径整体退役、model 键生产方不再存在——白名单保留（存量 settings.json 兼容读回，UI 已不消费）。
+        // 0.5.0①（notes-050-vector-layer）语义检索激活位：semantic = { enabled?: boolean, backend?: string }（总开关 + 激活后端 id）；
+        //   null/undefined 删除 override 恢复关闭（缺省关闭零成本）；仅存白名单键（enabled 布尔 / backend 非空串），其余键忽略不落盘。
+        //   0.6.x（notes-061-search-refine 池#4）存量键清理：model 子键移出白名单——曾作浏览器嵌入模型下载状态（0.5.0②），
+        //   0.5.0 R3（notes-051-query-embed）浏览器嵌入整体退役后生产方不再存在、UI 零消费（节 120 锚），读侧不再认识：
+        //   set 遇 model 键静默忽略（不报错不落盘），存量 settings.json 盘键无害（loadSettings 加载即剥、settings-get 不回显，
+        //   磁盘文件不改写、下次真实保存自然脱落——同 catalogEnabled 惰性死键先例）。
         if ('semantic' in patch) {
           if (patch.semantic === null || patch.semantic === undefined) delete settingsCache.semantic
           else if (patch.semantic && typeof patch.semantic === 'object' && !Array.isArray(patch.semantic)) {
@@ -6055,18 +6154,9 @@ function parseSecretSpans(body) {
             if (patch.semantic.enabled === true) s.enabled = true
             else if (patch.semantic.enabled === false) s.enabled = false
             if (typeof patch.semantic.backend === 'string' && patch.semantic.backend.trim()) s.backend = patch.semantic.backend.trim()
-            if (patch.semantic.model === null) delete s.model
-            else if (patch.semantic.model && typeof patch.semantic.model === 'object' && !Array.isArray(patch.semantic.model)) {
-              const m = {}
-              if (typeof patch.semantic.model.backend === 'string' && patch.semantic.model.backend.trim()) m.backend = patch.semantic.model.backend.trim()
-              if (typeof patch.semantic.model.bytes === 'number' && isFinite(patch.semantic.model.bytes) && patch.semantic.model.bytes >= 0) m.bytes = Math.floor(patch.semantic.model.bytes)
-              if (typeof patch.semantic.model.downloadedAt === 'string' && patch.semantic.model.downloadedAt) m.downloadedAt = patch.semantic.model.downloadedAt
-              if (typeof patch.semantic.model.source === 'string' && patch.semantic.model.source) m.source = patch.semantic.model.source
-              if (Object.keys(m).length) s.model = m
-            }
             settingsCache.semantic = s
           }
-          else return { error: 'notes-settings-set: semantic 需要 { enabled?, backend?, model? } 对象（或 null 恢复关闭）' }
+          else return { error: 'notes-settings-set: semantic 需要 { enabled?, backend? } 对象（或 null 恢复关闭）' }
         }
         await saveSettings()
         return { ok: true, settings: settingsCache }
@@ -6692,23 +6782,54 @@ function parseSecretSpans(body) {
     //   ③ 仅标题/标签/topic 命中 = 正文开头 SEARCH_EXCERPT_HEAD 字（上下文补足），marks 空。
     const SEARCH_EXCERPT_CTX = 50
     const SEARCH_EXCERPT_HEAD = 80
+    // 大小写无关且保原文偏移的命中映射（0.6.x notes-061-search-refine 池#3 修复：旧实现 body.toLowerCase() 整串下标直接切原文，
+    //   İ(U+0130)→"i̇"（i + 组合符，1→2 码元）等折叠膨胀字符使 lower 串比原文长 → 其后命中点的 lower 下标相对原文前移错位，
+    //   marks 高亮打到邻字上）：逐码点 lower 并同步维护「lower 串下标 → 原文起始下标」映射，窗口/区间全程换算回原文坐标。
+    //   匹配语义与旧实现一致（仍命中于 lower 串）；逐码点 lower 与整串 lower 仅在上下文敏感映射上有别（希腊词尾 σ→ς），检索场景可忽略。
+    function _excerptCaseMap(body) {
+      let low = ''
+      const map = []   // map[j] = lower 串第 j 个码元对应的原文起始下标（单调不减；膨胀字符的多个 lower 码元同指一个原文下标）
+      for (let i = 0; i < body.length;) {
+        const cp = body.codePointAt(i)
+        const w = cp > 0xFFFF ? 2 : 1
+        const l = String.fromCodePoint(cp).toLowerCase()
+        for (let k = 0; k < l.length; k++) map.push(i)
+        low += l
+        i += w
+      }
+      return { low: low, map: map }
+    }
+    // lower 串命中区间 [j, j+qLen) → 原文区间 {start,end}：起点 = map[j]；终点 = 下一个来源不同的原文下标——
+    //   命中尾端落在同一原文字符的膨胀尾内（如查询 'i' 命中 'İ'）→ 收编整字符（end = 该字符全长）；越界 = body.length。
+    function _excerptOrigSpan(cm, body, j, qLen) {
+      const start = cm.map[j]
+      const k = j + qLen
+      let end
+      if (k >= cm.map.length) end = body.length
+      else if (cm.map[k] !== cm.map[k - 1]) end = cm.map[k]
+      else end = cm.map[k] + (body.codePointAt(cm.map[k]) > 0xFFFF ? 2 : 1)
+      return { start: start, end: end }
+    }
     function searchExcerpt(n, q, semChunkText) {
       const body = _s2Masked((n && n.body) || '')   // 文档安全 S2：摘要取窗绕行 secret span——窗口在打码体上取（机密永不进摘要）
       if (!q) return null
-      const bl = body.toLowerCase()
-      const idx = bl.indexOf(q)
+      const cm = _excerptCaseMap(body)
+      const idx = cm.low.indexOf(q)
       if (idx >= 0) {
-        const s = Math.max(0, idx - SEARCH_EXCERPT_CTX)
-        const e = Math.min(body.length, idx + q.length + SEARCH_EXCERPT_CTX)
+        const first = _excerptOrigSpan(cm, body, idx, q.length)
+        const s = Math.max(0, first.start - SEARCH_EXCERPT_CTX)
+        const e = Math.min(body.length, first.end + SEARCH_EXCERPT_CTX)
         const pre = s > 0 ? 1 : 0
         let text = body.slice(s, e)
         if (s > 0) text = '…' + text
         if (e < body.length) text = text + '…'
         const marks = []
         let p = idx
-        while (p >= 0 && p < e) {
-          marks.push({ start: p - s + pre, len: Math.min(q.length, e - p) })
-          p = bl.indexOf(q, p + q.length)
+        while (p >= 0) {
+          const span = _excerptOrigSpan(cm, body, p, q.length)
+          if (span.start >= e) break   // 起点越窗沿即停（旧口径 p<e 同义，原文坐标）
+          marks.push({ start: span.start - s + pre, len: Math.min(span.end, e) - span.start })   // 跨窗沿命中 len 截到窗沿
+          p = cm.low.indexOf(q, p + q.length)
         }
         return { text: text, marks: marks }
       }
@@ -6753,6 +6874,12 @@ function parseSecretSpans(body) {
     const RRF_SEMANTIC_LIMIT = 50               // 语义通道召回上限（notes-vectors-search limit）
     const RRF_SHORT_QUERY_MAX = 6               // 短关键词字符数阈值（≤6 视为短查询）
     const RRF_SHORT_MINSCORE_BUMP = 0.05        // 短关键词语义通道 minScore 临时上浮量（spike 遗留「Docker」类擦线噪音压制）
+    // 0.6.x 实证锚（notes-061-search-refine 池#1，裁决=保持 +0.05 平直上浮，不改连续函数；行注释形态——本块按标记区间 eval 提取，禁块注释防截断）：
+    //   scripts/spike-short-query-threshold.mjs（手动夹具）真 bge 模型 × 真实笔记库（168 可索引笔记/281 新鲜向量行）× 16 条中文短查询回放：
+    //   [0.50,0.55) 压制带共 415 条，其中 104 条文本通道已命中（词面重叠型查询带内近 100% 文本命中，压制零代价）；
+    //   311 条纯语义带内条目抽样 = 泛化工作日志模板文本噪音（bge-small-zh 对「会话/项目」样板普遍给 0.50-0.55 擦线分），
+    //   可辩护真命中 ≈1 条（「加密」→机密遮蔽笔记 0.5359）；若放开压制，扩散型查询（缓存/设置 p50≥0.52）将注入 50+ 噪音行
+    //   打满 RRF_SEMANTIC_LIMIT。带内各分位噪音主导、无真命中富集信号 → 阈值保持。明细见当批工作日志（2026-10-13）。
     // 短关键词判定：query ≤RRF_SHORT_QUERY_MAX 字符，或纯英文单词（单 token 无空格/无标点）——「Docker」类擦线噪音压制
     function rrfIsShortQuery(q) {
       const s = String(q == null ? '' : q).trim()
@@ -7478,7 +7605,13 @@ function parseSecretSpans(body) {
           //   notes-get RPC 面不动（面板编辑链路仍是明文）。
           const s2Spans = stripSecretSpans(String(n.body || ''))
           if (args && args.reveal === true) {
-            try { console.warn('[dsh-notes] note_get reveal 审计：' + new Date().toISOString() + ' note=' + n.id + ' session=' + (sessCtx().sessionId || '(无会话上下文)') + ' spans=' + s2Spans.count) } catch (e) {}
+            // 0.6.x 文档安全二期（notes-061-docsec-hygiene 池#17）：审计行双通道——进程日志照旧 + 内存环形缓冲
+            //   （最近 100 条，session-ctx.js secret-audit 块；设置卡「机密读取记录」行经 notes-secret-audit 只读 RPC 查看；
+            //   重启清空——持久化属二期加密批配套；缓冲只读不写库不进遥测）。标题快照随条目入账（改名/删除不影响历史行）。
+            const auditAt = new Date().toISOString()
+            const auditSid = sessCtx().sessionId || '(无会话上下文)'
+            try { console.warn('[dsh-notes] note_get reveal 审计：' + auditAt + ' note=' + n.id + ' session=' + auditSid + ' spans=' + s2Spans.count) } catch (e) {}
+            pushSecretAudit({ at: auditAt, note: n.id, title: n.title || '', session: auditSid, spans: s2Spans.count })
             return { note: n }
           }
           if (s2Spans.count > 0) {

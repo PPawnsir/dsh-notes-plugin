@@ -219,15 +219,24 @@
     // ==== vectors BEGIN ====（0.5.0① notes-050-vector-layer：语义检索向量层四条 RPC 通道——status/rebuild/search/put，③卡消费 search，④卡按钮调 rebuild，②卡浏览器回写 put）
     // notes-vectors-status {} → { ok, enabled, backend, indexed, indexable, lastBuiltAt, namespaces:[{backend,dim,minScore,count,lastBuiltAt}], pending, pendingError, building }（N/M 篇·后端·上次构建·各命名空间统计 + 挂起/失败显性 + 0.5.0 P1 后台重建在跑标记）
     // notes-vectors-rebuild { backend } → 全量重建指定后端命名空间（换后端不重建、旧集保留）；backend 缺省回落激活后端。
-    //   0.5.0 P1（notes-051-rebuild-async）：后台化——立即返回 { ok, started:true }（首建 >30s 不再超前端 30s RPC 护栏误报；在跑去重 { ok, alreadyRunning:true }）；
+    //   0.5.0 P1（notes-051-rebuild-async）：后台化——立即返回 { ok, started:true }（首建 >30s 不再撞前端 RPC 护栏误报——双端护栏口径不一致是现状裁决：
+    //   app 20s（app/kernel/rpc.js RPC_TIMEOUT_MS）/ client 面板 30s（client/kernel/perf.js HOSTCALL_TIMEOUT_MS），0.6.x 池#12 注释口径修正；在跑去重 { ok, alreadyRunning:true }）；
     //   重建本体独立 async 后台跑，失败落 status.pendingError（lastBuiltAt 不盖章），终态由双端轮询 notes-vectors-status 承接。
     //   0.5.0 P2（notes-051-status-race）：status 在 building=true 时跳过强制 drain 与 _vectorJobChain 链等待（重建期嵌入闸门被 rebuild 批占用，
     //   drain embed 排队拖死 status 实测 5012ms → 双端轮询护栏超时误报）——重建期读旧态（pending 可略陈旧），消旗后下一拍恢复精确；
     //   双端轮询兜底：护栏超时先探一次轻量 status，仍在构建继续拍不报 sticky，确认非构建态才报错。
     // notes-vectors-search { queryVector|query, backend, limit } → 余弦 + minScore 过滤 + per-note max-pooling（③卡消费；query 为内部 embed 便捷形态）
-    // notes-vectors-put { backend, rows:[{noteId, bodyHash, vectors:[...]}], replace? } → 外部算好的向量经队列回写边车（②卡落通道；replace:true 全量重建清空目标命名空间；0.5.0 R3 起浏览器嵌入生产方退役，通道保留）
+    // notes-vectors-put { backend, rows:[{noteId, bodyHash, vectors:[...]}], replace? } → 外部算好的向量经队列回写边车（②卡落通道；replace:true 全量重建清空目标命名空间；
+    //   0.6.x 池#2 裁决：外部嵌入后端回写入口——预留给未来自定义后端，0.5.0 R3 起浏览器嵌入生产方退役、当前无生产方，但保留不删：删=未来接外部后端时要加回）
     disposers.push(handle('notes-vectors-status', async (args) => { try { return await _vectorsStatus() } catch (e) { return { error: String(e.message || e) } } }))
     disposers.push(handle('notes-vectors-rebuild', async (args) => { try { return await _vectorsRebuild(args && args.backend) } catch (e) { return { error: String(e.message || e) } } }))
     disposers.push(handle('notes-vectors-search', async (args) => { try { return await _vectorsSearch(args || {}) } catch (e) { return { error: String(e.message || e) } } }))
     disposers.push(handle('notes-vectors-put', async (args) => { try { return await _vectorsPut(args || {}) } catch (e) { return { error: String(e.message || e) } } }))
     // ==== vectors END ====
+
+    // ==== secret-audit BEGIN ====（0.6.x 文档安全二期 notes-061-docsec-hygiene 池#17：server.js 与 server.dist.js 本块逐字节一致，check 节 136 提取比对；改动必须双边同步）
+    // notes-secret-audit {} → { entries: [{ at, note, title, session, spans }] } —— reveal 审计环形缓冲只读面（倒序：最新在前，容量 100）。
+    //   只读红线：本通道零写入（缓冲由 index.js note_get reveal 面入账）；内存态重启清空（持久化属二期加密批配套）；不进遥测不写库。
+    //   消费方：双端设置卡「数据与存储」组「机密读取记录」行（点击展开只读列表；空态「暂无读取记录」）。
+    disposers.push(handle('notes-secret-audit', async () => ({ entries: listSecretAudit() })))
+    // ==== secret-audit END ====

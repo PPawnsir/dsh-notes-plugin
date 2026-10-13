@@ -91,7 +91,13 @@
           //   notes-get RPC 面不动（面板编辑链路仍是明文）。
           const s2Spans = stripSecretSpans(String(n.body || ''))
           if (args && args.reveal === true) {
-            try { console.warn('[dsh-notes] note_get reveal 审计：' + new Date().toISOString() + ' note=' + n.id + ' session=' + (sessCtx().sessionId || '(无会话上下文)') + ' spans=' + s2Spans.count) } catch (e) {}
+            // 0.6.x 文档安全二期（notes-061-docsec-hygiene 池#17）：审计行双通道——进程日志照旧 + 内存环形缓冲
+            //   （最近 100 条，session-ctx.js secret-audit 块；设置卡「机密读取记录」行经 notes-secret-audit 只读 RPC 查看；
+            //   重启清空——持久化属二期加密批配套；缓冲只读不写库不进遥测）。标题快照随条目入账（改名/删除不影响历史行）。
+            const auditAt = new Date().toISOString()
+            const auditSid = sessCtx().sessionId || '(无会话上下文)'
+            try { console.warn('[dsh-notes] note_get reveal 审计：' + auditAt + ' note=' + n.id + ' session=' + auditSid + ' spans=' + s2Spans.count) } catch (e) {}
+            pushSecretAudit({ at: auditAt, note: n.id, title: n.title || '', session: auditSid, spans: s2Spans.count })
             return { note: n }
           }
           if (s2Spans.count > 0) {

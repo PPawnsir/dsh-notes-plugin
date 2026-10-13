@@ -229,7 +229,9 @@ module.exports = {
     assert(rowsCtl.length >= 1 && rowsSpan.length === rowsCtl.length, '含 span 笔记块数 = 剥除派生块数（良性部分照常，span 不进 embed 队列）')
     assert(rowsOnly.length === 0, 'span-only 正文剥除后零块不进索引（zero chunks）')
     assert.strictEqual(rowsSpan[0] && rowsSpan[0].bodyHash, rowsCtl[0] && rowsCtl[0].bodyHash, '新鲜度锚 = 剥除后文本（span-only 差异不入锚——两笔记同良性即同 hash）')
-    assert(lines.every(r => String(r.bodyHash || '').length > 0), '边车行带 bodyHash（剥除派生口径）')
+    const dataLines = lines.filter(r => r.meta !== true)   // 0.6.x 池#11：命名空间 meta 行（{meta:true,backend,lastBuiltAt} 落盘）无 bodyHash——口径 = 数据行全带锚
+    assert(dataLines.every(r => String(r.bodyHash || '').length > 0), '边车数据行带 bodyHash（剥除派生口径；池#11 meta 行豁免在案）')
+    assert(lines.filter(r => r.meta === true).length === 1 && lines.filter(r => r.meta === true)[0].lastBuiltAt === st.lastBuiltAt, '边车恰一行 meta 行且承载本次 rebuild 盖章（池#11 lastBuiltAt 持久化等价守卫）')
     // 红线：_vectorIndexable 篇级 sensitive 排除规则不动（sensitive 笔记零行）
     await inst.handlers['notes-create']({ title: 'S2 向量敏感篇', body: '敏感篇良性正文', sensitive: true })
     await new Promise(r => setTimeout(r, 2600))

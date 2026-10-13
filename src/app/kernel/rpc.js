@@ -9,7 +9,7 @@
    （src/client/kernel/perf.js 的 30s 计数器推数入 perf-report.json；其 rejection 吞掉 + 连败指数退避 + warn 降级三件套在本卡同修）。
    本层 rpc() 只服务用户操作触发的请求，无点火即发的定时上报调用，无同款 unhandled rejection 面；
    若日后 app 端新增遥测上报，必须带同款三件套并同步 check 节 107 断言。 */
-var RPC_TIMEOUT_MS = 20000;        /* 缺省超时（普通 RPC） */
+var RPC_TIMEOUT_MS = 20000;        /* 缺省超时（普通 RPC）——双端护栏口径不一致是现状裁决（0.6.x 池#12 注释写明）：app 端 20s（本常量）/ 面板 client 端 30s（HOSTCALL_TIMEOUT_MS，src/client/kernel/perf.js）；改一边时勿想当然对齐另一边 */
 var RPC_TIMEOUT_LLM_MS = 120000;   /* LLM 类长调用超时（✨整理/选区指令/挂载建议/约定体检） */
 var RPC_SLOW_MS = 3000;            /* 挂起提示条阈值：超过即显示「连接慢」非阻塞条 */
 var RPC_LLM_METHODS = { 'notes-ai-organize': 1, 'notes-quick-instruct': 1, 'notes-when-suggest': 1, 'notes-conflict-check': 1 };

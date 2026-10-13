@@ -3,8 +3,8 @@
 //   ① 正文命中 = host 算首个命中点 ±50 字窗口 + 命中区间数组 [{start,len}]（相对摘录文本），前端 hlMarks 先 esc 后包 <mark>；
 //   ② 语义命中 = 胜出 chunk（per-note max-pooling 冠军块）开头 ~80 字纯文本，marks 空（语义无词位置，诚实呈现）；
 //   ③ 仅标题/标签命中 = 正文开头 ~80 字（上下文补足）。无 query 不带 excerpt 字段（向后兼容）。
-// 断言面：searchExcerpt 纯函数行为级（居中/边界截断/区间数组/语义 chunk/标题补足/空 query）+ host 行为级（notes-search/note_search 透出 +
-//   语义幽灵向量全管道）+ UI 静态（摘要行 markup/CSS clamp/hlMarks 先 esc 后 mark + 双端逐字节）+ 面板同构 + 原型/e2e mock 同步。
+// 断言面：searchExcerpt 纯函数行为级（居中/边界截断/区间数组/语义 chunk/标题补足/空 query + 0.6.x Unicode 折叠膨胀偏移修复）+
+//   host 行为级（notes-search/note_search 透出 + 语义幽灵向量全管道）+ UI 静态（摘要行 markup/CSS clamp/hlMarks 先 esc 后 mark + 双端逐字节）+ 面板同构 + 原型/e2e mock 同步。
 module.exports = {
   id: "123",
   title: "123. 0.5.0 交互层 搜索摘要行+命中高亮（notes-050-search-excerpt）",
@@ -55,6 +55,39 @@ module.exports = {
     assert.strictEqual(r2.marks.length, 2, '窗沿命中仍入列（实得 ' + JSON.stringify(r2.marks) + '）')
     assert.deepStrictEqual(r2.marks[1], { start: 51, len: 1 }, '跨窗沿命中 len 截断到窗沿（3→1）')
     assert.strictEqual(r2.text.charAt(51), '锚', '截断区间回读=命中首字')
+  })
+
+  await t('searchExcerpt Unicode 折叠膨胀偏移修复（0.6.x notes-061-search-refine 池#3）：İ/ß/ﬁ 在命中点前 → marks 精确落原文（行为级：区间回读=命中词）', () => {
+    // 旧实现 body.toLowerCase() 整串下标直接切原文：İ(U+0130)→"i̇"（1→2 码元膨胀）使 lower 串变长，
+    //   膨胀字符之后的命中点 lower 下标相对原文前移 → 窗口与 marks 双双错位（高亮打到邻字）；修复后逐码点 lower + 偏移映射全程原文坐标。
+    // ① İ 前置：窗口+marks 不错位（旧实现本例 marks 回读得「词尾」）
+    const body = 'İstanbul 会议纪要：' + '填'.repeat(60) + '锚词' + '尾'.repeat(60)   // İ 在命中点前 74 字符处膨胀
+    const r = sx({ body: body }, '锚词')
+    assert(r && r.marks.length === 1, 'İ 前置正文单命中（实得 ' + JSON.stringify(r && r.marks) + '）')
+    assert.strictEqual(r.text.substring(r.marks[0].start, r.marks[0].start + r.marks[0].len), '锚词', 'İ 前置 marks 回读=命中词（偏移修复生效）')
+    assert.strictEqual(body.indexOf('锚词'), 74, '语料形状锚：锚词原文下标 74（İ 前缀 14 字 + 60 填）')
+    // ② ß/ﬁ（折叠等长/无大小写形态）前置：偏移不受影响（回归守卫——旧实现本就对，修复不得破坏）
+    const body2 = 'Straße ﬁsh 档案 ' + '填'.repeat(60) + '锚词' + '尾'.repeat(60)
+    const r2 = sx({ body: body2 }, '锚词')
+    assert(r2 && r2.marks.length === 1 && r2.text.substring(r2.marks[0].start, r2.marks[0].start + r2.marks[0].len) === '锚词', 'ß/ﬁ 前置 marks 回读=命中词')
+    // ③ 膨胀字符命中本体：查询 'i' 命中 'İ' → 收编整字符（len=1 原文坐标，高亮不溢出到下一字符）
+    const r3 = sx({ body: 'İ 开头的正文' }, 'i')
+    assert(r3 && r3.marks.length === 1 && r3.marks[0].start === 0 && r3.marks[0].len === 1, '查询 i 命中 İ 收编整字符（实得 ' + JSON.stringify(r3 && r3.marks) + '）')
+    assert.strictEqual(r3.text.substring(0, 1), 'İ', '命中段=原文字符本体')
+    // ④ 多命中 + 膨胀字符夹在命中之间：第二命中偏移同样精确（lower 串游标推进不回原文串扰）
+    const body4 = 'İ' + '间'.repeat(5) + '锚词' + 'İ' + '间'.repeat(5) + '锚词'
+    const r4 = sx({ body: body4 }, '锚词')
+    assert(r4 && r4.marks.length === 2, '多命中全列（实得 ' + JSON.stringify(r4 && r4.marks) + '）')
+    for (const m of r4.marks) assert.strictEqual(r4.text.substring(m.start, m.start + m.len), '锚词', '多命中区间回读=命中词（start=' + m.start + '）')
+    // ⑤ 等价守卫：无膨胀字符的常规中英文面与旧口径逐字节一致（±50 窗口 + 区间偏移不变）
+    const body5 = '前'.repeat(100) + '目标词' + '后'.repeat(100)
+    const r5 = sx({ body: body5 }, '目标词')
+    assert.deepStrictEqual(r5.marks, [{ start: 51, len: 3 }], '常规面区间与旧口径一致')
+    assert.strictEqual(r5.text.length, 1 + 50 + 3 + 50 + 1, '常规面窗口长度与旧口径一致')
+    // ⑥ 代理对（emoji 等多码元字符）前置：codePointAt 遍历不错切
+    const body6 = '🎉🎊 部署记录 ' + '填'.repeat(60) + '锚词' + '尾'.repeat(60)
+    const r6 = sx({ body: body6 }, '锚词')
+    assert(r6 && r6.marks.length === 1 && r6.text.substring(r6.marks[0].start, r6.marks[0].start + r6.marks[0].len) === '锚词', '代理对前置 marks 回读=命中词')
   })
 
   await t('searchExcerpt 语义 chunk 摘要 + 标题/标签命中补足 + 空 query/空正文', () => {

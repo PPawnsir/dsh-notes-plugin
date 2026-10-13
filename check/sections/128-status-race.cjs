@@ -8,7 +8,8 @@
 // 断言面：①host 源码锚点（dev/dist 双侧守卫在案 + search 强制 drain 不动红线 + server 双注册契约注释）；
 //   ②行为级（假推理缝闸门关闭 + 重建在跑 + 注入保存事件 → status <100ms 返回 = 跳过链等待铁证；消旗后下一拍恢复 drain 语义回归）；
 //   ③双端轮询兜底锚（app/client）；④e2e mock status 报错双桩锚；⑤双变体逐字节一致回归。
-// 红线：非重建期 status 的强制 drain 语义不动（保存→可搜 <5s 双保险不变）；_vectorPendingErr 双向清零竞态（驳回遗留 b）本卡不治——已入 0.5.x 池。
+// 红线：非重建期 status 的强制 drain 语义不动（保存→可搜 <5s 双保险不变）；_vectorPendingErr 双向清零竞态（驳回遗留 b）
+//   已由 0.6.x notes-061-vector-hygiene 池#9 治（drain/rebuild 分键记账，节 135 守）——本节守 P2 守卫语义不变。
 module.exports = {
   id: "128",
   title: "128. 0.5.0 P2 重建期 status 跳过 drain 链等待 + 双端轮询超时兜底探 building（notes-051-status-race）",

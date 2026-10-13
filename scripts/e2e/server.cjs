@@ -107,7 +107,10 @@ function createMockState() {
   /* 0.4.8 契约对账：host 启动 ensure 注入索引根笔记即落 settings.indexNoteId（check 节 79 创建级锁口径）——
      mock 预置同键占位值（与 notes-mount/mount-list 的占位索引 id 一致），settings-get/set 回显键集与 host 持平 */
   const settings = { indexNoteId: 'e2e-inject-index' }
-  return { notes, folders, sessions, workspaces, settings }
+  /* 文档安全二期（notes-061-docsec-hygiene 池#17）：reveal 审计环形缓冲 mock 面——缺省空（e2e 无 note_get 工具面）；
+     用例可直推 state.secretAudit 造数（契约同 host {entries:[{at,note,title,session,spans}]} 倒序） */
+  const secretAudit = []
+  return { notes, folders, sessions, workspaces, settings, secretAudit }
 }
 
 function folderSubtreeIds(state, fid) {
@@ -736,7 +739,8 @@ function handleRpc(state, method, args) {
         enabled: vBackend !== null,
         backend: vBackend,
         indexed: (vBackend && vs.ns[vBackend]) ? vectorNsCount(vs.ns[vBackend]) : 0,
-        indexable: notes.filter(vectorIndexable).length,
+        /* 0.6.x（notes-061-vector-hygiene 池#8）：indexable 口径对齐 host _vectorEmbeddable——非空可索引（零块笔记不计入 M，rebuild 后 N≡M） */
+        indexable: notes.filter(function (n) { return vectorIndexable(n) && vectorChunks(n.body).length > 0 }).length,
         lastBuiltAt: (vBackend && vs.ns[vBackend]) ? (vs.ns[vBackend].lastBuiltAt || '') : '',
         namespaces: namespaces,
         pending: 0,          /* 0.5.0 R2：与 host _vectorsStatus 同契约（mock 无 drain 管线——恒 0，键集对账口径） */
@@ -857,6 +861,10 @@ function handleRpc(state, method, args) {
         stats: { conventionsChars: conventions.length, directoryChars: directory.length, totalChars: full.length, maskedNotes: 0, staleMarked: 0, budgetTruncated: false },
       }
     }
+    /* 文档安全二期（notes-061-docsec-hygiene 池#17）契约对账：reveal 审计环形缓冲只读面——
+       { entries: [{ at, note, title, session, spans }] } 倒序；mock 侧数据 = state.secretAudit（缺省空，用例直推造数） */
+    case 'notes-secret-audit':
+      return { entries: (state.secretAudit || []).slice() }
     default: return { ok: true }
   }
 }

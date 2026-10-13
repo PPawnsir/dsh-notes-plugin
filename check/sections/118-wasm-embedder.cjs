@@ -4,7 +4,8 @@
 //   R3 浏览器嵌入路径整体退役——wasm-embedder.js 删码 + app manifest 除名 + /dsh-notes-model 代理路由拆除 +
 //   Cache API 模型层/设置区模型行拆除（退役面静态断言在节 126）。
 // 保留断言面：notes-vectors-put 回写通道（双包注册 + e2e mock case + 行为链路：put → 边车落行 → queryVector 命中）/
-//   bge 后端窄接口自报 + host embed 文本 query 不抛错（查询嵌入锚点，0.5.0 R1 起）/ dim 写前校验显性化 / semantic.model 白名单兼容合并。
+//   bge 后端窄接口自报 + host embed 文本 query 不抛错（查询嵌入锚点，0.5.0 R1 起）/ dim 写前校验显性化 /
+//   semantic.model 白名单退役（0.6.x notes-061-search-refine 池#4：set 静默忽略 + get 不回显 + 存量盘键加载即剥）。
 module.exports = {
   id: "118",
   title: "118. 0.5.0② wasm embedder → R3 退役（notes-vectors-put 回写通道 + bge host embed 锚，notes-050-wasm-embedder → notes-051-query-embed）",
@@ -34,7 +35,7 @@ module.exports = {
     assert(clientManifest.indexOf('wasm-embedder') < 0, 'client manifest 零 wasm-embedder 登记（面板从不加载嵌入运行时——wasm-in-panel 裁决不变）')
   })
 
-  // ===== host 行为断言（fresh 实例：bge 后端 + notes-vectors-put 全链路 + semantic.model 合并）=====
+  // ===== host 行为断言（fresh 实例：bge 后端 + notes-vectors-put 全链路 + semantic.model 白名单退役面）=====
   const NOTES_DIR_W = DIR + '\\notes'
   const VECTORS_PATH = NOTES_DIR_W + '\\vectors.jsonl'
   const store = new Map()
@@ -114,17 +115,23 @@ module.exports = {
     assert(!rows.some(x => x.noteId === 'wasm-n1') && rows.some(x => x.noteId === 'wasm-n2'), 'replace 清空旧命名空间（wasm-n1 出队、wasm-n2 落行）')
   })
 
-  await t('semantic.model 增量合并：只 patch model 不清除存量 enabled/backend（白名单兼容——0.5.0 R3 起生产方退役，存量值读回兼容）', async () => {
+  await t('semantic.model 白名单退役（0.6.x notes-061-search-refine 池#4）：set 静默忽略 + get 不回显 + 存量盘键加载即剥（断言翻转：原「增量合并读回兼容」面废弃）', async () => {
+    // set：model 键移出白名单 → 静默忽略（不报错不落盘），enabled/backend 增量合并照旧
     const m = await handlers['notes-settings-set']({ semantic: { model: { backend: 'bge-small-zh-q8', bytes: 24452000, downloadedAt: '2026-10-08T00:00:00.000Z', source: 'cache-api' } } })
-    assert(m && m.ok === true, 'model 回写 ok')
+    assert(m && m.ok === true, '带 model 的 set 仍 ok（未知键静默忽略，不报错）')
     const g = await handlers['notes-settings-get']({})
     const sm = g.settings && g.settings.semantic
-    assert(sm && sm.enabled === true && sm.backend === 'bge-small-zh-q8', '存量 enabled/backend 保留（增量合并不覆盖）')
-    assert(sm.model && sm.model.bytes === 24452000 && sm.model.backend === 'bge-small-zh-q8', 'model 下载状态落盘（bytes/backend）')
-    await handlers['notes-settings-set']({ semantic: { model: null } })
-    const g2 = await handlers['notes-settings-get']({})
-    assert(!(g2.settings.semantic && g2.settings.semantic.model), 'model=null 清除下载状态（enabled/backend 仍保留）')
-    assert(g2.settings.semantic && g2.settings.semantic.enabled === true, '清除 model 后 enabled 保留')
+    assert(sm && sm.enabled === true && sm.backend === 'bge-small-zh-q8', '存量 enabled/backend 保留')
+    assert(!sm.model, 'settings-set 不再认识 model（白名单收紧，不落盘不回显）')
+    const m2 = await handlers['notes-settings-set']({ semantic: { model: null } })
+    assert(m2 && m2.ok === true, 'model:null 存量调用方写法静默兼容（不报错）')
+    // 存量盘键读侧剥除：loadSettings 单飞已被旧实例消费 → 独立 fresh 实例预置含 model 死键的 settings.json，加载后 settings-get 不回显
+    store.set(NOTES_DIR_W + '\\settings.json', JSON.stringify({ semantic: { enabled: true, backend: 'bge-small-zh-q8', model: { backend: 'bge-small-zh-q8', bytes: 24452000 } } }))
+    const handlers2 = {}
+    new Function('harness', 'pluginDir', hostSrc)({ handle: (name, fn) => { handlers2[name] = fn; return () => { delete handlers2[name] } }, defineTool: (d) => d, registerTool: () => () => {} }, DIR).apply(ctx)
+    const g2 = await handlers2['notes-settings-get']({})
+    assert(g2.settings && g2.settings.semantic && g2.settings.semantic.enabled === true && g2.settings.semantic.backend === 'bge-small-zh-q8', '存量 semantic enabled/backend 读回保留')
+    assert(!g2.settings.semantic.model, '存量盘 model 死键加载即剥（settings-get 不回显；磁盘文件不改写）')
   })
   }
 }

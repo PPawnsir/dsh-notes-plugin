@@ -34,11 +34,12 @@ module.exports = {
     assert.strictEqual(vsDev.slice(vsDev.indexOf('const VECTOR_FLUSH_MS')), vsDist.slice(vsDist.indexOf('const VECTOR_FLUSH_MS')), 'VECTOR_FLUSH_MS 起两变体逐字节一致')
   })
 
-  await t('status indexable 精确计数（0.5.0 P0 rev2）：走 _list 全库扫描 + _vectorIndexable 过滤（同 rebuild 口径，灭冷缓存低报）', () => {
+  await t('status indexable 精确计数（0.5.0 P0 rev2 + 0.6.x 池#8 口径翻转）：走 _list 全库扫描 + _vectorEmbeddable 过滤（同 rebuild 口径，灭冷缓存低报；M 不再含零块笔记）', () => {
     assert(vsDev.indexOf('await _list(undefined, undefined, undefined, false, false, true)') >= 0, 'status indexable 走 _list 全库扫描（与 rebuild 同口径，含 sys）')
-    assert(vsDev.indexOf('for (const n of all) { if (_vectorIndexable(n)) indexable++ }') >= 0, 'status indexable 逐条 _vectorIndexable 过滤（排除 deleted/tombstoned/sensitive/sys）')
+    assert(vsDev.indexOf('function _vectorEmbeddable(n)') >= 0 && vsDev.indexOf('return _vectorIndexable(n) && _vectorChunks(n.body).length > 0') >= 0, '池#8 非空可索引判定 helper 在案（_vectorIndexable ∧ 切块≥1——_vectorIndexable 语义不动，精修的只是计数口径）')
+    assert(vsDev.indexOf('for (const n of all) { if (_vectorEmbeddable(n)) indexable++ }') >= 0, 'status indexable 逐条 _vectorEmbeddable 过滤（池#8 翻转在案：旧 `_vectorIndexable(n)) indexable++` 口径已翻——零块笔记不计入 M，rebuild 后 indexable≡indexed）')
     assert(vsDev.indexOf('for (const n of cache.values())') < 0, 'status indexable 不再走 cache.values()（冷缓存低报已拆）')
-    assert(vsDist.indexOf('await _list(undefined, undefined, undefined, false, false, true)') >= 0, 'dist 变体同改（_list 精确计数）')
+    assert(vsDist.indexOf('await _list(undefined, undefined, undefined, false, false, true)') >= 0 && vsDist.indexOf('function _vectorEmbeddable(n)') >= 0, 'dist 变体同改（_list + _vectorEmbeddable 精确计数）')
   })
 
   await t('e2e mock bge rebuild 真跑（0.5.0 R2 notes-051-save-embed：快速失败闸移除——R1 后 host 能嵌入，双端构建按钮=host rebuild）', () => {

@@ -11,6 +11,9 @@
             const c = await fs.readText(p)
             const obj = JSON.parse(c)
             settingsCache = (obj && typeof obj === 'object' && !Array.isArray(obj)) ? obj : {}
+            // 0.6.x（notes-061-search-refine 池#4）semantic.model 存量键清理：读侧不再认识——加载即剥（0.5.0 R3 浏览器嵌入
+            //   生产方退役后零消费方；磁盘 settings.json 原样不改写，下次真实保存自然脱落——同 catalogEnabled 惰性死键先例）
+            if (settingsCache.semantic && typeof settingsCache.semantic === 'object' && !Array.isArray(settingsCache.semantic)) delete settingsCache.semantic.model
           } catch (e) { /* 文件不存在/损坏 → 空设置：默认行为（跟随会话 + 目录关）不变 */ }
           return settingsCache
         })()

@@ -50,6 +50,19 @@ DSH 更新频繁，插件各版本能力与适配范围不同，**升级插件�
 - **semver 预发布提示**：`0.2.0-rc.2` 这类预发布版本**不命中** `>=0.1.7 <0.3.0-0` 这类宽区间（semver 规则），声明里须显式枚举预发布分支——0.2.4 起已按此声明。
 - DSH 发生大版本变更（`0.x` 次版本跃迁）时，本表会在插件对应适配版发布后更新；`peerDependencies` 上限（当前 `<0.3.0-0`/`^0.2.0`）即"未在更新后的 DSH 上验证"的保守声明，解除以新插件版本发布为准。
 
+### 宿主能力依赖（功能 × 宿主版本 × 缺席行为）
+
+上面是版本级发版史；本表换一个维度——按功能列出对宿主能力的依赖，以及能力缺席时的实际行为。版本号均经宿主 npm 发布包代码实证钉验，非凭印象：
+
+| 功能 | 需要宿主版本 / 能力 | 缺席时行为 |
+| --- | --- | --- |
+| 派发会话列表（会话元数据缓存 + `titlesPending` 轮询） | DSH ≥ 0.1.7 | 列表慢/超时（0.1.5~0.1.6 实测不可用）；插件 0.2.0 起自带缓存+轮询缓解，行为仍以 0.1.7 为准 |
+| 定时调度唤醒休眠目标 | 宿主提供 `agents.resume`（实证 dsh-agent 包 0.1.5-rc.1 起存在，声明区间全覆盖） | 运行时逐点探测：缺席时调度链记 `lastError`（「宿主不支持 agents.resume」），不静默排队、不崩页面；手动派发不受影响 |
+| 笔记面板与会话头部入口 | 宿主 slots 服务 + 内建槽位 `shell.overlay` / `conversation.session.header.actions`（实证 0.1.5-rc.1 起存在） | slots 服务缺席时 client 记 `console.error` 并整体跳过挂载——入口按钮与面板不出现，宿主页面其余部分不受影响 |
+| 工作记忆 / 注入 / 检索 / 语义检索 / 机密区间 | 无额外宿主依赖（插件侧闭环；语义嵌入在插件自己的 host 进程代码内完成，正文不出机器） | —（不依赖声明区间之外的宿主能力，无缺席情形） |
+
+**总原则**：宿主能力缺席时按能力降级、不崩页面——能运行时探测的逐点探测降级（如上两行的能力探测与守卫），不能探测的交给 `peerDependencies` 在 npm 安装期拦截。
+
 ## 解决什么问题
 
 Agent 会话里的结论是「一次性」的：一个方案为什么这么选、项目有哪些硬约定、下午冒出来的待办，全都散落在对话流里；上下文一压缩、会话一关，这些知识就没了。下一个会话的 agent 不知道上周定过什么，用户也得反复复述约定。
@@ -232,8 +245,8 @@ deleted: "false"       # 软删除标记
 node scripts/build-dist.cjs           # 改完 src/**（client/host/app/shared/styles）后一次性刷新四产物：lib/client.js + lib/styles.css + app.html + index.mjs
 node --check packages/dsh-notes-plugin/index.mjs
 node --check packages/dsh-notes-plugin/lib/client.js
-node check.js                         # 1269 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录段挂载行 + 导入导出 + 半独立页 + 双模式编辑器 + 敏感脱敏 + 注入增强 + 遥测/双链 + 快照式历史引擎 + 模块化结构契约 + README.en 双语 + i18n 守卫 + 笔记网络守卫/README 哲学节）
-npm run e2e                           # 浏览器 e2e（Playwright + 内置 mock host，67 用例 624 断言：加载/CRUD/搜索/注入管理与挂载弹框/日志同权/拖拽/回收站/导出/机器档翻档案/文件夹sys/hidden显隐/休眠派发/执行记录跳转/整理弹卡等；需 chromium 或系统 Chrome）
+node check.js                         # 1287 例回归（host 全链路 + 静态包 + client UI 面 + 虚拟文件夹 + 目录段挂载行 + 导入导出 + 半独立页 + 双模式编辑器 + 敏感脱敏 + 注入增强 + 遥测/双链 + 快照式历史引擎 + 模块化结构契约 + README.en 双语 + i18n 守卫 + 笔记网络守卫/README 哲学节）
+npm run e2e                           # 浏览器 e2e（Playwright + 内置 mock host，69 用例 641 断言：加载/CRUD/搜索/注入管理与挂载弹框/日志同权/拖拽/回收站/导出/机器档翻档案/文件夹sys/hidden显隐/休眠派发/执行记录跳转/整理弹卡/机密横幅与读取记录等；需 chromium 或系统 Chrome）
 ```
 
 详见 [DEVELOPMENT.md](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/DEVELOPMENT.md)。

@@ -36,23 +36,54 @@
     //   ③ 仅标题/标签/topic 命中 = 正文开头 SEARCH_EXCERPT_HEAD 字（上下文补足），marks 空。
     const SEARCH_EXCERPT_CTX = 50
     const SEARCH_EXCERPT_HEAD = 80
+    // 大小写无关且保原文偏移的命中映射（0.6.x notes-061-search-refine 池#3 修复：旧实现 body.toLowerCase() 整串下标直接切原文，
+    //   İ(U+0130)→"i̇"（i + 组合符，1→2 码元）等折叠膨胀字符使 lower 串比原文长 → 其后命中点的 lower 下标相对原文前移错位，
+    //   marks 高亮打到邻字上）：逐码点 lower 并同步维护「lower 串下标 → 原文起始下标」映射，窗口/区间全程换算回原文坐标。
+    //   匹配语义与旧实现一致（仍命中于 lower 串）；逐码点 lower 与整串 lower 仅在上下文敏感映射上有别（希腊词尾 σ→ς），检索场景可忽略。
+    function _excerptCaseMap(body) {
+      let low = ''
+      const map = []   // map[j] = lower 串第 j 个码元对应的原文起始下标（单调不减；膨胀字符的多个 lower 码元同指一个原文下标）
+      for (let i = 0; i < body.length;) {
+        const cp = body.codePointAt(i)
+        const w = cp > 0xFFFF ? 2 : 1
+        const l = String.fromCodePoint(cp).toLowerCase()
+        for (let k = 0; k < l.length; k++) map.push(i)
+        low += l
+        i += w
+      }
+      return { low: low, map: map }
+    }
+    // lower 串命中区间 [j, j+qLen) → 原文区间 {start,end}：起点 = map[j]；终点 = 下一个来源不同的原文下标——
+    //   命中尾端落在同一原文字符的膨胀尾内（如查询 'i' 命中 'İ'）→ 收编整字符（end = 该字符全长）；越界 = body.length。
+    function _excerptOrigSpan(cm, body, j, qLen) {
+      const start = cm.map[j]
+      const k = j + qLen
+      let end
+      if (k >= cm.map.length) end = body.length
+      else if (cm.map[k] !== cm.map[k - 1]) end = cm.map[k]
+      else end = cm.map[k] + (body.codePointAt(cm.map[k]) > 0xFFFF ? 2 : 1)
+      return { start: start, end: end }
+    }
     function searchExcerpt(n, q, semChunkText) {
       const body = _s2Masked((n && n.body) || '')   // 文档安全 S2：摘要取窗绕行 secret span——窗口在打码体上取（机密永不进摘要）
       if (!q) return null
-      const bl = body.toLowerCase()
-      const idx = bl.indexOf(q)
+      const cm = _excerptCaseMap(body)
+      const idx = cm.low.indexOf(q)
       if (idx >= 0) {
-        const s = Math.max(0, idx - SEARCH_EXCERPT_CTX)
-        const e = Math.min(body.length, idx + q.length + SEARCH_EXCERPT_CTX)
+        const first = _excerptOrigSpan(cm, body, idx, q.length)
+        const s = Math.max(0, first.start - SEARCH_EXCERPT_CTX)
+        const e = Math.min(body.length, first.end + SEARCH_EXCERPT_CTX)
         const pre = s > 0 ? 1 : 0
         let text = body.slice(s, e)
         if (s > 0) text = '…' + text
         if (e < body.length) text = text + '…'
         const marks = []
         let p = idx
-        while (p >= 0 && p < e) {
-          marks.push({ start: p - s + pre, len: Math.min(q.length, e - p) })
-          p = bl.indexOf(q, p + q.length)
+        while (p >= 0) {
+          const span = _excerptOrigSpan(cm, body, p, q.length)
+          if (span.start >= e) break   // 起点越窗沿即停（旧口径 p<e 同义，原文坐标）
+          marks.push({ start: span.start - s + pre, len: Math.min(span.end, e) - span.start })   // 跨窗沿命中 len 截到窗沿
+          p = cm.low.indexOf(q, p + q.length)
         }
         return { text: text, marks: marks }
       }
@@ -97,6 +128,12 @@
     const RRF_SEMANTIC_LIMIT = 50               // 语义通道召回上限（notes-vectors-search limit）
     const RRF_SHORT_QUERY_MAX = 6               // 短关键词字符数阈值（≤6 视为短查询）
     const RRF_SHORT_MINSCORE_BUMP = 0.05        // 短关键词语义通道 minScore 临时上浮量（spike 遗留「Docker」类擦线噪音压制）
+    // 0.6.x 实证锚（notes-061-search-refine 池#1，裁决=保持 +0.05 平直上浮，不改连续函数；行注释形态——本块按标记区间 eval 提取，禁块注释防截断）：
+    //   scripts/spike-short-query-threshold.mjs（手动夹具）真 bge 模型 × 真实笔记库（168 可索引笔记/281 新鲜向量行）× 16 条中文短查询回放：
+    //   [0.50,0.55) 压制带共 415 条，其中 104 条文本通道已命中（词面重叠型查询带内近 100% 文本命中，压制零代价）；
+    //   311 条纯语义带内条目抽样 = 泛化工作日志模板文本噪音（bge-small-zh 对「会话/项目」样板普遍给 0.50-0.55 擦线分），
+    //   可辩护真命中 ≈1 条（「加密」→机密遮蔽笔记 0.5359）；若放开压制，扩散型查询（缓存/设置 p50≥0.52）将注入 50+ 噪音行
+    //   打满 RRF_SEMANTIC_LIMIT。带内各分位噪音主导、无真命中富集信号 → 阈值保持。明细见当批工作日志（2026-10-13）。
     // 短关键词判定：query ≤RRF_SHORT_QUERY_MAX 字符，或纯英文单词（单 token 无空格/无标点）——「Docker」类擦线噪音压制
     function rrfIsShortQuery(q) {
       const s = String(q == null ? '' : q).trim()

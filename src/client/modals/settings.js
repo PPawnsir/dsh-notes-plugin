@@ -222,7 +222,7 @@
       { id: 'inject', icon: 'bolt', labelKey: 'settings.group.inject', rows: ['stale', 'budget', 'injprev', 'injmgr', 'semantic'] },   // 检索与注入：搜索/注入/挂载类
       { id: 'dispatch', icon: 'clock', labelKey: 'settings.group.dispatch', rows: [] },   // 派发与调度（待新节登记）
       { id: 'ai', icon: 'sparkle', labelKey: 'settings.group.ai', rows: ['llm', 'organizemax', 'usage', 'usagebudget', 'suggest'] },   // AI：LLM 配置/整理上限类
-      { id: 'data', icon: 'folder', labelKey: 'settings.group.data', rows: ['maxdepth', 'secretdetect', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },   // 数据与存储：遥测/备份/存储路径类；文档安全 S4 保存时检测建议开关（缺省开）
+      { id: 'data', icon: 'folder', labelKey: 'settings.group.data', rows: ['maxdepth', 'secretdetect', 'secretaudit', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },   // 数据与存储：遥测/备份/存储路径类；文档安全 S4 保存时检测建议开关（缺省开）；二期池#17 机密读取记录查看行
       { id: 'about', icon: 'info', labelKey: 'settings.group.about', rows: ['cheatsheet'] },   // 关于：版本/计数/文档链接类
     ]
     // 分组点击定位：滚动容器 = .dsh-notes-settings-modal（与 0.4.7-B sticky 标题同容器，吸顶标题补偿 48px）
@@ -386,6 +386,20 @@
           showToast(on ? tt('settings.secretDetectOn') : tt('settings.secretDetectOff'))
         }).catch(() => setSecretDetectOn(!on))
       }
+      /* ===== 文档安全二期（notes-061-docsec-hygiene 池#17）：机密读取记录（「数据与存储」组查看行，紧随 secretdetect）——
+         点击「查看」展开 notes-secret-audit 只读列表（倒序=最新在前；每次展开重新拉取；空态「暂无读取记录」）；
+         缓冲为内存环形（最近 100 条、重启清空——持久化属二期加密批配套）。secretAuditRows：null=加载中 / 'error'=失败 / 数组=条目 */
+      const [secretAuditOpen, setSecretAuditOpen] = React.useState(false)
+      const [secretAuditRows, setSecretAuditRows] = React.useState(null)
+      const doSecretAuditToggle = () => {
+        if (secretAuditOpen) { setSecretAuditOpen(false); return }
+        setSecretAuditOpen(true)
+        setSecretAuditRows(null)
+        host.call('notes-secret-audit', {}).then(r => {
+          if (r && r.error) { setSecretAuditRows('error'); return }
+          setSecretAuditRows((r && r.entries) || [])
+        }).catch(() => setSecretAuditRows('error'))
+      }
       React.useEffect(() => {
         if (!settingsData) return
         const sm = (settingsData.settings && settingsData.settings.semantic) || {}
@@ -521,6 +535,18 @@
         // 文档安全 S4：保存时机密检测建议开关控件（「数据与存储」组勾选行；选择即存——semantic 总开关同款交互）
         const secretDetectControl = e('label', { className: 'dsh-notes-settings-checkwrap' },
           e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: secretDetectOn, 'aria-label': tt('settings.secretDetect'), onChange: (ev) => doSecretDetectToggle(ev.target.checked) }))
+        // 文档安全二期（池#17）：机密读取记录控件——查看/收起钮 + 展开只读列表（时间·标题·会话·机密区数；React 文本节点自动转义）
+        const secretAuditControl = e('div', { style: { width: '100%' } },
+          e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': tt('settings.secretAuditTipT'), onClick: doSecretAuditToggle }, secretAuditOpen ? tt('settings.secretAuditHide') : tt('settings.secretAuditView')),
+          secretAuditOpen ? e('div', { className: 'dsh-notes-audit-list' },
+            secretAuditRows === null
+              ? e('span', { className: 'dsh-notes-settings-label-s' }, tt('common.loading'))
+              : secretAuditRows === 'error'
+                ? e('span', { className: 'dsh-notes-settings-label-s' }, tt('settings.secretAuditLoadFailed'))
+                : !secretAuditRows.length
+                  ? e('span', { className: 'dsh-notes-settings-label-s' }, tt('settings.secretAuditEmpty'))
+                  : secretAuditRows.map((en, i) => e('div', { key: 'sa-' + i, className: 'dsh-notes-audit-line' },
+                      fmtDT(en.at) + ' · ' + (en.title || en.note || '') + ' · ' + (en.session || '') + ' · ' + tt('settings.secretAuditSpans', { n: en.spans })))) : null)
         // P1 注入体积预算控件：数值输入（约，字符数）+ 仪表（最近一次注入体积 vs 预算，超预算变红）；约定条目永不截断
         const lastChars = (settingsData && typeof settingsData.lastInjectChars === 'number') ? settingsData.lastInjectChars : 0
         const budgetNum = /^\d+$/.test(setBudget.trim()) ? parseInt(setBudget.trim(), 10) : 0
@@ -600,6 +626,8 @@
           { key: 'maxdepth', label: tt('settings.maxDepth'), sub: tt('settings.maxDepthTip'), control: maxDepthControl },
           // 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议开关行（数据与存储组，缺省开；仅管建议不管保护）
           { key: 'secretdetect', label: tt('settings.secretDetect'), sub: tt('settings.secretDetectTip'), control: secretDetectControl },
+          // 文档安全二期（notes-061-docsec-hygiene 池#17）：机密读取记录查看行（数据与存储组，紧随 secretdetect；只读展开列表）
+          { key: 'secretaudit', label: tt('settings.secretAudit'), sub: tt('settings.secretAuditTip'), control: secretAuditControl },
           { key: 'budget', label: tt('settings.budget'), sub: tt('settings.budgetTip'), control: budgetControl },
           { key: 'injprev', label: tt('settings.injPreview'), sub: tt('settings.injPreviewTip'), control: injPrevControl },
           { key: 'injmgr', label: tt('settings.injManager'), sub: tt('settings.injManagerTip'), control: injMgrControl },

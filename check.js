@@ -21,7 +21,7 @@ const CORE = new Set([
   'token 语义映射 bg-layer 系 + 鲜蓝强调（开发版/发布包/原型/app.html 四处同步）',
   'T1.1 工具瘦身 9→3',
   'index.mjs 是 ESM（export name/inject/apply，无 bootstrap return）',
-  'index.mjs 保留 52 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest + 约定体检 notes-conflict-check + 语义检索向量层 notes-vectors-status/notes-vectors-rebuild/notes-vectors-search/notes-vectors-put',
+  'index.mjs 保留 53 个 RPC + 3 工具 + 约定注入 + 派发 + LLM 分类 + 设置 + 导入导出 + 单文件导出 + 资产上传 + 历史版本三 RPC + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest + 约定体检 notes-conflict-check + 语义检索向量层 notes-vectors-status/notes-vectors-rebuild/notes-vectors-search/notes-vectors-put + 机密读取审计 notes-secret-audit',
   '两栏布局骨架（侧栏 + 编辑器通栏）',
   'note_search 已注册',
   'note_get 已注册',
@@ -43,7 +43,7 @@ const CORE = new Set([
   'preview：速记按 sessionId 分组（≥2），手动/单条/已删不进组，dry-run 零写入',
   '无 groups 归档：只合速记组 + 默认标题 + .bak 备份 + undo 事务落盘',
   'undo 往返：成员批量还原 + 归档笔记软删 + undo 清空；二次 undo → undone=0',
-  'host-impl 应用成功（52 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest + 约定体检 notes-conflict-check + 语义检索向量层 notes-vectors-status/notes-vectors-rebuild/notes-vectors-search/notes-vectors-put）',
+  'host-impl 应用成功（53 RPC handlers，含 notes-settings-get/set + 导入导出 + P3 notes-export-single + 资产上传 + 归档 preview/undo + ai-organize/assets-prune + P1 notes-purge + notes-inject-preview + notes-suggest + notes-usage-get + 历史版本 notes-history/history-get/restore-history + 工作记忆 notes-memory-guide + 定时派发 notes-schedule-eval + N+1 批量 notes-get-batch + 图查询 notes-graph + 注入索引 notes-mount/notes-mount-list + 效用账本 notes-ledger-refresh + 召回遥测 notes-recall-stats + whenToUse 草稿 notes-when-suggest + 约定体检 notes-conflict-check + 语义检索向量层 notes-vectors-status/notes-vectors-rebuild/notes-vectors-search/notes-vectors-put + 机密读取审计 notes-secret-audit）',
   'manage.create 返回 id',
   'manage.archive 显式 groups 合并手动组（白名单 + title 覆盖）',
   'kind 默认 note（向后兼容）',
@@ -208,7 +208,7 @@ const CORE = new Set([
   '构建失败 sticky 报错条：semDoBuild 失败走 semShowBuildError（modalErr 含原因）+ bge 失败不回落 host rebuild',
   '面板构建失败 sticky 报错条：client doSemBuild 捕获 {error} 走 setError（settings.semanticBuildFailed 含原因），不静默复位',
   '0.5.0 R3 模型代理退役：host 零 /dsh-notes-model 路由（server.dist.js/index.mjs 零残留）⇄ e2e mock GET 通道拆除（113 闸扩展——非 RPC 通道走结构锚）',
-  'status indexable 精确计数（0.5.0 P0 rev2）：走 _list 全库扫描 + _vectorIndexable 过滤（同 rebuild 口径，灭冷缓存低报）',
+  'status indexable 精确计数（0.5.0 P0 rev2 + 0.6.x 池#8 口径翻转）：走 _list 全库扫描 + _vectorEmbeddable 过滤（同 rebuild 口径，灭冷缓存低报；M 不再含零块笔记）',
   'status indexable 冷缓存精确计数：存量 .md 直读（无 create/list 暖缓存）→ indexable 与 rebuild 同口径（排除 deleted/sensitive/sys）',
   // 121. 0.5.0 P1 定时调度唤醒休眠目标（notes-050-sched-wake：常驻 --core 防定时任务名存实亡回归——唤醒执行 + 手动排队回归锁 + 唤醒失败 lastError）
   '定时触发休眠目标 → agents.resume 唤醒执行（resume 录制 + resumed 直发 + 零 inbox splice + lastRun.status=sent）',
@@ -275,6 +275,10 @@ const CORE = new Set([
   'S6 遮蔽块点击修复锁：委托 = 层节点 React onClick（onVeilLayerClick）+ 旧 []-effect 空绑定形态出清（回归守卫）',
   'S6 速查表收录断言：Ctrl+Shift+S 行三端在案（app/client 字典 key + 原型静态中文 = zh 字典值逐字一致）+ cheat.kSecret/editor.secretAlreadyMarked 双字典齐备',
   'S6 e2e 在案锚：用例 65（遮蔽块点击修复全链）+ 用例 66（app 浮钮可见性/引导/包 fence/rtb 红线）+ 用例 67（面板三入口 + 防双标 + Esc 栈）',
+  // 136. 0.6.x 文档安全二期小项（notes-061-docsec-hygiene：池#17 审计环形缓冲+设置区查看入口 + 池#18 面板横幅锚，常驻 --core）
+  '二期池#17 静态锚：secret-audit 环形缓冲（session-ctx）+ reveal 双通道入账（index 双包）+ notes-secret-audit 双包注册逐字节一致',
+  '二期池#17 行为级：note_get reveal:true → 环形缓冲含行（时间/笔记/标题快照/会话/spans）+ 进程日志照旧 + reveal=false 零入账',
+  '二期池#17 设置行静态锚：三端 secretaudit 行（data 组紧随 secretdetect）+ 展开接线 + i18n 八键双语 + CSS 三端',
 ])
 
 // ===== 分节运行模式（--only=39,42 / CHECK_ONLY）=====

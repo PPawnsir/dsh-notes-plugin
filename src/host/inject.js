@@ -314,11 +314,12 @@
           }
           else return { error: 'notes-settings-set: secretDetect 需要 { enabled? } 对象（或 null 恢复缺省开启）' }
         }
-        // 0.5.0①（notes-050-vector-layer）语义检索激活位：semantic = { enabled?: boolean, backend?: string, model?: {...}|null }（总开关 + 激活后端 id + 模型下载状态）；
-        //   null/undefined 删除 override 恢复关闭（缺省关闭零成本）；仅存白名单键（enabled 布尔 / backend 非空串 / model 白名单子键），其余键忽略不落盘。
-        //   增量合并（0.5.0② notes-050-wasm-embedder）：model 键 = 浏览器嵌入模型下载状态（曾作设置「已下载大小/可删」数据源，
-        //   app 页下载成功后回写）——只 patch model 不清除存量 enabled/backend（app 页记录下载与设置开关是两个独立动作）；
-        //   0.5.0 R3（notes-051-query-embed）起浏览器嵌入路径整体退役、model 键生产方不再存在——白名单保留（存量 settings.json 兼容读回，UI 已不消费）。
+        // 0.5.0①（notes-050-vector-layer）语义检索激活位：semantic = { enabled?: boolean, backend?: string }（总开关 + 激活后端 id）；
+        //   null/undefined 删除 override 恢复关闭（缺省关闭零成本）；仅存白名单键（enabled 布尔 / backend 非空串），其余键忽略不落盘。
+        //   0.6.x（notes-061-search-refine 池#4）存量键清理：model 子键移出白名单——曾作浏览器嵌入模型下载状态（0.5.0②），
+        //   0.5.0 R3（notes-051-query-embed）浏览器嵌入整体退役后生产方不再存在、UI 零消费（节 120 锚），读侧不再认识：
+        //   set 遇 model 键静默忽略（不报错不落盘），存量 settings.json 盘键无害（loadSettings 加载即剥、settings-get 不回显，
+        //   磁盘文件不改写、下次真实保存自然脱落——同 catalogEnabled 惰性死键先例）。
         if ('semantic' in patch) {
           if (patch.semantic === null || patch.semantic === undefined) delete settingsCache.semantic
           else if (patch.semantic && typeof patch.semantic === 'object' && !Array.isArray(patch.semantic)) {
@@ -326,18 +327,9 @@
             if (patch.semantic.enabled === true) s.enabled = true
             else if (patch.semantic.enabled === false) s.enabled = false
             if (typeof patch.semantic.backend === 'string' && patch.semantic.backend.trim()) s.backend = patch.semantic.backend.trim()
-            if (patch.semantic.model === null) delete s.model
-            else if (patch.semantic.model && typeof patch.semantic.model === 'object' && !Array.isArray(patch.semantic.model)) {
-              const m = {}
-              if (typeof patch.semantic.model.backend === 'string' && patch.semantic.model.backend.trim()) m.backend = patch.semantic.model.backend.trim()
-              if (typeof patch.semantic.model.bytes === 'number' && isFinite(patch.semantic.model.bytes) && patch.semantic.model.bytes >= 0) m.bytes = Math.floor(patch.semantic.model.bytes)
-              if (typeof patch.semantic.model.downloadedAt === 'string' && patch.semantic.model.downloadedAt) m.downloadedAt = patch.semantic.model.downloadedAt
-              if (typeof patch.semantic.model.source === 'string' && patch.semantic.model.source) m.source = patch.semantic.model.source
-              if (Object.keys(m).length) s.model = m
-            }
             settingsCache.semantic = s
           }
-          else return { error: 'notes-settings-set: semantic 需要 { enabled?, backend?, model? } 对象（或 null 恢复关闭）' }
+          else return { error: 'notes-settings-set: semantic 需要 { enabled?, backend? } 对象（或 null 恢复关闭）' }
         }
         await saveSettings()
         return { ok: true, settings: settingsCache }

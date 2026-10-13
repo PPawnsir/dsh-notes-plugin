@@ -31,12 +31,12 @@ module.exports = {
       // bge 快速失败闸移除（R1 后 host 能嵌入——rebuild 真跑）
       assert(src.indexOf('hostEmbed === false') < 0 && src.indexOf('嵌入只在浏览器端运行') < 0, tag + ' rebuild bge 快速失败闸已移除')
       // status 显性面 + 读路径强制 drain
-      assert(src.indexOf('pending: _vectorPending.size') >= 0 && src.indexOf('pendingError: _vectorPendingErr') >= 0, tag + ' status pending/pendingError 显性键在案')
+      assert(src.indexOf('pending: _vectorPending.size') >= 0 && src.indexOf('pendingError: [_vectorPendingErr.drain, _vectorPendingErr.rebuild]') >= 0, tag + ' status pending/pendingError 显性键在案（0.6.x 池#9 起 pendingError = drain/rebuild 分键合并呈现——响应面字符串零改动）')
       assert(src.indexOf('_vectorDrainNow()') >= 0, tag + ' status/search 读路径强制 drain（读即新鲜，保存→可搜 <5s）')
       // rebuild 权威全量清挂起
       assert(src.indexOf('_vectorPending = new Map()') >= 0 && src.indexOf('clearTimeout(_vectorDrainTimer)') >= 0, tag + ' rebuild 清挂起队列 + 取消防抖计时器（权威全量覆盖）')
-      // 失败不丢红线锚
-      assert(src.indexOf('_vectorPendingErr = String(') >= 0 && src.indexOf('入队不丢') >= 0, tag + ' drain 失败整批重排回挂起队列 + 报错显性（不自动重试）')
+      // 失败不丢红线锚（池#9 起记 drain 分键）
+      assert(src.indexOf('_vectorPendingErr.drain = String(') >= 0 && src.indexOf('入队不丢') >= 0, tag + ' drain 失败整批重排回挂起队列 + 报错显性 drain 分键（不自动重试）')
     }
   })
 

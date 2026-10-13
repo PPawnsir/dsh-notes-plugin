@@ -1,4 +1,5 @@
-// 节 127. 0.5.0 P1 rebuild 后台化（notes-051-rebuild-async：首建 >30s 同步 RPC 超前端 30s 护栏 → UI 误报「构建失败：响应超时」修复）
+// 节 127. 0.5.0 P1 rebuild 后台化（notes-051-rebuild-async：首建 >30s 同步 RPC 撞前端 RPC 护栏 → UI 误报「构建失败：响应超时」修复）
+//   （护栏口径 0.6.x 池#12 注释修正：双端不一致是现状裁决——app 20s（app/kernel/rpc.js RPC_TIMEOUT_MS）/ client 面板 30s（client/kernel/perf.js HOSTCALL_TIMEOUT_MS））
 // 真机实证（2026-10-10 晨，用户重启后首点）：host rebuild 真跑（含首跑 24MB 模型下载+全库嵌入）总时长 >30s → 前端超时误报失败，
 //   后台实际建完（status: indexed=171/171 pending=0）。
 // 修法：①notes-vectors-rebuild 改异步——立即返回 {ok,started:true}，重建本体 _vectorsRebuildRun 独立 async 后台跑
@@ -37,7 +38,7 @@ module.exports = {
       assert(runBody.indexOf('_vectorEnqueue') < 0, tag + ' 重建本体不挂 _vectorJobChain（后台独立 async）')
       assert(runBody.indexOf('await _vectorJobChain') >= 0, tag + ' 起跑等 in-flight 增量（R2 顺序一致语义不动）')
       assert(runBody.indexOf('_vectorPending = new Map()') >= 0 && runBody.indexOf('clearTimeout(_vectorDrainTimer)') >= 0, tag + ' 权威全量清挂起语义不动（R2 红线）')
-      assert(src.indexOf('_vectorPendingErr = String((e && e.message) || e)   // 失败显性：status.pendingError 轮询拾起；不自动重试（红线不变）') >= 0, tag + ' 后台重建失败落 _vectorPendingErr（不自动重试红线不变）')
+      assert(src.indexOf("_vectorPendingErr.rebuild = String((e && e.message) || e)") >= 0 && src.indexOf("let _vectorPendingErr = { drain: '', rebuild: '' }") >= 0, tag + ' 后台重建失败落 _vectorPendingErr.rebuild（0.6.x 池#9 分键记账——drain 成功不抹 rebuild 账；不自动重试红线不变）')
       assert(src.indexOf('building: !!_vectorRebuilding') >= 0, tag + ' status building 键在案（双端轮询承接信号源）')
       // 失败不盖章：lastBuiltAt 戳记只在本体成功路径（swap 前）——runBody 外不得另设
       assert(runBody.indexOf('ns.lastBuiltAt = new Date().toISOString()') >= 0, tag + ' lastBuiltAt 仅成功盖章（本体末段 swap 前）')

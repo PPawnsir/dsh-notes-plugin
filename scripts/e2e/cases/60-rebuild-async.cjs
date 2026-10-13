@@ -3,7 +3,8 @@
  * ① 异步契约实证：rebuild RPC 响应 = { ok, started:true }（无 error、无 indexed——同步窗不再等全量重建完结）；
  * ② 点了 → 立即「构建中」态（按钮 disabled + 「构建中…」）；观测窗中段 mock 侧 _vectorBuilding 仍在跑（RPC 早返、重建未完结）；
  * ③ 构建中二次点击去重：按钮 disabled 拦截 → rebuild 请求计数恒 1（并发双击不重复发起）；
- * ④ 轮询承接成功终态：按钮复活「构建索引」+ 状态行 indexed 爬满（= 非空可索引数——空正文零块不计入 indexed，与 host 同口径）；
+ * ④ 轮询承接成功终态：按钮复活「构建索引」+ 状态行 indexed 爬满（0.6.x 池#8 口径翻转在案：indexable M 不再含零块笔记，
+ *   旧「36 可索引 / 35 入索引」翻转为 N≡M 恒等——空正文零块不计入，与 host _vectorEmbeddable 同口径）；
  * ⑤ 失败路径：_vectorRebuildError 桩 → RPC 仍 started（不带 error）→ 轮询拾起 status.pendingError → #mErr sticky 报错含原因
  *   （真失败才报；0.5.0 P0 失败驻留语义经轮询路径保真）。
  * 隔离纪律：finally 清 _vectorRebuildDelay/_vectorRebuildError/_vectorPendingError 桩 + 语义设置回落，关 context。 */
@@ -74,11 +75,12 @@ module.exports = {
           const m = s ? s.textContent.match(/(\d+)\/(\d+) 篇/) : null
           return { status: s ? s.textContent.trim() : '', indexed: m ? +m[1] : -1, indexable: m ? +m[2] : -2 }
         })
-        /* 爬满口径：indexed = 可索引且正文非空（空正文零块天然不计入 indexed——与 host _vectorChunks 空正文跳过同口径；
-           全量套件共享夹具内有空正文笔记（36 可索引 / 35 入索引），故以 mock state 现算期望值为锚而非 N/N 死板相等） */
+        /* 爬满口径（0.6.x 池#8 翻转在案：indexable M 不再含零块笔记——旧「36 可索引 / 35 入索引」翻转为 N≡M 恒等，
+           N≡M 即等价守卫）：indexed = indexable = 可索引且正文非空（空正文零块天然不计入——与 host _vectorEmbeddable 同口径；
+           全量套件共享夹具内有空正文笔记），故以 mock state 现算期望值为锚而非写死数字 */
         const expectedIndexed = state.notes.filter(n => n.id && n.deleted !== true && n.sensitive !== true && n.kind !== 'sys' && String(n.body || '').length > 0).length
-        H.t('④ 轮询承接：按钮复活 + 状态行 indexed 爬满（= 非空可索引数 ' + expectedIndexed + '；空正文零块不计入口径同 host）',
-          okRow.indexed >= 1 && okRow.indexed === expectedIndexed, () => JSON.stringify(okRow) + ' / 期望 ' + expectedIndexed)
+        H.t('④ 轮询承接：按钮复活 + 状态行 N/M 爬满且 N≡M（= 非空可索引数 ' + expectedIndexed + '；池#8 口径翻转——M 不再含零块笔记，口径同 host）',
+          okRow.indexed >= 1 && okRow.indexed === expectedIndexed && okRow.indexable === expectedIndexed, () => JSON.stringify(okRow) + ' / 期望 ' + expectedIndexed + '/' + expectedIndexed)
         H.t('④ 后台真建落定：mock 侧 _vectorBuilding 消旗 + rebuild 请求仍恒 1（全程单次发起）',
           !state._vectorBuilding && rebuildReqs.length === 1, () => 'reqs=' + rebuildReqs.length)
         await H.screenshot(page, '60-rebuild-async')

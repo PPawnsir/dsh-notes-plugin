@@ -151,5 +151,12 @@ module.exports = {
     for (const e of ['| Wiki link |', '| Soft link |', '| Index mount |', '| Dispatch mount |']) assert(ROOT_EN.indexOf(e) >= 0, 'en 四类边表缺行：' + e)
     for (const a of ['execution log', 'memory archive', 'recall metrics', 'injection index']) assert(ROOT_EN.indexOf(a) >= 0, 'en 根索引四实例缺锚点：' + a)
   })
+
+  // ===== ⑤ README 宿主能力依赖小表（notes-061-compat-matrix：功能 × 宿主版本 × 缺席行为——竞品 dsh-sidenote 兼容矩阵形态借鉴，版本号经宿主 npm 包代码实证）=====
+  await t('README 宿主能力依赖小表（中英双版）：小节标题 + 表头 + 能力点名（agents.resume/titlesPending/slot 双槽位）+ 降级总原则行', () => {
+    for (const a of ['### 宿主能力依赖（功能 × 宿主版本 × 缺席行为）', '| 功能 | 需要宿主版本 / 能力 | 缺席时行为 |', '宿主能力缺席时按能力降级、不崩页面']) assert(ROOT_ZH.indexOf(a) >= 0, 'zh 宿主能力依赖小表缺锚点：' + a)
+    for (const a of ['### Host Capability Dependencies (feature × host version × behavior when absent)', '| Feature | Required host version / capability | Behavior when absent |', 'degrade by capability instead of crashing the page']) assert(ROOT_EN.indexOf(a) >= 0, 'en 宿主能力依赖小表缺锚点：' + a)
+    for (const a of ['agents.resume', 'titlesPending', 'shell.overlay', 'conversation.session.header.actions']) { assert(ROOT_ZH.indexOf(a) >= 0, 'zh 小表缺能力点名：' + a); assert(ROOT_EN.indexOf(a) >= 0, 'en 小表缺能力点名：' + a) }
+  })
   }
 }

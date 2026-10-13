@@ -50,6 +50,19 @@ DSH evolves quickly and each plugin version differs in capability and supported 
 - **semver prerelease note**: a prerelease like `0.2.0-rc.2` **does not match** a wide range like `>=0.1.7 <0.3.0-0` (semver rules), so prerelease branches must be enumerated explicitly in the declaration — done this way since 0.2.4.
 - When DSH makes a major change (`0.x` minor-version jump), this table is updated after the corresponding plugin adaptation release; the `peerDependencies` upper bound (currently `<0.3.0-0`/`^0.2.0`) is the conservative "not yet verified on the newer DSH" declaration, and lifting it happens with a new plugin release.
 
+### Host Capability Dependencies (feature × host version × behavior when absent)
+
+The table above is the per-release history; this one switches the axis — it maps each feature to the host capability it depends on and what actually happens when that capability is absent. Every version below is pinned against the code of the published host npm packages, not written from memory:
+
+| Feature | Required host version / capability | Behavior when absent |
+| --- | --- | --- |
+| Dispatch session list (session-metadata cache + `titlesPending` polling) | DSH ≥ 0.1.7 | The list is slow / times out (0.1.5~0.1.6 verified unusable); plugin 0.2.0 ships a cache + polling mitigation, but behavior still follows 0.1.7 |
+| Scheduled dispatch waking dormant targets | Host provides `agents.resume` (verified present in the dsh-agent package since 0.1.5-rc.1 — the entire declared range is covered) | Probed per point at runtime: when absent, the schedule chain records `lastError` ("host does not support agents.resume"), never silently queues, never crashes the page; manual dispatch is unaffected |
+| Notes panel & session-header entries | Host slots service + the built-in `shell.overlay` / `conversation.session.header.actions` seats (verified present since 0.1.5-rc.1) | When the slots service is absent the client logs a `console.error` and skips mounting entirely — the entries and panel never appear, the rest of the host page is unaffected |
+| Agent memory / injection / search / semantic search / secret spans | No extra host dependency (closed loop on the plugin side; semantic embedding runs in the plugin's own host-process code, note bodies never leave the machine) | — (nothing beyond the declared range is required, so there is no absence case) |
+
+**General principle**: when a host capability is absent, degrade by capability instead of crashing the page — what can be probed at runtime is probed and degraded per point (the capability probes and guards in the rows above); what cannot is left to `peerDependencies`, enforced by npm at install time.
+
 ## What Problem It Solves
 
 Conclusions inside agent sessions are disposable: why a design was chosen, which hard conventions a project has, the todo that popped up this afternoon — all scattered across the conversation stream. Compress the context or close the session, and that knowledge is gone. The next session's agent doesn't know what was decided last week, and the user has to repeat conventions over and over.
@@ -232,8 +245,8 @@ Backward compatibility: old files missing `inject`/`kind`/`status`/`injectRole`/
 node scripts/build-dist.cjs           # after changing src/** (client/host/app/shared/styles), refresh all four artifacts at once: lib/client.js + lib/styles.css + app.html + index.mjs
 node --check packages/dsh-notes-plugin/index.mjs
 node --check packages/dsh-notes-plugin/lib/client.js
-node check.js                         # 1269-case regression (host full chain + static package + client UI surface + virtual folders + directory-section mount lines + import & export + semi-standalone page + dual-mode editor + sensitive masking + injection enhancements + telemetry/wiki-links + snapshot history engine + modular structure contract + bilingual README.en + i18n guard + note-network guard / README philosophy)
-npm run e2e                           # Browser e2e (Playwright + built-in mock host, 67 cases / 624 assertions: load/CRUD/search/injection manager & mount modal/log parity/drag-to-folder/trash/export/machine-filter archive browsing/folder sys/hidden visibility/dormant dispatch/exec-log jump/organize modal, etc.; requires chromium or system Chrome)
+node check.js                         # 1287-case regression (host full chain + static package + client UI surface + virtual folders + directory-section mount lines + import & export + semi-standalone page + dual-mode editor + sensitive masking + injection enhancements + telemetry/wiki-links + snapshot history engine + modular structure contract + bilingual README.en + i18n guard + note-network guard / README philosophy)
+npm run e2e                           # Browser e2e (Playwright + built-in mock host, 69 cases / 641 assertions: load/CRUD/search/injection manager & mount modal/log parity/drag-to-folder/trash/export/machine-filter archive browsing/folder sys/hidden visibility/dormant dispatch/exec-log jump/organize modal/secret banner & read records, etc.; requires chromium or system Chrome)
 ```
 
 See [DEVELOPMENT.md](https://github.com/PPawnsir/dsh-notes-plugin/blob/main/DEVELOPMENT.md) for details.

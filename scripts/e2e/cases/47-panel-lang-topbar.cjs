@@ -55,8 +55,8 @@ module.exports = {
         /* ===== ③ 设置弹窗语言行下线 ===== */
         await h.page.click('.dsh-notes-fbtn:has-text("Settings")')
         await h.page.waitForSelector('.dsh-notes-settings-row', { timeout: 8000 })
-        await H.waitFor(h.page, '设置卡落定（18 行渲染）', async () => h.page.evaluate(() =>
-          document.querySelectorAll('.dsh-notes-settings-list .dsh-notes-settings-row').length === 18))
+        await H.waitFor(h.page, '设置卡落定（19 行渲染）', async () => h.page.evaluate(() =>
+          document.querySelectorAll('.dsh-notes-settings-list .dsh-notes-settings-row').length === 19))
         const setInfo = await h.page.evaluate(() => {
           var labels = Array.prototype.slice.call(document.querySelectorAll('.dsh-notes-settings-label')).map(function (el) {
             return el.childNodes[0] ? String(el.childNodes[0].textContent).trim() : ''
@@ -68,7 +68,7 @@ module.exports = {
             railFirst: (document.querySelector('.dsh-notes-settings-rail-item') || {}).textContent || '',
           }
         })
-        H.t('③ 设置卡 18 行 + 无语言行（Language/语言 label 均缺席）', setInfo.rows === 18 && !setInfo.hasLangRow, () => JSON.stringify(setInfo))
+        H.t('③ 设置卡 19 行 + 无语言行（Language/语言 label 均缺席）', setInfo.rows === 19 && !setInfo.hasLangRow, () => JSON.stringify(setInfo))
         H.t('③ 常规组空槽隐身（en 态 rail 首项=Search & Injection）', !setInfo.hasGeneral && setInfo.railFirst.indexOf('Search & Injection') >= 0, () => setInfo.railFirst)
         await h.page.click('.dsh-notes-settings-close')
         await H.waitFor(h.page, '设置卡关闭', async () => h.page.evaluate(() => !document.querySelector('.dsh-notes-settings-modal')))

@@ -562,6 +562,15 @@ window.__ModuleLoader__.load({
       'settings.secretDetectTip': '保存笔记时自动检测疑似凭据（密码/密钥/令牌及 AWS·OpenAI·GitHub 等裸凭据），命中后编辑器顶部建议一键标记为机密区；关闭仅停止冒泡建议——已标记机密区的打码/避让/取回门禁不受任何影响（缺省开启）',
       'settings.secretDetectOn': '已开启：保存时检测疑似机密并建议标记',
       'settings.secretDetectOff': '已关闭保存时检测建议（已标记机密区的保护不变）',
+      /* 文档安全二期（notes-061-docsec-hygiene 池#17）：设置卡「数据与存储」组——机密读取记录查看入口（reveal 审计环形缓冲只读面；内存态重启清空） */
+      'settings.secretAudit': '机密读取记录',
+      'settings.secretAuditTip': 'note_get reveal:true 取回机密区原文的读取审计（时间 / 笔记 / 会话 / 机密区数）；内存环形缓冲保留最近 100 条、重启清空（持久化属二期加密批配套）；进程日志照旧双通道留痕',
+      'settings.secretAuditTipT': '查看 reveal 机密读取审计（最近 100 条，内存环形缓冲，重启清空）',
+      'settings.secretAuditView': '查看',
+      'settings.secretAuditHide': '收起',
+      'settings.secretAuditEmpty': '暂无读取记录',
+      'settings.secretAuditSpans': '{n} 处机密区',
+      'settings.secretAuditLoadFailed': '读取记录加载失败',
       'settings.suggest': '整理建议',
       'settings.suggestTip': '速记组归档 / 过期未引用清理 / 孤儿笔记候选 / 日志卫生提名（只提名不自动执行）',
       'settings.suggestTipClient': '速记组归档 / 过期未引用清理 / 孤儿笔记候选（只提名不自动执行）',
@@ -1510,6 +1519,15 @@ window.__ModuleLoader__.load({
       'settings.secretDetectTip': 'Automatically scan the body for suspected credentials (passwords/keys/tokens and bare AWS/OpenAI/GitHub credentials) on save; when hits are found the editor shows a one-click "mark as secret" suggestion. Turning this off only stops the suggestions — masking/avoidance/reveal gates for marked secret areas are never affected (on by default)',
       'settings.secretDetectOn': 'Enabled: detect suspected secrets on save and suggest marking',
       'settings.secretDetectOff': 'Save-time detection suggestions disabled (protection of marked secret areas unchanged)',
+      /* 文档安全二期（notes-061-docsec-hygiene 池#17）：设置卡「数据与存储」组——机密读取记录查看入口（reveal 审计环形缓冲只读面；内存态重启清空） */
+      'settings.secretAudit': 'Secret read records',
+      'settings.secretAuditTip': 'Read audit of note_get reveal:true fetches of secret-span plaintext (time / note / session / span count); the in-memory ring buffer keeps the latest 100 entries and is cleared on restart (persistence ships with the phase-2 encryption batch); the process-log line is still written (dual channel)',
+      'settings.secretAuditTipT': 'View the reveal secret-read audit (latest 100 entries, in-memory ring buffer, cleared on restart)',
+      'settings.secretAuditView': 'View',
+      'settings.secretAuditHide': 'Hide',
+      'settings.secretAuditEmpty': 'No read records yet',
+      'settings.secretAuditSpans': '{n} secret span(s)',
+      'settings.secretAuditLoadFailed': 'Failed to load read records',
       'settings.suggest': 'Organize suggestions',
       'settings.suggestTip': 'Quick-note group archiving / stale unreferenced cleanup / orphan note candidates / log hygiene nominations (nominates only, never auto-executes)',
       'settings.suggestTipClient': 'Quick-note group archiving / stale unreferenced cleanup / orphan note candidates (nominates only, never auto-executes)',
@@ -2862,7 +2880,7 @@ window.__ModuleLoader__.load({
     // ===== 0.4.6-B 韧性护栏（notes-046-rpc-resilience）：in-process 宿主调用桥同款超时（实测挂起场景：落地页无活跃会话/巡检并发打满宿主）=====
     // 超时 reject Error(t('rpc.hostTimeout'))——调用点既有 catch 零改动兼容（loadNotes → 错误条 / loadEdBody → R-1 横幅）；
     // LLM 类长调用（host 侧 8s~120s 级：when-suggest 草稿 8s / 约定体检 120s——0.4.7-A⑨）经 HOSTCALL_LLM_METHODS 显式放宽；超时值集中本块常量可改。
-    const HOSTCALL_TIMEOUT_MS = 30000        // 缺省护栏（普通 RPC）
+    const HOSTCALL_TIMEOUT_MS = 30000        // 缺省护栏（普通 RPC）——client 面板端 30s 口径；app 端另是 20s（app/kernel/rpc.js RPC_TIMEOUT_MS），双端不一致是现状裁决（0.6.x 池#12 注释写明），勿想当然对齐
     const HOSTCALL_TIMEOUT_LLM_MS = 120000   // LLM 类长调用护栏
     const HOSTCALL_LLM_METHODS = { 'notes-ai-organize': 1, 'notes-quick-instruct': 1, 'notes-when-suggest': 1, 'notes-conflict-check': 1 }
     // 性能计数器在 rpc() helper 内部累加（hostCall/hostCallMs），不再改写全局 host 桥
@@ -5523,7 +5541,7 @@ window.__ModuleLoader__.load({
       { id: 'inject', icon: 'bolt', labelKey: 'settings.group.inject', rows: ['stale', 'budget', 'injprev', 'injmgr', 'semantic'] },   // 检索与注入：搜索/注入/挂载类
       { id: 'dispatch', icon: 'clock', labelKey: 'settings.group.dispatch', rows: [] },   // 派发与调度（待新节登记）
       { id: 'ai', icon: 'sparkle', labelKey: 'settings.group.ai', rows: ['llm', 'organizemax', 'usage', 'usagebudget', 'suggest'] },   // AI：LLM 配置/整理上限类
-      { id: 'data', icon: 'folder', labelKey: 'settings.group.data', rows: ['maxdepth', 'secretdetect', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },   // 数据与存储：遥测/备份/存储路径类；文档安全 S4 保存时检测建议开关（缺省开）
+      { id: 'data', icon: 'folder', labelKey: 'settings.group.data', rows: ['maxdepth', 'secretdetect', 'secretaudit', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },   // 数据与存储：遥测/备份/存储路径类；文档安全 S4 保存时检测建议开关（缺省开）；二期池#17 机密读取记录查看行
       { id: 'about', icon: 'info', labelKey: 'settings.group.about', rows: ['cheatsheet'] },   // 关于：版本/计数/文档链接类
     ]
     // 分组点击定位：滚动容器 = .dsh-notes-settings-modal（与 0.4.7-B sticky 标题同容器，吸顶标题补偿 48px）
@@ -5687,6 +5705,20 @@ window.__ModuleLoader__.load({
           showToast(on ? tt('settings.secretDetectOn') : tt('settings.secretDetectOff'))
         }).catch(() => setSecretDetectOn(!on))
       }
+      /* ===== 文档安全二期（notes-061-docsec-hygiene 池#17）：机密读取记录（「数据与存储」组查看行，紧随 secretdetect）——
+         点击「查看」展开 notes-secret-audit 只读列表（倒序=最新在前；每次展开重新拉取；空态「暂无读取记录」）；
+         缓冲为内存环形（最近 100 条、重启清空——持久化属二期加密批配套）。secretAuditRows：null=加载中 / 'error'=失败 / 数组=条目 */
+      const [secretAuditOpen, setSecretAuditOpen] = React.useState(false)
+      const [secretAuditRows, setSecretAuditRows] = React.useState(null)
+      const doSecretAuditToggle = () => {
+        if (secretAuditOpen) { setSecretAuditOpen(false); return }
+        setSecretAuditOpen(true)
+        setSecretAuditRows(null)
+        rpc('notes-secret-audit', {}).then(r => {
+          if (r && r.error) { setSecretAuditRows('error'); return }
+          setSecretAuditRows((r && r.entries) || [])
+        }).catch(() => setSecretAuditRows('error'))
+      }
       React.useEffect(() => {
         if (!settingsData) return
         const sm = (settingsData.settings && settingsData.settings.semantic) || {}
@@ -5822,6 +5854,18 @@ window.__ModuleLoader__.load({
         // 文档安全 S4：保存时机密检测建议开关控件（「数据与存储」组勾选行；选择即存——semantic 总开关同款交互）
         const secretDetectControl = e('label', { className: 'dsh-notes-settings-checkwrap' },
           e('input', { type: 'checkbox', className: 'dsh-notes-settings-check', checked: secretDetectOn, 'aria-label': tt('settings.secretDetect'), onChange: (ev) => doSecretDetectToggle(ev.target.checked) }))
+        // 文档安全二期（池#17）：机密读取记录控件——查看/收起钮 + 展开只读列表（时间·标题·会话·机密区数；React 文本节点自动转义）
+        const secretAuditControl = e('div', { style: { width: '100%' } },
+          e('button', { className: 'dsh-notes-settings-clear dsh-nt', 'data-tooltip': tt('settings.secretAuditTipT'), onClick: doSecretAuditToggle }, secretAuditOpen ? tt('settings.secretAuditHide') : tt('settings.secretAuditView')),
+          secretAuditOpen ? e('div', { className: 'dsh-notes-audit-list' },
+            secretAuditRows === null
+              ? e('span', { className: 'dsh-notes-settings-label-s' }, tt('common.loading'))
+              : secretAuditRows === 'error'
+                ? e('span', { className: 'dsh-notes-settings-label-s' }, tt('settings.secretAuditLoadFailed'))
+                : !secretAuditRows.length
+                  ? e('span', { className: 'dsh-notes-settings-label-s' }, tt('settings.secretAuditEmpty'))
+                  : secretAuditRows.map((en, i) => e('div', { key: 'sa-' + i, className: 'dsh-notes-audit-line' },
+                      fmtDT(en.at) + ' · ' + (en.title || en.note || '') + ' · ' + (en.session || '') + ' · ' + tt('settings.secretAuditSpans', { n: en.spans })))) : null)
         // P1 注入体积预算控件：数值输入（约，字符数）+ 仪表（最近一次注入体积 vs 预算，超预算变红）；约定条目永不截断
         const lastChars = (settingsData && typeof settingsData.lastInjectChars === 'number') ? settingsData.lastInjectChars : 0
         const budgetNum = /^\d+$/.test(setBudget.trim()) ? parseInt(setBudget.trim(), 10) : 0
@@ -5901,6 +5945,8 @@ window.__ModuleLoader__.load({
           { key: 'maxdepth', label: tt('settings.maxDepth'), sub: tt('settings.maxDepthTip'), control: maxDepthControl },
           // 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议开关行（数据与存储组，缺省开；仅管建议不管保护）
           { key: 'secretdetect', label: tt('settings.secretDetect'), sub: tt('settings.secretDetectTip'), control: secretDetectControl },
+          // 文档安全二期（notes-061-docsec-hygiene 池#17）：机密读取记录查看行（数据与存储组，紧随 secretdetect；只读展开列表）
+          { key: 'secretaudit', label: tt('settings.secretAudit'), sub: tt('settings.secretAuditTip'), control: secretAuditControl },
           { key: 'budget', label: tt('settings.budget'), sub: tt('settings.budgetTip'), control: budgetControl },
           { key: 'injprev', label: tt('settings.injPreview'), sub: tt('settings.injPreviewTip'), control: injPrevControl },
           { key: 'injmgr', label: tt('settings.injManager'), sub: tt('settings.injManagerTip'), control: injMgrControl },

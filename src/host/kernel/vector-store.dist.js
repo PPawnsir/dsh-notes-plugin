@@ -3,6 +3,8 @@
     //   本卡纯 host 地基（不动 UI）：真 wasm 后端是②卡、检索融合是③卡、设置区是④卡。
     // 文件：NOTES_DIR/vectors.jsonl（.jsonl 不进笔记列表天然隐身——_list 只认 .md；与 telemetry.json/settings.json 同目录纪律）。
     //   行格式（每行一条 JSON，墓碑删除 = 内存权威重写时整行缺席）：{ noteId, chunk, bodyHash, backend, vector }
+    //   0.6.x（notes-061-vector-hygiene 池#11）：命名空间元信息行 { meta:true, backend, lastBuiltAt }——rebuild 盖章随边车落盘、_vectorLoad 恢复
+    //   （重启后设置区「上次构建」不再空白）；旧边车无本行 → lastBuiltAt 缺省 '' 不报错（向后兼容）；旧版解析器遇本行缺 noteId/vector 静默跳过（前向兼容）。
     //   chunk = 块序（分段嵌入的块序号，0 起）；bodyHash = 全文稳定 hash（任何块变 → 全量重算该笔记，简化一致性）；
     //   vector = L2 归一化向量数组（实现方保证，查询侧只做点积）；backend = 后端 id（命名空间键）。
     // 命名空间：按 backend.id 分命名空间（换后端不重建、旧集保留秒切）——rebuild 只清空重建目标后端命名空间，其余保留。
@@ -32,12 +34,16 @@
     //   （单批 ≤8 块，与 R1 并发闸批上限同口径）→ 落边车（保存→可搜延迟目标 <5s）。防抖合并：同 id 重复变更合并为一次嵌入
     //   （连改 N 次只 embed 一次）；挂起队列只存 id——drain 时经 cache 取 drain 时刻最新版（快照竞态构造性消除：
     //   入队后删除/再改/敏感翻转都以内存权威为准，旧快照永不嵌入）。
-    //   失败不丢（红线）：embed 失败（如模型未下载）整批 id 重排回挂起队列 + _vectorPendingErr 显性（status.pending/pendingError
+    //   失败不丢（红线）：embed 失败（如模型未下载）整批 id 重排回挂起队列 + _vectorPendingErr.drain 显性（status.pending/pendingError
     //   可见），不自动重试（持续故障防抖 hammer——下次变更/status/search/rebuild 触发重排）；语义关闭期间入队丢弃（重开由 rebuild 回填）。
     const VECTOR_DRAIN_MS = 2000                    // 保存即嵌入防抖窗口（与 telemetry-store 同款 2s 防抖纪律）
     let _vectorPending = new Map()                  // 挂起队列：id → true（Set 语义；同 id 重复入队 = 防抖合并）
     let _vectorDrainTimer = null
-    let _vectorPendingErr = ''                      // 最近一次 drain 失败原因（status 显性面；成功清零）
+    // 0.6.x（notes-061-vector-hygiene 池#9）：失败台账按来源分键——drain 失败与 rebuild 失败各自记账，
+    //   drain 成功只清 drain 键（rebuild 失败不再被后续 drain 成功抹掉——旧单键双向清零竞态，节 128 驳回遗留 b 本卡治）；
+    //   rebuild 成功则两键并清（权威全量已覆盖 drain 挂起积压对应的全部笔记，旧 drain 失败随之失效——不对称清零裁决在案）；
+    //   status.pendingError 合并呈现为字符串（响应面零改动，双端 UI 读面不动）。
+    let _vectorPendingErr = { drain: '', rebuild: '' }   // 分键失败台账（status.pendingError 合并呈现的数据源；无 = 两键皆 ''）
     let _vectorRebuilding = null                    // 0.5.0 P1（notes-051-rebuild-async）：后台重建在跑标记 { backend, startedAt, promise }（status.building 数据源 + 并发去重闸）
     // backend 注册表：id → { id, dim, minScore, embed }（窄接口；换后端 = 注册新条目 + 换命名空间，旧集保留）
     const _vectorBackends = new Map()
@@ -83,7 +89,8 @@
     // 0.5.0 R1（notes-051-host-embedder）：host embedder 内核——bge 嵌入迁回 host 进程（spike② 实证配置落地，嵌入面迁回 host 的第一步）。
     //   路线：onnxruntime-web 纯 wasm 在宿主进程跑 bge（正文不出机器红线不变——本地推理本质保证；npm overrides 桩化 onnxruntime-node/sharp，
     //   原生 binding/@img 零进安装树——进程退出 0xC0000005 崩溃回归闸）；0.5.0 R3（notes-051-query-embed）起浏览器嵌入路径整体退役
-    //   （app 侧嵌入模块删码 + 模型文件代理路由拆除），notes-vectors-put 回写通道保留（外部回写入口，生产方暂缺）。
+    //   （app 侧嵌入模块删码 + 模型文件代理路由拆除），notes-vectors-put 回写通道保留（0.6.x 池#2 裁决：外部嵌入后端回写入口——
+    //   预留给未来自定义后端；当前无生产方但不删——删=未来接外部后端时要加回）。
     //   懒加载单例：首次调用才 import 运行时 + 加载模型（缺省关闭零成本——不进 embed 则零 import 零下载）；
     //   并发闸 = 嵌入串行化队列（单飞链，失败不断链）；批上限 ≤8 块/批（防 spike 实测大批次 +4.3GB 内存峰）；
     //   模型 host 缓存 BGE_MODEL_CACHE_DIR（镜像链 hf-mirror→HF failover，Node 无 CORS 直连）。
@@ -278,6 +285,14 @@
     function _vectorIndexable(n) {
       return !!(n && n.id && n.deleted !== true && n.tombstoned !== true && n.sensitive !== true && n.kind !== 'sys')
     }
+    // 非空可索引判定（0.6.x notes-061-vector-hygiene 池#8 口径精修）：_vectorIndexable ∧ 切块 ≥1。
+    //   空正文（或剥 secret span 后为空）零块笔记没有可嵌入内容——status 的 N/M 里 M 不再含零块笔记
+    //   （rebuild 本就以 chunks.length>0 跳过它们，旧口径 M 恒把空篇算进分母：含空正文笔记的库里 N/M 永差一截）；
+    //   断言口径：rebuild 后 indexable≡indexed。_vectorIndexable 语义不动（它管「该不该索引」——出队/排除/sensitive 红线照走），
+    //   精修的只是 status/rebuild 返回面的「计数口径」；drain/rebuild 的实际嵌入行为本就与本判定等价（零块零嵌入）。
+    function _vectorEmbeddable(n) {
+      return _vectorIndexable(n) && _vectorChunks(n.body).length > 0
+    }
     // 激活后端（同步读 settingsCache；缺省关闭零成本）：semantic.enabled===true 且 semantic.backend 在册 → 该后端；backend 缺省回落 VECTOR_DEFAULT_BACKEND。
     function _activeBackend() {
       const s = settingsCache && settingsCache.semantic
@@ -315,6 +330,13 @@
         if (!line) continue
         let row
         try { row = JSON.parse(line) } catch (e) { continue }
+        // 0.6.x 池#11：命名空间元信息行 { meta:true, backend, lastBuiltAt }——恢复 lastBuiltAt（重启后「上次构建」不空白）；
+        //   旧边车无本行 → 缺省 '' 不报错（向后兼容）；本行必须先于数据行校验拦截（缺 noteId/vector，按行格式校验会被当坏行跳过——虽无害但语义不明）
+        if (row && row.meta === true && typeof row.backend === 'string') {
+          const mns = c.ns[row.backend] || (c.ns[row.backend] = _vectorNewNs())
+          if (typeof row.lastBuiltAt === 'string') mns.lastBuiltAt = row.lastBuiltAt
+          continue
+        }
         if (!row || typeof row !== 'object' || !row.noteId || typeof row.backend !== 'string' || !Array.isArray(row.vector) || !row.vector.length) continue
         const ns = c.ns[row.backend] || (c.ns[row.backend] = _vectorNewNs())
         const rows = ns.rows[row.noteId] || (ns.rows[row.noteId] = [])
@@ -328,11 +350,13 @@
       }
       return c
     }
-    // JSONL 序列化：每向量一行 { noteId, chunk, bodyHash, backend, vector }（compact，与落盘字节同口径）。
+    // JSONL 序列化：每向量一行 { noteId, chunk, bodyHash, backend, vector }（compact，与落盘字节同口径）；
+    //   命名空间首行 = 元信息行 { meta:true, backend, lastBuiltAt }（0.6.x 池#11：lastBuiltAt 持久化——仅盖章过（非空）才写，零行命名空间也保留戳记）。
     function _vectorSerialize(c) {
       const lines = []
       for (const bid of Object.keys(c.ns)) {
         const ns = c.ns[bid]
+        if (ns.lastBuiltAt) lines.push(JSON.stringify({ meta: true, backend: bid, lastBuiltAt: ns.lastBuiltAt }))
         for (const nid of Object.keys(ns.rows)) {
           const hash = ns.hash[nid] || ''
           const rows = ns.rows[nid] || []
@@ -387,7 +411,7 @@
     // drain（防抖微批，索引任务单链入队）：挂起集快照清空 → 逐 id 经 cache 取 drain 时刻最新版（快照竞态消除——入队后
     //   删除/再改以内存权威为准）→ 不可索引 → 全命名空间出队（与 _vectorDropNote 同口径）；可索引 → bodyHash 新鲜度检查
     //   （变才重算，增量）→ 跨笔记压平微批（≤VECTOR_EMBED_BATCH_MAX 块/批）embed → 归位落边车（防抖 flush 纪律不变）。
-    //   失败整批重排回挂起队列（入队不丢）+ _vectorPendingErr 显性，不自动重试。
+    //   失败整批重排回挂起队列（入队不丢）+ _vectorPendingErr.drain 显性（池#9 分键：只动 drain 账），不自动重试。
     function _vectorDrain() {
       if (!_vectorPending.size) return Promise.resolve()
       const ids = Array.from(_vectorPending.keys())
@@ -427,12 +451,12 @@
             }
           }
           if (jobs.length || dropped) _vectorScheduleFlush()
-          _vectorPendingErr = ''
+          _vectorPendingErr.drain = ''   // 池#9 分键：drain 成功只清 drain 账（rebuild 账不动——rebuild 失败不被 drain 成功抹掉）
         } catch (e) {
           // 入队不丢（红线）：整批 id 重排回挂起队列（与在途新变更合并；bodyHash 新鲜度保幂等，已成功笔记自然跳过）；
-          //   报错显性（status.pending/pendingError），不自动重试（模型未下载等持续故障防抖 hammer）
+          //   报错显性（status.pending/pendingError，池#9 起记 drain 分键），不自动重试（模型未下载等持续故障防抖 hammer）
           for (const id of ids) { if (!_vectorPending.has(id)) _vectorPending.set(id, true) }
-          _vectorPendingErr = String((e && e.message) || e)
+          _vectorPendingErr.drain = String((e && e.message) || e)
         }
       })
     }
@@ -480,10 +504,11 @@
     }
     // 全量重建（notes-vectors-rebuild 入口）：只清空重建目标后端命名空间（换后端不重建、旧集保留）；全库扫描 + 分段嵌入。
     // 0.5.0 P1（notes-051-rebuild-async）：rebuild 后台化——首建含模型下载+全库嵌入总时长 >30s（真机实证 171/171 后台建完，
-    //   但同步 RPC 超前端 30s 护栏 → UI 误报「构建失败：响应超时」）：RPC 改立即返回 { ok, started:true }，
+    //   但同步 RPC 撞前端 RPC 护栏 → UI 误报「构建失败：响应超时」——双端护栏口径不一致是现状裁决：app 20s（app/kernel/rpc.js RPC_TIMEOUT_MS）/
+    //   client 面板 30s（client/kernel/perf.js HOSTCALL_TIMEOUT_MS），0.6.x 池#12 注释口径修正）：RPC 改立即返回 { ok, started:true }，
     //   重建本体 _vectorsRebuildRun 独立 async 后台跑（不挂 _vectorJobChain——status 轮询须快回，入链会被 status 的
-    //   await _vectorJobChain 整链堵死）；并发重复点击去重（在跑返回 { ok, alreadyRunning:true }）；失败落 _vectorPendingErr
-    //   （status.pendingError 轮询拾起）+ lastBuiltAt 不盖章（新命名空间整弃、旧集保留）；双端 UI 轮询 status 承接终态。
+    //   await _vectorJobChain 整链堵死）；并发重复点击去重（在跑返回 { ok, alreadyRunning:true }）；失败落 _vectorPendingErr.rebuild
+    //   （status.pendingError 轮询拾起——0.6.x 池#9 分键记账）+ lastBuiltAt 不盖章（新命名空间整弃、旧集保留）；双端 UI 轮询 status 承接终态。
     async function _vectorsRebuild(backendId) {
       try {
         await loadSettings()
@@ -492,12 +517,16 @@
         if (_vectorRebuilding) return { ok: true, alreadyRunning: true, backend: _vectorRebuilding.backend }   // 并发去重：在跑不重复发起
         const job = { backend: backend.id, startedAt: new Date().toISOString() }
         _vectorRebuilding = job
-        _vectorPendingErr = ''   // 新一次构建先清上次驻留失败（与 UI「再次构建先清驻留错误」同口径）
+        _vectorPendingErr.rebuild = ''   // 新一次构建先清本键驻留失败（与 UI「再次构建先清驻留错误」同口径；池#9 分键——drain 账不动）
         job.promise = _vectorsRebuildRun(backend).then(function () {
           if (_vectorRebuilding === job) _vectorRebuilding = null
+          // 池#9 不对称清零裁决：rebuild 成功两键并清——权威全量已覆盖 drain 挂起积压对应的全部笔记，旧 drain 失败随之失效；
+          //   反向不成立（drain 成功不清 rebuild 账——增量成功不代表命名空间级重建失败已修复）
+          _vectorPendingErr.drain = ''
+          _vectorPendingErr.rebuild = ''
         }, function (e) {
           if (_vectorRebuilding === job) _vectorRebuilding = null
-          _vectorPendingErr = String((e && e.message) || e)   // 失败显性：status.pendingError 轮询拾起；不自动重试（红线不变）
+          _vectorPendingErr.rebuild = String((e && e.message) || e)   // 失败显性：status.pendingError 轮询拾起（池#9 分键——drain 成功不抹本账）；不自动重试（红线不变）
         })
         return { ok: true, started: true, backend: backend.id }
       } catch (e) { return { error: String(e.message || e) } }
@@ -531,7 +560,7 @@
       c.ns[backend.id] = ns   // 覆盖该命名空间（其余命名空间保留）
       _vectorDirty = true
       await _vectorFlush()
-      return { ok: true, backend: backend.id, dim: backend.dim, minScore: backend.minScore, indexed: indexed, indexable: all.filter(_vectorIndexable).length, lastBuiltAt: ns.lastBuiltAt }
+      return { ok: true, backend: backend.id, dim: backend.dim, minScore: backend.minScore, indexed: indexed, indexable: all.filter(_vectorEmbeddable).length, lastBuiltAt: ns.lastBuiltAt }   // 池#8：indexable 同 _vectorEmbeddable 口径（零块不计入——成功路径 indexed≡indexable）
     }
     // 状态（notes-vectors-status 入口）：N/M 篇·后端·上次构建·各命名空间统计
     async function _vectorsStatus() {
@@ -552,11 +581,12 @@
         // 0.5.0 P0（notes-050-model-proxy）rev2：indexable 计数走 _list 精确扫描（与 _vectorsRebuild 的 indexable 同源同口径）——
         //   常驻 cache 冷启动未暖（status 先于任何 notes-list/写入）会低报 indexable（实测冷 cache=1 / 暖=154 / 参考=154），
         //   属「换 cache 计数」引入的指标回归；_list 全库扫描实测 155 篇 280ms（远非「慢 12-20s」根因），恢复精确计数。
-        //   口径：_list(includeSys=true) 全量 + _vectorIndexable 过滤（排除 deleted/tombstoned/sensitive/sys，与 rebuild 一致）。
+        //   口径：_list(includeSys=true) 全量 + _vectorEmbeddable 过滤（排除 deleted/tombstoned/sensitive/sys + 零块笔记——
+        //   0.6.x 池#8：M 不再含零块笔记，与 rebuild 实际嵌入口径恒等）。
         let indexable = 0
         try {
-          const all = await _list(undefined, undefined, undefined, false, false, true)   // 含 sys（统一 _vectorIndexable 过滤）
-          for (const n of all) { if (_vectorIndexable(n)) indexable++ }
+          const all = await _list(undefined, undefined, undefined, false, false, true)   // 含 sys（统一过滤）
+          for (const n of all) { if (_vectorEmbeddable(n)) indexable++ }
         } catch (e) { indexable = 0 }
         const namespaces = []
         // 0.5.0③（notes-050-rrf-fusion）：激活后端命名空间即使零向量也报自报 dim/minScore（status 契约：激活后端恒可见——bge 未建索引也报 512/0.50）
@@ -576,7 +606,8 @@
           lastBuiltAt: (backend && c.ns[backend.id]) ? c.ns[backend.id].lastBuiltAt : '',
           namespaces: namespaces,
           pending: _vectorPending.size,          // 0.5.0 R2：待嵌入计数（embedder 未就绪时入队不丢——本键即可见）
-          pendingError: _vectorPendingErr,       // 最近一次 drain / 后台 rebuild 失败原因（无 = ''；0.5.0 P1 起 rebuild 失败也落本键——轮询拾起）
+          // 0.6.x 池#9：drain/rebuild 分键台账合并呈现（响应面零改动——双端 UI 读 pendingError 字符串不动；两键同时非空 = 双故障并列展示）
+          pendingError: [_vectorPendingErr.drain, _vectorPendingErr.rebuild].filter(Boolean).join('；'),
           building: !!_vectorRebuilding          // 0.5.0 P1：后台重建在跑标记（双端轮询承接终态信号源：消旗 + pending=0 = 完结）
         }
       } catch (e) { return { error: String(e.message || e) } }
@@ -614,7 +645,9 @@
         return { ok: true, backend: backend.id, dim: backend.dim, minScore: backend.minScore, results: page, count: page.length }
       } catch (e) { return { error: String(e.message || e) } }
     }
-    // 外部回写（notes-vectors-put 入口，②卡落通道）：外部算好的向量 → 经索引队列写边车（①的队列消费位；0.5.0 R3 起浏览器嵌入生产方退役，通道保留）。
+    // 外部回写（notes-vectors-put 入口，②卡落通道）：外部算好的向量 → 经索引队列写边车（①的队列消费位）。
+    //   0.6.x（notes-061-vector-hygiene 池#2 裁决）：本通道 = 外部嵌入后端回写入口（预留给未来自定义后端）——0.5.0 R3 起浏览器嵌入
+    //   生产方退役，当前无生产方但裁决保留不删（删=未来接外部后端时要加回；通道有 dim 校验/坏行上报/队列纪律，维护成本为零）。
     // args = { backend, rows:[{ noteId, bodyHash, vectors:[vec0,vec1,...] }], replace? }
     //   vectors = 该笔记分段块的 L2 归一化向量数组（实现方保证，dim 由本函数写前校验）；chunk = 数组下标（与 _vectorDrain 同口径）。
     //   replace:true = 先清空目标命名空间再写（浏览器全量重建路径）；缺省 = 增量 upsert（单笔记重算，bodyHash 新鲜度锚照存）。
@@ -664,6 +697,42 @@
         })
       } catch (e) { return { error: String(e.message || e) } }
     }
+    // 启动对账（0.6.x notes-061-vector-hygiene 池#10）：模块 init 即异步扫一遍（fire-and-forget，不阻塞宿主启动）——
+    //   边车已载激活命名空间 bodyHash vs 当前库正文比对，不一致/缺失的笔记补入 pending 走正常 drain
+    //   （覆盖「重启瞬间恰有未 drain 编辑」缺口：边车 2s 防抖窗口内进程退出 → 内存增量丢失，旧版重启后陈旧向量一直服役到下次变更）。
+    //   反向顺带清账：命名空间里已不可索引/已不存在（停机期删除/敏感翻转/sys 化）的 id 补入队（drain 出队分支全命名空间清除，
+    //   与运行期 delete/purge 同通道）；零块笔记只在边车有残留（旧非空时期行/hash）时补队清除——从未入索引的空篇零成本跳过（不背每启空转）。
+    //   闸口（零成本红线）：语义未启用 → 零扫描零入队；激活后端命名空间未建立（从未构建）→ 跳过——存量回填归 rebuild/激活流程，
+    //   启动对账只补「已建索引的漂移」，不替用户发起首次全库嵌入。全程静默降级（读盘/扫描异常不扩散）。
+    async function _vectorReconcileOnBoot() {
+      try {
+        await loadSettings()
+        const backend = _activeBackend()
+        if (!backend) return                    // 缺省关闭零成本（语义关闭不入队——重开由 rebuild 回填口径不变）
+        await _vectorLoad()
+        const c = _vectorCache
+        const ns = c.ns[backend.id]
+        if (!ns || (!Object.keys(ns.rows).length && !Object.keys(ns.hash).length)) return   // 命名空间未建立 → 不对账
+        const all = await _list(undefined, undefined, undefined, false, false, true)        // 含 sys（统一 _vectorIndexable 过滤；顺带暖 cache——drain 经 cache 取最新版）
+        const indexableIds = new Set()
+        let queued = 0
+        for (const n of all) {
+          if (!_vectorIndexable(n)) continue
+          indexableIds.add(n.id)
+          const hasRows = !!(ns.rows[n.id] && ns.rows[n.id].length)
+          if (_vectorEmbeddable(n)) {
+            if (ns.hash[n.id] !== _vectorBodyHash(n.body)) { _vectorQueueIndex(n.id); queued++ }   // hash 缺失/不一致 → 补入 pending（未 drain 编辑缺口）
+          } else if (hasRows || ns.hash[n.id]) { _vectorQueueIndex(n.id); queued++ }                 // 零块笔记：边车有残留才补队清除
+        }
+        // 反向清账：边车有、当前库不可索引/不存在（停机期删除/翻转）→ 补队（drain 出队分支全命名空间清除）
+        const staleIds = new Set()
+        for (const id of Object.keys(ns.rows)) staleIds.add(id)
+        for (const id of Object.keys(ns.hash)) staleIds.add(id)
+        for (const id of staleIds) { if (!indexableIds.has(id)) { _vectorQueueIndex(id); queued++ } }
+        if (queued > 0 && typeof console !== 'undefined' && console.info) console.info('notes: 启动对账补入 ' + queued + ' 条待嵌入（边车与正文漂移，走正常 drain）')
+      } catch (e) { /* 静默降级：对账失败不阻塞启动（下次变更/status/search 触发路径不变） */ }
+    }
     // 事件总线注册（保存路径挂钩）：persist.js 的 onNoteChanged 在 manifest 序中先于本模块（kernel/persist.js 序位）。
     onNoteChanged(_vectorOnNoteChanged)
+    _vectorReconcileOnBoot()   // 池#10：启动对账（fire-and-forget——内部自含 try/catch 全静默，不阻塞模块装配）
     // ==== vector-store END ====

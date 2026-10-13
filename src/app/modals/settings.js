@@ -27,7 +27,7 @@ var SET_GROUPS = [
   { id: 'inject',   icon: 'i-bolt',    labelKey: 'settings.group.inject',   rows: ['stale', 'budget', 'injprev', 'injmgr', 'semantic'] },            /* 检索与注入：搜索/注入/挂载类 */
   { id: 'dispatch', icon: 'i-clock',   labelKey: 'settings.group.dispatch', rows: [] },                                                  /* 派发与调度（待新节登记） */
   { id: 'ai',       icon: 'i-sparkle', labelKey: 'settings.group.ai',       rows: ['llm', 'organizemax', 'usage', 'usagebudget', 'suggest'] },  /* AI：LLM 配置/整理上限类 */
-  { id: 'data',     icon: 'i-folder',  labelKey: 'settings.group.data',     rows: ['maxdepth', 'secretdetect', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },  /* 数据与存储：遥测/备份/存储路径类；文档安全 S4 保存时检测建议开关（缺省开） */
+  { id: 'data',     icon: 'i-folder',  labelKey: 'settings.group.data',     rows: ['maxdepth', 'secretdetect', 'secretaudit', 'data', 'assets', 'memory', 'logweek', 'logmonth'] },  /* 数据与存储：遥测/备份/存储路径类；文档安全 S4 保存时检测建议开关（缺省开）；二期池#17 机密读取记录查看行 */
   { id: 'about',    icon: 'i-info',    labelKey: 'settings.group.about',    rows: ['cheatsheet'] },                                      /* 关于：版本/计数/文档链接类 */
 ];
 /* 可见组 = 至少含一个已渲染节的组（按表序；空组隐身） */
@@ -144,6 +144,11 @@ function openSettings() {
        仅管建议不管保护：关闭只停冒泡，已标记机密区的打码/避让/门禁不受任何影响） */
     var secretDetectOn = !(settings.secretDetect && settings.secretDetect.enabled === false);
     setSecs.secretdetect = '<div class="set-row" data-sec="secretdetect">' + setLabelHtml(t('settings.secretDetect'), t('settings.secretDetectTip')) + '<div class="set-ctrl"><label class="set-check"><input type="checkbox" id="setSecretDetect"' + (secretDetectOn ? ' checked' : '') + '></label></div></div>';
+    /* 文档安全二期（notes-061-docsec-hygiene 池#17）：机密读取记录——「数据与存储」组查看行（紧随 secretdetect 之后）。
+       点击「查看」展开 notes-secret-audit 只读列表（时间·笔记标题·会话·机密区数，倒序=最新在前；每次展开重新拉取）；
+       空态「暂无读取记录」。缓冲为内存环形（最近 100 条、重启清空——持久化属二期加密批配套）；列表壳无 data-sec（节计数锚不破） */
+    setSecs.secretaudit = '<div class="set-row" data-sec="secretaudit">' + setLabelHtml(t('settings.secretAudit'), t('settings.secretAuditTip')) + '<div class="set-ctrl"><button class="mbtn" id="setSecretAudit" type="button">' + t('settings.secretAuditView') + '</button></div></div>'
+      + '<div class="set-audit-list" id="setSecretAuditBody" style="display:none"></div>';
     setSecs.budget = '<div class="set-row" data-sec="budget">' + setLabelHtml(t('settings.budget'), t('settings.budgetTip'),
         '<span class="s" id="setGaugeT">' + t('settings.gaugeCurrent', { last: lastChars }) + (budgetNum > 0 ? ' / ' + t('settings.gaugeBudget', { budget: budgetNum }) : t('settings.gaugeUnlimited')) + '</span>'
         + '<div style="height:6px;background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:4px;overflow:hidden;margin-top:4px"><div id="setGaugeBar" style="height:100%;width:' + gaugePct + '%;background:var(' + (budgetNum > 0 && lastChars > budgetNum ? '--ndanger' : '--nacc') + ');transition:width .3s"></div></div>')
@@ -217,6 +222,25 @@ function openSettings() {
     $('setSecretDetect').onchange = function () {
       var on = this.checked;
       saveSettings({ secretDetect: { enabled: on } }, on ? t('settings.secretDetectOn') : t('settings.secretDetectOff'));
+    };
+    /* 文档安全二期（池#17）：机密读取记录——点击展开/收起 notes-secret-audit 只读列表（迟到响应守卫：已收起则丢弃） */
+    $('setSecretAudit').onclick = function () {
+      var body = $('setSecretAuditBody');
+      if (!body) return;
+      if (body.style.display !== 'none') { body.style.display = 'none'; body.innerHTML = ''; this.textContent = t('settings.secretAuditView'); return }
+      var btn = this;
+      body.style.display = '';
+      body.innerHTML = '<span class="s">' + t('common.loading') + '</span>';
+      rpc('notes-secret-audit', {}).then(function (r) {
+        if (body.style.display === 'none') return;   /* 展开后用户已收起——迟到响应丢弃 */
+        if (!r || r.error) { body.innerHTML = '<span class="s">' + t('settings.secretAuditLoadFailed') + '</span>'; return }
+        var rows = r.entries || [];
+        if (!rows.length) { body.innerHTML = '<span class="s">' + t('settings.secretAuditEmpty') + '</span>'; btn.textContent = t('settings.secretAuditHide'); return }
+        body.innerHTML = rows.map(function (en) {
+          return '<div class="set-audit-line">' + esc(fmtDT(en.at)) + ' · ' + esc(en.title || en.note || '') + ' · ' + esc(en.session || '') + ' · ' + esc(t('settings.secretAuditSpans', { n: en.spans })) + '</div>';
+        }).join('');
+        btn.textContent = t('settings.secretAuditHide');
+      }).catch(function () { if (body.style.display !== 'none') body.innerHTML = '<span class="s">' + t('settings.secretAuditLoadFailed') + '</span>' });
     };
     /* P1 注入体积预算（约，字符数）：失焦/Enter 即保存（非负整数；0 = 不限） */
     $('setBudget').onchange = function () {
@@ -485,7 +509,8 @@ function semRenderStatus(pre) {
    （onnxruntime-web 纯 wasm 在宿主跑）；0.5.0 R3（notes-051-query-embed）浏览器嵌入编排（模型下载→嵌入→put 全量回写）
    随浏览器嵌入模块整体删码退役，notes-vectors-put 回写通道 host 侧保留；
    rebuild 快速失败闸已拆，存量回填真跑（分段嵌入+replace put），进度经轮询 status（计数涨）。
-   0.5.0 P1（notes-051-rebuild-async）：rebuild 后台化——RPC 立即返回 { ok, started }（首建 >30s 不再超 30s RPC 护栏误报失败），
+   0.5.0 P1（notes-051-rebuild-async）：rebuild 后台化——RPC 立即返回 { ok, started }（首建不再撞本端 RPC 护栏误报失败——
+   护栏双口径：app 20s（app/kernel/rpc.js RPC_TIMEOUT_MS）/ 面板 client 30s（client/kernel/perf.js HOSTCALL_TIMEOUT_MS），0.6.x 池#12 注释口径修正），
    终态由 semState 轮询承接：1.5s 节拍 notes-vectors-status——pendingError 非空 → sticky 报错（真失败才报）；
    building 消旗且 pending=0 → 成功态（状态行 N/M 篇）。
    0.5.0 P0（notes-050-model-proxy）失败驻留报错：「构建索引」是用户显式动作——失败必须 sticky 报错条（含原因：下载失败/网络/镜像错误），
