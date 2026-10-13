@@ -218,7 +218,7 @@ function parseSecretSpans(body) {
     // ==== sensitive-helpers BEGIN ====（本块三函数集中放置，check.js 提取本标记区间 eval 单测；host-impl.js 与 packages/dsh-notes-plugin/index.mjs 双包逐字节一致，改动必须双边同步）
     // 背景：sensitive=true 的笔记正文可能含明文密码/密钥；inject=true 会把全文带进所有会话的系统提示（泄露面大）。
     // 策略：注入渲染（renderInjected 合并目录段，0.4.3③）时对 sensitive=true 笔记的正文按行打码——保留键名与结构、只遮值；
-    // 占位符统一为 ******（敏感，note_get <id> 获取），引导 agent 需要原文时用 note_get 按 id 自取（注入文本是一次性渲染，无 round-trip）。
+    // 占位符形态单一事实源 = 下方 SENSITIVE_PLACEHOLDER_PREFIX/SUFFIX 常量（063 常量化），引导 agent 需要原文时用 note_get 按 id 自取（注入文本是一次性渲染，无 round-trip）。
     // 三规则：
     //   R1 键值行：行首（可带列表 -/*/+ 或标题 # 前缀）键名以敏感词结尾（password|passwd|pwd|token|secret|apikey|api-key|密码|口令|密钥|私钥|账号|帐号|凭证|credential|ssh 等），
     //      分隔符 : ：= 后值非空 → 遮整段值。键名敏感即视为凭据行，宁多勿漏（原文 note_get 可取，误遮代价低）。
@@ -229,7 +229,11 @@ function parseSecretSpans(body) {
     const SENSITIVE_KV_RE = /^(\s*(?:[-*+]\s+)?(?:#{1,6}\s+)?)([^\s:：=][^:：=\n]{0,38}?)(\s*[:：=]\s*)(\S[\s\S]*)$/
     const SENSITIVE_TOKEN_RE = /(?<![A-Za-z0-9_])(password|passwd|pwd|token|secret|api[-_ ]?key|密码|口令|密钥|私钥)([ \t]+)([\x21-\x7e]{4,})/gi
     const SENSITIVE_PRIVATE_KEY_RE = /(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)[\s\S]*?(-----END [A-Z0-9 ]*PRIVATE KEY-----)/g
-    function sensitivePlaceholder(id) { return '******（敏感，note_get ' + id + ' 获取）' }
+    // 行级敏感占位形态前后缀常量（发生器 sensitivePlaceholder 与掩码回写守卫判定 hasMaskedSensitivePlaceholder 共用单一事实源——
+    //   notes-063-mask-guard-sensitive 同 062 单源纪律：守卫零私有正则、零第二份形态字面量，check 节 137 锚定全文件字面量仅此处 1 处）
+    const SENSITIVE_PLACEHOLDER_PREFIX = '******（敏感，note_get '
+    const SENSITIVE_PLACEHOLDER_SUFFIX = ' 获取）'
+    function sensitivePlaceholder(id) { return SENSITIVE_PLACEHOLDER_PREFIX + id + SENSITIVE_PLACEHOLDER_SUFFIX }
     // 形似凭据的令牌：非纯小写英文单词（排除 expires/required 类散文；令牌本体已被 SENSITIVE_TOKEN_RE 限定为 ≥4 位可打印 ASCII，中文散文天然不命中）
     function looksLikeSecretToken(tok) { return !/^[a-z]+$/.test(tok) }
     function maskSensitiveLine(line, id) {
@@ -238,7 +242,7 @@ function parseSecretSpans(body) {
       // R1 键值行：键名以敏感词结尾 → 遮整段值（前缀/键名/分隔符保留；值已是占位符则幂等跳过）
       const m = s.match(SENSITIVE_KV_RE)
       if (m && SENSITIVE_KEY_RE.test(String(m[2]).replace(/["']+$/, ''))) {
-        if (m[4].indexOf('******（敏感') === 0) return s
+        if (m[4].indexOf(SENSITIVE_PLACEHOLDER_PREFIX) === 0) return s
         return m[1] + m[2] + m[3] + sensitivePlaceholder(id)
       }
       // R2 空白裸令牌（幂等：占位符以 ****** 开头不再二次遮蔽）
@@ -263,12 +267,62 @@ function parseSecretSpans(body) {
     // S1 的 parseSecretSpans（src/shared/editor-kernel.js 物理单源，host 经 manifest @shared 切片纳入本作用域）——
     // 本块零私有 span 正则；span 独立于篇级 sensitive 生效（sensitive=true 且无 span 的行级打码行为原样，红线不动），
     // span 打码优先级高于行级：消费方先整块占位/剥除，行级 ****** 只跑良性残余（span 内不再出 ******）。
-    // 占位形态 = 整块替换为单行「🔒 机密区（N 行，note_get reveal 获取）」（N = span 源行数含开闭栏行）——比行级 ****** 更干净（整块本来就该藏）。
+    // 占位形态 = 整块替换为单行占位（前后缀 = 下方 SECRET_PLACEHOLDER_PREFIX/SUFFIX 常量，N = span 源行数含开闭栏行）——比行级 ****** 更干净（整块本来就该藏）。
     // 分块 eval 语境（check 节提取本标记区间单测）内核缺位恒等降级：mask/strip 双双 no-op，零 span 语义 = 行为原样（S1 沙箱空降卫同款纪律）。
     function secretSpanList(body) {
       return (typeof parseSecretSpans === 'function' ? parseSecretSpans(body) : null) || []
     }
-    function secretSpanPlaceholder(lineCount) { return '🔒 机密区（' + lineCount + ' 行，note_get reveal 获取）' }
+    // 占位形态前后缀常量（发生器与掩码回写守卫判定共用单一事实源——守卫零私有正则纪律，notes-062-mask-writeback-guard）
+    const SECRET_PLACEHOLDER_PREFIX = '🔒 机密区（'
+    const SECRET_PLACEHOLDER_SUFFIX = ' 行，note_get reveal 获取）'
+    function secretSpanPlaceholder(lineCount) { return SECRET_PLACEHOLDER_PREFIX + lineCount + SECRET_PLACEHOLDER_SUFFIX }
+    // 掩码回写守卫判定（notes-062）：正文含机器生成占位（前缀 + 纯数字行数 + 后缀）→ true。
+    //   用途：_create/_update 写路径检出即拒绝——note_get 掩码态正文回写会物理摧毁机密围栏（巡检自伤事故实证 n-mv73xcobo118）。
+    //   纯串扫描零正则（占位形态不写第二份模式）；行数段必须纯数字（发生器产物形态），散文提及（非数字行数）不命中。
+    function hasMaskedSecretPlaceholder(body) {
+      const s = String(body == null ? '' : body)
+      let i = s.indexOf(SECRET_PLACEHOLDER_PREFIX)
+      while (i >= 0) {
+        const j = i + SECRET_PLACEHOLDER_PREFIX.length
+        const k = s.indexOf(SECRET_PLACEHOLDER_SUFFIX, j)
+        if (k > j) {
+          const mid = s.slice(j, k)
+          let digits = true
+          for (let d = 0; d < mid.length; d++) { const c = mid.charCodeAt(d); if (c < 48 || c > 57) { digits = false; break } }
+          if (digits) return true
+        }
+        i = s.indexOf(SECRET_PLACEHOLDER_PREFIX, j)
+      }
+      return false
+    }
+    // 行级敏感占位掩码回写守卫判定（notes-063-mask-guard-sensitive：062 扩面·同洞同药——注入文本里 sensitive=true 笔记的
+    //   打码行（值=行级占位形态）被 agent 原样回写 → 真值被星号占位物理替换、盘上静默丢密（与机密区占位回写同构往返洞）。
+    //   纯串扫描零正则（同 062 纪律）；锚完整机器形态：前缀（含「敏感，note_get 」）+ id 段 + 后缀「 获取）」——
+    //   id 段锚发生器产物形态（n- 前缀 + 笔记 id 字符集 [0-9A-Za-z-]；genId 恒 n-*、导入面只扫 n-*.md），
+    //   裸星号（密码强度示意）/散文提及/半身形态/空 id 均不命中（误伤防御口径同 062 数字行数锚）。
+    function hasMaskedSensitivePlaceholder(body) {
+      const s = String(body == null ? '' : body)
+      let i = s.indexOf(SENSITIVE_PLACEHOLDER_PREFIX)
+      while (i >= 0) {
+        const j = i + SENSITIVE_PLACEHOLDER_PREFIX.length
+        const k = s.indexOf(SENSITIVE_PLACEHOLDER_SUFFIX, j)
+        if (k > j) {
+          const mid = s.slice(j, k)
+          let idOk = mid.length > 2 && mid.charCodeAt(0) === 110 && mid.charCodeAt(1) === 45   // n- 前缀（发生器产物形态锚）
+          for (let d = 2; d < mid.length && idOk; d++) {
+            const c = mid.charCodeAt(d)
+            if (!((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 45)) idOk = false
+          }
+          if (idOk) return true
+        }
+        i = s.indexOf(SENSITIVE_PLACEHOLDER_PREFIX, j)
+      }
+      return false
+    }
+    // 掩码回写守卫双形态并（062 机密区整块占位 || 063 行级敏感值占位）——notes.js/notes.dist.js 写路径 _create/_update 守卫统一走本函数
+    function hasMaskedPlaceholder(body) {
+      return hasMaskedSecretPlaceholder(body) || hasMaskedSensitivePlaceholder(body)
+    }
     // 占位打码（① 注入 ② note_get ⑥ 导出三面同形态占位）：每个 span 整块替换为占位单行
     function maskSecretSpans(body) {
       const src = String(body == null ? '' : body)
@@ -1904,6 +1958,22 @@ function parseSecretSpans(body) {
     }
     // ==== folder-arg-norm END ====
 
+    // ==== masked-body-writeback-guard BEGIN ====（掩码占位符回写守卫：notes.js 与 notes.dist.js 双变体逐字节同步，check 节 137 看守）
+    // 威胁模型（巡检自伤事故实证 n-mv73xcobo118）：note_get 缺省掩码态正文里的机密区占位单行、注入文本里 sensitive 笔记的行级打码值
+    //   都是机器生成占位串；agent 最自然的往返是「拿到什么存什么」——掩码形态原样 update/create 回写 → 机密围栏/真实敏感值被占位符物理替换、盘上静默消失（零报错）。
+    // 覆盖面（notes-063-mask-guard-sensitive 扩面，同洞同药，不设开关/白名单）：062 机密区整块占位（span 形态）+ 063 行级敏感值占位（sensitive 打码行形态）。
+    // 判据：body 显式传（!== undefined）且检出占位符 → 整体拒绝 throw（错得安全，同 injectto-norm-guard / empty-body-overwrite-guard 先例），本条不落盘。
+    //   判定走 sensitive-helpers.js 导出的 hasMaskedPlaceholder（双形态并 = hasMaskedSecretPlaceholder || hasMaskedSensitivePlaceholder；
+    //   占位形态常量单一事实源，本块零占位字面量、零私有正则——check 130 纪律）。
+    // 误伤评估：两种占位符都是机器生成串，用户手敲概率≈0；极端场景报错文案已指明出路（span 原文 reveal 取 / 敏感篇原文 note_get 直取 / 换措辞分段 / 只传 meta）。
+    // 红线：不设白名单/开关（数据安全闸不设旁路）；meta-only 更新（body 缺省）照常；遮蔽/揭示/门禁既有语义零改动。
+    function _assertNoMaskedSecretBody(body) {
+      if (body === undefined) return   // meta-only 更新不触正文，放行
+      if (!hasMaskedPlaceholder(body)) return
+      throw new Error('notes 拒绝写入：检测到掩码占位符（机密区整块占位或行级敏感值占位——note_get 掩码态/注入打码态文本不可回写：机密区围栏或真实敏感值会被占位符物理替换、盘上内容静默消失）。正确做法：① 机密区原文先征得用户同意后 note_get reveal:true 取回再改；行级敏感值原文 note_get 按 id 直接取回再改；② 只改 meta 字段不传 body（正文不动）；③ 正文确需保留该占位措辞的极端场景，请换措辞或分段重写')
+    }
+    // ==== masked-body-writeback-guard END ====
+
     // 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议载荷——suggestSecretSpans 行区间 → {count,lines}
     // （count = 合并后区间数「N 处」；lines = 覆盖行号 1-based 平铺，编辑器据此冒泡「第 X、Y 行」并一键包 fence）。
     // 只建议不强制：本函数只读不改写；调用方（_create/_update）挂响应字段，正文一字不动。
@@ -1931,6 +2001,8 @@ function parseSecretSpans(body) {
       // folder 写入归一 + 非法显式拒绝（folder-arg-norm）：显式传才归一（undefined 不缺省归一）；非法值整体拒绝不落库
       let folderNorm = ex.folder
       if (folderNorm !== undefined) folderNorm = await _resolveFolderArg(folderNorm)
+      // 掩码占位符回写守卫（masked-body-writeback-guard，062 span + 063 行级双形态）：掩码态正文建笔记同样拒绝（agent 把掩码/打码文本当新内容粘贴的场景）
+      _assertNoMaskedSecretBody(body)
       // 工作记忆 v0 隐身硬闸（裁决 B①）：kind=log 强制 inject=false（显式传 true 也纠正，返回值 injectForcedOff 告知），
       // recall 缺省 false（0.4.4-E 起字段 dormant——目录段唯挂载行源，显式 true 亦无注入效果，读写兼容保留）；日志永不进系统提示与目录索引
       const isLog = (ex.kind || 'note') === 'log'
@@ -2151,6 +2223,8 @@ function parseSecretSpans(body) {
         throw new Error('notes-update 拒绝执行：body 为空串将覆盖现有非空正文（疑似 get 失败空正文覆盖路径，R-1 数据丢失防护）。如确认为有意清空，请显式传 confirmClearBody: true 重试')
       }
       // ==== empty-body-overwrite-guard END ====
+      // 掩码占位符回写守卫（masked-body-writeback-guard，062 span + 063 行级双形态）：检出即整体拒绝 throw，本条不落盘（盘上机密围栏/敏感真值逐字节不动）
+      _assertNoMaskedSecretBody(body)
       if (body !== undefined) note.body = body
       // P3 派发闭环·保底联动：显式置 resolved 时自动回执全部未闭环派发（dispatchStatus→done + doneAt + receipt='resolved'）。
       // 这是语义闭环的必然可行通道（agent 完成派发任务后 note_manage update resolved）；事件回执见 dispatch-loop 标记块

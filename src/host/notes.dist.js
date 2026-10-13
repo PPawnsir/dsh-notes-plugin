@@ -79,6 +79,22 @@
     }
     // ==== folder-arg-norm END ====
 
+    // ==== masked-body-writeback-guard BEGIN ====（掩码占位符回写守卫：notes.js 与 notes.dist.js 双变体逐字节同步，check 节 137 看守）
+    // 威胁模型（巡检自伤事故实证 n-mv73xcobo118）：note_get 缺省掩码态正文里的机密区占位单行、注入文本里 sensitive 笔记的行级打码值
+    //   都是机器生成占位串；agent 最自然的往返是「拿到什么存什么」——掩码形态原样 update/create 回写 → 机密围栏/真实敏感值被占位符物理替换、盘上静默消失（零报错）。
+    // 覆盖面（notes-063-mask-guard-sensitive 扩面，同洞同药，不设开关/白名单）：062 机密区整块占位（span 形态）+ 063 行级敏感值占位（sensitive 打码行形态）。
+    // 判据：body 显式传（!== undefined）且检出占位符 → 整体拒绝 throw（错得安全，同 injectto-norm-guard / empty-body-overwrite-guard 先例），本条不落盘。
+    //   判定走 sensitive-helpers.js 导出的 hasMaskedPlaceholder（双形态并 = hasMaskedSecretPlaceholder || hasMaskedSensitivePlaceholder；
+    //   占位形态常量单一事实源，本块零占位字面量、零私有正则——check 130 纪律）。
+    // 误伤评估：两种占位符都是机器生成串，用户手敲概率≈0；极端场景报错文案已指明出路（span 原文 reveal 取 / 敏感篇原文 note_get 直取 / 换措辞分段 / 只传 meta）。
+    // 红线：不设白名单/开关（数据安全闸不设旁路）；meta-only 更新（body 缺省）照常；遮蔽/揭示/门禁既有语义零改动。
+    function _assertNoMaskedSecretBody(body) {
+      if (body === undefined) return   // meta-only 更新不触正文，放行
+      if (!hasMaskedPlaceholder(body)) return
+      throw new Error('notes 拒绝写入：检测到掩码占位符（机密区整块占位或行级敏感值占位——note_get 掩码态/注入打码态文本不可回写：机密区围栏或真实敏感值会被占位符物理替换、盘上内容静默消失）。正确做法：① 机密区原文先征得用户同意后 note_get reveal:true 取回再改；行级敏感值原文 note_get 按 id 直接取回再改；② 只改 meta 字段不传 body（正文不动）；③ 正文确需保留该占位措辞的极端场景，请换措辞或分段重写')
+    }
+    // ==== masked-body-writeback-guard END ====
+
     // 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议载荷——suggestSecretSpans 行区间 → {count,lines}
     // （count = 合并后区间数「N 处」；lines = 覆盖行号 1-based 平铺，编辑器据此冒泡「第 X、Y 行」并一键包 fence）。
     // 只建议不强制：本函数只读不改写；调用方（_create/_update）挂响应字段，正文一字不动。
@@ -106,6 +122,8 @@
       // folder 写入归一 + 非法显式拒绝（folder-arg-norm）：显式传才归一（undefined 不缺省归一）；非法值整体拒绝不落库
       let folderNorm = ex.folder
       if (folderNorm !== undefined) folderNorm = await _resolveFolderArg(folderNorm)
+      // 掩码占位符回写守卫（masked-body-writeback-guard，062 span + 063 行级双形态）：掩码态正文建笔记同样拒绝（agent 把掩码/打码文本当新内容粘贴的场景）
+      _assertNoMaskedSecretBody(body)
       // 工作记忆 v0 隐身硬闸（裁决 B①）：kind=log 强制 inject=false（显式传 true 也纠正，返回值 injectForcedOff 告知），
       // recall 缺省 false（0.4.4-E 起字段 dormant——目录段唯挂载行源，显式 true 亦无注入效果，读写兼容保留）；日志永不进系统提示与目录索引
       const isLog = (ex.kind || 'note') === 'log'
@@ -326,6 +344,8 @@
         throw new Error('notes-update 拒绝执行：body 为空串将覆盖现有非空正文（疑似 get 失败空正文覆盖路径，R-1 数据丢失防护）。如确认为有意清空，请显式传 confirmClearBody: true 重试')
       }
       // ==== empty-body-overwrite-guard END ====
+      // 掩码占位符回写守卫（masked-body-writeback-guard，062 span + 063 行级双形态）：检出即整体拒绝 throw，本条不落盘（盘上机密围栏/敏感真值逐字节不动）
+      _assertNoMaskedSecretBody(body)
       if (body !== undefined) note.body = body
       // P3 派发闭环·保底联动：显式置 resolved 时自动回执全部未闭环派发（dispatchStatus→done + doneAt + receipt='resolved'）。
       // 这是语义闭环的必然可行通道（agent 完成派发任务后 note_manage update resolved）；事件回执见 dispatch-loop 标记块
