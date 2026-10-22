@@ -406,6 +406,9 @@
   .backlinks .bl-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
   .backlinks .bl-item{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:20px;padding:2px 9px;cursor:pointer}
   .backlinks .bl-item:hover{background:var(--nbg-hover);border-color:var(--nacc)}
+  /* notes-065 反链超限折叠：切换行视觉=一条弱化 bl-item 行（虚线描边+弱化色，不破既有 bl-item 布局） */
+  .backlinks .bl-more{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--nt3);background:transparent;border:1px dashed var(--nbd-soft);border-radius:20px;padding:2px 9px;cursor:pointer;margin-top:5px}
+  .backlinks .bl-more:hover{color:var(--nacc);border-color:var(--nacc)}
   .backlinks .bl-empty{margin-top:4px;font-size:11px;color:var(--nt3)}
   /* ===== 注入范围浮层 ===== */
   .scope-wrap{position:relative}

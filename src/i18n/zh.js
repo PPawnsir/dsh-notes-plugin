@@ -190,6 +190,9 @@ var I18N_ZH = {
   'editor.backlinksWarming': '（索引中…）',
   'editor.backlinkJumpTip': '跳转到「{name}」',
   'editor.backlinksEmpty': '暂无其他笔记用 [[…]] 链接到这里',
+  /* notes-065 反链超限折叠（反馈 n-mviwazwi6gia）：超限切换行双键（双端同构；{n}=被折叠的剩余条数；▾/▴ 箭头在代码侧拼接，不入字典） */
+  'editor.backlinksMore': '展开其余 {n} 条',
+  'editor.backlinksLess': '收起',
   /* 0.4.8（notes-048-wiki-autocomplete）：源码模式 [[ 双链输入补全——零命中空态行（不可选） */
   'editor.wikiAcEmpty': '无匹配笔记',
   'meta.crumbFolderExpandTip': '在目录树中展开：{name}',

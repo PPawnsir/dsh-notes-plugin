@@ -190,6 +190,9 @@ var I18N_EN = {
   'editor.backlinksWarming': ' (indexing…)',
   'editor.backlinkJumpTip': 'Jump to "{name}"',
   'editor.backlinksEmpty': 'No other notes link here with [[…]] yet',
+  /* notes-065 backlinks collapse toggle row keys (feedback n-mviwazwi6gia; {n}=folded remainder count; ▾/▴ arrows appended in code, not in dict) */
+  'editor.backlinksMore': 'Show {n} more',
+  'editor.backlinksLess': 'Show less',
   /* 0.4.8 (notes-048-wiki-autocomplete): source-mode [[ wiki-link autocomplete — zero-hit empty row (not selectable) */
   'editor.wikiAcEmpty': 'No matching notes',
   'meta.crumbFolderExpandTip': 'Expand in tree: {name}',

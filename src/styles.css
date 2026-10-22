@@ -775,6 +775,9 @@ body.dsh-notes-split-drag,body.dsh-notes-split-drag *{cursor:col-resize!importan
 .dsh-notes-backlinks-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
 .dsh-notes-backlink{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ntx);background:var(--nbg-raise);border:1px solid var(--nbd-soft);border-radius:20px;padding:2px 9px;cursor:pointer;user-select:none}
 .dsh-notes-backlink:hover{background:var(--nbg-hover);border-color:var(--nacc)}
+/* notes-065 反链超限折叠：切换行视觉=一条弱化 backlink 行（虚线描边+弱化色，不破既有 backlink 布局；app head.html .bl-more 同构） */
+.dsh-notes-backlink-more{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--nt3);background:transparent;border:1px dashed var(--nbd-soft);border-radius:20px;padding:2px 9px;cursor:pointer;user-select:none;margin-top:5px}
+.dsh-notes-backlink-more:hover{color:var(--nacc);border-color:var(--nacc)}
 .dsh-notes-backlinks-empty{margin-top:4px;font-size:11px;color:var(--nt3)}
 /* 图片插入弹窗（复用 settings-modal 容器；upzone/pv/prog 原型同款） */
 .dsh-notes-imgup-sub{font-size:10.5px;color:var(--nt3);font-weight:400;margin-left:8px}

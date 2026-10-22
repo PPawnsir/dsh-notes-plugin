@@ -368,6 +368,9 @@ window.__ModuleLoader__.load({
       'editor.backlinksWarming': '（索引中…）',
       'editor.backlinkJumpTip': '跳转到「{name}」',
       'editor.backlinksEmpty': '暂无其他笔记用 [[…]] 链接到这里',
+      /* notes-065 反链超限折叠（反馈 n-mviwazwi6gia）：超限切换行双键（双端同构；{n}=被折叠的剩余条数；▾/▴ 箭头在代码侧拼接，不入字典） */
+      'editor.backlinksMore': '展开其余 {n} 条',
+      'editor.backlinksLess': '收起',
       /* 0.4.8（notes-048-wiki-autocomplete）：源码模式 [[ 双链输入补全——零命中空态行（不可选） */
       'editor.wikiAcEmpty': '无匹配笔记',
       'meta.crumbFolderExpandTip': '在目录树中展开：{name}',
@@ -1325,6 +1328,9 @@ window.__ModuleLoader__.load({
       'editor.backlinksWarming': ' (indexing…)',
       'editor.backlinkJumpTip': 'Jump to "{name}"',
       'editor.backlinksEmpty': 'No other notes link here with [[…]] yet',
+      /* notes-065 backlinks collapse toggle row keys (feedback n-mviwazwi6gia; {n}=folded remainder count; ▾/▴ arrows appended in code, not in dict) */
+      'editor.backlinksMore': 'Show {n} more',
+      'editor.backlinksLess': 'Show less',
       /* 0.4.8 (notes-048-wiki-autocomplete): source-mode [[ wiki-link autocomplete — zero-hit empty row (not selectable) */
       'editor.wikiAcEmpty': 'No matching notes',
       'meta.crumbFolderExpandTip': 'Expand in tree: {name}',
@@ -7414,6 +7420,7 @@ window.__ModuleLoader__.load({
         // 富文本同步态徽标（工具栏右侧）：false=已同步源码 / true=编辑中（防抖未回写）；同值 setState React 自动 bail，逐击键调无重渲染开销
         const [richSyncing, setRichSyncing] = React.useState(false)
         const [dispatchHistoryOpen, setDispatchHistoryOpen] = React.useState(false)   // 派发历史折叠态：默认折叠，点标题行展开
+        const [blOpenFor, setBlOpenFor] = React.useState('')   // notes-065 反链超限折叠展开态：锚定展开中的笔记 id（切笔记自动回默认折叠；局部 state 不持久化，零全局状态）
         // 0.4.4-A open-by-id 旁路（notes-044-dispatch-receipts 执行记录跳转）：缓存未命中的笔记（存量 kind=sys 执行记录缺省降噪 /
         //   在途新建列表未刷新）经 notes-get 直开后挂本旁路供渲染层回退——不进 notes 缓存（不刷列表/树红线）
         const [openByIdNote, setOpenByIdNote] = React.useState(null)
@@ -8522,6 +8529,10 @@ window.__ModuleLoader__.load({
             }
             return out
           })()
+          // ===== notes-065 反链超限折叠（反馈 n-mviwazwi6gia，双端同构 app panels/wiki.js）：默认前 BACKLINKS_VISIBLE_CAP 条 +
+          //   超限尾部「展开其余 {n} 条 ▾ / 收起 ▴」切换行（弱化 backlink 行视觉）；折叠态不持久化——blOpenFor 锚定笔记 id，切笔记恒回默认折叠 =====
+          const BACKLINKS_VISIBLE_CAP = 8
+          const blOpen = !!curNote && blOpenFor === curNote.id
           // ===== 0.4.7-B②b meta 行动区封板：有序动作组构建（元素原位定义，id/处理器零改动）→ metaActsSplit 分直出/「…」溢出菜单 =====
           const actEls = {
             // 二期 ✨整理：AI 按当前 kind 模板重写正文（notes-ai-organize；替换后 toast 可撤销一次）；0.4.4-F 起先弹追加指令引导卡（确认才进 doAiOrganize）；
@@ -8754,9 +8765,13 @@ window.__ModuleLoader__.load({
           e('div', { className: 'dsh-notes-backlinks' },
             e('div', { className: 'dsh-notes-backlinks-t' }, I('link', 11), tt('editor.backlinks') + (wikiWarm ? tt('editor.backlinksCount', { n: backlinks.length }) : tt('editor.backlinksWarming'))),
             backlinks.length
-              ? e('div', { className: 'dsh-notes-backlinks-list' }, backlinks.map(n => e('span', { key: n.id, className: 'dsh-notes-backlink dsh-nt', 'data-tooltip': tt('editor.backlinkJumpTip', { name: n.title || tt('tree.untitled') }), onClick: () => jumpToWikiTarget(n.id) },
+              ? e('div', { className: 'dsh-notes-backlinks-list' }, (blOpen ? backlinks : backlinks.slice(0, BACKLINKS_VISIBLE_CAP)).map(n => e('span', { key: n.id, className: 'dsh-notes-backlink dsh-nt', 'data-tooltip': tt('editor.backlinkJumpTip', { name: n.title || tt('tree.untitled') }), onClick: () => jumpToWikiTarget(n.id) },
                   e('span', { className: 'dsh-notes-kind-dot', style: { background: 'var(--nkind-' + (n.kind || 'note') + ')' } }), n.title || tt('tree.untitled'))))
-              : (wikiWarm ? e('div', { className: 'dsh-notes-backlinks-empty' }, tt('editor.backlinksEmpty')) : null)),
+              : (wikiWarm ? e('div', { className: 'dsh-notes-backlinks-empty' }, tt('editor.backlinksEmpty')) : null),
+            /* notes-065：超限尾部切换行（弱化 backlink 行视觉；点击/键控 = 展开/收回，blOpenFor 锚定当前笔记 id） */
+            backlinks.length > BACKLINKS_VISIBLE_CAP
+              ? e('span', { className: 'dsh-notes-backlink-more dsh-nt', role: 'button', tabIndex: 0, 'aria-label': blOpen ? tt('editor.backlinksLess') : tt('editor.backlinksMore', { n: backlinks.length - BACKLINKS_VISIBLE_CAP }), onClick: () => setBlOpenFor(blOpen ? '' : curNote.id), onKeyDown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setBlOpenFor(blOpen ? '' : curNote.id) } } }, blOpen ? tt('editor.backlinksLess') + ' ▴' : tt('editor.backlinksMore', { n: backlinks.length - BACKLINKS_VISIBLE_CAP }) + ' ▾')
+              : null),
           e('div', { className: 'dsh-notes-ed-foot' },
             e('span', { className: 'dsh-notes-ed-foot-i' }, editorMode === 'source' ? tt('editor.modeSource') : tt('editor.modeRich')),
             e('span', { className: 'dsh-notes-ed-foot-i' }, tt('meta.createdAt', { time: curNote.createdAt ? fmtDT(curNote.createdAt).slice(0, 10) : '—' })),

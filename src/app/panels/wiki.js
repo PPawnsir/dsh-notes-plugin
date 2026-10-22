@@ -38,8 +38,15 @@ function jumpToWikiTarget(target) {
   if (!vis) { view = { type: 'all', id: '' }; clearFilters(); }   /* 0.4.3⑦：文件视图分支 + maybeReloadForLogs 调用随拆除移除 */
   selectNote(n.id);
 }
+/* notes-065 反链超限折叠（反馈 n-mviwazwi6gia 用户实测：枢纽笔记反链几十条把编辑器内容区挤没）：
+   默认最多渲染前 8 条（BACKLINKS_VISIBLE_CAP，面板 editor.js 同值同构），超出时列表尾追加一行切换钮
+   「展开其余 {n} 条 ▾」（editor.backlinksMore）→ 点击展全量、文案翻「收起 ▴」（editor.backlinksLess）→ 再点收回；
+   折叠态不持久化——blOpenFor 仅记「当前展开中的笔记 id」（局部变量，不入存储），切笔记/重开恒回默认折叠（枢纽笔记默认必须收敛）；
+   总数口径不动（标题行 editor.backlinksCount 既有）；反链计算逻辑（wikiLinksTo/索引热身）零改动 */
+var blOpenFor = '';
 /* 反向链接面板：全库正文含 [[当前id]]/[[当前标题]] 的其他笔记（点击跳转；索引未热提示「索引中…」） */
 function renderBacklinks() {
+  var BACKLINKS_VISIBLE_CAP = 8;   /* notes-065：超限折叠阈值（面板 editor.js 同值同构；函数内常量声明，防 check eval 沙箱代理桩干扰） */
   var host = $('backlinksHost');
   if (!host) return;
   if (!edNote) { host.innerHTML = ''; return; }
@@ -54,12 +61,18 @@ function renderBacklinks() {
   /* i18n 覆盖卡F：反向链接标题/条目 tooltip/空态复用 B 卡 editor.backlinks* 字典 + A 卡 tree.untitled（禁重复建别名） */
   var h = '<div class="bl-t">' + icon('i-link', 11) + ' ' + t('editor.backlinks') + (warm ? t('editor.backlinksCount', { n: bl.length }) : t('editor.backlinksWarming')) + '</div>';
   if (bl.length) {
-    h += '<div class="bl-list">' + bl.map(function (n) {
+    var blOpen = blOpenFor === edNote.id;   /* notes-065：折叠态判定——仅当展开标记锚定当前笔记（切笔记自动回默认折叠） */
+    var shown = blOpen ? bl : bl.slice(0, BACKLINKS_VISIBLE_CAP);
+    h += '<div class="bl-list">' + shown.map(function (n) {
       return '<span class="bl-item" data-bl="' + n.id + '" title="' + t('editor.backlinkJumpTip', { name: esc(n.title || t('tree.untitled')) }) + '"><span class="kind" style="background:' + (KCOLOR[n.kind] || KCOLOR.note) + '"></span>' + esc(n.title || t('tree.untitled')) + '</span>';
     }).join('') + '</div>';
+    /* notes-065：超限尾部切换行（视觉=一条弱化 bl-item 行；点击绑定与 bl-item 跳转同区在下方统一挂） */
+    if (bl.length > BACKLINKS_VISIBLE_CAP) h += '<span class="bl-more" data-bl-more="1">' + (blOpen ? t('editor.backlinksLess') + ' ▴' : t('editor.backlinksMore', { n: bl.length - BACKLINKS_VISIBLE_CAP }) + ' ▾') + '</span>';
   } else if (warm) { h += '<div class="bl-empty">' + t('editor.backlinksEmpty') + '</div>'; }
   host.innerHTML = h;
   host.querySelectorAll('.bl-item').forEach(function (el) { el.addEventListener('click', function () { jumpToWikiTarget(el.getAttribute('data-bl')); }); });
+  var blMoreEl = host.querySelector('[data-bl-more]');   /* notes-065：切换行点击 = 展开/收回 + 重渲染（与 bl-item 跳转绑定同区） */
+  if (blMoreEl) blMoreEl.addEventListener('click', function () { blOpenFor = blOpenFor === edNote.id ? '' : edNote.id; renderBacklinks(); });
 }
 function loadFolders() {
   return rpc('notes-folders').then(function (res) {
