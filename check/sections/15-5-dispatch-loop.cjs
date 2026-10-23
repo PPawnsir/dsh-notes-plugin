@@ -39,7 +39,7 @@ module.exports = {
     g = await handlers['notes-get']({ id: c.id })
     assert(g.note.dispatches.filter(d => d.dispatchStatus === 'done').length === 1, '只有 1 条 done（不重复写）')
   })
-  await t('事件回执：agent/status idle → 该会话未闭环派发 dispatchStatus=done（receipt=idle）', async () => {
+  await t('事件回执：agent/status idle → 该会话未闭环派发 dispatchStatus=done（receipt=idle-fast 快标注）', async () => {
     assert(Array.isArray(evtListeners['agent/status']) && evtListeners['agent/status'].length === 1, 'host 应订阅 agent/status（实得 ' + (evtListeners['agent/status'] || []).length + ' 个监听）')
     const c = await handlers['notes-create']({ title: '闭环D', body: 'x', kind: 'todo' })
     await handlers['notes-dispatch']({ id: c.id, sessionId: 'session-abc12345-0000-0000-0000-000000000000', sessionName: '开发会话' })
@@ -52,7 +52,7 @@ module.exports = {
     await new Promise(r => setTimeout(r, 50))
     g = await handlers['notes-get']({ id: c.id })
     const d = g.note.dispatches[0]
-    assert(d.dispatchStatus === 'done' && d.receipt === 'idle' && d.doneAt, 'idle 回执 dispatchStatus=done + receipt=idle（实得 ' + JSON.stringify(d) + '）')
+    assert(d.dispatchStatus === 'done' && d.receipt === 'idle-fast' && d.doneAt, 'idle 回执 dispatchStatus=done + receipt=idle-fast（测试内派发→idle 秒级闭合触发快标注，notes-066；实得 ' + JSON.stringify(d) + '）')
     assert(g.note.status === 'active', 'idle 回执不自动 resolved 笔记（0.4.5-I 起语义完成归 idle 回执；resolved 仅手动兜底）')
   })
   await t('事件回执不误伤：只回执该会话的派发；无 agent 的 payload 静默跳过', async () => {
@@ -68,7 +68,7 @@ module.exports = {
     for (const fn of evtListeners['agent/status']) fn({ agent: liveAgent, status: 'idle' })
     await new Promise(r => setTimeout(r, 50))
     g = await handlers['notes-get']({ id: c.id })
-    assert(g.note.dispatches[0].dispatchStatus === 'done' && g.note.dispatches[0].receipt === 'idle', 'abc 会话条目被 idle 回执')
+    assert(g.note.dispatches[0].dispatchStatus === 'done' && g.note.dispatches[0].receipt === 'idle-fast', 'abc 会话条目被 idle 回执（秒级闭合 → idle-fast 快标注，notes-066）')
     // 无 agent / 无 id / null payload 不炸不误写
     for (const fn of evtListeners['agent/status']) { fn({ status: 'idle' }); fn({ agent: {}, status: 'idle' }); fn(null) }
     await new Promise(r => setTimeout(r, 20))
@@ -84,7 +84,7 @@ module.exports = {
       assert(src.indexOf("typeof ctx.on === 'function'") >= 0, tag + ' ctx.on 存在性守卫（老宿主/无事件 mock 降级）')
       assert(src.indexOf("ctx.on('agent/status'") >= 0, tag + ' 订阅 agent/status')
       assert(src.indexOf("payload.status !== 'idle'") >= 0, tag + ' 只关心 idle 落定')
-      assert(src.indexOf("receipt: receipt || 'manual'") >= 0, tag + ' 回执来源标记 receipt')
+      assert(src.indexOf("let r = receipt || 'manual'") >= 0, tag + ' 回执来源标记 receipt（notes-066 起经 r 局部变量承接 idle-fast 快标注分流）')
       assert(src.indexOf("if (status === 'resolved') dispatchClosed = _closeOpenDispatches(note, 'resolved', undefined, dispatchClosedDs)") >= 0, tag + ' _update resolved 保底联动（闭环条目收集供 runLog 追加，notes-041-sched-runlog）')
       assert(src.indexOf("dispatchStatus: 'sent'") >= 0, tag + ' 派发登记 dispatchStatus=sent')
     }

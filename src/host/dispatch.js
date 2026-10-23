@@ -274,6 +274,10 @@
     // 已知局限：插件重载/宿主重启期间错过的 idle 无事件回执（由保底联动或手动「标记完成」兜底）。
     // 单条派发完成判定：dispatchStatus==='done' 或存量 done===true（0.2.0 前记录只有 done 字段，向后兼容）
     function isDispatchDone(d) { return !!(d && (d.dispatchStatus === 'done' || d.done === true)) }
+    // 快 idle 可疑阈值（notes-066-dispatch-fastidle）：idle 回执时长 = doneAt - 派发 at，低于此值标 receipt='idle-fast'（+fastIdle/idleMs 结构化字段）。
+    //   依据：真实派发轮（消息投递 → 目标会话唤醒处理 → 静止转 idle）不可能 60s 内闭环——10-23 看板巡检轮实证静默蒸发假阳性（派发 → 6 秒 idle 回执 done 零产出）。
+    //   标注 ≠ 拦截：真秒回场景（目标会话已死立即 idle 等）照常闭合、只是可疑可见；仅 idle 通道参与（resolved 保底/manual 手动不标）。阈值可调——调参先核本注释依据。
+    const DISPATCH_FAST_IDLE_MS = 60000
     // 回执落库（作用于笔记对象内联）：把 note.dispatches 中未闭环条目标记 done（dispatchStatus/done/doneAt + receipt 来源）；
     // onlySessionId 限定只回执派发到该会话的条目（idle 事件回执用）；缺省全量（resolved 保底联动用）。返回新闭环条数；
     // out（可选数组，notes-041-sched-runlog）：收集本次新闭环的派发记录（执行记录独立笔记追加用）
@@ -281,11 +285,19 @@
       const ds = note.dispatches || []
       let closed = 0
       const now = new Date().toISOString()
+      const nowMs = Date.parse(now)
       for (let i = 0; i < ds.length; i++) {
         const d = ds[i]
         if (isDispatchDone(d)) continue
         if (onlySessionId && (!d || d.sessionId !== onlySessionId)) continue
-        ds[i] = Object.assign({}, d, { done: true, dispatchStatus: 'done', doneAt: now, receipt: receipt || 'manual' })
+        let r = receipt || 'manual'
+        let fast = null
+        // 快 idle 可疑标注（notes-066-dispatch-fastidle）：仅 idle 通道；at 缺失（存量记录）/时钟漂移负值 → 不标，静默降级普通 idle
+        if (r === 'idle') {
+          const idleMs = nowMs - Date.parse(d.at || '')
+          if (isFinite(idleMs) && idleMs >= 0 && idleMs < DISPATCH_FAST_IDLE_MS) { r = 'idle-fast'; fast = { fastIdle: true, idleMs: idleMs } }
+        }
+        ds[i] = Object.assign({}, d, { done: true, dispatchStatus: 'done', doneAt: now, receipt: r }, fast || {})
         if (out) out.push(ds[i])
         closed++
       }

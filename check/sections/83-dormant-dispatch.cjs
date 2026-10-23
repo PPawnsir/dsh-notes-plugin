@@ -79,7 +79,7 @@ module.exports = {
     const fireIdleOffline = () => { for (const fn of evtListeners['agent/status']) fn({ agent: { id: DORM_SID }, status: 'idle' }) }
     fireIdleOffline(); await flush()
     const g3 = await handlers['notes-get']({ id: c.id })
-    assert(g3.note.dispatches[0].dispatchStatus === 'done' && g3.note.dispatches[0].receipt === 'idle', '休眠送达回执闭环（idle → done；实得 ' + JSON.stringify(g3.note.dispatches[0]) + '）')
+    assert(g3.note.dispatches[0].dispatchStatus === 'done' && g3.note.dispatches[0].receipt === 'idle-fast', '休眠送达回执闭环（idle → done；秒级闭合 → idle-fast 快标注，notes-066；实得 ' + JSON.stringify(g3.note.dispatches[0]) + '）')
     await handlers['notes-delete']({ id: c.id })
   })
 

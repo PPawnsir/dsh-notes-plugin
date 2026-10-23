@@ -5147,6 +5147,10 @@ function parseSecretSpans(body) {
     // 已知局限：插件重载/宿主重启期间错过的 idle 无事件回执（由保底联动或手动「标记完成」兜底）。
     // 单条派发完成判定：dispatchStatus==='done' 或存量 done===true（0.2.0 前记录只有 done 字段，向后兼容）
     function isDispatchDone(d) { return !!(d && (d.dispatchStatus === 'done' || d.done === true)) }
+    // 快 idle 可疑阈值（notes-066-dispatch-fastidle）：idle 回执时长 = doneAt - 派发 at，低于此值标 receipt='idle-fast'（+fastIdle/idleMs 结构化字段）。
+    //   依据：真实派发轮（消息投递 → 目标会话唤醒处理 → 静止转 idle）不可能 60s 内闭环——10-23 看板巡检轮实证静默蒸发假阳性（派发 → 6 秒 idle 回执 done 零产出）。
+    //   标注 ≠ 拦截：真秒回场景（目标会话已死立即 idle 等）照常闭合、只是可疑可见；仅 idle 通道参与（resolved 保底/manual 手动不标）。阈值可调——调参先核本注释依据。
+    const DISPATCH_FAST_IDLE_MS = 60000
     // 回执落库（作用于笔记对象内联）：把 note.dispatches 中未闭环条目标记 done（dispatchStatus/done/doneAt + receipt 来源）；
     // onlySessionId 限定只回执派发到该会话的条目（idle 事件回执用）；缺省全量（resolved 保底联动用）。返回新闭环条数；
     // out（可选数组，notes-041-sched-runlog）：收集本次新闭环的派发记录（执行记录独立笔记追加用）
@@ -5154,11 +5158,19 @@ function parseSecretSpans(body) {
       const ds = note.dispatches || []
       let closed = 0
       const now = new Date().toISOString()
+      const nowMs = Date.parse(now)
       for (let i = 0; i < ds.length; i++) {
         const d = ds[i]
         if (isDispatchDone(d)) continue
         if (onlySessionId && (!d || d.sessionId !== onlySessionId)) continue
-        ds[i] = Object.assign({}, d, { done: true, dispatchStatus: 'done', doneAt: now, receipt: receipt || 'manual' })
+        let r = receipt || 'manual'
+        let fast = null
+        // 快 idle 可疑标注（notes-066-dispatch-fastidle）：仅 idle 通道；at 缺失（存量记录）/时钟漂移负值 → 不标，静默降级普通 idle
+        if (r === 'idle') {
+          const idleMs = nowMs - Date.parse(d.at || '')
+          if (isFinite(idleMs) && idleMs >= 0 && idleMs < DISPATCH_FAST_IDLE_MS) { r = 'idle-fast'; fast = { fastIdle: true, idleMs: idleMs } }
+        }
+        ds[i] = Object.assign({}, d, { done: true, dispatchStatus: 'done', doneAt: now, receipt: r }, fast || {})
         if (out) out.push(ds[i])
         closed++
       }
@@ -5786,7 +5798,7 @@ function parseSecretSpans(body) {
     const SCHED_RUNLOG_HEAD = '## 执行记录（自动）'     // runLog 笔记正文的自动管理节标题
     const EXEC_LOG_FOLDER_NAME = '执行记录'             // 0.4.4-A 设计修正：伴生笔记专用文件夹（懒创建 ensure folders.json 条目；严禁复用「工作日志」夹）
     // 说明块（预设首行，RootNote pre 区逐字节保留）：机器托管声明 + kind=log 用途 + 行型契约 + 可编辑边界
-    const EXEC_LOG_GUIDE = '机器托管笔记（请勿手动清理，由派发管线维护）：本笔记 = 派发源笔记的执行记录（0.4.4-A 三表归一：派发历史/调度回执/执行记录同一篇；kind=log 工作日志型——注入硬关天然适用，回执永不进系统提示）。行型：📤 派发（带（下次活动送达）后缀 = 休眠会话排队送达，0.4.4-B）/ 📥 回执 / ✅ 人工闭环；可直接编辑备注，请保持条目行首 `- 📤/📥/✅` 结构。\n\n'
+    const EXEC_LOG_GUIDE = '机器托管笔记（请勿手动清理，由派发管线维护）：本笔记 = 派发源笔记的执行记录（0.4.4-A 三表归一：派发历史/调度回执/执行记录同一篇；kind=log 工作日志型——注入硬关天然适用，回执永不进系统提示）。行型：📤 派发（带（下次活动送达）后缀 = 休眠会话排队送达，0.4.4-B）/ 📥 回执（idle·⚠ Ns 秒回 = 快 idle 可疑标注·静默蒸发预警，notes-066）/ ✅ 人工闭环；可直接编辑备注，请保持条目行首 `- 📤/📥/✅` 结构。\n\n'
     // 条目时间戳：ISO → 本地 YYYY-MM-DD HH:MM（人读优先；与调度 at 声明同口径的本地墙钟语义）
     function schedRunLogTs(iso) {
       const ms = Date.parse(iso || '')
@@ -5805,8 +5817,13 @@ function parseSecretSpans(body) {
     }
     // 回执条目行：- 📥 {本地时刻} · 回执（{idle|resolved}）· → {会话名|短id} · {msgId}（真实回执）；人工闭环 = ✅（回执（manual））。
     //   0.4.4-A 起真实回执前缀 ✅→📥（设计「📥 回执：<会话> <时间>」）；存量 ✅ 行零迁移原样保留（msgId 幂等键跨新旧行型同口径）
+    //   idle-fast（notes-066-dispatch-fastidle 快 idle 可疑标注）：渲染「回执（idle·⚠ {N}s 秒回）」——时长人话化进文案，
+    //   静默蒸发假阳性变可见；idleMs 缺失（存量/异常）降级「idle·⚠ 秒回」。行尾 msgId 幂等键位不动；结构化 fastIdle/idleMs 在 dispatches[] 条目上。
+    //   文案为 host 侧机器日志（同「回执（idle）」先例），不进 i18n 双语面。
     function schedRunLogLine(d) {
-      return '- ' + (d.receipt === 'manual' ? '✅' : '📥') + ' ' + schedRunLogTs(d.doneAt) + ' · 回执（' + (d.receipt || 'manual') + '）· → ' + (d.sessionName || shortSid(d.sessionId) || '?') + ' · ' + d.msgId
+      let rc = d.receipt || 'manual'
+      if (rc === 'idle-fast') rc = 'idle·⚠' + (isFinite(d.idleMs) ? ' ' + Math.max(0, Math.round(d.idleMs / 1000)) + 's' : '') + ' 秒回'
+      return '- ' + (d.receipt === 'manual' ? '✅' : '📥') + ' ' + schedRunLogTs(d.doneAt) + ' · 回执（' + rc + '）· → ' + (d.sessionName || shortSid(d.sessionId) || '?') + ' · ' + d.msgId
     }
     // 派发条目行（0.4.4-A 派发历史笔记化）：- 📤 {本地时刻·秒级} · → {会话名|短id}[（下次活动送达）][ · 指令：{摘要≤40字}][ · {sourceLabel}] · 单号 {msgId 尾段}。
     //   （下次活动送达）后缀（0.4.4-B）：休眠送达（queued）派发专属标注——目标会话未 live，消息已持久化排队，会话下次活动时处理。

@@ -60,7 +60,7 @@ module.exports = {
     rl = await handlers['notes-get']({ id: runLogA })
     lines = entryLines(rl.note.body)
     assert(lines.length === 2, '回执后 2 条目（📥+📤；实得 ' + lines.length + '）')
-    assert(lines[0].indexOf('- 📥 ') === 0 && lines[0].indexOf('回执（idle）') >= 0 && lines[0].indexOf(msgId) >= 0, '回执条目形态：📥 + 时刻 + 回执来源 + msgId（实得 ' + lines[0] + '）')
+    assert(lines[0].indexOf('- 📥 ') === 0 && lines[0].indexOf('回执（idle·⚠ ') >= 0 && lines[0].indexOf('秒回）') >= 0 && lines[0].indexOf(msgId) >= 0, '回执条目形态：📥 + 时刻 + 回执来源（秒级闭合 → idle·⚠ Ns 秒回 快标注，notes-066）+ msgId（实得 ' + lines[0] + '）')
   })
 
   // ===== ② 幂等：重复回执/双通道同 msgId 零重复条目 =====
@@ -99,7 +99,7 @@ module.exports = {
     assert(lines.length === 4, '四条目（0.4.4-A 三表归一：📥+📤 各两条同篇；实得 ' + lines.length + '）')
     assert(lines[0].indexOf('- 📥 ') === 0 && lines[0].indexOf(m2) >= 0 && lines[0].indexOf('回执（resolved）') >= 0, '最新条目在最前（倒序）+ resolved 通道来源标注')
     assert(lines[1].indexOf('- 📤 ') === 0 && lines[1].indexOf('定时调度 @定时 巡检runlogB') >= 0, '第二条 = 第二次 📤 派发行')
-    assert(lines[2].indexOf('- 📥 ') === 0 && lines[2].indexOf(m1) >= 0 && lines[2].indexOf('回执（idle）') >= 0, '旧回执条目续后')
+    assert(lines[2].indexOf('- 📥 ') === 0 && lines[2].indexOf(m1) >= 0 && lines[2].indexOf('回执（idle·⚠ ') >= 0, '旧回执条目续后（秒级闭合 → idle·⚠ 快标注，notes-066）')
     assert(lines[3].indexOf('- 📤 ') === 0, '第四条 = 首次 📤 派发行')
     const g2 = await handlers['notes-get']({ id: convB })
     assert.strictEqual(g2.note.body, 'B 正文', '约定正文仍零改动（resolved 通道同守红线）')

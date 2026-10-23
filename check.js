@@ -54,7 +54,7 @@ const CORE = new Set([
   'notes-dispatch 注入上下文+触发工作（agent.send）',
   'notes-dispatch-done 标记完成停止注入',
   '保底联动：notes-update 置 resolved 自动回执全部未闭环派发',
-  '事件回执：agent/status idle → 该会话未闭环派发 dispatchStatus=done（receipt=idle）',
+  '事件回执：agent/status idle → 该会话未闭环派发 dispatchStatus=done（receipt=idle-fast 快标注）',
   'notes-quick-instruct LLM 解析失败回退等价 notes-quick',
   'index.mjs 可被 ESM import（语法 + 顶层无副作用）',
   'harness 缺失时兜底：3 条路由（RPC + 全窗口页面 + 资产）+ ctx.tools 3 工具 + 约定注入 order130（单一 context：目录段并入）',

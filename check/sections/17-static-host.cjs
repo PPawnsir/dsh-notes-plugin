@@ -305,7 +305,7 @@ module.exports = {
     for (const fn of evtListeners2['agent/status']) fn({ agent: liveAgent, status: 'idle' })
     await new Promise(r => setTimeout(r, 50))
     g = await rpc2('notes-get', { id: c2b.body.id })
-    assert(g.body.note.dispatches[0].dispatchStatus === 'done' && g.body.note.dispatches[0].receipt === 'idle', '静态包 idle 事件回执（实得 ' + JSON.stringify(g.body.note.dispatches[0]) + '）')
+    assert(g.body.note.dispatches[0].dispatchStatus === 'done' && g.body.note.dispatches[0].receipt === 'idle-fast', '静态包 idle 事件回执（秒级闭合 → idle-fast 快标注，notes-066 双包一致；实得 ' + JSON.stringify(g.body.note.dispatches[0]) + '）')
     // 已 resolved 的第一篇不受 idle 影响（幂等）
     g = await rpc2('notes-get', { id: c.body.id })
     assert(g.body.note.dispatches.filter(x => x.dispatchStatus === 'done').length === 1, '幂等：已闭环条目不重复回执')

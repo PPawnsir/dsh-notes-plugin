@@ -81,11 +81,11 @@ module.exports = {
   await t('0.4.4-A③ 真实回执（idle 事件）→ 📥 行追加（最新在前）', async () => {
     fireIdle(); await flush()
     const g = await handlers['notes-get']({ id: srcA })
-    assert(g.note.dispatches.every(d => d.dispatchStatus === 'done' && d.receipt === 'idle'), 'dispatches 状态机闭环（receipt=idle）')
+    assert(g.note.dispatches.every(d => d.dispatchStatus === 'done' && d.receipt === 'idle-fast'), 'dispatches 状态机闭环（receipt=idle-fast：秒级闭合快标注，notes-066）')
     const rl = await handlers['notes-get']({ id: logA })
     const lines = entryLines(rl.note.body)
     assert.strictEqual(lines.length, 8, '4 回执 + 4 派发（实得 ' + lines.length + '）')
-    assert(lines.slice(0, 4).every(l => l.indexOf('- 📥 ') === 0 && l.indexOf('回执（idle）') >= 0 && l.indexOf('note-dispatch-') >= 0), '4 条 📥 回执行在最新侧（含 msgId）')
+    assert(lines.slice(0, 4).every(l => l.indexOf('- 📥 ') === 0 && l.indexOf('回执（idle·⚠ ') >= 0 && l.indexOf('note-dispatch-') >= 0), '4 条 📥 回执行在最新侧（idle·⚠ 快标注 + msgId，notes-066）')
     // 幂等重放：重复 idle 零追加
     fireIdle(); await flush()
     const rl2 = await handlers['notes-get']({ id: logA })

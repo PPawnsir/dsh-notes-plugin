@@ -71,11 +71,11 @@ module.exports = {
     fireIdle(); await flush()
     g = await handlers['notes-get']({ id: c.id })
     const d = g.note.dispatches[0]
-    assert(d.dispatchStatus === 'done' && d.receipt === 'idle' && d.doneAt, 'idle 回执 dispatchStatus→done（receipt=idle；实得 ' + JSON.stringify(d) + '）')
+    assert(d.dispatchStatus === 'done' && d.receipt === 'idle-fast' && d.doneAt, 'idle 回执 dispatchStatus→done（receipt=idle-fast：秒级闭合快标注，notes-066；实得 ' + JSON.stringify(d) + '）')
     assert(g.note.status === 'active', '闭环后笔记 status 仍 active（0.4.5-I：派发完成不再标记已解决）')
     const rl = await handlers['notes-get']({ id: g.note.runLog })
     const lines = entryLines(rl.note.body)
-    assert(lines.length === 2 && lines[0].indexOf('- 📥 ') === 0 && lines[0].indexOf('回执（idle）') >= 0 && lines[1].indexOf('- 📤 ') === 0, '执行记录 📥 回执行 + 📤 派发行同篇照落（实得 ' + JSON.stringify(lines) + '）')
+    assert(lines.length === 2 && lines[0].indexOf('- 📥 ') === 0 && lines[0].indexOf('回执（idle·⚠ ') >= 0 && lines[1].indexOf('- 📤 ') === 0, '执行记录 📥 回执行（idle·⚠ 快标注，notes-066）+ 📤 派发行同篇照落（实得 ' + JSON.stringify(lines) + '）')
     await handlers['notes-delete']({ id: c.id })
   })
 
