@@ -71,5 +71,12 @@ module.exports = {
     const { concatHostDist } = require(path.join(DIR, 'scripts', 'concat-host.cjs'))
     assert.strictEqual(concatHostDist(), indexSrc.replace(/\r\n/g, '\n'), 'index.mjs 与 src/host/** 拼接产物不一致（改 src/host/** 后需跑 node scripts/build-dist.cjs）')
   })
+  await t('发布包 peerDependencies 显式枚举当前实测宿主预发布版（0.2.1-rc.2）', () => {
+    // 0.6.2 notes-067：semver 预发布不命中宽区间（^0.2.0 不含 0.2.1-rc.2）——宿主每出一个新 rc 都须显式枚举进声明，
+    // 本锚是让「下次宿主 rc 出来时忘补声明」在 check 阶段就红。README 版本适配节政策条同源（0.2.4 起）。
+    const pkg = JSON.parse(fsNative.readFileSync(path.join(DIR, 'packages', 'dsh-notes-plugin', 'package.json'), 'utf8'))
+    const peer = (pkg.peerDependencies || {})['@deepseek-ai/dsh'] || ''
+    assert(peer.indexOf('0.2.1-rc.2') >= 0, 'peer @deepseek-ai/dsh 须显式枚举 0.2.1-rc.2（实得：' + peer + '）')
+  })
   }
 }
