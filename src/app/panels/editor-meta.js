@@ -200,11 +200,26 @@ function renderMeta() {
     roleInfoEl.onclick = function () { toast(roleInfoTip()) };
     roleInfoEl.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); toast(roleInfoTip()) } };
   }
-  /* 0.4.7-B②b：行动区溢出菜单——触发钮开合（点击/Enter/Space）+ 点菜收拢 + 外点收拢（document 委托一次性挂载） */
+  /* notes-068-acts-menu-fixed：溢出菜单 fixed 定位坐标钳制（坐标计算参照 wiki-ac.js 视口夹紧先例）——
+   默认右缘对齐触发钮右缘（保持既有观感）；若左缘探出编辑器列左缘（⋯ 折行落最左端时）或视口 8px 安全边，
+   翻转为左缘对齐触发钮左缘。fixed 定位脱离 .ed overflow:hidden 裁切上下文，DOM 原位不动（不 portal）。 */
+function metaMorePlace(btn, m) {
+  m.style.display = 'flex';
+  var br = btn.getBoundingClientRect(), mw = m.offsetWidth || 120;
+  var minLeft = 8;
+  var edEl = btn.closest ? btn.closest('.ed') : null;
+  if (edEl) { var edR = edEl.getBoundingClientRect(); minLeft = Math.max(minLeft, edR.left); }
+  var left = br.right - mw;
+  if (left < minLeft) left = br.left;
+  left = Math.max(left, 8);
+  m.style.left = left + 'px';
+  m.style.top = (br.bottom + 6) + 'px';
+}
+/* 0.4.7-B②b：行动区溢出菜单——触发钮开合（点击/Enter/Space）+ 点菜收拢 + 外点收拢（document 委托一次性挂载） */
   var actsMoreEl = $('mActsMore');
   if (actsMoreEl) {
     metaActsBindOnce();
-    actsMoreEl.onclick = function (ev) { ev.stopPropagation(); var m = $('mActsMenu'); if (m) m.style.display = m.style.display === 'none' ? 'flex' : 'none' };
+    actsMoreEl.onclick = function (ev) { ev.stopPropagation(); var m = $('mActsMenu'); if (m) { if (m.style.display === 'none') metaMorePlace(actsMoreEl, m); else m.style.display = 'none' } };
     actsMoreEl.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); actsMoreEl.click() } };
     $('mActsMenu').addEventListener('click', function () { $('mActsMenu').style.display = 'none' });
   }

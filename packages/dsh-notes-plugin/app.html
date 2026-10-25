@@ -270,7 +270,7 @@
   /* 0.4.7-B②b（notes-047-ux）：meta 行动区封板——动作总数超 META_ACT_MAX 时中段收进「…」溢出菜单（动作相对顺序不动，仅收纳） */
   .meta-more-wrap{position:relative;display:inline-flex}
   .meta-act.meta-more{padding:3px 8px;font-weight:700;letter-spacing:1px}
-  .meta-more-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:70;min-width:120px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:4px;display:flex;flex-direction:column;gap:2px;align-items:stretch}
+  .meta-more-menu{position:fixed;z-index:160;min-width:120px;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:0 10px 32px rgba(0,0,0,.4);padding:4px;display:flex;flex-direction:column;gap:2px;align-items:stretch}
   .meta-more-menu .meta-act{padding:5px 10px;white-space:nowrap}
   /* 0.4.7-B④a（notes-047-ux，R2 漏网 n-mux79knmfjxt）：三态分段旁可见 ⓘ——tooltip 与三档原生 title 同文（合成），可聚焦 + 点击 toast 同文（触屏/键盘可达） */
   .role-info{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin-left:2px;border-radius:50%;color:var(--nt3);cursor:help;user-select:none;font-size:11px;flex-shrink:0}
@@ -5689,11 +5689,26 @@ function renderMeta() {
     roleInfoEl.onclick = function () { toast(roleInfoTip()) };
     roleInfoEl.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); toast(roleInfoTip()) } };
   }
-  /* 0.4.7-B②b：行动区溢出菜单——触发钮开合（点击/Enter/Space）+ 点菜收拢 + 外点收拢（document 委托一次性挂载） */
+  /* notes-068-acts-menu-fixed：溢出菜单 fixed 定位坐标钳制（坐标计算参照 wiki-ac.js 视口夹紧先例）——
+   默认右缘对齐触发钮右缘（保持既有观感）；若左缘探出编辑器列左缘（⋯ 折行落最左端时）或视口 8px 安全边，
+   翻转为左缘对齐触发钮左缘。fixed 定位脱离 .ed overflow:hidden 裁切上下文，DOM 原位不动（不 portal）。 */
+function metaMorePlace(btn, m) {
+  m.style.display = 'flex';
+  var br = btn.getBoundingClientRect(), mw = m.offsetWidth || 120;
+  var minLeft = 8;
+  var edEl = btn.closest ? btn.closest('.ed') : null;
+  if (edEl) { var edR = edEl.getBoundingClientRect(); minLeft = Math.max(minLeft, edR.left); }
+  var left = br.right - mw;
+  if (left < minLeft) left = br.left;
+  left = Math.max(left, 8);
+  m.style.left = left + 'px';
+  m.style.top = (br.bottom + 6) + 'px';
+}
+/* 0.4.7-B②b：行动区溢出菜单——触发钮开合（点击/Enter/Space）+ 点菜收拢 + 外点收拢（document 委托一次性挂载） */
   var actsMoreEl = $('mActsMore');
   if (actsMoreEl) {
     metaActsBindOnce();
-    actsMoreEl.onclick = function (ev) { ev.stopPropagation(); var m = $('mActsMenu'); if (m) m.style.display = m.style.display === 'none' ? 'flex' : 'none' };
+    actsMoreEl.onclick = function (ev) { ev.stopPropagation(); var m = $('mActsMenu'); if (m) { if (m.style.display === 'none') metaMorePlace(actsMoreEl, m); else m.style.display = 'none' } };
     actsMoreEl.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); actsMoreEl.click() } };
     $('mActsMenu').addEventListener('click', function () { $('mActsMenu').style.display = 'none' });
   }

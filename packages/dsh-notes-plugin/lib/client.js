@@ -7437,6 +7437,7 @@ window.__ModuleLoader__.load({
         const [orgErr, setOrgErr] = React.useState('')
         // 0.4.7-B②b：meta 行动区溢出菜单开合态
         const [actsMenuOpen, setActsMenuOpen] = React.useState(false)
+        const actsMoreRef = React.useRef(null)   // notes-068-acts-menu-fixed：⋯ 触发钮 DOM——开菜单时按 rect 算 fixed 坐标（折行最左端不被面板浮窗裁切）
         // ===== 文档安全 S4（notes-052-autodetect-i18n）：保存时机密检测建议横幅态 + 忽略记账 + 机密岛揭示计时器 =====
         // edSecretSug：null = 无横幅；{count,lines} = 冒泡中（host secretSuggested 建议行号）。
         // secretSugIgnoredRef：忽略记账（noteId:lines → true，会话级内存态——本篇本次静默，不做持久忽略表 v1）。
@@ -8555,11 +8556,25 @@ window.__ModuleLoader__.load({
           const actElOf = (k) => React.cloneElement(actEls[k], { key: 'mact-' + k })   // 数组化渲染补 key（零 React 告警）
           const actRowEls = actSplit.inline.map(actElOf)
           if (actSplit.overflow.length) {
+            // notes-068-acts-menu-fixed：菜单 fixed 定位坐标钳制（app metaMorePlace 同构）——默认右缘对齐触发钮右缘，
+            // 左缘探出编辑器列左缘（⋯ 折行落最左端）或视口 8px 安全边时翻转左缘对齐触发钮左缘；fixed 脱离浮窗裁切上下文。
+            const actsMenuPosStyle = () => {
+              const btn = actsMoreRef.current
+              if (!btn) return null
+              const br = btn.getBoundingClientRect(), mw = 130
+              let minLeft = 8
+              const edEl = btn.closest ? btn.closest('.dsh-notes-ed') : null
+              if (edEl) { const eR = edEl.getBoundingClientRect(); minLeft = Math.max(minLeft, eR.left) }
+              let left = br.right - mw
+              if (left < minLeft) left = br.left
+              left = Math.max(left, 8)
+              return { left: left + 'px', top: br.bottom + 6 + 'px' }
+            }
             actRowEls.push(e('span', { key: 'macts-more', className: 'dsh-notes-meta-more-wrap' },
-              e('span', { className: 'dsh-notes-meta-act dsh-notes-meta-more dsh-nt', role: 'button', tabIndex: 0, 'data-tooltip': tt('meta.actsMoreTip'), 'aria-label': tt('meta.actsMoreTip'), onClick: (ev) => { ev.stopPropagation(); setActsMenuOpen(!actsMenuOpen) }, onKeyDown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); setActsMenuOpen(!actsMenuOpen) } } }, '…'),
+              e('span', { ref: actsMoreRef, className: 'dsh-notes-meta-act dsh-notes-meta-more dsh-nt', role: 'button', tabIndex: 0, 'data-tooltip': tt('meta.actsMoreTip'), 'aria-label': tt('meta.actsMoreTip'), onClick: (ev) => { ev.stopPropagation(); setActsMenuOpen(!actsMenuOpen) }, onKeyDown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); setActsMenuOpen(!actsMenuOpen) } } }, '…'),
               /* 菜单项：cloneElement 覆写 onClick = 关菜单 + 转调原 act 处理器（原处理器内的 stopPropagation 无害保留）；
                  不嵌套包装 span——实证（用例㊲）：捕获相 setState 后目标相 onClick 在克隆嵌套形态下被跳过 */
-              actsMenuOpen ? e('span', { className: 'dsh-notes-meta-more-menu' }, actSplit.overflow.map(k => React.cloneElement(actEls[k], {
+              actsMenuOpen ? e('span', { className: 'dsh-notes-meta-more-menu', style: actsMenuPosStyle() }, actSplit.overflow.map(k => React.cloneElement(actEls[k], {
                 key: 'macto-' + k,
                 onClick: (ev) => { ev.stopPropagation(); setActsMenuOpen(false); actEls[k].props.onClick(ev) },
               }))) : null))
