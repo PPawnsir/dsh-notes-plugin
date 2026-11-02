@@ -320,20 +320,90 @@
         }
       }
     }
+    // ---- rc.5 诊断探针 + 防御性修复（notes-069-rc5-receipt-diag）----
+    // 诊断探针 /* DIAG rc.5 */：订阅与事件现场写 NOTES_DIR 下 _dispatch-diag.log（单行 JSON 追加、200 行自动截断防膨胀）。
+    // 宿主 stdout 拿不到，文件日志是 rc.5「idle 回执永不闭合」唯一可靠观察面；读改写全程 try/catch 静默 + Promise 链兜底——
+    // 诊断绝不影响派发主流程与性能。沙箱无 path 变量：分隔符按 NOTES_DIR 实际形态探测（含 \ → '\\'，否则 '/'），与既有字符串拼法同源。
+    const DIAG_LOG_MAX_LINES = 200   /* DIAG rc.5 */
+    function _dispatchDiag(obj) {   /* DIAG rc.5 */
+      try {
+        const raw = NOTES_DIR + (NOTES_DIR.indexOf('\\') >= 0 ? '\\' : '/') + '_dispatch-diag.log'
+        fs.resolve(raw).then(function (p) {
+          return fs.readText(p).then(function (txt) { return String(txt || '') }, function () { return '' })
+            .then(function (prev) {
+              const lines = prev.split('\n').filter(function (l) { return l.trim() })
+              lines.push(JSON.stringify(Object.assign({ t: new Date().toISOString() }, obj)))
+              while (lines.length > DIAG_LOG_MAX_LINES) lines.shift()
+              return fs.writeText(p, lines.join('\n') + '\n', undefined, undefined, getPolicy())
+            })
+        }).catch(function () {})
+      } catch (e) {}
+    }
+    // sid 多形态取值（rc.5 防御）：宿主 payload 形态可能漂移——agent.id / agent.session.id / agent.sessionId /
+    //   agent.session.sessionId / payload.sessionId / payload.id 逐级兜底取第一个非空值；全 miss 返回 null 走安全兜底。
+    function _dispatchSidFromPayload(payload) {
+      const a = (payload && payload.agent) || {}
+      const sid = a.id || (a.session && a.session.id) || a.sessionId || (a.session && a.session.sessionId) || (payload && payload.sessionId) || (payload && payload.id)
+      return sid || null
+    }
+    // 无 sid 安全兜底（rc.5 notes-069）：idle 事件取不到目标会话 id 时不再直接放弃——延迟 1.5s（等本轮执行落定）扫全库未闭环派发，
+    //   逐目标会话经 agents.get 查当前 status，仅 status==='idle'（live 且静止，宿主 Agent.status getter 口径）才闭合；
+    //   会话非 live / 无 status / agents 服务缺席一律不闭合（宁漏勿错——绝不因「某个无 sid 的 idle 事件」误伤其他会话进行中的派发，
+    //   红线：不改为「任意 idle 事件闭合全部未闭环派发」）。agents 拿不到时只写诊断不闭合（安全降级）。
+    function _dispatchIdleFallback() {
+      setTimeout(function () {
+        try { _receiptIdleConfirmed().catch(function (e) { /* DIAG rc.5 */ _dispatchDiag({ ev: 'fallback-error', err: String(e) }) }) } catch (e) {}
+      }, 1500)
+    }
+    async function _receiptIdleConfirmed() {
+      const all = await _list()
+      const idleCache = {}   // sid → 是否已确认 idle（同轮多笔记去重查证）
+      for (const n of all) {
+        if (!n || n.deleted || n.tombstoned) continue
+        const open = (n.dispatches || []).filter(function (d) { return !isDispatchDone(d) && d && d.sessionId })
+        if (!open.length) continue
+        const sids = []
+        for (const d of open) { if (sids.indexOf(d.sessionId) < 0) sids.push(d.sessionId) }
+        let touched = false
+        for (const sid of sids) {
+          if (idleCache[sid] === undefined) {
+            let a = null
+            try { a = agents && agents.get ? agents.get(sid) : null } catch (e) { a = null }
+            idleCache[sid] = !!(a && a.status === 'idle')
+          }
+          if (!idleCache[sid]) continue   // 状态不明/运行中/非 live：不闭合
+          const closedDs = []
+          if (_closeOpenDispatches(n, 'idle', sid, closedDs) > 0) {
+            touched = true
+            await _schedRunLogAppend(n, closedDs)
+          }
+        }
+        if (touched) {
+          n.updatedAt = new Date().toISOString()
+          try { await persistNote(n, { history: false }) } catch (e) { console.error('notes: dispatch fallback receipt persist failed', n.id, e) }
+        }
+      }
+    }
     // 订阅 agent/status：只关心 idle 落定（running 无关）；ctx.on 不存在（老宿主/单测 mock）时静默跳过——保底联动不依赖本订阅
     if (typeof ctx.on === 'function') {
       try {
         const offDispatchStatus = ctx.on('agent/status', (payload) => {
           try {
+            /* DIAG rc.5 */ _dispatchDiag({ ev: 'status', payloadKeys: Object.keys(payload || {}), status: payload && payload.status, hasAgent: !!(payload && payload.agent), agentId: (payload && payload.agent && payload.agent.id) || null, agentSession: (payload && payload.agent && payload.agent.session && payload.agent.session.id) || null })
             if (!payload || payload.status !== 'idle') return
-            const agent = payload.agent
-            const sid = agent && (agent.id || (agent.session && agent.session.id))
-            if (!sid) return
+            const sid = _dispatchSidFromPayload(payload)
+            if (!sid) {
+              // 取不到 sid：写诊断（D4）+ 延迟兜底扫描（仅确认 idle 才闭合）
+              /* DIAG rc.5 */ _dispatchDiag({ ev: 'no-sid', payloadKeys: Object.keys(payload), status: payload.status, hasAgent: !!payload.agent, agentId: (payload.agent && payload.agent.id) || null, agentSession: (payload.agent && payload.agent.session && payload.agent.session.id) || null })
+              _dispatchIdleFallback()
+              return
+            }
             _receiptDispatchesForSession(sid).catch((e) => { console.error('notes: dispatch receipt failed', e) })
-          } catch (e) {}
+          } catch (e) { /* DIAG rc.5 */ _dispatchDiag({ ev: 'handler-error', err: String(e) }) }
         })
+        /* DIAG rc.5 */ _dispatchDiag({ ev: 'subscribed', ok: typeof offDispatchStatus === 'function' })
         if (typeof offDispatchStatus === 'function') disposers.push(offDispatchStatus)
-      } catch (e) {}
+      } catch (e) { /* DIAG rc.5 */ _dispatchDiag({ ev: 'subscribe-failed', err: String(e) }) }
     }
     // ==== dispatch-loop END ====
 
