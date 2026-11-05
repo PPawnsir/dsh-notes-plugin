@@ -141,11 +141,16 @@
       if (!rl) return false
       return rootNoteRemoveLine(rl, INJECT_INDEX_TPL, String(noteId))
     }
-    // ---- 挂载 RPC：notes-mount { id, whenToUse? }（弹层确认落行；缺省 whenToUse = 标题）----
+    // ---- 挂载 RPC：notes-mount { id, whenToUse?, injectTo? }（弹层确认落行；缺省 whenToUse = 标题）----
     // 0.4.3 验收修复⑪（notes-043-mount-ux-final）：挂载 ⇔ 资料档不变量单点收口——落行前先把目标翻 inject=true +
     //   injectRole=reference（undefined 位参数 = 保留存量值，patch 语义）。此前 preview/弹层直挂路径不翻注入态，
     //   _idxSyncMount 会在目标笔记下一次 update 时判 inject≠true 摘行——用户复测③「whenToUse 不进预览」的断链根因；
     //   翻转经 _update 普通链路（wrapper 先落缺省行，随后 idxMount 幂等换文案）；kind=log 注入硬关延伸到挂载（拒绝）。
+    // 0.6.x（notes-070-mount-reroute，反馈 n-mw3buwdh39rd）：可选 injectTo——挂载弹层「注入范围」区在挂载语境直接
+    //   改目标会话集（挂载行进哪个会话目录 = 目标笔记自己的 injectTo，0.5.0 notes-050-mount-scope）。undefined = 现行为
+    //   零迁移（不传不落范围——存量调用全兼容）；传入先经 _normInjectTo 归一（长 id → 短 id），非法整体拒绝（挂载不落行、
+    //   范围与注入态全不动——错得安全）；翻档与落范围拆两态合并：需翻档则一次 _update 同带 inject/injectTo/injectRole，
+    //   已翻档则单独补一次 injectTo patch（不重翻、不动其他位）。
     disposers.push(handle('notes-mount', async (args) => {
       try {
         if (!args || !args.id) return { error: 'notes-mount 需要 id' }
@@ -153,8 +158,19 @@
         if (!n || n.deleted || n.tombstoned) return { error: 'notes-mount: 笔记不存在' }
         if ((n.kind || 'note') === 'log') return { error: 'notes-mount: kind=log 工作日志不参与注入，不可挂载' }
         const when = args.whenToUse === undefined || args.whenToUse === null ? String(n.title || '') : String(args.whenToUse)
-        if (!(n.inject === true && n.injectRole === 'reference')) {
-          await _update(String(args.id), undefined, undefined, undefined, undefined, undefined, undefined, true, undefined, undefined, undefined, 'reference', undefined, undefined)
+        let injScope = undefined
+        if (args.injectTo !== undefined) {
+          const ng = await _normInjectTo(args.injectTo)
+          if (ng.error) return { error: 'notes-mount: ' + ng.error }
+          injScope = ng.value
+        }
+        const flipped = n.inject === true && n.injectRole === 'reference'
+        if (injScope === undefined) {
+          if (!flipped) await _update(String(args.id), undefined, undefined, undefined, undefined, undefined, undefined, true, undefined, undefined, undefined, 'reference', undefined, undefined)
+        } else if (!flipped) {
+          await _update(String(args.id), undefined, undefined, undefined, undefined, undefined, undefined, true, injScope, undefined, undefined, 'reference', undefined, undefined)
+        } else {
+          await _update(String(args.id), undefined, undefined, undefined, undefined, undefined, undefined, undefined, injScope, undefined, undefined, undefined, undefined, undefined)
         }
         const rlId = await idxMount(String(args.id), when)
         if (!rlId) return { error: 'notes-mount: 索引笔记创建失败' }

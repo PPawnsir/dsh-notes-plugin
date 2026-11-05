@@ -560,6 +560,9 @@ var I18N_ZH = {
   'inj.mountGen': '正在生成 whenToUse…',
   // 0.4.6-E（n-mux8ak66jttd）：LLM 预填三态可见化——失败态文案（原因随 tooltip 给原始 error；跳过按钮文案同步改名「不用建议，自己写」消歧义）
   'inj.mountGenFail': '预填不可用，请手写',
+  // 0.6.x（notes-070-mount-reroute，反馈 n-mw3buwdh39rd）：挂载弹层「注入范围」区——提示行 + 全不勾摘要（勾选数摘要复用 inj.scopeSessions）
+  'inj.mountScopeLabel': '注入范围：勾选的会话目录可见挂载行；全不勾 = 所有会话',
+  'inj.mountScopeAll': '所有会话',
   // 0.4.3 验收修复⑥（notes-043-metrics-present）：注入管理面板挂载区统计行（notes-recall-stats 账本快照，点开看全量）
   'inj.mntStats': '挂载 {m}｜本周引用 Top：{top}｜零引用 {z}',
   'inj.mntStatsTip': '召回价值信号（数据源 notes-recall-stats · 账本快照）· 点开看全量分通道统计',

@@ -99,6 +99,10 @@ function createMockState() {
   /* 会话条目键集对齐 host _activeSessions 输出（{id,short,name,cwd,workspace,live[,createdAt]}） */
   const sessions = [
     { id: 'sess-e2e-0001', short: 'sess-e2e', name: 'e2e 模拟会话', cwd: '', workspace: 'e2e-workspace', live: true },
+    /* 0.6.x（notes-070-mount-reroute）：第二会话——挂载弹层「注入范围」区两会话勾选面（用例 71 数据源）。
+       short 红线：必须 shortSid 可回环（去 session- 前缀后 ≤8 字符）——scopeHas 勾选比对 / 取消勾选移除 / 确认 payload map(shortSid)
+       三处都过 shortSid 归一，9 字符假短 id（如 sess-e2e2）永远自不匹配且会并流到首会话短 id；sess-2e2 与 sess-e2e 互异且双双回环稳定 */
+    { id: 'sess-e2e-0002', short: 'sess-2e2', name: 'e2e 模拟会话二', cwd: '', workspace: 'e2e-workspace', live: true },
   ]
   /* 工作区清单（notes-workspaces 数据源，host {id,title,cwd} 口径） */
   const workspaces = [
@@ -690,6 +694,12 @@ function handleRpc(state, method, args) {
       if (!mn) return { error: 'notes-mount: 笔记不存在' }
       if ((mn.kind || 'note') === 'log') return { error: 'notes-mount: kind=log 工作日志不参与注入，不可挂载' }
       const when = (args && args.whenToUse === undefined) || (args && args.whenToUse === null) ? String(mn.title || '') : String((args && args.whenToUse) || '')
+      /* 0.6.x（notes-070-mount-reroute）：可选 injectTo——挂载弹层「注入范围」区确认载荷（契约点 = 可选参 + 非数组拒绝 +
+         传入才落范围，undefined 零迁移；归一口径从简：直接存字符串数组——host 侧长 id→短 id 归一/非法拒绝由 check 节 142 行为级锁定） */
+      if (args && args.injectTo !== undefined) {
+        if (!Array.isArray(args.injectTo)) return { error: 'injectTo 须为字符串数组（实得 ' + typeof args.injectTo + '）' }
+        mn.injectTo = args.injectTo.map(String)
+      }
       mn.inject = true; mn.injectEver = true; mn.injectRole = 'reference'; mn.updatedAt = nowIso()
       state._mounts = state._mounts || {}
       state._mounts[mid] = when

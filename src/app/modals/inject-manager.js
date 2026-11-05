@@ -386,11 +386,51 @@ function setMountStat(mode, tip) {
   el.textContent = t(mode === 'gen' ? 'inj.mountGen' : 'inj.mountGenFail');
   if (tip) el.title = tip; else el.removeAttribute('title');
 }
+/* 0.6.x（notes-070-mount-reroute，反馈 n-mw3buwdh39rd）：挂载弹层「注入范围」区——已挂载/待挂载笔记在挂载语境
+   直接追加目标会话（挂载行进哪个会话目录 = 目标笔记自己的 injectTo；此前范围控制藏在编辑器 meta 的 scope chip，
+   与挂载语境割裂即用户痛点）。保守语义：scopeTouched 才随确认传 injectTo（不碰 = 缺参零迁移，存量挂载调用全兼容）；
+   会话清单 notes-sessions 拉一次缓存于 mountState（弹层本会话内不重拉；标题补齐轮询从简——占位行禁用，口径同 renderScopePanel）。 */
+function injMountScopeSel() {
+  var st = mountState; if (!st || !st.sessLoaded) return [];
+  var out = [];
+  st.sess.forEach(function (s) { if (!s.pending && scopeHas(st.scope || [], s.short)) out.push(s.short) });
+  return out;
+}
+function renderMountScope() {
+  var host = $('injMountScope'); if (!host || !mountState) return;
+  var st = mountState;
+  if (!st.sessLoaded) { host.innerHTML = '<div class="inj-mount-scope-hint">' + t('inj.mountScopeLabel') + '</div><div class="inj-mount-scope-cur loading">' + t('common.loading') + '</div>'; return }
+  var byWs = {};
+  st.sess.forEach(function (s) { var w = s.workspace || t('meta.wsOther'); (byWs[w] = byWs[w] || []).push(s) });
+  st.sessPend.forEach(function (p) { var w = p.workspace || t('meta.wsOther'); (byWs[w] = byWs[w] || []).push({ id: p.id, short: p.short, name: '', pending: true }) });
+  var sel = injMountScopeSel();
+  var h = '<div class="inj-mount-scope-hint">' + t('inj.mountScopeLabel') + '</div>'
+    + '<div class="inj-mount-scope-cur">' + (sel.length ? t('inj.scopeSessions', { n: sel.length }) : t('inj.mountScopeAll')) + '</div>';
+  Object.keys(byWs).sort().forEach(function (ws) {
+    h += '<div class="inj-mount-scope-ws">' + esc(ws) + '</div>';
+    byWs[ws].forEach(function (s) {
+      h += '<label class="inj-mount-scope-item' + (s.pending ? ' dis' : '') + '"><input type="checkbox" data-mscope="' + esc(s.short) + '"' + (!s.pending && scopeHas(st.scope || [], s.short) ? ' checked' : '') + (s.pending ? ' disabled' : '') + '> ' + (s.pending ? t('meta.scopePending', { short: esc(s.short) }) : esc(s.name || s.short)) + '</label>';
+    });
+  });
+  host.innerHTML = h;
+  host.querySelectorAll('input[data-mscope]').forEach(function (cb) {
+    cb.onchange = function () { toggleMountScope(cb.dataset.mscope) };
+  });
+}
+function toggleMountScope(key) {
+  var st = mountState; if (!st) return;
+  var cur = (st.scope || []).filter(function (v) { return v !== 'global' && v !== 'workspace' });
+  /* 归一比对口径同编辑器 toggleScope（notes-034-injectto-norm）：勾选态以 scopeHas 为准（存量长 id 也算已勾选）；
+     取消勾选连同长 id 存量一并移除（回调形参 v 消遮蔽全局 t()——injMgrScopeLabel 同款教训） */
+  st.scope = scopeHas(cur, key) ? cur.filter(function (v) { return shortSid(v) !== key }) : cur.concat([key]);
+  st.scopeTouched = true;
+  renderMountScope();
+}
 function openMountModal(n, onConfirm, onSkip) {
   if (!n) return;
   injMgrState = null; modalBackTo = null;
   var edit = typeof n.existing === 'string';   /* 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM） */
-  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, genErr: '', onConfirm: typeof onConfirm === 'function' ? onConfirm : null, onSkip: typeof onSkip === 'function' ? onSkip : null };
+  mountState = { id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, genErr: '', scope: Array.isArray(n.injectTo) ? n.injectTo.slice() : null, scopeTouched: false, sess: [], sessPend: [], sessLoaded: false, onConfirm: typeof onConfirm === 'function' ? onConfirm : null, onSkip: typeof onSkip === 'function' ? onSkip : null };
   /* 0.4.7-B④b（notes-047-ux，R2 漏网 n-mux79knmfjxt）：左钮三岔文案明确化——
      角色切换在途（onSkip 存在，三态/行内直改入口）=「仅切换角色，暂不挂载」（切档不落索引行）；编辑模式 =「取消」；
      其余纯挂载入口（建议器/预览）= inj.mountSkip 原样。Esc/点遮罩 = 一律取消零副作用（不切换不挂载） */
@@ -399,10 +439,29 @@ function openMountModal(n, onConfirm, onSkip) {
     '<div class="modal-t">' + icon('i-bolt', 13) + ' ' + (edit ? t('inj.mountEdit') : t('inj.mountTitle')) + '<span class="sub">' + t('inj.mountSub') + '</span></div>'
     + '<div class="inj-mount-body"><label class="inj-mount-label">' + t('inj.mountLabel') + '</label>'
     + '<textarea class="inj-mount-when" id="injMountWhen" rows="3" placeholder="' + esc(edit ? t('inj.mountPlaceholder') : t('inj.mountGen')) + '">' + esc(mountState.when) + '</textarea>'
-    + '<div class="inj-mount-stat" id="injMountStat" style="display:none"></div></div>'
+    + '<div class="inj-mount-stat" id="injMountStat" style="display:none"></div>'
+    + '<div class="inj-mount-scope" id="injMountScope"></div></div>'
     + '<div class="modal-acts"><button class="mbtn" id="injMountSkip">' + skipLabel + '</button>'
     + '<button class="mbtn primary" id="injMountSave">' + t('inj.mountSave') + '</button></div>'
   );
+  /* 0.6.x（notes-070-mount-reroute）注入范围区两路数据：范围初值兜底（入参缺 injectTo 的入口（建议器候选行等）
+     经 notes-get 拉全量；用户已动手/弹层已关/换目标则丢弃迟到响应）+ 会话清单（notes-sessions 一次拉取缓存） */
+  if (!Array.isArray(n.injectTo)) {
+    rpc('notes-get', { id: n.id }).then(function (res) {
+      var st = mountState;
+      if (!st || st.id !== n.id || st.scopeTouched) return;
+      if (res && res.note && Array.isArray(res.note.injectTo)) { st.scope = res.note.injectTo.slice(); renderMountScope() }
+    }).catch(function () { });
+  }
+  rpc('notes-sessions', {}).then(function (res) {
+    var st = mountState;
+    if (!st || st.id !== n.id) return;
+    st.sess = (res && res.sessions) || [];
+    st.sessPend = res && res.titlesPending && Array.isArray(res.pendingSessions) ? res.pendingSessions : [];
+    st.sessLoaded = true;
+    renderMountScope();
+  }).catch(function () { var st = mountState; if (st && st.id === n.id) { st.sessLoaded = true; renderMountScope() } });
+  renderMountScope();
   $('injMountWhen').oninput = function () { if (mountState) mountState.touched = true };
   if (!edit) {
     setMountStat('gen');   /* 0.4.6-E：加载态立即可见（不再只靠 textarea 占位符——预填文案到达后占位符即消失，加载态无见证） */
@@ -432,7 +491,12 @@ function openMountModal(n, onConfirm, onSkip) {
     if (!mountState || mountState.pending) return;
     mountState.pending = true; mountState.when = $('injMountWhen').value;
     /* 空值兜底（0.4.3⑦ 顺带微修）：「正在生成…」窗口内点确认时 when 可能仍为空串——落空回退标题，whenToUse 行不落空 */
-    rpc('notes-mount', { id: mountState.id, whenToUse: mountState.when || mountState.title }).then(function (res) {
+    /* 0.6.x（notes-070-mount-reroute）：范围区碰过（scopeTouched）才随确认传 injectTo——当前勾选集过滤 global/workspace
+       存量值后落短 id（host 侧另有写入归一兜底）；不碰 = 缺参零迁移（存量挂载语义不动） */
+    var call = mountState.scopeTouched
+      ? rpc('notes-mount', { id: mountState.id, whenToUse: mountState.when || mountState.title, injectTo: (mountState.scope || []).filter(function (v) { return v !== 'global' && v !== 'workspace' }).map(shortSid) })
+      : rpc('notes-mount', { id: mountState.id, whenToUse: mountState.when || mountState.title })
+    call.then(function (res) {
       var done = mountState; mountState = null;
       if (res && res.error) { toast(t('inj.mountFailed', { msg: res.error })) }
       else {

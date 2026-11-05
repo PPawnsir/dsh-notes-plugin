@@ -96,16 +96,42 @@
     // 0.4.6-E（n-mux8ak66jttd）：LLM 预填三态可见化——加载态（状态行 spinner「正在生成 whenToUse…」）/ 失败态（「预填不可用，请手写」，
     //   genErr 携带原始 error 进 tooltip——静默回退排查：resolveLlmSelection 选用链路的失败原因此前被吞，现在用户可见）；
     //   跳过按钮文案改名「不用建议，自己写」（inj.mountSkip 字典值——消「跳过=不挂载还是跳过候选」歧义）
-    store.modal.mount = createStore({ open: false, id: '', title: '', when: '', pending: false, generating: false, edit: false, touched: false, genErr: '' })
+    store.modal.mount = createStore({ open: false, id: '', title: '', when: '', pending: false, generating: false, edit: false, touched: false, genErr: '', scope: null, scopeTouched: false, sess: [], sessPend: [], sessLoaded: false })
     function setMountOpen(v) { store.modal.mount.set({ open: typeof v === 'function' ? v(store.modal.mount.get().open) : v }) }
     const mountOnConfirmedRef = { current: null }   // 确认回调（模块级单例镜像；打开时重置）
     const mountOnSkipRef = { current: null }   // 0.4.7-B④b：跳过档回调（存在 = 角色切换在途——左钮改「仅切换角色，暂不挂载」）
+    // 0.6.x（notes-070-mount-reroute，反馈 n-mw3buwdh39rd）：挂载弹层「注入范围」区（同构 app 侧）——当前勾选集（短 id；
+    //   scopeHas 归一比对，存量长 id 也算已勾选）+ 勾选切换（取消连同长 id 存量一并移除，过滤 global/workspace）
+    function mountScopeSel(m) {
+      if (!m || !m.sessLoaded) return []
+      return (m.sess || []).filter(s => !s.pending && scopeHas(m.scope || [], s.short)).map(s => s.short)
+    }
+    function toggleMountScope(key) {
+      const m = store.modal.mount.get()
+      if (!m.open) return
+      const cur = (m.scope || []).filter(v => v !== 'global' && v !== 'workspace')
+      store.modal.mount.set({ scope: scopeHas(cur, key) ? cur.filter(v => shortSid(v) !== key) : cur.concat([key]), scopeTouched: true })
+    }
     function openMountModal(n, opts) {
       if (!n) return
       mountOnConfirmedRef.current = (opts && typeof opts.onConfirmed === 'function') ? opts.onConfirmed : null
       mountOnSkipRef.current = (opts && typeof opts.onSkip === 'function') ? opts.onSkip : null
       const edit = typeof n.existing === 'string'   // 已挂载 = 编辑模式（预填现有 whenToUse，不调 LLM）
-      store.modal.mount.set({ open: true, id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, genErr: '' })
+      store.modal.mount.set({ open: true, id: n.id, title: n.title || n.id, when: edit ? n.existing : '', pending: false, generating: !edit, edit: edit, touched: false, genErr: '', scope: Array.isArray(n.injectTo) ? n.injectTo.slice() : null, scopeTouched: false, sess: [], sessPend: [], sessLoaded: false })
+      // 0.6.x 注入范围区两路数据（同 app 侧口径）：入参缺 injectTo（建议器候选行等）→ notes-get 兜底拉全量
+      //   （已动手/关层/换目标丢弃迟到响应）；会话清单 notes-sessions 一次拉取缓存于切片（标题补齐轮询从简——占位行禁用）
+      if (!Array.isArray(n.injectTo)) {
+        host.call('notes-get', { id: n.id }).then(res => {
+          const m = store.modal.mount.get()
+          if (!m.open || m.id !== n.id || m.scopeTouched) return
+          if (res && res.note && Array.isArray(res.note.injectTo)) store.modal.mount.set({ scope: res.note.injectTo.slice() })
+        }).catch(() => {})
+      }
+      host.call('notes-sessions', {}).then(res => {
+        const m = store.modal.mount.get()
+        if (!m.open || m.id !== n.id) return
+        store.modal.mount.set({ sess: (res && res.sessions) || [], sessPend: res && res.titlesPending && Array.isArray(res.pendingSessions) ? res.pendingSessions : [], sessLoaded: true })
+      }).catch(() => { const m = store.modal.mount.get(); if (m.open && m.id === n.id) store.modal.mount.set({ sessLoaded: true }) })
       if (edit) return
       // LLM 草稿预填：成功填草稿；失败/超时回退预填标题 + 失败态可见（genErr = 原始原因）；弹层已关/换目标则丢弃迟到响应
       host.call('notes-when-suggest', { id: n.id }).then(res => {
@@ -130,7 +156,11 @@
       store.modal.mount.set({ pending: true })
       try {
         // 空值兜底（0.4.3⑦ 顺带微修）：「正在生成…」窗口内点确认时 m.when 可能仍为空串——落空则回退标题，whenToUse 行不落空
-        const res = await host.call('notes-mount', { id: m.id, whenToUse: m.when || m.title })
+        // 0.6.x（notes-070-mount-reroute）：范围区碰过（scopeTouched）才随确认传 injectTo（勾选集过滤 global/workspace 存量值后
+        //   落短 id，host 侧另有写入归一兜底）；不碰 = 缺参零迁移（存量挂载调用全兼容）
+        const res = m.scopeTouched
+          ? await host.call('notes-mount', { id: m.id, whenToUse: m.when || m.title, injectTo: (m.scope || []).filter(v => v !== 'global' && v !== 'workspace').map(shortSid) })
+          : await host.call('notes-mount', { id: m.id, whenToUse: m.when || m.title })
         store.modal.mount.set({ pending: false })
         if (res && res.error) { showToast(t('inj.mountFailed', { msg: res.error })); return }
         showToast(t('inj.mountSaved', { title: m.title }))
@@ -154,7 +184,27 @@
             // 0.4.6-E：LLM 预填三态可见化——加载中（spinner 状态行）/ 失败（「预填不可用，请手写」+ tooltip 原始原因）/ 成功（行消失）
             m.generating
               ? e('div', { className: 'dsh-notes-inj-mount-gen' }, tt('inj.mountGen'))
-              : (m.genErr ? e('div', { className: 'dsh-notes-inj-mount-generr dsh-nt', 'data-tooltip': m.genErr }, tt('inj.mountGenFail')) : null)),
+              : (m.genErr ? e('div', { className: 'dsh-notes-inj-mount-generr dsh-nt', 'data-tooltip': m.genErr }, tt('inj.mountGenFail')) : null),
+            // 0.6.x（notes-070-mount-reroute）：「注入范围」区——按工作区分组的会话多选（结构同 scope 弹层：
+            //   scopeHas 归一比对 + 占位会话禁用；勾选切换走 toggleMountScope；确认时 scopeTouched 才落 injectTo）
+            e('div', { className: 'dsh-notes-inj-mount-scope' },
+              e('div', { className: 'dsh-notes-inj-mount-scope-hint' }, tt('inj.mountScopeLabel')),
+              !m.sessLoaded
+                ? e('div', { className: 'dsh-notes-inj-mount-scope-cur loading' }, tt('common.loading'))
+                : (() => {
+                  const mSel = mountScopeSel(m)
+                  const byWs = {}
+                  for (const s of (m.sess || [])) { const w = s.workspace || tt('meta.wsOther'); if (!byWs[w]) byWs[w] = []; byWs[w].push(s) }
+                  for (const p of (m.sessPend || [])) { const w = p.workspace || tt('meta.wsOther'); if (!byWs[w]) byWs[w] = []; byWs[w].push({ id: p.id, short: p.short, name: '', pending: true }) }
+                  const wsKeys = Object.keys(byWs).sort()
+                  return e(React.Fragment, null,
+                    e('div', { className: 'dsh-notes-inj-mount-scope-cur' }, mSel.length ? tt('inj.scopeSessions', { n: mSel.length }) : tt('inj.mountScopeAll')),
+                    wsKeys.map(ws => e('div', { key: ws, className: 'dsh-notes-inj-mount-scope-group' },
+                      e('div', { className: 'dsh-notes-inj-mount-scope-ws' }, ws),
+                      byWs[ws].map(s => e('label', { key: s.id, className: 'dsh-notes-inj-mount-scope-item' + (s.pending ? ' dis' : '') },
+                        e('input', { type: 'checkbox', checked: s.pending ? false : scopeHas(m.scope || [], s.short), onChange: () => { if (!s.pending) toggleMountScope(s.short) }, disabled: !!s.pending }),
+                        ' ' + (s.pending ? tt('meta.scopePending', { short: s.short }) : (s.name || s.short)))))))
+                })())),
           e('div', { className: 'dsh-notes-dispatch-actions' },
             /* 0.4.7-B④b（R2 漏网 n-mux79knmfjxt）：左钮三岔文案明确化——角色切换在途（onSkip 在）=「仅切换角色，暂不挂载」（关卡+切档不落行）；
                编辑模式 =「取消」；纯挂载入口（建议器/预览）= inj.mountSkip 原样。点遮罩 = 一律取消零副作用 */

@@ -561,6 +561,9 @@ var I18N_EN = {
   'inj.mountGen': 'Generating whenToUse…',
   // 0.4.6-E：LLM prefill three-state visibility — failure copy (raw reason rides the tooltip; skip button renamed to disambiguate)
   'inj.mountGenFail': 'Prefill unavailable — please write it yourself',
+  // 0.6.x（notes-070-mount-reroute，反馈 n-mw3buwdh39rd）：mount modal injection-scope section — hint row + none-checked summary (checked count reuses inj.scopeSessions)
+  'inj.mountScopeLabel': 'Injection scope: the mount line is visible only in checked sessions; none checked = all sessions',
+  'inj.mountScopeAll': 'All sessions',
   // 0.4.3 验收修复⑥（notes-043-metrics-present）：注入管理面板挂载区统计行（notes-recall-stats 账本快照，点开看全量）
   'inj.mntStats': 'Mounted {m}｜Week Top: {top}｜Zero-ref {z}',
   'inj.mntStatsTip': 'Recall value signal (source: notes-recall-stats · ledger snapshot) · click for full channel stats',

@@ -537,6 +537,16 @@
   .inj-mount-stat.gen::before{content:'';width:10px;height:10px;border:2px solid var(--nbd-soft);border-top-color:var(--nacc);border-radius:50%;animation:dshNotesMountSpin .8s linear infinite;flex-shrink:0}
   @keyframes dshNotesMountSpin{to{transform:rotate(360deg)}}
   .inj-mount-stat.err{color:var(--nwarn);cursor:help}
+  /* 0.6.x（notes-070-mount-reroute）：挂载弹层「注入范围」区样式——会话多选列表（排版口径同 scope-panel） */
+  .inj-mount-scope{display:flex;flex-direction:column;gap:2px;max-height:200px;overflow-y:auto;border:1px solid var(--nbd-soft);border-radius:var(--nr-sm);padding:6px 8px;background:var(--nbg-raise)}
+  .inj-mount-scope-hint{font-size:10.5px;color:var(--nt3);padding:2px 0 4px;line-height:1.5;border-bottom:1px solid var(--nbd-soft);margin-bottom:4px}
+  .inj-mount-scope-cur{font-size:10.5px;color:var(--nt2);padding:0 0 4px}
+  .inj-mount-scope-cur.loading{color:var(--nt3)}
+  .inj-mount-scope-ws{font-size:10.5px;color:var(--nt3);padding:4px 0 2px}
+  .inj-mount-scope-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--nt2);padding:4px 6px;border-radius:var(--nr-sm);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .inj-mount-scope-item:hover{background:var(--nbg-hover);color:var(--ntx)}
+  .inj-mount-scope-item input{accent-color:var(--nacc)}
+  .inj-mount-scope-item.dis{opacity:.5;cursor:default}
   /* ===== 历史版本面板 modal（详情 meta 行「历史」入口；notes-history-ui）：左列版本列表（时间+大小，倒序）+ 右侧只读预览（renderMarkdown 内核渲染；与原型 notes-ui-v2.html 同款） ===== */
   .modal.hist{width:720px}
   .hist-body{display:flex;gap:10px;min-height:190px;margin-bottom:4px}
