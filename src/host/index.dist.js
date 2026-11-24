@@ -109,6 +109,57 @@
       }
     })
 
+    // ---- 0.6.8（note-create-diag，issue: note-manage-create-body-missing）create 入口参数画像 + 精确分类 + DIAG 探针 ----
+    // 背景：主 fork 会话持续报「需要 title 和 body」，旧闸口把 缺键/空串/类型错误 全折叠成同一句错，无法区分
+    //   「agent 未传」「RPC 丢参」「类型漂移」。本块把闸口升级为精确分类（missing / empty-string / wrong-type），
+    //   并把「插件入口实际收到的参数画像」落 NOTES_DIR/_note-create-diag.log（单行 JSON、200 行滚动、读改写全程静默、
+    //   绝不 await 阻塞主流程——与 dispatch.js /* DIAG rc.5 */ 探针同范式）。上游（agent 出参 / Harness 序列化 / RPC 转发）
+    //   是否丢参仍需原始失败请求取证，插件边界只证「入口收到什么」。
+    // 红线：诊断只记 参数键名 / own 状态 / 类型 / 字符串长度 / sessionId 类型，绝不落 title/body 正文、任何参数值、secret 或完整 cwd。
+    // 行为边界：合法输入（title/body 均为非空字符串）零改动；旧闸口对「真值即放行」的非字符串（如数字/对象）现按
+    //   schema 声明的 string 契约收紧为 wrong-type 拒绝——这是唯一刻意的行为变更，其余拒绝路径与旧闸口逐项等价。
+    const NOTE_CREATE_DIAG_MAX_LINES = 200   /* DIAG note-create */
+    function _noteCreateDiag(obj) {   /* DIAG note-create */
+      try {
+        const raw = NOTES_DIR + (NOTES_DIR.indexOf('\\') >= 0 ? '\\' : '/') + '_note-create-diag.log'
+        fs.resolve(raw).then(function (p) {
+          return fs.readText(p).then(function (txt) { return String(txt || '') }, function () { return '' })
+            .then(function (prev) {
+              const lines = prev.split('\n').filter(function (l) { return l.trim() })
+              lines.push(JSON.stringify(Object.assign({ t: new Date().toISOString() }, obj)))
+              while (lines.length > NOTE_CREATE_DIAG_MAX_LINES) lines.shift()
+              return fs.writeText(p, lines.join('\n') + '\n', undefined, undefined, getPolicy())
+            })
+        }).catch(function () {})
+      } catch (e) {}
+    }
+    function _noteCreateArgState(args, key) {   /* DIAG note-create */
+      // 单键画像：state ∈ ok / missing / empty-string / wrong-type；own=hasOwnProperty；type=typeof（null 单列）；len=字符串长度（非字符串恒 0）
+      try {
+        const own = Object.prototype.hasOwnProperty.call(args, key)
+        const v = args ? args[key] : undefined
+        const type = v === null ? 'null' : typeof v
+        let state = 'ok'
+        if (!own || v === undefined || v === null) state = 'missing'
+        else if (type !== 'string') state = 'wrong-type'
+        else if (v.length === 0) state = 'empty-string'
+        return { state: state, own: own, type: type, len: type === 'string' ? v.length : 0 }
+      } catch (e) { return { state: 'unknown', own: false, type: 'error', len: 0 } }
+    }
+    function _noteCreateArgGate(args) {   /* DIAG note-create */
+      // 闸口：title/body 均 ok → null 放行（合法输入零改动）；否则返回 { reason, details }（details 只含键/状态/类型/长度，不含正文）
+      const st = { title: _noteCreateArgState(args, 'title'), body: _noteCreateArgState(args, 'body') }
+      if (st.title.state === 'ok' && st.body.state === 'ok') return null
+      const bad = []
+      if (st.title.state !== 'ok') bad.push('title:' + st.title.state)
+      if (st.body.state !== 'ok') bad.push('body:' + st.body.state)
+      const reason = bad.join('；')
+      let keys = []
+      try { keys = Object.keys(args || {}).sort() } catch (e) {}
+      /* DIAG note-create */ _noteCreateDiag({ ev: 'create-args', action: 'create', keys: keys, title: st.title, body: st.body, sessionIdType: typeof (args && args.sessionId), reason: reason })
+      return { reason: reason, details: st }
+    }
+
     regTool({
       name: 'note_manage',
       description: 'Single tool for create/list/update/delete/restore/archive. Pick an action and supply its required fields. The Agent should prefer this for any non-search CRUD: one tool means one decision point and one schema to learn.\n\n' +
@@ -174,7 +225,10 @@
         const action = args && args.action
         try {
           if (action === 'create') {
-            if (!args.title || !args.body) return { error: 'note_manage.create 需要 title 和 body' }
+            // 0.6.8（note-create-diag）：旧「需要 title 和 body」单句错误升级为精确分类（missing / empty-string / wrong-type）+
+            //   无正文 DIAG 参数画像落盘；错误前缀保留兼容既有断言，合法输入零改动
+            const gate0 = _noteCreateArgGate(args)
+            if (gate0) return { error: 'note_manage.create 需要 title 和 body（' + gate0.reason + '）', reason: gate0.reason, details: gate0.details }
             // 定时派发：公共写入口 contractType 白名单（'' / dispatch-schedule；其余契约类型系统内部管理）
             const ctErr0 = schedPublicContractTypeError(args.contractType)
             if (ctErr0) return { error: ctErr0 }
