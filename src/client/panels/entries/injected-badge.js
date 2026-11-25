@@ -1,6 +1,6 @@
     // ===== entries/injected-badge —— 会话头部注入清单徽标 📎N（0.4.5-H notes-045-session-injected-view）=====
-    // provides: injSessionHit/injBadgeCompute（纯函数，check 节 88 行为级 eval 锚）+ InjectedBadge 组件 +
-    //           slots.register（conversation.session.header.actions #41，排既有笔记按钮 #40 旁——独立 id 共存，不抢槽位）
+    // provides: injSessionHit/injBadgeCompute/injBadgePopPlace（纯函数，check 节 88 行为级 eval 锚）+ InjectedBadge 组件 +
+    //           injBadgePopBuild 命令式弹层 DOM 组装（portal）+ slots.register（conversation.session.header.actions #41，排既有笔记按钮 #40 旁——独立 id 共存，不抢槽位）
     // needs: kernel/bus.js（panelOpen/noteRefreshListeners/showToast）、kernel/format.js（shortSid/notify）、
     //        kernel/state.js（panelBridge/selectNote 转发别名）、kernel/i18n.js（useT/t）、kernel/icons.js（e）——拼接序位全部在前
     // 数据源零新增 RPC：notes-list（inject=true 过滤在本组件求值；sys/软删 host 缺省口径已排除，组件侧同口径兜底）+
@@ -43,12 +43,77 @@
       if (arr.length === 0) return tt('meta.scopeAll')
       return arr.map(tg => tt('meta.scopeSession', { name: shortSid(tg) })).join(tt('common.listSep'))
     }
+    // 弹层坐标纯函数（0.6.x notes-071/072，反馈 n-mwvgrqllcob5）：宿主 titleCluster computed overflow:clip 把旧
+    //   absolute 弹层整体裁掉（pop.top 恰落簇底缘外，用户截图实证）；071 首修 fixed 被真机驳回修正——titleCluster 还有
+    //   mask-image，mask 使该祖先成为 fixed 的包含块，overflow:clip 照样裁掉 fixed 弹层（Verifier 受控实验：仅置
+    //   mask:none 弹层即完整可见，恢复 mask 即复失）。终态 = 弹层 portal 物理离开该祖先（挂载见 InjectedBadge 弹层 effect），
+    //   坐标仍按按钮 rect 现算。口径：默认弹层右缘对齐按钮右缘；left 钳制视口左右各 8px；top=按钮下缘+4；
+    //   width≤320 且不超 vw-16；maxHeight≤300 且不超剩余视口高（vh-top-8）。
+    //   vw/vh 参数化（check 节 88 行为级 eval 矩阵；调用方传 window.innerWidth/innerHeight）。宽/高口径 = border-box
+    //   （样式侧 box-sizing:border-box 配套，实测 rect 与 width/maxHeight 逐像素一致）。
+    function injBadgePopPlace(br, vw, vh) {
+      const M = 8
+      const width = Math.min(320, Math.max(0, vw - 2 * M))
+      let left = br.right - width
+      if (left < M) left = M
+      if (left + width > vw - M) left = Math.max(M, vw - M - width)
+      const top = br.bottom + 4
+      const maxHeight = Math.min(300, Math.max(0, vh - top - M))
+      return { left: left + 'px', top: top + 'px', width: width + 'px', maxHeight: maxHeight + 'px' }
+    }
+    // 弹层 DOM 组装（notes-072-injbadge-pop-portal）：命令式 createElement——标题/范围/when 全是用户数据，textContent
+    //   直填不经 HTML 解析（零 innerHTML 红线，与 React 文本节点转义同强度）；tooltip 走 setAttribute。类名与 React 形态
+    //   逐类一致（styles.css / e2e 选择器零迁移）；挂载/移除由 InjectedBadge 弹层 effect 全权管理（本函数只产不挂）。
+    function injBadgePopRowEl(id, title, sub, tip, onOpen) {
+      const row = document.createElement('div')
+      row.className = 'dsh-notes-injbadge-row dsh-nt'
+      row.setAttribute('data-tooltip', tip)
+      row.addEventListener('click', () => onOpen(id))
+      const rt = document.createElement('div')
+      rt.className = 'dsh-notes-injbadge-row-t'
+      rt.textContent = title
+      row.appendChild(rt)
+      if (sub) {
+        const rs = document.createElement('div')
+        rs.className = 'dsh-notes-injbadge-row-s'
+        rs.textContent = sub
+        row.appendChild(rs)
+      }
+      return row
+    }
+    function injBadgePopBuild(data, place, tt, onOpen) {
+      const pop = document.createElement('div')
+      pop.className = 'dsh-notes-injbadge-pop'
+      if (place) { for (const k of Object.keys(place)) pop.style[k] = place[k] }
+      const head = document.createElement('div')
+      head.className = 'dsh-notes-injbadge-pop-t'
+      head.textContent = tt('injBadge.title')
+      pop.appendChild(head)
+      const M = data.convs.length, K = data.refs.length
+      const tip = tt('injBadge.openTip')
+      if (M > 0) {
+        const s = document.createElement('div')
+        s.className = 'dsh-notes-injbadge-sec'
+        s.textContent = tt('injBadge.convSec', { n: M })
+        pop.appendChild(s)
+      }
+      for (const n of data.convs) pop.appendChild(injBadgePopRowEl(n.id, n.title || tt('tree.untitled'), injBadgeScopeLabel(n.injectTo, tt), tip, onOpen))
+      if (K > 0) {
+        const s2 = document.createElement('div')
+        s2.className = 'dsh-notes-injbadge-sec'
+        s2.textContent = tt('injBadge.refSec', { n: K })
+        pop.appendChild(s2)
+      }
+      for (const r of data.refs) pop.appendChild(injBadgePopRowEl(r.id, r.title, r.when || '', tip, onOpen))
+      return pop
+    }
     const d5 = slots.inject('conversation.session.header.actions', () => {
       function InjectedBadge(props) {
         const tt = useT()
         const sid = shortSid(props && props.sessionId)
         const [data, setData] = React.useState(null)   // null = 未加载/拉取失败（徽标不渲染，静默降级）
         const [popOpen, setPopOpen] = React.useState(false)
+        const btnRef = React.useRef(null)   // 徽标按钮 rect 锚：弹层 portal 坐标开层时现算（notes-072-injbadge-pop-portal）
         // 拉取：挂载时 + sid 切换时 + notifyNotesChanged 失效时（notes-list + notes-mount-list 组合，零新增 RPC）
         React.useEffect(() => {
           if (!sid) return
@@ -66,15 +131,32 @@
           noteRefreshListeners.add(fn)
           return () => { stopped = true; noteRefreshListeners.delete(fn) }
         }, [sid])
-        // 浮层点外关闭 + Esc 关闭（会话头部在宿主壳，面板 Esc 分层栈覆盖不到，本组件自理）
+        // 浮层点外关闭 + Esc 关闭（会话头部在宿主壳，面板 Esc 分层栈覆盖不到，本组件自理）；
+        // 弹层 portal 直挂 body（不在徽标壳内），点外判定须把弹层本体计入「内」，否则点弹层空白区会误关
         React.useEffect(() => {
           if (!popOpen) return
-          const onDown = (ev) => { if (!(ev.target && ev.target.closest && ev.target.closest('.dsh-notes-injbadge'))) setPopOpen(false) }
+          const onDown = (ev) => { if (!(ev.target && ev.target.closest && ev.target.closest('.dsh-notes-injbadge, .dsh-notes-injbadge-pop'))) setPopOpen(false) }
           const onKey = (ev) => { if (ev.key === 'Escape') setPopOpen(false) }
           document.addEventListener('mousedown', onDown)
           document.addEventListener('keydown', onKey)
           return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
         }, [popOpen])
+        // 会话切换即收弹层（防跨会话残留旧行——portal 弹层生命周期随本组件，sid 变更先行关闭）
+        React.useEffect(() => { setPopOpen(false) }, [sid])
+        // 弹层 portal 挂载（notes-072-injbadge-pop-portal）：开层时命令式建 DOM 直挂 document.body——物理离开宿主
+        //   titleCluster（mask-image 使其成为 fixed 的包含块 + overflow:clip 双重裁切，fixed 单体修法已被真机驳回）；
+        //   坐标按按钮 rect 现算（injBadgePopPlace，border-box 口径与样式配套）；关层/数据刷新/卸载经 effect 清理链
+        //   统一移除（data 变更重建 = 行内容随拉取刷新；行点击 onOpen = openNote 函数声明提升，早退渲染路径同样在册）。
+        //   纪律红线：本 effect 必须在早退 return 之前声明——hooks 数量恒定（早退后加 hook = React #310 崩槽，真机实证）；
+        //   零新增槽位注册（shell 通道加注册会打破 18 节「恰 5 个 Slot 注入点」产物锚），走命令式层（editor.js 遮蔽层同款形态）。
+        React.useEffect(() => {
+          if (!popOpen || !data) return
+          const btn = btnRef.current
+          const place = (btn && btn.getBoundingClientRect) ? injBadgePopPlace(btn.getBoundingClientRect(), window.innerWidth, window.innerHeight) : null
+          const el = injBadgePopBuild(data, place, tt, openNote)
+          document.body.appendChild(el)
+          return () => { if (el.parentNode) { try { el.parentNode.removeChild(el) } catch (err) {} } }
+        }, [popOpen, data])
         if (!sid) return null
         if (!data) return null
         const M = data.convs.length, K = data.refs.length, N = M + K
@@ -94,21 +176,10 @@
             else showToast(t('wiki.targetNotFound', { target: id }))
           }).catch(() => showToast(t('wiki.targetNotFound', { target: id })))
         }
-        const popEl = popOpen ? e('div', { className: 'dsh-notes-injbadge-pop' },
-          e('div', { className: 'dsh-notes-injbadge-pop-t' }, tt('injBadge.title')),
-          M > 0 ? e('div', { className: 'dsh-notes-injbadge-sec' }, tt('injBadge.convSec', { n: M })) : null,
-          data.convs.map(n => e('div', { key: n.id, className: 'dsh-notes-injbadge-row dsh-nt', 'data-tooltip': tt('injBadge.openTip'), onClick: () => openNote(n.id) },
-            e('div', { className: 'dsh-notes-injbadge-row-t' }, n.title || tt('tree.untitled')),
-            e('div', { className: 'dsh-notes-injbadge-row-s' }, injBadgeScopeLabel(n.injectTo, tt)))),
-          K > 0 ? e('div', { className: 'dsh-notes-injbadge-sec' }, tt('injBadge.refSec', { n: K })) : null,
-          data.refs.map(r => e('div', { key: r.id, className: 'dsh-notes-injbadge-row dsh-nt', 'data-tooltip': tt('injBadge.openTip'), onClick: () => openNote(r.id) },
-            e('div', { className: 'dsh-notes-injbadge-row-t' }, r.title),
-            r.when ? e('div', { className: 'dsh-notes-injbadge-row-s' }, r.when) : null))) : null
         return e('span', { className: 'dsh-notes-injbadge' },
-          e('button', { className: 'dsh-notes-hdr-btn dsh-notes-injbadge-btn dsh-nt', onClick: () => setPopOpen(v => !v), 'data-tooltip': tt('injBadge.tip', { m: M, k: K }), 'aria-label': tt('injBadge.title') },
+          e('button', { ref: btnRef, className: 'dsh-notes-hdr-btn dsh-notes-injbadge-btn dsh-nt', onClick: () => setPopOpen(v => !v), 'data-tooltip': tt('injBadge.tip', { m: M, k: K }), 'aria-label': tt('injBadge.title') },
             e('span', { className: 'dsh-notes-injbadge-ic', 'aria-hidden': 'true' }, '📎'),
-            e('span', { className: 'dsh-notes-injbadge-n' }, String(N))),
-          popEl)
+            e('span', { className: 'dsh-notes-injbadge-n' }, String(N))))
       }
       slots.register({ name: 'conversation.session.header.actions', id: 'dsh-notes-injected-badge', order: 41 }, (props) => e(InjectedBadge, props))
     })

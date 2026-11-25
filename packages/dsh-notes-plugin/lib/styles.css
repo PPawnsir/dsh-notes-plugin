@@ -6,7 +6,7 @@
 /* 映射口径（DSH 0.1.7 实测）：npanel=一级层面（亮 #fff / 暗 #232324）、nbg=页面底（亮 #fff / 暗 #151517）、
    nbg-raise=二级层面（暗 #2c2c2e）、nbg-hover=官方交互 hover、nbd=border-l2、nbd-soft=border-l3、
    nt3=label-tertiary、nacc=业务主色鲜蓝（亮 #4176e6 / 暗 #7aaaff，曾误绑中性品牌色导致暗色选中态发灰） */
-.dsh-notes-floating,.dsh-notes-fab,.dsh-notes-hdr-btn,.dsh-notes-injbadge{
+.dsh-notes-floating,.dsh-notes-fab,.dsh-notes-hdr-btn,.dsh-notes-injbadge,.dsh-notes-injbadge-pop{
   /* 背景（v2：npanel=卡片面 / nbg=容器底 / nbg-raise=输入与徽章的抬升面） */
   --npanel:var(--dsw-alias-bg-layer-1, #ffffff);       /* 侧栏/编辑器面板背景（一级层面） */
   --nbg:var(--dsw-alias-bg-base, #ececef);             /* app 容器底（页面底；亮色与面板同为 #fff，由下方 color-mix 派生层次） */
@@ -113,12 +113,19 @@ svg.dsh-ic{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;st
 .dsh-notes-hdr-ic{display:inline-flex;align-items:center;pointer-events:none}
 
 /* ===== 会话头部注入清单徽标（0.4.5-H）：📎N 胶囊（复用 hdr-btn 描边胶囊基座）+ 明细浮层 ===== */
-/* 宿主壳区域（会话头部），令牌经上方 .dsh-notes-injbadge 作用域声明注入；浮层绝对定位锚在徽标包壳上 */
+/* 宿主壳区域（会话头部），令牌经上方令牌域声明注入；浮层为命令式 portal 层（0.6.x notes-072-injbadge-pop-portal，
+   反馈 n-mwvgrqllcob5）：宿主 titleCluster 除 overflow:clip 外还有 mask-image——mask 使该祖先成为 fixed 的包含块，
+   fixed 单体仍被裁（真机驳回实证）——弹层 DOM 由组件直挂 document.body 物理离开该裁切祖先；portal 直挂 body 同时也
+   物理离开 .dsh-notes-injbadge 令牌子树，故弹层类名自身进上方令牌域选择器（同 .dsh-notes-fab/.dsh-notes-hdr-btn
+   宿主壳 fixed 形态，notes-073-injbadge-pop-tokens：否则 --npanel/--nbd/--nshadow/--nr-md 解析为空、弹层退化成
+   透明无边框悬浮文字且正文透过重叠——真机驳回实证；弹层消费的九令牌全在主令牌块，暗色/color-mix 覆盖块不涉其消费面，
+   无需扩列）；坐标/尺寸按按钮 rect 现算挂 style，本规则只留定位锚+视觉样式，零 top/right/min-width/max-width/max-height 锚。
+   box-sizing:border-box = 坐标纯函数宽/高口径（实测 rect 与 width/maxHeight 逐像素吻合）；z-index 与 FAB/tooltip 同层（浮空面板之下） */
 .dsh-notes-injbadge{position:relative;display:inline-flex;vertical-align:middle;font-family:var(--nfont)}
 .dsh-notes-injbadge-btn{gap:4px;padding:5px 8px}
 .dsh-notes-injbadge-ic{font-size:11px;line-height:1;pointer-events:none}
 .dsh-notes-injbadge-n{font-variant-numeric:tabular-nums;font-weight:600;pointer-events:none}
-.dsh-notes-injbadge-pop{position:absolute;top:calc(100% + 4px);right:0;z-index:1200;min-width:240px;max-width:320px;max-height:300px;overflow-y:auto;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:var(--nshadow);padding:6px;animation:dshNotesPopIn .12s ease}
+.dsh-notes-injbadge-pop{position:fixed;z-index:2147483646;box-sizing:border-box;overflow-y:auto;background:var(--npanel);border:1px solid var(--nbd);border-radius:var(--nr-md);box-shadow:var(--nshadow);padding:6px;animation:dshNotesPopIn .12s ease}
 .dsh-notes-injbadge-pop-t{font-size:12px;font-weight:600;color:var(--ntx);padding:2px 6px 6px;border-bottom:1px solid var(--nbd-soft);margin-bottom:4px}
 .dsh-notes-injbadge-sec{font-size:11px;color:var(--nt3);padding:6px 6px 2px}
 .dsh-notes-injbadge-row{padding:5px 8px;border-radius:6px;cursor:pointer}

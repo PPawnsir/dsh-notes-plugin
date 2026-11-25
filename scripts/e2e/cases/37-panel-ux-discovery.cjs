@@ -64,6 +64,59 @@ module.exports = {
         H.t('📎 浮层双区：「约定 · 须遵守（2）」+「挂载资料 · 按需取用（1）」+ 三行条目',
           popTxt.indexOf('约定 · 须遵守（2）') >= 0 && popTxt.indexOf('挂载资料 · 按需取用（1）') >= 0
           && popTxt.indexOf('C锁约定一') >= 0 && popTxt.indexOf('C锁资料一') >= 0, () => popTxt.slice(0, 120))
+        /* 步①b 弹层 portal 真机锁（notes-072-injbadge-pop-portal，反馈 n-mwvgrqllcob5）：宿主 titleCluster 除
+         * overflow:clip 外还有 mask-image——mask 使该祖先成为 fixed 的包含块，overflow:clip 照样裁掉 fixed 弹层
+         * （Verifier 真机受控实验定根：仅置 mask:none 弹层即完整可见，恢复 mask 即复失；071 fixed 单体修法因此被驳）。
+         * mock 徽标祖先（#notes-header-root，harness 侧宿主面）复刻真实缺陷三件套 overflow:clip+限高+mask-image，
+         * 断言弹层物理离开该祖先（parentElement === document.body + 不在裁切簇内）+ computed fixed + 左右界在视口内 +
+         * box-sizing:border-box（实测宽 ≤ 纯函数 320 口径——071 轮 content-box 实测多 14px 的驳回次因）+ 首行 rect 中心
+         * elementFromPoint 命中弹层内部（真实缺陷形态下的可见/命中可观测证据：fixed 单体形态该点被 mask 裁掉不可命中，
+         * 本断言即假绿防线）；量测后 finally 恢复祖先样式（不污染后续用例态）。 */
+        const clipOk = await h.page.evaluate(() => {
+          var anc = document.querySelector('.dsh-notes-injbadge').parentElement
+          var pop = document.querySelector('.dsh-notes-injbadge-pop')
+          var row = pop && pop.querySelector('.dsh-notes-injbadge-row')
+          if (!anc || !pop || !row) return { ok: false, why: 'missing' }
+          var prev = { overflow: anc.style.overflow, height: anc.style.height, maskImage: anc.style.maskImage }
+          anc.style.overflow = 'clip'; anc.style.height = '32px'
+          try { anc.style.maskImage = 'linear-gradient(#000 0 0)' } catch (e) {}
+          try {
+            var pr = pop.getBoundingClientRect(), rr = row.getBoundingClientRect()
+            var cs = getComputedStyle(pop)
+            var cx = rr.left + rr.width / 2, cy = rr.top + rr.height / 2
+            var hit = document.elementFromPoint(cx, cy)
+            var inside = !!hit && (pop === hit || pop.contains(hit))
+            return { ok: cs.position === 'fixed' && pop.parentElement === document.body && !anc.contains(pop)
+              && pr.left >= 0 && pr.right <= window.innerWidth
+              && cs.boxSizing === 'border-box' && pr.width <= 320 && inside,
+              pos: cs.position, box: cs.boxSizing, w: pr.width, l: pr.left, r: pr.right, vw: window.innerWidth,
+              bodyChild: pop.parentElement === document.body, hitCls: hit ? String(hit.className) : null }
+          } finally {
+            anc.style.overflow = prev.overflow; anc.style.height = prev.height
+            try { anc.style.maskImage = prev.maskImage } catch (e) {}
+          }
+        })
+        H.t('📎 弹层 portal 不被宿主簇 mask+overflow:clip 裁切：直挂 body 离开裁切祖先 + computed fixed + border-box 宽≤320 + 左右界在视口内 + 首行中心 elementFromPoint 命中弹层',
+          clipOk.ok, () => JSON.stringify(clipOk))
+        /* 步①c 弹层视觉外壳真机锁（notes-073-injbadge-pop-tokens，072 轮驳回主因）：弹层 portal 直挂 document.body 后
+         * 物理脱离 .dsh-notes-injbadge 令牌子树——类名不在主令牌域时 --npanel/--nbd/--nshadow/--nr-md 全解析为空串，
+         * 弹层退化成「透明无边框的悬浮文字」（computed background=rgba(0,0,0,0)、border-top=0px、radius=0px、
+         * shadow=none，页面正文透过弹层与之重叠——真机实证）。修法 = 弹层类名自身进 styles.css 主令牌域选择器。
+         * 桩页与真机同缺陷形态（桩页同样无任何令牌祖先、弹层直挂 body 拿不到令牌）→ 修复前本断言必红，
+         * 072 轮只锁几何/文案不锁视觉外壳的两套假绿防线即在此。 */
+        const shellOk = await h.page.evaluate(() => {
+          var pop = document.querySelector('.dsh-notes-injbadge-pop')
+          if (!pop) return { ok: false, why: 'missing' }
+          var cs = getComputedStyle(pop)
+          var npanel = cs.getPropertyValue('--npanel').trim()
+          return {
+            ok: npanel !== '' && cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && cs.borderTopWidth !== '0px'
+              && cs.borderTopLeftRadius !== '0px' && cs.boxShadow !== 'none',
+            npanel: npanel, bg: cs.backgroundColor, bt: cs.borderTopWidth, br: cs.borderTopLeftRadius, sh: cs.boxShadow.slice(0, 48),
+          }
+        })
+        H.t('📎 弹层视觉外壳真机锁：--npanel 解析非空 + computed 底色非透明 + 描边/圆角/阴影齐备（portal 脱离令牌作用域的回归防线）',
+          shellOk.ok, () => JSON.stringify(shellOk))
         /* 关浮层用「点外关闭」（📎 浮层在面板 Esc 分层栈外，裸 Esc 会穿透到面板关板分支——此处点品牌区空白） */
         await h.page.click('.dsh-notes-brand')
         await H.waitFor(h.page, '📎 浮层已关', async p => p.evaluate(() => !document.querySelector('.dsh-notes-injbadge-pop')))

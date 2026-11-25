@@ -5,8 +5,12 @@
 //   挂载行 = 目录段载荷随目标笔记 injectTo 过滤（0.5.0 notes-050-mount-scope：host 目录段与徽标资料区同款 scope 过滤）；sys/软删排除（host 缺省口径 + 组件侧兜底双闸）；
 //   拿不到 sid / 拉取失败 / 零命中 → 徽标不渲染（静默降级红线）；行点击 = 开面板 + selectNote/notes-get 兜底（openExecLog 同款）；
 //   只读会话状态零写入；原型 notes-ui-v2.html 不同步（会话头部是宿主壳区域，非本插件原型面）。
-// 测试策略：注册锚/降级/链路 = 产物文本静态锚（开发版 clientSrc + 发布包 lib/client.js 双端）；命中规则/排除 = 提取
-//   injSessionHit/injBadgeCompute 真码行为级 eval；i18n 双语取值锚定；样式产物同步锚。会话头是宿主壳无 e2e 通道，活机冒烟交用户。
+// 测试策略：注册锚/降级/链路 = 产物文本静态锚（开发版 clientSrc + 发布包 lib/client.js 双端）；命中规则/排除/弹层坐标 = 提取
+//   injSessionHit/injBadgeCompute/injBadgePopPlace 真码行为级 eval；i18n 双语取值锚定；样式产物同步锚 + 弹层 portal 锚
+//   （0.6.x notes-072-injbadge-pop-portal，反馈 n-mwvgrqllcob5：宿主 titleCluster 除 overflow:clip 外还有 mask-image，
+//   mask 使其成为 fixed 的包含块——fixed 单体被裁（071 真机驳回）→ 弹层改命令式 DOM 直挂 document.body 物理离开裁切祖先，
+//   零新增槽位注册（18 节「恰 5 个 Slot 注入点」锚不动）；box-sizing:border-box 与坐标纯函数宽/高口径配套；
+//   e2e 用例㊲ 复刻 mask+clip+限高真实缺陷形态真机回归承接）。会话头是宿主壳，活机冒烟交用户。
 module.exports = {
   id: "88",
   title: "88. 0.4.5-H 会话头部注入清单徽标（📎N + 明细浮层 + 直达笔记）",
@@ -137,17 +141,77 @@ module.exports = {
     assert(cliPkg.indexOf("'injBadge.tip'") >= 0 && cliPkg.indexOf('Injected here: {m} conventions') >= 0, 'lib/client.js 产物字典同步（需先跑 build-dist）')
   })
 
-  // ===== ⑦ 样式双端同步 + 令牌域扩列锚 =====
-  await t('样式锚：injbadge 令牌域扩列（明暗两组 + color-mix 组）+ 徽标/浮层类齐备 + lib/styles.css 产物同步', () => {
+  // ===== ⑦ 样式双端同步 + 令牌域扩列锚（notes-073-injbadge-pop-tokens：portal 弹层类名自身进主令牌域）=====
+  await t('样式锚：injbadge 令牌域扩列（主块含弹层 + 明暗两组 + color-mix 组）+ 徽标/浮层类齐备 + lib/styles.css 产物同步', () => {
     for (const sel of [
-      '.dsh-notes-floating,.dsh-notes-fab,.dsh-notes-hdr-btn,.dsh-notes-injbadge{',
+      '.dsh-notes-floating,.dsh-notes-fab,.dsh-notes-hdr-btn,.dsh-notes-injbadge,.dsh-notes-injbadge-pop{',
       'body[data-ds-dark-theme] .dsh-notes-hdr-btn,\nbody[data-ds-dark-theme] .dsh-notes-injbadge{',
       'body:not([data-ds-dark-theme]) .dsh-notes-hdr-btn,\n  body:not([data-ds-dark-theme]) .dsh-notes-injbadge,',
     ]) assert(stylesSrc.indexOf(sel) >= 0, '令牌域扩列锚：' + sel.slice(0, 40) + '…')
+    // 弹层令牌域双端锁（notes-073）：弹层 portal 直挂 document.body 后物理脱离 .dsh-notes-injbadge 令牌子树，类名不在
+    // 主令牌域 → --npanel/--nbd/--nshadow/--nr-md 解析为空串、弹层退化成透明无边框悬浮文字（真机驳回实证）。
+    // 弹层消费的九令牌（npanel/nbd/nbd-soft/ntx/nt3/nbg-hover/nr-md/nshadow/nfont）全在主令牌块，暗色/color-mix
+    // 覆盖块不涉其消费面（无需扩列）——072 轮只锁几何不锁视觉外壳的假绿防线。
+    assert(cssPkg.indexOf('.dsh-notes-floating,.dsh-notes-fab,.dsh-notes-hdr-btn,.dsh-notes-injbadge,.dsh-notes-injbadge-pop{') >= 0, 'lib/styles.css 主令牌域含弹层类（产物同步，需先跑 build-dist）')
     for (const cls of ['.dsh-notes-injbadge{', '.dsh-notes-injbadge-btn', '.dsh-notes-injbadge-pop{', '.dsh-notes-injbadge-sec', '.dsh-notes-injbadge-row{', '.dsh-notes-injbadge-row-t', '.dsh-notes-injbadge-row-s']) {
       assert(stylesSrc.indexOf(cls) >= 0, 'styles.css 含 ' + cls)
       assert(cssPkg.indexOf(cls) >= 0, 'lib/styles.css 产物含 ' + cls + '（需先跑 build-dist）')
     }
+  })
+
+  // ===== ⑧ 弹层坐标纯函数行为级 eval（notes-071/072：常态右对齐 / 左右越界钳 8px / 窄视口 width 与 maxHeight；宽/高 border-box 口径）=====
+  await t('injBadgePopPlace 行为级 eval：常态右缘对齐按钮右缘 / 左越界钳 8px / 右缘不越界 / 窄视口 width≤vw-16 且 maxHeight≤剩余视口高', () => {
+    const fnSrc = grabFn4(clientSrc, 'injBadgePopPlace', 'clientSrc')
+    const injBadgePopPlace = new Function(fnSrc + '\nreturn injBadgePopPlace')()
+    // 常态：视口宽绰（vw=1280/vh=800），按钮 right=500/bottom=100 → width=320、left=180（右缘对齐）、top=104、maxHeight=300
+    let p = injBadgePopPlace({ right: 500, bottom: 100 }, 1280, 800)
+    assert.strictEqual(p.left, '180px', '常态左缘 = 按钮右缘 - 320（右缘对齐按钮右缘，实得 ' + p.left + '）')
+    assert.strictEqual(p.top, '104px', '常态 top = 按钮下缘 + 4（实得 ' + p.top + '）')
+    assert.strictEqual(p.width, '320px', '常态 width = 320（实得 ' + p.width + '）')
+    assert.strictEqual(p.maxHeight, '300px', '常态 maxHeight = 300（剩余视口高绰，实得 ' + p.maxHeight + '）')
+    // 左越界：按钮贴左（right=100）→ 右对齐会得 left=-220 → 钳 8
+    p = injBadgePopPlace({ right: 100, bottom: 40 }, 1280, 800)
+    assert.strictEqual(p.left, '8px', '左越界钳视口 8px 安全边（实得 ' + p.left + '）')
+    // 右缘越界：按钮贴右（right=1275）→ 右对齐会溢出 vw-8 → 钳到 vw-8-width
+    p = injBadgePopPlace({ right: 1275, bottom: 40 }, 1280, 800)
+    assert.strictEqual(p.left, '952px', '右缘不越界（left = vw-8-width，实得 ' + p.left + '）')
+    // 窄/低视口：vw=300 → width 钳 284；bottom=300/vh=500 → top=304、maxHeight 钳剩余视口高 188
+    p = injBadgePopPlace({ right: 280, bottom: 300 }, 300, 500)
+    assert.strictEqual(p.width, '284px', '窄视口 width ≤ vw-16（≤320，实得 ' + p.width + '）')
+    assert.strictEqual(p.left, '8px', '窄视口左越界钳 8px（实得 ' + p.left + '）')
+    assert.strictEqual(p.top, '304px', '窄视口 top 仍 = 按钮下缘 + 4（实得 ' + p.top + '）')
+    assert.strictEqual(p.maxHeight, '188px', '低视口 maxHeight ≤ 剩余视口高 vh-top-8（实得 ' + p.maxHeight + '）')
+  })
+
+  // ===== ⑨ 弹层 portal 锚（notes-072-injbadge-pop-portal：titleCluster mask-image 使祖先成为 fixed 的包含块，overflow:clip 照样裁 fixed——弹层须物理离开该祖先；073 弹层视觉外壳走令牌域）+ 生命周期接线 + 产物双端同步 =====
+  await t('弹层 portal 锚：命令式 DOM 直挂 document.body（零新增槽位注册）+ textContent 纪律零 innerHTML + fixed/border-box/令牌 var() 样式锚 + 旧锚清零 + rect 坐标接线/清理链/会话切换收层 + lib 产物同步', () => {
+    // 073 起主令牌域选择器含 .dsh-notes-injbadge-pop（文件头部），弹层视觉规则锚须带规则签名定位（{position:fixed）防误切令牌块
+    const ruleOf = (src, label) => { const i = src.indexOf('.dsh-notes-injbadge-pop{position:fixed'); assert(i >= 0, label + ' 缺 .dsh-notes-injbadge-pop{position:fixed 视觉规则'); return src.slice(i, src.indexOf('}', i)) }
+    for (const [label, src] of [['styles.css', stylesSrc], ['lib/styles.css', cssPkg]]) {
+      const r = ruleOf(src, label)
+      assert(r.indexOf('position:fixed') >= 0, label + ' fixed 定位（portal 层视口坐标口径）')
+      assert(r.indexOf('z-index:2147483646') >= 0, label + ' z-index:2147483646（与 FAB/tooltip 同层，浮空面板之下）')
+      assert(r.indexOf('box-sizing:border-box') >= 0, label + ' box-sizing:border-box（坐标纯函数宽/高口径：rect 与 width/maxHeight 逐像素吻合）')
+      assert(r.indexOf('absolute') < 0 && r.indexOf('top:calc') < 0 && r.indexOf('right:0') < 0, label + ' 旧 absolute/top:calc/right:0 锚清零（坐标改 JS 计算）')
+      assert(r.indexOf('min-width') < 0 && r.indexOf('max-width') < 0 && r.indexOf('max-height') < 0, label + ' 旧 min-width/max-width/max-height 锚清零（尺寸改 JS 计算）')
+      assert(r.indexOf('overflow-y:auto') >= 0, label + ' overflow-y:auto 保留（行内滚动纪律不回退）')
+      assert(r.indexOf('background:var(--npanel)') >= 0 && r.indexOf('box-shadow:var(--nshadow)') >= 0 && r.indexOf('border-radius:var(--nr-md)') >= 0, label + ' 视觉外壳走设计令牌 var(--npanel)/var(--nshadow)/var(--nr-md)（073：禁字面色硬编码绕过令牌域——令牌域扩列才是根修）')
+    }
+    // portal 组装锚：弹层 DOM 命令式 createElement 直挂 body（物理离开 titleCluster——mask 包含块 + overflow:clip 双重裁切祖先）
+    assert(badgeSrc.indexOf("pop.className = 'dsh-notes-injbadge-pop'") >= 0, '弹层 DOM 命令式组装（className 与 React 形态逐类一致，样式/选择器零迁移）')
+    assert(badgeSrc.indexOf("document.createElement('div')") >= 0, 'createElement 命令式层（editor.js 遮蔽层同款形态）')
+    assert(badgeSrc.indexOf('document.body.appendChild(el)') >= 0, '弹层直挂 document.body（物理离开裁切祖先——真机驳回根因的终态修法）')
+    const noComments = badgeSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+    assert(noComments.indexOf('innerHTML') < 0, '零 innerHTML（用户标题/范围/when 全走 textContent 直填，与 React 文本节点转义同强度）')
+    assert(badgeSrc.indexOf('slots.inject(\'shell.overlay\'') < 0 && badgeSrc.indexOf("slots.register({ name: 'shell.overlay'") < 0, '零新增 shell 通道注册（18 节「恰 5 个 Slot 注入点」锚不动）')
+    // 生命周期接线锚：按钮 rect 现算坐标 + effect 清理链 + 会话切换收层 + 点外判定含弹层本体（portal 后弹层不在徽标壳内）
+    assert(badgeSrc.indexOf('const btnRef = React.useRef(null)') >= 0, '徽标按钮 React.useRef rect 锚在位')
+    assert(badgeSrc.indexOf('ref: btnRef') >= 0, '按钮挂 ref')
+    assert(badgeSrc.indexOf('injBadgePopPlace(btn.getBoundingClientRect(), window.innerWidth, window.innerHeight)') >= 0, '坐标 = injBadgePopPlace(按钮 rect, 视口宽高)')
+    assert(badgeSrc.indexOf('if (el.parentNode) { try { el.parentNode.removeChild(el) } catch (err) {} }') >= 0, 'effect 清理链移除弹层（关层/数据刷新/卸载统一收口）')
+    assert(badgeSrc.indexOf('React.useEffect(() => { setPopOpen(false) }, [sid])') >= 0, '会话切换即收弹层（防跨会话残留旧行）')
+    assert(badgeSrc.indexOf("ev.target.closest('.dsh-notes-injbadge, .dsh-notes-injbadge-pop')") >= 0, '点外关闭判定含弹层本体（portal 后弹层不在徽标壳内，防点弹层空白区误关）')
+    assert(cliPkg.indexOf('document.body.appendChild(el)') >= 0 && cliPkg.indexOf('injBadgePopBuild') >= 0 && cliPkg.indexOf('injBadgePopPlace') >= 0 && cliPkg.indexOf("pop.className = 'dsh-notes-injbadge-pop'") >= 0, '发布包 lib/client.js portal/纯函数/组装产物同步（需先跑 build-dist）')
   })
   }
 }
